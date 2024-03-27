@@ -1,13 +1,37 @@
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::Addr;
-use cw_storage_plus::Item;
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::Uint128;
+use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
+use euclid::{
+    fee::Fee, pool::Pool, token::{Pair, Token}
+    };
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+#[cw_serde]
 pub struct State {
-    pub count: i32,
-    pub owner: Addr,
+    // Token Pair Info
+    pub pair: Pair,
+    // Router Contract
+    pub router: String,
+    // Fee per swap for each transaction 
+    pub fee: Fee,
+    // The last timestamp where the balances for each token have been updated
+    pub last_updated: u64, 
+    // Total cumulative reserves of token_1
+    pub total_reserve_1: Uint128,
+    // Total cumulative reserves of token_2
+    pub total_reserve_2: Uint128,
 }
 
+
 pub const STATE: Item<State> = Item::new("state");
+
+// A map of chain-ids connected to the VLP to pools
+pub const POOLS: Map<&String, Pool> = Map::new("pools");
+
+// Stores a snapshotMap in order to keep track of prices for blocks for charts and other purposes
+pub const BALANCES: SnapshotMap<&Token, Uint128> = SnapshotMap::new(
+    "balances",
+    "balances_check",
+    "balances_change",
+    Strategy::EveryBlock,
+);

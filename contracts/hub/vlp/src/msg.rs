@@ -1,14 +1,23 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
+use euclid::{fee::Fee, pool::Pool, token::Pair};
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    pub count: i32,
+    pub router: String,
+    pub pair: Pair,
+    pub fee: Fee,
+    pub pool: Pool,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Increment {},
-    Reset { count: i32 },
+    // Registers a new pool from a new chain to an already existing VLP
+    RegisterPool {
+        pool: Pool,
+    },
+    AddLiquidity { 
+        pool: Pool
+     },
 }
 
 #[cw_serde]

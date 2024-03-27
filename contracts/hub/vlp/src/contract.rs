@@ -5,7 +5,7 @@ use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
-use crate::state::{State, STATE};
+use crate::state::{State, STATE, POOLS};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
@@ -18,17 +18,23 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    
     let state = State {
-        count: msg.count,
-        owner: info.sender.clone(),
+       pair: msg.pair,
+        router: info.sender.to_string(),
+        fee: msg.fee,
+        last_updated: 0,
+        total_reserve_1: msg.pool.reserve_1,
+        total_reserve_2: msg.pool.reserve_2,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
-
+    // stores initial pool to map
+    POOLS.save(deps.storage, &msg.pool.chain,&msg.pool)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("owner", info.sender)
-        .add_attribute("count", msg.count.to_string()))
+)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

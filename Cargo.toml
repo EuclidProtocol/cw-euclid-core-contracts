@@ -1,8 +1,20 @@
-[package]
-name = "euclid-core-contracts"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+resolver = "2"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+members = [
+    "contracts/hub/*",
+    "contracts/liquidity/*",
+    "packages/*"
+]
 
-[dependencies]
+[profile.release]
+opt-level = "z"
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+strip = true
