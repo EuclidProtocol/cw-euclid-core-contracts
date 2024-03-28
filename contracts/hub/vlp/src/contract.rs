@@ -45,33 +45,36 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => execute::increment(deps),
-        ExecuteMsg::Reset { count } => execute::reset(deps, info, count),
+        ExecuteMsg::RegisterPool {pool} => execute::register_pool(deps, info, pool),
+        
     }
 }
 
 pub mod execute {
+    use euclid::pool::Pool;
+
     use super::*;
 
-    pub fn increment(deps: DepsMut) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            state.count += 1;
-            Ok(state)
-        })?;
+    pub fn register_pool(deps: DepsMut, info: MessageInfo, pool: Pool) -> Result<Response, ContractError> {
+        // Verify that chain pool does not already exist
+        if POOLS.may_load(deps.storage, &pool.chain)?.is_some() {
+            return Err(ContractError::PoolAlreadyExists {});
+        }
+        // Store the pool in the map
+        POOLS.save(deps.storage, &pool.chain,&pool)?;
 
-        Ok(Response::new().add_attribute("action", "increment"))
+        // Add pool liquidity to total reserves of VLP
+        let mut state = STATE.load(deps.storage)?;
+        state.total_reserve_1.checked_add(pool.reserve_1);
+        state.total_reserve_2.checked_add(pool.reserve_2);
+        STATE.save(deps.storage, &state)?;
+
+        
+    
+        Ok(Response::new().add_attribute("action", "register_pool")
+        .add_attribute("pool_chain", pool.chain))
     }
 
-    pub fn reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            if info.sender != state.owner {
-                return Err(ContractError::Unauthorized {});
-            }
-            state.count = count;
-            Ok(state)
-        })?;
-        Ok(Response::new().add_attribute("action", "reset"))
-    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
