@@ -51,11 +51,34 @@ pub fn execute(
 }
 
 pub mod execute {
-    use euclid::pool::Pool;
+
+
+    use cosmwasm_std::{CosmosMsg, Env, IbcMsg, IbcReceiveResponse, IbcTimeout, Uint128};
+    use euclid::{pool::Pool, token};
+
+    use crate::{ack::make_ack_success, msg::IbcExecuteMsg};
 
     use super::*;
 
+    /// Registers a new pool in the contract. Function called by Router Contract
+    ///
+    /// # Arguments
+    ///
+    /// * `deps` - The mutable dependencies for the contract execution.
+    /// * `info` - The message info containing the sender and other information.
+    /// * `pool` - The pool to be registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pool already exists.
+    ///
+    /// # Returns
+    ///
+    /// Returns a response with the action and pool chain attributes if successful.
     pub fn register_pool(deps: DepsMut, info: MessageInfo, pool: Pool) -> Result<Response, ContractError> {
+
+        // [TODO] Verify function is called by Router Contract
+
         // Verify that chain pool does not already exist
         if POOLS.may_load(deps.storage, &pool.chain)?.is_some() {
             return Err(ContractError::PoolAlreadyExists {});
@@ -69,10 +92,38 @@ pub mod execute {
         state.total_reserve_2.checked_add(pool.reserve_2);
         STATE.save(deps.storage, &state)?;
 
-        
-    
         Ok(Response::new().add_attribute("action", "register_pool")
         .add_attribute("pool_chain", pool.chain))
+    }
+
+    pub fn add_liquidity(deps: DepsMut, chain_id: String, token_1_liquidity: Uint128, token_2_liquidity: Uint128) -> Result<IbcReceiveResponse, ContractError> {
+        // Get the pool for the chain_id provided
+        let pool = POOLS.load(deps.storage, &chain_id)?;
+        // Add liquidity to the pool
+        pool.reserve_1.checked_add(token_1_liquidity);
+        pool.reserve_2.checked_add(token_2_liquidity);
+        POOLS.save(deps.storage, &chain_id, &pool)?;
+        
+        // Add to total liquidity
+        let mut state = STATE.load(deps.storage)?;
+        state.total_reserve_1.checked_add(token_1_liquidity);
+        state.total_reserve_2.checked_add(token_2_liquidity);
+        STATE.save(deps.storage, &state)?;
+
+        
+        Ok(IbcReceiveResponse::new().add_attribute("action", "add_liquidity")
+        .add_attribute("chain_id", chain_id).set_ack(make_ack_success()))
+    }
+
+
+    // Temporary function to test IBC packet receive using the contracts and if everything works, should come from actual Pool.
+    pub fn add_liquidity_chain(deps: DepsMut, env: Env, chain_id: String, token_1_liquidity: Uint128, token_2_liquidity: Uint128, channel: String) -> Result<Response, ContractError> {
+        let msg = IbcMsg::SendPacket { channel_id: channel,
+                data: to_json_binary(&IbcExecuteMsg::AddLiquidity { chain_id: chain_id ,
+                token_1_liquidity: token_1_liquidity, token_2_liquidity: token_2_liquidity }).unwrap(),
+                 timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(120))};
+        
+        Ok(Response::new().add_attribute("method", "adding_liquidity_chain").add_message(CosmosMsg::Ibc(msg)))
     }
 
 }
@@ -80,19 +131,16 @@ pub mod execute {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetCount {} => to_json_binary(&query::count(deps)?),
+        
     }
 }
 
 pub mod query {
     use super::*;
 
-    pub fn count(deps: Deps) -> StdResult<GetCountResponse> {
-        let state = STATE.load(deps.storage)?;
-        Ok(GetCountResponse { count: state.count })
-    }
 }
 
+/* 
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,3 +211,4 @@ mod tests {
         assert_eq!(5, value.count);
     }
 }
+*/

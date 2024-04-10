@@ -16,12 +16,8 @@ pub enum ExecuteMsg {
     RegisterPool {
         pool: Pool,
     },
-    // Add liquidity from a chain pool to VLP 
-    AddLiquidity { 
-        chain_id: String,
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-     },
+
+    /*
      // Remove liquidity from a chain pool to VLP
     RemoveLiquidity {
         chain_id: String,
@@ -41,18 +37,25 @@ pub enum ExecuteMsg {
         treasury_fee: u64,
         staker_fee: u64,
     },
+    */
 }
 
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    // GetCount returns the current count as a json-encoded number
-    #[returns(GetCountResponse)]
-    GetCount {},
 }
 
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct GetCountResponse {
     pub count: i32,
+}
+
+#[cw_serde]
+pub enum IbcExecuteMsg {
+    AddLiquidity {
+        chain_id: String,
+        token_1_liquidity: Uint128,
+        token_2_liquidity: Uint128,
+    } 
 }

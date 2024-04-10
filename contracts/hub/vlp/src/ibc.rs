@@ -7,11 +7,7 @@ use cosmwasm_std::{
 };
 
 use crate::{
-    ack::{make_ack_fail, make_ack_success},
-    error::Never,
-    msg::IbcExecuteMsg,
-    state::{CONNECTION_COUNTS, TIMEOUT_COUNTS},
-    ContractError,
+    ack::{make_ack_fail, make_ack_success}, contract::execute, error::Never, msg::IbcExecuteMsg, state::{CONNECTION_COUNTS, TIMEOUT_COUNTS}, ContractError
 };
 
 pub const IBC_VERSION: &str = "counter-1";
@@ -24,7 +20,7 @@ pub fn ibc_channel_open(
     msg: IbcChannelOpenMsg,
 ) -> Result<IbcChannelOpenResponse, ContractError> {
     validate_order_and_version(msg.channel(), msg.counterparty_version())?;
-    Ok(None)
+    Ok(())
 }   
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -86,17 +82,10 @@ pub fn do_ibc_packet_receive(
     let msg: IbcExecuteMsg = from_json(&msg.packet.data)?;
 
     match msg {
-        IbcExecuteMsg::Increment {} => execute_increment(deps, channel),
+        IbcExecuteMsg::AddLiquidity {chain_id, token_1_liquidity, token_2_liquidity} => execute::add_liquidity(deps, chain_id, token_1_liquidity, token_2_liquidity),
     }
 }
 
-fn execute_increment(deps: DepsMut, channel: String) -> Result<IbcReceiveResponse, ContractError> {
-    let count = try_increment(deps, channel)?;
-    Ok(IbcReceiveResponse::new()
-        .add_attribute("method", "execute_increment")
-        .add_attribute("count", count.to_string())
-        .set_ack(make_ack_success()))
-}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_ack(
@@ -104,12 +93,7 @@ pub fn ibc_packet_ack(
     _env: Env,
     _ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // Nothing to do here. We don't keep any state about the other
-    // chain, just deliver messages so nothing to update.
-    //
-    // If we did care about how the other chain received our message
-    // we could deserialize the data field into an `Ack` and inspect
-    // it.
+    
     Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_ack"))
 }
 
