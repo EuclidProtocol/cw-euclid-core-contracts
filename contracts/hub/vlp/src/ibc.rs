@@ -20,7 +20,7 @@ pub fn ibc_channel_open(
     msg: IbcChannelOpenMsg,
 ) -> Result<IbcChannelOpenResponse, ContractError> {
     validate_order_and_version(msg.channel(), msg.counterparty_version())?;
-    Ok(())
+    Ok(None)
 }   
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -93,7 +93,12 @@ pub fn ibc_packet_ack(
     _env: Env,
     _ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    
+    // Nothing to do here. We don't keep any state about the other
+    // chain, just deliver messages so nothing to update.
+    //
+    // If we did care about how the other chain received our message
+    // we could deserialize the data field into an `Ack` and inspect
+    // it.
     Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_ack"))
 }
 

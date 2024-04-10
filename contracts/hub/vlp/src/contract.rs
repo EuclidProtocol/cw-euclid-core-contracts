@@ -53,8 +53,8 @@ pub fn execute(
 pub mod execute {
 
 
-    use cosmwasm_std::{CosmosMsg, Env, IbcMsg, IbcReceiveResponse, IbcTimeout, Uint128};
-    use euclid::{pool::Pool, token};
+    use cosmwasm_std::{Env, IbcMsg, IbcReceiveResponse, IbcTimeout, Uint128};
+    use euclid::{pool::Pool};
 
     use crate::{ack::make_ack_success, msg::IbcExecuteMsg};
 
@@ -123,7 +123,7 @@ pub mod execute {
                 token_1_liquidity: token_1_liquidity, token_2_liquidity: token_2_liquidity }).unwrap(),
                  timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(120))};
         
-        Ok(Response::new().add_attribute("method", "adding_liquidity_chain").add_message(CosmosMsg::Ibc(msg)))
+        Ok(Response::default().add_attribute("method", "adding_liquidity_chain").add_message(msg))
     }
 
 }
