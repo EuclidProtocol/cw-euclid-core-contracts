@@ -3,6 +3,8 @@ use cosmwasm_std::Uint128;
 
 use crate::token::PairInfo;
 
+pub const MINIMUM_LIQUIDITY : u128 = 1000;
+
 #[cw_serde]
 pub struct Pool {
     // The chain where the pool is deployed

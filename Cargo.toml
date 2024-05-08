@@ -18,3 +18,7 @@ panic = 'abort'
 incremental = false
 overflow-checks = true
 strip = true
+
+[workspace.dependencies]
+euclid = { path = "./packages/euclid" }
+euclid-ibc = { path = "./packages/euclid_ibc" }

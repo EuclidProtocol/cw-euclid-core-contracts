@@ -1,4 +1,5 @@
 use cosmwasm_std::StdError;
+
 use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum Never {}
@@ -18,6 +19,23 @@ pub enum ContractError {
 
     #[error("invalid IBC channel version. Got ({actual}), expected ({expected})")]
     InvalidVersion { actual: String, expected: String },
-    // Add any other custom errors you like here.
-    // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
+
+    #[error("Asset does not exist in VLP")]
+    AssetDoesNotExist {},
+
+    #[error("Cannot Swap 0 tokens")]
+    ZeroAssetAmount {},
+
+    #[error("Slippage has not been tolerated for set amount")]
+    SlippageExceeded {},
+
+    #[error("Invalid Liquidity Ratio")]
+    InvalidLiquidityRatio {},
+
+    #[error("Slippage Tolerance must be between 0 and 100")]
+    InvalidSlippageTolerance {},
+
+    #[error("The Channel specified does not currently exist")]
+    ChannelDoesNotExist {},
+
 }

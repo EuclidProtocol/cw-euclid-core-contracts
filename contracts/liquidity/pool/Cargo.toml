@@ -1,5 +1,5 @@
 [package]
-name = "vlp"
+name = "pool"
 version = "0.1.0"
 authors = ["gachouchani1999 <georgeschouchani1@gmail.com>"]
 edition = "2021"

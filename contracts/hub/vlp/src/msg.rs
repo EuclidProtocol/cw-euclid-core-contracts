@@ -17,20 +17,19 @@ pub enum ExecuteMsg {
         pool: Pool,
     },
 
-    /*
-     // Remove liquidity from a chain pool to VLP
-    RemoveLiquidity {
+    AddLiquidity {
         chain_id: String,
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
-        },
-    // Swap tokens on VLP
-    Swap {
-        chain_id: String,
-        asset: Token,
-        asset_amount: Uint128,
-        min_amount_out: Uint128,
-        },
+        slippage_tolerance: u64,
+        channel: String,
+  
+    },
+
+    
+
+        /*
+
     // Update the fee for the VLP
     UpdateFee {
         lp_fee: u64,
@@ -42,20 +41,39 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 #[derive(QueryResponses)]
+
 pub enum QueryMsg {
+    // Query to simulate a swap for the asset
+    #[returns(GetSwapResponse)]
+    SimulateSwap {
+        asset: Token,
+        asset_amount: Uint128,
+    },
+    // Queries the total reserve of the pair in the VLP
+    #[returns(GetLiquidityResponse)]
+    Liquidity {},
+
+    // Queries the total reserve of the pair with info in the VLP
+    #[returns(LiquidityInfoResponse)]
+    LiquidityInfo {},
 }
 
 // We define a custom struct for each query response
 #[cw_serde]
-pub struct GetCountResponse {
-    pub count: i32,
+pub struct GetSwapResponse {
+    pub token_out: Uint128,
 }
 
 #[cw_serde]
-pub enum IbcExecuteMsg {
-    AddLiquidity {
-        chain_id: String,
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-    } 
+pub struct GetLiquidityResponse {
+    pub token_1_reserve: Uint128,
+    pub token_2_reserve: Uint128,
+}
+
+
+#[cw_serde]
+pub struct LiquidityInfoResponse {
+    pub pair: Pair,
+    pub token_1_reserve: Uint128,
+    pub token_2_reserve: Uint128,
 }

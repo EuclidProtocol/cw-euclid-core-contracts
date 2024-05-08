@@ -20,6 +20,8 @@ pub struct State {
     pub total_reserve_1: Uint128,
     // Total cumulative reserves of token_2
     pub total_reserve_2: Uint128,
+    // total number of LP tokens issued
+    pub total_lp_tokens: Uint128,
 }
 
 

@@ -1,16 +1,14 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
-    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
+    ensure, from_json, from_slice, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult
 };
+use euclid::{error::{ContractError, Never}, token::PairInfo};
+use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, SwapResponse};
 
 use crate::{
-    ack::make_ack_fail, contract::execute, state::{CONNECTION_COUNTS, TIMEOUT_COUNTS}
+    ack::make_ack_fail, contract::execute, state::{CONNECTION_COUNTS, STATE, TIMEOUT_COUNTS}
 };
-use euclid::error::{ContractError, Never};
-use euclid_ibc::msg::IbcExecuteMsg;
 
 pub const IBC_VERSION: &str = "counter-1";
 
@@ -79,29 +77,29 @@ pub fn do_ibc_packet_receive(
     _env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-
-    let msg: IbcExecuteMsg = from_json(&msg.packet.data)?;
-
-    match msg {
-        IbcExecuteMsg::AddLiquidity {chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance} => execute::add_liquidity(deps, chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance),
-        IbcExecuteMsg::RemoveLiquidity { chain_id, lp_allocation } => execute::remove_liquidity(deps, chain_id, lp_allocation),
-        IbcExecuteMsg::Swap { chain_id, asset, asset_amount, min_amount_out, channel } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_amount_out),
-    }
+    // Pool does not handle any IBC Packets
+    Ok(IbcReceiveResponse::default())
 }
 
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_ack(
-    _deps: DepsMut,
-    _env: Env,
-    _ack: IbcPacketAckMsg,
+    deps: DepsMut,
+    env: Env,
+    ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // Nothing to do here. We don't keep any state about the other
-    // chain, just deliver messages so nothing to update.
-    //
-    // If we did care about how the other chain received our message
-    // we could deserialize the data field into an `Ack` and inspect
-    // it.
+    // Parse the ack based on request
+    let msg: IbcExecuteMsg = from_json(&ack.original_packet.data)?;
+    
+    match msg {
+        IbcExecuteMsg::Swap { chain_id, asset, asset_amount, min_amount_out, channel } => {
+            let processed_ack: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
+            match processed_ack {
+                AcknowledgementMsg::Ok(a) => execute_success_swap(deps,env,a),
+                AcknowledgementMsg::Error(e) => process_failed_swap(deps,env,e),
+            };
+    }
+    }
     Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_ack"))
 }
 
@@ -162,3 +160,25 @@ pub fn validate_order_and_version(
 
     Ok(())
 }
+
+// Function that proceses a successful swap performed on the VLP
+pub fn execute_success_swap(deps: DepsMut,
+     env: Env,
+    resp: SwapResponse) -> Result<IbcReceiveResponse,ContractError> {
+        // Unpack response
+        // Verify that both assets exist in state
+        let state = STATE.load(deps.storage)?;
+        
+        // Verify that assets exist in the state.
+        ensure!(
+            resp.asset.exists(state.pair),
+            ContractError::AssetDoesNotExist {  }
+        );
+
+        ensure!(
+            resp.asset_out.exists(state.pair),
+            ContractError::AssetDoesNotExist {  }
+        );
+        
+        
+      }
