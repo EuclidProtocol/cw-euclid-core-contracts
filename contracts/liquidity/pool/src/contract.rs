@@ -1,12 +1,10 @@
-use std::net::ToSocketAddrs;
-
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw2::set_contract_version;
 
 use euclid::error::ContractError;
-use crate::msg::{self, ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{State, STATE};
 
 // version info for migration info
@@ -109,22 +107,35 @@ pub mod execute {
             }
         }
 
+        // Get token from tokenInfo
+        let token = asset.get_token();
+
+        // Generate a unique identifier for this swap
+        let swap_id = format!("{}-{}-{}", info.sender, env.block.height, env.transaction.unwrap().index);
+
         // Send an IBC packet to VLP to perform swap
         let res = IbcMsg::SendPacket { channel_id: channel.clone(),
              data: to_json_binary(&IbcExecuteMsg::Swap{
                 chain_id: state.chain_id.clone(),
-                asset: asset.clone(),
+                asset: token,
                 asset_amount: asset_amount,
                 min_amount_out: min_amount_out,
+                swap_id: swap_id.clone(),
                 channel: channel }).unwrap(),
               timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60))
             };
         
+        // Get alternative token
+        let asset_out = state.pair_info.get_other_token(asset.clone());
+
         // Add the deposit to Pending Swaps
         let swap_info = SwapInfo {
             asset: asset.clone(),
+            asset_out: asset_out.clone(),
             asset_amount: asset_amount,
             timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
+            swap_id: swap_id,
+
         };
 
         // Load previous pending swaps for user

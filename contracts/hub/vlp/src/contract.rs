@@ -66,7 +66,7 @@ pub mod execute {
 
 
     use cosmwasm_std::{Env, IbcMsg, IbcReceiveResponse, IbcTimeout, Uint128};
-    use euclid::{pool::Pool, token::Token};
+    use euclid::{pool::Pool, swap, token::Token};
     use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, SwapResponse};
 
     use crate::{ack::make_ack_success, state};
@@ -236,7 +236,7 @@ pub mod execute {
         .set_ack(make_ack_success()))
     }
 
-    pub fn execute_swap(deps: DepsMut, chain_id: String, asset: Token, asset_amount: Uint128, min_token_out: Uint128) -> Result<IbcReceiveResponse, ContractError> {
+    pub fn execute_swap(deps: DepsMut, chain_id: String, asset: Token, asset_amount: Uint128, min_token_out: Uint128, swap_id: String) -> Result<IbcReceiveResponse, ContractError> {
         
         // Get the pool for the chain_id provided 
         let mut pool = POOLS.load(deps.storage, &chain_id)?;
@@ -327,7 +327,8 @@ pub mod execute {
             asset: asset,
             asset_out: asset_out,
             asset_amount: asset_amount,
-            amount_out: receive_amount
+            amount_out: receive_amount,
+            swap_id: swap_id,
         };
 
         // Prepare acknowledgement
@@ -504,8 +505,12 @@ mod tests {
                 chain: "chain".to_string(),
                 contract_address: "contract_address".to_string(),
                 pair: PairInfo {
-                    token_1: TokenInfo::Native { denom: "token_1".to_string() },
-                    token_2: TokenInfo::Native { denom: "token_2".to_string() },
+                    token_1: TokenInfo::Native { denom: "token_1".to_string(),
+                 token: Token { id: "token_1".to_string() }},
+
+                    token_2: TokenInfo::Native { denom: "token_2".to_string(),
+                    token: Token { id: "token_2".to_string()},
+                    },
                 },
                 reserve_1: Uint128::new(100),
                 reserve_2: Uint128::new(100),

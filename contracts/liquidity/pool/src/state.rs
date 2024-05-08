@@ -2,7 +2,7 @@ use cosmwasm_schema::cw_serde;
 use euclid::{swap::SwapInfo, token::{Pair, PairInfo}};
 
 
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Deps, Uint128};
 use cw_storage_plus::{Item, Map};
 
 #[cw_serde]
@@ -37,3 +37,23 @@ pub const TIMEOUT_COUNTS: Map<String, u32> = Map::new("timeout_count");
 
 // Map for pending swaps for user 
 pub const PENDING_SWAPS: Map<String, Vec<SwapInfo>> = Map::new("pending_swaps");
+
+// Helper function to iterate through vector in PendingSwap map to find a certain swap_id
+pub fn find_swap_id(swap_id: &str, pending_swaps: Vec<SwapInfo>) -> bool {
+    for swap in pending_swaps {
+        if swap.swap_id == swap_id {
+            return true
+        }
+    }
+    return false
+}
+
+// Returns SwapInfo for a specific SwapID
+pub fn get_swap_info(swap_id: &str, pending_swaps: Vec<SwapInfo>) -> SwapInfo {
+    for swap in pending_swaps {
+        if swap.swap_id == swap_id {
+            return swap
+        }
+    }
+    panic!("Swap ID not found")
+}

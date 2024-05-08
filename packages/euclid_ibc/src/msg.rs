@@ -27,6 +27,7 @@ pub enum IbcExecuteMsg {
         asset_amount: Uint128,
         min_amount_out: Uint128,
         channel: String,
+        swap_id: String,
         },
 }
 
