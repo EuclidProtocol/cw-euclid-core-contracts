@@ -41,4 +41,7 @@ pub enum ContractError {
     #[error("The swap does not exist in state for the sender")]
     SwapDoesNotExist {},
 
+    #[error("The deposit amount is insufficient to add the liquidity")]
+    InsufficientDeposit {},
+
 }

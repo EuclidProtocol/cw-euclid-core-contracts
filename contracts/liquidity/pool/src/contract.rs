@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{to_json_binary, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw2::set_contract_version;
 
 use euclid::error::ContractError;
@@ -14,23 +14,57 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    
 
     let state = State {
         vlp_contract: msg.vlp_contract.clone(),
         pair: msg.token_pair.clone(),
-        pair_info: msg.pair_info,
-        reserve_1: msg.pool.reserve_1,
-        reserve_2: msg.pool.reserve_2,
+        pair_info: msg.pair_info.clone(),
+        reserve_1: msg.pool.reserve_1.clone(),
+        reserve_2: msg.pool.reserve_2.clone(),
         // Store factory contract
         factory_contract: info.sender.clone().to_string(),
         chain_id: msg.chain_id,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    let mut msgs = Vec::new();
+    // Check if tokens are smart contract tokens to create transfer message
+    if msg.pair_info.token_1.is_smart() {
+        let msg = msg.pair_info.token_1.create_transfer_msg(msg.pool.reserve_1.clone(), env.contract.address.clone().to_string());
+        msgs.push(msg);
+    }
+
+
+    if msg.pair_info.token_2.is_smart() {
+        let msg = msg.pair_info.token_2.create_transfer_msg(msg.pool.reserve_1.clone(), env.contract.address.clone().to_string());
+        msgs.push(msg);
+    }
+    
+    // Validate for deposit of native tokens
+    if msg.pair_info.token_1.is_native() {
+        // Query the balance of the contract for the native token
+        let balance = deps.querier.query_balance(env.contract.address.clone(), msg.pair_info.token_1.get_denom()).unwrap();
+        // Verify that the balance is greater than the reserve added
+        if balance.amount < msg.pool.reserve_1 {
+            return Err(ContractError::InsufficientDeposit {  });
+        }
+    }
+
+    // Same for token 2
+    if msg.pair_info.token_2.is_native() {
+        let balance = deps.querier.query_balance(env.contract.address.clone(), msg.pair_info.token_2.get_denom()).unwrap();
+        if balance.amount < msg.pool.reserve_2 {
+            return Err(ContractError::InsufficientDeposit {  });
+        }
+    }
+
+    // Save the state
     STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
@@ -40,6 +74,7 @@ pub fn instantiate(
         .add_attribute("factory_contract", info.sender.clone().to_string())
         .add_attribute("vlp_contract", msg.vlp_contract)
         .add_attribute("chain_id", "chain_id")
+        .add_messages(msgs)
     )
 }   
 
@@ -85,7 +120,7 @@ pub mod execute {
         }
 
         // Verify that the channel exists
-        let count = CONNECTION_COUNTS.may_load(deps.storage, channel.clone())?;
+        let count: Option<u32> = CONNECTION_COUNTS.may_load(deps.storage, channel.clone())?;
         if count.is_none() {
             return Err(ContractError::ChannelDoesNotExist {  });
         }
@@ -126,7 +161,7 @@ pub mod execute {
             };
         
         // Get alternative token
-        let asset_out = state.pair_info.get_other_token(asset.clone());
+        let asset_out: TokenInfo = state.pair_info.get_other_token(asset.clone());
 
         // Add the deposit to Pending Swaps
         let swap_info = SwapInfo {
