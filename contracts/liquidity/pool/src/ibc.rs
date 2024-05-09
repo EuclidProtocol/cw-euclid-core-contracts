@@ -1,9 +1,11 @@
+use std::os::unix::process;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, from_slice, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult, Uint128
 };
-use euclid::{error::{ContractError, Never}, swap::{self, extract_sender}, token::{PairInfo, Token}};
+use euclid::{error::{ContractError, Never}, swap::{self, extract_sender, SwapInfo}, token::{PairInfo, Token}};
 use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, SwapResponse};
 
 use crate::{
@@ -93,22 +95,19 @@ pub fn ibc_packet_ack(
     
     match msg {
         IbcExecuteMsg::Swap { chain_id, asset, asset_amount, min_amount_out, channel, swap_id } => {
-            let processed_ack: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
-            match processed_ack {
-                AcknowledgementMsg::Ok(a) => execute_success_swap(deps,env,a),
-                AcknowledgementMsg::Error(e) => process_failed_swap(deps, asset, asset_amount,swap_id),
-            };
+            let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
+            execute_swap(deps, res, swap_id)
     },
 
         IbcExecuteMsg::AddLiquidity { chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance } => {
-            
+            Ok(IbcBasicResponse::new())
         },
 
         IbcExecuteMsg:: RemoveLiquidity { chain_id, lp_allocation } => {
-
+            Ok(IbcBasicResponse::new())
         }
     }
-    Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_ack"))
+
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -169,12 +168,16 @@ pub fn validate_order_and_version(
     Ok(())
 }
 
-// Function that proceses a successful swap performed on the VLP
-pub fn execute_success_swap(
+
+// Function execute_swap that routes the swap request to the appropriate function
+pub fn execute_swap(
     deps: DepsMut,
-    _env: Env,
-    resp: SwapResponse) -> Result<IbcReceiveResponse,ContractError> {
-        // Unpack response
+    ack: AcknowledgementMsg<SwapResponse>,
+    swap_id: String) -> Result<IbcBasicResponse, ContractError> {
+        // Parse the ack based on request
+        match ack {
+            AcknowledgementMsg::Ok(resp) => {
+                // Unpack response
         // Verify that both assets exist in state
         let mut state = STATE.load(deps.storage)?;
         
@@ -222,45 +225,32 @@ pub fn execute_success_swap(
         let msg = swap_info.asset_out.create_transfer_msg(resp.amount_out, sender);
 
         // Look through pending swaps for one with the same swap_id
-        Ok(IbcReceiveResponse::new().add_message(msg))
+        Ok(IbcBasicResponse::new().add_message(msg))
+            },
+
+
+        AcknowledgementMsg::Error(e) => {
+                // Fetch the sender from swap_id
+                let sender = extract_sender(&swap_id);
+                // Fetch the pending swaps for the sender 
+                let pending_swaps = PENDING_SWAPS.load(deps.storage, sender.clone())?;
+                // Get the current pending swap
+                let swap_info = get_swap_info(&swap_id, pending_swaps.clone());
+                // Pop this swap from the vector
+                let mut new_pending_swaps = pending_swaps.clone();
+                new_pending_swaps.retain(|x| x.swap_id != swap_id);
+                // Update the pending swaps
+                PENDING_SWAPS.save(deps.storage, sender.clone(), &new_pending_swaps)?;
+        
+                // Prepare messages to refund tokens back to user
+                let msg = swap_info.asset.create_transfer_msg(swap_info.asset_amount, sender.clone());
+        
+                Ok(IbcBasicResponse::new()
+                .add_attribute("method", "process_failed_swap")
+                .add_attribute("refund_to", "sender")
+                .add_attribute("refund_amount", swap_info.asset_amount.clone())
+                .add_message(msg))
+            }
         }
-
-// Function that processes a failed swap
-pub fn process_failed_swap(
-    deps: DepsMut,
-    asset: Token,
-    asset_amount: Uint128,
-    swap_id: String) -> Result<IbcReceiveResponse,ContractError> {
-
-        let mut state = STATE.load(deps.storage)?;
-        // Verify that asset exists in state
-        ensure!(
-            asset.exists(state.pair),
-            ContractError::AssetDoesNotExist {  }
-        );
-
-        // Fetch the sender from swap_id
-        let sender = extract_sender(&swap_id);
-        // Fetch the pending swaps for the sender 
-        let pending_swaps = PENDING_SWAPS.load(deps.storage, sender.clone())?;
-        // Get the current pending swap
-        let swap_info = get_swap_info(&swap_id, pending_swaps.clone());
-        // Pop this swap from the vector
-        let mut new_pending_swaps = pending_swaps.clone();
-        new_pending_swaps.retain(|x| x.swap_id != swap_id);
-        // Update the pending swaps
-        PENDING_SWAPS.save(deps.storage, sender.clone(), &new_pending_swaps)?;
-
-        // Prepare messages to refund tokens back to user
-        let msg = swap_info.asset.create_transfer_msg(asset_amount, sender.clone());
-
-        Ok(IbcReceiveResponse::new()
-        .add_attribute("method", "process_failed_swap")
-        .add_attribute("refund_to", "sender")
-        .add_attribute("refund_asset", asset.clone().id)
-        .add_attribute("refund_amount", asset_amount.clone())
-        .add_message(msg)
-    )
-        }
-      
-
+    }
+    
