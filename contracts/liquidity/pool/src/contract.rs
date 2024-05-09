@@ -174,7 +174,7 @@ pub mod execute {
         };
 
         // Load previous pending swaps for user
-        let mut pending_swaps = PENDING_SWAPS.may_load(deps.storage, info.sender.clone().to_string())?.unwrap();
+        let mut pending_swaps = PENDING_SWAPS.may_load(deps.storage, info.sender.clone().to_string())?.unwrap_or_default();
         
         // Append the new swap to the list 
         pending_swaps.push(swap_info);
