@@ -123,11 +123,43 @@ pub fn ibc_packet_timeout(
         msg.packet.src.channel_id,
         |count| -> StdResult<_> { Ok(count.unwrap_or_default() + 1) },
     )?;
-    // As with ack above, nothing to do here. If we cared about
-    // keeping track of state between the two chains then we'd want to
-    // respond to this likely as it means that the packet in question
-    // isn't going anywhere.
-    Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout"))
+    
+    let original_msg: IbcExecuteMsg = from_json(&msg.packet.data)?;
+
+    // Match message to handle timeout
+    match original_msg {
+        IbcExecuteMsg::Swap { swap_id,  .. } => {
+        // On timeout, we need to refund the tokens back to the sender as swap is impossible to be completed
+        // Fetch the sender from swap_id
+        let sender = extract_sender(&swap_id);
+        // Fetch the pending swaps for the sender 
+        let pending_swaps = PENDING_SWAPS.load(deps.storage, sender.clone())?;
+        // Get the current pending swap
+        let swap_info = get_swap_info(&swap_id, pending_swaps.clone());
+        // Pop this swap from the vector
+        let mut new_pending_swaps = pending_swaps.clone();
+        new_pending_swaps.retain(|x| x.swap_id != swap_id);
+        // Update the pending swaps
+        PENDING_SWAPS.save(deps.storage, sender.clone(), &new_pending_swaps)?;
+
+        // Prepare messages to refund tokens back to user
+        let msg = swap_info.asset.create_transfer_msg(swap_info.asset_amount, sender.clone());
+        Ok(IbcBasicResponse::new()
+        .add_attribute("method", "handle_swap_timeout")
+        .add_attribute("sender", sender.clone())
+        .add_attribute("swap_id", swap_id.clone())
+        .add_message(msg))
+        },
+    
+        IbcExecuteMsg::AddLiquidity { chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance } => {
+            Ok(IbcBasicResponse::new())
+        },
+
+        IbcExecuteMsg:: RemoveLiquidity { chain_id, lp_allocation } => {
+            Ok(IbcBasicResponse::new())
+        }
+    }
+   
 }
 
 pub fn validate_order_and_version(

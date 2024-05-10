@@ -86,24 +86,31 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::ExecuteSwap { asset, asset_amount, min_amount_out, channel } => execute::execute_swap_request(deps, info, env, asset, asset_amount, min_amount_out,channel),
-
+        ExecuteMsg::ExecuteSwap { asset, asset_amount, min_amount_out, channel } => execute::execute_swap_request(deps, info, env, asset, asset_amount, min_amount_out,channel, None),
+        ExecuteMsg:: Receive(msg) => execute::receive_cw20(deps, env, info, msg),
     }
 }
 
 pub mod execute {
-    use cosmwasm_std::{IbcMsg, IbcTimeout, Uint128};
+    use cosmwasm_std::{ensure, from_json, IbcMsg, IbcTimeout, Uint128};
+    use cw20::Cw20ReceiveMsg;
     use euclid::{swap::SwapInfo, token::TokenInfo};
     use euclid_ibc::msg::IbcExecuteMsg;
 
-    use crate::state::{CONNECTION_COUNTS, PENDING_SWAPS};
+    use crate::{msg::Cw20HookMsg, state::{CONNECTION_COUNTS, PENDING_SWAPS}};
 
     use super::*;
 
-    pub fn execute_swap_request(deps: DepsMut, info: MessageInfo, env: Env, asset: TokenInfo, asset_amount: Uint128, min_amount_out: Uint128, channel: String) -> Result<Response, ContractError> {
+    pub fn execute_swap_request(deps: DepsMut, info: MessageInfo, env: Env, asset: TokenInfo, asset_amount: Uint128, min_amount_out: Uint128, channel: String, msg_sender: Option<String>) -> Result<Response, ContractError> {
         
         let state = STATE.load(deps.storage)?;
         
+        // if `msg_sender` is not None, then the sender is the one who initiated the swap
+        let sender = match msg_sender {
+            Some(sender) => sender,
+            None => info.sender.clone().to_string(),
+        };
+
         // Verify that the asset exists in the pool
         if asset != state.pair_info.token_1 && asset != state.pair_info.token_2 {
             return Err(ContractError::AssetDoesNotExist {  });
@@ -137,7 +144,7 @@ pub mod execute {
             
         } else {
             // Verify that the contract address is the same as the asset contract address
-            if info.sender != asset.get_contract_address() {
+            if info.sender.clone().to_string() != asset.get_contract_address() {
                 return Err(ContractError::Unauthorized {  });
             }
         }
@@ -146,7 +153,7 @@ pub mod execute {
         let token = asset.get_token();
 
         // Generate a unique identifier for this swap
-        let swap_id = format!("{}-{}-{}", info.sender, env.block.height, env.transaction.unwrap().index);
+        let swap_id = format!("{}-{}-{}", sender, env.block.height, env.transaction.unwrap().index);
 
         // Send an IBC packet to VLP to perform swap
         let res = IbcMsg::SendPacket { channel_id: channel.clone(),
@@ -174,13 +181,13 @@ pub mod execute {
         };
 
         // Load previous pending swaps for user
-        let mut pending_swaps = PENDING_SWAPS.may_load(deps.storage, info.sender.clone().to_string())?.unwrap_or_default();
+        let mut pending_swaps = PENDING_SWAPS.may_load(deps.storage, sender.to_string())?.unwrap_or_default();
         
         // Append the new swap to the list 
         pending_swaps.push(swap_info);
 
         // Save the new list of pending swaps
-        PENDING_SWAPS.save(deps.storage, info.sender.clone().to_string(), &pending_swaps)?;
+        PENDING_SWAPS.save(deps.storage, sender.clone().to_string(), &pending_swaps)?;
         
 
         
@@ -190,6 +197,36 @@ pub mod execute {
         .add_message(res)
     )
     }
+
+
+    /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
+///
+/// * **cw20_msg** is the CW20 message that has to be processed.
+pub fn receive_cw20(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    cw20_msg: Cw20ReceiveMsg,
+) -> Result<Response, ContractError> {
+    match from_json(&cw20_msg.msg)? {
+        // Allow to swap using a CW20 hook message
+        Cw20HookMsg::Swap { asset, min_amount_out, channel } => {
+            let contract_adr = info.sender.clone();
+
+            // ensure that contract address is same as asset being swapped
+            ensure!(
+                contract_adr == asset.get_contract_address(),
+                ContractError::AssetDoesNotExist {  }
+            );
+            // Add sender as the option
+
+            // ensure that the contract address is the same as the asset contract address
+            execute_swap_request(deps, info, env, asset, cw20_msg.amount, min_amount_out, channel, Some(cw20_msg.sender))
+        },
+
+        
+    }
+}
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

@@ -1,6 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
-use euclid::{pool::Pool, token::{Pair, PairInfo, Token, TokenInfo}};
+use cw20::Cw20ReceiveMsg;
+use euclid::{pool::Pool, token::{Pair, PairInfo, TokenInfo}};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -20,6 +21,9 @@ pub enum ExecuteMsg {
         channel: String,
 
     },
+
+    // Recieve CW20 TOKENS structure
+    Receive (Cw20ReceiveMsg),
 }
 
 #[cw_serde]
@@ -27,8 +31,13 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
 }
 
-// We define a custom struct for each query response
+
+// CW20 Hook Msg
 #[cw_serde]
-pub struct GetCountResponse {
-    pub count: i32,
+pub enum Cw20HookMsg {
+    Swap {
+        asset: TokenInfo,
+        min_amount_out: Uint128,
+        channel: String,
+    },
 }
