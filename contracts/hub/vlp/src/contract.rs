@@ -270,14 +270,14 @@ pub mod execute {
         let swap_info = if asset_info == state.clone().pair.token_1.id {
             (swap_amount, state.clone().total_reserve_1, state.clone().total_reserve_2)
         } else {
-            (swap_amount, state.total_reserve_2, state.total_reserve_1)
+            (swap_amount, state.clone().total_reserve_2, state.clone().total_reserve_1)
         };
 
         let receive_amount = calculate_swap(swap_info.0, swap_info.1, swap_info.2);
         
         // Verify that the receive amount is greater than the minimum token out
         if receive_amount <= min_token_out {
-            return Err(ContractError::SlippageExceeded {});
+            return Err(ContractError::SlippageExceeded {receive_amount, min_token_out});
         }
 
         // Verify that the pool has enough liquidity to swap to user

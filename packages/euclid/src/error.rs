@@ -1,4 +1,4 @@
-use cosmwasm_std::StdError;
+use cosmwasm_std::{StdError, Uint128};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -26,8 +26,8 @@ pub enum ContractError {
     #[error("Cannot Swap 0 tokens")]
     ZeroAssetAmount {},
 
-    #[error("Slippage has not been tolerated for set amount")]
-    SlippageExceeded {},
+    #[error("Slippage has not been tolerated for set amount, amount: {amount}, min_amount_out: {min_amount_out}")]
+    SlippageExceeded {amount: Uint128, min_amount_out: Uint128},
 
     #[error("Invalid Liquidity Ratio")]
     InvalidLiquidityRatio {},
