@@ -277,18 +277,18 @@ pub mod execute {
         
         // Verify that the receive amount is greater than the minimum token out
         if receive_amount <= min_token_out {
-            return Err(ContractError::SlippageExceeded {receive_amount, min_token_out});
+            return Err(ContractError::SlippageExceeded {amount: receive_amount, min_amount_out: min_token_out});
         }
 
         // Verify that the pool has enough liquidity to swap to user
         // Should activate ELP algorithm to get liquidity from other available pool
         if asset_info == state.clone().pair.token_1.id {
             if pool.reserve_1 < swap_amount {
-                return Err(ContractError::SlippageExceeded {  });
+                return Err(ContractError::SlippageExceeded { amount: swap_amount, min_amount_out: min_token_out});
             }
         } else {
             if pool.reserve_2 < swap_amount {
-                return Err(ContractError::SlippageExceeded {  });
+                return Err(ContractError::SlippageExceeded { amount: swap_amount, min_amount_out: min_token_out });
             }
         }
 
