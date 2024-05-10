@@ -152,7 +152,7 @@ pub mod execute {
 
         // Verify that the ratio of assets provided is within the slippage tolerance
         if ratio <= lower_bound || ratio >= upper_bound {
-            return Err(ContractError::SlippageExceeded {});
+            return Err(ContractError::SlippageExceeded {amount: upper_bound, min_amount_out: lower_bound});
         }
         // Add liquidity to the pool
         pool.reserve_1 = pool.reserve_1.checked_add(token_1_liquidity).unwrap();
