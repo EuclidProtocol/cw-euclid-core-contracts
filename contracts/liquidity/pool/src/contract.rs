@@ -232,12 +232,40 @@ pub fn receive_cw20(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
+        QueryMsg::PairInfo {} => query::pair_info(deps),
+        QueryMsg::PendingSwapsUser { user ,upper_limit, lower_limit } => query::pending_swaps(deps, user, lower_limit, upper_limit, ),
            }
 }
 
 pub mod query {
+    use std::fmt::LowerExp;
+
+    use crate::{msg::{GetPairInfoResponse, GetPendingSwapsResponse}, state::PENDING_SWAPS};
+
     use super::*;
 
+    // Returns the Pair Info of the Pair in the pool
+    pub fn pair_info(deps: Deps) -> StdResult<Binary> {
+        let state = STATE.load(deps.storage)?;
+        to_json_binary(&GetPairInfoResponse { pair_info: state.pair_info })
+    }
+
+    // Returns the pending swaps for this pair with pagination
+    pub fn pending_swaps(deps: Deps, user: String, lower_limit: u32, upper_limit: u32) -> StdResult<Binary> {
+        // Fetch pending swaps for user
+        let pending_swaps = PENDING_SWAPS.may_load(deps.storage, user.clone())?.unwrap_or_default();
+        // Get the upper limit
+        let upper_limit = upper_limit as usize;
+        // Get the lower limit
+        let lower_limit = lower_limit as usize;
+        // Get the pending swaps within the range
+        let pending_swaps = pending_swaps[lower_limit..upper_limit].to_vec();
+        // Return the response
+        to_json_binary(&GetPendingSwapsResponse { pending_swaps })
+    }
+
+
+    
 }
 
 #[cfg(test)]

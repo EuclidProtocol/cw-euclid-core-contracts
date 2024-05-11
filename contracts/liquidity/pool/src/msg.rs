@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
-use euclid::{pool::Pool, token::{Pair, PairInfo, TokenInfo}};
+use euclid::{pool::Pool, swap::SwapInfo, token::{Pair, PairInfo, TokenInfo}};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -29,7 +29,18 @@ pub enum ExecuteMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-}
+    #[returns(GetPairInfoResponse)]
+    PairInfo { },
+    
+    // Fetch pending swaps with pagination for a user
+    #[returns(GetPendingSwapsResponse)]
+    PendingSwapsUser {
+        user: String,
+        lower_limit: u32,
+        upper_limit: u32,
+    },
+    }
+
 
 
 // CW20 Hook Msg
@@ -40,4 +51,14 @@ pub enum Cw20HookMsg {
         min_amount_out: Uint128,
         channel: String,
     },
+}
+
+#[cw_serde]
+pub struct GetPairInfoResponse {
+    pub pair_info: PairInfo,
+}
+
+#[cw_serde]
+pub struct GetPendingSwapsResponse {
+    pub pending_swaps: Vec<SwapInfo>,
 }
