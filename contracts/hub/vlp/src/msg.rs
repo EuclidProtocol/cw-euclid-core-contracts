@@ -56,6 +56,10 @@ pub enum QueryMsg {
     // Queries the total reserve of the pair with info in the VLP
     #[returns(LiquidityInfoResponse)]
     LiquidityInfo {},
+
+    // Queries the fee of this specific pool
+    #[returns(FeeResponse)]
+    Fee {},
 }
 
 // We define a custom struct for each query response
@@ -76,4 +80,9 @@ pub struct LiquidityInfoResponse {
     pub pair: Pair,
     pub token_1_reserve: Uint128,
     pub token_2_reserve: Uint128,
+}
+
+#[cw_serde]
+pub struct FeeResponse {
+    pub fee: Fee
 }

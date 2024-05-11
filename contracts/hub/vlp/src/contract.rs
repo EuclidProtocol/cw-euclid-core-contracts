@@ -365,6 +365,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::SimulateSwap { asset, asset_amount } => query_simulate_swap(deps, asset, asset_amount),
         QueryMsg::Liquidity {  } => query_liquidity(deps),
         QueryMsg::LiquidityInfo {  } => query::query_liquidity_info(deps),
+        QueryMsg::Fee {  } => query::query_fee(deps),
     }
 }
 
@@ -438,6 +439,14 @@ pub mod query {
         
         }).unwrap())
     }
+
+
+    // Function to query fee of the contract
+    pub fn query_fee(deps: Deps) -> Result<Binary, ContractError> {
+        let state = STATE.load(deps.storage)?;
+        Ok(to_json_binary(&state.fee).unwrap())
+
+}
 
 }
 
