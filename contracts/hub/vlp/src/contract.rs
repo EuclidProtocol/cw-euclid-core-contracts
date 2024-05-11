@@ -512,8 +512,8 @@ mod tests {
                     token: Token { id: "token_2".to_string()},
                     },
                 },
-                reserve_1: Uint128::new(100),
-                reserve_2: Uint128::new(100),
+                reserve_1: Uint128::new(10000),
+                reserve_2: Uint128::new(10000),
             },
         };
         let res = instantiate(deps.as_mut(), env, info, msg).unwrap();
