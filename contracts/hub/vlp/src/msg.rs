@@ -60,6 +60,12 @@ pub enum QueryMsg {
     // Queries the fee of this specific pool
     #[returns(FeeResponse)]
     Fee {},
+
+    // Queries the pool information for a chain id
+    #[returns(PoolResponse)]
+    Pool {
+        chain_id: String,
+    },
 }
 
 // We define a custom struct for each query response
@@ -85,4 +91,10 @@ pub struct LiquidityInfoResponse {
 #[cw_serde]
 pub struct FeeResponse {
     pub fee: Fee
+}
+
+
+#[cw_serde]
+pub struct PoolResponse {
+    pub pool: Pool,
 }

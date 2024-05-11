@@ -10,7 +10,7 @@ use crate::state::{State, STATE, POOLS};
 
 use euclid::pool::MINIMUM_LIQUIDITY;
 
-use self::query::{query_liquidity, query_simulate_swap};
+use self::query::{query_liquidity, query_pool, query_simulate_swap};
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -366,6 +366,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::Liquidity {  } => query_liquidity(deps),
         QueryMsg::LiquidityInfo {  } => query::query_liquidity_info(deps),
         QueryMsg::Fee {  } => query::query_fee(deps),
+        QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),
     }
 }
 
@@ -447,6 +448,12 @@ pub mod query {
         Ok(to_json_binary(&state.fee).unwrap())
 
 }
+
+    // Function to query a Euclid Pool Information for this pair
+    pub fn query_pool(deps: Deps, chain_id: String) -> Result<Binary, ContractError> {
+        let pool = POOLS.load(deps.storage, &chain_id)?;
+        Ok(to_json_binary(&pool).unwrap())
+    }
 
 }
 
