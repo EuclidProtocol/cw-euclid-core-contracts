@@ -4,4 +4,6 @@ pub mod msg;
 pub mod state;
 pub mod ibc;
 pub mod ack;
+pub mod unit_test;
+
 
