@@ -1,19 +1,20 @@
 #[cfg(test)]
 mod tests {
 
-    
+
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins,    Response, Uint128};
+    use cosmwasm_std::{coins, from_binary, from_json, Response, Uint128};
     use euclid::fee::Fee;
     use euclid::pool::Pool;
     use euclid::error::ContractError;
-  
-    use crate::state:: POOLS;
+    use crate::contract::query::{query_liquidity, query_liquidity_info, query_simulate_swap};
+    use crate::state::{State,  POOLS, STATE};
 
 
     use euclid::token::{Pair, PairInfo, Token, TokenInfo};
-    use crate::contract::{instantiate,execute};
-    use crate::msg::{ InstantiateMsg,ExecuteMsg};
+    use crate::contract::{  execute, instantiate};
+    
+    use crate::msg::{ ExecuteMsg, GetLiquidityResponse, GetSwapResponse, InstantiateMsg, LiquidityInfoResponse};
 
 
 
@@ -244,5 +245,103 @@ fn test_add_liquidity() {
     let expected_token_2_liquidity = token_1_liquidity * pool.reserve_2 / pool.reserve_1;
     assert_eq!(pool.reserve_1, Uint128::new(10000)); // Initial reserve + added liquidity
     assert_eq!(pool.reserve_2, Uint128::new(10100) - expected_token_2_liquidity); // Initial reserve + added liquidity - token 2 liquidity
+}
+#[test]
+fn test_query_simulate_swap_valid_asset() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let asset = Token { id: "asset1".to_string() };
+    let asset_amount = Uint128::new(1000);
+    
+    // Initialize contract state with valid asset info
+    let  state = State {
+        pair: Pair { token_1: Token { id: "asset1".to_string() }, token_2: Token { id: "asset2".to_string() } },
+        router: "router1".to_string(),
+        fee: Fee { lp_fee: 1, staker_fee: 1, treasury_fee: 1 },
+        last_updated: 0,
+        total_reserve_1: Uint128::new(10000),
+        total_reserve_2: Uint128::new(20000),
+        total_lp_tokens: Uint128::new(100000),
+    };
+    STATE.save(&mut deps.storage, &state).unwrap();
+
+    // Call the query_simulate_swap function
+    let result = query_simulate_swap(deps.as_ref(), asset.clone(), asset_amount).unwrap();
+    let response: GetSwapResponse = from_json(&result).unwrap();
+
+    // Assert that the received amount is as expected
+    assert_eq!(response.token_out, Uint128::new(1769)); // Example calculation result
+}
+#[test]
+fn test_query_simulate_swap_invalid_asset() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let asset = Token { id: "nonexistent_asset".to_string() };
+    let asset_amount = Uint128::new(1000);
+    
+    // Initialize contract state with different asset info
+    let state = State {
+        pair: Pair { token_1: Token { id: "asset1".to_string() }, token_2: Token { id: "asset2".to_string() } },
+        router: "router1".to_string(),
+        fee: Fee { lp_fee: 1, staker_fee: 1, treasury_fee: 1 },
+        last_updated: 0,
+        total_reserve_1: Uint128::new(10000),
+        total_reserve_2: Uint128::new(20000),
+        total_lp_tokens: Uint128::new(100000),
+    };
+    STATE.save(&mut deps.storage, &state).unwrap();
+
+    // Call the query_simulate_swap function with an invalid asset
+    let result = query_simulate_swap(deps.as_ref(), asset.clone(), asset_amount);
+    
+    // Expect Err(ContractError::AssetDoesNotExist) due to invalid asset
+    assert!(result.is_err());
+}
+#[test]
+fn test_query_liquidity() {
+    // Initialize mock dependencies and contract state
+    let mut deps = mock_dependencies();
+    let state = State {
+        pair: Pair { token_1: Token { id: "asset1".to_string() }, token_2: Token { id: "asset2".to_string() } },
+        router: "router1".to_string(),
+        fee: Fee { lp_fee: 1, staker_fee: 1, treasury_fee: 1 },
+        last_updated: 0,
+        total_reserve_1: Uint128::new(10000),
+        total_reserve_2: Uint128::new(20000),
+        total_lp_tokens: Uint128::new(100000),
+    };
+    STATE.save(&mut deps.storage, &state).unwrap();
+
+    // Call the query_liquidity function
+    let result = query_liquidity(deps.as_ref()).unwrap();
+    let response: GetLiquidityResponse = from_json(&result).unwrap();
+
+    // Assert that the returned liquidity information matches the expected values
+    assert_eq!(response.token_1_reserve, Uint128::new(10000));
+    assert_eq!(response.token_2_reserve, Uint128::new(20000));
+}
+#[test]
+fn test_query_liquidity_info() {
+    // Initialize mock dependencies and contract state
+    let mut deps = mock_dependencies();
+    let state = State {
+        pair: Pair { token_1: Token { id: "asset1".to_string() }, token_2: Token { id: "asset2".to_string() } },
+        router: "router1".to_string(),
+        fee: Fee { lp_fee: 1, staker_fee: 1, treasury_fee: 1 },
+        last_updated: 0,
+        total_reserve_1: Uint128::new(10000),
+        total_reserve_2: Uint128::new(20000),
+        total_lp_tokens: Uint128::new(100000),
+    };
+    STATE.save(&mut deps.storage, &state).unwrap();
+
+    // Call the query_liquidity_info function
+    let result = query_liquidity_info(deps.as_ref()).unwrap();
+    let response: LiquidityInfoResponse = from_json(&result).unwrap();
+
+    // Assert that the returned liquidity info with pair matches the expected values
+    assert_eq!(response.pair, state.pair);
+    assert_eq!(response.token_1_reserve, Uint128::new(10000));
+    assert_eq!(response.token_2_reserve, Uint128::new(20000));
 }
 }
