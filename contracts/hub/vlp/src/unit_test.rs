@@ -1,19 +1,19 @@
 #[cfg(test)]
 mod tests {
 
-    use super::*;
+    
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins,    Response, Uint128};
     use euclid::fee::Fee;
     use euclid::pool::Pool;
     use euclid::error::ContractError;
   
-    use crate::state::{ STATE, POOLS};
+    use crate::state:: POOLS;
 
 
     use euclid::token::{Pair, PairInfo, Token, TokenInfo};
-    use crate::contract::{instantiate,execute,query};
-    use crate::msg::{ InstantiateMsg,ExecuteMsg, QueryMsg};
+    use crate::contract::{instantiate,execute};
+    use crate::msg::{ InstantiateMsg,ExecuteMsg};
 
 
 
