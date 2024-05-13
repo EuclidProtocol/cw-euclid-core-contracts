@@ -1,6 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
-use euclid::token::{Token, TokenInfo};
+use euclid::token::{Token};
 
 
 // Message that implements an ExecuteSwap on the VLP contract

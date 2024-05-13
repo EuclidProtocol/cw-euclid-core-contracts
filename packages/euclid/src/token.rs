@@ -1,7 +1,7 @@
 use std::fmt;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_binary, to_json_binary, BankMsg, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
+use cosmwasm_std::{to_json_binary, BankMsg, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::cw20::Cw20ExecuteMsg;
