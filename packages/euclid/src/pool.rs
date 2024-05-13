@@ -18,3 +18,4 @@ pub struct Pool {
     // The total reserve of token_2
     pub reserve_2: Uint128,
 }
+

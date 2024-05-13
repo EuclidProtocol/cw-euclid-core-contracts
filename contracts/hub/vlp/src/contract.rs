@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, Isqrt, MessageInfo, Response, Uint128};
+use cosmwasm_std::{to_json_binary, Binary, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo, Response, Uint128};
 use cw2::set_contract_version;
 
 
@@ -63,7 +63,7 @@ pub mod execute {
 
 
 
-    use cosmwasm_std::{IbcReceiveResponse, Uint128};
+    use cosmwasm_std::{Decimal256, IbcReceiveResponse, Uint128};
     use euclid::{pool::Pool, token::Token};
     use euclid_ibc::msg::{AcknowledgementMsg, LiquidityResponse, SwapResponse};
 
@@ -135,23 +135,18 @@ pub mod execute {
         let mut pool = POOLS.load(deps.storage, &chain_id)?;
         let mut state = STATE.load(deps.storage)?;
         // Verify that ratio of assets provided is equal to the ratio of assets in the pool
-        let ratio = token_1_liquidity.checked_div(token_2_liquidity).unwrap();
-        let pool_ratio = pool.reserve_1.checked_div(pool.reserve_2).unwrap();
+        let ratio: Decimal256 = Decimal256::from_ratio(token_1_liquidity, token_2_liquidity);
+        let pool_ratio: Decimal256 = Decimal256::from_ratio(pool.reserve_1, pool.reserve_2);
 
         // Verify slippage tolerance is between 0 and 100
         if slippage_tolerance > 100 {
             return Err(ContractError::InvalidSlippageTolerance {});
         }
-        let lower_ratio = 100 - slippage_tolerance;
-        let upper_ratio = 100 + slippage_tolerance;
-        // Create an upper and lower bound for pool_ratio and slippage tolerance
-        let upper_bound = pool_ratio.multiply_ratio(upper_ratio, 100u128);
-        let lower_bound = pool_ratio.multiply_ratio(lower_ratio, 100u128);
-
-        // Verify that the ratio of assets provided is within the slippage tolerance
-        if ratio <= lower_bound || ratio >= upper_bound {
-            return Err(ContractError::SlippageExceeded {amount: upper_bound, min_amount_out: lower_bound});
+        
+        if !assert_slippage_tolerance(ratio, pool_ratio, slippage_tolerance) {
+            return Err(ContractError::LiquiditySlippageExceeded {  });
         }
+
         // Add liquidity to the pool
         pool.reserve_1 = pool.reserve_1.checked_add(token_1_liquidity).unwrap();
         pool.reserve_2 = pool.reserve_2.checked_add(token_2_liquidity).unwrap();
@@ -478,6 +473,16 @@ pub fn calculate_lp_allocation(token_1_amount: Uint128, token_2_amount: Uint128,
     // LP allocation is minimum of the two shares multiplied by the total_lp_supply
     let lp_allocation = share_1.min(share_2).checked_mul(total_lp_supply).unwrap();
     lp_allocation
+}
+
+// Function to assert slippage is tolerated during transaction
+pub fn assert_slippage_tolerance(ratio: Decimal256, pool_ratio: Decimal256, slippage_tolerance: u64) -> bool {
+    let slippage = pool_ratio.checked_sub(ratio).unwrap();
+    let slippage_tolerance = Decimal256::from_ratio(Uint128::from(slippage_tolerance), Uint128::from(100u128));
+    if slippage > slippage_tolerance {
+        return false
+    }
+    return true
 }
 
 

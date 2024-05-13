@@ -47,4 +47,7 @@ pub enum ContractError {
     #[error("The CHAIN ID is not valid")]
     InvalidChainId {},
 
+    #[error("Slippage has been exceeded when providing liquidity.")]
+    LiquiditySlippageExceeded {},
+
 }
