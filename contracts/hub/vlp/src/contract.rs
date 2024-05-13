@@ -49,14 +49,12 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::RegisterPool {pool} => execute::register_pool(deps, info, pool),
-        // Test command to be removed, solely for testing.
-        ExecuteMsg::AddLiquidity { chain_id, token_1_liquidity, token_2_liquidity, channel, slippage_tolerance } => execute::add_liquidity_chain(deps, env, chain_id, token_1_liquidity, token_2_liquidity, channel, slippage_tolerance),
     }
 }
 
@@ -67,9 +65,9 @@ pub mod execute {
 
     use cosmwasm_std::{Env, IbcMsg, IbcReceiveResponse, IbcTimeout, Uint128};
     use euclid::{pool::Pool, swap, token::Token};
-    use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, SwapResponse};
+    use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, LiquidityResponse, SwapResponse};
 
-    use crate::{ack::make_ack_success, state};
+    use crate::{ack::{self, make_ack_success}, state::{self, BALANCES}};
 
     use super::*;
 
@@ -170,14 +168,25 @@ pub mod execute {
         STATE.save(deps.storage, &state)?;
 
         // Add current balance to SNAPSHOT MAP
+        // [TODO] BALANCES snapshotMap Token variable does not inherit all needed values
 
+
+        // Prepare Liquidity Response
+        let liquidity_response = LiquidityResponse {
+            token_1_liquidity: token_1_liquidity,
+            token_2_liquidity: token_2_liquidity,
+            mint_lp_tokens: lp_allocation,
+        };
+
+        // Prepare acknowledgement
+        let acknowledgement: Binary = to_json_binary(&AcknowledgementMsg::Ok(liquidity_response))?; 
 
         Ok(IbcReceiveResponse::new().add_attribute("action", "add_liquidity")
         .add_attribute("chain_id", chain_id)
         .add_attribute("lp_allocation", lp_allocation)
         .add_attribute("liquidity_1_added", token_1_liquidity)
         .add_attribute("liquidity_2_added", token_2_liquidity)
-        .set_ack(make_ack_success())
+        .set_ack(acknowledgement)
         )
     }
 
@@ -340,19 +349,6 @@ pub mod execute {
         .add_attribute("total_fee", fee_amount)
         .add_attribute("receive_amount", receive_amount)
         .set_ack(acknowledgement))
-    }
-
-
-
-
-    // Temporary function to test IBC packet receive using the contracts and if everything works, should come from actual Pool.
-    pub fn add_liquidity_chain(_deps: DepsMut, env: Env, chain_id: String, token_1_liquidity: Uint128, token_2_liquidity: Uint128, channel: String, slippage_tolerance: u64) -> Result<Response, ContractError> {
-        let msg = IbcMsg::SendPacket { channel_id: channel,
-                data: to_json_binary(&IbcExecuteMsg::AddLiquidity { chain_id: chain_id ,
-                token_1_liquidity: token_1_liquidity, token_2_liquidity: token_2_liquidity, slippage_tolerance: slippage_tolerance }).unwrap(),
-                 timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(120))};
-        
-        Ok(Response::default().add_attribute("method", "adding_liquidity_chain").add_message(msg))
     }
 
 

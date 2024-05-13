@@ -12,6 +12,7 @@ pub enum IbcExecuteMsg {
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
+        liquidity_id: String,
     },
 
     // Remove liquidity from a chain pool to VLP
@@ -70,4 +71,12 @@ pub struct SwapResponse {
     pub amount_out: Uint128,
     // Add Swap Unique Identifier
     pub swap_id: String
+}
+
+// Struct to handle Acknowledgement Response for a Liquidity Request
+#[cw_serde]
+pub struct LiquidityResponse {
+    pub token_1_liquidity: Uint128,
+    pub token_2_liquidity: Uint128,
+    pub mint_lp_tokens: Uint128,
 }

@@ -1,11 +1,15 @@
+use std::fmt;
+
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_binary, to_json_binary, BankMsg, Coin, CosmosMsg, Uint128, WasmMsg};
+use cosmwasm_std::{to_binary, to_json_binary, BankMsg, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg};
+use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::cw20::Cw20ExecuteMsg;
 
 
 // Token asset that represents an identifier for a token
 #[cw_serde]
+#[derive(Hash,Eq)]
 pub struct Token {
     pub id: String,   
 }
@@ -20,6 +24,46 @@ impl Token {
         }
     }
 
+}
+
+impl<'a> PrimaryKey<'a> for Token {
+    type Prefix = ();
+
+    type SubPrefix = ();
+
+    type Suffix = Self;
+
+    type SuperSuffix = Self;
+
+    fn key(&self) -> Vec<Key> {
+        vec![Key::Ref(self.id.as_bytes())]
+    }
+}
+
+impl<'a> Prefixer<'a> for Token {
+    fn prefix(&self) -> Vec<Key> {
+        vec![Key::Ref(self.id.as_bytes())]
+    }
+}
+
+
+impl KeyDeserialize for Token {
+    type Output = Token;
+
+    #[inline(always)]
+    fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
+        String::from_utf8(value)
+            .map(|id| Token { id })
+            .map_err(|e| StdError::generic_err(format!("Invalid UTF-8 sequence: {}", e)))
+    }
+}
+
+
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
 }
 
 // A pair is a set of two tokens

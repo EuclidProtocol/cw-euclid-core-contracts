@@ -23,3 +23,18 @@ pub fn extract_sender(swap_id: &str) -> String {
     let sender: Vec<&str> = swap_id.split("-").collect();
     sender[0].to_string()
 }
+
+#[cw_serde]
+pub struct LiquidityTxInfo {
+    pub sender: String,
+    pub token_1_liquidity: Uint128,
+    pub token_2_liquidity: Uint128,
+    pub liquidity_id: String,
+
+}
+
+// Function to extract sender from liquidity_id
+pub fn extract_sender_liquidity(liquidity_id: &str) -> String {
+    let sender: Vec<&str> = liquidity_id.split("-").collect();
+    sender[0].to_string()
+}

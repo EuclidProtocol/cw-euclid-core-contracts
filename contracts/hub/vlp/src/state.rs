@@ -31,7 +31,7 @@ pub const STATE: Item<State> = Item::new("state");
 pub const POOLS: Map<&String, Pool> = Map::new("pools");
 
 // Stores a snapshotMap in order to keep track of prices for blocks for charts and other purposes
-pub const BALANCES: SnapshotMap<&Token, Uint128> = SnapshotMap::new(
+pub const BALANCES: SnapshotMap<Token, Uint128> = SnapshotMap::new(
     "balances",
     "balances_check",
     "balances_change",

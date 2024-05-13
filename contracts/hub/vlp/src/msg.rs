@@ -17,15 +17,6 @@ pub enum ExecuteMsg {
         pool: Pool,
     },
 
-    AddLiquidity {
-        chain_id: String,
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-        slippage_tolerance: u64,
-        channel: String,
-  
-    },
-
     
 
         /*

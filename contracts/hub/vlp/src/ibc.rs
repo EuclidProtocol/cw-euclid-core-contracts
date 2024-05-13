@@ -83,7 +83,7 @@ pub fn do_ibc_packet_receive(
     let msg: IbcExecuteMsg = from_json(&msg.packet.data)?;
 
     match msg {
-        IbcExecuteMsg::AddLiquidity {chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance} => execute::add_liquidity(deps, chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance),
+        IbcExecuteMsg::AddLiquidity {chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance, liquidity_id} => execute::add_liquidity(deps, chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance),
         IbcExecuteMsg::RemoveLiquidity { chain_id, lp_allocation } => execute::remove_liquidity(deps, chain_id, lp_allocation),
         IbcExecuteMsg::Swap { chain_id, asset, asset_amount, min_amount_out, channel, swap_id } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_amount_out, swap_id),
     }

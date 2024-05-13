@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use euclid::{swap::SwapInfo, token::{Pair, PairInfo}};
+use euclid::{swap::{LiquidityTxInfo, SwapInfo}, token::{Pair, PairInfo}};
 
 
 use cosmwasm_std::{Deps, Uint128};
@@ -38,6 +38,10 @@ pub const TIMEOUT_COUNTS: Map<String, u32> = Map::new("timeout_count");
 // Map for pending swaps for user 
 pub const PENDING_SWAPS: Map<String, Vec<SwapInfo>> = Map::new("pending_swaps");
 
+// Map for PENDING liquidity transactions
+pub const PENDING_LIQUIDITY: Map<String, Vec<LiquidityTxInfo>> = Map::new("pending_liquidity");
+
+
 // Helper function to iterate through vector in PendingSwap map to find a certain swap_id
 pub fn find_swap_id(swap_id: &str, pending_swaps: Vec<SwapInfo>) -> bool {
     for swap in pending_swaps {
@@ -56,4 +60,14 @@ pub fn get_swap_info(swap_id: &str, pending_swaps: Vec<SwapInfo>) -> SwapInfo {
         }
     }
     panic!("Swap ID not found")
+}
+
+// Return LiquidityInfo for a specific liquidity_id
+pub fn get_liquidity_info(liquidity_id: &str, pending_liquidity: Vec<LiquidityTxInfo>) -> LiquidityTxInfo {
+    for liquidity in pending_liquidity {
+        if liquidity.liquidity_id == liquidity_id {
+            return liquidity
+        }
+    }
+    panic!("Liquidity ID not found")
 }

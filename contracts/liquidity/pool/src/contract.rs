@@ -87,17 +87,18 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::ExecuteSwap { asset, asset_amount, min_amount_out, channel } => execute::execute_swap_request(deps, info, env, asset, asset_amount, min_amount_out,channel, None),
+        ExecuteMsg::AddLiquidity { token_1_liquidity, token_2_liquidity, slippage_tolerance, channel } => execute::add_liquidity_request(deps, info, env, token_1_liquidity, token_2_liquidity, slippage_tolerance, channel, None),
         ExecuteMsg:: Receive(msg) => execute::receive_cw20(deps, env, info, msg),
     }
 }
 
 pub mod execute {
-    use cosmwasm_std::{ensure, from_json, IbcMsg, IbcTimeout, Uint128};
+    use cosmwasm_std::{ensure, from_json, IbcBasicResponse, IbcMsg, IbcTimeout, Uint128};
     use cw20::Cw20ReceiveMsg;
-    use euclid::{swap::SwapInfo, token::TokenInfo};
+    use euclid::{swap::{LiquidityTxInfo, SwapInfo}, token::TokenInfo};
     use euclid_ibc::msg::IbcExecuteMsg;
 
-    use crate::{msg::Cw20HookMsg, state::{CONNECTION_COUNTS, PENDING_SWAPS}};
+    use crate::{ibc, msg::Cw20HookMsg, state::{CONNECTION_COUNTS, PENDING_LIQUIDITY, PENDING_SWAPS}};
 
     use super::*;
 
@@ -227,6 +228,113 @@ pub fn receive_cw20(
         
     }
 }
+
+
+// Add liquidity to the pool
+pub fn add_liquidity_request(
+    deps: DepsMut,
+    info: MessageInfo,
+    env: Env,
+    token_1_liquidity: Uint128,
+    token_2_liquidity: Uint128,
+    slippage_tolerance: u64,
+    channel: String,
+    msg_sender: Option<String>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    // Check that slippage tolerance is between 1 and 100
+    if slippage_tolerance < 1 || slippage_tolerance > 100 {
+        return Err(ContractError::InvalidSlippageTolerance {  });
+    }
+
+    // if `msg_sender` is not None, then the sender is the one who initiated the swap
+    let sender = match msg_sender {
+        Some(sender) => sender,
+        None => info.sender.clone().to_string(),
+    };
+
+    // Check that the channel exists
+    let count: Option<u32> = CONNECTION_COUNTS.may_load(deps.storage, channel.clone())?;
+    if count.is_none() {
+        return Err(ContractError::ChannelDoesNotExist {  });
+    }
+
+    // Check that the token_1 liquidity is greater than 0
+    if token_1_liquidity.is_zero() || token_2_liquidity.is_zero() {
+        return Err(ContractError::ZeroAssetAmount {  });
+    }
+
+    // Get the token 1 and token 2 from the pair info
+    let token_1 = state.pair_info.token_1.clone();
+    let token_2 = state.pair_info.token_2.clone();
+
+    // Prepare msg vector
+    let mut msgs: Vec<CosmosMsg> = Vec::new();
+
+    // IF TOKEN IS A SMART CONTRACT IT REQUIRES APPROVAL FOR TRANSFER 
+    if token_1.is_smart() {
+        let msg = token_1.create_transfer_msg(token_1_liquidity, env.contract.address.clone().to_string());
+        msgs.push(msg);
+    } else {
+        // Check for funds sent with the message
+        let amt = info.funds.iter().find(|x| x.denom == token_1.get_denom()).unwrap();
+        if amt.amount < token_1_liquidity {
+            return Err(ContractError::InsufficientDeposit {  });
+        }
+    }
+
+    // Same for token 2
+    if token_2.is_smart() {
+        let msg = token_2.create_transfer_msg(token_2_liquidity, env.contract.address.clone().to_string());
+        msgs.push(msg);
+    } else {
+        let amt = info.funds.iter().find(|x| x.denom == token_2.get_denom()).unwrap();
+        if amt.amount < token_2_liquidity.clone() {
+            return Err(ContractError::InsufficientDeposit {  });
+        }
+    }
+
+    // Save the pending liquidity transaction
+    let liquidity_id = format!("{}-{}-{}", info.sender, env.block.height, env.transaction.unwrap().index);
+    // Create new Liquidity Info
+    let liquidity_info: LiquidityTxInfo = LiquidityTxInfo {
+        sender: sender.clone(),
+        token_1_liquidity: token_1_liquidity,
+        token_2_liquidity: token_2_liquidity,
+        liquidity_id: liquidity_id.clone()
+    };
+
+    // Store Liquidity Info
+    let mut pending_liquidity = PENDING_LIQUIDITY.may_load(deps.storage, sender.clone())?.unwrap_or_default();
+    pending_liquidity.push(liquidity_info);
+    PENDING_LIQUIDITY.save(deps.storage, sender.clone(), &pending_liquidity)?;
+
+    // Prepare IBC Packet to send to VLP 
+    let ibc_packet = IbcMsg::SendPacket {
+        channel_id: channel.clone(),
+        data: to_json_binary(&IbcExecuteMsg::AddLiquidity {
+            chain_id: state.chain_id.clone(),
+            token_1_liquidity: token_1_liquidity,
+            token_2_liquidity: token_2_liquidity,
+            slippage_tolerance: slippage_tolerance,
+            liquidity_id: liquidity_id.clone(),
+        }).unwrap(),
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60))
+    };
+
+    msgs.push(ibc_packet.into());
+
+
+    Ok(Response::new()
+    .add_attribute("method", "add_liquidity_request")
+    .add_attribute("token_1_liquidity", token_1_liquidity)
+    .add_attribute("token_2_liquidity", token_2_liquidity)
+    .add_messages(msgs))
+
+}
+
+
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -238,7 +346,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 pub mod query {
-    use std::fmt::LowerExp;
 
     use crate::{msg::{GetPairInfoResponse, GetPendingSwapsResponse}, state::PENDING_SWAPS};
 

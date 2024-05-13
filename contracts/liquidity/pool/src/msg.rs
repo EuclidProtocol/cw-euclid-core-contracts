@@ -22,6 +22,14 @@ pub enum ExecuteMsg {
 
     },
 
+    // Add Liquidity to the VLP
+    AddLiquidity {
+        token_1_liquidity: Uint128,
+        token_2_liquidity: Uint128,
+        slippage_tolerance: u64,
+        channel: String,
+    },
+
     // Recieve CW20 TOKENS structure
     Receive (Cw20ReceiveMsg),
 }

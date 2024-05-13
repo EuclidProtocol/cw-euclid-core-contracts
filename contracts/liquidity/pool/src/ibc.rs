@@ -3,13 +3,13 @@ use std::os::unix::process;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, from_slice, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult, Uint128
+    ensure, from_json, from_slice, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult, Uint128
 };
 use euclid::{error::{ContractError, Never}, swap::{self, extract_sender, SwapInfo}, token::{PairInfo, Token}};
-use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, SwapResponse};
+use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, LiquidityResponse, SwapResponse};
 
 use crate::{
-    ack::make_ack_fail, contract::execute, state::{find_swap_id, get_swap_info, CONNECTION_COUNTS, PENDING_SWAPS, STATE, TIMEOUT_COUNTS}
+    ack::make_ack_fail, contract::execute, state::{self, find_swap_id, get_liquidity_info, get_swap_info, CONNECTION_COUNTS, PENDING_LIQUIDITY, PENDING_SWAPS, STATE, TIMEOUT_COUNTS}
 };
 
 pub const IBC_VERSION: &str = "counter-1";
@@ -99,7 +99,9 @@ pub fn ibc_packet_ack(
             execute_swap(deps, res, swap_id)
     },
 
-        IbcExecuteMsg::AddLiquidity { chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance } => {
+        IbcExecuteMsg::AddLiquidity { chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance, liquidity_id } => {
+            let res: AcknowledgementMsg<LiquidityResponse> = from_json(ack.acknowledgement.data)?;
+            execute_liquidity_ack(deps, res, liquidity_id);
             Ok(IbcBasicResponse::new())
         },
 
@@ -151,8 +153,38 @@ pub fn ibc_packet_timeout(
         .add_message(msg))
         },
     
-        IbcExecuteMsg::AddLiquidity { chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance } => {
-            Ok(IbcBasicResponse::new())
+        IbcExecuteMsg::AddLiquidity { liquidity_id, .. } => {
+            // Commit Refund to sender
+            // Fetch the sender from liquidity_id
+            let state = STATE.load(deps.storage)?;
+            // Fetch the 2 tokens
+            let token_1 = state.pair_info.token_1;
+            let token_2 = state.pair_info.token_2;
+            let sender = extract_sender(&liquidity_id);
+            // Fetch the pending liquidity transactions for the sender
+            let pending_liquidity = PENDING_LIQUIDITY.load(deps.storage, sender.clone())?;
+            // Get the current pending liquidity transaction
+            let liquidity_info = get_liquidity_info(&liquidity_id, pending_liquidity.clone());
+            // Pop this liquidity transaction from the vector
+            let mut new_pending_liquidity = pending_liquidity.clone();
+            new_pending_liquidity.retain(|x| x.liquidity_id != liquidity_id);
+            // Update the pending liquidity transactions
+            PENDING_LIQUIDITY.save(deps.storage, sender.clone(), &new_pending_liquidity)?;
+
+            // Prepare messages to refund tokens back to user
+            let mut msgs: Vec<CosmosMsg> = Vec::new();
+            let msg = token_1.clone().create_transfer_msg(liquidity_info.token_1_liquidity, sender.clone());
+            msgs.push(msg);
+            let msg = token_2.clone().create_transfer_msg(liquidity_info.token_2_liquidity, sender.clone());
+            msgs.push(msg);
+
+
+            Ok(IbcBasicResponse::new()
+            .add_attribute("method", "liquidity_tx_timeout")
+            .add_attribute("sender", sender.clone())
+            .add_attribute("liquidity_id", liquidity_id.clone())
+            .add_messages(msgs)
+        )
         },
 
         IbcExecuteMsg:: RemoveLiquidity { chain_id, lp_allocation } => {
@@ -260,7 +292,7 @@ pub fn execute_swap(
         Ok(IbcBasicResponse::new().add_message(msg))
             },
 
-
+        // If acknowledgment is an error, the refund proccess should take place
         AcknowledgementMsg::Error(e) => {
                 // Fetch the sender from swap_id
                 let sender = extract_sender(&swap_id);
@@ -285,4 +317,70 @@ pub fn execute_swap(
             }
         }
     }
-    
+
+// Function to execute after LiquidityResponse acknowledgment
+pub fn execute_liquidity_ack(
+    deps: DepsMut,
+    ack: AcknowledgementMsg<LiquidityResponse>,
+    liquidity_id: String) -> Result<IbcBasicResponse, ContractError> {
+        match ack {
+            AcknowledgementMsg::Ok(resp) => {
+                // Unpack response
+                // Fetch the sender from liquidity_id
+                let sender = extract_sender(&liquidity_id);
+                // Fetch the pending liquidity transactions for the sender
+                let pending_liquidity = PENDING_LIQUIDITY.load(deps.storage, sender.clone())?;
+                // Get the current pending liquidity transaction
+                let _liquidity_info = get_liquidity_info(&liquidity_id, pending_liquidity.clone());
+                // Pop this liquidity transaction from the vector
+                let mut new_pending_liquidity = pending_liquidity.clone();
+                new_pending_liquidity.retain(|x| x.liquidity_id != liquidity_id);
+                // Update the pending liquidity transactions
+                PENDING_LIQUIDITY.save(deps.storage, sender.clone(), &new_pending_liquidity)?;
+
+                // Update the state with the new reserves
+                let mut state = STATE.load(deps.storage)?;
+                state.reserve_1 += resp.token_1_liquidity;
+                state.reserve_2 += resp.token_2_liquidity;
+
+                // Save the updated state
+                STATE.save(deps.storage, &state)?;
+
+                Ok(IbcBasicResponse::new())
+            },
+            // If error, process refund
+            AcknowledgementMsg::Error(e) => {
+            let state = STATE.load(deps.storage)?;
+            // Fetch the 2 tokens
+            let token_1 = state.pair_info.token_1;
+            let token_2 = state.pair_info.token_2;
+            let sender = extract_sender(&liquidity_id);
+            // Fetch the pending liquidity transactions for the sender
+            let pending_liquidity = PENDING_LIQUIDITY.load(deps.storage, sender.clone())?;
+            // Get the current pending liquidity transaction
+            let liquidity_info = get_liquidity_info(&liquidity_id, pending_liquidity.clone());
+            // Pop this liquidity transaction from the vector
+            let mut new_pending_liquidity = pending_liquidity.clone();
+            new_pending_liquidity.retain(|x| x.liquidity_id != liquidity_id);
+            // Update the pending liquidity transactions
+            PENDING_LIQUIDITY.save(deps.storage, sender.clone(), &new_pending_liquidity)?;
+
+            // Prepare messages to refund tokens back to user
+            let mut msgs: Vec<CosmosMsg> = Vec::new();
+            let msg = token_1.clone().create_transfer_msg(liquidity_info.token_1_liquidity, sender.clone());
+            msgs.push(msg);
+            let msg = token_2.clone().create_transfer_msg(liquidity_info.token_2_liquidity, sender.clone());
+            msgs.push(msg);
+
+
+            Ok(IbcBasicResponse::new()
+            .add_attribute("method", "liquidity_tx_err_refund")
+            .add_attribute("sender", sender.clone())
+            .add_attribute("liquidity_id", liquidity_id.clone())
+            .add_messages(msgs)
+        )
+            }
+            
+
+        }
+    }
