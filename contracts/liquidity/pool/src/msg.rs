@@ -22,13 +22,14 @@ pub enum ExecuteMsg {
 
     },
 
-    // Add Liquidity to the VLP
+    // Add Liquidity Request to the VLP
     AddLiquidity {
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         channel: String,
     },
+
 
     // Recieve CW20 TOKENS structure
     Receive (Cw20ReceiveMsg),
@@ -59,6 +60,8 @@ pub enum Cw20HookMsg {
         min_amount_out: Uint128,
         channel: String,
     },
+
+    
 }
 
 #[cw_serde]

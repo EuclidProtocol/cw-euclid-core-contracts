@@ -93,7 +93,7 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{ensure, from_json, IbcMsg, IbcTimeout, Uint128};
+    use cosmwasm_std::{ensure, from_json, Coin, IbcMsg, IbcTimeout, Uint128};
     use cw20::Cw20ReceiveMsg;
     use euclid::{swap::{LiquidityTxInfo, SwapInfo}, token::TokenInfo};
     use euclid_ibc::msg::IbcExecuteMsg;
@@ -277,6 +277,10 @@ pub fn add_liquidity_request(
         let msg = token_1.create_transfer_msg(token_1_liquidity, env.contract.address.clone().to_string());
         msgs.push(msg);
     } else {
+        // If funds empty return error
+        if info.funds.is_empty() {
+            return Err(ContractError::InsufficientDeposit {  });
+        }
         // Check for funds sent with the message
         let amt = info.funds.iter().find(|x| x.denom == token_1.get_denom()).unwrap();
         if amt.amount < token_1_liquidity {
@@ -289,6 +293,9 @@ pub fn add_liquidity_request(
         let msg = token_2.create_transfer_msg(token_2_liquidity, env.contract.address.clone().to_string());
         msgs.push(msg);
     } else {
+        if info.funds.is_empty() {
+            return Err(ContractError::InsufficientDeposit {  });
+        }
         let amt = info.funds.iter().find(|x| x.denom == token_2.get_denom()).unwrap();
         if amt.amount < token_2_liquidity.clone() {
             return Err(ContractError::InsufficientDeposit {  });
