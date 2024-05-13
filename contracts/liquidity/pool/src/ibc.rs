@@ -101,8 +101,7 @@ pub fn ibc_packet_ack(
 
         IbcExecuteMsg::AddLiquidity { chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance, liquidity_id } => {
             let res: AcknowledgementMsg<LiquidityResponse> = from_json(ack.acknowledgement.data)?;
-            execute_liquidity_ack(deps, res, liquidity_id);
-            Ok(IbcBasicResponse::new())
+            execute_liquidity_ack(deps, res, liquidity_id)
         },
 
         IbcExecuteMsg:: RemoveLiquidity { chain_id, lp_allocation } => {
@@ -289,7 +288,8 @@ pub fn execute_swap(
         let msg = swap_info.asset_out.create_transfer_msg(resp.amount_out, sender);
 
         // Look through pending swaps for one with the same swap_id
-        Ok(IbcBasicResponse::new().add_message(msg))
+        Ok(IbcBasicResponse::new()
+        .add_message(msg))
             },
 
         // If acknowledgment is an error, the refund proccess should take place
@@ -313,6 +313,7 @@ pub fn execute_swap(
                 .add_attribute("method", "process_failed_swap")
                 .add_attribute("refund_to", "sender")
                 .add_attribute("refund_amount", swap_info.asset_amount.clone())
+                .add_attribute("error", e)
                 .add_message(msg))
             }
         }
@@ -346,10 +347,16 @@ pub fn execute_liquidity_ack(
                 // Save the updated state
                 STATE.save(deps.storage, &state)?;
 
-                Ok(IbcBasicResponse::new())
+                Ok(IbcBasicResponse::new()
+                .add_attribute("method", "process_add_liquidity")
+                .add_attribute("sender", sender.clone())
+                .add_attribute("liquidity_id", liquidity_id.clone())
+            )
+
             },
             // If error, process refund
             AcknowledgementMsg::Error(e) => {
+
             let state = STATE.load(deps.storage)?;
             // Fetch the 2 tokens
             let token_1 = state.pair_info.token_1;
@@ -377,6 +384,7 @@ pub fn execute_liquidity_ack(
             .add_attribute("method", "liquidity_tx_err_refund")
             .add_attribute("sender", sender.clone())
             .add_attribute("liquidity_id", liquidity_id.clone())
+            .add_attribute("error", e)
             .add_messages(msgs)
         )
             }
