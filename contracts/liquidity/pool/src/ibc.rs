@@ -1,15 +1,14 @@
-use std::os::unix::process;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, from_slice, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult, Uint128
+    ensure, from_json, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult
 };
-use euclid::{error::{ContractError, Never}, swap::{self, extract_sender, SwapInfo}, token::{PairInfo, Token}};
+use euclid::{error::{ContractError, Never}, swap::extract_sender};
 use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, LiquidityResponse, SwapResponse};
 
 use crate::{
-    ack::make_ack_fail, contract::execute, state::{self, find_swap_id, get_liquidity_info, get_swap_info, CONNECTION_COUNTS, PENDING_LIQUIDITY, PENDING_SWAPS, STATE, TIMEOUT_COUNTS}
+    ack::make_ack_fail, state::{get_liquidity_info, get_swap_info, CONNECTION_COUNTS, PENDING_LIQUIDITY, PENDING_SWAPS, STATE, TIMEOUT_COUNTS}
 };
 
 pub const IBC_VERSION: &str = "counter-1";
@@ -75,9 +74,9 @@ pub fn ibc_packet_receive(
 }
 
 pub fn do_ibc_packet_receive(
-    deps: DepsMut,
+    _deps: DepsMut,
     _env: Env,
-    msg: IbcPacketReceiveMsg,
+    _msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
     // Pool does not handle any IBC Packets
     Ok(IbcReceiveResponse::default())
@@ -87,24 +86,36 @@ pub fn do_ibc_packet_receive(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_ack(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     // Parse the ack based on request
     let msg: IbcExecuteMsg = from_json(&ack.original_packet.data)?;
     
     match msg {
-        IbcExecuteMsg::Swap { chain_id, asset, asset_amount, min_amount_out, channel, swap_id } => {
+        IbcExecuteMsg::Swap {swap_id, chain_id, ..} => {
+            let state = STATE.load(deps.storage)?;
+            ensure!(
+                state.chain_id == chain_id,
+                ContractError::InvalidChainId { }
+            );
+
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
             execute_swap(deps, res, swap_id)
     },
 
-        IbcExecuteMsg::AddLiquidity { chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance, liquidity_id } => {
+        IbcExecuteMsg::AddLiquidity { chain_id, liquidity_id, .. } => {
+            // Verify Chain ID same as in state
+            let state = STATE.load(deps.storage)?;
+            ensure!(
+                state.chain_id == chain_id,
+                ContractError::InvalidChainId { }
+            );
             let res: AcknowledgementMsg<LiquidityResponse> = from_json(ack.acknowledgement.data)?;
             execute_liquidity_ack(deps, res, liquidity_id)
         },
 
-        IbcExecuteMsg:: RemoveLiquidity { chain_id, lp_allocation } => {
+        IbcExecuteMsg:: RemoveLiquidity { .. } => {
             Ok(IbcBasicResponse::new())
         }
     }
@@ -186,7 +197,7 @@ pub fn ibc_packet_timeout(
         )
         },
 
-        IbcExecuteMsg:: RemoveLiquidity { chain_id, lp_allocation } => {
+        IbcExecuteMsg:: RemoveLiquidity { .. } => {
             Ok(IbcBasicResponse::new())
         }
     }

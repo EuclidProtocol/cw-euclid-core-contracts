@@ -44,4 +44,7 @@ pub enum ContractError {
     #[error("The deposit amount is insufficient to add the liquidity")]
     InsufficientDeposit {},
 
+    #[error("The CHAIN ID is not valid")]
+    InvalidChainId {},
+
 }

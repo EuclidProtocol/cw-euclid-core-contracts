@@ -2,7 +2,7 @@ use cosmwasm_schema::cw_serde;
 use euclid::{swap::{LiquidityTxInfo, SwapInfo}, token::{Pair, PairInfo}};
 
 
-use cosmwasm_std::{Deps, Uint128};
+use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map};
 
 #[cw_serde]

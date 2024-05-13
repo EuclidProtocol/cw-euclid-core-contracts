@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, Isqrt, MessageInfo, Response, StdResult, Uint128};
+use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, Isqrt, MessageInfo, Response, Uint128};
 use cw2::set_contract_version;
 
 
@@ -63,11 +63,11 @@ pub mod execute {
 
 
 
-    use cosmwasm_std::{Env, IbcMsg, IbcReceiveResponse, IbcTimeout, Uint128};
-    use euclid::{pool::Pool, swap, token::Token};
-    use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg, LiquidityResponse, SwapResponse};
+    use cosmwasm_std::{IbcReceiveResponse, Uint128};
+    use euclid::{pool::Pool, token::Token};
+    use euclid_ibc::msg::{AcknowledgementMsg, LiquidityResponse, SwapResponse};
 
-    use crate::{ack::{self, make_ack_success}, state::{self, BALANCES}};
+    use crate::{ack::make_ack_success, state::{self}};
 
     use super::*;
 
@@ -367,7 +367,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 }
 
 pub mod query {
-    use euclid::token::{Pair, Token};
+    use euclid::token::Token;
 
     use crate::msg::{GetLiquidityResponse, GetSwapResponse, LiquidityInfoResponse};
 

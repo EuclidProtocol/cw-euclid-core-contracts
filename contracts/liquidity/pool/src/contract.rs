@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw2::set_contract_version;
 
 use euclid::error::ContractError;
@@ -93,12 +93,12 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{ensure, from_json, IbcBasicResponse, IbcMsg, IbcTimeout, Uint128};
+    use cosmwasm_std::{ensure, from_json, IbcMsg, IbcTimeout, Uint128};
     use cw20::Cw20ReceiveMsg;
     use euclid::{swap::{LiquidityTxInfo, SwapInfo}, token::TokenInfo};
     use euclid_ibc::msg::IbcExecuteMsg;
 
-    use crate::{ibc, msg::Cw20HookMsg, state::{CONNECTION_COUNTS, PENDING_LIQUIDITY, PENDING_SWAPS}};
+    use crate::{msg::Cw20HookMsg, state::{CONNECTION_COUNTS, PENDING_LIQUIDITY, PENDING_SWAPS}};
 
     use super::*;
 
@@ -377,9 +377,7 @@ pub mod query {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_json};
+
 
 
 }
