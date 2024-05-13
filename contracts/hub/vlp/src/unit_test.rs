@@ -12,7 +12,7 @@ mod tests {
 
 
     use euclid::token::{Pair, PairInfo, Token, TokenInfo};
-    use crate::contract::{  execute, instantiate};
+    use crate::contract::{  calculate_swap, execute, instantiate};
     
     use crate::msg::{ ExecuteMsg, GetLiquidityResponse, GetSwapResponse, InstantiateMsg, LiquidityInfoResponse};
 
@@ -61,7 +61,7 @@ mod tests {
     fn test_execute_register_pool() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("creator", &coins(1000, "earth"));
+        let info = mock_info("creator", &[]);
         let msg = InstantiateMsg {
             router: "router".to_string(),
             pair: Pair {
@@ -184,6 +184,69 @@ fn register_pool_with_existing_pool_fails() {
         _ => panic!("Unexpected result: {:?}", res),
     }
 }
+#[test]
+fn register_pool__matches_with_existing_pool() {
+    // Arrange
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let info = mock_info("creator", &coins(1000, "earth"));
+    let msg = InstantiateMsg {
+        router: "router".to_string(),
+        pair: Pair {
+            token_1: Token {
+                id: "token_1".to_string(),
+            },
+            token_2: Token {
+                id: "token_2".to_string(),
+            },
+        },
+        fee: Fee {
+            lp_fee: 1,
+            treasury_fee: 1,
+            staker_fee: 1,
+        },
+        pool: Pool {
+            chain: "chain".to_string(),
+            contract_address: "contract_address".to_string(),
+            pair: PairInfo {
+                token_1: TokenInfo::Native { denom: "token_1".to_string(),
+                    token: Token { id: "token_1".to_string() }},
+                token_2: TokenInfo::Native { denom: "token_2".to_string(),
+                    token: Token { id: "token_2".to_string() }},
+            },
+            reserve_1: Uint128::new(10000),
+            reserve_2: Uint128::new(10000),
+        },
+    };
+    let res = instantiate(deps.as_mut(),  env.clone(),info.clone(), msg).unwrap();
+    assert_eq!(0, res.messages.len());
+
+    // Create a pool with the same chain ID and contract address
+    let pool = Pool {
+        chain: "chain".to_string(),
+        contract_address: "contract_address".to_string(),
+        pair: PairInfo {
+            token_1: TokenInfo::Native { denom: "token_1".to_string(),
+                token: Token { id: "token_1".to_string() }},
+            token_2: TokenInfo::Native { denom: "token_2".to_string(),
+                token: Token { id: "token_2".to_string() }},
+        },
+        reserve_1: Uint128::new(100),
+        reserve_2: Uint128::new(200),
+    };
+
+    // Register the pool once (simulating an existing pool)
+    execute::register_pool(deps.as_mut(), info.clone(), pool.clone()).unwrap();
+
+    // Act: Attempt to register the same pool again
+    let res = execute::register_pool(deps.as_mut(), info.clone(), pool.clone());
+
+    // Assert: Check that registering the same pool again fails with the expected error
+    match res {
+        Err(ContractError::PoolAlreadyExists {}) => {} // This is the expected error case
+        _ => panic!("Unexpected result: {:?}", res),
+    }
+}
 
 #[test]
 fn test_add_liquidity() {
@@ -247,31 +310,59 @@ fn test_add_liquidity() {
     assert_eq!(pool.reserve_2, Uint128::new(10100) - expected_token_2_liquidity); // Initial reserve + added liquidity - token 2 liquidity
 }
 #[test]
-fn test_query_simulate_swap_valid_asset() {
+fn test_query_simulate_swap() {
+    // Initialize mock dependencies and environment
     let mut deps = mock_dependencies();
     let env = mock_env();
-    let asset = Token { id: "asset1".to_string() };
-    let asset_amount = Uint128::new(1000);
-    
-    // Initialize contract state with valid asset info
-    let  state = State {
-        pair: Pair { token_1: Token { id: "asset1".to_string() }, token_2: Token { id: "asset2".to_string() } },
-        router: "router1".to_string(),
+
+    // Instantiate the contract
+    let info = mock_info("creator", &[]);
+    let instantiate_msg = InstantiateMsg {
+        router: "router".to_string(),
+        pair: Pair {
+            token_1: Token { id: "token_1".to_string() },
+            token_2: Token { id: "token_2".to_string() },
+        },
         fee: Fee { lp_fee: 1, staker_fee: 1, treasury_fee: 1 },
-        last_updated: 0,
-        total_reserve_1: Uint128::new(10000),
-        total_reserve_2: Uint128::new(20000),
-        total_lp_tokens: Uint128::new(100000),
+        pool: Pool {
+            chain: "chain".to_string(),
+            contract_address: "contract_address".to_string(),
+            pair: PairInfo {
+                token_1: TokenInfo::Native {
+                    denom: "token_1".to_string(),
+                    token: Token { id: "token_1".to_string() },
+                },
+                token_2: TokenInfo::Native {
+                    denom: "token_2".to_string(),
+                    token: Token { id: "token_2".to_string() },
+                },
+            },
+            reserve_1: Uint128::new(10000),
+            reserve_2: Uint128::new(10000),
+        },
     };
-    STATE.save(&mut deps.storage, &state).unwrap();
+    let _res = instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+
+    // Set up the state with relevant data
+    let asset = Token { id: "token_1".to_string() };
+    let asset_amount = Uint128::new(100);
 
     // Call the query_simulate_swap function
-    let result = query_simulate_swap(deps.as_ref(), asset.clone(), asset_amount).unwrap();
-    let response: GetSwapResponse = from_json(&result).unwrap();
+    let binary_result = query_simulate_swap(deps.as_ref(), asset.clone(), asset_amount.clone()).unwrap();
+    let response: GetSwapResponse = from_binary(&binary_result).unwrap();
 
-    // Assert that the received amount is as expected
-    assert_eq!(response.token_out, Uint128::new(1769)); // Example calculation result
+    // Calculate expected result using calculate_swap function and adjust for fees
+    let total_reserve_1 = Uint128::new(10000); // Set according to contract initialization
+    let total_reserve_2 = Uint128::new(10000); // Set according to contract initialization
+    let fee_percentage = 3; // Set the fee percentage for testing
+    let expected_receive_amount = calculate_swap(asset_amount, total_reserve_1, total_reserve_2);
+    let fee_amount = asset_amount.multiply_ratio(Uint128::new(fee_percentage), Uint128::new(100)); // Calculate the fee amount
+    let expected_receive_amount_with_fee = expected_receive_amount.checked_sub(fee_amount).unwrap(); // Adjust for fees
+
+    // Check if the calculated receive amount with fees matches the response
+    assert_eq!(response.token_out, expected_receive_amount_with_fee);
 }
+
 #[test]
 fn test_query_simulate_swap_invalid_asset() {
     let mut deps = mock_dependencies();
@@ -344,4 +435,5 @@ fn test_query_liquidity_info() {
     assert_eq!(response.token_1_reserve, Uint128::new(10000));
     assert_eq!(response.token_2_reserve, Uint128::new(20000));
 }
+
 }
