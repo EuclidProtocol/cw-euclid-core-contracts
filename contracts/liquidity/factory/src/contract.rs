@@ -1,11 +1,14 @@
+use std::error::Error;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, StdResult};
 use cw2::set_contract_version;
 use euclid::error::ContractError;
 // use cw2::set_contract_version;
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::reply;
 use crate::state::{State, STATE};
 
 use self::execute::execute_request_pool_creation;
@@ -158,6 +161,15 @@ pub mod execute {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(_deps: Deps, _env: Env, _msg: QueryMsg) -> StdResult<Binary> {
     unimplemented!()
+}
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        INSTANTIATE_REPLY_ID => reply::on_pool_instantiate_reply(deps, msg),
+        id => Err(ContractError::Std(StdError::generic_err(format!(
+            "Unknown reply id: {}", id
+        )))),
+    } 
 }
 
 #[cfg(test)]

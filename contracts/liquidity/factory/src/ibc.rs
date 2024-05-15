@@ -213,7 +213,7 @@ pub fn execute_pool_creation(
                 label: "pool".to_string() });
             
             // Create submsg with reply always from msg
-            let msg = SubMsg::reply_always(msg, INSTANTIATE_REPLY_ID);
+             let msg: SubMsg = SubMsg::reply_always(msg, INSTANTIATE_REPLY_ID);
             // Extract sender from rq id
             let sender = extract_sender(pool_rq_id.as_str());
             // Remove pool request from MAP
