@@ -117,7 +117,11 @@ pub fn ibc_packet_ack(
 
         IbcExecuteMsg:: RemoveLiquidity { .. } => {
             Ok(IbcBasicResponse::new())
-        }
+        }, 
+
+        // Ignore rest
+        _ => Ok(IbcBasicResponse::new())
+        
     }
 
 }
@@ -199,7 +203,10 @@ pub fn ibc_packet_timeout(
 
         IbcExecuteMsg:: RemoveLiquidity { .. } => {
             Ok(IbcBasicResponse::new())
-        }
+        },
+
+        // Ignore rest
+        _ => Ok(IbcBasicResponse::new())
     }
    
 }

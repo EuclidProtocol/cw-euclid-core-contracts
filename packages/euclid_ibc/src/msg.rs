@@ -1,6 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
-use euclid::token::{Token};
+use euclid::token::{PairInfo, Token};
 
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -30,6 +30,15 @@ pub enum IbcExecuteMsg {
         channel: String,
         swap_id: String,
         },
+
+    // Request Pool Creation
+    RequestPoolCreation {
+        chain_id: String,
+        pair_info: PairInfo,
+        token_1_reserve: Uint128,
+        token_2_reserve: Uint128,
+        pool_rq_id: String,
+    },
 }
 
 /// A custom acknowledgement type.
@@ -79,4 +88,12 @@ pub struct LiquidityResponse {
     pub token_1_liquidity: Uint128,
     pub token_2_liquidity: Uint128,
     pub mint_lp_tokens: Uint128,
+}
+
+
+// Struct to handle Acknowledgement Response for a Pool Creation Request
+#[cw_serde]
+pub struct PoolCreationResponse {
+    pub vlp_contract: String,
+
 }

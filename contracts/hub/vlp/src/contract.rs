@@ -512,7 +512,7 @@ mod tests {
                 token_2: Token {
                     id: "token_2".to_string(),
                 },
-            },
+            }, 
             fee: Fee {
                 lp_fee: 1,
                 treasury_fee: 1,
@@ -520,7 +520,6 @@ mod tests {
             },
             pool: Pool {
                 chain: "chain".to_string(),
-                contract_address: "contract_address".to_string(),
                 pair: PairInfo {
                     token_1: TokenInfo::Native { denom: "token_1".to_string(),
                  token: Token { id: "token_1".to_string() }},
