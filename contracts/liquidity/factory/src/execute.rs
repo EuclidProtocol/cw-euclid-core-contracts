@@ -2,11 +2,13 @@ use cosmwasm_std::{
     to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, Uint128,
 };
 use euclid::{
-    error::ContractError, msgs::pool, pool::PoolRequest, token::{PairInfo, Token}
+    error::ContractError,
+    pool::{Pool, PoolRequest},
+    token::{PairInfo, Token},
 };
 use euclid_ibc::msg::IbcExecuteMsg;
 
-use crate::state::{POOL_REQUESTS, STATE, VLP_TO_POOL};
+use crate::state::{POOL_REQUESTS, STATE};
 
 // Function to send IBC request to Router in VLS to create a new pool
 pub fn execute_request_pool_creation(
@@ -19,11 +21,8 @@ pub fn execute_request_pool_creation(
     // Load the state
     let state = STATE.load(deps.storage)?;
 
-
     let mut msgs: Vec<CosmosMsg> = Vec::new();
-    
 
-    
     // Create pool request id
     let pool_rq_id = format!(
         "{}-{}-{}",
@@ -44,9 +43,9 @@ pub fn execute_request_pool_creation(
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&IbcExecuteMsg::RequestPoolCreation {
-            chain_id: state.chain_id.clone(),
-            pair_info: pair_info.clone(),
-            pool_rq_id: pool_rq_id.clone(),
+            pool_rq_id,
+            chain: state.chain_id,
+            pair_info,
         })
         .unwrap(),
 
@@ -75,9 +74,7 @@ pub fn execute_swap(
     let state = STATE.load(deps.storage)?;
 
     let pool_address = info.sender;
-    
 
-    
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
@@ -115,9 +112,7 @@ pub fn execute_add_liquidity(
     let state = STATE.load(deps.storage)?;
 
     let pool_address = info.sender.clone();
-    
 
-    
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
@@ -128,11 +123,11 @@ pub fn execute_add_liquidity(
             slippage_tolerance,
             liquidity_id: format!(
                 "{}-{}-{}",
-               pool_address.to_string(),
+                pool_address.to_string(),
                 env.block.height.clone(),
                 env.block.time.to_string()
             ),
-            pool_address: pool_address.clone().to_string()
+            pool_address: pool_address.clone().to_string(),
         })
         .unwrap(),
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),

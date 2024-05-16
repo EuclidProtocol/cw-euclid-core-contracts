@@ -1,6 +1,9 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128};
-use euclid::token::{PairInfo, Token};
+use euclid::{
+    pool::Pool,
+    token::{Pair, PairInfo, Token},
+};
 
 // Message that implements an ExecuteSwap on the VLP contract
 
@@ -12,7 +15,7 @@ pub enum IbcExecuteMsg {
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         liquidity_id: String,
-        pool_address: String
+        pool_address: String,
     },
 
     // Remove liquidity from a chain pool to VLP
@@ -34,9 +37,9 @@ pub enum IbcExecuteMsg {
 
     // Request Pool Creation
     RequestPoolCreation {
-        chain_id: String,
-        pair_info: PairInfo,
         pool_rq_id: String,
+        chain: String,
+        pair_info: PairInfo,
     },
 }
 
@@ -69,4 +72,3 @@ impl<S> AcknowledgementMsg<S> {
         }
     }
 }
-

@@ -5,6 +5,7 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 // use cw2::set_contract_version;
 
+use crate::reply::INSTANTIATE_REPLY_ID;
 use crate::state::{State, STATE};
 use crate::{execute, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -45,16 +46,9 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RequestPoolCreation {
-            pair_info,
-            channel,
-        } => execute::execute_request_pool_creation(
-            deps,
-            env,
-            info,
-            pair_info,
-            channel,
-        ),
+        ExecuteMsg::RequestPoolCreation { pair_info, channel } => {
+            execute::execute_request_pool_creation(deps, env, info, pair_info, channel)
+        }
         ExecuteMsg::ExecuteSwap {
             asset,
             asset_amount,

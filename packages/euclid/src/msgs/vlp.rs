@@ -17,7 +17,7 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     // Registers a new pool from a new chain to an already existing VLP
-    RegisterPool { pool: Pool },
+    // RegisterPool { pool: Pool },
     /*
 
     // Update the fee for the VLP

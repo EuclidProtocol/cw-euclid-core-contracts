@@ -66,7 +66,8 @@ pub enum CallbackExecuteMsg {
 pub enum QueryMsg {
     #[returns(GetPairInfoResponse)]
     PairInfo {},
-
+    #[returns(GetVLPResponse)]
+    GetVlp {},
     // Fetch pending swaps with pagination for a user
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
@@ -89,6 +90,11 @@ pub enum Cw20HookMsg {
 #[cw_serde]
 pub struct GetPairInfoResponse {
     pub pair_info: PairInfo,
+}
+
+#[cw_serde]
+pub struct GetVLPResponse {
+    pub vlp: String,
 }
 
 #[cw_serde]

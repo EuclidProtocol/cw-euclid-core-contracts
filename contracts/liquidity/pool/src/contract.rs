@@ -15,7 +15,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -32,7 +32,6 @@ pub fn instantiate(
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-   
     // Save the state
     STATE.save(deps.storage, &state)?;
 
@@ -42,8 +41,7 @@ pub fn instantiate(
         .add_attribute("token_2", msg.token_pair.token_2.id)
         .add_attribute("factory_contract", info.sender.clone().to_string())
         .add_attribute("vlp_contract", msg.vlp_contract)
-        .add_attribute("chain_id", "chain_id")
-)
+        .add_attribute("chain_id", "chain_id"))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -126,6 +124,7 @@ fn handle_callback_execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::PairInfo {} => query::pair_info(deps),
+        QueryMsg::GetVlp {} => query::get_vlp(deps),
         QueryMsg::PendingSwapsUser {
             user,
             upper_limit,

@@ -1,5 +1,5 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps, StdResult};
-use euclid::msgs::pool::{GetPairInfoResponse, GetPendingSwapsResponse};
+use euclid::msgs::pool::{GetPairInfoResponse, GetPendingSwapsResponse, GetVLPResponse};
 
 use crate::state::{PENDING_SWAPS, STATE};
 
@@ -8,6 +8,14 @@ pub fn pair_info(deps: Deps) -> StdResult<Binary> {
     let state = STATE.load(deps.storage)?;
     to_json_binary(&GetPairInfoResponse {
         pair_info: state.pair_info,
+    })
+}
+
+// Returns the Pair Info of the Pair in the pool
+pub fn get_vlp(deps: Deps) -> StdResult<Binary> {
+    let state = STATE.load(deps.storage)?;
+    to_json_binary(&GetVLPResponse {
+        vlp: state.vlp_contract,
     })
 }
 
