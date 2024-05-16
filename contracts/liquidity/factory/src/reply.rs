@@ -1,9 +1,12 @@
-use cosmwasm_std::{entry_point, from_json, to_json_binary, DepsMut, Env, Reply, Response, StdError, StdResult, SubMsgResult};
-use cw0::parse_reply_instantiate_data; 
+use crate::state::STATE;
+use cosmwasm_std::{
+    entry_point, from_json, to_json_binary, DepsMut, Env, Reply, Response, StdError, StdResult,
+    SubMsgResult,
+};
+use cw0::parse_reply_instantiate_data;
 use euclid::error::ContractError;
+use euclid::msgs::pool::InstantiateMsg as PoolInstantiateMsg;
 use euclid_ibc::msg::AcknowledgementMsg;
-use crate::state::STATE; 
-use crate::msg::PoolInstantiateMsg; 
 
 pub const INSTANTIATE_REPLY_ID: u64 = 1u64;
 
@@ -17,7 +20,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
 
 fn handle_instantiate_reply(deps: DepsMut, msg: Reply) -> StdResult<Response> {
     Ok(Response::new())
-} 
+}
 pub fn on_pool_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     let data = match msg.result.clone() {
         SubMsgResult::Err(err) => AcknowledgementMsg::Error(err),
@@ -34,6 +37,6 @@ pub fn on_pool_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
             AcknowledgementMsg::Ok("Pool instantiated successfully".to_string())
         }
     };
-    
+
     Ok(Response::default().set_data(to_json_binary(&data)?))
 }

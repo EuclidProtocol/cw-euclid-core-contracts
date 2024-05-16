@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Addr, Uint128};
 use euclid::token::{PairInfo, Token};
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -28,6 +28,7 @@ pub enum IbcExecuteMsg {
         min_amount_out: Uint128,
         channel: String,
         swap_id: String,
+        pool_address: Addr,
     },
 
     // Request Pool Creation

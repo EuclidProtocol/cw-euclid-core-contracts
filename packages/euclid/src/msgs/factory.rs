@@ -1,7 +1,7 @@
-use crate::token::PairInfo;
+use crate::token::{PairInfo, Token};
+use crate::{msgs::pool::ExecuteMsg as PoolExecuteMsg, token::TokenInfo};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
-
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
@@ -19,6 +19,20 @@ pub enum ExecuteMsg {
         pair_info: PairInfo,
         token_1_reserve: Uint128,
         token_2_reserve: Uint128,
+        channel: String,
+    },
+    ExecuteSwap {
+        asset: Token,
+        asset_amount: Uint128,
+        min_amount_out: Uint128,
+        channel: String,
+        swap_id: String,
+    },
+    // Add Liquidity Request to the VLP
+    AddLiquidity {
+        token_1_liquidity: Uint128,
+        token_2_liquidity: Uint128,
+        slippage_tolerance: u64,
         channel: String,
     },
 }

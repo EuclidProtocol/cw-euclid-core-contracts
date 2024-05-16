@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo,
-    Response, Uint128,
+    Response, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
@@ -10,9 +10,11 @@ use euclid::{
     swap::{extract_sender, LiquidityTxInfo, SwapInfo, SwapResponse},
     token::TokenInfo,
 };
-use euclid_ibc::msg::IbcExecuteMsg;
+use euclid_ibc::msg::{self, IbcExecuteMsg};
 
 use crate::state::{get_liquidity_info, get_swap_info, PENDING_LIQUIDITY, PENDING_SWAPS, STATE};
+
+use euclid::msgs::factory::ExecuteMsg as FactoryExecuteMsg;
 
 pub fn execute_swap_request(
     deps: DepsMut,
@@ -74,19 +76,18 @@ pub fn execute_swap_request(
         env.transaction.unwrap().index
     );
 
-    // Send an IBC packet to VLP to perform swap
-    let res = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&IbcExecuteMsg::Swap {
-            chain_id: state.chain_id.clone(),
-            asset: token,
-            asset_amount,
-            min_amount_out,
-            swap_id: swap_id.clone(),
-            channel,
-        })
-        .unwrap(),
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
+    let msg = FactoryExecuteMsg::ExecuteSwap {
+        asset: token,
+        asset_amount,
+        min_amount_out,
+        channel,
+        swap_id: swap_id.clone(),
+    };
+
+    let msg = WasmMsg::Execute {
+        contract_addr: state.factory_contract,
+        msg: to_json_binary(&msg)?,
+        funds: vec![],
     };
 
     // Get alternative token
@@ -114,7 +115,7 @@ pub fn execute_swap_request(
 
     Ok(Response::new()
         .add_attribute("method", "execute_swap_request")
-        .add_message(res))
+        .add_message(msg))
 }
 
 // Function execute_swap that routes the swap request to the appropriate function
@@ -339,7 +340,6 @@ pub fn add_liquidity_request(
     pending_liquidity.push(liquidity_info);
     PENDING_LIQUIDITY.save(deps.storage, sender.clone(), &pending_liquidity)?;
 
-    // Prepare IBC Packet to send to VLP
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&IbcExecuteMsg::AddLiquidity {
