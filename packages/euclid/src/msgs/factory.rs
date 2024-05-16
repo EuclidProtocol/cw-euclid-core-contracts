@@ -1,5 +1,4 @@
 use crate::token::{PairInfo, Token};
-use crate::{msgs::pool::ExecuteMsg as PoolExecuteMsg, token::TokenInfo};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 #[cw_serde]
@@ -17,8 +16,6 @@ pub enum ExecuteMsg {
     // Request Pool Creation
     RequestPoolCreation {
         pair_info: PairInfo,
-        token_1_reserve: Uint128,
-        token_2_reserve: Uint128,
         channel: String,
     },
     ExecuteSwap {

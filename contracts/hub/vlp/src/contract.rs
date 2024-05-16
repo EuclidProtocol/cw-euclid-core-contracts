@@ -23,8 +23,6 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     
-    let sq_root = Isqrt::isqrt(msg.pool.reserve_1.checked_mul(msg.pool.reserve_2).unwrap());
-    let lp_tokens = sq_root.checked_sub(Uint128::new(MINIMUM_LIQUIDITY)).unwrap();
 
     let state = State {
        pair: msg.pair,
@@ -33,9 +31,9 @@ pub fn instantiate(
         last_updated: 0,
         total_reserve_1: msg.pool.reserve_1,
         total_reserve_2: msg.pool.reserve_2,
-        total_lp_tokens: lp_tokens
-        
+        total_lp_tokens: Uint128::zero(),
     };
+    
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
     // stores initial pool to map
@@ -99,14 +97,6 @@ pub mod execute {
         // Store the pool in the map
         POOLS.save(deps.storage, &pool.chain,&pool)?;
 
-        // Calculate LP share allocation
-        let lp_allocation = calculate_lp_allocation(pool.reserve_1, pool.reserve_2, state.total_reserve_1, state.total_reserve_2, state.total_lp_tokens);
-
-        // Add pool liquidity to total reserves of VLP
-        
-        state.total_reserve_1 = state.total_reserve_1.checked_add(pool.reserve_1).unwrap();
-        state.total_reserve_2 = state.total_reserve_2.checked_add(pool.reserve_2).unwrap();
-        state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation).unwrap();
         STATE.save(deps.storage, &state)?;
 
         Ok(Response::new().add_attribute("action", "register_pool")
@@ -466,7 +456,13 @@ pub fn calculate_swap(swap_amount: Uint128, reserve_in: Uint128, reserve_out: Ui
 }
 
 
+
 pub fn calculate_lp_allocation(token_1_amount: Uint128, token_2_amount: Uint128, total_liquidity_1: Uint128, total_liquidity_2: Uint128, total_lp_supply: Uint128) -> Uint128 {
+    // IF LP supply is 0 use original function
+    if total_lp_supply.is_zero() {
+        let sq_root = Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount).unwrap());
+        return sq_root.checked_sub(Uint128::new(MINIMUM_LIQUIDITY)).unwrap();
+    }
     let share_1 = token_1_amount.checked_div(total_liquidity_1).unwrap();
     let share_2 = token_2_amount.checked_div(total_liquidity_2).unwrap();
     

@@ -3,7 +3,7 @@ use std::vec;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Coin, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel,
+    from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel,
     IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder,
     IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
     SubMsg, Uint128, WasmMsg,
@@ -15,9 +15,7 @@ use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg};
 use euclid::msgs::pool::ExecuteMsg as PoolExecuteMsg;
 
 use crate::{
-    ack::{make_ack_fail, Ack},
-    reply::INSTANTIATE_REPLY_ID,
-    state::{CONNECTION_COUNTS, POOL_REQUESTS, STATE, TIMEOUT_COUNTS, VLP_TO_POOL},
+    ack::{make_ack_fail, Ack}, execute, reply::INSTANTIATE_REPLY_ID, state::{CONNECTION_COUNTS, POOL_REQUESTS, STATE, TIMEOUT_COUNTS, VLP_TO_POOL}
 };
 
 use euclid::msgs::pool::InstantiateMsg as PoolInstantiateMsg;
@@ -104,8 +102,6 @@ pub fn ibc_packet_ack(
     match msg {
         IbcExecuteMsg::RequestPoolCreation {
             pair_info,
-            token_1_reserve,
-            token_2_reserve,
             pool_rq_id,
             ..
         } => {
@@ -116,8 +112,6 @@ pub fn ibc_packet_ack(
                 deps,
                 res,
                 pair_info,
-                token_1_reserve,
-                token_2_reserve,
                 pool_rq_id,
             )
         }
@@ -192,8 +186,6 @@ pub fn execute_pool_creation(
     deps: DepsMut,
     res: AcknowledgementMsg<PoolCreationResponse>,
     pair_info: PairInfo,
-    token_1_reserve: Uint128,
-    token_2_reserve: Uint128,
     pool_rq_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
     // Load the state
@@ -209,9 +201,9 @@ pub fn execute_pool_creation(
                 pair_info: pair_info.clone(),
                 pool: Pool {
                     chain: state.chain_id.clone(),
-                    reserve_1: token_1_reserve.clone(),
-                    reserve_2: token_2_reserve.clone(),
                     pair: pair_info.clone(),
+                    reserve_1: Uint128::zero(),
+                    reserve_2: Uint128::zero(),
                 },
                 chain_id: state.chain_id.clone(),
             };
@@ -221,7 +213,7 @@ pub fn execute_pool_creation(
                 code_id: state.pool_code_id.clone(),
                 msg: to_json_binary(&init_msg).unwrap(),
                 funds: vec![],
-                label: "pool".to_string(),
+                label: "euclid-pool".to_string(),
             });
 
             // Create submsg with reply always from msg
@@ -236,23 +228,8 @@ pub fn execute_pool_creation(
         }
 
         AcknowledgementMsg::Error(err) => {
-            // Process refund of assets for pool creation
-            let mut msgs: Vec<CosmosMsg> = Vec::new();
-
             // Get sender of request
             let sender = extract_sender(pool_rq_id.as_str());
-
-            // Prepare transfer msg for token 1
-            let msg_token_1 = pair_info
-                .token_1
-                .create_transfer_msg(token_1_reserve, sender.clone());
-            msgs.push(msg_token_1);
-
-            // Prepare transfer msg for token 2
-            let msg_token_2 = pair_info
-                .token_2
-                .create_transfer_msg(token_2_reserve, sender.clone());
-            msgs.push(msg_token_2);
 
             // Remove pool request from MAP
             POOL_REQUESTS.remove(deps.storage, sender.clone());
@@ -260,7 +237,7 @@ pub fn execute_pool_creation(
             Ok(IbcBasicResponse::new()
                 .add_attribute("method", "refund_pool_request")
                 .add_attribute("error", err.clone())
-                .add_messages(msgs))
+                )
         }
     }
 }
@@ -297,9 +274,18 @@ pub fn execute_swap_process(
             let callback = CallbackExecuteMsg::RejectSwap { 
                 swap_id: swap_id.clone(), 
                 error: Some(err.clone()) };
+
+            let msg = PoolExecuteMsg::Callback(callback);
+            let execute = WasmMsg::Execute { 
+                contract_addr: pool_address.clone(),
+                msg: to_json_binary(&msg.clone())?, 
+                funds: vec![] };
+
+
             Ok(IbcBasicResponse::new()
                 .add_attribute("method", "swap")
                 .add_attribute("error", err.clone())
+                .add_message(execute)
                 )
         }
     }

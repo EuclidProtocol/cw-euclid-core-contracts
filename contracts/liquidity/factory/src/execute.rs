@@ -16,63 +16,16 @@ pub fn execute_request_pool_creation(
     env: Env,
     info: MessageInfo,
     pair_info: PairInfo,
-    token_1_reserve: Uint128,
-    token_2_reserve: Uint128,
     channel: String,
 ) -> Result<Response, ContractError> {
     // Load the state
     let state = STATE.load(deps.storage)?;
 
-    // Fetch 2 tokens from pair info
-    let token_1 = pair_info.token_1.clone();
-    let token_2 = pair_info.token_2.clone();
 
     let mut msgs: Vec<CosmosMsg> = Vec::new();
-    // For smart contract token, create message to deposit token to Factory
-    if token_1.is_smart() {
-        let msg = token_1.create_transfer_msg(token_1_reserve, env.contract.address.to_string());
-        msgs.push(msg);
-    }
-    // DO same for token 2
-    if token_2.is_smart() {
-        let msg = token_2.create_transfer_msg(token_2_reserve, env.contract.address.to_string());
-        msgs.push(msg);
-    }
+    
 
-    // If native, check funds sent to ensure that the contract has enough funds to create the pool
-    if token_1.is_native() {
-        // If funds empty return error
-        if info.funds.is_empty() {
-            return Err(ContractError::InsufficientDeposit {});
-        }
-        // Check for funds sent with the message
-        let amt = info
-            .funds
-            .iter()
-            .find(|x| x.denom == token_1.get_denom())
-            .unwrap();
-        if amt.amount < token_1_reserve {
-            return Err(ContractError::InsufficientDeposit {});
-        }
-    }
-
-    // Same for token 2
-    if token_2.is_native() {
-        // If funds empty return error
-        if info.funds.is_empty() {
-            return Err(ContractError::InsufficientDeposit {});
-        }
-        // Check for funds sent with the message
-        let amt = info
-            .funds
-            .iter()
-            .find(|x| x.denom == token_2.get_denom())
-            .unwrap();
-        if amt.amount < token_2_reserve {
-            return Err(ContractError::InsufficientDeposit {});
-        }
-    }
-
+    
     // Create pool request id
     let pool_rq_id = format!(
         "{}-{}-{}",
@@ -95,8 +48,6 @@ pub fn execute_request_pool_creation(
         data: to_json_binary(&IbcExecuteMsg::RequestPoolCreation {
             chain_id: state.chain_id.clone(),
             pair_info: pair_info.clone(),
-            token_1_reserve: token_1_reserve.clone(),
-            token_2_reserve: token_2_reserve.clone(),
             pool_rq_id: pool_rq_id.clone(),
         })
         .unwrap(),
@@ -151,3 +102,4 @@ pub fn execute_swap(
         .add_attribute("method", "request_pool_creation")
         .add_message(msg))
 }
+

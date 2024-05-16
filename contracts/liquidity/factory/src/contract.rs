@@ -47,16 +47,12 @@ pub fn execute(
     match msg {
         ExecuteMsg::RequestPoolCreation {
             pair_info,
-            token_1_reserve,
-            token_2_reserve,
             channel,
         } => execute::execute_request_pool_creation(
             deps,
             env,
             info,
             pair_info,
-            token_1_reserve,
-            token_2_reserve,
             channel,
         ),
         ExecuteMsg::ExecuteSwap {

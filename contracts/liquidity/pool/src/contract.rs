@@ -32,54 +32,7 @@ pub fn instantiate(
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let mut msgs = Vec::new();
-    // Check if tokens are smart contract tokens to create transfer message
-    if msg.pair_info.token_1.is_smart() {
-        let msg = msg
-            .pair_info
-            .token_1
-            .create_transfer_msg(msg.pool.reserve_1, env.contract.address.clone().to_string());
-        msgs.push(msg);
-    }
-
-    if msg.pair_info.token_2.is_smart() {
-        let msg = msg
-            .pair_info
-            .token_2
-            .create_transfer_msg(msg.pool.reserve_1, env.contract.address.clone().to_string());
-        msgs.push(msg);
-    }
-
-    // Validate for deposit of native tokens
-    if msg.pair_info.token_1.is_native() {
-        // Query the balance of the contract for the native token
-        let balance = deps
-            .querier
-            .query_balance(
-                env.contract.address.clone(),
-                msg.pair_info.token_1.get_denom(),
-            )
-            .unwrap();
-        // Verify that the balance is greater than the reserve added
-        if balance.amount < msg.pool.reserve_1 {
-            return Err(ContractError::InsufficientDeposit {});
-        }
-    }
-
-    // Same for token 2
-    if msg.pair_info.token_2.is_native() {
-        let balance = deps
-            .querier
-            .query_balance(
-                env.contract.address.clone(),
-                msg.pair_info.token_2.get_denom(),
-            )
-            .unwrap();
-        if balance.amount < msg.pool.reserve_2 {
-            return Err(ContractError::InsufficientDeposit {});
-        }
-    }
-
+   
     // Save the state
     STATE.save(deps.storage, &state)?;
 
@@ -90,7 +43,7 @@ pub fn instantiate(
         .add_attribute("factory_contract", info.sender.clone().to_string())
         .add_attribute("vlp_contract", msg.vlp_contract)
         .add_attribute("chain_id", "chain_id")
-        .add_messages(msgs))
+)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
