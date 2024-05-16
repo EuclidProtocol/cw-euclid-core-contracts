@@ -1,3 +1,5 @@
+use std::vec;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
@@ -7,16 +9,15 @@ use cosmwasm_std::{
     SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    error::{ContractError, Never},
-    pool::{extract_sender, Pool, PoolCreationResponse},
-    token::PairInfo,
+    error::{ContractError, Never}, msgs::pool::CallbackExecuteMsg, pool::{extract_sender, Pool, PoolCreationResponse}, swap::{self, SwapResponse}, token::PairInfo
 };
 use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg};
+use euclid::msgs::pool::ExecuteMsg as PoolExecuteMsg;
 
 use crate::{
-    ack::make_ack_fail,
+    ack::{make_ack_fail, Ack},
     reply::INSTANTIATE_REPLY_ID,
-    state::{CONNECTION_COUNTS, POOL_REQUESTS, STATE, TIMEOUT_COUNTS},
+    state::{CONNECTION_COUNTS, POOL_REQUESTS, STATE, TIMEOUT_COUNTS, VLP_TO_POOL},
 };
 
 use euclid::msgs::pool::InstantiateMsg as PoolInstantiateMsg;
@@ -120,6 +121,14 @@ pub fn ibc_packet_ack(
                 pool_rq_id,
             )
         }
+        IbcExecuteMsg::Swap { chain_id, asset, asset_amount, min_amount_out, channel, swap_id, pool_address } => {
+            // Process acknowledgment for swap
+            let res : AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
+            // Process sender
+            
+            execute_swap_process(res, pool_address.to_string(), swap_id)
+        },
+
         _ => Err(ContractError::Unauthorized {}),
     }
 }
@@ -238,7 +247,6 @@ pub fn execute_pool_creation(
             let sender = extract_sender(pool_rq_id.as_str());
             // Remove pool request from MAP
             POOL_REQUESTS.remove(deps.storage, sender.clone());
-
             Ok(IbcBasicResponse::new()
                 .add_attribute("method", "pool_creation")
                 .add_submessage(msg))
@@ -270,6 +278,46 @@ pub fn execute_pool_creation(
                 .add_attribute("method", "refund_pool_request")
                 .add_attribute("error", err.clone())
                 .add_messages(msgs))
+        }
+    }
+}
+
+
+// Function to process swap acknowledgment
+pub fn execute_swap_process(
+    res: AcknowledgementMsg<SwapResponse>,
+    pool_address: String,
+    swap_id: String
+) -> Result<IbcBasicResponse, ContractError> {
+    // Check whether res is an error or not
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            
+            // Prepare callback to send to pool
+            let callback = CallbackExecuteMsg::CompleteSwap { swap_response: data.clone() };
+            let msg = PoolExecuteMsg::Callback(callback);
+            
+            let execute = WasmMsg::Execute { 
+                contract_addr: pool_address.clone(),
+                msg: to_json_binary(&msg.clone())?, 
+                funds: vec![] };
+
+            Ok(IbcBasicResponse::new()
+                .add_attribute("method", "swap")
+                .add_message(execute)
+            )
+        }
+
+        AcknowledgementMsg::Error(err) => {
+
+            // Prepare error callback to send to pool
+            let callback = CallbackExecuteMsg::RejectSwap { 
+                swap_id: swap_id.clone(), 
+                error: Some(err.clone()) };
+            Ok(IbcBasicResponse::new()
+                .add_attribute("method", "swap")
+                .add_attribute("error", err.clone())
+                )
         }
     }
 }

@@ -8,7 +8,7 @@ use euclid::{
 };
 use euclid_ibc::msg::IbcExecuteMsg;
 
-use crate::state::{POOL_REQUESTS, STATE};
+use crate::state::{POOL_REQUESTS, STATE, VLP_TO_POOL};
 
 // Function to send IBC request to Router in VLS to create a new pool
 pub fn execute_request_pool_creation(
@@ -111,7 +111,7 @@ pub fn execute_request_pool_creation(
         .add_messages(msgs))
 }
 
-// Function to send IBC request to Router in VLS to create a new pool
+// Function to send IBC request to Router in VLS to perform a swap
 pub fn execute_swap(
     deps: DepsMut,
     env: Env,
@@ -126,7 +126,9 @@ pub fn execute_swap(
     let state = STATE.load(deps.storage)?;
 
     let pool_address = info.sender;
+    
 
+    
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
