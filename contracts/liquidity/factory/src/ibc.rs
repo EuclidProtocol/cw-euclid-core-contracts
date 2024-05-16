@@ -205,6 +205,7 @@ pub fn execute_pool_creation(
             // Prepare Instantiate Msg
             let init_msg = PoolInstantiateMsg {
                 vlp_contract: data.vlp_contract.clone(),
+                token_pair: data.token_pair.clone(),
                 pair_info: pair_info.clone(),
                 pool: Pool {
                     chain: state.chain_id.clone(),
@@ -215,29 +216,11 @@ pub fn execute_pool_creation(
                 chain_id: state.chain_id.clone(),
             };
 
-            let mut funds = Vec::new();
-
-            // Check for native assets to add to fund
-            if pair_info.token_1.is_native() {
-                let denom = pair_info.token_1.get_denom();
-                let amount = token_1_reserve.clone();
-                let coin = Coin { denom, amount };
-                funds.push(coin);
-            }
-
-            // Same for tokenm 2
-            if pair_info.token_2.is_native() {
-                let denom = pair_info.token_2.get_denom();
-                let amount = token_2_reserve.clone();
-                let coin = Coin { denom, amount };
-                funds.push(coin);
-            }
-
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                 admin: None,
                 code_id: state.pool_code_id.clone(),
                 msg: to_json_binary(&init_msg).unwrap(),
-                funds: funds.clone(),
+                funds: vec![],
                 label: "pool".to_string(),
             });
 

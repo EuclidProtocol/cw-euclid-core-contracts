@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use vlp::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     write_api! {

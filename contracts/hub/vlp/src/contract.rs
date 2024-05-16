@@ -5,7 +5,7 @@ use cw2::set_contract_version;
 
 
 use euclid::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{State, STATE, POOLS};
 
 use euclid::pool::MINIMUM_LIQUIDITY;
@@ -64,8 +64,8 @@ pub mod execute {
 
 
     use cosmwasm_std::{Decimal256, IbcReceiveResponse, Uint128};
-    use euclid::{pool::Pool, token::Token};
-    use euclid_ibc::msg::{AcknowledgementMsg, LiquidityResponse, SwapResponse};
+    use euclid::{pool::{LiquidityResponse, Pool}, swap::SwapResponse, token::Token};
+    use euclid_ibc::msg::AcknowledgementMsg;
 
     use crate::{ack::make_ack_success, state::{self}};
 
@@ -364,7 +364,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 pub mod query {
     use euclid::token::Token;
 
-    use crate::msg::{GetLiquidityResponse, GetSwapResponse, LiquidityInfoResponse};
+    use euclid::msgs::vlp::{GetLiquidityResponse, GetSwapResponse, LiquidityInfoResponse};
 
     use super::*;
 
