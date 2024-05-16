@@ -1,7 +1,7 @@
 pub mod contract;
-pub mod integration_tests;
-pub mod msg;
+pub mod execute;
+pub mod query;
 pub mod state;
-pub mod ack;
-pub mod ibc;
 
+pub mod integration_tests;
+pub mod test;

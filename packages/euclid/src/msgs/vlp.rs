@@ -1,6 +1,10 @@
+use crate::{
+    fee::Fee,
+    pool::Pool,
+    token::{Pair, Token},
+};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
-use euclid::{fee::Fee, pool::Pool, token::{Pair, Token}};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -13,13 +17,8 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     // Registers a new pool from a new chain to an already existing VLP
-    RegisterPool {
-        pool: Pool,
-    },
-
-    
-
-        /*
+    RegisterPool { pool: Pool },
+    /*
 
     // Update the fee for the VLP
     UpdateFee {
@@ -36,10 +35,7 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(GetSwapResponse)]
-    SimulateSwap {
-        asset: Token,
-        asset_amount: Uint128,
-    },
+    SimulateSwap { asset: Token, asset_amount: Uint128 },
     // Queries the total reserve of the pair in the VLP
     #[returns(GetLiquidityResponse)]
     Liquidity {},
@@ -54,9 +50,7 @@ pub enum QueryMsg {
 
     // Queries the pool information for a chain id
     #[returns(PoolResponse)]
-    Pool {
-        chain_id: String,
-    },
+    Pool { chain_id: String },
 }
 
 // We define a custom struct for each query response
@@ -71,7 +65,6 @@ pub struct GetLiquidityResponse {
     pub token_2_reserve: Uint128,
 }
 
-
 #[cw_serde]
 pub struct LiquidityInfoResponse {
     pub pair: Pair,
@@ -81,9 +74,8 @@ pub struct LiquidityInfoResponse {
 
 #[cw_serde]
 pub struct FeeResponse {
-    pub fee: Fee
+    pub fee: Fee,
 }
-
 
 #[cw_serde]
 pub struct PoolResponse {

@@ -398,6 +398,7 @@ dependencies = [
  "cosmwasm-std",
  "cw-storage-plus 0.15.1",
  "cw-utils",
+ "cw20",
  "itertools 0.10.5",
  "thiserror",
 ]

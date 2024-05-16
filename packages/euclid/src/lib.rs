@@ -4,3 +4,4 @@ pub mod fee;
 pub mod error;
 pub mod swap;
 pub mod cw20;
+pub mod msgs;
