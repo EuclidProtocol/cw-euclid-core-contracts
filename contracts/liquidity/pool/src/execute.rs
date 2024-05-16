@@ -349,6 +349,7 @@ pub fn add_liquidity_request(
             token_2_liquidity,
             slippage_tolerance,
             liquidity_id: liquidity_id.clone(),
+            pool_address: env.contract.address.clone().to_string(),
         })
         .unwrap(),
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),

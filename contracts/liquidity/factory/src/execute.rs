@@ -2,9 +2,7 @@ use cosmwasm_std::{
     to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, Uint128,
 };
 use euclid::{
-    error::ContractError,
-    pool::PoolRequest,
-    token::{PairInfo, Token},
+    error::ContractError, msgs::pool, pool::PoolRequest, token::{PairInfo, Token}
 };
 use euclid_ibc::msg::IbcExecuteMsg;
 
@@ -103,3 +101,46 @@ pub fn execute_swap(
         .add_message(msg))
 }
 
+// Function to send IBC request to Router in VLS to add liquidity to a pool
+pub fn execute_add_liquidity(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token_1_liquidity: Uint128,
+    token_2_liquidity: Uint128,
+    slippage_tolerance: u64,
+    channel: String,
+) -> Result<Response, ContractError> {
+    // Load the state
+    let state = STATE.load(deps.storage)?;
+
+    let pool_address = info.sender.clone();
+    
+
+    
+    // Create IBC packet to send to Router
+    let ibc_packet = IbcMsg::SendPacket {
+        channel_id: channel.clone(),
+        data: to_json_binary(&IbcExecuteMsg::AddLiquidity {
+            chain_id: state.chain_id,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+            liquidity_id: format!(
+                "{}-{}-{}",
+               pool_address.to_string(),
+                env.block.height.clone(),
+                env.block.time.to_string()
+            ),
+            pool_address: pool_address.clone().to_string()
+        })
+        .unwrap(),
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
+    };
+
+    let msg = CosmosMsg::Ibc(ibc_packet);
+
+    Ok(Response::new()
+        .add_attribute("method", "request_pool_creation")
+        .add_message(msg))
+}

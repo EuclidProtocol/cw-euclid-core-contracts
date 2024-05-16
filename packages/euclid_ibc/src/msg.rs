@@ -12,6 +12,7 @@ pub enum IbcExecuteMsg {
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         liquidity_id: String,
+        pool_address: String
     },
 
     // Remove liquidity from a chain pool to VLP
@@ -68,3 +69,4 @@ impl<S> AcknowledgementMsg<S> {
         }
     }
 }
+

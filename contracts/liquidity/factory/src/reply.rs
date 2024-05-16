@@ -25,7 +25,7 @@ pub fn on_pool_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
     let data = match msg.result.clone() {
         SubMsgResult::Err(err) => AcknowledgementMsg::Error(err),
         SubMsgResult::Ok(..) => {
-            let instantiate_data = parse_reply_instantiate_data(msg).unwrap();
+            let instantiate_data: cw0::MsgInstantiateContractResponse = parse_reply_instantiate_data(msg).unwrap();
             let pool_msg: PoolInstantiateMsg = from_json(instantiate_data.data.unwrap()).unwrap();
 
             // Update the router contract address in the state

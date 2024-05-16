@@ -76,7 +76,15 @@ pub fn execute(
             token_2_liquidity,
             slippage_tolerance,
             channel,
-        } => Err(ContractError::Unauthorized {}),
+        } => execute::execute_add_liquidity(
+            deps,
+            env,
+            info,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+            channel,
+        ),
     }
 }
 
