@@ -36,4 +36,12 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 #[derive(QueryResponses)]
-pub enum QueryMsg {}
+pub enum QueryMsg {
+    #[returns(GetPoolResponse)]
+    GetPool { vlp: String },
+}
+
+#[cw_serde]
+pub struct GetPoolResponse {
+    pub pool: String,
+}

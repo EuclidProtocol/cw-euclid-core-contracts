@@ -7,7 +7,7 @@ use euclid::error::ContractError;
 
 use crate::reply::INSTANTIATE_REPLY_ID;
 use crate::state::{State, STATE};
-use crate::{execute, reply};
+use crate::{execute, query, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -83,8 +83,10 @@ pub fn execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(_deps: Deps, _env: Env, _msg: QueryMsg) -> StdResult<Binary> {
-    unimplemented!()
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::GetPool { vlp } => query::get_pool(deps, vlp),
+    }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {

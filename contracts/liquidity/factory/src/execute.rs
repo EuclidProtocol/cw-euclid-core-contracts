@@ -3,7 +3,7 @@ use cosmwasm_std::{
 };
 use euclid::{
     error::ContractError,
-    pool::{Pool, PoolRequest},
+    pool::PoolRequest,
     token::{PairInfo, Token},
 };
 use euclid_ibc::msg::IbcExecuteMsg;
