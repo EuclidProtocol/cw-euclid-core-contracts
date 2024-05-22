@@ -1,7 +1,11 @@
+use crate::{
+    pool::{LiquidityResponse, Pool},
+    swap::{SwapInfo, SwapResponse},
+    token::{Pair, PairInfo, TokenInfo},
+};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
-use euclid::{pool::Pool, swap::SwapInfo, token::{Pair, PairInfo, TokenInfo}};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -15,11 +19,10 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     ExecuteSwap {
-        asset: TokenInfo, 
+        asset: TokenInfo,
         asset_amount: Uint128,
         min_amount_out: Uint128,
         channel: String,
-
     },
 
     // Add Liquidity Request to the VLP
@@ -30,17 +33,41 @@ pub enum ExecuteMsg {
         channel: String,
     },
 
-
     // Recieve CW20 TOKENS structure
-    Receive (Cw20ReceiveMsg),
+    Receive(Cw20ReceiveMsg),
+
+    Callback(CallbackExecuteMsg),
+}
+
+#[cw_serde]
+pub enum CallbackExecuteMsg {
+    CompleteSwap {
+        swap_response: SwapResponse,
+    },
+    RejectSwap {
+        swap_id: String,
+        error: Option<String>,
+    },
+
+    // Add Liquidity Request to the VLP
+    CompleteAddLiquidity {
+        liquidity_response: LiquidityResponse,
+        liquidity_id: String,
+    },
+    // Add Liquidity Request to the VLP
+    RejectAddLiquidity {
+        liquidity_id: String,
+        error: Option<String>,
+    },
 }
 
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(GetPairInfoResponse)]
-    PairInfo { },
-    
+    PairInfo {},
+    #[returns(GetVLPResponse)]
+    GetVlp {},
     // Fetch pending swaps with pagination for a user
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
@@ -48,9 +75,7 @@ pub enum QueryMsg {
         lower_limit: u32,
         upper_limit: u32,
     },
-    }
-
-
+}
 
 // CW20 Hook Msg
 #[cw_serde]
@@ -60,13 +85,16 @@ pub enum Cw20HookMsg {
         min_amount_out: Uint128,
         channel: String,
     },
-
-    
 }
 
 #[cw_serde]
 pub struct GetPairInfoResponse {
     pub pair_info: PairInfo,
+}
+
+#[cw_serde]
+pub struct GetVLPResponse {
+    pub vlp: String,
 }
 
 #[cw_serde]

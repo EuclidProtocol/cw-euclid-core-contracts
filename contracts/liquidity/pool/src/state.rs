@@ -1,6 +1,8 @@
 use cosmwasm_schema::cw_serde;
-use euclid::{swap::{LiquidityTxInfo, SwapInfo}, token::{Pair, PairInfo}};
-
+use euclid::{
+    swap::{LiquidityTxInfo, SwapInfo},
+    token::{Pair, PairInfo},
+};
 
 use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map};
@@ -16,10 +18,10 @@ pub struct State {
     // Token Pair Info
     pub pair_info: PairInfo,
     // Total cumulative reserves of token_1 in the pool
-    // DOES NOT AFFECT SWAP CALCULATIONS    
+    // DOES NOT AFFECT SWAP CALCULATIONS
     pub reserve_1: Uint128,
     // Total cumulative reserves of token_2 in the pool
-    // DOES NOT AFFECT SWAP CALCULATIONS    
+    // DOES NOT AFFECT SWAP CALCULATIONS
     pub reserve_2: Uint128,
     // Store chain Identifier (from factory)
     // The chain IDENTIFIER 'chain_id' does not need to match the chain_id of the chain the contracts are deployed on
@@ -28,45 +30,40 @@ pub struct State {
 
 pub const STATE: Item<State> = Item::new("state");
 
-
-
-/// (channel_id) -> count. Reset on channel closure.
-pub const CONNECTION_COUNTS: Map<String, u32> = Map::new("connection_counts");
-/// (channel_id) -> timeout_count. Reset on channel closure.
-pub const TIMEOUT_COUNTS: Map<String, u32> = Map::new("timeout_count");
-
-// Map for pending swaps for user 
+// Map for pending swaps for user
 pub const PENDING_SWAPS: Map<String, Vec<SwapInfo>> = Map::new("pending_swaps");
 
 // Map for PENDING liquidity transactions
 pub const PENDING_LIQUIDITY: Map<String, Vec<LiquidityTxInfo>> = Map::new("pending_liquidity");
 
-
 // Helper function to iterate through vector in PendingSwap map to find a certain swap_id
 pub fn find_swap_id(swap_id: &str, pending_swaps: Vec<SwapInfo>) -> bool {
     for swap in pending_swaps {
         if swap.swap_id == swap_id {
-            return true
+            return true;
         }
     }
-    return false
+    false
 }
 
 // Returns SwapInfo for a specific SwapID
 pub fn get_swap_info(swap_id: &str, pending_swaps: Vec<SwapInfo>) -> SwapInfo {
     for swap in pending_swaps {
         if swap.swap_id == swap_id {
-            return swap
+            return swap;
         }
     }
     panic!("Swap ID not found")
 }
 
 // Return LiquidityInfo for a specific liquidity_id
-pub fn get_liquidity_info(liquidity_id: &str, pending_liquidity: Vec<LiquidityTxInfo>) -> LiquidityTxInfo {
+pub fn get_liquidity_info(
+    liquidity_id: &str,
+    pending_liquidity: Vec<LiquidityTxInfo>,
+) -> LiquidityTxInfo {
     for liquidity in pending_liquidity {
         if liquidity.liquidity_id == liquidity_id {
-            return liquidity
+            return liquidity;
         }
     }
     panic!("Liquidity ID not found")

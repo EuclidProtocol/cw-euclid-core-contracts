@@ -7,7 +7,9 @@ use cosmwasm_std::{
 };
 
 use crate::{
-    ack::make_ack_fail, contract::execute, state::{CONNECTION_COUNTS, TIMEOUT_COUNTS}
+    ack::make_ack_fail,
+    execute,
+    state::{CONNECTION_COUNTS, TIMEOUT_COUNTS},
 };
 use euclid::error::{ContractError, Never};
 use euclid_ibc::msg::IbcExecuteMsg;
@@ -23,7 +25,7 @@ pub fn ibc_channel_open(
 ) -> Result<IbcChannelOpenResponse, ContractError> {
     validate_order_and_version(msg.channel(), msg.counterparty_version())?;
     Ok(None)
-}   
+}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_channel_connect(
@@ -76,19 +78,45 @@ pub fn ibc_packet_receive(
 
 pub fn do_ibc_packet_receive(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-
-    let msg: IbcExecuteMsg = from_json(&msg.packet.data)?;
+    let msg: IbcExecuteMsg = from_json(msg.packet.data)?;
 
     match msg {
-        IbcExecuteMsg::AddLiquidity {chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance, liquidity_id: _} => execute::add_liquidity(deps, chain_id, token_1_liquidity, token_2_liquidity, slippage_tolerance),
-        IbcExecuteMsg::RemoveLiquidity { chain_id, lp_allocation } => execute::remove_liquidity(deps, chain_id, lp_allocation),
-        IbcExecuteMsg::Swap { chain_id, asset, asset_amount, min_amount_out, channel: _, swap_id } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_amount_out, swap_id),
+        IbcExecuteMsg::AddLiquidity {
+            chain_id,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+            liquidity_id: _,
+            ..
+        } => execute::add_liquidity(
+            deps,
+            chain_id,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+        ),
+        IbcExecuteMsg::RemoveLiquidity {
+            chain_id,
+            lp_allocation,
+        } => execute::remove_liquidity(deps, chain_id, lp_allocation),
+        IbcExecuteMsg::Swap {
+            chain_id,
+            asset,
+            asset_amount,
+            min_amount_out,
+            swap_id,
+            ..
+        } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_amount_out, swap_id),
+        IbcExecuteMsg::RequestPoolCreation {
+            pair_info,
+            chain,
+            pool_rq_id: _,
+        } => execute::register_pool(deps, env, chain, pair_info),
     }
 }
-
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_ack(

@@ -27,7 +27,10 @@ pub enum ContractError {
     ZeroAssetAmount {},
 
     #[error("Slippage has not been tolerated for set amount, amount: {amount}, min_amount_out: {min_amount_out}")]
-    SlippageExceeded {amount: Uint128, min_amount_out: Uint128},
+    SlippageExceeded {
+        amount: Uint128,
+        min_amount_out: Uint128,
+    },
 
     #[error("Invalid Liquidity Ratio")]
     InvalidLiquidityRatio {},
@@ -50,4 +53,6 @@ pub enum ContractError {
     #[error("Slippage has been exceeded when providing liquidity.")]
     LiquiditySlippageExceeded {},
 
+    #[error("Pool Instantiate Failed {err}")]
+    PoolInstantiateFailed { err: String },
 }
