@@ -1,11 +1,11 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, StdResult};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
 use euclid::error::ContractError;
 // use cw2::set_contract_version;
 
-use crate::query::{query_connection_count, query_pool_address, query_state, query_timeout_count};
+use crate::query::{query_all_pools, query_state};
 use crate::reply::INSTANTIATE_REPLY_ID;
 use crate::state::{State, STATE};
 use crate::{execute, query, reply};
@@ -84,13 +84,11 @@ pub fn execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetPool { vlp } => query::get_pool(deps, vlp),
         QueryMsg::GetState {} => query_state(deps),
-        QueryMsg::GetConnectionCount { channel_id } => query_connection_count(deps, channel_id),
-        QueryMsg::GetTimeoutCount { channel_id } => query_timeout_count(deps, channel_id),
-        QueryMsg::GetPoolAddress { vlp_address } => query_pool_address(deps, vlp_address),
+        QueryMsg::GetAllPools {} => query_all_pools(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

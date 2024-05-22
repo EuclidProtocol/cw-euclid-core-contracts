@@ -1,33 +1,25 @@
-use cosmwasm_std::{to_json_binary, Binary, Deps, StdResult};
-use euclid::msgs::factory::GetPoolResponse;
+use cosmwasm_std::{to_json_binary, Binary, Deps};
+use euclid::{
+    error::ContractError,
+    msgs::factory::{AllPoolsResponse, GetPoolResponse},
+};
 
-use crate::state::{CONNECTION_COUNTS, STATE, TIMEOUT_COUNTS, VLP_TO_POOL};
+use crate::state::{STATE, VLP_TO_POOL};
 
 // Returns the Pair Info of the Pair in the pool
-pub fn get_pool(deps: Deps, vlp: String) -> StdResult<Binary> {
+pub fn get_pool(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
     let pool = VLP_TO_POOL.load(deps.storage, vlp)?;
-    to_json_binary(&GetPoolResponse { pool })
+    Ok(to_json_binary(&GetPoolResponse { pool })?)
 }
-pub fn query_state(deps: Deps) -> StdResult<Binary> {
+pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
-    to_json_binary(&state)
+    Ok(to_json_binary(&state)?)
 }
+pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
+    let pools: Vec<String> = VLP_TO_POOL
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .map(|item| item.map(|(_, pool_address)| pool_address))
+        .collect::<Result<_, _>>()?;
 
-pub fn query_connection_count(deps: Deps, channel_id: String) -> StdResult<Binary> {
-    let count = CONNECTION_COUNTS
-        .may_load(deps.storage, channel_id)?
-        .unwrap_or(0);
-    to_json_binary(&count)
-}
-
-pub fn query_timeout_count(deps: Deps, channel_id: String) -> StdResult<Binary> {
-    let count = TIMEOUT_COUNTS
-        .may_load(deps.storage, channel_id)?
-        .unwrap_or(0);
-    to_json_binary(&count)
-}
-
-pub fn query_pool_address(deps: Deps, vlp_address: String) -> StdResult<Binary> {
-    let pool_address = VLP_TO_POOL.load(deps.storage, vlp_address)?;
-    to_json_binary(&pool_address)
+    to_json_binary(&AllPoolsResponse { pools }).map_err(Into::into)
 }

@@ -82,9 +82,6 @@ pub enum QueryMsg {
         upper_limit: u32,
     },
 
-    #[returns(GetTokenPairsResponse)]
-    TokenPairs {},
-
     #[returns(GetPoolReservesResponse)]
     PoolReserves {},
 }
@@ -116,11 +113,6 @@ pub struct GetPendingSwapsResponse {
 #[cw_serde]
 pub struct GetPendingLiquidityResponse {
     pub pending_liquidity: Vec<LiquidityTxInfo>,
-}
-
-#[cw_serde]
-pub struct GetTokenPairsResponse {
-    pub token_pairs: Vec<Pair>,
 }
 
 #[cw_serde]

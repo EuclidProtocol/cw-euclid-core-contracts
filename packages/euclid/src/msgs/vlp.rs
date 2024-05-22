@@ -40,10 +40,6 @@ pub enum QueryMsg {
     #[returns(GetLiquidityResponse)]
     Liquidity {},
 
-    // Queries the total reserve of the pair with info in the VLP
-    #[returns(LiquidityInfoResponse)]
-    LiquidityInfo {},
-
     // Queries the fee of this specific pool
     #[returns(FeeResponse)]
     Fee {},
@@ -52,11 +48,6 @@ pub enum QueryMsg {
     #[returns(PoolResponse)]
     Pool { chain_id: String },
     // Query to get the total number of LP tokens in the VLP
-    #[returns(TotalLPTokensResponse)]
-    TotalLPTokens {},
-    // Query to get the total reserves of token 1 and token 2
-    #[returns(TotalReservesResponse)]
-    TotalReserves {},
 }
 
 // We define a custom struct for each query response
@@ -67,17 +58,18 @@ pub struct GetSwapResponse {
 
 #[cw_serde]
 pub struct GetLiquidityResponse {
+    pub pair: PairInfo,
     pub token_1_reserve: Uint128,
     pub token_2_reserve: Uint128,
+    pub total_lp_tokens: Uint128,
 }
 
 #[cw_serde]
-pub struct LiquidityInfoResponse {
-    pub pair: Pair,
-    pub token_1_reserve: Uint128,
-    pub token_2_reserve: Uint128,
-}
 
+pub struct PairInfo {
+    pub token_1: Token,
+    pub token_2: Token,
+}
 #[cw_serde]
 pub struct FeeResponse {
     pub fee: Fee,
@@ -86,14 +78,4 @@ pub struct FeeResponse {
 #[cw_serde]
 pub struct PoolResponse {
     pub pool: Pool,
-}
-
-#[cw_serde]
-pub struct TotalLPTokensResponse {
-    pub total_lp_tokens: Uint128,
-}
-#[cw_serde]
-pub struct TotalReservesResponse {
-    pub token_1_reserve: Uint128,
-    pub token_2_reserve: Uint128,
 }

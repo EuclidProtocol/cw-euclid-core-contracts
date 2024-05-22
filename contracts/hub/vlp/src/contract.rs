@@ -3,12 +3,11 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
 use cw2::set_contract_version;
 
-use crate::query::{self, query_total_lp_tokens, query_total_reserves};
 use crate::state::{State, POOLS, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
-use self::query::{query_liquidity, query_pool, query_simulate_swap};
+use crate::query::{self, query_liquidity, query_pool, query_simulate_swap};
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -59,10 +58,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             asset_amount,
         } => query_simulate_swap(deps, asset, asset_amount),
         QueryMsg::Liquidity {} => query_liquidity(deps),
-        QueryMsg::LiquidityInfo {} => query::query_liquidity_info(deps),
         QueryMsg::Fee {} => query::query_fee(deps),
         QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),
-        QueryMsg::TotalLPTokens {} => query_total_lp_tokens(deps),
-        QueryMsg::TotalReserves {} => query_total_reserves(deps),
     }
 }

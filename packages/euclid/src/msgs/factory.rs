@@ -41,18 +41,9 @@ pub enum QueryMsg {
     GetPool { vlp: String },
     #[returns(StateResponse)]
     GetState {},
-
-    // Query connection counts for a given channel_id
-    #[returns(ConnectionCountResponse)]
-    GetConnectionCount { channel_id: String },
-
-    // Query timeout counts for a given channel_id
-    #[returns(TimeoutCountResponse)]
-    GetTimeoutCount { channel_id: String },
-
-    // Query the pool address for a given VLP address
-    #[returns(PoolAddressResponse)]
-    GetPoolAddress { vlp_address: String },
+    // Query to get all pools in the factory
+    #[returns(AllPoolsResponse)]
+    GetAllPools {},
 }
 
 #[cw_serde]
@@ -67,18 +58,7 @@ pub struct StateResponse {
     pub admin: String,
     pub pool_code_id: u64,
 }
-
 #[cw_serde]
-pub struct ConnectionCountResponse {
-    pub count: u32,
-}
-
-#[cw_serde]
-pub struct TimeoutCountResponse {
-    pub count: u32,
-}
-
-#[cw_serde]
-pub struct PoolAddressResponse {
-    pub pool_address: String,
+pub struct AllPoolsResponse {
+    pub pools: Vec<String>, // Assuming pool addresses are strings
 }
