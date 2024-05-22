@@ -5,6 +5,7 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 // use cw2::set_contract_version;
 
+use crate::query::{query_connection_count, query_pool_address, query_state, query_timeout_count};
 use crate::reply::INSTANTIATE_REPLY_ID;
 use crate::state::{State, STATE};
 use crate::{execute, query, reply};
@@ -86,6 +87,10 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetPool { vlp } => query::get_pool(deps, vlp),
+        QueryMsg::GetState {} => query_state(deps),
+        QueryMsg::GetConnectionCount { channel_id } => query_connection_count(deps, channel_id),
+        QueryMsg::GetTimeoutCount { channel_id } => query_timeout_count(deps, channel_id),
+        QueryMsg::GetPoolAddress { vlp_address } => query_pool_address(deps, vlp_address),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

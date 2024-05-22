@@ -3,7 +3,10 @@ use euclid::error::ContractError;
 use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::token::Token;
 
-use euclid::msgs::vlp::{GetLiquidityResponse, GetSwapResponse, LiquidityInfoResponse};
+use euclid::msgs::vlp::{
+    GetLiquidityResponse, GetSwapResponse, LiquidityInfoResponse, TotalLPTokensResponse,
+    TotalReservesResponse,
+};
 
 use crate::state::{POOLS, STATE};
 
@@ -136,4 +139,19 @@ pub fn assert_slippage_tolerance(
         return false;
     }
     true
+}
+
+pub fn query_total_lp_tokens(deps: Deps) -> Result<Binary, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    Ok(to_json_binary(&TotalLPTokensResponse {
+        total_lp_tokens: state.total_lp_tokens,
+    })?)
+}
+
+pub fn query_total_reserves(deps: Deps) -> Result<Binary, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    Ok(to_json_binary(&TotalReservesResponse {
+        token_1_reserve: state.total_reserve_1,
+        token_2_reserve: state.total_reserve_2,
+    })?)
 }

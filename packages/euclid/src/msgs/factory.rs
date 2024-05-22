@@ -39,9 +39,46 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(GetPoolResponse)]
     GetPool { vlp: String },
+    #[returns(StateResponse)]
+    GetState {},
+
+    // Query connection counts for a given channel_id
+    #[returns(ConnectionCountResponse)]
+    GetConnectionCount { channel_id: String },
+
+    // Query timeout counts for a given channel_id
+    #[returns(TimeoutCountResponse)]
+    GetTimeoutCount { channel_id: String },
+
+    // Query the pool address for a given VLP address
+    #[returns(PoolAddressResponse)]
+    GetPoolAddress { vlp_address: String },
 }
 
 #[cw_serde]
 pub struct GetPoolResponse {
     pub pool: String,
+}
+// We define a custom struct for each query response
+#[cw_serde]
+pub struct StateResponse {
+    pub chain_id: String,
+    pub router_contract: String,
+    pub admin: String,
+    pub pool_code_id: u64,
+}
+
+#[cw_serde]
+pub struct ConnectionCountResponse {
+    pub count: u32,
+}
+
+#[cw_serde]
+pub struct TimeoutCountResponse {
+    pub count: u32,
+}
+
+#[cw_serde]
+pub struct PoolAddressResponse {
+    pub pool_address: String,
 }

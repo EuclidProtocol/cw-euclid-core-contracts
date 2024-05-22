@@ -51,6 +51,12 @@ pub enum QueryMsg {
     // Queries the pool information for a chain id
     #[returns(PoolResponse)]
     Pool { chain_id: String },
+    // Query to get the total number of LP tokens in the VLP
+    #[returns(TotalLPTokensResponse)]
+    TotalLPTokens {},
+    // Query to get the total reserves of token 1 and token 2
+    #[returns(TotalReservesResponse)]
+    TotalReserves {},
 }
 
 // We define a custom struct for each query response
@@ -80,4 +86,14 @@ pub struct FeeResponse {
 #[cw_serde]
 pub struct PoolResponse {
     pub pool: Pool,
+}
+
+#[cw_serde]
+pub struct TotalLPTokensResponse {
+    pub total_lp_tokens: Uint128,
+}
+#[cw_serde]
+pub struct TotalReservesResponse {
+    pub token_1_reserve: Uint128,
+    pub token_2_reserve: Uint128,
 }

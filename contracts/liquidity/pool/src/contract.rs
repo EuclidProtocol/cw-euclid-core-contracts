@@ -130,5 +130,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             upper_limit,
             lower_limit,
         } => query::pending_swaps(deps, user, lower_limit, upper_limit),
+        QueryMsg::PendingLiquidity {
+            user,
+            lower_limit,
+            upper_limit,
+        } => query::pending_liquidity(deps, user, lower_limit, upper_limit),
+        QueryMsg::TokenPairs {} => query::token_pairs(deps),
+        QueryMsg::PoolReserves {} => query::pool_reserves(deps),
     }
 }
