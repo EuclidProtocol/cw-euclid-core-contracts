@@ -1,6 +1,6 @@
 use crate::{
     pool::{LiquidityResponse, Pool},
-    swap::{SwapInfo, SwapResponse},
+    swap::{LiquidityTxInfo, SwapInfo, SwapResponse},
     token::{Pair, PairInfo, TokenInfo},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
@@ -75,6 +75,15 @@ pub enum QueryMsg {
         lower_limit: u32,
         upper_limit: u32,
     },
+    #[returns(GetPendingLiquidityResponse)]
+    PendingLiquidity {
+        user: String,
+        lower_limit: u32,
+        upper_limit: u32,
+    },
+
+    #[returns(GetPoolReservesResponse)]
+    PoolReserves {},
 }
 
 // CW20 Hook Msg
@@ -100,4 +109,14 @@ pub struct GetVLPResponse {
 #[cw_serde]
 pub struct GetPendingSwapsResponse {
     pub pending_swaps: Vec<SwapInfo>,
+}
+#[cw_serde]
+pub struct GetPendingLiquidityResponse {
+    pub pending_liquidity: Vec<LiquidityTxInfo>,
+}
+
+#[cw_serde]
+pub struct GetPoolReservesResponse {
+    pub reserve_1: Uint128,
+    pub reserve_2: Uint128,
 }

@@ -16,7 +16,6 @@ pub struct State {
     pub pool_code_id: u64,
 }
 
-
 pub const STATE: Item<State> = Item::new("state");
 
 /// (channel_id) -> count. Reset on channel closure.

@@ -1,10 +1,11 @@
-
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
 use euclid::{
-    fee::Fee, pool::Pool, token::{Pair, Token}
-    };
+    fee::Fee,
+    pool::Pool,
+    token::{Pair, Token},
+};
 
 #[cw_serde]
 pub struct State {
@@ -12,10 +13,10 @@ pub struct State {
     pub pair: Pair,
     // Router Contract
     pub router: String,
-    // Fee per swap for each transaction 
+    // Fee per swap for each transaction
     pub fee: Fee,
     // The last timestamp where the balances for each token have been updated
-    pub last_updated: u64, 
+    pub last_updated: u64,
     // Total cumulative reserves of token_1
     pub total_reserve_1: Uint128,
     // Total cumulative reserves of token_2
@@ -23,7 +24,6 @@ pub struct State {
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
 }
-
 
 pub const STATE: Item<State> = Item::new("state");
 

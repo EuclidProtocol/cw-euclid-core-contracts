@@ -39,9 +39,26 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(GetPoolResponse)]
     GetPool { vlp: String },
+    #[returns(StateResponse)]
+    GetState {},
+    // Query to get all pools in the factory
+    #[returns(AllPoolsResponse)]
+    GetAllPools {},
 }
 
 #[cw_serde]
 pub struct GetPoolResponse {
     pub pool: String,
+}
+// We define a custom struct for each query response
+#[cw_serde]
+pub struct StateResponse {
+    pub chain_id: String,
+    pub router_contract: String,
+    pub admin: String,
+    pub pool_code_id: u64,
+}
+#[cw_serde]
+pub struct AllPoolsResponse {
+    pub pools: Vec<String>, // Assuming pool addresses are strings
 }

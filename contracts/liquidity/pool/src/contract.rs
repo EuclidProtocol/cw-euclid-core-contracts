@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
 use crate::state::{State, STATE};
@@ -121,7 +121,7 @@ fn handle_callback_execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::PairInfo {} => query::pair_info(deps),
         QueryMsg::GetVlp {} => query::get_vlp(deps),
@@ -130,5 +130,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             upper_limit,
             lower_limit,
         } => query::pending_swaps(deps, user, lower_limit, upper_limit),
+        QueryMsg::PendingLiquidity {
+            user,
+            lower_limit,
+            upper_limit,
+        } => query::pending_liquidity(deps, user, lower_limit, upper_limit),
+        QueryMsg::PoolReserves {} => query::pool_reserves(deps),
     }
 }

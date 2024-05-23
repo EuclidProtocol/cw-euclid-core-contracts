@@ -10,7 +10,7 @@ use euclid::{
     swap::{extract_sender, LiquidityTxInfo, SwapInfo, SwapResponse},
     token::TokenInfo,
 };
-use euclid_ibc::msg::{self, IbcExecuteMsg};
+use euclid_ibc::msg::IbcExecuteMsg;
 
 use crate::state::{get_liquidity_info, get_swap_info, PENDING_LIQUIDITY, PENDING_SWAPS, STATE};
 
@@ -117,7 +117,6 @@ pub fn execute_swap_request(
         .add_attribute("method", "execute_swap_request")
         .add_message(msg))
 }
-
 
 // Function execute_swap that routes the swap request to the appropriate function
 pub fn execute_complete_swap(

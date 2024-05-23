@@ -3,7 +3,7 @@ use euclid::error::ContractError;
 use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::token::Token;
 
-use euclid::msgs::vlp::{GetLiquidityResponse, GetSwapResponse, LiquidityInfoResponse};
+use euclid::msgs::vlp::{GetLiquidityResponse, GetSwapResponse, PairInfo};
 
 use crate::state::{POOLS, STATE};
 
@@ -58,21 +58,14 @@ pub fn query_simulate_swap(
 pub fn query_liquidity(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&GetLiquidityResponse {
+        pair: PairInfo {
+            token_1: state.pair.token_1.clone(),
+            token_2: state.pair.token_2.clone(),
+        },
         token_1_reserve: state.total_reserve_1,
         token_2_reserve: state.total_reserve_2,
-    })
-    .unwrap())
-}
-
-// Function to query the total liquidity with pair information
-pub fn query_liquidity_info(deps: Deps) -> Result<Binary, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    Ok(to_json_binary(&LiquidityInfoResponse {
-        pair: state.pair,
-        token_1_reserve: state.total_reserve_1,
-        token_2_reserve: state.total_reserve_2,
-    })
-    .unwrap())
+        total_lp_tokens: state.total_lp_tokens,
+    })?)
 }
 
 // Function to query fee of the contract
