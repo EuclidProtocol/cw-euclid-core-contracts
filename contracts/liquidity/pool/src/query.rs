@@ -2,7 +2,8 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, Order};
 use euclid::{
     error::ContractError,
     msgs::pool::{
-        GetPairInfoResponse, GetPendingLiquidityResponse, GetPendingSwapsResponse, GetVLPResponse,
+        GetPairInfoResponse, GetPendingLiquidityResponse, GetPendingSwapsResponse,
+        GetPoolReservesResponse, GetVLPResponse,
     },
 };
 
@@ -62,6 +63,8 @@ pub fn pending_liquidity(
 // Returns the current reserves of tokens in the pool
 pub fn pool_reserves(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
-    let reserves = (state.reserve_1, state.reserve_2);
-    Ok(to_json_binary(&reserves)?)
+    Ok(to_json_binary(&GetPoolReservesResponse {
+        reserve_1: state.reserve_1,
+        reserve_2: state.reserve_2,
+    })?)
 }

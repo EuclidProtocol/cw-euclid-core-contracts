@@ -3,7 +3,7 @@ use euclid::error::ContractError;
 use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::token::Token;
 
-use euclid::msgs::vlp::{GetLiquidityResponse, GetSwapResponse, PairInfo};
+use euclid::msgs::vlp::{AllPoolsResponse, GetLiquidityResponse, GetSwapResponse, PairInfo};
 
 use crate::state::{POOLS, STATE};
 
@@ -79,7 +79,15 @@ pub fn query_pool(deps: Deps, chain_id: String) -> Result<Binary, ContractError>
     let pool = POOLS.load(deps.storage, &chain_id)?;
     Ok(to_json_binary(&pool).unwrap())
 }
+// Function to query all Euclid Pool Information
+pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
+    let pools: Vec<String> = POOLS
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .map(|item| item.map(|(_, pool)| pool.chain.clone()))
+        .collect::<Result<Vec<String>, _>>()?;
 
+    Ok(to_json_binary(&AllPoolsResponse { pools })?)
+}
 // Function to calculate the asset to be recieved after a swap
 pub fn calculate_swap(swap_amount: Uint128, reserve_in: Uint128, reserve_out: Uint128) -> Uint128 {
     // Calculate the k constant product
