@@ -12,12 +12,15 @@ build_contract () {
     cd $CONTRACT_PATH;
     echo "Building contract $CONTRACT..."
     cargo wasm;
+    cargo schema;
+
+    cp -r ./schema "$CWD/artifacts/schema/$CONTRACT"
     cd $CWD;
 
     local BUILD_TARGET=${CONTRACT//-/_}
     
     local IN_FILE="./target/wasm32-unknown-unknown/release/$BUILD_TARGET.wasm"
-    local OUT_FILE="./artifacts/$CONTRACT.wasm"
+    local OUT_FILE="./artifacts/wasm/$CONTRACT.wasm"
     wasm-opt -Os $IN_FILE -o $OUT_FILE
     
     # NOT SO IMPORTANT STEPS
@@ -72,7 +75,8 @@ export RUSTFLAGS="-C link-arg=-s"
 #Clear current builds
 rm -rf ./target
 rm -rf ./artifacts
-mkdir artifacts
+mkdir -p artifacts/wasm
+mkdir -p artifacts/schema
 
 for target in "$@"; do
     if [[ "$target" = "all" ]]; then
