@@ -12,7 +12,7 @@ use euclid::msgs::pool::ExecuteMsg as PoolExecuteMsg;
 use euclid::{
     error::{ContractError, Never},
     msgs::pool::CallbackExecuteMsg,
-    pool::{extract_sender, LiquidityResponse, Pool, PoolCreationResponse},
+    pool::{LiquidityResponse, Pool, PoolCreationResponse},
     swap::SwapResponse,
     token::PairInfo,
 };
@@ -114,6 +114,7 @@ pub fn ibc_packet_ack(
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<PoolCreationResponse> =
                 from_json(ack.acknowledgement.data)?;
+
             execute_pool_creation(deps, res, pair_info, pool_rq_id)
         }
         IbcExecuteMsg::Swap {
@@ -201,6 +202,12 @@ pub fn execute_pool_creation(
     pair_info: PairInfo,
     pool_rq_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
+    let existing_req = POOL_REQUESTS.may_load(deps.storage, pool_rq_id.clone())?;
+    if existing_req.is_none() {
+        return Err(ContractError::PoolRequestDoesNotExists {
+            req: pool_rq_id.clone(),
+        });
+    }
     // Load the state
     let state = STATE.load(deps.storage)?;
     // Check whether res is an error or not
@@ -223,7 +230,7 @@ pub fn execute_pool_creation(
 
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                 admin: None,
-                code_id: state.pool_code_id.clone(),
+                code_id: state.pool_code_id,
                 msg: to_json_binary(&init_msg).unwrap(),
                 funds: vec![],
                 label: "euclid-pool".to_string(),
@@ -231,22 +238,16 @@ pub fn execute_pool_creation(
 
             // Create submsg with reply always from msg
             let msg: SubMsg = SubMsg::reply_always(msg, INSTANTIATE_REPLY_ID);
-            // Extract sender from rq id
-            let sender = extract_sender(pool_rq_id.as_str());
             // Remove pool request from MAP
-            POOL_REQUESTS.remove(deps.storage, sender.clone());
+            POOL_REQUESTS.remove(deps.storage, pool_rq_id);
             Ok(IbcBasicResponse::new()
                 .add_attribute("method", "pool_creation")
                 .add_submessage(msg))
         }
 
         AcknowledgementMsg::Error(err) => {
-            // Get sender of request
-            let sender = extract_sender(pool_rq_id.as_str());
-
             // Remove pool request from MAP
-            POOL_REQUESTS.remove(deps.storage, sender.clone());
-
+            POOL_REQUESTS.remove(deps.storage, pool_rq_id);
             Ok(IbcBasicResponse::new()
                 .add_attribute("method", "refund_pool_request")
                 .add_attribute("error", err.clone()))
@@ -332,7 +333,7 @@ pub fn execute_add_liquidity_process(
         AcknowledgementMsg::Error(err) => {
             // Prepare error callback to send to pool
             let callback = CallbackExecuteMsg::RejectAddLiquidity {
-                liquidity_id: liquidity_id,
+                liquidity_id,
                 error: Some(err.clone()),
             };
 

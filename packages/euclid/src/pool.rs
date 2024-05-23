@@ -34,6 +34,11 @@ pub fn extract_sender(pool_rq_id: &str) -> String {
     parts[0].to_string()
 }
 
+// Function to extract sender from pool_rq_id
+pub fn generate_id(sender: &str, count: u128) -> String {
+    format!("{sender}-{count}")
+}
+
 // Struct to handle Acknowledgement Response for a Liquidity Request
 #[cw_serde]
 pub struct LiquidityResponse {

@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{IbcTimeout, Uint128};
+use cosmwasm_std::{IbcTimeout, StdError, Uint128};
 
 use crate::token::{Token, TokenInfo};
 
@@ -18,26 +18,6 @@ pub struct SwapInfo {
     pub swap_id: String,
 }
 
-// Function to extract sender from swap_id
-pub fn extract_sender(swap_id: &str) -> String {
-    let sender: Vec<&str> = swap_id.split('-').collect();
-    sender[0].to_string()
-}
-
-#[cw_serde]
-pub struct LiquidityTxInfo {
-    pub sender: String,
-    pub token_1_liquidity: Uint128,
-    pub token_2_liquidity: Uint128,
-    pub liquidity_id: String,
-}
-
-// Function to extract sender from liquidity_id
-pub fn extract_sender_liquidity(liquidity_id: &str) -> String {
-    let sender: Vec<&str> = liquidity_id.split('-').collect();
-    sender[0].to_string()
-}
-
 #[cw_serde]
 pub struct SwapResponse {
     pub asset: Token,
@@ -46,4 +26,23 @@ pub struct SwapResponse {
     pub amount_out: Uint128,
     // Add Swap Unique Identifier
     pub swap_id: String,
+}
+
+pub fn genarate_id(sender: &str, count: u128) -> String {
+    format!("{sender}-{count}")
+}
+
+#[cw_serde]
+pub struct SwapExtractedId {
+    pub sender: String,
+    pub index: u128,
+}
+
+// Function to extract sender from swap_id
+pub fn parse_swap_id(id: &str) -> Result<SwapExtractedId, StdError> {
+    let parsed: Vec<&str> = id.split('-').collect();
+    Ok(SwapExtractedId {
+        sender: parsed[0].to_string(),
+        index: parsed[1].parse().unwrap(),
+    })
 }

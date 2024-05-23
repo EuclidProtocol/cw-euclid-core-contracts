@@ -71,6 +71,7 @@ pub fn execute(
             token_2_liquidity,
             slippage_tolerance,
             channel,
+            liquidity_id,
         } => execute::execute_add_liquidity(
             deps,
             env,
@@ -79,6 +80,7 @@ pub fn execute(
             token_2_liquidity,
             slippage_tolerance,
             channel,
+            liquidity_id,
         ),
     }
 }

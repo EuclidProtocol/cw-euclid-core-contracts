@@ -1,7 +1,9 @@
-use cosmwasm_std::{to_json_binary, Binary, Deps};
+use cosmwasm_std::{to_json_binary, Binary, Deps, Order};
 use euclid::{
     error::ContractError,
-    msgs::pool::{GetPairInfoResponse, GetPendingSwapsResponse, GetVLPResponse},
+    msgs::pool::{
+        GetPairInfoResponse, GetPendingLiquidityResponse, GetPendingSwapsResponse, GetVLPResponse,
+    },
 };
 
 use crate::state::{PENDING_LIQUIDITY, PENDING_SWAPS, STATE};
@@ -26,20 +28,16 @@ pub fn get_vlp(deps: Deps) -> Result<Binary, ContractError> {
 pub fn pending_swaps(
     deps: Deps,
     user: String,
-    lower_limit: u32,
-    upper_limit: u32,
+    _lower_limit: Option<u128>,
+    _upper_limit: Option<u128>,
 ) -> Result<Binary, ContractError> {
     // Fetch pending swaps for user
     let pending_swaps = PENDING_SWAPS
-        .may_load(deps.storage, user.clone())?
-        .unwrap_or_default();
-    // Get the upper limit
-    let upper_limit = upper_limit as usize;
-    // Get the lower limit
-    let lower_limit = lower_limit as usize;
-    // Get the pending swaps within the range
-    let pending_swaps = pending_swaps[lower_limit..upper_limit].to_vec();
-    // Return the response
+        .prefix(user)
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|k| k.unwrap().1)
+        .collect();
+
     Ok(to_json_binary(&GetPendingSwapsResponse { pending_swaps })?)
 }
 
@@ -47,16 +45,18 @@ pub fn pending_swaps(
 pub fn pending_liquidity(
     deps: Deps,
     user: String,
-    lower_limit: u32,
-    upper_limit: u32,
+    _lower_limit: Option<u128>,
+    _upper_limit: Option<u128>,
 ) -> Result<Binary, ContractError> {
     let pending_liquidity = PENDING_LIQUIDITY
-        .may_load(deps.storage, user.clone())?
-        .unwrap_or_default();
-    let upper_limit = upper_limit as usize;
-    let lower_limit = lower_limit as usize;
-    let pending_liquidity = pending_liquidity[lower_limit..upper_limit].to_vec();
-    Ok(to_json_binary(&pending_liquidity)?)
+        .prefix(user)
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|k| k.unwrap().1)
+        .collect();
+
+    Ok(to_json_binary(&GetPendingLiquidityResponse {
+        pending_liquidity,
+    })?)
 }
 
 // Returns the current reserves of tokens in the pool

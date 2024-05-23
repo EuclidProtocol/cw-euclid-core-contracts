@@ -1,6 +1,8 @@
 use cosmwasm_std::{StdError, Uint128};
 
 use thiserror::Error;
+
+use crate::{liquidity::LiquidityTxInfo, pool::PoolRequest, swap::SwapInfo};
 #[derive(Error, Debug)]
 pub enum Never {}
 #[derive(Error, Debug)]
@@ -10,6 +12,12 @@ pub enum ContractError {
 
     #[error("Unauthorized")]
     Unauthorized {},
+
+    #[error("Pool request {req:?} already exist")]
+    PoolRequestAlreadyExists { req: PoolRequest },
+
+    #[error("Pool request {req:?} already exist")]
+    PoolRequestDoesNotExists { req: String },
 
     #[error("Pool already created for this chain")]
     PoolAlreadyExists {},
@@ -44,11 +52,17 @@ pub enum ContractError {
     #[error("The swap does not exist in state for the sender")]
     SwapDoesNotExist {},
 
+    #[error("The swap - {req:?} already exist in state for the sender")]
+    SwapAlreadyExist { req: SwapInfo },
+
     #[error("The deposit amount is insufficient to add the liquidity")]
     InsufficientDeposit {},
 
     #[error("The CHAIN ID is not valid")]
     InvalidChainId {},
+
+    #[error("The liquity tx - {req:?} already exist in state for the sender")]
+    LiquidityTxAlreadyExist { req: LiquidityTxInfo },
 
     #[error("Slippage has been exceeded when providing liquidity.")]
     LiquiditySlippageExceeded {},

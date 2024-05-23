@@ -31,6 +31,7 @@ pub enum ExecuteMsg {
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         channel: String,
+        liquidity_id: String,
     },
 }
 

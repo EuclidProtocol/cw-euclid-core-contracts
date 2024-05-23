@@ -1,6 +1,10 @@
 use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{Addr, DepsMut};
 use cw_storage_plus::{Item, Map};
-use euclid::pool::PoolRequest;
+use euclid::{
+    error::ContractError,
+    pool::{generate_id, PoolRequest},
+};
 
 #[cw_serde]
 pub struct State {
@@ -28,3 +32,31 @@ pub const VLP_TO_POOL: Map<String, String> = Map::new("vlp_to_pool");
 
 // Map sender of Pool request to Pool address
 pub const POOL_REQUESTS: Map<String, PoolRequest> = Map::new("request_to_pool");
+
+// Pool Requests Counter
+pub const POOL_REQUEST_COUNT: Map<String, u128> = Map::new("request_to_pool_count");
+
+pub fn generate_pool_req(
+    deps: DepsMut,
+    sender: &Addr,
+    chain: String,
+    channel: String,
+) -> Result<PoolRequest, ContractError> {
+    let count = POOL_REQUEST_COUNT
+        .may_load(deps.storage, sender.to_string())?
+        .unwrap_or_default();
+
+    let pool_rq_id = generate_id(sender.as_str(), count);
+    let pool_request = PoolRequest {
+        chain,
+        channel,
+        pool_rq_id: pool_rq_id.clone(),
+    };
+    // If a pool request already exist, throw error, else create a new request
+    POOL_REQUESTS.update(deps.storage, pool_rq_id, |existing| match existing {
+        Some(req) => Err(ContractError::PoolRequestAlreadyExists { req }),
+        None => Ok(pool_request.clone()),
+    })?;
+    POOL_REQUEST_COUNT.save(deps.storage, sender.to_string(), &count.wrapping_add(1))?;
+    Ok(pool_request)
+}
