@@ -92,8 +92,18 @@ pub fn add_liquidity(
     let mut pool = POOLS.load(deps.storage, &chain_id)?;
     let mut state = STATE.load(deps.storage)?;
     // Verify that ratio of assets provided is equal to the ratio of assets in the pool
-    let ratio: Decimal256 = Decimal256::from_ratio(token_1_liquidity, token_2_liquidity);
-    let pool_ratio: Decimal256 = Decimal256::from_ratio(pool.reserve_1, pool.reserve_2);
+    let ratio =
+        Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
+            ContractError::Generic {
+                err: err.to_string(),
+            }
+        })?;
+    let pool_ratio =
+        Decimal256::checked_from_ratio(pool.reserve_1, pool.reserve_2).map_err(|err| {
+            ContractError::Generic {
+                err: err.to_string(),
+            }
+        })?;
 
     // Verify slippage tolerance is between 0 and 100
     if slippage_tolerance > 100 {

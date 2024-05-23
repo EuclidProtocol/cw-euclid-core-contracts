@@ -10,6 +10,9 @@ pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
 
+    #[error("Error - {err}")]
+    Generic { err: String },
+
     #[error("Unauthorized")]
     Unauthorized {},
 

@@ -110,14 +110,13 @@ pub fn execute_add_liquidity(
             slippage_tolerance,
             liquidity_id,
             pool_address: pool_address.clone().to_string(),
-        })
-        .unwrap(),
+        })?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
     };
 
     let msg = CosmosMsg::Ibc(ibc_packet);
 
     Ok(Response::new()
-        .add_attribute("method", "request_pool_creation")
+        .add_attribute("method", "add_liquidity_request")
         .add_message(msg))
 }
