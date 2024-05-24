@@ -3,7 +3,7 @@ use euclid::error::ContractError;
 use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::token::Token;
 
-use euclid::msgs::vlp::{AllPoolsResponse, GetLiquidityResponse, GetSwapResponse, PairInfo};
+use euclid::msgs::vlp::{AllPoolsResponse, GetLiquidityResponse, GetSwapResponse, PairInfo, PoolInfo};
 
 use crate::state::{POOLS, STATE};
 
@@ -80,10 +80,15 @@ pub fn query_pool(deps: Deps, chain_id: String) -> Result<Binary, ContractError>
 }
 // Function to query all Euclid Pool Information
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
-    let pools: Vec<String> = POOLS
+    let pools: Vec<PoolInfo> = POOLS
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .map(|item| item.map(|(_, pool)| pool.chain.clone()))
-        .collect::<Result<Vec<String>, _>>()?;
+        .map(|item| {
+            item.map(|(address, pool)| PoolInfo {
+                address: address.to_string(),
+                chain: pool.chain.clone(),
+            })
+        })
+        .collect::<Result<Vec<PoolInfo>, _>>()?;
 
     Ok(to_json_binary(&AllPoolsResponse { pools })?)
 }

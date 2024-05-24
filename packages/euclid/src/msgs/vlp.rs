@@ -73,6 +73,12 @@ pub struct PairInfo {
     pub token_1: Token,
     pub token_2: Token,
 }
+
+#[cw_serde]
+pub struct PoolInfo {
+    pub address: String,
+    pub chain: String,
+}
 #[cw_serde]
 pub struct FeeResponse {
     pub fee: Fee,
@@ -85,5 +91,5 @@ pub struct PoolResponse {
 
 #[cw_serde]
 pub struct AllPoolsResponse {
-    pub pools: Vec<String>,
+    pub pools: Vec<PoolInfo>,
 }
