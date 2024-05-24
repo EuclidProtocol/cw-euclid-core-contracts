@@ -4,7 +4,7 @@ mod tests {
     use crate::contract::instantiate;
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, Uint128};
+    use cosmwasm_std::{coins, Decimal256, Uint128};
     use euclid::fee::Fee;
     use euclid::msgs::vlp::InstantiateMsg;
     use euclid::pool::Pool;
@@ -51,6 +51,7 @@ mod tests {
                 reserve_1: Uint128::new(10000),
                 reserve_2: Uint128::new(10000),
             },
+            lq_ratio: Decimal256::one(),
         };
         let res = instantiate(deps.as_mut(), env, info, msg).unwrap();
         assert_eq!(0, res.messages.len());

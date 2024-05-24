@@ -1,7 +1,10 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{IbcTimeout, StdError, Uint128};
 
-use crate::token::{Token, TokenInfo};
+use crate::{
+    error::ContractError,
+    token::{Token, TokenInfo},
+};
 
 // Struct that stores a certain swap info
 #[cw_serde]
@@ -39,10 +42,10 @@ pub struct SwapExtractedId {
 }
 
 // Function to extract sender from swap_id
-pub fn parse_swap_id(id: &str) -> Result<SwapExtractedId, StdError> {
+pub fn parse_swap_id(id: &str) -> Result<SwapExtractedId, ContractError> {
     let parsed: Vec<&str> = id.split('-').collect();
     Ok(SwapExtractedId {
         sender: parsed[0].to_string(),
-        index: parsed[1].parse().unwrap(),
+        index: parsed[1].parse()?,
     })
 }

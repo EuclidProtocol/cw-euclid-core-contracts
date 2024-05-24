@@ -1,6 +1,8 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{StdError, Uint128};
 
+use crate::error::ContractError;
+
 #[cw_serde]
 pub struct LiquidityTxInfo {
     pub sender: String,
@@ -20,10 +22,10 @@ pub struct LiquidityExtractedId {
 }
 
 // Function to extract sender from swap_id
-pub fn parse_liquidity_id(liquidity_id: &str) -> Result<LiquidityExtractedId, StdError> {
+pub fn parse_liquidity_id(liquidity_id: &str) -> Result<LiquidityExtractedId, ContractError> {
     let parsed: Vec<&str> = liquidity_id.split('-').collect();
     Ok(LiquidityExtractedId {
         sender: parsed[0].to_string(),
-        index: parsed[1].parse().unwrap(),
+        index: parsed[1].parse()?,
     })
 }

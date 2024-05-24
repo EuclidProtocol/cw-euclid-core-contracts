@@ -1,4 +1,3 @@
-pub mod ack;
 pub mod contract;
 pub mod execute;
 pub mod helpers;

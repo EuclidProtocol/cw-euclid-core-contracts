@@ -32,8 +32,7 @@ pub fn execute_request_pool_creation(
             pool_rq_id: pool_request.pool_rq_id,
             chain: state.chain_id,
             pair_info,
-        })
-        .unwrap(),
+        })?,
 
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
     };
@@ -72,8 +71,7 @@ pub fn execute_swap(
             channel,
             swap_id,
             pool_address,
-        })
-        .unwrap(),
+        })?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
     };
 

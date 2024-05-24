@@ -11,7 +11,9 @@ pub fn on_pool_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
             let instantiate_data: cw0::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).unwrap();
+                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
 
             let pool_address = instantiate_data.contract_address;
             let vlp_address: GetVLPResponse = deps

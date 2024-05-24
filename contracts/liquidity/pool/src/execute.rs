@@ -58,7 +58,16 @@ pub fn execute_swap_request(
         let denom = asset.get_denom();
 
         // Verify thatthe amount of funds passed is greater than the asset amount
-        if info.funds.iter().find(|x| x.denom == denom).unwrap().amount < asset_amount {
+        if info
+            .funds
+            .iter()
+            .find(|x| x.denom == denom)
+            .ok_or(ContractError::Generic {
+                err: "Denom not found".to_string(),
+            })?
+            .amount
+            < asset_amount
+        {
             return Err(ContractError::Unauthorized {});
         }
     } else {
@@ -142,7 +151,7 @@ pub fn execute_complete_swap(
     // Prepare messages to send tokens to user
     let msg = swap_info
         .asset_out
-        .create_transfer_msg(swap_response.amount_out, extracted_swap_id.sender);
+        .create_transfer_msg(swap_response.amount_out, extracted_swap_id.sender)?;
 
     // Look through pending swaps for one with the same swap_id
     Ok(Response::new().add_message(msg))
@@ -170,7 +179,7 @@ pub fn execute_reject_swap(
     // Prepare messages to refund tokens back to user
     let msg = swap_info
         .asset
-        .create_transfer_msg(swap_info.asset_amount, extracted_swap_id.sender);
+        .create_transfer_msg(swap_info.asset_amount, extracted_swap_id.sender)?;
 
     Ok(Response::new()
         .add_attribute("method", "process_failed_swap")
@@ -259,7 +268,7 @@ pub fn add_liquidity_request(
     // IF TOKEN IS A SMART CONTRACT IT REQUIRES APPROVAL FOR TRANSFER
     if token_1.is_smart() {
         let msg = token_1
-            .create_transfer_msg(token_1_liquidity, env.contract.address.clone().to_string());
+            .create_transfer_msg(token_1_liquidity, env.contract.address.clone().to_string())?;
         msgs.push(msg);
     } else {
         // If funds empty return error
@@ -271,7 +280,9 @@ pub fn add_liquidity_request(
             .funds
             .iter()
             .find(|x| x.denom == token_1.get_denom())
-            .unwrap();
+            .ok_or(ContractError::Generic {
+                err: "Denom not found".to_string(),
+            })?;
         if amt.amount < token_1_liquidity {
             return Err(ContractError::InsufficientDeposit {});
         }
@@ -280,7 +291,7 @@ pub fn add_liquidity_request(
     // Same for token 2
     if token_2.is_smart() {
         let msg = token_2
-            .create_transfer_msg(token_2_liquidity, env.contract.address.clone().to_string());
+            .create_transfer_msg(token_2_liquidity, env.contract.address.clone().to_string())?;
         msgs.push(msg);
     } else {
         if info.funds.is_empty() {
@@ -290,7 +301,9 @@ pub fn add_liquidity_request(
             .funds
             .iter()
             .find(|x| x.denom == token_2.get_denom())
-            .unwrap();
+            .ok_or(ContractError::Generic {
+                err: "Denom not found".to_string(),
+            })?;
         if amt.amount < token_2_liquidity {
             return Err(ContractError::InsufficientDeposit {});
         }
@@ -395,12 +408,12 @@ pub fn execute_reject_add_liquidity(
     let msg = token_1.clone().create_transfer_msg(
         pending_liquidity.token_1_liquidity,
         parsed_liquidity_id.sender.clone(),
-    );
+    )?;
     msgs.push(msg);
     let msg = token_2.clone().create_transfer_msg(
         pending_liquidity.token_2_liquidity,
         parsed_liquidity_id.sender.clone(),
-    );
+    )?;
     msgs.push(msg);
 
     // Remove the liquidity

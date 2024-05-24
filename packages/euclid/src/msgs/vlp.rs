@@ -4,7 +4,7 @@ use crate::{
     token::{Pair, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Decimal256, Uint128};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -12,6 +12,7 @@ pub struct InstantiateMsg {
     pub pair: Pair,
     pub fee: Fee,
     pub pool: Pool,
+    pub lq_ratio: Decimal256,
 }
 
 #[cw_serde]

@@ -1,9 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128};
-use euclid::{
-    pool::Pool,
-    token::{Pair, PairInfo, Token},
-};
+use euclid::token::{PairInfo, Token};
 
 // Message that implements an ExecuteSwap on the VLP contract
 

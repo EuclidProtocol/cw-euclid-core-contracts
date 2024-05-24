@@ -5,10 +5,9 @@ use euclid::{
     swap::SwapResponse,
     token::{Pair, PairInfo, Token},
 };
-use euclid_ibc::msg::AcknowledgementMsg;
+use euclid_ibc::{ack::make_ack_success, msg::AcknowledgementMsg};
 
 use crate::{
-    ack::make_ack_success,
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
     state::{self, POOLS, STATE},
 };
@@ -98,25 +97,17 @@ pub fn add_liquidity(
                 err: err.to_string(),
             }
         })?;
-    let pool_ratio =
-        Decimal256::checked_from_ratio(pool.reserve_1, pool.reserve_2).map_err(|err| {
-            ContractError::Generic {
-                err: err.to_string(),
-            }
-        })?;
 
     // Verify slippage tolerance is between 0 and 100
     if slippage_tolerance > 100 {
         return Err(ContractError::InvalidSlippageTolerance {});
     }
 
-    if !assert_slippage_tolerance(ratio, pool_ratio, slippage_tolerance) {
-        return Err(ContractError::LiquiditySlippageExceeded {});
-    }
+    assert_slippage_tolerance(ratio, state.lq_ratio, slippage_tolerance)?;
 
     // Add liquidity to the pool
-    pool.reserve_1 = pool.reserve_1.checked_add(token_1_liquidity).unwrap();
-    pool.reserve_2 = pool.reserve_2.checked_add(token_2_liquidity).unwrap();
+    pool.reserve_1 = pool.reserve_1.checked_add(token_1_liquidity)?;
+    pool.reserve_2 = pool.reserve_2.checked_add(token_2_liquidity)?;
     POOLS.save(deps.storage, &chain_id, &pool)?;
 
     // Calculate liquidity added share for LP provider from total liquidity
@@ -126,18 +117,12 @@ pub fn add_liquidity(
         state.total_reserve_1,
         state.total_reserve_2,
         state.total_lp_tokens,
-    );
+    )?;
 
     // Add to total liquidity and total lp allocation
-    state.total_reserve_1 = state
-        .total_reserve_1
-        .checked_add(token_1_liquidity)
-        .unwrap();
-    state.total_reserve_2 = state
-        .total_reserve_2
-        .checked_add(token_2_liquidity)
-        .unwrap();
-    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation).unwrap();
+    state.total_reserve_1 = state.total_reserve_1.checked_add(token_1_liquidity)?;
+    state.total_reserve_2 = state.total_reserve_2.checked_add(token_2_liquidity)?;
+    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
     STATE.save(deps.storage, &state)?;
 
     // Add current balance to SNAPSHOT MAP
@@ -201,21 +186,15 @@ pub fn remove_liquidity(
         .multiply_ratio(lp_share, Uint128::from(100u128));
 
     // Remove liquidity from the pool
-    pool.reserve_1 = pool.reserve_1.checked_sub(token_1_liquidity).unwrap();
-    pool.reserve_2 = pool.reserve_2.checked_sub(token_2_liquidity).unwrap();
+    pool.reserve_1 = pool.reserve_1.checked_sub(token_1_liquidity)?;
+    pool.reserve_2 = pool.reserve_2.checked_sub(token_2_liquidity)?;
     POOLS.save(deps.storage, &chain_id, &pool)?;
 
     // Remove from total VLP liquidity
 
-    state.total_reserve_1 = state
-        .total_reserve_1
-        .checked_sub(token_1_liquidity)
-        .unwrap();
-    state.total_reserve_2 = state
-        .total_reserve_2
-        .checked_sub(token_2_liquidity)
-        .unwrap();
-    state.total_lp_tokens = state.total_lp_tokens.checked_sub(lp_allocation).unwrap();
+    state.total_reserve_1 = state.total_reserve_1.checked_sub(token_1_liquidity)?;
+    state.total_reserve_2 = state.total_reserve_2.checked_sub(token_2_liquidity)?;
+    state.total_lp_tokens = state.total_lp_tokens.checked_sub(lp_allocation)?;
     STATE.save(deps.storage, &state)?;
 
     Ok(IbcReceiveResponse::new()
@@ -224,7 +203,7 @@ pub fn remove_liquidity(
         .add_attribute("token_1_removed_liquidity", token_1_liquidity)
         .add_attribute("token_2_removed_liquidity", token_2_liquidity)
         .add_attribute("burn_lp", lp_allocation)
-        .set_ack(make_ack_success()))
+        .set_ack(make_ack_success()?))
 }
 
 pub fn execute_swap(
@@ -260,7 +239,7 @@ pub fn execute_swap(
     let fee_amount = asset_amount.multiply_ratio(Uint128::from(total_fee), Uint128::from(100u128));
 
     // Calculate the amount of asset to be swapped
-    let swap_amount = asset_amount.checked_sub(fee_amount).unwrap();
+    let swap_amount = asset_amount.checked_sub(fee_amount)?;
 
     // verify if asset is token 1 or token 2
     let swap_info = if asset_info == state.clone().pair.token_1.id {
@@ -277,7 +256,7 @@ pub fn execute_swap(
         )
     };
 
-    let receive_amount = calculate_swap(swap_info.0, swap_info.1, swap_info.2);
+    let receive_amount = calculate_swap(swap_info.0, swap_info.1, swap_info.2)?;
 
     // Verify that the receive amount is greater than the minimum token out
     if receive_amount <= min_token_out {
@@ -307,11 +286,11 @@ pub fn execute_swap(
 
     // Move liquidity from the pool
     if asset_info == state.clone().pair.token_1.id {
-        pool.reserve_1 = pool.reserve_1.checked_add(swap_amount).unwrap();
-        pool.reserve_2 = pool.reserve_2.checked_sub(receive_amount).unwrap();
+        pool.reserve_1 = pool.reserve_1.checked_add(swap_amount)?;
+        pool.reserve_2 = pool.reserve_2.checked_sub(receive_amount)?;
     } else {
-        pool.reserve_2 = pool.reserve_2.checked_add(swap_amount).unwrap();
-        pool.reserve_1 = pool.reserve_1.checked_sub(receive_amount).unwrap();
+        pool.reserve_2 = pool.reserve_2.checked_add(swap_amount)?;
+        pool.reserve_1 = pool.reserve_1.checked_sub(receive_amount)?;
     }
 
     // Save the state of the pool
@@ -319,27 +298,11 @@ pub fn execute_swap(
 
     // Move liquidity for the state
     if asset_info == state.clone().pair.token_1.id {
-        state.total_reserve_1 = state
-            .clone()
-            .total_reserve_1
-            .checked_add(swap_amount)
-            .unwrap();
-        state.total_reserve_2 = state
-            .clone()
-            .total_reserve_2
-            .checked_sub(receive_amount)
-            .unwrap();
+        state.total_reserve_1 = state.clone().total_reserve_1.checked_add(swap_amount)?;
+        state.total_reserve_2 = state.clone().total_reserve_2.checked_sub(receive_amount)?;
     } else {
-        state.total_reserve_2 = state
-            .clone()
-            .total_reserve_2
-            .checked_add(swap_amount)
-            .unwrap();
-        state.total_reserve_1 = state
-            .clone()
-            .total_reserve_1
-            .checked_sub(receive_amount)
-            .unwrap();
+        state.total_reserve_2 = state.clone().total_reserve_2.checked_add(swap_amount)?;
+        state.total_reserve_1 = state.clone().total_reserve_1.checked_sub(receive_amount)?;
     }
 
     // Get asset to be recieved by user

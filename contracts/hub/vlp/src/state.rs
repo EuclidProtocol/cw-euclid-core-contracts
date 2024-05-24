@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Decimal256, Uint128};
 use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
 use euclid::{
     fee::Fee,
@@ -23,6 +23,9 @@ pub struct State {
     pub total_reserve_2: Uint128,
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
+
+    // Pool ratio is always constant
+    pub lq_ratio: Decimal256,
 }
 
 pub const STATE: Item<State> = Item::new("state");

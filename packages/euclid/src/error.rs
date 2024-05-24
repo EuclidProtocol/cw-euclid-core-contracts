@@ -1,4 +1,6 @@
-use cosmwasm_std::{StdError, Uint128};
+use std::num::ParseIntError;
+
+use cosmwasm_std::{DivideByZeroError, OverflowError, StdError, Uint128};
 
 use thiserror::Error;
 
@@ -9,6 +11,15 @@ pub enum Never {}
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
+
+    #[error("{0}")]
+    Overflow(#[from] OverflowError),
+
+    #[error("{0}")]
+    DivideByZero(#[from] DivideByZeroError),
+
+    #[error("{0}")]
+    ParseIntError(#[from] ParseIntError),
 
     #[error("Error - {err}")]
     Generic { err: String },

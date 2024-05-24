@@ -16,10 +16,10 @@ use euclid::{
     swap::SwapResponse,
     token::PairInfo,
 };
+use euclid_ibc::ack::make_ack_fail;
 use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg};
 
 use crate::{
-    ack::make_ack_fail,
     reply::INSTANTIATE_REPLY_ID,
     state::{CONNECTION_COUNTS, POOL_REQUESTS, STATE, TIMEOUT_COUNTS},
 };
@@ -75,7 +75,7 @@ pub fn ibc_packet_receive(
     deps: DepsMut,
     env: Env,
     msg: IbcPacketReceiveMsg,
-) -> Result<IbcReceiveResponse, Never> {
+) -> Result<IbcReceiveResponse, ContractError> {
     // Regardless of if our processing of this packet works we need to
     // commit an ACK to the chain. As such, we wrap all handling logic
     // in a seprate function and on error write out an error ack.
@@ -84,7 +84,7 @@ pub fn ibc_packet_receive(
         Err(error) => Ok(IbcReceiveResponse::new()
             .add_attribute("method", "ibc_packet_receive")
             .add_attribute("error", error.to_string())
-            .set_ack(make_ack_fail(error.to_string()))),
+            .set_ack(make_ack_fail(error.to_string())?)),
     }
 }
 
@@ -154,7 +154,38 @@ pub fn ibc_packet_timeout(
         msg.packet.src.channel_id,
         |count| -> StdResult<_> { Ok(count.unwrap_or_default() + 1) },
     )?;
-    Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout"))
+    let parsed_msg: IbcExecuteMsg = from_json(&msg.packet.data)?;
+
+    let result = match parsed_msg {
+        IbcExecuteMsg::AddLiquidity {
+            liquidity_id,
+            pool_address,
+            ..
+        } => {
+            let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
+            execute_add_liquidity_process(fake_error_ack, pool_address, liquidity_id)
+        }
+        IbcExecuteMsg::Swap {
+            swap_id,
+            pool_address,
+            ..
+        } => {
+            let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
+            execute_swap_process(fake_error_ack, pool_address.to_string(), swap_id)
+        }
+        IbcExecuteMsg::RequestPoolCreation {
+            pair_info,
+            pool_rq_id,
+            ..
+        } => {
+            let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
+            execute_pool_creation(deps, fake_error_ack, pair_info, pool_rq_id)
+        }
+        _ => Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout")),
+    };
+    result.or(Ok(
+        IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout")
+    ))
 }
 
 pub fn validate_order_and_version(
@@ -231,7 +262,7 @@ pub fn execute_pool_creation(
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                 admin: None,
                 code_id: state.pool_code_id,
-                msg: to_json_binary(&init_msg).unwrap(),
+                msg: to_json_binary(&init_msg)?,
                 funds: vec![],
                 label: "euclid-pool".to_string(),
             });
