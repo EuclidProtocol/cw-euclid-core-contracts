@@ -50,7 +50,7 @@ pub fn generate_swap_req(
         .may_load(deps.storage, sender.clone())?
         .unwrap_or_default();
 
-    let rq_id = swap::genarate_id(&sender, count);
+    let rq_id = swap::generate_id(&sender, count);
     let request = SwapInfo {
         asset,
         asset_out,
@@ -87,7 +87,7 @@ pub fn generate_liquidity_req(
         .may_load(deps.storage, sender.clone())?
         .unwrap_or_default();
 
-    let rq_id = liquidity::genarate_id(&sender, count);
+    let rq_id = liquidity::generate_id(&sender, count);
     let request = LiquidityTxInfo {
         token_1_liquidity,
         token_2_liquidity,

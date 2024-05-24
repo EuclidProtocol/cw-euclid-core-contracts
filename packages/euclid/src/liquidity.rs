@@ -11,7 +11,7 @@ pub struct LiquidityTxInfo {
     pub liquidity_id: String,
 }
 
-pub fn genarate_id(sender: &str, count: u128) -> String {
+pub fn generate_id(sender: &str, count: u128) -> String {
     format!("{sender}-{count}")
 }
 
