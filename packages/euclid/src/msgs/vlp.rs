@@ -4,7 +4,7 @@ use crate::{
     token::{Pair, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Decimal256, Uint128};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -12,6 +12,7 @@ pub struct InstantiateMsg {
     pub pair: Pair,
     pub fee: Fee,
     pub pool: Pool,
+    pub lq_ratio: Decimal256,
 }
 
 #[cw_serde]
@@ -47,7 +48,9 @@ pub enum QueryMsg {
     // Queries the pool information for a chain id
     #[returns(PoolResponse)]
     Pool { chain_id: String },
-    // Query to get the total number of LP tokens in the VLP
+    // Query to get all pools
+    #[returns(AllPoolsResponse)]
+    GetAllPools {},
 }
 
 // We define a custom struct for each query response
@@ -78,4 +81,9 @@ pub struct FeeResponse {
 #[cw_serde]
 pub struct PoolResponse {
     pub pool: Pool,
+}
+
+#[cw_serde]
+pub struct AllPoolsResponse {
+    pub pools: Vec<String>,
 }

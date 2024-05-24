@@ -1,6 +1,7 @@
 use crate::{
+    liquidity::LiquidityTxInfo,
     pool::{LiquidityResponse, Pool},
-    swap::{LiquidityTxInfo, SwapInfo, SwapResponse},
+    swap::{SwapInfo, SwapResponse},
     token::{Pair, PairInfo, TokenInfo},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
@@ -72,14 +73,14 @@ pub enum QueryMsg {
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
         user: String,
-        lower_limit: u32,
-        upper_limit: u32,
+        lower_limit: Option<u128>,
+        upper_limit: Option<u128>,
     },
     #[returns(GetPendingLiquidityResponse)]
     PendingLiquidity {
         user: String,
-        lower_limit: u32,
-        upper_limit: u32,
+        lower_limit: Option<u128>,
+        upper_limit: Option<u128>,
     },
 
     #[returns(GetPoolReservesResponse)]

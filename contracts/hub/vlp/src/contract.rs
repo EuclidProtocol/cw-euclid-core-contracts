@@ -7,7 +7,7 @@ use crate::state::{State, POOLS, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
-use crate::query::{self, query_liquidity, query_pool, query_simulate_swap};
+use crate::query::{self, query_all_pools, query_liquidity, query_pool, query_simulate_swap};
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -27,7 +27,11 @@ pub fn instantiate(
         total_reserve_1: msg.pool.reserve_1,
         total_reserve_2: msg.pool.reserve_2,
         total_lp_tokens: Uint128::zero(),
+        lq_ratio: msg.lq_ratio,
     };
+    if state.lq_ratio.is_zero() {
+        return Err(ContractError::InvalidLiquidityRatio {});
+    }
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
@@ -60,5 +64,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::Liquidity {} => query_liquidity(deps),
         QueryMsg::Fee {} => query::query_fee(deps),
         QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),
+        QueryMsg::GetAllPools {} => query_all_pools(deps),
     }
 }

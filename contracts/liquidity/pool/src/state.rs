@@ -1,10 +1,12 @@
 use cosmwasm_schema::cw_serde;
 use euclid::{
-    swap::{LiquidityTxInfo, SwapInfo},
-    token::{Pair, PairInfo},
+    error::ContractError,
+    liquidity::{self, LiquidityTxInfo},
+    swap::{self, SwapInfo},
+    token::{Pair, PairInfo, TokenInfo},
 };
 
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{DepsMut, IbcTimeout, Uint128};
 use cw_storage_plus::{Item, Map};
 
 #[cw_serde]
@@ -31,40 +33,76 @@ pub struct State {
 pub const STATE: Item<State> = Item::new("state");
 
 // Map for pending swaps for user
-pub const PENDING_SWAPS: Map<String, Vec<SwapInfo>> = Map::new("pending_swaps");
+pub const PENDING_SWAPS: Map<(String, u128), SwapInfo> = Map::new("pending_swaps");
+
+// Map for users last pending swap count which will be used for generating ids
+pub const PENDING_SWAPS_COUNT: Map<String, u128> = Map::new("pending_swaps_count");
+
+pub fn generate_swap_req(
+    deps: DepsMut,
+    sender: String,
+    asset: TokenInfo,
+    asset_out: TokenInfo,
+    asset_amount: Uint128,
+    timeout: IbcTimeout,
+) -> Result<SwapInfo, ContractError> {
+    let count = PENDING_SWAPS_COUNT
+        .may_load(deps.storage, sender.clone())?
+        .unwrap_or_default();
+
+    let rq_id = swap::generate_id(&sender, count);
+    let request = SwapInfo {
+        asset,
+        asset_out,
+        asset_amount,
+        timeout,
+        swap_id: rq_id,
+    };
+    // If a pool request already exist, throw error, else create a new request
+    PENDING_SWAPS.update(
+        deps.storage,
+        (sender.clone(), count),
+        |existing| match existing {
+            Some(req) => Err(ContractError::SwapAlreadyExist { req }),
+            None => Ok(request.clone()),
+        },
+    )?;
+    PENDING_SWAPS_COUNT.save(deps.storage, sender, &count.wrapping_add(1))?;
+    Ok(request)
+}
 
 // Map for PENDING liquidity transactions
-pub const PENDING_LIQUIDITY: Map<String, Vec<LiquidityTxInfo>> = Map::new("pending_liquidity");
+pub const PENDING_LIQUIDITY: Map<(String, u128), LiquidityTxInfo> = Map::new("pending_liquidity");
 
-// Helper function to iterate through vector in PendingSwap map to find a certain swap_id
-pub fn find_swap_id(swap_id: &str, pending_swaps: Vec<SwapInfo>) -> bool {
-    for swap in pending_swaps {
-        if swap.swap_id == swap_id {
-            return true;
-        }
-    }
-    false
-}
+// Map for users last pending liquidity count which will be used for generating ids
+pub const PENDING_LIQUIDITY_COUNT: Map<String, u128> = Map::new("pending_liquidity_count");
 
-// Returns SwapInfo for a specific SwapID
-pub fn get_swap_info(swap_id: &str, pending_swaps: Vec<SwapInfo>) -> SwapInfo {
-    for swap in pending_swaps {
-        if swap.swap_id == swap_id {
-            return swap;
-        }
-    }
-    panic!("Swap ID not found")
-}
+pub fn generate_liquidity_req(
+    deps: DepsMut,
+    sender: String,
+    token_1_liquidity: Uint128,
+    token_2_liquidity: Uint128,
+) -> Result<LiquidityTxInfo, ContractError> {
+    let count = PENDING_LIQUIDITY_COUNT
+        .may_load(deps.storage, sender.clone())?
+        .unwrap_or_default();
 
-// Return LiquidityInfo for a specific liquidity_id
-pub fn get_liquidity_info(
-    liquidity_id: &str,
-    pending_liquidity: Vec<LiquidityTxInfo>,
-) -> LiquidityTxInfo {
-    for liquidity in pending_liquidity {
-        if liquidity.liquidity_id == liquidity_id {
-            return liquidity;
-        }
-    }
-    panic!("Liquidity ID not found")
+    let rq_id = liquidity::generate_id(&sender, count);
+    let request = LiquidityTxInfo {
+        token_1_liquidity,
+        token_2_liquidity,
+        sender: sender.clone(),
+        liquidity_id: rq_id,
+    };
+    // If a pool request already exist, throw error, else create a new request
+    PENDING_LIQUIDITY.update(
+        deps.storage,
+        (sender.clone(), count),
+        |existing| match existing {
+            Some(req) => Err(ContractError::LiquidityTxAlreadyExist { req }),
+            None => Ok(request.clone()),
+        },
+    )?;
+    PENDING_LIQUIDITY_COUNT.save(deps.storage, sender, &count.wrapping_add(1))?;
+    Ok(request)
 }

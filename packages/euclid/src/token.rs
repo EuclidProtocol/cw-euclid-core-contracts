@@ -6,7 +6,7 @@ use cosmwasm_std::{
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
-use crate::cw20::Cw20ExecuteMsg;
+use crate::{cw20::Cw20ExecuteMsg, error::ContractError};
 
 // Token asset that represents an identifier for a token
 #[cw_serde]
@@ -124,8 +124,12 @@ impl TokenInfo {
     }
 
     // Create Cosmos Msg depending on type of token
-    pub fn create_transfer_msg(&self, amount: Uint128, recipient: String) -> CosmosMsg {
-        match self {
+    pub fn create_transfer_msg(
+        &self,
+        amount: Uint128,
+        recipient: String,
+    ) -> Result<CosmosMsg, ContractError> {
+        let msg = match self {
             TokenInfo::Native { denom, .. } => CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient,
                 amount: vec![Coin {
@@ -137,10 +141,11 @@ impl TokenInfo {
                 contract_address, ..
             } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_address.to_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Transfer { recipient, amount }).unwrap(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer { recipient, amount })?,
                 funds: vec![],
             }),
-        }
+        };
+        Ok(msg)
     }
 }
 

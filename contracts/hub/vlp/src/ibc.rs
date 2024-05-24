@@ -7,12 +7,11 @@ use cosmwasm_std::{
 };
 
 use crate::{
-    ack::make_ack_fail,
     execute,
     state::{CONNECTION_COUNTS, TIMEOUT_COUNTS},
 };
-use euclid::error::{ContractError, Never};
-use euclid_ibc::msg::IbcExecuteMsg;
+use euclid::error::ContractError;
+use euclid_ibc::{ack::make_ack_fail, msg::IbcExecuteMsg};
 
 pub const IBC_VERSION: &str = "counter-1";
 
@@ -63,7 +62,7 @@ pub fn ibc_packet_receive(
     deps: DepsMut,
     env: Env,
     msg: IbcPacketReceiveMsg,
-) -> Result<IbcReceiveResponse, Never> {
+) -> Result<IbcReceiveResponse, ContractError> {
     // Regardless of if our processing of this packet works we need to
     // commit an ACK to the chain. As such, we wrap all handling logic
     // in a seprate function and on error write out an error ack.
@@ -72,7 +71,7 @@ pub fn ibc_packet_receive(
         Err(error) => Ok(IbcReceiveResponse::new()
             .add_attribute("method", "ibc_packet_receive")
             .add_attribute("error", error.to_string())
-            .set_ack(make_ack_fail(error.to_string()))),
+            .set_ack(make_ack_fail(error.to_string())?)),
     }
 }
 
