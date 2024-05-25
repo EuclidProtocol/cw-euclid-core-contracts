@@ -85,10 +85,11 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
     let pools: Result<_, ContractError> = POOLS
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .map(|item| {
-            let (chain, _pool) = item?;
+            let (chain, pool) = item?;
             Ok::<PoolInfo, ContractError>(PoolInfo {
                 factory_address: FACTORIES.load(deps.storage, &chain)?,
                 chain,
+                pool,
             })
         })
         .collect();

@@ -70,6 +70,7 @@ pub struct GetLiquidityResponse {
 pub struct PoolInfo {
     pub factory_address: String,
     pub chain: String,
+    pub pool: Pool,
 }
 #[cw_serde]
 pub struct FeeResponse {

@@ -113,7 +113,8 @@ pub fn do_ibc_packet_receive(
             chain,
             pool_rq_id: _,
             factory,
-        } => execute::register_pool(deps, env, chain, factory),
+            pair_info,
+        } => execute::register_pool(deps, env, chain, factory, pair_info),
     }
 }
 

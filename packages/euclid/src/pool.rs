@@ -67,5 +67,4 @@ pub struct LiquidityResponse {
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
-    pub pair: PairInfo,
 }

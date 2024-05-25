@@ -1,7 +1,10 @@
 use cosmwasm_std::{
     to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, Uint128,
 };
-use euclid::{error::ContractError, token::Token};
+use euclid::{
+    error::ContractError,
+    token::{PairInfo, Token},
+};
 use euclid_ibc::msg::IbcExecuteMsg;
 
 use crate::state::{generate_pool_req, STATE};
@@ -11,6 +14,7 @@ pub fn execute_request_pool_creation(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
+    pair_info: PairInfo,
     channel: String,
 ) -> Result<Response, ContractError> {
     // Load the state
@@ -28,6 +32,7 @@ pub fn execute_request_pool_creation(
             pool_rq_id: pool_request.pool_rq_id,
             chain: state.chain_id,
             factory: env.contract.address.to_string(),
+            pair_info,
         })?,
 
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),

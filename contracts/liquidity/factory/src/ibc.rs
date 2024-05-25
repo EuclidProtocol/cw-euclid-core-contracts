@@ -9,12 +9,12 @@ use cosmwasm_std::{
     SubMsg, Uint128, WasmMsg,
 };
 use euclid::msgs::pool::ExecuteMsg as PoolExecuteMsg;
+use euclid::token::PairInfo;
 use euclid::{
     error::ContractError,
     msgs::pool::CallbackExecuteMsg,
     pool::{LiquidityResponse, Pool, PoolCreationResponse},
     swap::SwapResponse,
-    token::PairInfo,
 };
 use euclid_ibc::ack::make_ack_fail;
 use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg};
@@ -106,12 +106,16 @@ pub fn ibc_packet_ack(
     // Parse the ack based on request
     let msg: IbcExecuteMsg = from_json(&ack.original_packet.data)?;
     match msg {
-        IbcExecuteMsg::RequestPoolCreation { pool_rq_id, .. } => {
+        IbcExecuteMsg::RequestPoolCreation {
+            pool_rq_id,
+            pair_info,
+            ..
+        } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<PoolCreationResponse> =
                 from_json(ack.acknowledgement.data)?;
 
-            execute_pool_creation(deps, res, pool_rq_id)
+            execute_pool_creation(deps, pair_info, res, pool_rq_id)
         }
         IbcExecuteMsg::Swap {
             swap_id,
@@ -169,9 +173,13 @@ pub fn ibc_packet_timeout(
             let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
             execute_swap_process(fake_error_ack, pool_address.to_string(), swap_id)
         }
-        IbcExecuteMsg::RequestPoolCreation { pool_rq_id, .. } => {
+        IbcExecuteMsg::RequestPoolCreation {
+            pool_rq_id,
+            pair_info,
+            ..
+        } => {
             let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
-            execute_pool_creation(deps, fake_error_ack, pool_rq_id)
+            execute_pool_creation(deps, pair_info, fake_error_ack, pool_rq_id)
         }
         _ => Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout")),
     };
@@ -221,10 +229,11 @@ pub fn validate_order_and_version(
 // Function to create pool
 pub fn execute_pool_creation(
     deps: DepsMut,
+    pair_info: PairInfo,
     res: AcknowledgementMsg<PoolCreationResponse>,
     pool_rq_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let existing_req = POOL_REQUESTS
+    let _existing_req = POOL_REQUESTS
         .may_load(deps.storage, pool_rq_id.clone())?
         .ok_or(ContractError::PoolRequestDoesNotExists {
             req: pool_rq_id.clone(),
@@ -240,7 +249,7 @@ pub fn execute_pool_creation(
                 vlp_contract: data.vlp_contract.clone(),
                 pool: Pool {
                     chain: state.chain_id.clone(),
-                    pair: data.pair.clone(),
+                    pair: pair_info,
                     reserve_1: Uint128::zero(),
                     reserve_2: Uint128::zero(),
                 },

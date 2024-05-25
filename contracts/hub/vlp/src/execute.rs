@@ -6,7 +6,7 @@ use euclid::{
     error::ContractError,
     pool::{LiquidityResponse, Pool, PoolCreationResponse},
     swap::SwapResponse,
-    token::{Pair, Token},
+    token::{PairInfo, Token},
 };
 use euclid_ibc::{ack::make_ack_success, msg::AcknowledgementMsg};
 
@@ -35,6 +35,7 @@ pub fn register_pool(
     env: Env,
     chain_id: String,
     factory: String,
+    pair_info: PairInfo,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -43,7 +44,18 @@ pub fn register_pool(
         POOLS.may_load(deps.storage, &chain_id)?.is_none(),
         ContractError::PoolAlreadyExists {}
     );
+
+    // Check for token id
+    if state.pair.token_1.get_token() != pair_info.token_1.get_token() {
+        return Err(ContractError::AssetDoesNotExist {});
+    }
+
+    if state.pair.token_2.get_token() != pair_info.token_2.get_token() {
+        return Err(ContractError::AssetDoesNotExist {});
+    }
+    
     let pool = Pool::new(&chain_id, pair_info, Uint128::zero(), Uint128::zero());
+
     // Store the pool in the map
     POOLS.save(deps.storage, &chain_id, &pool)?;
     FACTORIES.save(deps.storage, &chain_id, &factory)?;
@@ -52,7 +64,6 @@ pub fn register_pool(
 
     let ack = AcknowledgementMsg::Ok(PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
-        pair: state.pair,
     });
 
     Ok(IbcReceiveResponse::new()
