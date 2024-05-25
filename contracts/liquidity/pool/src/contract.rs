@@ -21,8 +21,7 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     let state = State {
         vlp_contract: msg.vlp_contract.clone(),
-        pair: msg.token_pair.clone(),
-        pair_info: msg.pair_info.clone(),
+        pair_info: msg.pool.pair.clone(),
         reserve_1: msg.pool.reserve_1,
         reserve_2: msg.pool.reserve_2,
         // Store factory contract
@@ -37,8 +36,8 @@ pub fn instantiate(
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("token_1", msg.token_pair.token_1.id)
-        .add_attribute("token_2", msg.token_pair.token_2.id)
+        .add_attribute("token_1", msg.pool.pair.token_1.get_token().id)
+        .add_attribute("token_2", msg.pool.pair.token_2.get_token().id)
         .add_attribute("factory_contract", info.sender.clone().to_string())
         .add_attribute("vlp_contract", msg.vlp_contract)
         .add_attribute("chain_id", "chain_id"))

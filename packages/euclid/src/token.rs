@@ -165,4 +165,12 @@ impl PairInfo {
             self.token_1.clone()
         }
     }
+
+    // Helper function to get the token that is not the current token
+    pub fn get_pair(&self) -> Pair {
+        Pair {
+            token_1: self.token_1.get_token(),
+            token_2: self.token_2.get_token(),
+        }
+    }
 }

@@ -48,7 +48,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::RequestPoolCreation { pair_info, channel } => {
-            execute::execute_request_pool_creation(deps, env, info, pair_info, channel)
+            execute::execute_request_pool_creation(deps, env, info, channel)
         }
         ExecuteMsg::ExecuteSwap {
             asset,

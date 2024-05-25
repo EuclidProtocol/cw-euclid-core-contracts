@@ -15,8 +15,6 @@ pub struct State {
     pub vlp_contract: String,
     // Factory Contract
     pub factory_contract: String,
-    // Token pair
-    pub pair: Pair,
     // Token Pair Info
     pub pair_info: PairInfo,
     // Total cumulative reserves of token_1 in the pool

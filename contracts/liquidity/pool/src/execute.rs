@@ -111,12 +111,12 @@ pub fn execute_complete_swap(
     let mut state = STATE.load(deps.storage)?;
     // Verify that assets exist in the state.
     ensure!(
-        swap_response.asset.exists(state.clone().pair),
+        swap_response.asset.exists(state.pair_info.get_pair()),
         ContractError::AssetDoesNotExist {}
     );
 
     ensure!(
-        swap_response.asset_out.exists(state.clone().pair),
+        swap_response.asset_out.exists(state.pair_info.get_pair()),
         ContractError::AssetDoesNotExist {}
     );
 
@@ -136,7 +136,7 @@ pub fn execute_complete_swap(
     );
 
     // Check if asset is token_1 or token_2 and calculate accordingly
-    if swap_response.asset == state.clone().pair.token_1 {
+    if swap_response.asset == state.pair_info.token_1.get_token() {
         state.reserve_1 += swap_response.asset_amount;
         state.reserve_2 -= swap_response.amount_out;
     } else {

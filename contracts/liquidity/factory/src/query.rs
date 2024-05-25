@@ -1,7 +1,7 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps};
 use euclid::{
     error::ContractError,
-    msgs::factory::{AllPoolsResponse, GetPoolResponse},
+    msgs::factory::{AllPoolsResponse, GetPoolResponse, PoolVlpResponse},
 };
 
 use crate::state::{STATE, VLP_TO_POOL};
@@ -16,10 +16,16 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&state)?)
 }
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
-    let pools: Vec<String> = VLP_TO_POOL
+    let pools = VLP_TO_POOL
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .map(|item| item.map(|(_, pool_address)| pool_address))
-        .collect::<Result<_, _>>()?;
+        .map(|item| {
+            let item = item.unwrap();
+            PoolVlpResponse {
+                pool: item.1.clone(),
+                vlp: item.0,
+            }
+        })
+        .collect();
 
     to_json_binary(&AllPoolsResponse { pools }).map_err(Into::into)
 }

@@ -59,7 +59,13 @@ pub struct StateResponse {
     pub admin: String,
     pub pool_code_id: u64,
 }
+
 #[cw_serde]
 pub struct AllPoolsResponse {
-    pub pools: Vec<String>, // Assuming pool addresses are strings
+    pub pools: Vec<PoolVlpResponse>, // Assuming pool addresses are strings
+}
+#[cw_serde]
+pub struct PoolVlpResponse {
+    pub pool: String,
+    pub vlp: String,
 }

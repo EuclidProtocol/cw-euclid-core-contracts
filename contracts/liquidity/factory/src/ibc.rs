@@ -106,16 +106,12 @@ pub fn ibc_packet_ack(
     // Parse the ack based on request
     let msg: IbcExecuteMsg = from_json(&ack.original_packet.data)?;
     match msg {
-        IbcExecuteMsg::RequestPoolCreation {
-            pair_info,
-            pool_rq_id,
-            ..
-        } => {
+        IbcExecuteMsg::RequestPoolCreation { pool_rq_id, .. } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<PoolCreationResponse> =
                 from_json(ack.acknowledgement.data)?;
 
-            execute_pool_creation(deps, res, pair_info, pool_rq_id)
+            execute_pool_creation(deps, res, pool_rq_id)
         }
         IbcExecuteMsg::Swap {
             swap_id,
@@ -173,13 +169,9 @@ pub fn ibc_packet_timeout(
             let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
             execute_swap_process(fake_error_ack, pool_address.to_string(), swap_id)
         }
-        IbcExecuteMsg::RequestPoolCreation {
-            pair_info,
-            pool_rq_id,
-            ..
-        } => {
+        IbcExecuteMsg::RequestPoolCreation { pool_rq_id, .. } => {
             let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
-            execute_pool_creation(deps, fake_error_ack, pair_info, pool_rq_id)
+            execute_pool_creation(deps, fake_error_ack, pool_rq_id)
         }
         _ => Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout")),
     };
@@ -230,15 +222,13 @@ pub fn validate_order_and_version(
 pub fn execute_pool_creation(
     deps: DepsMut,
     res: AcknowledgementMsg<PoolCreationResponse>,
-    pair_info: PairInfo,
     pool_rq_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let existing_req = POOL_REQUESTS.may_load(deps.storage, pool_rq_id.clone())?;
-    if existing_req.is_none() {
-        return Err(ContractError::PoolRequestDoesNotExists {
+    let existing_req = POOL_REQUESTS
+        .may_load(deps.storage, pool_rq_id.clone())?
+        .ok_or(ContractError::PoolRequestDoesNotExists {
             req: pool_rq_id.clone(),
-        });
-    }
+        })?;
     // Load the state
     let state = STATE.load(deps.storage)?;
     // Check whether res is an error or not
@@ -248,11 +238,9 @@ pub fn execute_pool_creation(
             // Prepare Instantiate Msg
             let init_msg = PoolInstantiateMsg {
                 vlp_contract: data.vlp_contract.clone(),
-                token_pair: data.token_pair.clone(),
-                pair_info: pair_info.clone(),
                 pool: Pool {
                     chain: state.chain_id.clone(),
-                    pair: pair_info.clone(),
+                    pair: data.pair.clone(),
                     reserve_1: Uint128::zero(),
                     reserve_2: Uint128::zero(),
                 },

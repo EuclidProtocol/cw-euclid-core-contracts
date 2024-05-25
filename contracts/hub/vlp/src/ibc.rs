@@ -110,10 +110,10 @@ pub fn do_ibc_packet_receive(
             ..
         } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_amount_out, swap_id),
         IbcExecuteMsg::RequestPoolCreation {
-            pair_info,
             chain,
             pool_rq_id: _,
-        } => execute::register_pool(deps, env, chain, pair_info),
+            factory,
+        } => execute::register_pool(deps, env, chain, factory),
     }
 }
 
