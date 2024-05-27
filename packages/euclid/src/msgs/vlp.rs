@@ -85,3 +85,6 @@ pub struct PoolResponse {
 pub struct AllPoolsResponse {
     pub pools: Vec<PoolInfo>,
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}

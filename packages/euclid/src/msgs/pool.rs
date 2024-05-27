@@ -119,3 +119,6 @@ pub struct GetPoolReservesResponse {
     pub reserve_1: Uint128,
     pub reserve_2: Uint128,
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}

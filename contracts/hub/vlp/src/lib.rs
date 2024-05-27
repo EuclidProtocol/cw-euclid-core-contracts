@@ -4,5 +4,6 @@ pub mod ibc;
 pub mod integration_tests;
 pub mod query;
 pub mod state;
+pub mod migrate;
 
 mod test;
