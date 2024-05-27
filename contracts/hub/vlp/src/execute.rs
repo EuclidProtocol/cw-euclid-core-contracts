@@ -106,13 +106,17 @@ pub fn add_liquidity(
             }
         })?;
 
+    // Lets get lq ratio, it will be the current ratio of token reserves or if its first time then it will be ratio of tokens provided
+    let lq_ratio = Decimal256::checked_from_ratio(state.total_reserve_1, state.total_reserve_2)
+        .unwrap_or(ratio);
+
     // Verify slippage tolerance is between 0 and 100
     ensure!(
         slippage_tolerance.le(&100),
         ContractError::InvalidSlippageTolerance {}
     );
 
-    assert_slippage_tolerance(ratio, state.lq_ratio, slippage_tolerance)?;
+    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance)?;
 
     // Add liquidity to the pool
     pool.reserve_1 = pool.reserve_1.checked_add(token_1_liquidity)?;

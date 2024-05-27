@@ -27,12 +27,7 @@ pub fn instantiate(
         total_reserve_1: Uint128::zero(),
         total_reserve_2: Uint128::zero(),
         total_lp_tokens: Uint128::zero(),
-        lq_ratio: msg.lq_ratio,
     };
-    ensure!(
-        !state.lq_ratio.is_zero(),
-        ContractError::InvalidLiquidityRatio {}
-    );
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;

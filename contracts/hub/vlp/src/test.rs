@@ -37,7 +37,6 @@ mod tests {
                 treasury_fee: 1,
                 staker_fee: 1,
             },
-            lq_ratio: Decimal256::one(),
         };
         let res = instantiate(deps.as_mut(), env, info, msg).unwrap();
         assert_eq!(0, res.messages.len());
