@@ -2,7 +2,7 @@ name: release wasm
 
 on:
   push:
-    on: development 
+    on: development
 
 jobs:
   release:
@@ -24,6 +24,11 @@ jobs:
           toolchain: stable
           target: wasm32-unknown-unknown
           override: true
+
+      - uses: sigoden/install-binary@v1
+        with:
+          repo: WebAssembly/binaryen
+          name: wasm-opt
 
       - name: Build WASM files
         run: bash ./build.sh all
