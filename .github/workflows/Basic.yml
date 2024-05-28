@@ -29,7 +29,7 @@ jobs:
       - name: Compile WASM contract
         uses: actions-rs/cargo@v1
         with:
-          command: build --target wasm32-unknown-unknown
+          command: wasm
           args: --locked
         env:
           RUSTFLAGS: "-C link-arg=-s"

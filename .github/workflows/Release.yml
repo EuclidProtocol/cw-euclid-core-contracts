@@ -10,21 +10,30 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+
       - name: Install cargo-run-script
         uses: actions-rs/cargo@v1
         with:
           command: install
           args: cargo-run-script
+
+      - name: Build WASM files
+        run: bash ./build.sh
+        env:
+          SOME_ENV_VAR: value
+
       - name: Run cargo optimize
         uses: actions-rs/cargo@v1
         with:
           command: run-script
           args: optimize
+
       - name: Get release ID
         id: get_release
         uses: bruceadams/get-release@v1.2.3
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
       - name: Upload optimized wasm
         uses: svenstaro/upload-release-action@v2
         with:
