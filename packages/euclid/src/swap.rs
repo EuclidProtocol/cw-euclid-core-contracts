@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{IbcTimeout, StdError, Uint128};
+use cosmwasm_std::{IbcTimeout, Uint128};
 
 use crate::{
     error::ContractError,
