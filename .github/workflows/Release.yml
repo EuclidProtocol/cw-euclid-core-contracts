@@ -18,7 +18,7 @@ jobs:
           args: cargo-run-script
 
       - name: Build WASM files
-        run: bash ./build.sh
+        run: bash ./build.sh all
         env:
           SOME_ENV_VAR: value
 
