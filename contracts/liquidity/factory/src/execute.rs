@@ -119,3 +119,26 @@ pub fn execute_add_liquidity(
         .add_attribute("method", "add_liquidity_request")
         .add_message(msg))
 }
+
+// Function to update the pool code ID
+pub fn execute_update_pool_code_id(
+    deps: DepsMut,
+    info: MessageInfo,
+    new_pool_code_id: u64,
+) -> Result<Response, ContractError> {
+    // Load the state
+    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
+        // Ensure that only the admin can update the pool code ID
+        if info.sender.to_string() != state.admin {
+            return Err(ContractError::Unauthorized {});
+        }
+
+        // Update the pool code ID
+        state.pool_code_id = new_pool_code_id;
+        Ok(state)
+    })?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_pool_code_id")
+        .add_attribute("new_pool_code_id", new_pool_code_id.to_string()))
+}

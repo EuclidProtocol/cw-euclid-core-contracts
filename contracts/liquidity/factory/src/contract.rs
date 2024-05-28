@@ -82,6 +82,9 @@ pub fn execute(
             channel,
             liquidity_id,
         ),
+        ExecuteMsg::UpdatePoolCodeId { new_pool_code_id } => {
+            execute::execute_update_pool_code_id(deps, info, new_pool_code_id)
+        }
     }
 }
 

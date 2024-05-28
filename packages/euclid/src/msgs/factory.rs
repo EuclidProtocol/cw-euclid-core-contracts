@@ -33,6 +33,10 @@ pub enum ExecuteMsg {
         channel: String,
         liquidity_id: String,
     },
+     // Update Pool Code ID
+     UpdatePoolCodeId {
+        new_pool_code_id: u64,
+    },
 }
 
 #[cw_serde]
