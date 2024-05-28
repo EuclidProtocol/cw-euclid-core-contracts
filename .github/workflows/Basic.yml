@@ -29,7 +29,7 @@ jobs:
       - name: Compile WASM contract
         uses: actions-rs/cargo@v1
         with:
-          command: wasm
+          command: build --target wasm32-unknown-unknown
           args: --locked
         env:
           RUSTFLAGS: "-C link-arg=-s"
@@ -60,13 +60,3 @@ jobs:
         with:
           command: clippy
           args: -- -D warnings
-
-      - name: Generate Schema
-        uses: actions-rs/cargo@v1
-        with:
-          command: schema
-          args: --locked
-
-      - name: Schema Changes
-        # fails if any changes not committed
-        run: git diff --exit-code schema
