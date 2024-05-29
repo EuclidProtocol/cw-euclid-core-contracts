@@ -10,7 +10,7 @@ use cosmwasm_std::{
 };
 use euclid::msgs::pool::ExecuteMsg as PoolExecuteMsg;
 use euclid::{
-    error::{ContractError, Never},
+    error::ContractError,
     msgs::pool::CallbackExecuteMsg,
     pool::{LiquidityResponse, Pool, PoolCreationResponse},
     swap::SwapResponse,

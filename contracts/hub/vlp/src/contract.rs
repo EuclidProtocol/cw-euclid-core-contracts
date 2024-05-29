@@ -1,13 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
 use cw2::set_contract_version;
 
 use crate::state::{State, POOLS, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
-use crate::query::{self, query_all_pools, query_liquidity, query_pool, query_simulate_swap};
+use crate::query::{query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap};
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -29,9 +29,10 @@ pub fn instantiate(
         total_lp_tokens: Uint128::zero(),
         lq_ratio: msg.lq_ratio,
     };
-    if state.lq_ratio.is_zero() {
-        return Err(ContractError::InvalidLiquidityRatio {});
-    }
+    ensure!(
+        !state.lq_ratio.is_zero(),
+        ContractError::InvalidLiquidityRatio {}
+    );
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
@@ -62,7 +63,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             asset_amount,
         } => query_simulate_swap(deps, asset, asset_amount),
         QueryMsg::Liquidity {} => query_liquidity(deps),
-        QueryMsg::Fee {} => query::query_fee(deps),
+        QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
     }
