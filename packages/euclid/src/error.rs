@@ -7,7 +7,7 @@ use thiserror::Error;
 use crate::{liquidity::LiquidityTxInfo, pool::PoolRequest, swap::SwapInfo};
 #[derive(Error, Debug)]
 pub enum Never {}
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
