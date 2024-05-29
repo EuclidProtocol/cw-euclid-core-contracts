@@ -17,6 +17,22 @@ pub struct Pool {
     pub reserve_2: Uint128,
 }
 
+impl Pool {
+    pub fn new(
+        chain: impl Into<String>,
+        pair: PairInfo,
+        reserve_1: Uint128,
+        reserve_2: Uint128,
+    ) -> Pool {
+        Pool {
+            chain: chain.into(),
+            pair,
+            reserve_1,
+            reserve_2,
+        }
+    }
+}
+
 // Request to create pool saved in state to manage during acknowledgement
 #[cw_serde]
 pub struct PoolRequest {

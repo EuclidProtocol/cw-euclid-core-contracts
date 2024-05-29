@@ -1,4 +1,4 @@
-use cosmwasm_std::{to_json_binary, Decimal256, DepsMut, Env, IbcReceiveResponse, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Decimal256, DepsMut, Env, IbcReceiveResponse, Uint128};
 use euclid::{
     error::ContractError,
     pool::{LiquidityResponse, Pool, PoolCreationResponse},
@@ -36,15 +36,11 @@ pub fn register_pool(
     let state = STATE.load(deps.storage)?;
 
     // Verify that chain pool does not already exist
-    if POOLS.may_load(deps.storage, &chain_id)?.is_some() {
-        return Err(ContractError::PoolAlreadyExists {});
-    }
-    let pool = Pool {
-        chain: chain_id.clone(),
-        pair: pair_info,
-        reserve_1: Uint128::zero(),
-        reserve_2: Uint128::zero(),
-    };
+    ensure!(
+        POOLS.may_load(deps.storage, &chain_id)?.is_none(),
+        ContractError::PoolAlreadyExists {}
+    );
+    let pool = Pool::new(&chain_id, pair_info, Uint128::zero(), Uint128::zero());
     // Store the pool in the map
     POOLS.save(deps.storage, &chain_id, &pool)?;
 
