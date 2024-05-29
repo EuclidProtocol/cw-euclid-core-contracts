@@ -27,6 +27,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Duplicate Tokens")]
+    DuplicateTokens {},
+
     #[error("Pool request {req:?} already exist")]
     PoolRequestAlreadyExists { req: PoolRequest },
 

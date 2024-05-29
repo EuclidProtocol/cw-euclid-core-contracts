@@ -19,6 +19,9 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    // Validate token pair
+    msg.pair.validate()?;
+
     let state = State {
         pair: msg.pair,
         router: info.sender.to_string(),

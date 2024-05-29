@@ -2,7 +2,7 @@ use std::fmt;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    to_json_binary, BankMsg, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg,
+    ensure, to_json_binary, BankMsg, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
@@ -19,6 +19,7 @@ impl Token {
     pub fn exists(&self, pool: Pair) -> bool {
         self == &pool.token_1 || self == &pool.token_2
     }
+    // TODO validate token
 }
 
 impl<'a> PrimaryKey<'a> for Token {
@@ -63,6 +64,18 @@ impl fmt::Display for Token {
 pub struct Pair {
     pub token_1: Token,
     pub token_2: Token,
+}
+impl Pair {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        // Prevent duplicate tokens
+        ensure!(
+            self.token_1.id != self.token_2.id,
+            ContractError::DuplicateTokens {}
+        );
+        // TODO validate token_1 and token_2
+
+        Ok(())
+    }
 }
 
 // TokenInfo stores the native or smart contract token information from incoming chain
