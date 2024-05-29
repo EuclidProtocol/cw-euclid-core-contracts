@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo,
-    Response, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcTimeout, MessageInfo, Response,
+    Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
@@ -11,7 +11,6 @@ use euclid::{
     swap::{self, SwapResponse},
     token::TokenInfo,
 };
-use euclid_ibc::msg::IbcExecuteMsg;
 
 use crate::state::{
     generate_liquidity_req, generate_swap_req, PENDING_LIQUIDITY, PENDING_SWAPS, STATE,

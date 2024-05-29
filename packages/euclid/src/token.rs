@@ -19,7 +19,11 @@ impl Token {
     pub fn exists(&self, pool: Pair) -> bool {
         self == &pool.token_1 || self == &pool.token_2
     }
-    // TODO validate token
+    pub fn validate(&self) -> Result<(), ContractError> {
+        ensure!(!self.id.is_empty(), ContractError::InvalidTokenID {});
+        // TODO additional checks required
+        Ok(())
+    }
 }
 
 impl<'a> PrimaryKey<'a> for Token {
@@ -72,7 +76,8 @@ impl Pair {
             self.token_1.id != self.token_2.id,
             ContractError::DuplicateTokens {}
         );
-        // TODO validate token_1 and token_2
+        self.token_1.validate()?;
+        self.token_2.validate()?;
 
         Ok(())
     }
@@ -176,6 +181,115 @@ impl PairInfo {
             self.token_2.clone()
         } else {
             self.token_1.clone()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestToken {
+        name: &'static str,
+        token: Token,
+        expected_error: Option<ContractError>,
+    }
+
+    struct TestTokenPair {
+        name: &'static str,
+        pair: Pair,
+        expected_error: Option<ContractError>,
+    }
+
+    #[test]
+    fn test_token_validation() {
+        let test_cases = vec![
+            TestToken {
+                name: "Empty token ID",
+                token: Token { id: "".to_string() },
+                expected_error: Some(ContractError::InvalidTokenID {}),
+            },
+            TestToken {
+                name: "Non-empty token ID",
+                token: Token {
+                    id: "NotEmpty".to_string(),
+                },
+                expected_error: None,
+            },
+        ];
+
+        for test in test_cases {
+            let res = test.token.validate();
+
+            if let Some(err) = test.expected_error {
+                assert_eq!(res.unwrap_err(), err, "{}", test.name);
+                continue;
+            } else {
+                assert!(res.is_ok())
+            }
+        }
+    }
+
+    #[test]
+    fn test_pair_validation() {
+        let test_cases = vec![
+            TestTokenPair {
+                name: "Duplicate tokens",
+                pair: Pair {
+                    token_1: Token {
+                        id: "ABC".to_string(),
+                    },
+                    token_2: Token {
+                        id: "ABC".to_string(),
+                    },
+                },
+                expected_error: Some(ContractError::DuplicateTokens {}),
+            },
+            TestTokenPair {
+                name: "Different tokens",
+                pair: Pair {
+                    token_1: Token {
+                        id: "ABC".to_string(),
+                    },
+                    token_2: Token {
+                        id: "DEF".to_string(),
+                    },
+                },
+                expected_error: None,
+            },
+            TestTokenPair {
+                name: "Same letters but with different case",
+                pair: Pair {
+                    token_1: Token {
+                        id: "ABC".to_string(),
+                    },
+                    token_2: Token {
+                        id: "AbC".to_string(),
+                    },
+                },
+                expected_error: None,
+            },
+            TestTokenPair {
+                name: "One invalid token",
+                pair: Pair {
+                    token_1: Token {
+                        id: "ABC".to_string(),
+                    },
+                    token_2: Token { id: "".to_string() },
+                },
+                expected_error: Some(ContractError::InvalidTokenID {}),
+            },
+        ];
+
+        for test in test_cases {
+            let res = test.pair.validate();
+
+            if let Some(err) = test.expected_error {
+                assert_eq!(res.unwrap_err(), err, "{}", test.name);
+                continue;
+            } else {
+                assert!(res.is_ok())
+            }
         }
     }
 }

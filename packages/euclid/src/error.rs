@@ -7,7 +7,8 @@ use thiserror::Error;
 use crate::{liquidity::LiquidityTxInfo, pool::PoolRequest, swap::SwapInfo};
 #[derive(Error, Debug)]
 pub enum Never {}
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
+
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
@@ -44,6 +45,9 @@ pub enum ContractError {
 
     #[error("invalid IBC channel version. Got ({actual}), expected ({expected})")]
     InvalidVersion { actual: String, expected: String },
+
+    #[error("Invalid Token ID")]
+    InvalidTokenID {},
 
     #[error("Asset does not exist in VLP")]
     AssetDoesNotExist {},
