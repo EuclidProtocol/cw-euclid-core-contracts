@@ -13,7 +13,12 @@ pub fn get_pool(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
 }
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
-    Ok(to_json_binary(&StateResponse{chain_id:state.chain_id,router_contract:state.router_contract,admin:state.admin,pool_code_id:state.pool_code_id})?)
+    Ok(to_json_binary(&StateResponse {
+        chain_id: state.chain_id,
+        router_contract: state.router_contract,
+        admin: state.admin,
+        pool_code_id: state.pool_code_id,
+    })?)
 }
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
     let pools = VLP_TO_POOL

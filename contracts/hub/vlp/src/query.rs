@@ -4,7 +4,7 @@ use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::token::{PairInfo, Token};
 
 use euclid::msgs::vlp::{
-    AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetSwapResponse, PoolInfo, PoolResponse
+    AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetSwapResponse, PoolInfo, PoolResponse,
 };
 
 use crate::state::{FACTORIES, POOLS, STATE};
@@ -74,7 +74,7 @@ pub fn query_liquidity(deps: Deps) -> Result<Binary, ContractError> {
 // Function to query fee of the contract
 pub fn query_fee(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
-    Ok(to_json_binary(&FeeResponse{fee:state.fee})?)
+    Ok(to_json_binary(&FeeResponse { fee: state.fee })?)
 }
 // Function to query a Euclid Pool Information for this pair
 pub fn query_pool(deps: Deps, chain_id: String) -> Result<Binary, ContractError> {
