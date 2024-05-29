@@ -17,6 +17,7 @@ pub enum ExecuteMsg {
     RequestPoolCreation {
         pair_info: PairInfo,
         channel: String,
+        timeout: Option<u64>,
     },
     ExecuteSwap {
         asset: Token,
@@ -24,6 +25,7 @@ pub enum ExecuteMsg {
         min_amount_out: Uint128,
         channel: String,
         swap_id: String,
+        timeout: Option<u64>,
     },
     // Add Liquidity Request to the VLP
     AddLiquidity {
@@ -32,6 +34,7 @@ pub enum ExecuteMsg {
         slippage_tolerance: u64,
         channel: String,
         liquidity_id: String,
+        timeout: Option<u64>,
     },
 }
 

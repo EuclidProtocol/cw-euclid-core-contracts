@@ -57,6 +57,7 @@ pub fn execute(
             asset_amount,
             min_amount_out,
             channel,
+            timeout,
         } => execute::execute_swap_request(
             deps,
             info,
@@ -66,12 +67,14 @@ pub fn execute(
             min_amount_out,
             channel,
             None,
+            timeout,
         ),
         ExecuteMsg::AddLiquidity {
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
             channel,
+            timeout,
         } => execute::add_liquidity_request(
             deps,
             info,
@@ -81,6 +84,7 @@ pub fn execute(
             slippage_tolerance,
             channel,
             None,
+            timeout,
         ),
         ExecuteMsg::Receive(msg) => execute::receive_cw20(deps, env, info, msg),
         ExecuteMsg::Callback(callback_msg) => {

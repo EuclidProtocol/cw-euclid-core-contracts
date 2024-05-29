@@ -57,6 +57,9 @@ pub enum ContractError {
     #[error("Invalid Liquidity Ratio")]
     InvalidLiquidityRatio {},
 
+    #[error("Invalid Timeout")]
+    InvalidTimeout {},
+
     #[error("Slippage Tolerance must be between 0 and 100")]
     InvalidSlippageTolerance {},
 
