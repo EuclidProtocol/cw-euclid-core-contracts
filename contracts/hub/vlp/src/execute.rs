@@ -1,4 +1,7 @@
-use cosmwasm_std::{ensure, to_json_binary, Decimal256, DepsMut, Env, IbcReceiveResponse, Uint128};
+use cosmwasm_std::{
+    ensure, to_json_binary, Decimal256, DepsMut, Env, IbcReceiveResponse, OverflowError,
+    OverflowOperation, Uint128,
+};
 use euclid::{
     error::ContractError,
     pool::{LiquidityResponse, Pool, PoolCreationResponse},
@@ -95,9 +98,10 @@ pub fn add_liquidity(
         })?;
 
     // Verify slippage tolerance is between 0 and 100
-    if slippage_tolerance > 100 {
-        return Err(ContractError::InvalidSlippageTolerance {});
-    }
+    ensure!(
+        slippage_tolerance.le(&100),
+        ContractError::InvalidSlippageTolerance {}
+    );
 
     assert_slippage_tolerance(ratio, state.lq_ratio, slippage_tolerance)?;
 
@@ -213,26 +217,38 @@ pub fn execute_swap(
     // Get the pool for the chain_id provided
     let mut pool = POOLS.load(deps.storage, &chain_id)?;
     let mut state = state::STATE.load(deps.storage)?;
-    // Verify that the asset exists for the VLP
 
+    // Verify that the asset exists for the VLP
     let asset_info = asset.clone().id;
-    if asset_info != state.clone().pair.token_1.id && asset_info != state.clone().pair.token_2.id {
-        return Err(ContractError::AssetDoesNotExist {});
-    }
+    ensure!(
+        asset_info == state.clone().pair.token_1.id || asset_info == state.clone().pair.token_2.id,
+        ContractError::AssetDoesNotExist {}
+    );
 
     // Verify that the asset amount is non-zero
-    if asset_amount.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    ensure!(!asset_amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Get Fee from the state
     let fee = state.clone().fee;
 
     // Calcuate the sum of fees
-    let total_fee = fee.lp_fee + fee.staker_fee + fee.treasury_fee;
+    let total_fee = fee
+        .lp_fee
+        .checked_add(fee.staker_fee)
+        .and_then(|x| x.checked_add(fee.treasury_fee));
+
+    ensure!(
+        total_fee.is_some(),
+        ContractError::Overflow(OverflowError::new(
+            OverflowOperation::Add,
+            fee.lp_fee,
+            fee.staker_fee
+        ))
+    );
 
     // Remove the fee from the asset amount
-    let fee_amount = asset_amount.multiply_ratio(Uint128::from(total_fee), Uint128::from(100u128));
+    let fee_amount =
+        asset_amount.multiply_ratio(Uint128::from(total_fee.unwrap()), Uint128::from(100u128));
 
     // Calculate the amount of asset to be swapped
     let swap_amount = asset_amount.checked_sub(fee_amount)?;
@@ -255,29 +271,33 @@ pub fn execute_swap(
     let receive_amount = calculate_swap(swap_info.0, swap_info.1, swap_info.2)?;
 
     // Verify that the receive amount is greater than the minimum token out
-    if receive_amount <= min_token_out {
-        return Err(ContractError::SlippageExceeded {
+    ensure!(
+        receive_amount > min_token_out,
+        ContractError::SlippageExceeded {
             amount: receive_amount,
             min_amount_out: min_token_out,
-        });
-    }
+        }
+    );
 
     // Verify that the pool has enough liquidity to swap to user
     // Should activate ELP algorithm to get liquidity from other available pool
+
     if asset_info == state.clone().pair.token_1.id {
-        if pool.reserve_1 < swap_amount {
-            return Err(ContractError::SlippageExceeded {
+        ensure!(
+            pool.reserve_1.ge(&swap_amount),
+            ContractError::SlippageExceeded {
                 amount: swap_amount,
                 min_amount_out: min_token_out,
-            });
-        }
+            }
+        );
     } else {
-        if pool.reserve_2 < swap_amount {
-            return Err(ContractError::SlippageExceeded {
+        ensure!(
+            pool.reserve_2.ge(&swap_amount),
+            ContractError::SlippageExceeded {
                 amount: swap_amount,
                 min_amount_out: min_token_out,
-            });
-        }
+            }
+        );
     }
 
     // Move liquidity from the pool
