@@ -18,13 +18,13 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
         router_contract: msg.router_contract.clone(),
-        chain_id: msg.chain_id.clone(),
+        chain_id: env.block.chain_id,
         admin: info.sender.clone().to_string(),
         pool_code_id: msg.pool_code_id.clone(),
     };
@@ -36,7 +36,7 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
-        .add_attribute("chain_id", msg.chain_id.clone()))
+        .add_attribute("chain_id", state.chain_id))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

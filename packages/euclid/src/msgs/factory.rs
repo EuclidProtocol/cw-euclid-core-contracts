@@ -5,8 +5,6 @@ use cosmwasm_std::Uint128;
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
-    // Chain ID
-    pub chain_id: String,
     // Pool Code ID
     pub pool_code_id: u64,
 }
