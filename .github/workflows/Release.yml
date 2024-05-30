@@ -2,7 +2,8 @@ name: release wasm
 
 on:
   push:
-    on: development
+    tags:
+      - "*"
 
 jobs:
   release:
@@ -35,17 +36,7 @@ jobs:
         env:
           SOME_ENV_VAR: value
 
-      - name: Get release ID
-        id: get_release
-        uses: bruceadams/get-release@v1.2.3
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Upload optimized wasm
-        uses: svenstaro/upload-release-action@v2
+      - uses: actions/upload-artifact@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./artifacts/*.wasm
-          tag: ${{ github.ref }}
-          overwrite: true
-          file_glob: true
+          name: my-artifact
+          path: ./artifacts/
