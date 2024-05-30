@@ -46,14 +46,16 @@ pub fn register_pool(
     );
 
     // Check for token id
-    if state.pair.token_1.get_token() != pair_info.token_1.get_token() {
-        return Err(ContractError::AssetDoesNotExist {});
-    }
+    ensure!(
+        state.pair.token_1.get_token() != pair_info.token_1.get_token(),
+        ContractError::AssetDoesNotExist {}
+    );
 
-    if state.pair.token_2.get_token() != pair_info.token_2.get_token() {
-        return Err(ContractError::AssetDoesNotExist {});
-    }
-    
+    ensure!(
+        state.pair.token_2.get_token() != pair_info.token_2.get_token(),
+        ContractError::AssetDoesNotExist {}
+    );
+
     let pool = Pool::new(&chain_id, pair_info, Uint128::zero(), Uint128::zero());
 
     // Store the pool in the map
