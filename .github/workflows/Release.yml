@@ -2,6 +2,9 @@ name: build artifacts wasm
 
 on: [push]
 
+permissions:
+  actions: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
