@@ -2,10 +2,6 @@ name: build artifacts wasm
 
 on: [push]
 
-permissions:
-  actions: write
-  content: write
-
 
 jobs:
   release:
