@@ -2,8 +2,6 @@ name: build artifacts wasm
 
 on: [push]
 
-permissions:
-  actions: write
 
 jobs:
   release:
@@ -11,6 +9,8 @@ jobs:
     steps:
       - name: Cancel Previous Runs
         uses: styfle/cancel-workflow-action@0.9.1
+        permissions:
+          actions: write
         with:
           all_but_latest: true
       - name: Checkout sources
