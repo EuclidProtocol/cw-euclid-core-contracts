@@ -7,7 +7,7 @@ use thiserror::Error;
 use crate::{liquidity::LiquidityTxInfo, pool::PoolRequest, swap::SwapInfo};
 #[derive(Error, Debug)]
 pub enum Never {}
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
@@ -56,6 +56,9 @@ pub enum ContractError {
 
     #[error("Invalid Liquidity Ratio")]
     InvalidLiquidityRatio {},
+
+    #[error("Invalid Timeout")]
+    InvalidTimeout {},
 
     #[error("Slippage Tolerance must be between 0 and 100")]
     InvalidSlippageTolerance {},

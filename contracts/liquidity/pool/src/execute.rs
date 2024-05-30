@@ -9,6 +9,7 @@ use euclid::{
     msgs::{factory, pool::Cw20HookMsg},
     pool::LiquidityResponse,
     swap::{self, SwapResponse},
+    timeout::get_timeout,
     token::TokenInfo,
 };
 
@@ -27,6 +28,7 @@ pub fn execute_swap_request(
     min_amount_out: Uint128,
     channel: String,
     msg_sender: Option<String>,
+    timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -81,7 +83,8 @@ pub fn execute_swap_request(
     // Get alternative token
     let asset_out: TokenInfo = state.pair_info.get_other_token(asset.clone());
 
-    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(60));
+    let timeout_duration = get_timeout(timeout)?;
+    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout_duration));
     let swap_info = generate_swap_req(deps, sender, asset, asset_out, asset_amount, timeout)?;
 
     let msg = FactoryExecuteMsg::ExecuteSwap {
@@ -90,6 +93,7 @@ pub fn execute_swap_request(
         min_amount_out,
         channel,
         swap_id: swap_info.swap_id,
+        timeout: Some(timeout_duration),
     };
 
     let msg = WasmMsg::Execute {
@@ -203,6 +207,7 @@ pub fn receive_cw20(
             asset,
             min_amount_out,
             channel,
+            timeout,
         } => {
             let contract_adr = info.sender.clone();
 
@@ -223,6 +228,7 @@ pub fn receive_cw20(
                 min_amount_out,
                 channel,
                 Some(cw20_msg.sender),
+                timeout,
             )
         }
     }
@@ -238,6 +244,7 @@ pub fn add_liquidity_request(
     slippage_tolerance: u64,
     channel: String,
     msg_sender: Option<String>,
+    timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -318,6 +325,7 @@ pub fn add_liquidity_request(
         slippage_tolerance,
         channel,
         liquidity_id: liquidity_info.liquidity_id,
+        timeout,
     };
 
     let msg = WasmMsg::Execute {

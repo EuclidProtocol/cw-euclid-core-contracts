@@ -47,15 +47,18 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RequestPoolCreation { pair_info, channel } => {
-            execute::execute_request_pool_creation(deps, env, info, pair_info, channel)
-        }
+        ExecuteMsg::RequestPoolCreation {
+            pair_info,
+            channel,
+            timeout,
+        } => execute::execute_request_pool_creation(deps, env, info, pair_info, channel, timeout),
         ExecuteMsg::ExecuteSwap {
             asset,
             asset_amount,
             min_amount_out,
             channel,
             swap_id,
+            timeout,
         } => execute::execute_swap(
             deps,
             env,
@@ -65,6 +68,7 @@ pub fn execute(
             min_amount_out,
             channel,
             swap_id,
+            timeout,
         ),
         ExecuteMsg::AddLiquidity {
             token_1_liquidity,
@@ -72,6 +76,7 @@ pub fn execute(
             slippage_tolerance,
             channel,
             liquidity_id,
+            timeout,
         } => execute::execute_add_liquidity(
             deps,
             env,
@@ -81,6 +86,7 @@ pub fn execute(
             slippage_tolerance,
             channel,
             liquidity_id,
+            timeout,
         ),
     }
 }

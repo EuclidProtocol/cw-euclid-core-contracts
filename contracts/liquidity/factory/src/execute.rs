@@ -3,6 +3,7 @@ use cosmwasm_std::{
 };
 use euclid::{
     error::ContractError,
+    timeout::get_timeout,
     token::{PairInfo, Token},
 };
 use euclid_ibc::msg::IbcExecuteMsg;
@@ -16,6 +17,7 @@ pub fn execute_request_pool_creation(
     info: MessageInfo,
     pair_info: PairInfo,
     channel: String,
+    timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     // Load the state
     let state = STATE.load(deps.storage)?;
@@ -24,6 +26,8 @@ pub fn execute_request_pool_creation(
 
     // Create a Request in state
     let pool_request = generate_pool_req(deps, &info.sender, env.block.chain_id, channel.clone())?;
+
+    let timeout = get_timeout(timeout)?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
@@ -34,7 +38,7 @@ pub fn execute_request_pool_creation(
             pair_info,
         })?,
 
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
 
     msgs.push(ibc_packet.into());
@@ -54,11 +58,14 @@ pub fn execute_swap(
     min_amount_out: Uint128,
     channel: String,
     swap_id: String,
+    timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     // Load the state
     let state = STATE.load(deps.storage)?;
 
     let pool_address = info.sender;
+
+    let timeout = get_timeout(timeout)?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
@@ -72,7 +79,7 @@ pub fn execute_swap(
             swap_id,
             pool_address,
         })?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
 
     let msg = CosmosMsg::Ibc(ibc_packet);
@@ -92,11 +99,14 @@ pub fn execute_add_liquidity(
     slippage_tolerance: u64,
     channel: String,
     liquidity_id: String,
+    timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     // Load the state
     let state = STATE.load(deps.storage)?;
 
     let pool_address = info.sender.clone();
+
+    let timeout = get_timeout(timeout)?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
@@ -109,7 +119,7 @@ pub fn execute_add_liquidity(
             liquidity_id,
             pool_address: pool_address.clone().to_string(),
         })?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
 
     let msg = CosmosMsg::Ibc(ibc_packet);
