@@ -1,4 +1,4 @@
-use cosmwasm_std::{to_json_binary, Binary, Decimal256, Deps, Isqrt, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Decimal256, Deps, Isqrt, Uint128};
 use euclid::error::ContractError;
 use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::token::{PairInfo, Token};
@@ -19,16 +19,16 @@ pub fn query_simulate_swap(
 
     // Verify that the asset exists for the VLP
     let asset_info = asset.id;
-    if asset_info != state.pair.token_1.get_token().id
-        && asset_info != state.pair.token_2.get_token().id
-    {
-        return Err(ContractError::AssetDoesNotExist {});
-    }
+
+    // asset should match either token
+    ensure!(
+        asset_info == state.pair.token_1.get_token().id
+            || asset_info == state.pair.token_2.get_token().id,
+        ContractError::AssetDoesNotExist {}
+    );
 
     // Verify that the asset amount is non-zero
-    if asset_amount.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    ensure!(!asset_amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Get Fee from the state
     let fee = state.fee;
@@ -141,11 +141,12 @@ pub fn assert_slippage_tolerance(
     pool_ratio: Decimal256,
     slippage_tolerance: u64,
 ) -> Result<bool, ContractError> {
-    let slippage = pool_ratio.checked_sub(ratio)?;
+    let slippage = pool_ratio.abs_diff(ratio);
     let slippage_tolerance =
         Decimal256::from_ratio(Uint128::from(slippage_tolerance), Uint128::from(100u128));
-    if slippage > slippage_tolerance {
-        return Err(ContractError::LiquiditySlippageExceeded {});
-    }
+    ensure!(
+        slippage.le(&slippage_tolerance),
+        ContractError::LiquiditySlippageExceeded {}
+    );
     Ok(true)
 }

@@ -1,5 +1,6 @@
 use cosmwasm_std::{
-    to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, Uint128,
+    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
+    Uint128,
 };
 use euclid::{
     error::ContractError,
@@ -129,9 +130,7 @@ pub fn execute_update_pool_code_id(
     // Load the state
     STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
         // Ensure that only the admin can update the pool code ID
-        if info.sender.to_string() != state.admin {
-            return Err(ContractError::Unauthorized {});
-        }
+        ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
         // Update the pool code ID
         state.pool_code_id = new_pool_code_id;

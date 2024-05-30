@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
 use crate::state::{State, STATE};
@@ -97,9 +97,10 @@ fn handle_callback_execute(
     let state = STATE.load(deps.storage)?;
 
     // Only factory contract can call this contract
-    if info.sender != state.factory_contract {
-        return Err(ContractError::Unauthorized {});
-    }
+    ensure!(
+        info.sender == state.factory_contract,
+        ContractError::Unauthorized {}
+    );
 
     match msg {
         CallbackExecuteMsg::CompleteSwap { swap_response } => {

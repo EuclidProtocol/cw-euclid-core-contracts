@@ -47,12 +47,12 @@ pub fn register_pool(
 
     // Check for token id
     ensure!(
-        state.pair.token_1.get_token() != pair_info.token_1.get_token(),
+        state.pair.token_1.get_token() == pair_info.token_1.get_token(),
         ContractError::AssetDoesNotExist {}
     );
 
     ensure!(
-        state.pair.token_2.get_token() != pair_info.token_2.get_token(),
+        state.pair.token_2.get_token() == pair_info.token_2.get_token(),
         ContractError::AssetDoesNotExist {}
     );
 

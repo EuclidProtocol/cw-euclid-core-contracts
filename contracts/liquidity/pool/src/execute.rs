@@ -37,19 +37,16 @@ pub fn execute_swap_request(
     };
 
     // Verify that the asset exists in the pool
-    if asset != state.pair_info.token_1 && asset != state.pair_info.token_2 {
-        return Err(ContractError::AssetDoesNotExist {});
-    }
+    ensure!(
+        asset == state.pair_info.token_1 || asset == state.pair_info.token_2,
+        ContractError::AssetDoesNotExist {}
+    );
 
     // Verify that the asset amount is greater than 0
-    if asset_amount.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    ensure!(!asset_amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Verify that the min amount out is greater than 0
-    if min_amount_out.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    ensure!(!min_amount_out.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Verify if the token is native
     if asset.is_native() {
@@ -71,9 +68,10 @@ pub fn execute_swap_request(
         }
     } else {
         // Verify that the contract address is the same as the asset contract address
-        if info.sender != asset.get_contract_address() {
-            return Err(ContractError::Unauthorized {});
-        }
+        ensure!(
+            info.sender == asset.get_contract_address(),
+            ContractError::Unauthorized {}
+        );
     }
 
     // Get token from tokenInfo
@@ -242,9 +240,10 @@ pub fn add_liquidity_request(
     let state = STATE.load(deps.storage)?;
 
     // Check that slippage tolerance is between 1 and 100
-    if !(1..=100).contains(&slippage_tolerance) {
-        return Err(ContractError::InvalidSlippageTolerance {});
-    }
+    ensure!(
+        (1..=100).contains(&slippage_tolerance),
+        ContractError::InvalidSlippageTolerance {}
+    );
 
     // if `msg_sender` is not None, then the sender is the one who initiated the swap
     let sender = match msg_sender {
@@ -252,10 +251,11 @@ pub fn add_liquidity_request(
         None => info.sender.clone().to_string(),
     };
 
-    // Check that the token_1 liquidity is greater than 0
-    if token_1_liquidity.is_zero() || token_2_liquidity.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    // Check that the liquidity is greater than 0
+    ensure!(
+        !token_1_liquidity.is_zero() && !token_2_liquidity.is_zero(),
+        ContractError::ZeroAssetAmount {}
+    );
 
     // Get the token 1 and token 2 from the pair info
     let token_1 = state.pair_info.token_1.clone();
@@ -271,9 +271,11 @@ pub fn add_liquidity_request(
         msgs.push(msg);
     } else {
         // If funds empty return error
-        if info.funds.is_empty() {
-            return Err(ContractError::InsufficientDeposit {});
-        }
+        ensure!(
+            !info.funds.is_empty(),
+            ContractError::InsufficientDeposit {}
+        );
+
         // Check for funds sent with the message
         let amt = info
             .funds
@@ -282,9 +284,11 @@ pub fn add_liquidity_request(
             .ok_or(ContractError::Generic {
                 err: "Denom not found".to_string(),
             })?;
-        if amt.amount < token_1_liquidity {
-            return Err(ContractError::InsufficientDeposit {});
-        }
+
+        ensure!(
+            amt.amount.ge(&token_1_liquidity),
+            ContractError::InsufficientDeposit {}
+        );
     }
 
     // Same for token 2
@@ -293,9 +297,12 @@ pub fn add_liquidity_request(
             .create_transfer_msg(token_2_liquidity, env.contract.address.clone().to_string())?;
         msgs.push(msg);
     } else {
-        if info.funds.is_empty() {
-            return Err(ContractError::InsufficientDeposit {});
-        }
+        // If funds empty return error
+        ensure!(
+            !info.funds.is_empty(),
+            ContractError::InsufficientDeposit {}
+        );
+
         let amt = info
             .funds
             .iter()
@@ -303,9 +310,11 @@ pub fn add_liquidity_request(
             .ok_or(ContractError::Generic {
                 err: "Denom not found".to_string(),
             })?;
-        if amt.amount < token_2_liquidity {
-            return Err(ContractError::InsufficientDeposit {});
-        }
+
+        ensure!(
+            amt.amount.ge(&token_2_liquidity),
+            ContractError::InsufficientDeposit {}
+        );
     }
 
     // Save the pending liquidity transaction
