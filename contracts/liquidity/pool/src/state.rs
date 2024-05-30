@@ -3,7 +3,7 @@ use euclid::{
     error::ContractError,
     liquidity::{self, LiquidityTxInfo},
     swap::{self, SwapInfo},
-    token::{Pair, PairInfo, TokenInfo},
+    token::{PairInfo, TokenInfo},
 };
 
 use cosmwasm_std::{DepsMut, IbcTimeout, Uint128};
@@ -61,7 +61,7 @@ pub fn generate_swap_req(
         deps.storage,
         (sender.clone(), count),
         |existing| match existing {
-            Some(req) => Err(ContractError::SwapAlreadyExist { req }),
+            Some(_req) => Err(ContractError::SwapAlreadyExist {}),
             None => Ok(request.clone()),
         },
     )?;
@@ -97,7 +97,7 @@ pub fn generate_liquidity_req(
         deps.storage,
         (sender.clone(), count),
         |existing| match existing {
-            Some(req) => Err(ContractError::LiquidityTxAlreadyExist { req }),
+            Some(_req) => Err(ContractError::LiquidityTxAlreadyExist {}),
             None => Ok(request.clone()),
         },
     )?;

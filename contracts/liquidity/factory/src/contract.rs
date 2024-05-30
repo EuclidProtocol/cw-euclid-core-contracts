@@ -26,7 +26,7 @@ pub fn instantiate(
         router_contract: msg.router_contract.clone(),
         chain_id: env.block.chain_id,
         admin: info.sender.clone().to_string(),
-        pool_code_id: msg.pool_code_id.clone(),
+        pool_code_id: msg.pool_code_id,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;

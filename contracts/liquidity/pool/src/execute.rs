@@ -181,7 +181,7 @@ pub fn execute_reject_swap(
     Ok(Response::new()
         .add_attribute("method", "process_failed_swap")
         .add_attribute("refund_to", "sender")
-        .add_attribute("refund_amount", swap_info.asset_amount.clone())
+        .add_attribute("refund_amount", swap_info.asset_amount)
         .add_attribute("error", error.unwrap_or_default())
         .add_message(msg))
 }
