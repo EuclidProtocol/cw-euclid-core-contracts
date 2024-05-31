@@ -106,6 +106,10 @@ pub fn execute_add_liquidity(
         !token_1_liquidity.is_zero() && !token_2_liquidity.is_zero(),
         ContractError::ZeroAssetAmount {}
     );
+    ensure!(
+        slippage_tolerance.gt(&0),
+        ContractError::ZeroSlippageAmount {}
+    );
     // Load the state
     let state = STATE.load(deps.storage)?;
 
