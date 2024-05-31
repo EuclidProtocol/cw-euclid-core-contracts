@@ -3,6 +3,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
 use cw2::set_contract_version;
 
+use crate::execute;
 use crate::state::{State, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -15,7 +16,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -31,20 +32,28 @@ pub fn instantiate(
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
-    Ok(Response::new()
+
+    let response = msg.execute.map_or(Ok(Response::default()), |execute_msg| {
+        execute(deps, env, info, execute_msg)
+    })?;
+    Ok(response
         .add_attribute("method", "instantiate")
         .add_attribute("owner", info.sender))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    _deps: DepsMut,
-    _env: Env,
+    deps: DepsMut,
+    env: Env,
     _info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        // ExecuteMsg::RegisterPool {pool} => execute::register_pool(deps, info, pool),
+        ExecuteMsg::RegisterPool {
+            chain_id,
+            factory,
+            pair_info,
+        } => execute::register_pool(deps, env, chain_id, factory, pair_info),
     }
 }
 

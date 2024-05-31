@@ -19,12 +19,10 @@ use euclid::{
 use euclid_ibc::ack::make_ack_fail;
 use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg};
 
-use crate::{
-    reply::INSTANTIATE_REPLY_ID,
-    state::{CONNECTION_COUNTS, POOL_REQUESTS, STATE, TIMEOUT_COUNTS},
-};
-
 use euclid::msgs::pool::InstantiateMsg as PoolInstantiateMsg;
+
+use crate::execute;
+use crate::state::{CONNECTION_COUNTS, TIMEOUT_COUNTS};
 
 pub const IBC_VERSION: &str = "counter-1";
 
@@ -109,32 +107,16 @@ pub fn ibc_packet_ack(
         IbcExecuteMsg::RequestPoolCreation {
             pool_rq_id,
             pair_info,
+            chain,
+            factory,
             ..
         } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<PoolCreationResponse> =
                 from_json(ack.acknowledgement.data)?;
-
-            execute_pool_creation(deps, pair_info, res, pool_rq_id)
-        }
-        IbcExecuteMsg::Swap {
-            swap_id,
-            pool_address,
-            ..
-        } => {
-            // Process acknowledgment for swap
-            let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
-            execute_swap_process(res, pool_address.to_string(), swap_id)
-        }
-
-        IbcExecuteMsg::AddLiquidity {
-            liquidity_id,
-            pool_address,
-            ..
-        } => {
-            // Process acknowledgment for add liquidity
-            let res: AcknowledgementMsg<LiquidityResponse> = from_json(ack.acknowledgement.data)?;
-            execute_add_liquidity_process(res, pool_address, liquidity_id)
+            let response =
+                execute::execute_request_pool_creation(deps, pair_info, res, pool_rq_id)?;
+            Ok(IbcReceiveResponse::new().add_attributes(response.attributes))
         }
 
         _ => Err(ContractError::Unauthorized {}),
@@ -157,30 +139,6 @@ pub fn ibc_packet_timeout(
     let parsed_msg: IbcExecuteMsg = from_json(&msg.packet.data)?;
 
     let result = match parsed_msg {
-        IbcExecuteMsg::AddLiquidity {
-            liquidity_id,
-            pool_address,
-            ..
-        } => {
-            let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
-            execute_add_liquidity_process(fake_error_ack, pool_address, liquidity_id)
-        }
-        IbcExecuteMsg::Swap {
-            swap_id,
-            pool_address,
-            ..
-        } => {
-            let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
-            execute_swap_process(fake_error_ack, pool_address.to_string(), swap_id)
-        }
-        IbcExecuteMsg::RequestPoolCreation {
-            pool_rq_id,
-            pair_info,
-            ..
-        } => {
-            let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
-            execute_pool_creation(deps, pair_info, fake_error_ack, pool_rq_id)
-        }
         _ => Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout")),
     };
     result.or(Ok(
@@ -224,158 +182,4 @@ pub fn validate_order_and_version(
     }
 
     Ok(())
-}
-
-// Function to create pool
-pub fn execute_pool_creation(
-    deps: DepsMut,
-    pair_info: PairInfo,
-    res: AcknowledgementMsg<PoolCreationResponse>,
-    pool_rq_id: String,
-) -> Result<IbcBasicResponse, ContractError> {
-    let _existing_req = POOL_REQUESTS
-        .may_load(deps.storage, pool_rq_id.clone())?
-        .ok_or(ContractError::PoolRequestDoesNotExists {
-            req: pool_rq_id.clone(),
-        })?;
-    // Load the state
-    let state = STATE.load(deps.storage)?;
-    // Check whether res is an error or not
-    match res {
-        AcknowledgementMsg::Ok(data) => {
-            // Check if the pool was created successfully
-            // Prepare Instantiate Msg
-            let init_msg = PoolInstantiateMsg {
-                vlp_contract: data.vlp_contract.clone(),
-                pool: Pool {
-                    chain: state.chain_id.clone(),
-                    pair: pair_info,
-                    reserve_1: Uint128::zero(),
-                    reserve_2: Uint128::zero(),
-                },
-                chain_id: state.chain_id.clone(),
-            };
-
-            let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                admin: None,
-                code_id: state.pool_code_id,
-                msg: to_json_binary(&init_msg)?,
-                funds: vec![],
-                label: "euclid-pool".to_string(),
-            });
-
-            // Create submsg with reply always from msg
-            let msg: SubMsg = SubMsg::reply_always(msg, INSTANTIATE_REPLY_ID);
-            // Remove pool request from MAP
-            POOL_REQUESTS.remove(deps.storage, pool_rq_id);
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "pool_creation")
-                .add_submessage(msg))
-        }
-
-        AcknowledgementMsg::Error(err) => {
-            // Remove pool request from MAP
-            POOL_REQUESTS.remove(deps.storage, pool_rq_id);
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "refund_pool_request")
-                .add_attribute("error", err.clone()))
-        }
-    }
-}
-
-// Function to process swap acknowledgment
-pub fn execute_swap_process(
-    res: AcknowledgementMsg<SwapResponse>,
-    pool_address: String,
-    swap_id: String,
-) -> Result<IbcBasicResponse, ContractError> {
-    // Check whether res is an error or not
-    match res {
-        AcknowledgementMsg::Ok(data) => {
-            // Prepare callback to send to pool
-            let callback = CallbackExecuteMsg::CompleteSwap {
-                swap_response: data.clone(),
-            };
-            let msg = PoolExecuteMsg::Callback(callback);
-
-            let execute = WasmMsg::Execute {
-                contract_addr: pool_address.clone(),
-                msg: to_json_binary(&msg.clone())?,
-                funds: vec![],
-            };
-
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "swap")
-                .add_message(execute))
-        }
-
-        AcknowledgementMsg::Error(err) => {
-            // Prepare error callback to send to pool
-            let callback = CallbackExecuteMsg::RejectSwap {
-                swap_id: swap_id.clone(),
-                error: Some(err.clone()),
-            };
-
-            let msg = PoolExecuteMsg::Callback(callback);
-            let execute = WasmMsg::Execute {
-                contract_addr: pool_address.clone(),
-                msg: to_json_binary(&msg.clone())?,
-                funds: vec![],
-            };
-
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "swap")
-                .add_attribute("error", err.clone())
-                .add_message(execute))
-        }
-    }
-}
-
-// Function to process add liquidity acknowledgment
-pub fn execute_add_liquidity_process(
-    res: AcknowledgementMsg<LiquidityResponse>,
-    pool_address: String,
-    liquidity_id: String,
-) -> Result<IbcBasicResponse, ContractError> {
-    // Check whether res is an error or not
-    match res {
-        AcknowledgementMsg::Ok(data) => {
-            // Prepare callback to send to pool
-            let callback = CallbackExecuteMsg::CompleteAddLiquidity {
-                liquidity_response: data.clone(),
-                liquidity_id: liquidity_id.clone(),
-            };
-            let msg = PoolExecuteMsg::Callback(callback);
-
-            let execute = WasmMsg::Execute {
-                contract_addr: pool_address.clone(),
-                msg: to_json_binary(&msg.clone())?,
-                funds: vec![],
-            };
-
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "add_liquidity")
-                .add_message(execute))
-        }
-
-        AcknowledgementMsg::Error(err) => {
-            // Prepare error callback to send to pool
-            let callback = CallbackExecuteMsg::RejectAddLiquidity {
-                liquidity_id,
-                error: Some(err.clone()),
-            };
-
-            let msg = PoolExecuteMsg::Callback(callback);
-            let execute = WasmMsg::Execute {
-                contract_addr: pool_address.clone(),
-                msg: to_json_binary(&msg.clone())?,
-                funds: vec![],
-            };
-
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "add_liquidity")
-                .add_attribute("error", err.clone())
-                .add_message(execute))
-        }
-    }
 }

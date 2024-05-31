@@ -11,12 +11,17 @@ pub struct InstantiateMsg {
     pub router: String,
     pub pair: PairInfo,
     pub fee: Fee,
+    pub execute: Option<ExecuteMsg>,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
     // Registers a new pool from a new chain to an already existing VLP
-    // RegisterPool { pool: Pool },
+    RegisterPool {
+        chain_id: String,
+        factory: String,
+        pair_info: PairInfo,
+    },
     /*
 
     // Update the fee for the VLP

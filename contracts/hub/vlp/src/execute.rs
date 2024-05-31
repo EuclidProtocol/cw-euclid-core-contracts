@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal256, DepsMut, Env, IbcReceiveResponse, OverflowError,
-    OverflowOperation, Uint128,
+    OverflowOperation, Response, Uint128,
 };
 use euclid::{
     error::ContractError,
@@ -12,7 +12,7 @@ use euclid_ibc::{ack::make_ack_success, msg::AcknowledgementMsg};
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
-    state::{self, FACTORIES, POOLS, STATE},
+    state::{self, POOLS, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -36,7 +36,7 @@ pub fn register_pool(
     chain_id: String,
     factory: String,
     pair_info: PairInfo,
-) -> Result<IbcReceiveResponse, ContractError> {
+) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     // Verify that chain pool does not already exist
@@ -60,18 +60,17 @@ pub fn register_pool(
 
     // Store the pool in the map
     POOLS.save(deps.storage, &chain_id, &pool)?;
-    FACTORIES.save(deps.storage, &chain_id, &factory)?;
 
     STATE.save(deps.storage, &state)?;
 
-    let ack = AcknowledgementMsg::Ok(PoolCreationResponse {
+    let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
-    });
+    };
 
-    Ok(IbcReceiveResponse::new()
+    Ok(Response::new()
         .add_attribute("action", "register_pool")
         .add_attribute("pool_chain", pool.chain)
-        .set_ack(to_json_binary(&ack)?))
+        .set_data(to_json_binary(&ack)?))
 }
 
 /// Adds liquidity to the VLP

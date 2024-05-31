@@ -1,144 +1,89 @@
-use cosmwasm_std::{
-    to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, Uint128,
-};
-use euclid::{
-    error::ContractError,
-    token::{PairInfo, Token},
-};
-use euclid_ibc::msg::IbcExecuteMsg;
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, MessageInfo, Response, SubMsg, WasmMsg};
+use euclid::{error::ContractError, fee::Fee, msgs, token::PairInfo};
 
-use crate::state::{generate_pool_req, STATE};
+use crate::{
+    reply::{VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID},
+    state::{STATE, VLPS},
+};
 
 // Function to send IBC request to Router in VLS to create a new pool
 pub fn execute_request_pool_creation(
     deps: DepsMut,
     env: Env,
-    info: MessageInfo,
+    chain_id: String,
+    factory: String,
     pair_info: PairInfo,
-    channel: String,
 ) -> Result<Response, ContractError> {
-    // Load the state
     let state = STATE.load(deps.storage)?;
 
-    let mut msgs: Vec<CosmosMsg> = Vec::new();
+    let pair = (pair_info.token_1.get_token(), pair_info.token_2.get_token());
 
-    // Create a Request in state
-    let pool_request = generate_pool_req(deps, &info.sender, env.block.chain_id, channel.clone())?;
+    let vlp = VLPS.may_load(deps.storage, pair)?;
 
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&IbcExecuteMsg::RequestPoolCreation {
-            pool_rq_id: pool_request.pool_rq_id,
-            chain: state.chain_id,
-            factory: env.contract.address.to_string(),
-            pair_info,
-        })?,
+    if vlp.is_none() {
+        let pair = (pair_info.token_2.get_token(), pair_info.token_1.get_token());
+        ensure!(
+            VLPS.load(deps.storage, pair).is_err(),
+            ContractError::Generic {
+                err: "pair order is reversed".to_string()
+            }
+        );
+    }
 
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
+    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
+        chain_id,
+        factory,
+        pair_info: pair_info.clone(),
     };
 
-    msgs.push(ibc_packet.into());
-
-    Ok(Response::new()
-        .add_attribute("method", "request_pool_creation")
-        .add_messages(msgs))
-}
-
-// Function to send IBC request to Router in VLS to perform a swap
-pub fn execute_swap(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    asset: Token,
-    asset_amount: Uint128,
-    min_amount_out: Uint128,
-    channel: String,
-    swap_id: String,
-) -> Result<Response, ContractError> {
-    // Load the state
-    let state = STATE.load(deps.storage)?;
-
-    let pool_address = info.sender;
-
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&IbcExecuteMsg::Swap {
-            chain_id: state.chain_id,
-            asset,
-            asset_amount,
-            min_amount_out,
-            channel,
-            swap_id,
-            pool_address,
-        })?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
-    };
-
-    let msg = CosmosMsg::Ibc(ibc_packet);
-
-    Ok(Response::new()
-        .add_attribute("method", "request_pool_creation")
-        .add_message(msg))
-}
-
-// Function to send IBC request to Router in VLS to add liquidity to a pool
-pub fn execute_add_liquidity(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    token_1_liquidity: Uint128,
-    token_2_liquidity: Uint128,
-    slippage_tolerance: u64,
-    channel: String,
-    liquidity_id: String,
-) -> Result<Response, ContractError> {
-    // Load the state
-    let state = STATE.load(deps.storage)?;
-
-    let pool_address = info.sender.clone();
-
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&IbcExecuteMsg::AddLiquidity {
-            chain_id: state.chain_id,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-            liquidity_id,
-            pool_address: pool_address.clone().to_string(),
-        })?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
-    };
-
-    let msg = CosmosMsg::Ibc(ibc_packet);
-
-    Ok(Response::new()
-        .add_attribute("method", "add_liquidity_request")
-        .add_message(msg))
+    if vlp.is_some() {
+        let msg = WasmMsg::Execute {
+            contract_addr: vlp.unwrap(),
+            msg: to_json_binary(&register_msg)?,
+            funds: vec![],
+        };
+        Ok(Response::new().add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
+    } else {
+        let instantiate_msg = msgs::vlp::InstantiateMsg {
+            router: env.contract.address.to_string(),
+            pair: pair_info,
+            fee: Fee {
+                lp_fee: 0,
+                treasury_fee: 0,
+                staker_fee: 0,
+            },
+            execute: Some(register_msg),
+        };
+        let msg = WasmMsg::Instantiate {
+            admin: Some(env.contract.address.to_string()),
+            code_id: state.vlp_code_id,
+            msg: to_json_binary(&instantiate_msg)?,
+            funds: vec![],
+            label: "VLP".to_string(),
+        };
+        Ok(Response::new().add_submessage(SubMsg::reply_always(msg, VLP_INSTANTIATE_REPLY_ID)))
+    }
 }
 
 // Function to update the pool code ID
-pub fn execute_update_pool_code_id(
+pub fn execute_update_vlp_code_id(
     deps: DepsMut,
     info: MessageInfo,
-    new_pool_code_id: u64,
+    new_vlp_code_id: u64,
 ) -> Result<Response, ContractError> {
     // Load the state
     STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
         // Ensure that only the admin can update the pool code ID
-        if info.sender.to_string() != state.admin {
+        if info.sender != state.admin {
             return Err(ContractError::Unauthorized {});
         }
 
         // Update the pool code ID
-        state.pool_code_id = new_pool_code_id;
+        state.vlp_code_id = new_vlp_code_id;
         Ok(state)
     })?;
 
     Ok(Response::new()
         .add_attribute("method", "update_pool_code_id")
-        .add_attribute("new_pool_code_id", new_pool_code_id.to_string()))
+        .add_attribute("new_vlp_code_id", new_vlp_code_id.to_string()))
 }

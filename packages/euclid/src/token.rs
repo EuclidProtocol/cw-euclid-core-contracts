@@ -2,7 +2,8 @@ use std::fmt;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    to_json_binary, BankMsg, Coin, CosmosMsg, StdError, StdResult, Uint128, WasmMsg,
+    forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, StdError, StdResult,
+    Uint128, WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
@@ -10,24 +11,24 @@ use crate::{cw20::Cw20ExecuteMsg, error::ContractError};
 
 // Token asset that represents an identifier for a token
 #[cw_serde]
-#[derive(Hash, Eq)]
+#[derive(Eq, PartialOrd, Ord)]
 pub struct Token {
     pub id: String,
 }
 
+forward_ref_partial_eq!(Token, Token);
+
 impl Token {
     pub fn exists(&self, pool: Pair) -> bool {
-        self == &pool.token_1 || self == &pool.token_2
+        self == pool.token_1 || self == pool.token_2
     }
 }
 
 impl<'a> PrimaryKey<'a> for Token {
     type Prefix = ();
-
     type SubPrefix = ();
 
     type Suffix = Self;
-
     type SuperSuffix = Self;
 
     fn key(&self) -> Vec<Key> {
@@ -60,9 +61,55 @@ impl fmt::Display for Token {
 
 // A pair is a set of two tokens
 #[cw_serde]
+#[derive(Eq, PartialOrd, Ord)]
 pub struct Pair {
     pub token_1: Token,
     pub token_2: Token,
+}
+
+forward_ref_partial_eq!(Pair, Pair);
+
+impl<'a> PrimaryKey<'a> for Pair {
+    type Prefix = Token;
+    type SubPrefix = ();
+
+    type Suffix = Token;
+    type SuperSuffix = Self;
+
+    fn key(&self) -> Vec<Key> {
+        let token_1_key_size = self.token_1.joined_key().len().to_be_bytes();
+        let mut res = vec![];
+        res.push(Key::Val64(token_1_key_size));
+        res.extend(self.token_1.key());
+        res.extend(self.token_2.key());
+        res
+    }
+}
+
+fn parse_length(value: &[u8]) -> StdResult<usize> {
+    Ok(usize::from_be_bytes(value.try_into().map_err(|err| {
+        StdError::generic_err(format!("{err:?}"))
+    })?))
+}
+
+impl KeyDeserialize for Pair {
+    type Output = Pair;
+
+    #[inline(always)]
+    fn from_vec(mut value: Vec<u8>) -> StdResult<Self::Output> {
+        let mut values = value.split_off(2);
+        let mut token_1_key_bytes = values.split_off(8);
+
+        // Deserialize token_1
+        let token_1_key_len = parse_length(&values)?;
+        let token_2_key_bytes = token_1_key_bytes.split_off(token_1_key_len + 2);
+        let token_1 = Token::from_vec(token_1_key_bytes[2..].to_vec())?;
+
+        // Deserialize token_2
+        let token_2 = Token::from_vec(token_2_key_bytes.to_vec())?;
+
+        Ok(Pair { token_1, token_2 })
+    }
 }
 
 // TokenInfo stores the native or smart contract token information from incoming chain
@@ -172,5 +219,46 @@ impl PairInfo {
             token_1: self.token_1.get_token(),
             token_2: self.token_2.get_token(),
         }
+    }
+}
+
+// Struct to handle Acknowledgement Response for a Pool Creation Request
+#[cw_serde]
+pub struct PairRouter {
+    pub vlp_contract: Addr,
+    pub pair: Pair,
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::testing::mock_dependencies;
+
+    use super::*;
+
+    #[test]
+    fn test_tuple_key_serialize_deserialzie() {
+        let mut owned_deps = mock_dependencies();
+        let deps = owned_deps.as_mut();
+        pub const PAIR_MAP: cw_storage_plus::Map<Pair, String> = cw_storage_plus::Map::new("pair");
+
+        let token_1 = Token {
+            id: "token_1123".to_string(),
+        };
+        let token_2 = Token {
+            id: "token_2".to_string(),
+        };
+
+        let pair = Pair { token_1, token_2 };
+
+        let vlp = "vlp_address".to_string();
+        PAIR_MAP.save(deps.storage, pair.clone(), &vlp).unwrap();
+
+        assert_eq!(PAIR_MAP.load(deps.storage, pair.clone()).unwrap(), vlp);
+
+        let list = PAIR_MAP
+            .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(list[0], (pair, vlp));
     }
 }

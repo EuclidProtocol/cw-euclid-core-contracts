@@ -30,9 +30,6 @@ pub const STATE: Item<State> = Item::new("state");
 // A map of chain-ids connected to the VLP to pools
 pub const POOLS: Map<&String, Pool> = Map::new("pools");
 
-// A map of chain-ids connected to the VLP to pools
-pub const FACTORIES: Map<&String, String> = Map::new("factories");
-
 // Stores a snapshotMap in order to keep track of prices for blocks for charts and other purposes
 pub const BALANCES: SnapshotMap<Token, Uint128> = SnapshotMap::new(
     "balances",
