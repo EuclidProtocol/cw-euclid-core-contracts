@@ -7,7 +7,7 @@ use euclid::{
     timeout::get_timeout,
     token::{PairInfo, Token},
 };
-use euclid_ibc::msg::IbcExecuteMsg;
+use euclid_ibc::msg::ChainIbcExecuteMsg;
 
 use crate::state::{generate_pool_req, STATE};
 
@@ -17,11 +17,16 @@ pub fn execute_request_pool_creation(
     env: Env,
     info: MessageInfo,
     pair_info: PairInfo,
-    channel: String,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    // Load the state
     let state = STATE.load(deps.storage)?;
+    ensure!(
+        state.hub_channel.is_some(),
+        ContractError::Generic {
+            err: "Hub Channel doesn't exist".to_string()
+        }
+    );
+    let channel = state.hub_channel.unwrap();
 
     // Create a Request in state
     let pool_request = generate_pool_req(deps, &info.sender, env.block.chain_id, channel.clone())?;
@@ -31,10 +36,8 @@ pub fn execute_request_pool_creation(
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
-        data: to_json_binary(&IbcExecuteMsg::RequestPoolCreation {
+        data: to_json_binary(&ChainIbcExecuteMsg::RequestPoolCreation {
             pool_rq_id: pool_request.pool_rq_id,
-            chain: state.chain_id,
-            factory: env.contract.address.to_string(),
             pair_info,
         })?,
 
@@ -54,12 +57,20 @@ pub fn execute_swap(
     asset: Token,
     asset_amount: Uint128,
     min_amount_out: Uint128,
-    channel: String,
     swap_id: String,
     timeout: Option<u64>,
+    vlp_address: String,
 ) -> Result<Response, ContractError> {
     // Load the state
     let state = STATE.load(deps.storage)?;
+
+    ensure!(
+        state.hub_channel.is_some(),
+        ContractError::Generic {
+            err: "Hub Channel doesn't exist".to_string()
+        }
+    );
+    let channel = state.hub_channel.unwrap();
 
     let pool_address = info.sender;
 
@@ -68,7 +79,7 @@ pub fn execute_swap(
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
-        data: to_json_binary(&IbcExecuteMsg::Swap {
+        data: to_json_binary(&ChainIbcExecuteMsg::Swap {
             chain_id: state.chain_id,
             asset,
             asset_amount,
@@ -76,6 +87,7 @@ pub fn execute_swap(
             channel,
             swap_id,
             pool_address,
+            vlp_address,
         })?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
@@ -95,12 +107,20 @@ pub fn execute_add_liquidity(
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
-    channel: String,
     liquidity_id: String,
     timeout: Option<u64>,
+    vlp_address: String,
 ) -> Result<Response, ContractError> {
     // Load the state
     let state = STATE.load(deps.storage)?;
+
+    ensure!(
+        state.hub_channel.is_some(),
+        ContractError::Generic {
+            err: "Hub Channel doesn't exist".to_string()
+        }
+    );
+    let channel = state.hub_channel.unwrap();
 
     let pool_address = info.sender.clone();
 
@@ -109,13 +129,13 @@ pub fn execute_add_liquidity(
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
-        data: to_json_binary(&IbcExecuteMsg::AddLiquidity {
-            chain_id: state.chain_id,
+        data: to_json_binary(&ChainIbcExecuteMsg::AddLiquidity {
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
             liquidity_id,
             pool_address: pool_address.clone().to_string(),
+            vlp_address,
         })?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };

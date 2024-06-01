@@ -1,14 +1,13 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal256, DepsMut, Env, IbcReceiveResponse, OverflowError,
-    OverflowOperation, Response, Uint128,
+    ensure, to_json_binary, Decimal256, DepsMut, Env, OverflowError, OverflowOperation, Response,
+    Uint128,
 };
 use euclid::{
     error::ContractError,
-    pool::{LiquidityResponse, Pool, PoolCreationResponse},
+    pool::{LiquidityResponse, Pool, PoolCreationResponse, RemoveLiquidityResponse},
     swap::SwapResponse,
     token::{PairInfo, Token},
 };
-use euclid_ibc::{ack::make_ack_success, msg::AcknowledgementMsg};
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
@@ -34,7 +33,6 @@ pub fn register_pool(
     deps: DepsMut,
     env: Env,
     chain_id: String,
-    factory: String,
     pair_info: PairInfo,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -47,12 +45,12 @@ pub fn register_pool(
 
     // Check for token id
     ensure!(
-        state.pair.token_1.get_token() == pair_info.token_1.get_token(),
+        state.pair.token_1 == pair_info.token_1.get_token(),
         ContractError::AssetDoesNotExist {}
     );
 
     ensure!(
-        state.pair.token_2.get_token() == pair_info.token_2.get_token(),
+        state.pair.token_2 == pair_info.token_2.get_token(),
         ContractError::AssetDoesNotExist {}
     );
 
@@ -95,7 +93,7 @@ pub fn add_liquidity(
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
-) -> Result<IbcReceiveResponse, ContractError> {
+) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
     let mut pool = POOLS.load(deps.storage, &chain_id)?;
     let mut state = STATE.load(deps.storage)?;
@@ -150,15 +148,15 @@ pub fn add_liquidity(
     };
 
     // Prepare acknowledgement
-    let acknowledgement = to_json_binary(&AcknowledgementMsg::Ok(liquidity_response))?;
+    let acknowledgement = to_json_binary(&liquidity_response)?;
 
-    Ok(IbcReceiveResponse::new()
+    Ok(Response::new()
         .add_attribute("action", "add_liquidity")
         .add_attribute("chain_id", chain_id)
         .add_attribute("lp_allocation", lp_allocation)
         .add_attribute("liquidity_1_added", token_1_liquidity)
         .add_attribute("liquidity_2_added", token_2_liquidity)
-        .set_ack(acknowledgement))
+        .set_data(acknowledgement))
 }
 
 /// Removes liquidity from the VLP
@@ -181,7 +179,7 @@ pub fn remove_liquidity(
     deps: DepsMut,
     chain_id: String,
     lp_allocation: Uint128,
-) -> Result<IbcReceiveResponse, ContractError> {
+) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
     let mut pool = POOLS.load(deps.storage, &chain_id)?;
     let mut state = STATE.load(deps.storage)?;
@@ -211,13 +209,22 @@ pub fn remove_liquidity(
     state.total_lp_tokens = state.total_lp_tokens.checked_sub(lp_allocation)?;
     STATE.save(deps.storage, &state)?;
 
-    Ok(IbcReceiveResponse::new()
+    // Prepare Liquidity Response
+    let liquidity_response = RemoveLiquidityResponse {
+        token_1_liquidity,
+        token_2_liquidity,
+        burn_lp_tokens: lp_allocation,
+    };
+    // Prepare acknowledgement
+    let acknowledgement = to_json_binary(&liquidity_response)?;
+
+    Ok(Response::new()
         .add_attribute("action", "remove_liquidity")
         .add_attribute("chain_id", chain_id)
         .add_attribute("token_1_removed_liquidity", token_1_liquidity)
         .add_attribute("token_2_removed_liquidity", token_2_liquidity)
         .add_attribute("burn_lp", lp_allocation)
-        .set_ack(make_ack_success()?))
+        .set_data(acknowledgement))
 }
 
 pub fn execute_swap(
@@ -227,7 +234,7 @@ pub fn execute_swap(
     asset_amount: Uint128,
     min_token_out: Uint128,
     swap_id: String,
-) -> Result<IbcReceiveResponse, ContractError> {
+) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
     let mut pool = POOLS.load(deps.storage, &chain_id)?;
     let mut state = state::STATE.load(deps.storage)?;
@@ -235,8 +242,7 @@ pub fn execute_swap(
     // Verify that the asset exists for the VLP
     let asset_info = asset.clone().id;
     ensure!(
-        asset_info == state.clone().pair.token_1.get_token().id
-            || asset_info == state.clone().pair.token_2.get_token().id,
+        asset_info == state.clone().pair.token_1.id || asset_info == state.clone().pair.token_2.id,
         ContractError::AssetDoesNotExist {}
     );
 
@@ -269,7 +275,7 @@ pub fn execute_swap(
     let swap_amount = asset_amount.checked_sub(fee_amount)?;
 
     // verify if asset is token 1 or token 2
-    let swap_info = if asset_info == state.pair.token_1.get_token().id {
+    let swap_info = if asset_info == state.pair.token_1.id {
         (
             swap_amount,
             state.clone().total_reserve_1,
@@ -297,7 +303,7 @@ pub fn execute_swap(
     // Verify that the pool has enough liquidity to swap to user
     // Should activate ELP algorithm to get liquidity from other available pool
 
-    if asset_info == state.clone().pair.token_1.get_token().id {
+    if asset_info == state.clone().pair.token_1.id {
         ensure!(
             pool.reserve_1.ge(&swap_amount),
             ContractError::SlippageExceeded {
@@ -316,7 +322,7 @@ pub fn execute_swap(
     }
 
     // Move liquidity from the pool
-    if asset_info == state.pair.token_1.get_token().id {
+    if asset_info == state.pair.token_1.id {
         pool.reserve_1 = pool.reserve_1.checked_add(swap_amount)?;
         pool.reserve_2 = pool.reserve_2.checked_sub(receive_amount)?;
     } else {
@@ -328,7 +334,7 @@ pub fn execute_swap(
     POOLS.save(deps.storage, &chain_id, &pool)?;
 
     // Move liquidity for the state
-    if asset_info == state.pair.token_1.get_token().id {
+    if asset_info == state.pair.token_1.id {
         state.total_reserve_1 = state.clone().total_reserve_1.checked_add(swap_amount)?;
         state.total_reserve_2 = state.clone().total_reserve_2.checked_sub(receive_amount)?;
     } else {
@@ -337,10 +343,10 @@ pub fn execute_swap(
     }
 
     // Get asset to be recieved by user
-    let asset_out = if asset_info == state.pair.token_1.get_token().id {
-        state.clone().pair.token_2.get_token()
+    let asset_out = if asset_info == state.pair.token_1.id {
+        state.clone().pair.token_2
     } else {
-        state.clone().pair.token_1.get_token()
+        state.clone().pair.token_1
     };
 
     STATE.save(deps.storage, &state)?;
@@ -355,13 +361,13 @@ pub fn execute_swap(
     };
 
     // Prepare acknowledgement
-    let acknowledgement = to_json_binary(&AcknowledgementMsg::Ok(swap_response))?;
+    let acknowledgement = to_json_binary(&swap_response)?;
 
-    Ok(IbcReceiveResponse::new()
+    Ok(Response::new()
         .add_attribute("action", "swap")
         .add_attribute("chain_id", chain_id)
         .add_attribute("swap_amount", asset_amount)
         .add_attribute("total_fee", fee_amount)
         .add_attribute("receive_amount", receive_amount)
-        .set_ack(acknowledgement))
+        .set_data(acknowledgement))
 }

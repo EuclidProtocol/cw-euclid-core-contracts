@@ -34,10 +34,11 @@ pub fn instantiate(
     STATE.save(deps.storage, &state)?;
 
     let response = msg.execute.map_or(Ok(Response::default()), |execute_msg| {
-        execute(deps, env, info, execute_msg)
+        execute(deps, env.clone(), info.clone(), execute_msg)
     })?;
     Ok(response
         .add_attribute("method", "instantiate")
+        .add_attribute("vlp_address", env.contract.address.to_string())
         .add_attribute("owner", info.sender))
 }
 
@@ -51,9 +52,31 @@ pub fn execute(
     match msg {
         ExecuteMsg::RegisterPool {
             chain_id,
-            factory,
             pair_info,
-        } => execute::register_pool(deps, env, chain_id, factory, pair_info),
+        } => execute::register_pool(deps, env, chain_id, pair_info),
+        ExecuteMsg::Swap {
+            chain_id,
+            asset,
+            asset_amount,
+            min_token_out,
+            swap_id,
+        } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_token_out, swap_id),
+        ExecuteMsg::AddLiquidity {
+            chain_id,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+        } => execute::add_liquidity(
+            deps,
+            chain_id,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+        ),
+        ExecuteMsg::RemoveLiquidity {
+            chain_id,
+            lp_allocation,
+        } => execute::remove_liquidity(deps, chain_id, lp_allocation),
     }
 }
 

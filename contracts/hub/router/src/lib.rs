@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 pub mod contract;
 pub mod execute;
 pub mod ibc;

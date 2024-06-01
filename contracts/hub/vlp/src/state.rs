@@ -4,13 +4,13 @@ use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
 use euclid::{
     fee::Fee,
     pool::Pool,
-    token::{PairInfo, Token},
+    token::{Pair, Token},
 };
 
 #[cw_serde]
 pub struct State {
     // Token Pair Info
-    pub pair: PairInfo,
+    pub pair: Pair,
     // Router Contract
     pub router: String,
     // Fee per swap for each transaction

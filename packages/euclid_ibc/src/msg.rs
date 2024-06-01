@@ -5,20 +5,26 @@ use euclid::token::{PairInfo, Token};
 // Message that implements an ExecuteSwap on the VLP contract
 
 #[cw_serde]
-pub enum IbcExecuteMsg {
+pub enum ChainIbcExecuteMsg {
+    // Request Pool Creation
+    RequestPoolCreation {
+        pool_rq_id: String,
+        pair_info: PairInfo,
+    },
     AddLiquidity {
-        chain_id: String,
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         liquidity_id: String,
         pool_address: String,
+        vlp_address: String,
     },
 
     // Remove liquidity from a chain pool to VLP
     RemoveLiquidity {
         chain_id: String,
         lp_allocation: Uint128,
+        vlp_address: String,
     },
 
     // Swap tokens on VLP
@@ -30,15 +36,14 @@ pub enum IbcExecuteMsg {
         channel: String,
         swap_id: String,
         pool_address: Addr,
+        vlp_address: String,
     },
+}
 
-    // Request Pool Creation
-    RequestPoolCreation {
-        pool_rq_id: String,
-        pair_info: PairInfo,
-        chain: String,
-        factory: String,
-    },
+#[cw_serde]
+pub enum HubIbcExecuteMsg {
+    // Send Factory Registration Message from Router to Factory
+    RegisterFactory { router: String },
 }
 
 /// A custom acknowledgement type.

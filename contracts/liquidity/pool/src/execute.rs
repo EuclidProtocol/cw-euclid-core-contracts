@@ -26,7 +26,6 @@ pub fn execute_swap_request(
     asset: TokenInfo,
     asset_amount: Uint128,
     min_amount_out: Uint128,
-    channel: String,
     msg_sender: Option<String>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -89,9 +88,9 @@ pub fn execute_swap_request(
         asset: token,
         asset_amount,
         min_amount_out,
-        channel,
         swap_id: swap_info.swap_id,
         timeout: Some(timeout_duration),
+        vlp_address: state.vlp_contract,
     };
 
     let msg = WasmMsg::Execute {
@@ -204,7 +203,6 @@ pub fn receive_cw20(
         Cw20HookMsg::Swap {
             asset,
             min_amount_out,
-            channel,
             timeout,
         } => {
             let contract_adr = info.sender.clone();
@@ -224,7 +222,6 @@ pub fn receive_cw20(
                 asset,
                 cw20_msg.amount,
                 min_amount_out,
-                channel,
                 Some(cw20_msg.sender),
                 timeout,
             )
@@ -240,7 +237,6 @@ pub fn add_liquidity_request(
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
-    channel: String,
     msg_sender: Option<String>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -332,9 +328,9 @@ pub fn add_liquidity_request(
         token_1_liquidity,
         token_2_liquidity,
         slippage_tolerance,
-        channel,
         liquidity_id: liquidity_info.liquidity_id,
         timeout,
+        vlp_address: state.vlp_contract,
     };
 
     let msg = WasmMsg::Execute {

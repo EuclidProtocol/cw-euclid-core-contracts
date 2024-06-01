@@ -77,9 +77,13 @@ impl<'a> PrimaryKey<'a> for Pair {
     type SuperSuffix = Self;
 
     fn key(&self) -> Vec<Key> {
-        let token_1_key_size = self.token_1.joined_key().len().to_be_bytes();
+        let token_1_key_size = self.token_1.joined_key().len();
+        assert!(
+            token_1_key_size <= u16::MAX as usize,
+            "Key size exceeds u8 limit"
+        );
         let mut res = vec![];
-        res.push(Key::Val64(token_1_key_size));
+        res.push(Key::Val16((token_1_key_size as u16).to_be_bytes()));
         res.extend(self.token_1.key());
         res.extend(self.token_2.key());
         res
@@ -87,9 +91,12 @@ impl<'a> PrimaryKey<'a> for Pair {
 }
 
 fn parse_length(value: &[u8]) -> StdResult<usize> {
-    Ok(usize::from_be_bytes(value.try_into().map_err(|err| {
-        StdError::generic_err(format!("{err:?}"))
-    })?))
+    Ok(u16::from_be_bytes(
+        value
+            .try_into()
+            .map_err(|_| StdError::generic_err("Could not read 2 byte length"))?,
+    )
+    .into())
 }
 
 impl KeyDeserialize for Pair {
@@ -97,8 +104,11 @@ impl KeyDeserialize for Pair {
 
     #[inline(always)]
     fn from_vec(mut value: Vec<u8>) -> StdResult<Self::Output> {
+        println!("Bytes - {value:?}");
         let mut values = value.split_off(2);
-        let mut token_1_key_bytes = values.split_off(8);
+        let size_bytes_len = parse_length(&value)?;
+        println!("Size of bytes - {size_bytes_len:?}");
+        let mut token_1_key_bytes = values.split_off(size_bytes_len);
 
         // Deserialize token_1
         let token_1_key_len = parse_length(&values)?;
@@ -112,25 +122,24 @@ impl KeyDeserialize for Pair {
     }
 }
 
+#[cw_serde]
+pub struct TokenInfo {
+    token: Token,
+    token_type: TokenType,
+}
 // TokenInfo stores the native or smart contract token information from incoming chain
 #[cw_serde]
-pub enum TokenInfo {
-    Native {
-        denom: String,
-        token: Token,
-    },
-    Smart {
-        contract_address: String,
-        token: Token,
-    },
+pub enum TokenType {
+    Native { denom: String },
+    Smart { contract_address: String },
 }
 
 // Helper to Check if Token is Native or Smart
 impl TokenInfo {
     pub fn is_native(&self) -> bool {
-        match self {
-            TokenInfo::Native { .. } => true,
-            TokenInfo::Smart { .. } => false,
+        match self.token_type {
+            TokenType::Native { .. } => true,
+            TokenType::Smart { .. } => false,
         }
     }
 
@@ -140,20 +149,17 @@ impl TokenInfo {
 
     // Helper to get the denom of a native token
     pub fn get_denom(&self) -> String {
-        match self {
-            TokenInfo::Native { denom, token: _ } => denom.to_string(),
-            TokenInfo::Smart { .. } => panic!("This is not a native token"),
+        match self.token_type.clone() {
+            TokenType::Native { denom } => denom.to_string(),
+            TokenType::Smart { .. } => panic!("This is not a native token"),
         }
     }
 
     // Helper to get the contract address of a smart token
     pub fn get_contract_address(&self) -> String {
-        match self {
-            TokenInfo::Smart {
-                contract_address,
-                token: _,
-            } => contract_address.to_string(),
-            TokenInfo::Native { .. } => panic!("This is not a smart token"),
+        match self.token_type.clone() {
+            TokenType::Smart { contract_address } => contract_address.to_string(),
+            TokenType::Native { .. } => panic!("This is not a smart token"),
         }
     }
 
@@ -164,10 +170,7 @@ impl TokenInfo {
 
     // Get Token Identifier from TokenInfo
     pub fn get_token(&self) -> Token {
-        match self {
-            TokenInfo::Native { token, .. } => token.clone(),
-            TokenInfo::Smart { token, .. } => token.clone(),
-        }
+        self.token.clone()
     }
 
     // Create Cosmos Msg depending on type of token
@@ -176,17 +179,15 @@ impl TokenInfo {
         amount: Uint128,
         recipient: String,
     ) -> Result<CosmosMsg, ContractError> {
-        let msg = match self {
-            TokenInfo::Native { denom, .. } => CosmosMsg::Bank(BankMsg::Send {
+        let msg = match self.token_type.clone() {
+            TokenType::Native { denom } => CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient,
                 amount: vec![Coin {
                     denom: denom.to_string(),
                     amount,
                 }],
             }),
-            TokenInfo::Smart {
-                contract_address, ..
-            } => CosmosMsg::Wasm(WasmMsg::Execute {
+            TokenType::Smart { contract_address } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_address.to_string(),
                 msg: to_json_binary(&Cw20ExecuteMsg::Transfer { recipient, amount })?,
                 funds: vec![],
@@ -216,8 +217,8 @@ impl PairInfo {
     // Helper function to get the token that is not the current token
     pub fn get_pair(&self) -> Pair {
         Pair {
-            token_1: self.token_1.get_token(),
-            token_2: self.token_2.get_token(),
+            token_1: self.token_1.token.clone(),
+            token_2: self.token_2.token.clone(),
         }
     }
 }

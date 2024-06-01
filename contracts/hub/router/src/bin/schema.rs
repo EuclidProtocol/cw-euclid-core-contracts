@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     write_api! {

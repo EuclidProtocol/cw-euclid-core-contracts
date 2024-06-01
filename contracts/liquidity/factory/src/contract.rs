@@ -27,6 +27,7 @@ pub fn instantiate(
         chain_id: env.block.chain_id,
         admin: info.sender.clone().to_string(),
         pool_code_id: msg.pool_code_id,
+        hub_channel: None,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -47,18 +48,16 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RequestPoolCreation {
-            pair_info,
-            channel,
-            timeout,
-        } => execute::execute_request_pool_creation(deps, env, info, pair_info, channel, timeout),
+        ExecuteMsg::RequestPoolCreation { pair_info } => {
+            execute::execute_request_pool_creation(deps, env, info, pair_info)
+        }
         ExecuteMsg::ExecuteSwap {
             asset,
             asset_amount,
             min_amount_out,
-            channel,
             swap_id,
             timeout,
+            vlp_address,
         } => execute::execute_swap(
             deps,
             env,
@@ -66,17 +65,17 @@ pub fn execute(
             asset,
             asset_amount,
             min_amount_out,
-            channel,
             swap_id,
             timeout,
+            vlp_address,
         ),
         ExecuteMsg::AddLiquidity {
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            channel,
             liquidity_id,
             timeout,
+            vlp_address,
         } => execute::execute_add_liquidity(
             deps,
             env,
@@ -84,9 +83,9 @@ pub fn execute(
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            channel,
             liquidity_id,
             timeout,
+            vlp_address,
         ),
         ExecuteMsg::UpdatePoolCodeId { new_pool_code_id } => {
             execute::execute_update_pool_code_id(deps, info, new_pool_code_id)

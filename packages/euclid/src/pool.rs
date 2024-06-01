@@ -63,6 +63,14 @@ pub struct LiquidityResponse {
     pub mint_lp_tokens: Uint128,
 }
 
+// Struct to handle Acknowledgement Response for a Liquidity Request
+#[cw_serde]
+pub struct RemoveLiquidityResponse {
+    pub token_1_liquidity: Uint128,
+    pub token_2_liquidity: Uint128,
+    pub burn_lp_tokens: Uint128,
+}
+
 // Struct to handle Acknowledgement Response for a Pool Creation Request
 #[cw_serde]
 pub struct PoolCreationResponse {
