@@ -48,8 +48,8 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RequestPoolCreation { pair_info } => {
-            execute::execute_request_pool_creation(deps, env, info, pair_info)
+        ExecuteMsg::RequestPoolCreation { pair_info, timeout } => {
+            execute::execute_request_pool_creation(deps, env, info, pair_info, timeout)
         }
         ExecuteMsg::ExecuteSwap {
             asset,
