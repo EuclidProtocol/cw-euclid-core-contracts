@@ -8,7 +8,7 @@ mod tests {
     use euclid::fee::Fee;
     use euclid::msgs::vlp::InstantiateMsg;
     use euclid::pool::Pool;
-    use euclid::token::{Pair, PairInfo, Token, TokenInfo};
+    use euclid::token::{PairInfo, Token, TokenInfo};
 
     #[test]
     // Write a test for instantiation
@@ -18,12 +18,18 @@ mod tests {
         let info = mock_info("creator", &coins(1000, "earth"));
         let msg = InstantiateMsg {
             router: "router".to_string(),
-            pair: Pair {
-                token_1: Token {
-                    id: "token_1".to_string(),
+            pair: PairInfo {
+                token_1: TokenInfo::Native {
+                    denom: "denoma".to_string(),
+                    token: Token {
+                        id: "token_1".to_string(),
+                    },
                 },
-                token_2: Token {
-                    id: "token_2".to_string(),
+                token_2: TokenInfo::Native {
+                    denom: "denomb".to_string(),
+                    token: Token {
+                        id: "token_2".to_string(),
+                    },
                 },
             },
             fee: Fee {
@@ -31,27 +37,6 @@ mod tests {
                 treasury_fee: 1,
                 staker_fee: 1,
             },
-            pool: Pool {
-                chain: "chain".to_string(),
-                pair: PairInfo {
-                    token_1: TokenInfo::Native {
-                        denom: "token_1".to_string(),
-                        token: Token {
-                            id: "token_1".to_string(),
-                        },
-                    },
-
-                    token_2: TokenInfo::Native {
-                        denom: "token_2".to_string(),
-                        token: Token {
-                            id: "token_2".to_string(),
-                        },
-                    },
-                },
-                reserve_1: Uint128::new(10000),
-                reserve_2: Uint128::new(10000),
-            },
-            lq_ratio: Decimal256::one(),
         };
         let res = instantiate(deps.as_mut(), env, info, msg).unwrap();
         assert_eq!(0, res.messages.len());

@@ -54,7 +54,7 @@ pub fn generate_pool_req(
     };
     // If a pool request already exist, throw error, else create a new request
     POOL_REQUESTS.update(deps.storage, pool_rq_id, |existing| match existing {
-        Some(req) => Err(ContractError::PoolRequestAlreadyExists { req }),
+        Some(_req) => Err(ContractError::PoolRequestAlreadyExists {}),
         None => Ok(pool_request.clone()),
     })?;
     POOL_REQUEST_COUNT.save(deps.storage, sender.to_string(), &count.wrapping_add(1))?;

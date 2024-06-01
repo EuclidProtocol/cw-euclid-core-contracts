@@ -1,9 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
 use cw2::set_contract_version;
 
-use crate::state::{State, POOLS, STATE};
+use crate::state::{State, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
@@ -24,20 +24,13 @@ pub fn instantiate(
         router: info.sender.to_string(),
         fee: msg.fee,
         last_updated: 0,
-        total_reserve_1: msg.pool.reserve_1,
-        total_reserve_2: msg.pool.reserve_2,
+        total_reserve_1: Uint128::zero(),
+        total_reserve_2: Uint128::zero(),
         total_lp_tokens: Uint128::zero(),
-        lq_ratio: msg.lq_ratio,
     };
-    ensure!(
-        !state.lq_ratio.is_zero(),
-        ContractError::InvalidLiquidityRatio {}
-    );
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
-    // stores initial pool to map
-    POOLS.save(deps.storage, &msg.pool.chain, &msg.pool)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("owner", info.sender))

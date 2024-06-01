@@ -6,13 +6,13 @@ use euclid::{
     error::ContractError,
     pool::{LiquidityResponse, Pool, PoolCreationResponse},
     swap::SwapResponse,
-    token::{Pair, PairInfo, Token},
+    token::{PairInfo, Token},
 };
 use euclid_ibc::{ack::make_ack_success, msg::AcknowledgementMsg};
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
-    state::{self, POOLS, STATE},
+    state::{self, FACTORIES, POOLS, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -34,6 +34,7 @@ pub fn register_pool(
     deps: DepsMut,
     env: Env,
     chain_id: String,
+    factory: String,
     pair_info: PairInfo,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -43,18 +44,28 @@ pub fn register_pool(
         POOLS.may_load(deps.storage, &chain_id)?.is_none(),
         ContractError::PoolAlreadyExists {}
     );
+
+    // Check for token id
+    ensure!(
+        state.pair.token_1.get_token() == pair_info.token_1.get_token(),
+        ContractError::AssetDoesNotExist {}
+    );
+
+    ensure!(
+        state.pair.token_2.get_token() == pair_info.token_2.get_token(),
+        ContractError::AssetDoesNotExist {}
+    );
+
     let pool = Pool::new(&chain_id, pair_info, Uint128::zero(), Uint128::zero());
+
     // Store the pool in the map
     POOLS.save(deps.storage, &chain_id, &pool)?;
+    FACTORIES.save(deps.storage, &chain_id, &factory)?;
 
     STATE.save(deps.storage, &state)?;
 
     let ack = AcknowledgementMsg::Ok(PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
-        token_pair: Pair {
-            token_1: pool.pair.token_1.get_token(),
-            token_2: pool.pair.token_2.get_token(),
-        },
     });
 
     Ok(IbcReceiveResponse::new()
@@ -97,13 +108,17 @@ pub fn add_liquidity(
             }
         })?;
 
+    // Lets get lq ratio, it will be the current ratio of token reserves or if its first time then it will be ratio of tokens provided
+    let lq_ratio = Decimal256::checked_from_ratio(state.total_reserve_1, state.total_reserve_2)
+        .unwrap_or(ratio);
+
     // Verify slippage tolerance is between 0 and 100
     ensure!(
         slippage_tolerance.le(&100),
         ContractError::InvalidSlippageTolerance {}
     );
 
-    assert_slippage_tolerance(ratio, state.lq_ratio, slippage_tolerance)?;
+    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance)?;
 
     // Add liquidity to the pool
     pool.reserve_1 = pool.reserve_1.checked_add(token_1_liquidity)?;
@@ -221,7 +236,8 @@ pub fn execute_swap(
     // Verify that the asset exists for the VLP
     let asset_info = asset.clone().id;
     ensure!(
-        asset_info == state.clone().pair.token_1.id || asset_info == state.clone().pair.token_2.id,
+        asset_info == state.clone().pair.token_1.get_token().id
+            || asset_info == state.clone().pair.token_2.get_token().id,
         ContractError::AssetDoesNotExist {}
     );
 
@@ -254,7 +270,7 @@ pub fn execute_swap(
     let swap_amount = asset_amount.checked_sub(fee_amount)?;
 
     // verify if asset is token 1 or token 2
-    let swap_info = if asset_info == state.clone().pair.token_1.id {
+    let swap_info = if asset_info == state.pair.token_1.get_token().id {
         (
             swap_amount,
             state.clone().total_reserve_1,
@@ -282,7 +298,7 @@ pub fn execute_swap(
     // Verify that the pool has enough liquidity to swap to user
     // Should activate ELP algorithm to get liquidity from other available pool
 
-    if asset_info == state.clone().pair.token_1.id {
+    if asset_info == state.clone().pair.token_1.get_token().id {
         ensure!(
             pool.reserve_1.ge(&swap_amount),
             ContractError::SlippageExceeded {
@@ -301,7 +317,7 @@ pub fn execute_swap(
     }
 
     // Move liquidity from the pool
-    if asset_info == state.clone().pair.token_1.id {
+    if asset_info == state.pair.token_1.get_token().id {
         pool.reserve_1 = pool.reserve_1.checked_add(swap_amount)?;
         pool.reserve_2 = pool.reserve_2.checked_sub(receive_amount)?;
     } else {
@@ -313,7 +329,7 @@ pub fn execute_swap(
     POOLS.save(deps.storage, &chain_id, &pool)?;
 
     // Move liquidity for the state
-    if asset_info == state.clone().pair.token_1.id {
+    if asset_info == state.pair.token_1.get_token().id {
         state.total_reserve_1 = state.clone().total_reserve_1.checked_add(swap_amount)?;
         state.total_reserve_2 = state.clone().total_reserve_2.checked_sub(receive_amount)?;
     } else {
@@ -322,10 +338,10 @@ pub fn execute_swap(
     }
 
     // Get asset to be recieved by user
-    let asset_out = if asset_info == state.pair.token_1.id {
-        state.clone().pair.token_2
+    let asset_out = if asset_info == state.pair.token_1.get_token().id {
+        state.clone().pair.token_2.get_token()
     } else {
-        state.clone().pair.token_1
+        state.clone().pair.token_1.get_token()
     };
 
     STATE.save(deps.storage, &state)?;

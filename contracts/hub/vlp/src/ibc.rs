@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
+    ensure, from_json, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder, IbcPacketAckMsg,
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
 };
@@ -110,10 +110,11 @@ pub fn do_ibc_packet_receive(
             ..
         } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_amount_out, swap_id),
         IbcExecuteMsg::RequestPoolCreation {
-            pair_info,
             chain,
             pool_rq_id: _,
-        } => execute::register_pool(deps, env, chain, pair_info),
+            factory,
+            pair_info,
+        } => execute::register_pool(deps, env, chain, factory, pair_info),
     }
 }
 
@@ -159,16 +160,18 @@ pub fn validate_order_and_version(
     // We expect an unordered channel here. Ordered channels have the
     // property that if a message is lost the entire channel will stop
     // working until you start it again.
-    if channel.order != IbcOrder::Unordered {
-        return Err(ContractError::OrderedChannel {});
-    }
+    ensure!(
+        channel.order == IbcOrder::Unordered,
+        ContractError::OrderedChannel {}
+    );
 
-    if channel.version != IBC_VERSION {
-        return Err(ContractError::InvalidVersion {
+    ensure!(
+        channel.version == IBC_VERSION,
+        ContractError::InvalidVersion {
             actual: channel.version.to_string(),
             expected: IBC_VERSION.to_string(),
-        });
-    }
+        }
+    );
 
     // Make sure that we're talking with a counterparty who speaks the
     // same "protocol" as us.
@@ -179,12 +182,13 @@ pub fn validate_order_and_version(
     // `OpenAck`. We verify it when we have it but when we don't it's
     // alright.
     if let Some(counterparty_version) = counterparty_version {
-        if counterparty_version != IBC_VERSION {
-            return Err(ContractError::InvalidVersion {
+        ensure!(
+            counterparty_version == IBC_VERSION,
+            ContractError::InvalidVersion {
                 actual: counterparty_version.to_string(),
                 expected: IBC_VERSION.to_string(),
-            });
-        }
+            }
+        );
     }
 
     Ok(())

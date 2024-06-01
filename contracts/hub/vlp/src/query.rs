@@ -1,11 +1,13 @@
-use cosmwasm_std::{to_json_binary, Binary, Decimal256, Deps, Isqrt, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Decimal256, Deps, Isqrt, Uint128};
 use euclid::error::ContractError;
 use euclid::pool::MINIMUM_LIQUIDITY;
-use euclid::token::Token;
+use euclid::token::{PairInfo, Token};
 
-use euclid::msgs::vlp::{AllPoolsResponse, GetLiquidityResponse, GetSwapResponse, PairInfo};
+use euclid::msgs::vlp::{
+    AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetSwapResponse, PoolInfo, PoolResponse,
+};
 
-use crate::state::{POOLS, STATE};
+use crate::state::{FACTORIES, POOLS, STATE};
 
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
@@ -17,14 +19,16 @@ pub fn query_simulate_swap(
 
     // Verify that the asset exists for the VLP
     let asset_info = asset.id;
-    if asset_info != state.pair.token_1.id && asset_info != state.pair.token_2.id {
-        return Err(ContractError::AssetDoesNotExist {});
-    }
+
+    // asset should match either token
+    ensure!(
+        asset_info == state.pair.token_1.get_token().id
+            || asset_info == state.pair.token_2.get_token().id,
+        ContractError::AssetDoesNotExist {}
+    );
 
     // Verify that the asset amount is non-zero
-    if asset_amount.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    ensure!(!asset_amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Get Fee from the state
     let fee = state.fee;
@@ -39,7 +43,7 @@ pub fn query_simulate_swap(
     let swap_amount = asset_amount.checked_sub(fee_amount)?;
 
     // verify if asset is token 1 or token 2
-    let swap_info = if asset_info == state.pair.token_1.id {
+    let swap_info = if asset_info == state.pair.token_1.get_token().id {
         (swap_amount, state.total_reserve_1, state.total_reserve_2)
     } else {
         (swap_amount, state.total_reserve_2, state.total_reserve_1)
@@ -70,22 +74,28 @@ pub fn query_liquidity(deps: Deps) -> Result<Binary, ContractError> {
 // Function to query fee of the contract
 pub fn query_fee(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
-    Ok(to_json_binary(&state.fee)?)
+    Ok(to_json_binary(&FeeResponse { fee: state.fee })?)
 }
-
 // Function to query a Euclid Pool Information for this pair
 pub fn query_pool(deps: Deps, chain_id: String) -> Result<Binary, ContractError> {
     let pool = POOLS.load(deps.storage, &chain_id)?;
-    Ok(to_json_binary(&pool)?)
+    Ok(to_json_binary(&PoolResponse { pool })?)
 }
 // Function to query all Euclid Pool Information
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
-    let pools: Vec<String> = POOLS
+    let pools: Result<_, ContractError> = POOLS
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .map(|item| item.map(|(_, pool)| pool.chain.clone()))
-        .collect::<Result<Vec<String>, _>>()?;
+        .map(|item| {
+            let (chain, pool) = item?;
+            Ok::<PoolInfo, ContractError>(PoolInfo {
+                factory_address: FACTORIES.load(deps.storage, &chain)?,
+                chain,
+                pool,
+            })
+        })
+        .collect();
 
-    Ok(to_json_binary(&AllPoolsResponse { pools })?)
+    Ok(to_json_binary(&AllPoolsResponse { pools: pools? })?)
 }
 // Function to calculate the asset to be recieved after a swap
 pub fn calculate_swap(
@@ -131,11 +141,12 @@ pub fn assert_slippage_tolerance(
     pool_ratio: Decimal256,
     slippage_tolerance: u64,
 ) -> Result<bool, ContractError> {
-    let slippage = pool_ratio.checked_sub(ratio)?;
+    let slippage = pool_ratio.abs_diff(ratio);
     let slippage_tolerance =
         Decimal256::from_ratio(Uint128::from(slippage_tolerance), Uint128::from(100u128));
-    if slippage > slippage_tolerance {
-        return Err(ContractError::LiquiditySlippageExceeded {});
-    }
+    ensure!(
+        slippage.le(&slippage_tolerance),
+        ContractError::LiquiditySlippageExceeded {}
+    );
     Ok(true)
 }

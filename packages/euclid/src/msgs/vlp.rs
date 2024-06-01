@@ -1,18 +1,16 @@
 use crate::{
     fee::Fee,
     pool::Pool,
-    token::{Pair, Token},
+    token::{PairInfo, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Decimal256, Uint128};
+use cosmwasm_std::Uint128;
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
-    pub pair: Pair,
+    pub pair: PairInfo,
     pub fee: Fee,
-    pub pool: Pool,
-    pub lq_ratio: Decimal256,
 }
 
 #[cw_serde]
@@ -68,10 +66,10 @@ pub struct GetLiquidityResponse {
 }
 
 #[cw_serde]
-
-pub struct PairInfo {
-    pub token_1: Token,
-    pub token_2: Token,
+pub struct PoolInfo {
+    pub factory_address: String,
+    pub chain: String,
+    pub pool: Pool,
 }
 #[cw_serde]
 pub struct FeeResponse {
@@ -85,5 +83,8 @@ pub struct PoolResponse {
 
 #[cw_serde]
 pub struct AllPoolsResponse {
-    pub pools: Vec<String>,
+    pub pools: Vec<PoolInfo>,
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}
