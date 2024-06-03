@@ -253,6 +253,16 @@ pub fn add_liquidity_request(
         return Err(ContractError::InvalidSlippageTolerance {});
     }
 
+    ensure!(
+        !token_1_liquidity.is_zero() && !token_2_liquidity.is_zero(),
+        ContractError::ZeroAssetAmount {}
+    );
+
+    ensure!(
+        slippage_tolerance.gt(&0),
+        ContractError::ZeroSlippageAmount {}
+    );
+
     // if `msg_sender` is not None, then the sender is the one who initiated the swap
     let sender = match msg_sender {
         Some(sender) => sender,

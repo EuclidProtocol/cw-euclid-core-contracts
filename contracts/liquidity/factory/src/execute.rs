@@ -1,6 +1,5 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
-    Uint128,
+    to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, Uint128,
 };
 use euclid::{
     error::ContractError,
@@ -102,14 +101,6 @@ pub fn execute_add_liquidity(
     liquidity_id: String,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    ensure!(
-        !token_1_liquidity.is_zero() && !token_2_liquidity.is_zero(),
-        ContractError::ZeroAssetAmount {}
-    );
-    ensure!(
-        slippage_tolerance.gt(&0),
-        ContractError::ZeroSlippageAmount {}
-    );
     // Load the state
     let state = STATE.load(deps.storage)?;
 
