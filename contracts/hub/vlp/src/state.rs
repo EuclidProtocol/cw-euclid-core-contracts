@@ -1,16 +1,16 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal256, Uint128};
+use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
 use euclid::{
     fee::Fee,
     pool::Pool,
-    token::{Pair, Token},
+    token::{PairInfo, Token},
 };
 
 #[cw_serde]
 pub struct State {
     // Token Pair Info
-    pub pair: Pair,
+    pub pair: PairInfo,
     // Router Contract
     pub router: String,
     // Fee per swap for each transaction
@@ -23,15 +23,15 @@ pub struct State {
     pub total_reserve_2: Uint128,
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
-
-    // Pool ratio is always constant
-    pub lq_ratio: Decimal256,
 }
 
 pub const STATE: Item<State> = Item::new("state");
 
 // A map of chain-ids connected to the VLP to pools
 pub const POOLS: Map<&String, Pool> = Map::new("pools");
+
+// A map of chain-ids connected to the VLP to pools
+pub const FACTORIES: Map<&String, String> = Map::new("factories");
 
 // Stores a snapshotMap in order to keep track of prices for blocks for charts and other purposes
 pub const BALANCES: SnapshotMap<Token, Uint128> = SnapshotMap::new(

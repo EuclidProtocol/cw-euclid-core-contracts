@@ -3,18 +3,18 @@ use std::vec;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel,
     IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder,
     IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
     SubMsg, Uint128, WasmMsg,
 };
 use euclid::msgs::pool::ExecuteMsg as PoolExecuteMsg;
+use euclid::token::PairInfo;
 use euclid::{
-    error::{ContractError, Never},
+    error::ContractError,
     msgs::pool::CallbackExecuteMsg,
     pool::{LiquidityResponse, Pool, PoolCreationResponse},
     swap::SwapResponse,
-    token::PairInfo,
 };
 use euclid_ibc::ack::make_ack_fail;
 use euclid_ibc::msg::{AcknowledgementMsg, IbcExecuteMsg};
@@ -107,15 +107,15 @@ pub fn ibc_packet_ack(
     let msg: IbcExecuteMsg = from_json(&ack.original_packet.data)?;
     match msg {
         IbcExecuteMsg::RequestPoolCreation {
-            pair_info,
             pool_rq_id,
+            pair_info,
             ..
         } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<PoolCreationResponse> =
                 from_json(ack.acknowledgement.data)?;
 
-            execute_pool_creation(deps, res, pair_info, pool_rq_id)
+            execute_pool_creation(deps, pair_info, res, pool_rq_id)
         }
         IbcExecuteMsg::Swap {
             swap_id,
@@ -174,12 +174,12 @@ pub fn ibc_packet_timeout(
             execute_swap_process(fake_error_ack, pool_address.to_string(), swap_id)
         }
         IbcExecuteMsg::RequestPoolCreation {
-            pair_info,
             pool_rq_id,
+            pair_info,
             ..
         } => {
             let fake_error_ack = AcknowledgementMsg::Error("Timeout".to_string());
-            execute_pool_creation(deps, fake_error_ack, pair_info, pool_rq_id)
+            execute_pool_creation(deps, pair_info, fake_error_ack, pool_rq_id)
         }
         _ => Ok(IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout")),
     };
@@ -195,16 +195,18 @@ pub fn validate_order_and_version(
     // We expect an unordered channel here. Ordered channels have the
     // property that if a message is lost the entire channel will stop
     // working until you start it again.
-    if channel.order != IbcOrder::Unordered {
-        return Err(ContractError::OrderedChannel {});
-    }
+    ensure!(
+        channel.order == IbcOrder::Unordered,
+        ContractError::OrderedChannel {}
+    );
 
-    if channel.version != IBC_VERSION {
-        return Err(ContractError::InvalidVersion {
+    ensure!(
+        channel.version == IBC_VERSION,
+        ContractError::InvalidVersion {
             actual: channel.version.to_string(),
             expected: IBC_VERSION.to_string(),
-        });
-    }
+        }
+    );
 
     // Make sure that we're talking with a counterparty who speaks the
     // same "protocol" as us.
@@ -215,12 +217,13 @@ pub fn validate_order_and_version(
     // `OpenAck`. We verify it when we have it but when we don't it's
     // alright.
     if let Some(counterparty_version) = counterparty_version {
-        if counterparty_version != IBC_VERSION {
-            return Err(ContractError::InvalidVersion {
+        ensure!(
+            counterparty_version == IBC_VERSION,
+            ContractError::InvalidVersion {
                 actual: counterparty_version.to_string(),
                 expected: IBC_VERSION.to_string(),
-            });
-        }
+            }
+        );
     }
 
     Ok(())
@@ -229,16 +232,15 @@ pub fn validate_order_and_version(
 // Function to create pool
 pub fn execute_pool_creation(
     deps: DepsMut,
-    res: AcknowledgementMsg<PoolCreationResponse>,
     pair_info: PairInfo,
+    res: AcknowledgementMsg<PoolCreationResponse>,
     pool_rq_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let existing_req = POOL_REQUESTS.may_load(deps.storage, pool_rq_id.clone())?;
-    if existing_req.is_none() {
-        return Err(ContractError::PoolRequestDoesNotExists {
+    let _existing_req = POOL_REQUESTS
+        .may_load(deps.storage, pool_rq_id.clone())?
+        .ok_or(ContractError::PoolRequestDoesNotExists {
             req: pool_rq_id.clone(),
-        });
-    }
+        })?;
     // Load the state
     let state = STATE.load(deps.storage)?;
     // Check whether res is an error or not
@@ -248,11 +250,9 @@ pub fn execute_pool_creation(
             // Prepare Instantiate Msg
             let init_msg = PoolInstantiateMsg {
                 vlp_contract: data.vlp_contract.clone(),
-                token_pair: data.token_pair.clone(),
-                pair_info: pair_info.clone(),
                 pool: Pool {
                     chain: state.chain_id.clone(),
-                    pair: pair_info.clone(),
+                    pair: pair_info,
                     reserve_1: Uint128::zero(),
                     reserve_2: Uint128::zero(),
                 },

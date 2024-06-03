@@ -5,8 +5,6 @@ use cosmwasm_std::Uint128;
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
-    // Chain ID
-    pub chain_id: String,
     // Pool Code ID
     pub pool_code_id: u64,
 }
@@ -17,6 +15,7 @@ pub enum ExecuteMsg {
     RequestPoolCreation {
         pair_info: PairInfo,
         channel: String,
+        timeout: Option<u64>,
     },
     ExecuteSwap {
         asset: Token,
@@ -24,6 +23,7 @@ pub enum ExecuteMsg {
         min_amount_out: Uint128,
         channel: String,
         swap_id: String,
+        timeout: Option<u64>,
     },
     // Add Liquidity Request to the VLP
     AddLiquidity {
@@ -32,6 +32,11 @@ pub enum ExecuteMsg {
         slippage_tolerance: u64,
         channel: String,
         liquidity_id: String,
+        timeout: Option<u64>,
+    },
+    // Update Pool Code ID
+    UpdatePoolCodeId {
+        new_pool_code_id: u64,
     },
 }
 
@@ -59,7 +64,16 @@ pub struct StateResponse {
     pub admin: String,
     pub pool_code_id: u64,
 }
+
 #[cw_serde]
 pub struct AllPoolsResponse {
-    pub pools: Vec<String>, // Assuming pool addresses are strings
+    pub pools: Vec<PoolVlpResponse>, // Assuming pool addresses are strings
 }
+#[cw_serde]
+pub struct PoolVlpResponse {
+    pub pool: String,
+    pub vlp: String,
+}
+
+#[cw_serde]
+pub struct MigrateMsg {}

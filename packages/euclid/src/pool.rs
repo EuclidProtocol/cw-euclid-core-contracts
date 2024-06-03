@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 
-use crate::token::{Pair, PairInfo};
+use crate::token::PairInfo;
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
@@ -15,6 +15,22 @@ pub struct Pool {
     pub reserve_1: Uint128,
     // The total reserve of token_2
     pub reserve_2: Uint128,
+}
+
+impl Pool {
+    pub fn new(
+        chain: impl Into<String>,
+        pair: PairInfo,
+        reserve_1: Uint128,
+        reserve_2: Uint128,
+    ) -> Pool {
+        Pool {
+            chain: chain.into(),
+            pair,
+            reserve_1,
+            reserve_2,
+        }
+    }
 }
 
 // Request to create pool saved in state to manage during acknowledgement
@@ -51,5 +67,4 @@ pub struct LiquidityResponse {
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
-    pub token_pair: Pair,
 }

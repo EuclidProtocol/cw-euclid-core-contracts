@@ -5,4 +5,5 @@ pub mod liquidity;
 pub mod msgs;
 pub mod pool;
 pub mod swap;
+pub mod timeout;
 pub mod token;

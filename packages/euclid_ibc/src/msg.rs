@@ -35,8 +35,9 @@ pub enum IbcExecuteMsg {
     // Request Pool Creation
     RequestPoolCreation {
         pool_rq_id: String,
-        chain: String,
         pair_info: PairInfo,
+        chain: String,
+        factory: String,
     },
 }
 
