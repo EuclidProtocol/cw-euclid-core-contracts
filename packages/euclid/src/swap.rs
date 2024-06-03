@@ -9,7 +9,7 @@ use crate::{
 // Struct that stores a certain swap info
 #[cw_serde]
 pub struct SwapInfo {
-    // The asset being swappet
+    // The asset being swapped
     pub asset: TokenInfo,
     // The asset being received
     pub asset_out: TokenInfo,
