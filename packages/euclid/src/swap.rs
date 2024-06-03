@@ -49,3 +49,63 @@ pub fn parse_swap_id(id: &str) -> Result<SwapExtractedId, ContractError> {
         index: parsed[1].parse()?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    // Name isn't being printed, but is useful as a title for each test case
+    #[allow(dead_code)]
+    struct TestGetSwapExtractedId {
+        name: &'static str,
+        id: &'static str,
+        expected_error: Option<ContractError>,
+        expected_result: Option<SwapExtractedId>,
+    }
+
+    #[test]
+    fn test_parse_swap_id() {
+        let test_cases = vec![
+            TestGetSwapExtractedId {
+                name: "ID with sender and count",
+                id: "eucl-10",
+                expected_error: None,
+                expected_result: Some(SwapExtractedId {
+                    sender: "eucl".to_string(),
+                    index: 10_u128,
+                }),
+            },
+            // Not having a sender does not error
+            TestGetSwapExtractedId {
+                name: "ID with empty sender",
+                id: "-10",
+                expected_error: None,
+                expected_result: Some(SwapExtractedId {
+                    sender: "".to_string(),
+                    index: 10_u128,
+                }),
+            },
+            // Not having a count results in an error
+            TestGetSwapExtractedId {
+                name: "ID with empty count",
+                id: "eucl-",
+                expected_error: Some(ContractError::InvalidChainId {}),
+                expected_result: Some(SwapExtractedId {
+                    sender: "".to_string(),
+                    index: 10_u128,
+                }),
+            },
+        ];
+
+        for test in test_cases {
+            let res = parse_swap_id(test.id);
+
+            if let Some(_err) = test.expected_error {
+                assert!(res.is_err());
+                continue;
+            } else {
+                assert_eq!(res.unwrap(), test.expected_result.unwrap())
+            }
+        }
+    }
+}
