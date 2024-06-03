@@ -23,8 +23,6 @@ pub fn execute_request_pool_creation(
     // Load the state
     let state = STATE.load(deps.storage)?;
 
-    let mut msgs: Vec<CosmosMsg> = Vec::new();
-
     // Create a Request in state
     let pool_request = generate_pool_req(deps, &info.sender, env.block.chain_id, channel.clone())?;
 
@@ -43,11 +41,9 @@ pub fn execute_request_pool_creation(
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
 
-    msgs.push(ibc_packet.into());
-
     Ok(Response::new()
         .add_attribute("method", "request_pool_creation")
-        .add_messages(msgs))
+        .add_message(ibc_packet))
 }
 
 // Function to send IBC request to Router in VLS to perform a swap
