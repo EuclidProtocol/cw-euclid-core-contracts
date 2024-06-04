@@ -70,7 +70,7 @@ pub fn execute_swap_request(
     } else {
         // Verify that the contract address is the same as the asset contract address
         ensure!(
-            info.sender == asset.get_contract_address(),
+            info.sender == asset.get_denom(),
             ContractError::Unauthorized {}
         );
     }
@@ -209,7 +209,7 @@ pub fn receive_cw20(
 
             // ensure that contract address is same as asset being swapped
             ensure!(
-                contract_adr == asset.get_contract_address(),
+                contract_adr == asset.get_denom(),
                 ContractError::AssetDoesNotExist {}
             );
             // Add sender as the option
@@ -249,6 +249,7 @@ pub fn add_liquidity_request(
 
     ensure!(
         !token_1_liquidity.is_zero() && !token_2_liquidity.is_zero(),
+        ContractError::ZeroAssetAmount {}
     );
 
     // if `msg_sender` is not None, then the sender is the one who initiated the swap
