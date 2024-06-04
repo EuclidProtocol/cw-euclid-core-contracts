@@ -55,7 +55,6 @@ pub fn execute(
             asset,
             asset_amount,
             min_amount_out,
-            channel,
             timeout,
         } => execute::execute_swap_request(
             deps,
@@ -64,7 +63,6 @@ pub fn execute(
             asset,
             asset_amount,
             min_amount_out,
-            channel,
             None,
             timeout,
         ),
@@ -72,7 +70,6 @@ pub fn execute(
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            channel,
             timeout,
         } => execute::add_liquidity_request(
             deps,
@@ -81,7 +78,6 @@ pub fn execute(
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            channel,
             None,
             timeout,
         ),

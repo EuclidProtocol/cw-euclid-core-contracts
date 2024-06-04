@@ -1,13 +1,13 @@
 use cosmwasm_std::{ensure, to_json_binary, Binary, Decimal256, Deps, Isqrt, Uint128};
 use euclid::error::ContractError;
 use euclid::pool::MINIMUM_LIQUIDITY;
-use euclid::token::{PairInfo, Token};
+use euclid::token::Token;
 
 use euclid::msgs::vlp::{
     AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetSwapResponse, PoolInfo, PoolResponse,
 };
 
-use crate::state::{FACTORIES, POOLS, STATE};
+use crate::state::{POOLS, STATE};
 
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
@@ -22,8 +22,7 @@ pub fn query_simulate_swap(
 
     // asset should match either token
     ensure!(
-        asset_info == state.pair.token_1.get_token().id
-            || asset_info == state.pair.token_2.get_token().id,
+        asset_info == state.pair.token_1.id || asset_info == state.pair.token_2.id,
         ContractError::AssetDoesNotExist {}
     );
 
@@ -43,7 +42,7 @@ pub fn query_simulate_swap(
     let swap_amount = asset_amount.checked_sub(fee_amount)?;
 
     // verify if asset is token 1 or token 2
-    let swap_info = if asset_info == state.pair.token_1.get_token().id {
+    let swap_info = if asset_info == state.pair.token_1.id {
         (swap_amount, state.total_reserve_1, state.total_reserve_2)
     } else {
         (swap_amount, state.total_reserve_2, state.total_reserve_1)
@@ -61,10 +60,7 @@ pub fn query_simulate_swap(
 pub fn query_liquidity(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&GetLiquidityResponse {
-        pair: PairInfo {
-            token_1: state.pair.token_1.clone(),
-            token_2: state.pair.token_2.clone(),
-        },
+        pair: state.pair,
         token_1_reserve: state.total_reserve_1,
         token_2_reserve: state.total_reserve_2,
         total_lp_tokens: state.total_lp_tokens,
@@ -87,11 +83,7 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .map(|item| {
             let (chain, pool) = item?;
-            Ok::<PoolInfo, ContractError>(PoolInfo {
-                factory_address: FACTORIES.load(deps.storage, &chain)?,
-                chain,
-                pool,
-            })
+            Ok::<PoolInfo, ContractError>(PoolInfo { chain, pool })
         })
         .collect();
 

@@ -1,7 +1,7 @@
 use crate::{
     fee::Fee,
     pool::Pool,
-    token::{PairInfo, Token},
+    token::{Pair, PairInfo, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
@@ -9,14 +9,36 @@ use cosmwasm_std::Uint128;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
-    pub pair: PairInfo,
+    pub pair: Pair,
     pub fee: Fee,
+    pub execute: Option<ExecuteMsg>,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
     // Registers a new pool from a new chain to an already existing VLP
-    // RegisterPool { pool: Pool },
+    RegisterPool {
+        chain_id: String,
+        pair_info: PairInfo,
+    },
+
+    Swap {
+        chain_id: String,
+        asset: Token,
+        asset_amount: Uint128,
+        min_token_out: Uint128,
+        swap_id: String,
+    },
+    AddLiquidity {
+        chain_id: String,
+        token_1_liquidity: Uint128,
+        token_2_liquidity: Uint128,
+        slippage_tolerance: u64,
+    },
+    RemoveLiquidity {
+        chain_id: String,
+        lp_allocation: Uint128,
+    },
     /*
 
     // Update the fee for the VLP
@@ -59,7 +81,7 @@ pub struct GetSwapResponse {
 
 #[cw_serde]
 pub struct GetLiquidityResponse {
-    pub pair: PairInfo,
+    pub pair: Pair,
     pub token_1_reserve: Uint128,
     pub token_2_reserve: Uint128,
     pub total_lp_tokens: Uint128,
@@ -67,7 +89,6 @@ pub struct GetLiquidityResponse {
 
 #[cw_serde]
 pub struct PoolInfo {
-    pub factory_address: String,
     pub chain: String,
     pub pool: Pool,
 }
