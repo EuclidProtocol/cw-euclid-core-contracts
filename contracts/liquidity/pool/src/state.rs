@@ -9,6 +9,9 @@ use euclid::{
 use cosmwasm_std::{DepsMut, IbcTimeout, Uint128};
 use cw_storage_plus::{Item, Map};
 
+pub const MINIMIM_SLIPPAGE: u64 = 1;
+pub const DEFAULT_SLIPPAGE: u64 = 5;
+
 #[cw_serde]
 pub struct State {
     // Store VLP contract address on VLS
