@@ -1,7 +1,7 @@
 use cosmwasm_std::{
     ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
 };
-use euclid::error::ContractError;
+use euclid::{error::ContractError, timeout::get_timeout};
 use euclid_ibc::msg::HubIbcExecuteMsg;
 
 use crate::state::STATE;
@@ -12,17 +12,13 @@ pub fn execute_update_vlp_code_id(
     info: MessageInfo,
     new_vlp_code_id: u64,
 ) -> Result<Response, ContractError> {
-    // Load the state
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        // Ensure that only the admin can update the pool code ID
-        if info.sender != state.admin {
-            return Err(ContractError::Unauthorized {});
-        }
+    let mut state = STATE.load(deps.storage)?;
 
-        // Update the pool code ID
-        state.vlp_code_id = new_vlp_code_id;
-        Ok(state)
-    })?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    state.vlp_code_id = new_vlp_code_id;
+
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_attribute("method", "update_pool_code_id")
@@ -44,15 +40,18 @@ pub fn execute_register_factory(
         router: env.contract.address.to_string(),
     };
 
+    let timeout = get_timeout(timeout)?;
+
     let packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&msg)?,
         // TODO: Add Joe min max timestamp logic here!
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout.unwrap_or(60))),
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
 
     Ok(Response::new()
         .add_attribute("method", "register_factory")
         .add_attribute("channel", channel)
+        .add_attribute("timeout", timeout.to_string())
         .add_message(CosmosMsg::Ibc(packet)))
 }

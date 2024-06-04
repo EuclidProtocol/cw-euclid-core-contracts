@@ -10,11 +10,11 @@ use euclid_ibc::msg::AcknowledgementMsg;
 
 use crate::state::VLPS;
 
-pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1u64;
-pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2u64;
-pub const ADD_LIQUIDITY_REPLY_ID: u64 = 3u64;
-pub const REMOVE_LIQUIDITY_REPLY_ID: u64 = 4u64;
-pub const SWAP_REPLY_ID: u64 = 5u64;
+pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
+pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
+pub const ADD_LIQUIDITY_REPLY_ID: u64 = 3;
+pub const REMOVE_LIQUIDITY_REPLY_ID: u64 = 4;
+pub const SWAP_REPLY_ID: u64 = 5;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {

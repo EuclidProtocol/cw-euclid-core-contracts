@@ -14,7 +14,7 @@ pub struct State {
     pub chain_id: String,
     // The Router Contract Address on the Virtual Settlement Layer
     pub router_contract: String,
-    // The Router Contract Address on the Virtual Settlement Layer
+    // Channel that connects factory to hub chain. This is set after factory registration call from router
     pub hub_channel: Option<String>,
     // Contract admin
     pub admin: String,

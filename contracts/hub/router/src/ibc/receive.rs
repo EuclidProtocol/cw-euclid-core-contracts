@@ -105,7 +105,7 @@ fn execute_request_pool_creation(
 
     let vlp = VLPS.may_load(deps.storage, pair)?;
 
-    // Check if VLP exist for pair, in correct order. We don;t want to create new VLP if just token_1 and 2 are reversed
+    // Check if VLP exist for pair, in correct order. We don't want to create new VLP if just token_1 and 2 are reversed
     if vlp.is_none() {
         let pair = (pair_info.token_2.get_token(), pair_info.token_1.get_token());
         ensure!(
