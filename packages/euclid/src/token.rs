@@ -147,7 +147,7 @@ impl TokenInfo {
         !self.is_native()
     }
 
-    // Helper to get the denom of a native token
+    // Helper to get the denom of a native or CW20 token
     pub fn get_denom(&self) -> String {
         match self.token_type.clone() {
             TokenType::Native { denom } => denom.to_string(),
