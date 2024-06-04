@@ -31,7 +31,7 @@ pub enum ExecuteMsg {
     AddLiquidity {
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
-        slippage_tolerance: Option<u64>,
+        slippage_tolerance: u64,
         channel: String,
         timeout: Option<u64>,
     },

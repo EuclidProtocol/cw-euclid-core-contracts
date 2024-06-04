@@ -14,8 +14,7 @@ use euclid::{
 };
 
 use crate::state::{
-    generate_liquidity_req, generate_swap_req, DEFAULT_SLIPPAGE, MINIMIM_SLIPPAGE,
-    PENDING_LIQUIDITY, PENDING_SWAPS, STATE,
+    generate_liquidity_req, generate_swap_req, PENDING_LIQUIDITY, PENDING_SWAPS, STATE,
 };
 
 use euclid::msgs::factory::ExecuteMsg as FactoryExecuteMsg;
@@ -242,17 +241,15 @@ pub fn add_liquidity_request(
     env: Env,
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
-    slippage_tolerance: Option<u64>,
+    slippage_tolerance: u64,
     channel: String,
     msg_sender: Option<String>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-
-    let slippage_tolerance = slippage_tolerance.unwrap_or(DEFAULT_SLIPPAGE);
     // Check that slippage tolerance is between the minimum and 100
     ensure!(
-        slippage_tolerance.ge(&MINIMIM_SLIPPAGE) && slippage_tolerance.le(&100),
+        slippage_tolerance.ge(&0) && slippage_tolerance.le(&100),
         ContractError::InvalidSlippageTolerance {}
     );
 
