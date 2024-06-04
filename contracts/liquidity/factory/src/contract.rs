@@ -18,15 +18,16 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
         router_contract: msg.router_contract.clone(),
-        chain_id: msg.chain_id.clone(),
+        chain_id: env.block.chain_id,
         admin: info.sender.clone().to_string(),
-        pool_code_id: msg.pool_code_id.clone(),
+        pool_code_id: msg.pool_code_id,
+        hub_channel: None,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -36,7 +37,7 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
-        .add_attribute("chain_id", msg.chain_id.clone()))
+        .add_attribute("chain_id", state.chain_id))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -47,18 +48,16 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RequestPoolCreation {
-            pair_info,
-            channel,
-            timeout,
-        } => execute::execute_request_pool_creation(deps, env, info, pair_info, channel, timeout),
+        ExecuteMsg::RequestPoolCreation { pair_info, timeout } => {
+            execute::execute_request_pool_creation(deps, env, info, pair_info, timeout)
+        }
         ExecuteMsg::ExecuteSwap {
             asset,
             asset_amount,
             min_amount_out,
-            channel,
             swap_id,
             timeout,
+            vlp_address,
         } => execute::execute_swap(
             deps,
             env,
@@ -66,17 +65,17 @@ pub fn execute(
             asset,
             asset_amount,
             min_amount_out,
-            channel,
             swap_id,
             timeout,
+            vlp_address,
         ),
         ExecuteMsg::AddLiquidity {
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            channel,
             liquidity_id,
             timeout,
+            vlp_address,
         } => execute::execute_add_liquidity(
             deps,
             env,
@@ -84,10 +83,13 @@ pub fn execute(
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            channel,
             liquidity_id,
             timeout,
+            vlp_address,
         ),
+        ExecuteMsg::UpdatePoolCodeId { new_pool_code_id } => {
+            execute::execute_update_pool_code_id(deps, info, new_pool_code_id)
+        }
     }
 }
 

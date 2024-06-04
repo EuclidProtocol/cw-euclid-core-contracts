@@ -26,7 +26,6 @@ pub fn execute_swap_request(
     asset: TokenInfo,
     asset_amount: Uint128,
     min_amount_out: Uint128,
-    channel: String,
     msg_sender: Option<String>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -39,19 +38,16 @@ pub fn execute_swap_request(
     };
 
     // Verify that the asset exists in the pool
-    if asset != state.pair_info.token_1 && asset != state.pair_info.token_2 {
-        return Err(ContractError::AssetDoesNotExist {});
-    }
+    ensure!(
+        asset == state.pair_info.token_1 || asset == state.pair_info.token_2,
+        ContractError::AssetDoesNotExist {}
+    );
 
     // Verify that the asset amount is greater than 0
-    if asset_amount.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    ensure!(!asset_amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Verify that the min amount out is greater than 0
-    if min_amount_out.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    ensure!(!min_amount_out.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Verify if the token is native
     if asset.is_native() {
@@ -73,9 +69,10 @@ pub fn execute_swap_request(
         }
     } else {
         // Verify that the contract address is the same as the asset contract address
-        if info.sender != asset.get_contract_address() {
-            return Err(ContractError::Unauthorized {});
-        }
+        ensure!(
+            info.sender == asset.get_contract_address(),
+            ContractError::Unauthorized {}
+        );
     }
 
     // Get token from tokenInfo
@@ -91,9 +88,9 @@ pub fn execute_swap_request(
         asset: token,
         asset_amount,
         min_amount_out,
-        channel,
         swap_id: swap_info.swap_id,
         timeout: Some(timeout_duration),
+        vlp_address: state.vlp_contract,
     };
 
     let msg = WasmMsg::Execute {
@@ -115,12 +112,12 @@ pub fn execute_complete_swap(
     let mut state = STATE.load(deps.storage)?;
     // Verify that assets exist in the state.
     ensure!(
-        swap_response.asset.exists(state.clone().pair),
+        swap_response.asset.exists(state.pair_info.get_pair()),
         ContractError::AssetDoesNotExist {}
     );
 
     ensure!(
-        swap_response.asset_out.exists(state.clone().pair),
+        swap_response.asset_out.exists(state.pair_info.get_pair()),
         ContractError::AssetDoesNotExist {}
     );
 
@@ -140,7 +137,7 @@ pub fn execute_complete_swap(
     );
 
     // Check if asset is token_1 or token_2 and calculate accordingly
-    if swap_response.asset == state.clone().pair.token_1 {
+    if swap_response.asset == state.pair_info.token_1.get_token() {
         state.reserve_1 += swap_response.asset_amount;
         state.reserve_2 -= swap_response.amount_out;
     } else {
@@ -187,7 +184,7 @@ pub fn execute_reject_swap(
     Ok(Response::new()
         .add_attribute("method", "process_failed_swap")
         .add_attribute("refund_to", "sender")
-        .add_attribute("refund_amount", swap_info.asset_amount.clone())
+        .add_attribute("refund_amount", swap_info.asset_amount)
         .add_attribute("error", error.unwrap_or_default())
         .add_message(msg))
 }
@@ -206,7 +203,6 @@ pub fn receive_cw20(
         Cw20HookMsg::Swap {
             asset,
             min_amount_out,
-            channel,
             timeout,
         } => {
             let contract_adr = info.sender.clone();
@@ -226,7 +222,6 @@ pub fn receive_cw20(
                 asset,
                 cw20_msg.amount,
                 min_amount_out,
-                channel,
                 Some(cw20_msg.sender),
                 timeout,
             )
@@ -242,7 +237,6 @@ pub fn add_liquidity_request(
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
-    channel: String,
     msg_sender: Option<String>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -255,7 +249,6 @@ pub fn add_liquidity_request(
 
     ensure!(
         !token_1_liquidity.is_zero() && !token_2_liquidity.is_zero(),
-        ContractError::ZeroAssetAmount {}
     );
 
     // if `msg_sender` is not None, then the sender is the one who initiated the swap
@@ -264,10 +257,11 @@ pub fn add_liquidity_request(
         None => info.sender.clone().to_string(),
     };
 
-    // Check that the token_1 liquidity is greater than 0
-    if token_1_liquidity.is_zero() || token_2_liquidity.is_zero() {
-        return Err(ContractError::ZeroAssetAmount {});
-    }
+    // Check that the liquidity is greater than 0
+    ensure!(
+        !token_1_liquidity.is_zero() && !token_2_liquidity.is_zero(),
+        ContractError::ZeroAssetAmount {}
+    );
 
     // Get the token 1 and token 2 from the pair info
     let token_1 = state.pair_info.token_1.clone();
@@ -283,9 +277,11 @@ pub fn add_liquidity_request(
         msgs.push(msg);
     } else {
         // If funds empty return error
-        if info.funds.is_empty() {
-            return Err(ContractError::InsufficientDeposit {});
-        }
+        ensure!(
+            !info.funds.is_empty(),
+            ContractError::InsufficientDeposit {}
+        );
+
         // Check for funds sent with the message
         let amt = info
             .funds
@@ -294,9 +290,11 @@ pub fn add_liquidity_request(
             .ok_or(ContractError::Generic {
                 err: "Denom not found".to_string(),
             })?;
-        if amt.amount < token_1_liquidity {
-            return Err(ContractError::InsufficientDeposit {});
-        }
+
+        ensure!(
+            amt.amount.ge(&token_1_liquidity),
+            ContractError::InsufficientDeposit {}
+        );
     }
 
     // Same for token 2
@@ -305,9 +303,12 @@ pub fn add_liquidity_request(
             .create_transfer_msg(token_2_liquidity, env.contract.address.clone().to_string())?;
         msgs.push(msg);
     } else {
-        if info.funds.is_empty() {
-            return Err(ContractError::InsufficientDeposit {});
-        }
+        // If funds empty return error
+        ensure!(
+            !info.funds.is_empty(),
+            ContractError::InsufficientDeposit {}
+        );
+
         let amt = info
             .funds
             .iter()
@@ -315,9 +316,11 @@ pub fn add_liquidity_request(
             .ok_or(ContractError::Generic {
                 err: "Denom not found".to_string(),
             })?;
-        if amt.amount < token_2_liquidity {
-            return Err(ContractError::InsufficientDeposit {});
-        }
+
+        ensure!(
+            amt.amount.ge(&token_2_liquidity),
+            ContractError::InsufficientDeposit {}
+        );
     }
 
     // Save the pending liquidity transaction
@@ -328,9 +331,9 @@ pub fn add_liquidity_request(
         token_1_liquidity,
         token_2_liquidity,
         slippage_tolerance,
-        channel,
         liquidity_id: liquidity_info.liquidity_id,
         timeout,
+        vlp_address: state.vlp_contract,
     };
 
     let msg = WasmMsg::Execute {

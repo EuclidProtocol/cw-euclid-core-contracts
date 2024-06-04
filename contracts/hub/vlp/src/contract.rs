@@ -1,9 +1,10 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
 use cw2::set_contract_version;
 
-use crate::state::{State, POOLS, STATE};
+use crate::execute;
+use crate::state::{State, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
@@ -15,7 +16,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -24,34 +25,58 @@ pub fn instantiate(
         router: info.sender.to_string(),
         fee: msg.fee,
         last_updated: 0,
-        total_reserve_1: msg.pool.reserve_1,
-        total_reserve_2: msg.pool.reserve_2,
+        total_reserve_1: Uint128::zero(),
+        total_reserve_2: Uint128::zero(),
         total_lp_tokens: Uint128::zero(),
-        lq_ratio: msg.lq_ratio,
     };
-    ensure!(
-        !state.lq_ratio.is_zero(),
-        ContractError::InvalidLiquidityRatio {}
-    );
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
-    // stores initial pool to map
-    POOLS.save(deps.storage, &msg.pool.chain, &msg.pool)?;
-    Ok(Response::new()
+
+    let response = msg.execute.map_or(Ok(Response::default()), |execute_msg| {
+        execute(deps, env.clone(), info.clone(), execute_msg)
+    })?;
+    Ok(response
         .add_attribute("method", "instantiate")
+        .add_attribute("vlp_address", env.contract.address.to_string())
         .add_attribute("owner", info.sender))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    _deps: DepsMut,
-    _env: Env,
+    deps: DepsMut,
+    env: Env,
     _info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        // ExecuteMsg::RegisterPool {pool} => execute::register_pool(deps, info, pool),
+        ExecuteMsg::RegisterPool {
+            chain_id,
+            pair_info,
+        } => execute::register_pool(deps, env, chain_id, pair_info),
+        ExecuteMsg::Swap {
+            chain_id,
+            asset,
+            asset_amount,
+            min_token_out,
+            swap_id,
+        } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_token_out, swap_id),
+        ExecuteMsg::AddLiquidity {
+            chain_id,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+        } => execute::add_liquidity(
+            deps,
+            chain_id,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+        ),
+        ExecuteMsg::RemoveLiquidity {
+            chain_id,
+            lp_allocation,
+        } => execute::remove_liquidity(deps, chain_id, lp_allocation),
     }
 }
 

@@ -2,7 +2,7 @@ use cosmwasm_std::ensure;
 
 use crate::error::ContractError;
 
-/// Ensures that the timeout is between 30 and 240 seconds, and if not provided, defaults the timeout to 60 seconds
+/// Ensures that the timeout is between 30 and 240 seconds. It defaults to 60 seconds if the timeout isn't provided.
 pub fn get_timeout(timeout: Option<u64>) -> Result<u64, ContractError> {
     if let Some(timeout) = timeout {
         // Validate that the timeout is between 30 and 240 seconds inclusive

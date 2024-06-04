@@ -1,8 +1,10 @@
-name: release wasm
+name: build artifacts wasm
 
 on:
   push:
-    on: development 
+    branches:
+      - main
+      - development
 
 jobs:
   release:
@@ -17,28 +19,25 @@ jobs:
           command: install
           args: cargo-run-script
 
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          override: true
+
+      - uses: sigoden/install-binary@v1
+        with:
+          repo: WebAssembly/binaryen
+          name: wasm-opt
+
       - name: Build WASM files
-        run: bash ./build.sh
+        run: bash ./build.sh all
         env:
           SOME_ENV_VAR: value
 
-      - name: Run cargo optimize
-        uses: actions-rs/cargo@v1
+      - uses: actions/upload-artifact@v4
         with:
-          command: run-script
-          args: optimize
-
-      - name: Get release ID
-        id: get_release
-        uses: bruceadams/get-release@v1.2.3
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Upload optimized wasm
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./artifacts/*.wasm
-          tag: ${{ github.ref }}
-          overwrite: true
-          file_glob: true
+          name: my-artifact
+          path: ./artifacts/

@@ -14,6 +14,8 @@ pub struct State {
     pub chain_id: String,
     // The Router Contract Address on the Virtual Settlement Layer
     pub router_contract: String,
+    // Channel that connects factory to hub chain. This is set after factory registration call from router
+    pub hub_channel: Option<String>,
     // Contract admin
     pub admin: String,
     // Pool Code ID
@@ -21,11 +23,6 @@ pub struct State {
 }
 
 pub const STATE: Item<State> = Item::new("state");
-
-/// (channel_id) -> count. Reset on channel closure.
-pub const CONNECTION_COUNTS: Map<String, u32> = Map::new("connection_counts");
-/// (channel_id) -> timeout_count. Reset on channel closure.
-pub const TIMEOUT_COUNTS: Map<String, u32> = Map::new("timeout_count");
 
 // Map VLP address to Pool address
 pub const VLP_TO_POOL: Map<String, String> = Map::new("vlp_to_pool");
@@ -54,7 +51,7 @@ pub fn generate_pool_req(
     };
     // If a pool request already exist, throw error, else create a new request
     POOL_REQUESTS.update(deps.storage, pool_rq_id, |existing| match existing {
-        Some(req) => Err(ContractError::PoolRequestAlreadyExists { req }),
+        Some(_req) => Err(ContractError::PoolRequestAlreadyExists {}),
         None => Ok(pool_request.clone()),
     })?;
     POOL_REQUEST_COUNT.save(deps.storage, sender.to_string(), &count.wrapping_add(1))?;

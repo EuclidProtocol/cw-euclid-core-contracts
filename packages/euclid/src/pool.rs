@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 
-use crate::token::{Pair, PairInfo};
+use crate::token::PairInfo;
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
@@ -63,9 +63,16 @@ pub struct LiquidityResponse {
     pub mint_lp_tokens: Uint128,
 }
 
+// Struct to handle Acknowledgement Response for a Liquidity Request
+#[cw_serde]
+pub struct RemoveLiquidityResponse {
+    pub token_1_liquidity: Uint128,
+    pub token_2_liquidity: Uint128,
+    pub burn_lp_tokens: Uint128,
+}
+
 // Struct to handle Acknowledgement Response for a Pool Creation Request
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
-    pub token_pair: Pair,
 }
