@@ -7,10 +7,9 @@ use euclid::msgs::pool::CallbackExecuteMsg;
 // use cw2::set_contract_version;
 
 use crate::execute::{
-    add_liquidity_request, execute_add_liquidity, execute_complete_add_liquidity,
-    execute_complete_swap, execute_reject_add_liquidity, execute_reject_swap,
-    execute_request_pool_creation, execute_swap, execute_swap_request, execute_update_pool_code_id,
-    receive_cw20,
+    add_liquidity_request, execute_complete_add_liquidity, execute_complete_swap,
+    execute_reject_add_liquidity, execute_reject_swap, execute_request_pool_creation,
+    execute_swap_request, execute_update_pool_code_id, receive_cw20,
 };
 use crate::query::{
     get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,
@@ -58,42 +57,42 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::AddLiquidity {
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-            liquidity_id,
-            timeout,
-            vlp_address,
-        } => execute_add_liquidity(
-            deps,
-            env,
-            info,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-            liquidity_id,
-            timeout,
-            vlp_address,
-        ),
-        ExecuteMsg::ExecuteSwap {
-            asset,
-            asset_amount,
-            min_amount_out,
-            swap_id,
-            timeout,
-            vlp_address,
-        } => execute_swap(
-            deps,
-            env,
-            info,
-            asset,
-            asset_amount,
-            min_amount_out,
-            swap_id,
-            timeout,
-            vlp_address,
-        ),
+        // ExecuteMsg::AddLiquidity {
+        //     token_1_liquidity,
+        //     token_2_liquidity,
+        //     slippage_tolerance,
+        //     liquidity_id,
+        //     timeout,
+        //     vlp_address,
+        // } => execute_add_liquidity(
+        //     deps,
+        //     env,
+        //     info,
+        //     token_1_liquidity,
+        //     token_2_liquidity,
+        //     slippage_tolerance,
+        //     liquidity_id,
+        //     timeout,
+        //     vlp_address,
+        // ),
+        // ExecuteMsg::ExecuteSwap {
+        //     asset,
+        //     asset_amount,
+        //     min_amount_out,
+        //     swap_id,
+        //     timeout,
+        //     vlp_address,
+        // } => execute_swap(
+        //     deps,
+        //     env,
+        //     info,
+        //     asset,
+        //     asset_amount,
+        //     min_amount_out,
+        //     swap_id,
+        //     timeout,
+        //     vlp_address,
+        // ),
         ExecuteMsg::RequestPoolCreation { pair_info, timeout } => {
             execute_request_pool_creation(deps, env, info, pair_info, timeout)
         }

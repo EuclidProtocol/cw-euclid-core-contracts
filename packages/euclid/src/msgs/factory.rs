@@ -1,4 +1,4 @@
-use crate::token::{PairInfo, Token, TokenInfo};
+use crate::token::{PairInfo, TokenInfo};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
@@ -17,27 +17,27 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
+    // // Add Liquidity Request to the VLP
+    // AddLiquidity {
+    //     token_1_liquidity: Uint128,
+    //     token_2_liquidity: Uint128,
+    //     slippage_tolerance: u64,
+    //     liquidity_id: String,
+    //     timeout: Option<u64>,
+    //     vlp_address: String,
+    // },
+    // ExecuteSwap {
+    //     asset: Token,
+    //     asset_amount: Uint128,
+    //     min_amount_out: Uint128,
+    //     swap_id: String,
+    //     timeout: Option<u64>,
+    //     vlp_address: String,
+    // },
     // Request Pool Creation
     RequestPoolCreation {
         pair_info: PairInfo,
         timeout: Option<u64>,
-    },
-    ExecuteSwap {
-        asset: Token,
-        asset_amount: Uint128,
-        min_amount_out: Uint128,
-        swap_id: String,
-        timeout: Option<u64>,
-        vlp_address: String,
-    },
-    // Add Liquidity Request to the VLP
-    AddLiquidity {
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-        slippage_tolerance: u64,
-        liquidity_id: String,
-        timeout: Option<u64>,
-        vlp_address: String,
     },
     // Update Pool Code ID
     UpdatePoolCodeId {

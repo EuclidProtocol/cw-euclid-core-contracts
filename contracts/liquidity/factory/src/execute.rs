@@ -58,7 +58,7 @@ pub fn execute_request_pool_creation(
 }
 
 // Function to send IBC request to Router in VLS to perform a swap
-pub fn execute_swap(
+fn execute_swap(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -108,7 +108,7 @@ pub fn execute_swap(
 }
 
 // Function to send IBC request to Router in VLS to add liquidity to a pool
-pub fn execute_add_liquidity(
+fn execute_add_liquidity(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
