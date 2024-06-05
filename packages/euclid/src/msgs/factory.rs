@@ -3,7 +3,10 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
 
-use super::pool::CallbackExecuteMsg;
+use super::pool::{
+    CallbackExecuteMsg, GetPairInfoResponse, GetPendingLiquidityResponse, GetPendingSwapsResponse,
+    GetPoolReservesResponse, GetVLPResponse,
+};
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
@@ -70,6 +73,27 @@ pub enum QueryMsg {
     // Query to get all pools in the factory
     #[returns(AllPoolsResponse)]
     GetAllPools {},
+
+    // Pool Queries //
+    #[returns(GetPairInfoResponse)]
+    PairInfo {},
+    #[returns(GetVLPResponse)]
+    GetVlp {},
+    // Fetch pending swaps with pagination for a user
+    #[returns(GetPendingSwapsResponse)]
+    PendingSwapsUser {
+        user: String,
+        lower_limit: Option<u128>,
+        upper_limit: Option<u128>,
+    },
+    #[returns(GetPendingLiquidityResponse)]
+    PendingLiquidity {
+        user: String,
+        lower_limit: Option<u128>,
+        upper_limit: Option<u128>,
+    },
+    #[returns(GetPoolReservesResponse)]
+    PoolReserves {},
 }
 
 #[cw_serde]
