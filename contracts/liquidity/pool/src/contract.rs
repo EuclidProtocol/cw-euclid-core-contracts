@@ -51,21 +51,6 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::ExecuteSwap {
-            asset,
-            asset_amount,
-            min_amount_out,
-            timeout,
-        } => execute::execute_swap_request(
-            deps,
-            info,
-            env,
-            asset,
-            asset_amount,
-            min_amount_out,
-            None,
-            timeout,
-        ),
         ExecuteMsg::AddLiquidity {
             token_1_liquidity,
             token_2_liquidity,
@@ -78,6 +63,21 @@ pub fn execute(
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
+            None,
+            timeout,
+        ),
+        ExecuteMsg::ExecuteSwap {
+            asset,
+            asset_amount,
+            min_amount_out,
+            timeout,
+        } => execute::execute_swap_request(
+            deps,
+            info,
+            env,
+            asset,
+            asset_amount,
+            min_amount_out,
             None,
             timeout,
         ),

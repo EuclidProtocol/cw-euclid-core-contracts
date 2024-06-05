@@ -1,6 +1,9 @@
-use crate::token::{PairInfo, Token};
+use crate::token::{PairInfo, Token, TokenInfo};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
+use cw20::Cw20ReceiveMsg;
+
+use super::pool::CallbackExecuteMsg;
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
@@ -37,6 +40,24 @@ pub enum ExecuteMsg {
     UpdatePoolCodeId {
         new_pool_code_id: u64,
     },
+    // Pool ExecuteMsgs //
+    // Add Liquidity Request to the VLP
+    AddLiquidityRequest {
+        token_1_liquidity: Uint128,
+        token_2_liquidity: Uint128,
+        slippage_tolerance: u64,
+        timeout: Option<u64>,
+    },
+    ExecuteSwapRequest {
+        asset: TokenInfo,
+        asset_amount: Uint128,
+        min_amount_out: Uint128,
+        timeout: Option<u64>,
+    },
+
+    // Recieve CW20 TOKENS structure
+    Receive(Cw20ReceiveMsg),
+    Callback(CallbackExecuteMsg),
 }
 
 #[cw_serde]
