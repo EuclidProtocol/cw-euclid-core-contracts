@@ -9,7 +9,7 @@ use euclid::msgs::pool::CallbackExecuteMsg;
 use crate::execute::{
     add_liquidity_request, execute_complete_add_liquidity, execute_complete_swap,
     execute_reject_add_liquidity, execute_reject_swap, execute_request_pool_creation,
-    execute_swap_request, execute_update_pool_code_id, receive_cw20,
+    execute_swap_request, receive_cw20,
 };
 use crate::query::{
     get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,
@@ -17,7 +17,7 @@ use crate::query::{
 };
 use crate::reply;
 use crate::reply::INSTANTIATE_REPLY_ID;
-use crate::state::{State, POOL_STATE, STATE};
+use crate::state::{PoolState, State, POOL_STATE, STATE};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -35,13 +35,22 @@ pub fn instantiate(
         router_contract: msg.router_contract.clone(),
         chain_id: env.block.chain_id,
         admin: info.sender.clone().to_string(),
-        pool_code_id: msg.pool_code_id,
+        // pool_code_id: msg.pool_code_id,
         hub_channel: None,
+    };
+
+    let pool_state = PoolState {
+        vlp_contract: msg.vlp_contract.clone(),
+        pair_info: msg.pool.pair.clone(),
+        reserve_1: msg.pool.reserve_1,
+        reserve_2: msg.pool.reserve_2,
+        chain_id: msg.chain_id,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
+    POOL_STATE.save(deps.storage, &pool_state)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -96,9 +105,9 @@ pub fn execute(
         ExecuteMsg::RequestPoolCreation { pair_info, timeout } => {
             execute_request_pool_creation(deps, env, info, pair_info, timeout)
         }
-        ExecuteMsg::UpdatePoolCodeId { new_pool_code_id } => {
-            execute_update_pool_code_id(deps, info, new_pool_code_id)
-        }
+        // ExecuteMsg::UpdatePoolCodeId { new_pool_code_id } => {
+        //     execute_update_pool_code_id(deps, info, new_pool_code_id)
+        // }
         // Pool Execute Msgs //
         ExecuteMsg::AddLiquidityRequest {
             token_1_liquidity,
@@ -146,6 +155,7 @@ fn handle_callback_execute(
     let state = POOL_STATE.load(deps.storage)?;
 
     // Only factory contract can call this contract
+    // TODO change callback flow
     ensure!(
         info.sender == state.factory_contract,
         ContractError::Unauthorized {}

@@ -23,7 +23,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         chain_id: state.chain_id,
         router_contract: state.router_contract,
         admin: state.admin,
-        pool_code_id: state.pool_code_id,
+        // pool_code_id: state.pool_code_id,
         hub_channel: state.hub_channel,
     })?)
 }

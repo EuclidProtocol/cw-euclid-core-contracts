@@ -21,8 +21,8 @@ pub struct State {
     pub hub_channel: Option<String>,
     // Contract admin
     pub admin: String,
-    // Pool Code ID
-    pub pool_code_id: u64,
+    // // Pool Code ID
+    // pub pool_code_id: u64,
 }
 
 pub const STATE: Item<State> = Item::new("state");
@@ -67,8 +67,6 @@ pub fn generate_pool_req(
 pub struct PoolState {
     // Store VLP contract address on VLS
     pub vlp_contract: String,
-    // Factory Contract
-    pub factory_contract: String,
     // Token Pair Info
     pub pair_info: PairInfo,
     // Total cumulative reserves of token_1 in the pool

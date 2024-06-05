@@ -91,6 +91,7 @@ pub fn ibc_packet_timeout(
 }
 
 // Function to create pool
+// TODO change this function
 pub fn execute_pool_creation(
     deps: DepsMut,
     pair_info: PairInfo,

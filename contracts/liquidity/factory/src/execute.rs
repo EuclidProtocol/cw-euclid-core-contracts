@@ -155,26 +155,26 @@ fn execute_add_liquidity(
         .add_message(msg))
 }
 
-// Function to update the pool code ID
-pub fn execute_update_pool_code_id(
-    deps: DepsMut,
-    info: MessageInfo,
-    new_pool_code_id: u64,
-) -> Result<Response, ContractError> {
-    // Load the state
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        // Ensure that only the admin can update the pool code ID
-        ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+// // Function to update the pool code ID
+// pub fn execute_update_pool_code_id(
+//     deps: DepsMut,
+//     info: MessageInfo,
+//     new_pool_code_id: u64,
+// ) -> Result<Response, ContractError> {
+//     // Load the state
+//     STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
+//         // Ensure that only the admin can update the pool code ID
+//         ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
-        // Update the pool code ID
-        state.pool_code_id = new_pool_code_id;
-        Ok(state)
-    })?;
+//         // Update the pool code ID
+//         state.pool_code_id = new_pool_code_id;
+//         Ok(state)
+//     })?;
 
-    Ok(Response::new()
-        .add_attribute("method", "update_pool_code_id")
-        .add_attribute("new_pool_code_id", new_pool_code_id.to_string()))
-}
+//     Ok(Response::new()
+//         .add_attribute("method", "update_pool_code_id")
+//         .add_attribute("new_pool_code_id", new_pool_code_id.to_string()))
+// }
 
 // Pool Functions //
 
