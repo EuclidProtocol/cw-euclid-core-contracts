@@ -7,7 +7,7 @@ use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
 
 use super::pool::{
-    CallbackExecuteMsg, GetPairInfoResponse, GetPendingLiquidityResponse, GetPendingSwapsResponse,
+    GetPairInfoResponse, GetPendingLiquidityResponse, GetPendingSwapsResponse,
     GetPoolReservesResponse, GetVLPResponse,
 };
 #[cw_serde]
@@ -68,7 +68,6 @@ pub enum ExecuteMsg {
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
-    Callback(CallbackExecuteMsg),
 }
 
 #[cw_serde]

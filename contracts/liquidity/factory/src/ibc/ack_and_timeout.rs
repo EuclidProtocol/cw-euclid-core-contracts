@@ -6,7 +6,6 @@ use cosmwasm_std::{
 };
 use euclid::{
     error::ContractError,
-    msgs::pool::CallbackExecuteMsg,
     pool::{LiquidityResponse, Pool, PoolCreationResponse},
     swap::SwapResponse,
     token::PairInfo,
@@ -14,6 +13,10 @@ use euclid::{
 use euclid_ibc::msg::{AcknowledgementMsg, ChainIbcExecuteMsg};
 
 use crate::{
+    execute::{
+        execute_complete_add_liquidity, execute_complete_swap, execute_reject_add_liquidity,
+        execute_reject_swap,
+    },
     reply::INSTANTIATE_REPLY_ID,
     state::{POOL_REQUESTS, STATE},
 };
@@ -47,7 +50,7 @@ pub fn ibc_packet_ack(
         } => {
             // Process acknowledgment for swap
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
-            execute_swap_process(res, pool_address.to_string(), swap_id)
+            execute_swap_process(deps, res, pool_address.to_string(), swap_id)
         }
 
         ChainIbcExecuteMsg::AddLiquidity {
@@ -57,7 +60,7 @@ pub fn ibc_packet_ack(
         } => {
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<LiquidityResponse> = from_json(ack.acknowledgement.data)?;
-            execute_add_liquidity_process(res, pool_address, liquidity_id)
+            execute_add_liquidity_process(deps, res, pool_address, liquidity_id)
         }
         _ => Err(ContractError::Unauthorized {}),
     }
@@ -110,6 +113,7 @@ pub fn execute_pool_creation(
         AcknowledgementMsg::Ok(data) => {
             // Check if the pool was created successfully
             // Prepare Instantiate Msg
+            // TODO this should send a message to the escrow since pool is being phased out
             let init_msg = euclid::msgs::pool::InstantiateMsg {
                 vlp_contract: data.vlp_contract.clone(),
                 pool: Pool {
@@ -149,7 +153,9 @@ pub fn execute_pool_creation(
 }
 
 // Function to process swap acknowledgment
+// TODO this needs to be changed, callback msgs should probably sent to escrow
 pub fn execute_swap_process(
+    deps: DepsMut,
     res: AcknowledgementMsg<SwapResponse>,
     pool_address: String,
     swap_id: String,
@@ -158,46 +164,54 @@ pub fn execute_swap_process(
     match res {
         AcknowledgementMsg::Ok(data) => {
             // Prepare callback to send to pool
-            let callback = CallbackExecuteMsg::CompleteSwap {
-                swap_response: data.clone(),
-            };
-            let msg = euclid::msgs::pool::ExecuteMsg::Callback(callback);
+            // Instead of callback, the factory will handle that internally now
+            let res = execute_complete_swap(deps, data)?;
+            // let callback = CallbackExecuteMsg::CompleteSwap {
+            //     swap_response: data.clone(),
+            // };
+            // let msg = euclid::msgs::pool::ExecuteMsg::Callback(callback);
 
-            let execute = WasmMsg::Execute {
-                contract_addr: pool_address.clone(),
-                msg: to_json_binary(&msg.clone())?,
-                funds: vec![],
-            };
+            // let execute = WasmMsg::Execute {
+            //     contract_addr: pool_address.clone(),
+            //     msg: to_json_binary(&msg.clone())?,
+            //     funds: vec![],
+            // };
 
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "swap")
-                .add_message(execute))
+            // Ok(IbcBasicResponse::new()
+            //     .add_attribute("method", "swap")
+            //     .add_message(execute))
+            Ok(res.add_attribute("method", "swap"))
         }
 
         AcknowledgementMsg::Error(err) => {
+            let res = execute_reject_swap(deps, swap_id, Some(err))?;
             // Prepare error callback to send to pool
-            let callback = CallbackExecuteMsg::RejectSwap {
-                swap_id: swap_id.clone(),
-                error: Some(err.clone()),
-            };
+            // let callback = CallbackExecuteMsg::RejectSwap {
+            //     swap_id: swap_id.clone(),
+            //     error: Some(err.clone()),
+            // };
 
-            let msg = euclid::msgs::pool::ExecuteMsg::Callback(callback);
-            let execute = WasmMsg::Execute {
-                contract_addr: pool_address.clone(),
-                msg: to_json_binary(&msg.clone())?,
-                funds: vec![],
-            };
+            // let msg = euclid::msgs::pool::ExecuteMsg::Callback(callback);
+            // let execute = WasmMsg::Execute {
+            //     contract_addr: pool_address.clone(),
+            //     msg: to_json_binary(&msg.clone())?,
+            //     funds: vec![],
+            // };
 
-            Ok(IbcBasicResponse::new()
+            // Ok(IbcBasicResponse::new()
+            //     .add_attribute("method", "swap")
+            //     .add_attribute("error", err.clone())
+            //     .add_message(execute))
+            Ok(res
                 .add_attribute("method", "swap")
-                .add_attribute("error", err.clone())
-                .add_message(execute))
+                .add_attribute("error", err.clone()))
         }
     }
 }
 
 // Function to process add liquidity acknowledgment
 pub fn execute_add_liquidity_process(
+    deps: DepsMut,
     res: AcknowledgementMsg<LiquidityResponse>,
     pool_address: String,
     liquidity_id: String,
@@ -205,42 +219,48 @@ pub fn execute_add_liquidity_process(
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
-            // Prepare callback to send to pool
-            let callback = CallbackExecuteMsg::CompleteAddLiquidity {
-                liquidity_response: data.clone(),
-                liquidity_id: liquidity_id.clone(),
-            };
-            let msg = euclid::msgs::pool::ExecuteMsg::Callback(callback);
+            let res = execute_complete_add_liquidity(deps, data, liquidity_id)?;
+            // // Prepare callback to send to pool
+            // let callback = CallbackExecuteMsg::CompleteAddLiquidity {
+            //     liquidity_response: data.clone(),
+            //     liquidity_id: liquidity_id.clone(),
+            // };
+            // let msg = euclid::msgs::pool::ExecuteMsg::Callback(callback);
 
-            let execute = WasmMsg::Execute {
-                contract_addr: pool_address.clone(),
-                msg: to_json_binary(&msg.clone())?,
-                funds: vec![],
-            };
+            // let execute = WasmMsg::Execute {
+            //     contract_addr: pool_address.clone(),
+            //     msg: to_json_binary(&msg.clone())?,
+            //     funds: vec![],
+            // };
 
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "add_liquidity")
-                .add_message(execute))
+            // Ok(IbcBasicResponse::new()
+            //     .add_attribute("method", "add_liquidity")
+            //     .add_message(execute))
+            Ok(res.add_attribute("method", "add_liquidity"))
         }
 
         AcknowledgementMsg::Error(err) => {
-            // Prepare error callback to send to pool
-            let callback = CallbackExecuteMsg::RejectAddLiquidity {
-                liquidity_id,
-                error: Some(err.clone()),
-            };
+            let res = execute_reject_add_liquidity(deps, liquidity_id, Some(err))?;
+            // // Prepare error callback to send to pool
+            // let callback = CallbackExecuteMsg::RejectAddLiquidity {
+            //     liquidity_id,
+            //     error: Some(err.clone()),
+            // };
 
-            let msg = euclid::msgs::pool::ExecuteMsg::Callback(callback);
-            let execute = WasmMsg::Execute {
-                contract_addr: pool_address.clone(),
-                msg: to_json_binary(&msg.clone())?,
-                funds: vec![],
-            };
+            // let msg = euclid::msgs::pool::ExecuteMsg::Callback(callback);
+            // let execute = WasmMsg::Execute {
+            //     contract_addr: pool_address.clone(),
+            //     msg: to_json_binary(&msg.clone())?,
+            //     funds: vec![],
+            // };
 
-            Ok(IbcBasicResponse::new()
+            // Ok(IbcBasicResponse::new()
+            //     .add_attribute("method", "add_liquidity")
+            //     .add_attribute("error", err.clone())
+            //     .add_message(execute))
+            Ok(res
                 .add_attribute("method", "add_liquidity")
-                .add_attribute("error", err.clone())
-                .add_message(execute))
+                .add_attribute("error", err.clone()))
         }
     }
 }

@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
 use euclid::error::ContractError;
 use euclid::msgs::pool::CallbackExecuteMsg;
@@ -140,42 +140,6 @@ pub fn execute(
             timeout,
         ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
-        ExecuteMsg::Callback(callback_msg) => {
-            handle_callback_execute(deps, env, info, callback_msg)
-        }
-    }
-}
-
-fn handle_callback_execute(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    msg: CallbackExecuteMsg,
-) -> Result<Response, ContractError> {
-    let state = POOL_STATE.load(deps.storage)?;
-
-    // Only factory contract can call this contract
-    // TODO change callback flow
-    ensure!(
-        info.sender == state.factory_contract,
-        ContractError::Unauthorized {}
-    );
-
-    match msg {
-        CallbackExecuteMsg::CompleteSwap { swap_response } => {
-            execute_complete_swap(deps, swap_response)
-        }
-        CallbackExecuteMsg::RejectSwap { swap_id, error } => {
-            execute_reject_swap(deps, swap_id, error)
-        }
-        CallbackExecuteMsg::CompleteAddLiquidity {
-            liquidity_response,
-            liquidity_id,
-        } => execute_complete_add_liquidity(deps, liquidity_response, liquidity_id),
-        CallbackExecuteMsg::RejectAddLiquidity {
-            liquidity_id,
-            error,
-        } => execute_reject_add_liquidity(deps, liquidity_id, error),
     }
 }
 

@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo,
-    Response, Uint128,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcMsg,
+    IbcTimeout, MessageInfo, Response, Uint128,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
@@ -287,7 +287,7 @@ pub fn execute_swap_request(
 pub fn execute_complete_swap(
     deps: DepsMut,
     swap_response: SwapResponse,
-) -> Result<Response, ContractError> {
+) -> Result<IbcBasicResponse, ContractError> {
     let mut state = POOL_STATE.load(deps.storage)?;
     // Verify that assets exist in the state.
     ensure!(
@@ -333,14 +333,14 @@ pub fn execute_complete_swap(
         .create_transfer_msg(swap_response.amount_out, extracted_swap_id.sender)?;
 
     // Look through pending swaps for one with the same swap_id
-    Ok(Response::new().add_message(msg))
+    Ok(IbcBasicResponse::new().add_message(msg))
 }
 
 pub fn execute_reject_swap(
     deps: DepsMut,
     swap_id: String,
     error: Option<String>,
-) -> Result<Response, ContractError> {
+) -> Result<IbcBasicResponse, ContractError> {
     let extracted_swap_id = swap::parse_swap_id(&swap_id)?;
 
     // Validate that the pending swap exists for the sender
@@ -359,7 +359,7 @@ pub fn execute_reject_swap(
         .asset
         .create_transfer_msg(swap_info.asset_amount, extracted_swap_id.sender)?;
 
-    Ok(Response::new()
+    Ok(IbcBasicResponse::new()
         .add_attribute("method", "process_failed_swap")
         .add_attribute("refund_to", "sender")
         .add_attribute("refund_amount", swap_info.asset_amount)
@@ -544,7 +544,7 @@ pub fn execute_complete_add_liquidity(
     deps: DepsMut,
     liquidity_response: LiquidityResponse,
     liquidity_id: String,
-) -> Result<Response, ContractError> {
+) -> Result<IbcBasicResponse, ContractError> {
     let mut state = POOL_STATE.load(deps.storage)?;
 
     // Unpack response
@@ -575,7 +575,7 @@ pub fn execute_complete_add_liquidity(
     // Save the updated state
     POOL_STATE.save(deps.storage, &state)?;
 
-    Ok(Response::new()
+    Ok(IbcBasicResponse::new()
         .add_attribute("method", "process_add_liquidity")
         .add_attribute("sender", parsed_liquidity_id.sender)
         .add_attribute("liquidity_id", liquidity_id.clone())
@@ -587,7 +587,7 @@ pub fn execute_reject_add_liquidity(
     deps: DepsMut,
     liquidity_id: String,
     error: Option<String>,
-) -> Result<Response, ContractError> {
+) -> Result<IbcBasicResponse, ContractError> {
     let state = POOL_STATE.load(deps.storage)?;
 
     // Fetch the 2 tokens
@@ -628,7 +628,7 @@ pub fn execute_reject_add_liquidity(
         ),
     );
 
-    Ok(Response::new()
+    Ok(IbcBasicResponse::new()
         .add_attribute("method", "liquidity_tx_err_refund")
         .add_attribute("sender", parsed_liquidity_id.sender)
         .add_attribute("liquidity_id", liquidity_id.clone())
