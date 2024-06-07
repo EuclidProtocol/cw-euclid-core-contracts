@@ -26,6 +26,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("DuplicateDenominations")]
+    DuplicateDenominations {},
+
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },
 
