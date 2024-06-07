@@ -3,7 +3,7 @@ use crate::{
     token::{PairInfo, Token, TokenInfo},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 use super::pool::{
@@ -19,6 +19,8 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
+    DepositNative {},
+    // ReleaseTokens { recipient: Addr, amount: Uint128 },
     // Updates allowed denoms
     UpdateAllowedDenoms { denoms: Vec<String> },
 

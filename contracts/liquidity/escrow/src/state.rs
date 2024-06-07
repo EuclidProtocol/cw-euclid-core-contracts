@@ -12,3 +12,5 @@ use euclid::{
 pub const TOKEN_ID: Item<Token> = Item::new("token_id");
 pub const ALLOWED_DENOMS: Item<Vec<String>> = Item::new("allowed_denoms");
 pub const FACTORY_ADDRESS: Item<Addr> = Item::new("factory_address");
+
+pub const DENOM_TO_AMOUNT: Map<String, Uint128> = Map::new("denom_to_amount");

@@ -29,6 +29,9 @@ pub enum ContractError {
     #[error("DuplicateDenominations")]
     DuplicateDenominations {},
 
+    #[error("UnsupportedDenomination")]
+    UnsupportedDenomination {},
+
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },
 

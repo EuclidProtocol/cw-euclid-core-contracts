@@ -1,15 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
+
 use cw2::set_contract_version;
 use euclid::error::ContractError;
-use euclid::msgs::pool::CallbackExecuteMsg;
+
 // use cw2::set_contract_version;
 
-use crate::execute::{
-    add_liquidity_request, execute_complete_add_liquidity, execute_complete_swap,
-    execute_reject_add_liquidity, execute_reject_swap, execute_swap_request, receive_cw20,
-};
+use crate::execute::{execute_deposit_native, execute_update_allowed_denoms, receive_cw20};
 use crate::query::{
     get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,
     query_state,
@@ -33,6 +31,7 @@ pub fn instantiate(
     TOKEN_ID.save(deps.storage, &msg.token_id)?;
     // Set the sender as the factory address, since we want the factory to instantiate the escrow.
     FACTORY_ADDRESS.save(deps.storage, &info.sender)?;
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -47,8 +46,9 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
+        ExecuteMsg::DepositNative {} => execute_deposit_native(deps, env, info),
         ExecuteMsg::UpdateAllowedDenoms { denoms } => {
-            execute_update_allowed_denoms(deps, env, info)
+            execute_update_allowed_denoms(deps, env, info, denoms)
         }
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
     }
