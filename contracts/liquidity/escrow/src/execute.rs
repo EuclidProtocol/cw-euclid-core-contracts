@@ -31,12 +31,13 @@ fn check_duplicates(denoms: Vec<String>) -> Result<(), ContractError> {
 }
 
 // Function to add a new list of allowed denoms, this overwrites the previous list
-pub fn execute_update_allowed_denoms(
+pub fn execute_add_allowed_denom(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    denoms: Vec<String>,
+    denom: String,
 ) -> Result<Response, ContractError> {
+    // TODO nonpayable to this function? would be better to limit depositing funds through the deposit functions
     // Only the factory can call this function
     let factory_address = FACTORY_ADDRESS.load(deps.storage)?;
     ensure!(
@@ -44,12 +45,23 @@ pub fn execute_update_allowed_denoms(
         ContractError::Unauthorized {}
     );
 
-    let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
-    // Check for duplicate denoms
-    check_duplicates(denoms)?;
-    ALLOWED_DENOMS.save(deps.storage, &denoms)?;
+    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
 
-    Ok(Response::new().add_attribute("method", "update_allowed_denoms"))
+    // Make sure that the denom isn't already in the list
+    ensure!(
+        !allowed_denoms.contains(&denom),
+        ContractError::DuplicateDenominations {}
+    );
+    allowed_denoms.push(denom);
+
+    ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
+
+    // Add the new denom to denom to amount map, and set its balance as zero
+    DENOM_TO_AMOUNT.save(deps.storage, denom, &Uint128::zero())?;
+
+    Ok(Response::new()
+        .add_attribute("method", "add_allowed_denom")
+        .add_attribute("new_denom", denom))
 }
 
 pub fn execute_deposit_native(

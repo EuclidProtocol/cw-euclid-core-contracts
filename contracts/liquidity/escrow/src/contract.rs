@@ -7,7 +7,7 @@ use euclid::error::ContractError;
 
 // use cw2::set_contract_version;
 
-use crate::execute::{execute_deposit_native, execute_update_allowed_denoms, receive_cw20};
+use crate::execute::{execute_add_allowed_denom, execute_deposit_native, receive_cw20};
 use crate::query::{
     get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,
     query_state,
@@ -47,9 +47,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::DepositNative {} => execute_deposit_native(deps, env, info),
-        ExecuteMsg::UpdateAllowedDenoms { denoms } => {
-            execute_update_allowed_denoms(deps, env, info, denoms)
-        }
+        ExecuteMsg::AddAllowedDenom { denom } => execute_add_allowed_denom(deps, env, info, denom),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
     }
 }

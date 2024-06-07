@@ -22,7 +22,7 @@ pub enum ExecuteMsg {
     DepositNative {},
     // ReleaseTokens { recipient: Addr, amount: Uint128 },
     // Updates allowed denoms
-    UpdateAllowedDenoms { denoms: Vec<String> },
+    AddAllowedDenom { denom: String },
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
