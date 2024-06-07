@@ -39,18 +39,9 @@ pub fn instantiate(
         hub_channel: None,
     };
 
-    let pool_state = PoolState {
-        vlp_contract: msg.vlp_contract.clone(),
-        pair_info: msg.pool.pair.clone(),
-        reserve_1: msg.pool.reserve_1,
-        reserve_2: msg.pool.reserve_2,
-        chain_id: msg.chain_id,
-    };
-
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
-    POOL_STATE.save(deps.storage, &pool_state)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")

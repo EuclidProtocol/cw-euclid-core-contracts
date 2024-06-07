@@ -6,7 +6,7 @@ use euclid::{
     liquidity::{self, LiquidityTxInfo},
     pool::{generate_id, PoolRequest},
     swap::{self, SwapInfo},
-    token::{PairInfo, TokenInfo},
+    token::{PairInfo, Token, TokenInfo},
 };
 
 #[cw_serde]
@@ -60,6 +60,8 @@ pub fn generate_pool_req(
     POOL_REQUEST_COUNT.save(deps.storage, sender.to_string(), &count.wrapping_add(1))?;
     Ok(pool_request)
 }
+// New Factory states
+pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 
 // Pool State //
 
