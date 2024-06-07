@@ -126,13 +126,6 @@ pub fn receive_cw20(
             min_amount_out,
             timeout,
         } => {
-            let contract_adr = info.sender.clone();
-
-            // ensure that contract address is same as asset being swapped
-            ensure!(
-                contract_adr == asset.get_contract_address(),
-                ContractError::AssetDoesNotExist {}
-            );
             // Add sender as the option
 
             // ensure that the contract address is the same as the asset contract address
@@ -147,5 +140,50 @@ pub fn receive_cw20(
                 timeout,
             )
         }
+        Cw20HookMsg::Deposit {} => {
+            // Only the factory can call this function
+            let factory_address = FACTORY_ADDRESS.load(deps.storage)?;
+            let sender = cw20_msg.sender;
+            ensure!(sender == factory_address, ContractError::Unauthorized {});
+
+            let asset_sent = info.sender.clone().into_string();
+            let amount_sent = cw20_msg.amount;
+
+            ensure!(
+                !amount_sent.is_zero(),
+                ContractError::InsufficientDeposit {}
+            );
+
+            execute_deposit_cw20(deps, env, info, amount_sent, asset_sent)
+        }
     }
+}
+
+pub fn execute_deposit_cw20(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    amount: Uint128,
+    denom: String,
+) -> Result<Response, ContractError> {
+    // Non-zero and unauthorized checks were made in receive_cw20
+
+    let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
+
+    // Make sure token is part of allowed denoms
+    ensure!(
+        allowed_denoms.contains(&denom),
+        ContractError::UnsupportedDenomination {}
+    );
+
+    // Check current balance of denom
+    let current_balance = DENOM_TO_AMOUNT.load(deps.storage, denom)?;
+
+    // Add the sent amount to current balance and save it
+    DENOM_TO_AMOUNT.save(deps.storage, denom, &current_balance.checked_add(amount)?);
+
+    Ok(Response::new()
+        .add_attribute("method", "deposit_cw20")
+        .add_attribute("asset", denom)
+        .add_attribute("amount", amount))
 }

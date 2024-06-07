@@ -87,6 +87,7 @@ pub enum QueryMsg {
 // CW20 Hook Msg
 #[cw_serde]
 pub enum Cw20HookMsg {
+    Deposit {},
     Swap {
         asset: TokenInfo,
         min_amount_out: Uint128,
