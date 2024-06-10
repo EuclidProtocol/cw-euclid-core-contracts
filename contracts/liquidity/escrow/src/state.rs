@@ -1,10 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
-use euclid::{
-    msgs::escrow::AmountAndType,
-    token::{Token, TokenInfo},
-};
+use euclid::{msgs::escrow::AmountAndType, token::Token};
 #[cw_serde]
 pub struct State {
     pub token_id: Token,

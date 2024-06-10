@@ -10,10 +10,7 @@ use euclid::error::ContractError;
 use crate::execute::{
     execute_add_allowed_denom, execute_deposit_native, execute_withdraw, receive_cw20,
 };
-use crate::query::{
-    get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,
-    query_state, query_token_id,
-};
+use crate::query::query_token_id;
 use crate::reply;
 use crate::reply::INSTANTIATE_REPLY_ID;
 use crate::state::{State, STATE};
@@ -66,23 +63,6 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::GetPool { vlp } => get_pool(deps, vlp),
-        QueryMsg::GetState {} => query_state(deps),
-        QueryMsg::GetAllPools {} => query_all_pools(deps),
-        // Pool Queries //
-        QueryMsg::PairInfo {} => pair_info(deps),
-        QueryMsg::GetVlp {} => get_vlp(deps),
-        QueryMsg::PendingSwapsUser {
-            user,
-            upper_limit,
-            lower_limit,
-        } => pending_swaps(deps, user, lower_limit, upper_limit),
-        QueryMsg::PendingLiquidity {
-            user,
-            lower_limit,
-            upper_limit,
-        } => pending_liquidity(deps, user, lower_limit, upper_limit),
-        QueryMsg::PoolReserves {} => pool_reserves(deps),
         // New escrow queries
         QueryMsg::TokenId {} => query_token_id(deps),
     }
