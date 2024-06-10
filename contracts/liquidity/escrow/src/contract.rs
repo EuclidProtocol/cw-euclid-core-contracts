@@ -54,9 +54,11 @@ pub fn execute(
         ExecuteMsg::DepositNative {} => execute_deposit_native(deps, env, info),
         ExecuteMsg::AddAllowedDenom { denom } => execute_add_allowed_denom(deps, env, info, denom),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
-        ExecuteMsg::Withdraw { recipient, amount } => {
-            execute_withdraw(deps, env, info, recipient, amount)
-        }
+        ExecuteMsg::Withdraw {
+            recipient,
+            amount,
+            chain_id,
+        } => execute_withdraw(deps, env, info, recipient, amount, chain_id),
     }
 }
 

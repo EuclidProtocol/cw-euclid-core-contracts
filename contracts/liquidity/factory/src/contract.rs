@@ -3,13 +3,9 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
 use euclid::error::ContractError;
-use euclid::msgs::pool::CallbackExecuteMsg;
-// use cw2::set_contract_version;
 
 use crate::execute::{
-    add_liquidity_request, execute_complete_add_liquidity, execute_complete_swap,
-    execute_reject_add_liquidity, execute_reject_swap, execute_request_pool_creation,
-    execute_swap_request, receive_cw20,
+    add_liquidity_request, execute_request_pool_creation, execute_swap_request, receive_cw20,
 };
 use crate::query::{
     get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,
@@ -17,7 +13,7 @@ use crate::query::{
 };
 use crate::reply;
 use crate::reply::INSTANTIATE_REPLY_ID;
-use crate::state::{PoolState, State, POOL_STATE, STATE};
+use crate::state::{State, STATE};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info

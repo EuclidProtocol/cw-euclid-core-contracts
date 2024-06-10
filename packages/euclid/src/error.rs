@@ -41,6 +41,9 @@ pub enum ContractError {
     #[error("UnsupportedMessage")]
     UnsupportedMessage {},
 
+    #[error("UnsupportedOperation")]
+    UnsupportedOperation {},
+
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },
 

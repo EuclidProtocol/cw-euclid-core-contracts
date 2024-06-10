@@ -404,6 +404,7 @@ pub fn receive_cw20(
                 timeout,
             )
         }
+        Cw20HookMsg::Deposit {} => {}
     }
 }
 

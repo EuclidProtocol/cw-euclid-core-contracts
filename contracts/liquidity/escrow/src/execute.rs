@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo,
+    ensure, from_json, to_json_binary, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo,
     Response, StdResult, Uint128, WasmMsg,
 };
 
@@ -134,7 +134,7 @@ pub fn receive_cw20(
 
             let asset_sent = info.sender.clone().into_string();
             let amount_sent = cw20_msg.amount;
-
+            // TODO should this check be on the factory level? Or even before the factory
             ensure!(
                 !amount_sent.is_zero(),
                 ContractError::InsufficientDeposit {}
@@ -186,8 +186,9 @@ pub fn execute_withdraw(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    recipient: Addr,
+    recipient: String,
     amount: Uint128,
+    chain_id: String,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
     let factory_address = STATE.load(deps.storage)?.factory_address;
@@ -197,6 +198,12 @@ pub fn execute_withdraw(
     );
     // Ensure that the amount desired is above zero
     ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
+
+    // For now we only support local chain transfers
+    ensure!(
+        env.block.chain_id == chain_id,
+        ContractError::UnsupportedOperation {}
+    );
 
     // Ensure that the amount desired doesn't exceed the current balance
     let mut sum = Uint128::zero();
@@ -247,7 +254,7 @@ pub fn execute_withdraw(
         // If denom is native
         if amount.is_native {
             messages.push(CosmosMsg::Bank(BankMsg::Send {
-                to_address: recipient.into_string(),
+                to_address: recipient,
                 amount: vec![Coin {
                     denom: denom.to_string(),
                     amount: amount_to_send,
@@ -265,7 +272,6 @@ pub fn execute_withdraw(
             }))
         }
     }
-
     // Check if we could fulfill the entire amount_to_withdraw
     if !amount_to_withdraw.is_zero() {
         return Err(ContractError::InsufficientDeposit {});
