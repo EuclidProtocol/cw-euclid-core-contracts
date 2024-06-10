@@ -59,6 +59,10 @@ pub enum QueryMsg {
     },
     #[returns(GetPoolReservesResponse)]
     PoolReserves {},
+
+    // New escrow queries
+    #[returns(TokenIdResponse)]
+    TokenId {},
 }
 
 #[cw_serde]
@@ -92,6 +96,11 @@ pub struct MigrateMsg {}
 pub struct RegisterFactoryResponse {
     pub factory_address: String,
     pub chain_id: String,
+}
+
+#[cw_serde]
+pub struct TokenIdResponse {
+    pub token_id: String,
 }
 
 #[cw_serde]

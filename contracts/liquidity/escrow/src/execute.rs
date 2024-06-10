@@ -12,7 +12,7 @@ use euclid::{
     msgs::{escrow::AmountAndType, pool::Cw20HookMsg},
 };
 
-use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, FACTORY_ADDRESS};
+use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
 
 fn check_duplicates(denoms: Vec<String>) -> Result<(), ContractError> {
     let mut seen = HashSet::new();
@@ -34,7 +34,7 @@ pub fn execute_add_allowed_denom(
 ) -> Result<Response, ContractError> {
     // TODO nonpayable to this function? would be better to limit depositing funds through the deposit functions
     // Only the factory can call this function
-    let factory_address = FACTORY_ADDRESS.load(deps.storage)?;
+    let factory_address = STATE.load(deps.storage)?.factory_address;
     ensure!(
         info.sender == factory_address,
         ContractError::Unauthorized {}
@@ -73,7 +73,7 @@ pub fn execute_deposit_native(
     info: MessageInfo,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
-    let factory_address = FACTORY_ADDRESS.load(deps.storage)?;
+    let factory_address = STATE.load(deps.storage)?.factory_address;
     ensure!(
         info.sender == factory_address,
         ContractError::Unauthorized {}
@@ -128,7 +128,7 @@ pub fn receive_cw20(
     match from_json(&cw20_msg.msg)? {
         Cw20HookMsg::Deposit {} => {
             // Only the factory can call this function
-            let factory_address = FACTORY_ADDRESS.load(deps.storage)?;
+            let factory_address = STATE.load(deps.storage)?.factory_address;
             let sender = cw20_msg.sender;
             ensure!(sender == factory_address, ContractError::Unauthorized {});
 
@@ -190,7 +190,7 @@ pub fn execute_withdraw(
     amount: Uint128,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
-    let factory_address = FACTORY_ADDRESS.load(deps.storage)?;
+    let factory_address = STATE.load(deps.storage)?.factory_address;
     ensure!(
         info.sender == factory_address,
         ContractError::Unauthorized {}

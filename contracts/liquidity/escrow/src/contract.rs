@@ -12,11 +12,12 @@ use crate::execute::{
 };
 use crate::query::{
     get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,
-    query_state,
+    query_state, query_token_id,
 };
 use crate::reply;
 use crate::reply::INSTANTIATE_REPLY_ID;
-use crate::state::{FACTORY_ADDRESS, TOKEN_ID};
+use crate::state::{State, STATE};
+
 use euclid::msgs::escrow::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -30,14 +31,19 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    TOKEN_ID.save(deps.storage, &msg.token_id)?;
-    // Set the sender as the factory address, since we want the factory to instantiate the escrow.
-    FACTORY_ADDRESS.save(deps.storage, &info.sender)?;
+    let state = State {
+        token_id: msg.token_id,
+        // Set the sender as the factory address, since we want the factory to instantiate the escrow.
+        factory_address: info.sender,
+    };
+    STATE.save(deps.storage, &state)?;
+
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("token_id", msg.token_id.id))
+        .add_attribute("token_id", msg.token_id.id)
+        .add_attribute("factory_address", info.sender))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -77,6 +83,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             upper_limit,
         } => pending_liquidity(deps, user, lower_limit, upper_limit),
         QueryMsg::PoolReserves {} => pool_reserves(deps),
+        // New escrow queries
+        QueryMsg::TokenId {} => query_token_id(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
