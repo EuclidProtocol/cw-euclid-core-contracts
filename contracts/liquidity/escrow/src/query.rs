@@ -10,8 +10,6 @@ use euclid::{
     },
 };
 
-use crate::state::{PENDING_LIQUIDITY, PENDING_SWAPS, POOL_STATE, STATE, VLP_TO_POOL};
-
 // Returns the Pair Info of the Pair in the pool
 pub fn get_pool(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
     let pool = VLP_TO_POOL.load(deps.storage, vlp)?;

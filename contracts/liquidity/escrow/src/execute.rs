@@ -1,21 +1,16 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcMsg,
-    IbcTimeout, MessageInfo, Response, Uint128,
+    ensure, from_json, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo,
+    Response, StdResult, Uint128, WasmMsg,
 };
 
 use cw20::Cw20ReceiveMsg;
 use euclid::{
+    cw20::Cw20ExecuteMsg,
     error::ContractError,
-    liquidity,
-    msgs::pool::Cw20HookMsg,
-    pool::LiquidityResponse,
-    swap::{self, SwapResponse},
-    timeout::get_timeout,
-    token::{Token, TokenInfo},
+    msgs::{escrow::AmountAndType, pool::Cw20HookMsg},
 };
-use euclid_ibc::msg::ChainIbcExecuteMsg;
 
 use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, FACTORY_ADDRESS};
 
@@ -57,7 +52,15 @@ pub fn execute_add_allowed_denom(
     ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
 
     // Add the new denom to denom to amount map, and set its balance as zero
-    DENOM_TO_AMOUNT.save(deps.storage, denom, &Uint128::zero())?;
+    // The is_native will be overwriting once the denom is funded
+    DENOM_TO_AMOUNT.save(
+        deps.storage,
+        denom,
+        &AmountAndType {
+            amount: Uint128::zero(),
+            is_native: true,
+        },
+    )?;
 
     Ok(Response::new()
         .add_attribute("method", "add_allowed_denom")
@@ -85,6 +88,11 @@ pub fn execute_deposit_native(
     );
 
     for token in info.funds {
+        // Check that the amount of token sent is not zero
+        ensure!(
+            !token.amount.is_zero(),
+            ContractError::InsufficientDeposit {}
+        );
         // Make sure token is part of allowed denoms
         ensure!(
             allowed_denoms.contains(&token.denom),
@@ -94,16 +102,14 @@ pub fn execute_deposit_native(
         // Check current balance of denom
         let current_balance = DENOM_TO_AMOUNT.load(deps.storage, token.denom)?;
 
-        // Check that the amount of token sent is not zero
-        ensure!(
-            !token.amount.is_zero(),
-            ContractError::InsufficientDeposit {}
-        );
         // Add the sent amount to current balance and save it
         DENOM_TO_AMOUNT.save(
             deps.storage,
             token.denom,
-            &current_balance.checked_add(token.amount)?,
+            &AmountAndType {
+                amount: current_balance.amount.checked_add(token.amount)?,
+                is_native: true,
+            },
         );
     }
 
@@ -120,26 +126,6 @@ pub fn receive_cw20(
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     match from_json(&cw20_msg.msg)? {
-        // Allow to swap using a CW20 hook message
-        Cw20HookMsg::Swap {
-            asset,
-            min_amount_out,
-            timeout,
-        } => {
-            // Add sender as the option
-
-            // ensure that the contract address is the same as the asset contract address
-            execute_swap_request(
-                &mut deps,
-                info,
-                env,
-                asset,
-                cw20_msg.amount,
-                min_amount_out,
-                Some(cw20_msg.sender),
-                timeout,
-            )
-        }
         Cw20HookMsg::Deposit {} => {
             // Only the factory can call this function
             let factory_address = FACTORY_ADDRESS.load(deps.storage)?;
@@ -156,6 +142,7 @@ pub fn receive_cw20(
 
             execute_deposit_cw20(deps, env, info, amount_sent, asset_sent)
         }
+        _ => Err(ContractError::UnsupportedMessage {}),
     }
 }
 
@@ -180,10 +167,118 @@ pub fn execute_deposit_cw20(
     let current_balance = DENOM_TO_AMOUNT.load(deps.storage, denom)?;
 
     // Add the sent amount to current balance and save it
-    DENOM_TO_AMOUNT.save(deps.storage, denom, &current_balance.checked_add(amount)?);
+    DENOM_TO_AMOUNT.save(
+        deps.storage,
+        denom,
+        &AmountAndType {
+            amount: current_balance.amount.checked_add(amount)?,
+            is_native: false,
+        },
+    );
 
     Ok(Response::new()
         .add_attribute("method", "deposit_cw20")
         .add_attribute("asset", denom)
         .add_attribute("amount", amount))
+}
+
+pub fn execute_withdraw(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    recipient: Addr,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    // Only the factory can call this function
+    let factory_address = FACTORY_ADDRESS.load(deps.storage)?;
+    ensure!(
+        info.sender == factory_address,
+        ContractError::Unauthorized {}
+    );
+    // Ensure that the amount desired is above zero
+    ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
+
+    // Ensure that the amount desired doesn't exceed the current balance
+    let mut sum = Uint128::zero();
+    let mut total_sum: Result<(), ContractError> = DENOM_TO_AMOUNT
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .try_for_each(|item| {
+            let (_, value) = item?;
+            sum = sum.checked_add(value.amount)?;
+            Ok(())
+        });
+    ensure!(amount.le(&sum), ContractError::InvalidWithdrawalAmount {});
+
+    let mut messages: Vec<CosmosMsg> = Vec::new();
+
+    // Create a vector of (key, value) pairs
+    let mut amounts: Vec<(String, AmountAndType)> = DENOM_TO_AMOUNT
+        .range(deps.storage, None, None, cosmwasm_std::Order::Descending)
+        .map(|item| {
+            let (key, value) = item?;
+            Ok((key.to_string(), value))
+        })
+        .collect::<StdResult<Vec<(String, AmountAndType)>>>()?;
+    let mut amount_to_withdraw = amount;
+    let mut amount_to_send = Uint128::zero();
+
+    // Iterate through the amounts and deduct the required amount
+    for (denom, amount) in &mut amounts {
+        if amount_to_withdraw.is_zero() {
+            break;
+        }
+        if amount.amount >= amount_to_withdraw {
+            // If the current denom has enough amount to cover the withdrawal
+            amount.amount -= amount_to_withdraw;
+            // Send the amount to withdraw since it can cover the entire amount
+            amount_to_send = amount_to_withdraw;
+            amount_to_withdraw = Uint128::zero();
+        } else {
+            // If the current denom doesn't have enough amount
+            amount_to_withdraw -= amount.amount;
+
+            // Send the entire amount
+            amount_to_send = amount.amount;
+
+            // Update balance
+            amount.amount = Uint128::zero();
+            // Create message
+        }
+        // If denom is native
+        if amount.is_native {
+            messages.push(CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient.into_string(),
+                amount: vec![Coin {
+                    denom: denom.to_string(),
+                    amount: amount_to_send,
+                }],
+            }));
+        } else {
+            // If denom is cw20
+            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: denom.to_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient: recipient.to_string(),
+                    amount: amount_to_send,
+                })?,
+                funds: vec![],
+            }))
+        }
+    }
+
+    // Check if we could fulfill the entire amount_to_withdraw
+    if !amount_to_withdraw.is_zero() {
+        return Err(ContractError::InsufficientDeposit {});
+    }
+
+    // Update the storage with new amounts
+    for (denom, amount) in amounts {
+        DENOM_TO_AMOUNT.save(deps.storage, denom, &amount)?;
+    }
+
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attribute("method", "withdraw")
+        .add_attribute("amount", amount)
+        .add_attribute("recipient", recipient))
 }

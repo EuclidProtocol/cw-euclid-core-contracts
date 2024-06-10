@@ -1,4 +1,3 @@
-use crate::state::VLP_TO_POOL;
 use cosmwasm_std::{DepsMut, Reply, Response, SubMsgResult};
 use cw0::parse_reply_instantiate_data;
 use euclid::error::ContractError;

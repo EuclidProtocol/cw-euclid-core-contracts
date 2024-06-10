@@ -26,11 +26,20 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("ZeroWithdrawalAmount")]
+    ZeroWithdrawalAmount {},
+
+    #[error("InvalidWithdrawalAmount")]
+    InvalidWithdrawalAmount {},
+
     #[error("DuplicateDenominations")]
     DuplicateDenominations {},
 
     #[error("UnsupportedDenomination")]
     UnsupportedDenomination {},
+
+    #[error("UnsupportedMessage")]
+    UnsupportedMessage {},
 
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },
@@ -82,6 +91,9 @@ pub enum ContractError {
 
     #[error("The deposit amount is insufficient to add the liquidity")]
     InsufficientDeposit {},
+
+    #[error("InsufficientFunds")]
+    InsufficientFunds {},
 
     #[error("The CHAIN ID is not valid")]
     InvalidChainId {},
