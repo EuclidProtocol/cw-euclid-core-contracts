@@ -1,6 +1,9 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128};
-use euclid::token::{PairInfo, Token};
+use euclid::{
+    swap::NextSwap,
+    token::{PairInfo, Token},
+};
 
 // Message that implements an ExecuteSwap on the VLP contract
 
@@ -29,14 +32,14 @@ pub enum ChainIbcExecuteMsg {
 
     // Swap tokens on VLP
     Swap {
-        chain_id: String,
-        asset: Token,
-        asset_amount: Uint128,
+        to_address: String,
+        to_chain_id: String,
+        asset_in: Token,
+        amount_in: Uint128,
         min_amount_out: Uint128,
         channel: String,
         swap_id: String,
-        pool_address: Addr,
-        vlp_address: String,
+        swaps: Vec<NextSwap>,
     },
 }
 

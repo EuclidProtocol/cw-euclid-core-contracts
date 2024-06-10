@@ -22,10 +22,15 @@ pub struct SwapInfo {
 }
 
 #[cw_serde]
+pub struct NextSwap {
+    pub vlp_address: String,
+}
+
+#[cw_serde]
 pub struct SwapResponse {
-    pub asset: Token,
+    pub asset_in: Token,
     pub asset_out: Token,
-    pub asset_amount: Uint128,
+    pub amount_in: Uint128,
     pub amount_out: Uint128,
     // Add Swap Unique Identifier
     pub swap_id: String,

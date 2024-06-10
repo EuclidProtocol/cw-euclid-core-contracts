@@ -80,14 +80,12 @@ pub fn execute_swap(
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&ChainIbcExecuteMsg::Swap {
-            chain_id: state.chain_id,
-            asset,
-            asset_amount,
+            to_chain_id: state.chain_id,
+            asset_in: asset,
+            amount_in: asset_amount,
             min_amount_out,
             channel,
             swap_id,
-            pool_address,
-            vlp_address,
         })?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
