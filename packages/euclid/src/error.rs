@@ -86,6 +86,9 @@ pub enum ContractError {
     #[error("The Channel specified does not currently exist")]
     ChannelDoesNotExist {},
 
+    #[error("EscrowDoesNotExist")]
+    EscrowDoesNotExist {},
+
     #[error("The swap does not exist in state for the sender")]
     SwapDoesNotExist {},
 

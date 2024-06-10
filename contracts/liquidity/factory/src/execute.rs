@@ -1,11 +1,12 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcMsg,
-    IbcTimeout, MessageInfo, Response, Uint128,
+    IbcTimeout, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
     error::ContractError,
     liquidity,
+    msgs::escrow::ExecuteMsg as EscrowExecuteMsg,
     msgs::pool::Cw20HookMsg,
     pool::LiquidityResponse,
     swap::{self, SwapResponse},
@@ -16,7 +17,7 @@ use euclid_ibc::msg::ChainIbcExecuteMsg;
 
 use crate::state::{
     generate_liquidity_req, generate_pool_req, generate_swap_req, PENDING_LIQUIDITY, PENDING_SWAPS,
-    POOL_STATE, STATE,
+    POOL_STATE, STATE, TOKEN_TO_ESCROW,
 };
 
 // Function to send IBC request to Router in VLS to create a new pool
@@ -635,4 +636,83 @@ pub fn execute_reject_add_liquidity(
         .add_attribute("liquidity_id", liquidity_id.clone())
         .add_attribute("error", error.unwrap_or_default())
         .add_messages(msgs))
+}
+
+// New factory functions //
+pub fn execute_request_add_allowed_denom(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token: Token,
+    denom: String,
+) -> Result<IbcBasicResponse, ContractError> {
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token)?;
+    match escrow_address {
+        Some(escrow_address) => {
+            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_address.into_string(),
+                msg: to_json_binary(&EscrowExecuteMsg::AddAllowedDenom { denom })?,
+                funds: vec![],
+            });
+            Ok(IbcBasicResponse::new()
+                .add_submessage(SubMsg::new(msg))
+                .add_attribute("method", "request_add_allowed_denom")
+                .add_attribute("token", token.id)
+                .add_attribute("denom", denom))
+        }
+        None => Err(ContractError::EscrowDoesNotExist {}),
+    }
+}
+
+pub fn execute_request_deposit_native(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token: Token,
+) -> Result<IbcBasicResponse, ContractError> {
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token)?;
+    match escrow_address {
+        Some(escrow_address) => {
+            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_address.into_string(),
+                msg: to_json_binary(&EscrowExecuteMsg::DepositNative {})?,
+                funds: info.funds,
+            });
+            Ok(IbcBasicResponse::new()
+                .add_submessage(SubMsg::new(msg))
+                .add_attribute("method", "request_deposit_native")
+                .add_attribute("token", token.id))
+        }
+        None => Err(ContractError::EscrowDoesNotExist {}),
+    }
+}
+
+pub fn execute_request_withdraw(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token_id: Token,
+    recipient: String,
+    amount: Uint128,
+    chain_id: String,
+) -> Result<IbcBasicResponse, ContractError> {
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token_id)?;
+    match escrow_address {
+        Some(escrow_address) => {
+            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_address.into_string(),
+                msg: to_json_binary(&EscrowExecuteMsg::Withdraw {
+                    recipient,
+                    amount,
+                    chain_id,
+                })?,
+                funds: vec![],
+            });
+            Ok(IbcBasicResponse::new()
+                .add_submessage(SubMsg::new(msg))
+                .add_attribute("method", "request_withdraw")
+                .add_attribute("token", token_id.id))
+        }
+        None => Err(ContractError::EscrowDoesNotExist {}),
+    }
 }

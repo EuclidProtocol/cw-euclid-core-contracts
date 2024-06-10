@@ -1,6 +1,6 @@
 use crate::{
     pool::Pool,
-    token::{PairInfo, TokenInfo},
+    token::{PairInfo, Token, TokenInfo},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
@@ -25,6 +25,21 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
+    //
+    RequestAddAllowedDenom {
+        denom: String,
+        token_id: Token,
+    },
+    RequestDepositNative {
+        token_id: Token,
+    },
+    RequestWithdraw {
+        token_id: Token,
+        recipient: String,
+        amount: Uint128,
+        chain_id: String,
+    },
+
     // // Add Liquidity Request to the VLP
     // AddLiquidity {
     //     token_1_liquidity: Uint128,

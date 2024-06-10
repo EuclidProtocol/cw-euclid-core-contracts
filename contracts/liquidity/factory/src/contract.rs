@@ -5,7 +5,8 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 
 use crate::execute::{
-    add_liquidity_request, execute_request_pool_creation, execute_swap_request, receive_cw20,
+    add_liquidity_request, execute_request_add_allowed_denom, execute_request_deposit_native,
+    execute_request_pool_creation, execute_swap_request, receive_cw20,
 };
 use crate::query::{
     get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,
@@ -53,6 +54,18 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
+        ExecuteMsg::RequestAddAllowedDenom { denom, token_id } => {
+            execute_request_add_allowed_denom(deps, env, info, token_id, denom)
+        }
+        ExecuteMsg::RequestDepositNative { token_id } => {
+            execute_request_deposit_native(deps, env, info, token_id)
+        }
+        ExecuteMsg::RequestWithdraw {
+            token_id,
+            recipient,
+            amount,
+            chain_id,
+        } => execute_request_withdraw(deps, env, info, token_id, recipient, amount, chain_id),
         // ExecuteMsg::AddLiquidity {
         //     token_1_liquidity,
         //     token_2_liquidity,
