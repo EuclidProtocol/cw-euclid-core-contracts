@@ -8,6 +8,7 @@ use euclid::{
     error::ContractError,
     fee::Fee,
     msgs,
+    swap::NextSwap,
     token::{PairInfo, Token},
 };
 use euclid_ibc::{ack::make_ack_fail, msg::ChainIbcExecuteMsg};
@@ -73,22 +74,24 @@ pub fn do_ibc_packet_receive(
             lp_allocation,
         } => ibc_execute_remove_liquidity(deps, env, chain_id, lp_allocation, vlp_address),
         ChainIbcExecuteMsg::Swap {
-            chain_id,
-            vlp_address,
-            asset,
-            asset_amount,
+            asset_in,
+            amount_in,
             min_amount_out,
             swap_id,
+            swaps,
+            to_chain_id,
+            to_address,
             ..
         } => ibc_execute_swap(
             deps,
             env,
-            chain_id,
-            asset,
-            asset_amount,
+            to_chain_id,
+            to_address,
+            asset_in,
+            amount_in,
             min_amount_out,
             swap_id,
-            vlp_address,
+            swaps,
         ),
     }
 }
@@ -134,6 +137,12 @@ fn execute_request_pool_creation(
     } else {
         let instantiate_msg = msgs::vlp::InstantiateMsg {
             router: env.contract.address.to_string(),
+            vcoin: state
+                .vcoin_address
+                .ok_or(ContractError::Generic {
+                    err: "vcoin not instantiated".to_string(),
+                })?
+                .to_string(),
             pair: pair_info.get_pair(),
             fee: Fee {
                 lp_fee: 0,
@@ -206,23 +215,30 @@ fn ibc_execute_remove_liquidity(
 fn ibc_execute_swap(
     _deps: DepsMut,
     _env: Env,
-    chain_id: String,
-    asset: Token,
-    asset_amount: Uint128,
+    to_chain_id: String,
+    to_address: String,
+    asset_in: Token,
+    amount_in: Uint128,
     min_token_out: Uint128,
     swap_id: String,
-    vlp_address: String,
+    swaps: Vec<NextSwap>,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    let (first_swap, next_swaps) = swaps.split_first().ok_or(ContractError::Generic {
+        err: "Swaps cannot be empty".to_string(),
+    })?;
+
     let swap_msg = msgs::vlp::ExecuteMsg::Swap {
-        chain_id,
-        asset,
-        asset_amount,
+        to_address,
+        to_chain_id,
+        asset_in,
+        amount_in,
         min_token_out,
         swap_id,
+        next_swaps: next_swaps.to_vec(),
     };
 
     let msg = WasmMsg::Execute {
-        contract_addr: vlp_address,
+        contract_addr: first_swap.vlp_address.clone(),
         msg: to_json_binary(&swap_msg)?,
         funds: vec![],
     };

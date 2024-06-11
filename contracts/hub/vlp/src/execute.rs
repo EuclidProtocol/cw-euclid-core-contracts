@@ -1,16 +1,18 @@
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal256, DepsMut, Env, OverflowError, OverflowOperation, Response,
-    Uint128,
+    SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     error::ContractError,
+    msgs::vcoin::ExecuteTransfer,
     pool::{LiquidityResponse, Pool, PoolCreationResponse, RemoveLiquidityResponse},
-    swap::SwapResponse,
+    swap::{NextSwap, SwapResponse},
     token::{PairInfo, Token},
 };
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
+    reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID},
     state::{self, POOLS, STATE},
 };
 
@@ -229,25 +231,28 @@ pub fn remove_liquidity(
 
 pub fn execute_swap(
     deps: DepsMut,
-    chain_id: String,
-    asset: Token,
-    asset_amount: Uint128,
+    env: Env,
+    to_chain_id: String,
+    to_address: String,
+    asset_in: Token,
+    amount_in: Uint128,
     min_token_out: Uint128,
     swap_id: String,
+    next_swaps: Vec<NextSwap>,
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
-    let mut pool = POOLS.load(deps.storage, &chain_id)?;
+    let mut pool = POOLS.load(deps.storage, &to_chain_id)?;
     let mut state = state::STATE.load(deps.storage)?;
 
     // Verify that the asset exists for the VLP
-    let asset_info = asset.clone().id;
+    let asset_info = asset_in.clone().id;
     ensure!(
         asset_info == state.clone().pair.token_1.id || asset_info == state.clone().pair.token_2.id,
         ContractError::AssetDoesNotExist {}
     );
 
     // Verify that the asset amount is non-zero
-    ensure!(!asset_amount.is_zero(), ContractError::ZeroAssetAmount {});
+    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Get Fee from the state
     let fee = state.clone().fee;
@@ -269,10 +274,10 @@ pub fn execute_swap(
 
     // Remove the fee from the asset amount
     let fee_amount =
-        asset_amount.multiply_ratio(Uint128::from(total_fee.unwrap()), Uint128::from(100u128));
+        amount_in.multiply_ratio(Uint128::from(total_fee.unwrap()), Uint128::from(100u128));
 
     // Calculate the amount of asset to be swapped
-    let swap_amount = asset_amount.checked_sub(fee_amount)?;
+    let swap_amount = amount_in.checked_sub(fee_amount)?;
 
     // verify if asset is token 1 or token 2
     let swap_info = if asset_info == state.pair.token_1.id {
@@ -331,7 +336,7 @@ pub fn execute_swap(
     }
 
     // Save the state of the pool
-    POOLS.save(deps.storage, &chain_id, &pool)?;
+    POOLS.save(deps.storage, &to_chain_id, &pool)?;
 
     // Move liquidity for the state
     if asset_info == state.pair.token_1.id {
@@ -353,20 +358,99 @@ pub fn execute_swap(
 
     // Finalize ack response to swap pool
     let swap_response = SwapResponse {
-        asset,
+        asset_in,
         asset_out,
-        asset_amount,
+        amount_in,
         amount_out: receive_amount,
-        swap_id,
+        swap_id: swap_id.clone(),
     };
 
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&swap_response)?;
 
-    Ok(Response::new()
+    let response = match next_swaps.split_first() {
+        Some((next_swap, forward_swaps)) => {
+            // There are more swaps
+            let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+                amount: swap_response.amount_out.clone(),
+                token_id: swap_response.asset_out.id.clone(),
+
+                // Source Address
+                from_address: env.contract.address.to_string(),
+                from_chain_id: env.block.chain_id.clone(),
+
+                // Destination Address
+                to_address: next_swap.vlp_address.clone(),
+                to_chain_id: env.block.chain_id,
+            });
+
+            let vcoin_transfer_msg = WasmMsg::Execute {
+                contract_addr: state.vcoin,
+                msg: to_json_binary(&vcoin_transfer_msg)?,
+                funds: vec![],
+            };
+
+            let vcoin_transfer_msg =
+                SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
+
+            let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
+                to_address,
+                to_chain_id,
+                asset_in: swap_response.asset_out,
+                amount_in: swap_response.amount_out,
+                min_token_out,
+                swap_id,
+                next_swaps: forward_swaps.to_vec(),
+            };
+            let next_swap_msg = WasmMsg::Execute {
+                contract_addr: next_swap.vlp_address.clone(),
+                msg: to_json_binary(&next_swap_msg)?,
+                funds: vec![],
+            };
+
+            let next_swap_msg = SubMsg::reply_always(next_swap_msg, NEXT_SWAP_REPLY_ID);
+
+            Response::new()
+                .add_attribute("swap_type", "forward_swap")
+                .add_attribute("forward_to", next_swap.vlp_address.clone())
+                .add_submessage(vcoin_transfer_msg)
+                .add_submessage(next_swap_msg)
+        }
+        None => {
+            //Its the last swap
+            let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+                amount: swap_response.amount_out,
+                token_id: swap_response.asset_out.id,
+
+                // Source Address
+                from_address: env.contract.address.to_string(),
+                from_chain_id: env.block.chain_id,
+
+                // Destination Address
+                to_address: to_address.clone(),
+                to_chain_id: to_chain_id.clone(),
+            });
+
+            let vcoin_transfer_msg = WasmMsg::Execute {
+                contract_addr: state.vcoin,
+                msg: to_json_binary(&vcoin_transfer_msg)?,
+                funds: vec![],
+            };
+
+            let vcoin_transfer_msg =
+                SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
+
+            Response::new()
+                .add_attribute("swap_type", "final_swap")
+                .add_attribute("receiver_address", to_address)
+                .add_attribute("receiver_chain_id", to_chain_id)
+                .add_submessage(vcoin_transfer_msg)
+        }
+    };
+
+    Ok(response
         .add_attribute("action", "swap")
-        .add_attribute("chain_id", chain_id)
-        .add_attribute("swap_amount", asset_amount)
+        .add_attribute("amount_in", amount_in)
         .add_attribute("total_fee", fee_amount)
         .add_attribute("receive_amount", receive_amount)
         .set_data(acknowledgement))

@@ -16,6 +16,9 @@ pub const ADD_LIQUIDITY_REPLY_ID: u64 = 3;
 pub const REMOVE_LIQUIDITY_REPLY_ID: u64 = 4;
 pub const SWAP_REPLY_ID: u64 = 5;
 
+pub const VCOIN_INSTANTIATE_REPLY_ID: u64 = 6;
+pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
+
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::InstantiateError { err }),
@@ -139,6 +142,24 @@ pub fn on_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractErr
                 .add_attribute("action", "reply_swap")
                 .add_attribute("swap", format!("{swap_response:?}"))
                 .set_data(to_json_binary(&ack)?))
+        }
+    }
+}
+
+pub fn on_vcoin_instantiate_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => {
+            let instantiate_data =
+                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+
+            let vcoin_address = instantiate_data.contract_address;
+
+            Ok(Response::new()
+                .add_attribute("action", "reply_vcoin_instantiate")
+                .add_attribute("vcoin_address", vcoin_address))
         }
     }
 }

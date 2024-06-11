@@ -43,6 +43,8 @@ pub enum ContractError {
 
     #[error("UnsupportedOperation")]
     UnsupportedOperation {},
+    #[error("Not Implemented")]
+    NotImplemented {},
 
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },
@@ -67,6 +69,9 @@ pub enum ContractError {
 
     #[error("Cannot Swap 0 tokens")]
     ZeroAssetAmount {},
+
+    #[error("Zero Slippage Amount")]
+    ZeroSlippageAmount {},
 
     #[error("Slippage has not been tolerated for set amount, amount: {amount}, min_amount_out: {min_amount_out}")]
     SlippageExceeded {

@@ -147,19 +147,11 @@ impl TokenInfo {
         !self.is_native()
     }
 
-    // Helper to get the denom of a native token
+    // Helper to get the denom of a native or CW20 token
     pub fn get_denom(&self) -> String {
         match self.token_type.clone() {
             TokenType::Native { denom } => denom.to_string(),
-            TokenType::Smart { .. } => panic!("This is not a native token"),
-        }
-    }
-
-    // Helper to get the contract address of a smart token
-    pub fn get_contract_address(&self) -> String {
-        match self.token_type.clone() {
             TokenType::Smart { contract_address } => contract_address.to_string(),
-            TokenType::Native { .. } => panic!("This is not a smart token"),
         }
     }
 

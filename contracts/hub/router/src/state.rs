@@ -1,4 +1,5 @@
 use cosmwasm_schema::cw_serde;
+use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
 use euclid::{msgs::router::Chain, token::Token};
 
@@ -8,6 +9,8 @@ pub struct State {
     pub admin: String,
     // Pool Code ID
     pub vlp_code_id: u64,
+    pub vcoin_address: Option<Addr>,
+    pub escrow_balance_address: Option<Addr>,
 }
 
 pub const STATE: Item<State> = Item::new("state");

@@ -7,3 +7,4 @@ pub mod pool;
 pub mod swap;
 pub mod timeout;
 pub mod token;
+pub mod vcoin;
