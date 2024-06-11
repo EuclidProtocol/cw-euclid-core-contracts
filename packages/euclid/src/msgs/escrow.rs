@@ -16,6 +16,10 @@ pub enum ExecuteMsg {
     AddAllowedDenom {
         denom: String,
     },
+    // Removes a denom from allowed denoms
+    DisallowDenom {
+        denom: String,
+    },
     DepositNative {},
     // ReleaseTokens { recipient: Addr, amount: Uint128 },
 

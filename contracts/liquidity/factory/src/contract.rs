@@ -57,15 +57,6 @@ pub fn execute(
         ExecuteMsg::RequestAddAllowedDenom { denom, token_id } => {
             execute_request_add_allowed_denom(deps, env, info, token_id, denom)
         }
-        ExecuteMsg::RequestDepositNative { token_id } => {
-            execute_request_deposit_native(deps, env, info, token_id)
-        }
-        ExecuteMsg::RequestWithdraw {
-            token_id,
-            recipient,
-            amount,
-            chain_id,
-        } => execute_request_withdraw(deps, env, info, token_id, recipient, amount, chain_id),
         // ExecuteMsg::AddLiquidity {
         //     token_1_liquidity,
         //     token_2_liquidity,

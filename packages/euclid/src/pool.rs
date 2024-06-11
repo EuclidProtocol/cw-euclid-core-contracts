@@ -76,3 +76,6 @@ pub struct RemoveLiquidityResponse {
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
 }
+
+#[cw_serde]
+pub struct WithdrawResponse {}

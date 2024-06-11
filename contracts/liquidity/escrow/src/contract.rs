@@ -8,7 +8,8 @@ use euclid::error::ContractError;
 // use cw2::set_contract_version;
 
 use crate::execute::{
-    execute_add_allowed_denom, execute_deposit_native, execute_withdraw, receive_cw20,
+    execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom, execute_withdraw,
+    receive_cw20,
 };
 use crate::query::query_token_id;
 use crate::reply;
@@ -53,6 +54,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::DepositNative {} => execute_deposit_native(deps, env, info),
         ExecuteMsg::AddAllowedDenom { denom } => execute_add_allowed_denom(deps, env, info, denom),
+        ExecuteMsg::DisallowDenom { denom } => execute_disallow_denom(deps, env, info, denom),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::Withdraw {
             recipient,

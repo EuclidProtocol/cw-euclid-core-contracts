@@ -6,9 +6,8 @@ use cw20::Cw20ReceiveMsg;
 use euclid::{
     error::ContractError,
     liquidity,
-    msgs::escrow::ExecuteMsg as EscrowExecuteMsg,
-    msgs::pool::Cw20HookMsg,
-    pool::LiquidityResponse,
+    msgs::{escrow::ExecuteMsg as EscrowExecuteMsg, pool::Cw20HookMsg},
+    pool::{LiquidityResponse, WithdrawResponse},
     swap::{self, SwapResponse},
     timeout::get_timeout,
     token::{PairInfo, Token, TokenInfo},
@@ -643,7 +642,7 @@ pub fn execute_request_add_allowed_denom(
     info: MessageInfo,
     token: Token,
     denom: String,
-) -> Result<IbcBasicResponse, ContractError> {
+) -> Result<Response, ContractError> {
     let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token)?;
     match escrow_address {
         Some(escrow_address) => {
@@ -652,9 +651,34 @@ pub fn execute_request_add_allowed_denom(
                 msg: to_json_binary(&EscrowExecuteMsg::AddAllowedDenom { denom })?,
                 funds: vec![],
             });
-            Ok(IbcBasicResponse::new()
+            Ok(Response::new()
                 .add_submessage(SubMsg::new(msg))
                 .add_attribute("method", "request_add_allowed_denom")
+                .add_attribute("token", token.id)
+                .add_attribute("denom", denom))
+        }
+        None => Err(ContractError::EscrowDoesNotExist {}),
+    }
+}
+
+pub fn execute_request_disallow_denom(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token: Token,
+    denom: String,
+) -> Result<IbcBasicResponse, ContractError> {
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token)?;
+    match escrow_address {
+        Some(escrow_address) => {
+            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_address.into_string(),
+                msg: to_json_binary(&EscrowExecuteMsg::DisallowDenom { denom })?,
+                funds: vec![],
+            });
+            Ok(IbcBasicResponse::new()
+                .add_submessage(SubMsg::new(msg))
+                .add_attribute("method", "request_disallow_denom")
                 .add_attribute("token", token.id)
                 .add_attribute("denom", denom))
         }
@@ -680,36 +704,6 @@ pub fn execute_request_deposit_native(
                 .add_submessage(SubMsg::new(msg))
                 .add_attribute("method", "request_deposit_native")
                 .add_attribute("token", token.id))
-        }
-        None => Err(ContractError::EscrowDoesNotExist {}),
-    }
-}
-
-pub fn execute_request_withdraw(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    token_id: Token,
-    recipient: String,
-    amount: Uint128,
-    chain_id: String,
-) -> Result<IbcBasicResponse, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token_id)?;
-    match escrow_address {
-        Some(escrow_address) => {
-            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: escrow_address.into_string(),
-                msg: to_json_binary(&EscrowExecuteMsg::Withdraw {
-                    recipient,
-                    amount,
-                    chain_id,
-                })?,
-                funds: vec![],
-            });
-            Ok(IbcBasicResponse::new()
-                .add_submessage(SubMsg::new(msg))
-                .add_attribute("method", "request_withdraw")
-                .add_attribute("token", token_id.id))
         }
         None => Err(ContractError::EscrowDoesNotExist {}),
     }

@@ -43,8 +43,12 @@ pub enum ContractError {
 
     #[error("UnsupportedOperation")]
     UnsupportedOperation {},
+
     #[error("Not Implemented")]
     NotImplemented {},
+
+    #[error("DenomDoesNotExist")]
+    DenomDoesNotExist {},
 
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },

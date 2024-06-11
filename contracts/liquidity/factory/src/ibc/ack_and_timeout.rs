@@ -6,9 +6,10 @@ use cosmwasm_std::{
 };
 use euclid::{
     error::ContractError,
-    pool::{LiquidityResponse, Pool, PoolCreationResponse},
+    msgs::escrow::ExecuteMsg as EscrowExecuteMsg,
+    pool::{LiquidityResponse, Pool, PoolCreationResponse, WithdrawResponse},
     swap::SwapResponse,
-    token::PairInfo,
+    token::{PairInfo, Token},
 };
 use euclid_ibc::msg::{AcknowledgementMsg, ChainIbcExecuteMsg};
 
@@ -18,7 +19,7 @@ use crate::{
         execute_reject_swap,
     },
     reply::INSTANTIATE_REPLY_ID,
-    state::{POOL_REQUESTS, STATE},
+    state::{POOL_REQUESTS, STATE, TOKEN_TO_ESCROW},
 };
 
 use super::channel::TIMEOUT_COUNTS;
@@ -61,6 +62,15 @@ pub fn ibc_packet_ack(
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<LiquidityResponse> = from_json(ack.acknowledgement.data)?;
             execute_add_liquidity_process(deps, res, pool_address, liquidity_id)
+        }
+        ChainIbcExecuteMsg::RequestWithdraw {
+            token_id,
+            recipient,
+            amount,
+            chain_id,
+        } => {
+            let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack.acknowledgement.data)?;
+            execute_request_withdraw(deps, res, token_id, recipient, amount, chain_id)
         }
         _ => Err(ContractError::Unauthorized {}),
     }
@@ -262,5 +272,42 @@ pub fn execute_add_liquidity_process(
                 .add_attribute("method", "add_liquidity")
                 .add_attribute("error", err.clone()))
         }
+    }
+}
+
+// New factory functions
+pub fn execute_request_withdraw(
+    deps: DepsMut,
+    res: AcknowledgementMsg<WithdrawResponse>,
+    token_id: Token,
+    recipient: String,
+    amount: Uint128,
+    chain_id: String,
+) -> Result<IbcBasicResponse, ContractError> {
+    match res {
+        AcknowledgementMsg::Ok(_) => {
+            let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token_id)?;
+            match escrow_address {
+                Some(escrow_address) => {
+                    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: escrow_address.into_string(),
+                        msg: to_json_binary(&EscrowExecuteMsg::Withdraw {
+                            recipient,
+                            amount,
+                            chain_id,
+                        })?,
+                        funds: vec![],
+                    });
+                    Ok(IbcBasicResponse::new()
+                        .add_submessage(SubMsg::new(msg))
+                        .add_attribute("method", "request_withdraw")
+                        .add_attribute("token", token_id.id))
+                }
+                None => Err(ContractError::EscrowDoesNotExist {}),
+            }
+        }
+        AcknowledgementMsg::Error(err) => Ok(IbcBasicResponse::new()
+            .add_attribute("method", "withdraw")
+            .add_attribute("error", err.clone())),
     }
 }

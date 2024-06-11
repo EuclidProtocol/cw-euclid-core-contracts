@@ -25,7 +25,6 @@ fn check_duplicates(denoms: Vec<String>) -> Result<(), ContractError> {
     Ok(())
 }
 
-// Function to add a new list of allowed denoms, this overwrites the previous list
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
     env: Env,
@@ -64,6 +63,36 @@ pub fn execute_add_allowed_denom(
 
     Ok(Response::new()
         .add_attribute("method", "add_allowed_denom")
+        .add_attribute("new_denom", denom))
+}
+
+pub fn execute_disallow_denom(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    denom: String,
+) -> Result<Response, ContractError> {
+    // Only the factory can call this function
+    let factory_address = STATE.load(deps.storage)?.factory_address;
+    ensure!(
+        info.sender == factory_address,
+        ContractError::Unauthorized {}
+    );
+
+    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
+
+    // Make sure that the denom is already in the list
+    ensure!(
+        allowed_denoms.contains(&denom),
+        ContractError::DenomDoesNotExist {}
+    );
+    // Remove denom from list
+    allowed_denoms.retain(|current_denom| current_denom != &denom);
+    ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
+
+    //TODO refund the disallowed funds
+    Ok(Response::new()
+        .add_attribute("method", "disallow_denom")
         .add_attribute("new_denom", denom))
 }
 

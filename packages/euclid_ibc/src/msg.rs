@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::Uint128;
 use euclid::{
     swap::NextSwap,
     token::{PairInfo, Token},
@@ -40,6 +40,13 @@ pub enum ChainIbcExecuteMsg {
         channel: String,
         swap_id: String,
         swaps: Vec<NextSwap>,
+    },
+    // New Factory Msg
+    RequestWithdraw {
+        token_id: Token,
+        recipient: String,
+        amount: Uint128,
+        chain_id: String,
     },
 }
 

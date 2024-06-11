@@ -25,19 +25,10 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    //
+    // New Factory Messages that call Escrow
     RequestAddAllowedDenom {
         denom: String,
         token_id: Token,
-    },
-    RequestDepositNative {
-        token_id: Token,
-    },
-    RequestWithdraw {
-        token_id: Token,
-        recipient: String,
-        amount: Uint128,
-        chain_id: String,
     },
 
     // // Add Liquidity Request to the VLP
