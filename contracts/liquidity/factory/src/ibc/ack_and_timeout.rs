@@ -29,7 +29,7 @@ use super::channel::TIMEOUT_COUNTS;
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_ack(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     // Parse the ack based on request
@@ -77,7 +77,7 @@ pub fn ibc_packet_ack(
         ChainIbcExecuteMsg::RequestEscrowCreation { token_id } => {
             let res: AcknowledgementMsg<InstantiateEscrowResponse> =
                 from_json(ack.acknowledgement.data)?;
-            execute_request_instantiate_escrow(deps, res, token_id)
+            execute_request_instantiate_escrow(deps, env, res, token_id)
         }
         _ => Err(ContractError::Unauthorized {}),
     }
@@ -321,6 +321,7 @@ pub fn execute_request_withdraw(
 
 pub fn execute_request_instantiate_escrow(
     deps: DepsMut,
+    env: Env,
     res: AcknowledgementMsg<InstantiateEscrowResponse>,
     token_id: Token,
 ) -> Result<IbcBasicResponse, ContractError> {
@@ -331,7 +332,7 @@ pub fn execute_request_instantiate_escrow(
                 Some(escrow_address) => Err(ContractError::EscrowAlreadyExists {}),
                 None => {
                     let msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                        admin: None,
+                        admin: Some(env.contract.address.into_string()),
                         code_id: data.escrow_code_id,
                         msg: to_json_binary(&EscrowInstantiateMsg { token_id })?,
                         funds: vec![],
