@@ -345,7 +345,7 @@ pub fn execute_request_instantiate_escrow(
             }
         }
         AcknowledgementMsg::Error(err) => Ok(IbcBasicResponse::new()
-            .add_attribute("method", "withdraw")
+            .add_attribute("method", "instantiate_escrow")
             .add_attribute("error", err.clone())),
     }
 }
