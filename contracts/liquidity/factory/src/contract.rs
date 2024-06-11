@@ -5,8 +5,8 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 
 use crate::execute::{
-    add_liquidity_request, execute_request_add_allowed_denom, execute_request_deposit_native,
-    execute_request_pool_creation, execute_swap_request, receive_cw20,
+    add_liquidity_request, execute_request_add_allowed_denom, execute_request_pool_creation,
+    execute_swap_request, receive_cw20,
 };
 use crate::query::{
     get_pool, get_vlp, pair_info, pending_liquidity, pending_swaps, pool_reserves, query_all_pools,

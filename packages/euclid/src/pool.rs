@@ -79,3 +79,8 @@ pub struct PoolCreationResponse {
 
 #[cw_serde]
 pub struct WithdrawResponse {}
+
+#[cw_serde]
+pub struct InstantiateEscrowResponse {
+    pub escrow_code_id: u64,
+}

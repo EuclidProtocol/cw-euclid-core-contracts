@@ -98,6 +98,9 @@ pub enum ContractError {
     #[error("EscrowDoesNotExist")]
     EscrowDoesNotExist {},
 
+    #[error("EscrowAlreadyExists")]
+    EscrowAlreadyExists {},
+
     #[error("The swap does not exist in state for the sender")]
     SwapDoesNotExist {},
 

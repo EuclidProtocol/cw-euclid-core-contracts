@@ -48,6 +48,10 @@ pub enum ChainIbcExecuteMsg {
         amount: Uint128,
         chain_id: String,
     },
+    RequestEscrowCreation {
+        token_id: Token,
+        //TODO Add allowed denoms?
+    },
 }
 
 #[cw_serde]

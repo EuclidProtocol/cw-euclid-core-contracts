@@ -6,8 +6,10 @@ use cosmwasm_std::{
 };
 use euclid::{
     error::ContractError,
-    msgs::escrow::ExecuteMsg as EscrowExecuteMsg,
-    pool::{LiquidityResponse, Pool, PoolCreationResponse, WithdrawResponse},
+    msgs::escrow::{ExecuteMsg as EscrowExecuteMsg, InstantiateMsg as EscrowInstantiateMsg},
+    pool::{
+        InstantiateEscrowResponse, LiquidityResponse, Pool, PoolCreationResponse, WithdrawResponse,
+    },
     swap::SwapResponse,
     token::{PairInfo, Token},
 };
@@ -71,6 +73,11 @@ pub fn ibc_packet_ack(
         } => {
             let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack.acknowledgement.data)?;
             execute_request_withdraw(deps, res, token_id, recipient, amount, chain_id)
+        }
+        ChainIbcExecuteMsg::RequestEscrowCreation { token_id } => {
+            let res: AcknowledgementMsg<InstantiateEscrowResponse> =
+                from_json(ack.acknowledgement.data)?;
+            execute_request_instantiate_escrow(deps, res, token_id)
         }
         _ => Err(ContractError::Unauthorized {}),
     }
@@ -304,6 +311,37 @@ pub fn execute_request_withdraw(
                         .add_attribute("token", token_id.id))
                 }
                 None => Err(ContractError::EscrowDoesNotExist {}),
+            }
+        }
+        AcknowledgementMsg::Error(err) => Ok(IbcBasicResponse::new()
+            .add_attribute("method", "withdraw")
+            .add_attribute("error", err.clone())),
+    }
+}
+
+pub fn execute_request_instantiate_escrow(
+    deps: DepsMut,
+    res: AcknowledgementMsg<InstantiateEscrowResponse>,
+    token_id: Token,
+) -> Result<IbcBasicResponse, ContractError> {
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token_id)?;
+            match escrow_address {
+                Some(escrow_address) => Err(ContractError::EscrowAlreadyExists {}),
+                None => {
+                    let msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                        admin: None,
+                        code_id: data.escrow_code_id,
+                        msg: to_json_binary(&EscrowInstantiateMsg { token_id })?,
+                        funds: vec![],
+                        label: "".to_string(),
+                    });
+                    Ok(IbcBasicResponse::new()
+                        .add_submessage(SubMsg::new(msg))
+                        .add_attribute("method", "instantiate_escrow")
+                        .add_attribute("token", token_id.id))
+                }
             }
         }
         AcknowledgementMsg::Error(err) => Ok(IbcBasicResponse::new()
