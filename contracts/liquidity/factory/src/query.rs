@@ -11,9 +11,10 @@ use crate::state::{PENDING_LIQUIDITY, PENDING_SWAPS, STATE, VLP_TO_POOL};
 
 // Returns the Pair Info of the Pair in the pool
 pub fn get_pool(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
-    let pool = VLP_TO_POOL.load(deps.storage, vlp)?;
-    Ok(to_json_binary(&GetPoolResponse { pool })?)
+    let pair_info = VLP_TO_POOL.load(deps.storage, vlp)?;
+    Ok(to_json_binary(&GetPoolResponse { pair_info })?)
 }
+
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
@@ -30,7 +31,7 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
         .map(|item| {
             let item = item.unwrap();
             PoolVlpResponse {
-                pool: item.1.clone(),
+                pair_info: item.1.clone(),
                 vlp: item.0,
             }
         })

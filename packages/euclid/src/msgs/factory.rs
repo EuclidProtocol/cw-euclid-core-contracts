@@ -100,7 +100,7 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct GetPoolResponse {
-    pub pool: Pool,
+    pub pair_info: PairInfo,
 }
 // We define a custom struct for each query response
 #[cw_serde]
@@ -118,7 +118,7 @@ pub struct AllPoolsResponse {
 }
 #[cw_serde]
 pub struct PoolVlpResponse {
-    pub pool: Pool,
+    pub pair_info: PairInfo,
     pub vlp: String,
 }
 

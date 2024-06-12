@@ -18,7 +18,7 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
             let escrow_data: euclid::msgs::escrow::EscrowInstantiateResponse =
                 from_json(instantiate_data.data.unwrap_or_default())?;
 
-            TOKEN_TO_ESCROW.save(deps.storage, escrow_data.token, &escrow_address)?;
+            TOKEN_TO_ESCROW.save(deps.storage, escrow_data.token.clone(), &escrow_address)?;
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
                 .add_attribute("escrow", escrow_address)

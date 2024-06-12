@@ -93,6 +93,7 @@ pub fn do_ibc_packet_receive(
             swap_id,
             swaps,
         ),
+        _ => Err(ContractError::NotImplemented {}),
     }
 }
 

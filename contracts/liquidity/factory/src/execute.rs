@@ -34,7 +34,13 @@ pub fn execute_request_pool_creation(
     let channel = state.hub_channel.unwrap();
 
     // Create a Request in state
-    let pool_request = generate_pool_req(deps, &info.sender, env.block.chain_id, channel.clone())?;
+    let pool_request = generate_pool_req(
+        deps,
+        &info.sender,
+        env.block.chain_id,
+        channel.clone(),
+        pair_info.clone(),
+    )?;
 
     let timeout = get_timeout(timeout)?;
 
@@ -86,7 +92,9 @@ pub fn execute_swap_request(
 
     let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps.querier.query_wasm_smart(
         escrow,
-        &euclid::msgs::escrow::QueryMsg::TokenAllowed { token: asset_in },
+        &euclid::msgs::escrow::QueryMsg::TokenAllowed {
+            token: asset_in.clone(),
+        },
     )?;
 
     ensure!(
@@ -94,7 +102,7 @@ pub fn execute_swap_request(
         ContractError::UnsupportedDenomination {}
     );
 
-    let pair = VLP_TO_POOL.load(deps.storage, first_swap.vlp_address);
+    let pair = VLP_TO_POOL.load(deps.storage, first_swap.vlp_address.clone());
 
     ensure!(
         pair.is_ok(),
@@ -149,20 +157,17 @@ pub fn execute_swap_request(
         );
     }
 
-    // Get token from tokenInfo
-    let token = asset_in.get_token();
-
     let timeout_duration = get_timeout(timeout)?;
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout_duration));
     let swap_info = generate_swap_req(
         deps.branch(),
-        sender,
-        asset_in,
+        sender.clone(),
+        asset_in.clone(),
         asset_out,
         amount_in,
         min_amount_out,
-        swaps,
-        timeout,
+        swaps.clone(),
+        timeout.clone(),
     )?;
 
     // Create IBC packet to send to Router
@@ -192,10 +197,10 @@ pub fn execute_swap_request(
 ///
 /// * **cw20_msg** is the CW20 message that has to be processed.
 pub fn receive_cw20(
-    mut deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    cw20_msg: Cw20ReceiveMsg,
+    _deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    _cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     // match from_json(&cw20_msg.msg)? {
     //     // Allow to swap using a CW20 hook message
@@ -256,7 +261,7 @@ pub fn add_liquidity_request(
 
     let pool_address = info.sender.clone();
 
-    let pair_info = VLP_TO_POOL.load(deps.storage, vlp_address)?;
+    let pair_info = VLP_TO_POOL.load(deps.storage, vlp_address.clone())?;
 
     // Check that slippage tolerance is between 1 and 100
     ensure!(
@@ -337,8 +342,14 @@ pub fn add_liquidity_request(
     }
 
     // Save the pending liquidity transaction
-    let liquidity_info =
-        generate_liquidity_req(deps.branch(), sender, token_1_liquidity, token_2_liquidity)?;
+    let liquidity_info = generate_liquidity_req(
+        deps.branch(),
+        sender,
+        token_1_liquidity,
+        token_2_liquidity,
+        vlp_address.clone(),
+        pair_info,
+    )?;
 
     let timeout_duration = get_timeout(timeout)?;
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout_duration));
@@ -367,17 +378,19 @@ pub fn add_liquidity_request(
 // New factory functions //
 pub fn execute_request_add_allowed_denom(
     deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
+    _env: Env,
+    _info: MessageInfo,
     token: Token,
     denom: String,
 ) -> Result<Response, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token)?;
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone())?;
     match escrow_address {
         Some(escrow_address) => {
             let msg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_address.into_string(),
-                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom { denom })?,
+                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom {
+                    denom: denom.clone(),
+                })?,
                 funds: vec![],
             });
             Ok(Response::new()
@@ -392,17 +405,19 @@ pub fn execute_request_add_allowed_denom(
 
 pub fn execute_request_disallow_denom(
     deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
+    _env: Env,
+    _info: MessageInfo,
     token: Token,
     denom: String,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token)?;
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone())?;
     match escrow_address {
         Some(escrow_address) => {
             let msg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_address.into_string(),
-                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom { denom })?,
+                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom {
+                    denom: denom.clone(),
+                })?,
                 funds: vec![],
             });
             Ok(IbcBasicResponse::new()

@@ -44,6 +44,7 @@ pub fn generate_pool_req(
     sender: &Addr,
     chain: String,
     channel: String,
+    pair_info: PairInfo,
 ) -> Result<PoolRequest, ContractError> {
     let count = POOL_REQUEST_COUNT
         .may_load(deps.storage, sender.to_string())?
@@ -54,6 +55,7 @@ pub fn generate_pool_req(
         chain,
         channel,
         pool_rq_id: pool_rq_id.clone(),
+        pair_info,
     };
     // If a pool request already exist, throw error, else create a new request
     POOL_REQUESTS.update(deps.storage, pool_rq_id, |existing| match existing {
@@ -118,6 +120,8 @@ pub fn generate_liquidity_req(
     sender: String,
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
+    vlp_address: String,
+    pair_info: PairInfo,
 ) -> Result<LiquidityTxInfo, ContractError> {
     let count = PENDING_LIQUIDITY_COUNT
         .may_load(deps.storage, sender.clone())?
@@ -129,6 +133,8 @@ pub fn generate_liquidity_req(
         token_2_liquidity,
         sender: sender.clone(),
         liquidity_id: rq_id,
+        vlp_address,
+        pair_info,
     };
     // If a pool request already exist, throw error, else create a new request
     PENDING_LIQUIDITY.update(
