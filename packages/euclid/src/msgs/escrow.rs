@@ -1,4 +1,4 @@
-use crate::token::Token;
+use crate::token::{Token, TokenInfo};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
@@ -40,6 +40,10 @@ pub enum QueryMsg {
     // New escrow queries
     #[returns(TokenIdResponse)]
     TokenId {},
+
+    // New escrow queries
+    #[returns(AllowedTokenResponse)]
+    TokenAllowed { token: TokenInfo },
 }
 
 #[cw_serde]
@@ -51,7 +55,18 @@ pub struct TokenIdResponse {
 }
 
 #[cw_serde]
+pub struct AllowedTokenResponse {
+    pub allowed: bool,
+}
+
+#[cw_serde]
 pub struct AmountAndType {
     pub amount: Uint128,
     pub is_native: bool,
+}
+
+#[cw_serde]
+pub struct EscrowInstantiateResponse {
+    pub token: Token,
+    pub address: String,
 }

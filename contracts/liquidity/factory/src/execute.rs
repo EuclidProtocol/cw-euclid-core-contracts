@@ -1,22 +1,19 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcMsg,
-    IbcTimeout, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcMsg, IbcTimeout,
+    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
     error::ContractError,
-    liquidity,
-    msgs::{escrow::ExecuteMsg as EscrowExecuteMsg, pool::Cw20HookMsg},
-    pool::{LiquidityResponse, WithdrawResponse},
-    swap::{self, SwapResponse},
+    swap::NextSwap,
     timeout::get_timeout,
     token::{PairInfo, Token, TokenInfo},
 };
 use euclid_ibc::msg::ChainIbcExecuteMsg;
 
 use crate::state::{
-    generate_liquidity_req, generate_pool_req, generate_swap_req, PENDING_LIQUIDITY, PENDING_SWAPS,
-    POOL_STATE, STATE, TOKEN_TO_ESCROW,
+    generate_liquidity_req, generate_pool_req, generate_swap_req, STATE, TOKEN_TO_ESCROW,
+    VLP_TO_POOL,
 };
 
 // Function to send IBC request to Router in VLS to create a new pool
@@ -48,7 +45,6 @@ pub fn execute_request_pool_creation(
             pool_rq_id: pool_request.pool_rq_id,
             pair_info,
         })?,
-
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
 
@@ -57,19 +53,20 @@ pub fn execute_request_pool_creation(
         .add_message(ibc_packet))
 }
 
-// Function to send IBC request to Router in VLS to perform a swap
-fn execute_swap(
-    deps: DepsMut,
-    env: Env,
+// TODO make execute_swap an internal function OR merge execute_swap_request and execute_swap into one function
+
+pub fn execute_swap_request(
+    deps: &mut DepsMut,
     info: MessageInfo,
-    asset: Token,
-    asset_amount: Uint128,
+    env: Env,
+    asset_in: TokenInfo,
+    asset_out: TokenInfo,
+    amount_in: Uint128,
     min_amount_out: Uint128,
-    swap_id: String,
+    swaps: Vec<NextSwap>,
+    msg_sender: Option<String>,
     timeout: Option<u64>,
-    vlp_address: String,
 ) -> Result<Response, ContractError> {
-    // Load the state
     let state = STATE.load(deps.storage)?;
 
     ensure!(
@@ -80,42 +77,171 @@ fn execute_swap(
     );
     let channel = state.hub_channel.unwrap();
 
-    let pool_address = info.sender;
+    let first_swap = swaps.first().ok_or(ContractError::Generic {
+        err: "Empty Swap not allowed".to_string(),
+    })?;
 
-    let timeout = get_timeout(timeout)?;
+    // Verify that this asset is allowed
+    let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.get_token())?;
+
+    let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps.querier.query_wasm_smart(
+        escrow,
+        &euclid::msgs::escrow::QueryMsg::TokenAllowed { token: asset_in },
+    )?;
+
+    ensure!(
+        token_allowed.allowed == true,
+        ContractError::UnsupportedDenomination {}
+    );
+
+    let pair = VLP_TO_POOL.load(deps.storage, first_swap.vlp_address);
+
+    ensure!(
+        pair.is_ok(),
+        ContractError::Generic {
+            err: "vlp not registered with this chain".to_string()
+        }
+    );
+
+    let pair = pair?;
+
+    // if `msg_sender` is not None, then the sender is the one who initiated the swap
+    let sender = match msg_sender {
+        Some(sender) => sender,
+        None => info.sender.clone().to_string(),
+    };
+
+    // Verify that the asset exists in the pool
+    ensure!(
+        asset_in == pair.token_1 || asset_in == pair.token_2,
+        ContractError::AssetDoesNotExist {}
+    );
+
+    // Verify that the asset amount is greater than 0
+    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Verify that the min amount out is greater than 0
+    ensure!(!min_amount_out.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Verify if the token is native
+    if asset_in.is_native() {
+        // Get the denom of native token
+        let denom = asset_in.get_denom();
+
+        // Verify thatthe amount of funds passed is greater than the asset amount
+        if info
+            .funds
+            .iter()
+            .find(|x| x.denom == denom)
+            .ok_or(ContractError::Generic {
+                err: "Denom not found".to_string(),
+            })?
+            .amount
+            < amount_in
+        {
+            return Err(ContractError::Unauthorized {});
+        }
+    } else {
+        // Verify that the contract address is the same as the asset contract address
+        ensure!(
+            info.sender == asset_in.get_denom(),
+            ContractError::Unauthorized {}
+        );
+    }
+
+    // Get token from tokenInfo
+    let token = asset_in.get_token();
+
+    let timeout_duration = get_timeout(timeout)?;
+    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout_duration));
+    let swap_info = generate_swap_req(
+        deps.branch(),
+        sender,
+        asset_in,
+        asset_out,
+        amount_in,
+        min_amount_out,
+        swaps,
+        timeout,
+    )?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&ChainIbcExecuteMsg::Swap {
+            to_address: sender,
             to_chain_id: state.chain_id,
-            asset_in: asset,
-            amount_in: asset_amount,
+            asset_in: asset_in.get_token(),
+            amount_in,
             min_amount_out,
             channel,
-            swap_id,
+            swap_id: swap_info.swap_id,
+            swaps,
         })?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+        timeout,
     };
 
     let msg = CosmosMsg::Ibc(ibc_packet);
 
     Ok(Response::new()
-        .add_attribute("method", "request_pool_creation")
+        .add_attribute("method", "execute_request_swap")
         .add_message(msg))
 }
 
-// Function to send IBC request to Router in VLS to add liquidity to a pool
-fn execute_add_liquidity(
-    deps: DepsMut,
+/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
+///
+/// * **cw20_msg** is the CW20 message that has to be processed.
+pub fn receive_cw20(
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
+    cw20_msg: Cw20ReceiveMsg,
+) -> Result<Response, ContractError> {
+    // match from_json(&cw20_msg.msg)? {
+    //     // Allow to swap using a CW20 hook message
+    //     Cw20HookMsg::Swap {
+    //         asset,
+    //         min_amount_out,
+    //         timeout,
+    //     } => {
+    //         let contract_adr = info.sender.clone();
+
+    //         // ensure that contract address is same as asset being swapped
+    //         ensure!(
+    //             contract_adr == asset.get_contract_address(),
+    //             ContractError::AssetDoesNotExist {}
+    //         );
+    //         // Add sender as the option
+
+    //         // ensure that the contract address is the same as the asset contract address
+    //         execute_swap_request(
+    //             &mut deps,
+    //             info,
+    //             env,
+    //             asset,
+    //             cw20_msg.amount,
+    //             min_amount_out,
+    //             Some(cw20_msg.sender),
+    //             timeout,
+    //         )
+    //     }
+    //     Cw20HookMsg::Deposit {} => {}
+    // }
+    Err(ContractError::NotImplemented {})
+}
+
+// Add liquidity to the pool
+// TODO look into alternatives of using .branch(), maybe unifying the functions would help
+pub fn add_liquidity_request(
+    mut deps: DepsMut,
+    info: MessageInfo,
+    env: Env,
+    vlp_address: String,
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
-    liquidity_id: String,
+    msg_sender: Option<String>,
     timeout: Option<u64>,
-    vlp_address: String,
 ) -> Result<Response, ContractError> {
     // Load the state
     let state = STATE.load(deps.storage)?;
@@ -130,295 +256,7 @@ fn execute_add_liquidity(
 
     let pool_address = info.sender.clone();
 
-    let timeout = get_timeout(timeout)?;
-
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::AddLiquidity {
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-            liquidity_id,
-            pool_address: pool_address.clone().to_string(),
-            vlp_address,
-        })?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-    };
-
-    let msg = CosmosMsg::Ibc(ibc_packet);
-
-    Ok(Response::new()
-        .add_attribute("method", "add_liquidity_request")
-        .add_message(msg))
-}
-
-// // Function to update the pool code ID
-// pub fn execute_update_pool_code_id(
-//     deps: DepsMut,
-//     info: MessageInfo,
-//     new_pool_code_id: u64,
-// ) -> Result<Response, ContractError> {
-//     // Load the state
-//     STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-//         // Ensure that only the admin can update the pool code ID
-//         ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-
-//         // Update the pool code ID
-//         state.pool_code_id = new_pool_code_id;
-//         Ok(state)
-//     })?;
-
-//     Ok(Response::new()
-//         .add_attribute("method", "update_pool_code_id")
-//         .add_attribute("new_pool_code_id", new_pool_code_id.to_string()))
-// }
-
-// Pool Functions //
-
-// TODO make execute_swap an internal function OR merge execute_swap_request and execute_swap into one function
-
-pub fn execute_swap_request(
-    deps: &mut DepsMut,
-    info: MessageInfo,
-    env: Env,
-    asset: TokenInfo,
-    asset_amount: Uint128,
-    min_amount_out: Uint128,
-    msg_sender: Option<String>,
-    timeout: Option<u64>,
-) -> Result<Response, ContractError> {
-    let state = POOL_STATE.load(deps.storage)?;
-
-    // if `msg_sender` is not None, then the sender is the one who initiated the swap
-    let sender = match msg_sender {
-        Some(sender) => sender,
-        None => info.sender.clone().to_string(),
-    };
-
-    // Verify that the asset exists in the pool
-    ensure!(
-        asset == state.pair_info.token_1 || asset == state.pair_info.token_2,
-        ContractError::AssetDoesNotExist {}
-    );
-
-    // Verify that the asset amount is greater than 0
-    ensure!(!asset_amount.is_zero(), ContractError::ZeroAssetAmount {});
-
-    // Verify that the min amount out is greater than 0
-    ensure!(!min_amount_out.is_zero(), ContractError::ZeroAssetAmount {});
-
-    // Verify if the token is native
-    if asset.is_native() {
-        // Get the denom of native token
-        let denom = asset.get_denom();
-
-        // Verify thatthe amount of funds passed is greater than the asset amount
-        if info
-            .funds
-            .iter()
-            .find(|x| x.denom == denom)
-            .ok_or(ContractError::Generic {
-                err: "Denom not found".to_string(),
-            })?
-            .amount
-            < asset_amount
-        {
-            return Err(ContractError::Unauthorized {});
-        }
-    } else {
-        // Verify that the contract address is the same as the asset contract address
-        ensure!(
-            info.sender == asset.get_contract_address(),
-            ContractError::Unauthorized {}
-        );
-    }
-
-    // Get token from tokenInfo
-    let token = asset.get_token();
-    // Get alternative token
-    let asset_out: TokenInfo = state.pair_info.get_other_token(asset.clone());
-
-    let timeout_duration = get_timeout(timeout)?;
-    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout_duration));
-    let swap_info = generate_swap_req(
-        deps.branch(),
-        sender,
-        asset,
-        asset_out,
-        asset_amount,
-        timeout,
-    )?;
-
-    execute_swap(
-        deps.branch(),
-        env,
-        info,
-        token,
-        asset_amount,
-        min_amount_out,
-        swap_info.swap_id,
-        Some(timeout_duration),
-        state.vlp_contract,
-    )
-
-    // let msg = FactoryExecuteMsg::ExecuteSwap {
-    //     asset: token,
-    //     asset_amount,
-    //     min_amount_out,
-    //     swap_id: swap_info.swap_id,
-    //     timeout: Some(timeout_duration),
-    //     vlp_address: state.vlp_contract,
-    // };
-
-    // let msg = WasmMsg::Execute {
-    //     contract_addr: state.factory_contract,
-    //     msg: to_json_binary(&msg)?,
-    //     funds: vec![],
-    // };
-
-    // Ok(Response::new()
-    //     .add_attribute("method", "execute_swap_request")
-    //     .add_message(msg))
-}
-
-pub fn execute_complete_swap(
-    deps: DepsMut,
-    swap_response: SwapResponse,
-) -> Result<IbcBasicResponse, ContractError> {
-    let mut state = POOL_STATE.load(deps.storage)?;
-    // Verify that assets exist in the state.
-    ensure!(
-        swap_response.asset.exists(state.pair_info.get_pair()),
-        ContractError::AssetDoesNotExist {}
-    );
-
-    ensure!(
-        swap_response.asset_out.exists(state.pair_info.get_pair()),
-        ContractError::AssetDoesNotExist {}
-    );
-
-    // Fetch the sender from swap_id
-    let extracted_swap_id = swap::parse_swap_id(&swap_response.swap_id)?;
-
-    // Validate that the pending swap exists for the sender
-    let swap_info = PENDING_SWAPS.load(
-        deps.storage,
-        (extracted_swap_id.sender.clone(), extracted_swap_id.index),
-    )?;
-
-    // Remove this from pending swaps
-    PENDING_SWAPS.remove(
-        deps.storage,
-        (extracted_swap_id.sender.clone(), extracted_swap_id.index),
-    );
-
-    // Check if asset is token_1 or token_2 and calculate accordingly
-    if swap_response.asset == state.pair_info.token_1.get_token() {
-        state.reserve_1 += swap_response.asset_amount;
-        state.reserve_2 -= swap_response.amount_out;
-    } else {
-        state.reserve_2 += swap_response.asset_amount;
-        state.reserve_1 -= swap_response.amount_out;
-    };
-
-    // Save the updated state
-    POOL_STATE.save(deps.storage, &state)?;
-
-    // Prepare messages to send tokens to user
-    let msg = swap_info
-        .asset_out
-        .create_transfer_msg(swap_response.amount_out, extracted_swap_id.sender)?;
-
-    // Look through pending swaps for one with the same swap_id
-    Ok(IbcBasicResponse::new().add_message(msg))
-}
-
-pub fn execute_reject_swap(
-    deps: DepsMut,
-    swap_id: String,
-    error: Option<String>,
-) -> Result<IbcBasicResponse, ContractError> {
-    let extracted_swap_id = swap::parse_swap_id(&swap_id)?;
-
-    // Validate that the pending swap exists for the sender
-    let swap_info = PENDING_SWAPS.load(
-        deps.storage,
-        (extracted_swap_id.sender.clone(), extracted_swap_id.index),
-    )?;
-    // Remove this from pending swaps
-    PENDING_SWAPS.remove(
-        deps.storage,
-        (extracted_swap_id.sender.clone(), extracted_swap_id.index),
-    );
-
-    // Prepare messages to refund tokens back to user
-    let msg = swap_info
-        .asset
-        .create_transfer_msg(swap_info.asset_amount, extracted_swap_id.sender)?;
-
-    Ok(IbcBasicResponse::new()
-        .add_attribute("method", "process_failed_swap")
-        .add_attribute("refund_to", "sender")
-        .add_attribute("refund_amount", swap_info.asset_amount)
-        .add_attribute("error", error.unwrap_or_default())
-        .add_message(msg))
-}
-
-/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
-///
-/// * **cw20_msg** is the CW20 message that has to be processed.
-pub fn receive_cw20(
-    mut deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    cw20_msg: Cw20ReceiveMsg,
-) -> Result<Response, ContractError> {
-    match from_json(&cw20_msg.msg)? {
-        // Allow to swap using a CW20 hook message
-        Cw20HookMsg::Swap {
-            asset,
-            min_amount_out,
-            timeout,
-        } => {
-            let contract_adr = info.sender.clone();
-
-            // ensure that contract address is same as asset being swapped
-            ensure!(
-                contract_adr == asset.get_contract_address(),
-                ContractError::AssetDoesNotExist {}
-            );
-            // Add sender as the option
-
-            // ensure that the contract address is the same as the asset contract address
-            execute_swap_request(
-                &mut deps,
-                info,
-                env,
-                asset,
-                cw20_msg.amount,
-                min_amount_out,
-                Some(cw20_msg.sender),
-                timeout,
-            )
-        }
-        Cw20HookMsg::Deposit {} => {}
-    }
-}
-
-// Add liquidity to the pool
-// TODO look into alternatives of using .branch(), maybe unifying the functions would help
-pub fn add_liquidity_request(
-    mut deps: DepsMut,
-    info: MessageInfo,
-    env: Env,
-    token_1_liquidity: Uint128,
-    token_2_liquidity: Uint128,
-    slippage_tolerance: u64,
-    msg_sender: Option<String>,
-    timeout: Option<u64>,
-) -> Result<Response, ContractError> {
-    let state = POOL_STATE.load(deps.storage)?;
+    let pair_info = VLP_TO_POOL.load(deps.storage, vlp_address)?;
 
     // Check that slippage tolerance is between 1 and 100
     ensure!(
@@ -439,8 +277,8 @@ pub fn add_liquidity_request(
     );
 
     // Get the token 1 and token 2 from the pair info
-    let token_1 = state.pair_info.token_1.clone();
-    let token_2 = state.pair_info.token_2.clone();
+    let token_1 = pair_info.token_1.clone();
+    let token_2 = pair_info.token_2.clone();
 
     // Prepare msg vector
     let mut msgs: Vec<CosmosMsg> = Vec::new();
@@ -502,137 +340,28 @@ pub fn add_liquidity_request(
     let liquidity_info =
         generate_liquidity_req(deps.branch(), sender, token_1_liquidity, token_2_liquidity)?;
 
-    execute_add_liquidity(
-        deps.branch(),
-        env,
-        info,
-        token_1_liquidity,
-        token_2_liquidity,
-        slippage_tolerance,
-        liquidity_info.liquidity_id,
+    let timeout_duration = get_timeout(timeout)?;
+    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout_duration));
+
+    // Create IBC packet to send to Router
+    let ibc_packet = IbcMsg::SendPacket {
+        channel_id: channel.clone(),
+        data: to_json_binary(&ChainIbcExecuteMsg::AddLiquidity {
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+            liquidity_id: liquidity_info.liquidity_id,
+            pool_address: pool_address.clone().to_string(),
+            vlp_address,
+        })?,
         timeout,
-        state.vlp_contract,
-    )
+    };
 
-    // let factory_msg = factory::ExecuteMsg::AddLiquidity {
-    //     token_1_liquidity,
-    //     token_2_liquidity,
-    //     slippage_tolerance,
-    //     liquidity_id: liquidity_info.liquidity_id,
-    //     timeout,
-    //     vlp_address: state.vlp_contract,
-    // };
+    let msg = CosmosMsg::Ibc(ibc_packet);
 
-    // let msg = WasmMsg::Execute {
-    //     contract_addr: state.factory_contract,
-    //     msg: to_json_binary(&factory_msg)?,
-    //     funds: vec![],
-    // };
-
-    // msgs.push(CosmosMsg::Wasm(msg));
-
-    // Ok(Response::new()
-    //     .add_attribute("method", "add_liquidity_request")
-    //     .add_attribute("token_1_liquidity", token_1_liquidity)
-    //     .add_attribute("token_2_liquidity", token_2_liquidity)
-    //     .add_messages(msgs))
-}
-
-// Function to execute after LiquidityResponse acknowledgment
-pub fn execute_complete_add_liquidity(
-    deps: DepsMut,
-    liquidity_response: LiquidityResponse,
-    liquidity_id: String,
-) -> Result<IbcBasicResponse, ContractError> {
-    let mut state = POOL_STATE.load(deps.storage)?;
-
-    // Unpack response
-    // Fetch the sender from liquidity_id
-    let parsed_liquidity_id = liquidity::parse_liquidity_id(&liquidity_id)?;
-    // Fetch the pending liquidity transactions for the sender
-    let pending_liquidity = PENDING_LIQUIDITY.load(
-        deps.storage,
-        (
-            parsed_liquidity_id.sender.clone(),
-            parsed_liquidity_id.index,
-        ),
-    )?;
-
-    // Remove the liquidity
-    PENDING_LIQUIDITY.remove(
-        deps.storage,
-        (
-            parsed_liquidity_id.sender.clone(),
-            parsed_liquidity_id.index,
-        ),
-    );
-
-    // Update the state with the new reserves
-    state.reserve_1 += liquidity_response.token_1_liquidity;
-    state.reserve_2 += liquidity_response.token_2_liquidity;
-
-    // Save the updated state
-    POOL_STATE.save(deps.storage, &state)?;
-
-    Ok(IbcBasicResponse::new()
-        .add_attribute("method", "process_add_liquidity")
-        .add_attribute("sender", parsed_liquidity_id.sender)
-        .add_attribute("liquidity_id", liquidity_id.clone())
-        .add_attribute("pending_liquidity", format!("{pending_liquidity:?}")))
-}
-
-// Function to execute after LiquidityResponse acknowledgment
-pub fn execute_reject_add_liquidity(
-    deps: DepsMut,
-    liquidity_id: String,
-    error: Option<String>,
-) -> Result<IbcBasicResponse, ContractError> {
-    let state = POOL_STATE.load(deps.storage)?;
-
-    // Fetch the 2 tokens
-    let token_1 = state.pair_info.token_1;
-    let token_2 = state.pair_info.token_2;
-
-    // Unpack response
-    // Fetch the sender from liquidity_id
-    let parsed_liquidity_id = liquidity::parse_liquidity_id(&liquidity_id)?;
-    // Fetch the pending liquidity transactions for the sender
-    let pending_liquidity = PENDING_LIQUIDITY.load(
-        deps.storage,
-        (
-            parsed_liquidity_id.sender.clone(),
-            parsed_liquidity_id.index,
-        ),
-    )?;
-
-    // Prepare messages to refund tokens back to user
-    let mut msgs: Vec<CosmosMsg> = Vec::new();
-    let msg = token_1.clone().create_transfer_msg(
-        pending_liquidity.token_1_liquidity,
-        parsed_liquidity_id.sender.clone(),
-    )?;
-    msgs.push(msg);
-    let msg = token_2.clone().create_transfer_msg(
-        pending_liquidity.token_2_liquidity,
-        parsed_liquidity_id.sender.clone(),
-    )?;
-    msgs.push(msg);
-
-    // Remove the liquidity
-    PENDING_LIQUIDITY.remove(
-        deps.storage,
-        (
-            parsed_liquidity_id.sender.clone(),
-            parsed_liquidity_id.index,
-        ),
-    );
-
-    Ok(IbcBasicResponse::new()
-        .add_attribute("method", "liquidity_tx_err_refund")
-        .add_attribute("sender", parsed_liquidity_id.sender)
-        .add_attribute("liquidity_id", liquidity_id.clone())
-        .add_attribute("error", error.unwrap_or_default())
-        .add_messages(msgs))
+    Ok(Response::new()
+        .add_attribute("method", "add_liquidity_request")
+        .add_message(msg))
 }
 
 // New factory functions //
@@ -648,7 +377,7 @@ pub fn execute_request_add_allowed_denom(
         Some(escrow_address) => {
             let msg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_address.into_string(),
-                msg: to_json_binary(&EscrowExecuteMsg::AddAllowedDenom { denom })?,
+                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom { denom })?,
                 funds: vec![],
             });
             Ok(Response::new()
@@ -673,7 +402,7 @@ pub fn execute_request_disallow_denom(
         Some(escrow_address) => {
             let msg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_address.into_string(),
-                msg: to_json_binary(&EscrowExecuteMsg::DisallowDenom { denom })?,
+                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom { denom })?,
                 funds: vec![],
             });
             Ok(IbcBasicResponse::new()
@@ -681,29 +410,6 @@ pub fn execute_request_disallow_denom(
                 .add_attribute("method", "request_disallow_denom")
                 .add_attribute("token", token.id)
                 .add_attribute("denom", denom))
-        }
-        None => Err(ContractError::EscrowDoesNotExist {}),
-    }
-}
-
-pub fn execute_request_deposit_native(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    token: Token,
-) -> Result<IbcBasicResponse, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token)?;
-    match escrow_address {
-        Some(escrow_address) => {
-            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: escrow_address.into_string(),
-                msg: to_json_binary(&EscrowExecuteMsg::DepositNative {})?,
-                funds: info.funds,
-            });
-            Ok(IbcBasicResponse::new()
-                .add_submessage(SubMsg::new(msg))
-                .add_attribute("method", "request_deposit_native")
-                .add_attribute("token", token.id))
         }
         None => Err(ContractError::EscrowDoesNotExist {}),
     }

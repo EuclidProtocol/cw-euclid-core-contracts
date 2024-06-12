@@ -4,8 +4,8 @@ use cw_storage_plus::{Item, Map};
 use euclid::{
     error::ContractError,
     liquidity::{self, LiquidityTxInfo},
-    pool::{generate_id, PoolRequest},
-    swap::{self, SwapInfo},
+    pool::{self, Pool, PoolRequest},
+    swap::{self, NextSwap, SwapInfo},
     token::{PairInfo, Token, TokenInfo},
 };
 
@@ -21,14 +21,17 @@ pub struct State {
     pub hub_channel: Option<String>,
     // Contract admin
     pub admin: String,
-    // // Pool Code ID
-    // pub pool_code_id: u64,
+    // Escrow Code ID
+    pub escrow_code_id: u64,
 }
 
 pub const STATE: Item<State> = Item::new("state");
 
 // Map VLP address to Pool address
-pub const VLP_TO_POOL: Map<String, String> = Map::new("vlp_to_pool");
+pub const VLP_TO_POOL: Map<String, PairInfo> = Map::new("vlp_to_pool");
+
+// New Factory states
+pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 
 // Map sender of Pool request to Pool address
 pub const POOL_REQUESTS: Map<String, PoolRequest> = Map::new("request_to_pool");
@@ -46,7 +49,7 @@ pub fn generate_pool_req(
         .may_load(deps.storage, sender.to_string())?
         .unwrap_or_default();
 
-    let pool_rq_id = generate_id(sender.as_str(), count);
+    let pool_rq_id = pool::generate_id(sender.as_str(), count);
     let pool_request = PoolRequest {
         chain,
         channel,
@@ -60,29 +63,6 @@ pub fn generate_pool_req(
     POOL_REQUEST_COUNT.save(deps.storage, sender.to_string(), &count.wrapping_add(1))?;
     Ok(pool_request)
 }
-// New Factory states
-pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
-
-// Pool State //
-
-#[cw_serde]
-pub struct PoolState {
-    // Store VLP contract address on VLS
-    pub vlp_contract: String,
-    // Token Pair Info
-    pub pair_info: PairInfo,
-    // Total cumulative reserves of token_1 in the pool
-    // DOES NOT AFFECT SWAP CALCULATIONS
-    pub reserve_1: Uint128,
-    // Total cumulative reserves of token_2 in the pool
-    // DOES NOT AFFECT SWAP CALCULATIONS
-    pub reserve_2: Uint128,
-    // Store chain Identifier (from factory)
-    // The chain IDENTIFIER 'chain_id' does not need to match the chain_id of the chain the contracts are deployed on
-    pub chain_id: String,
-}
-
-pub const POOL_STATE: Item<PoolState> = Item::new("pool_state");
 
 // Map for pending swaps for user
 pub const PENDING_SWAPS: Map<(String, u128), SwapInfo> = Map::new("pending_swaps");
@@ -93,9 +73,11 @@ pub const PENDING_SWAPS_COUNT: Map<String, u128> = Map::new("pending_swaps_count
 pub fn generate_swap_req(
     deps: DepsMut,
     sender: String,
-    asset: TokenInfo,
+    asset_in: TokenInfo,
     asset_out: TokenInfo,
-    asset_amount: Uint128,
+    amount_in: Uint128,
+    min_amount_out: Uint128,
+    swaps: Vec<NextSwap>,
     timeout: IbcTimeout,
 ) -> Result<SwapInfo, ContractError> {
     let count = PENDING_SWAPS_COUNT
@@ -104,9 +86,11 @@ pub fn generate_swap_req(
 
     let rq_id = swap::generate_id(&sender, count);
     let request = SwapInfo {
-        asset,
+        asset_in,
         asset_out,
-        asset_amount,
+        amount_in,
+        min_amount_out,
+        swaps,
         timeout,
         swap_id: rq_id,
     };

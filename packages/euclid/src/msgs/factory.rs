@@ -1,26 +1,19 @@
 use crate::{
     pool::Pool,
+    swap::NextSwap,
     token::{PairInfo, Token, TokenInfo},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
 
-use super::pool::{
-    GetPairInfoResponse, GetPendingLiquidityResponse, GetPendingSwapsResponse,
-    GetPoolReservesResponse, GetVLPResponse,
-};
+use super::pool::{GetPendingLiquidityResponse, GetPendingSwapsResponse};
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
-    // // Pool Code ID
-    // pub pool_code_id: u64,
-
-    // Pool Instantiate Msg variables //
-    pub vlp_contract: String,
-    pub pool: Pool,
     pub chain_id: String,
+    pub escrow_code_id: u64,
 }
 
 #[cw_serde]
@@ -60,16 +53,19 @@ pub enum ExecuteMsg {
     // Pool ExecuteMsgs //
     // Add Liquidity Request to the VLP
     AddLiquidityRequest {
+        vlp_address: String,
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         timeout: Option<u64>,
     },
     ExecuteSwapRequest {
-        asset: TokenInfo,
-        asset_amount: Uint128,
+        asset_in: TokenInfo,
+        asset_out: TokenInfo,
+        amount_in: Uint128,
         min_amount_out: Uint128,
         timeout: Option<u64>,
+        swaps: Vec<NextSwap>,
     },
 
     // Recieve CW20 TOKENS structure
@@ -87,11 +83,6 @@ pub enum QueryMsg {
     #[returns(AllPoolsResponse)]
     GetAllPools {},
 
-    // Pool Queries //
-    #[returns(GetPairInfoResponse)]
-    PairInfo {},
-    #[returns(GetVLPResponse)]
-    GetVlp {},
     // Fetch pending swaps with pagination for a user
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
@@ -105,13 +96,11 @@ pub enum QueryMsg {
         lower_limit: Option<u128>,
         upper_limit: Option<u128>,
     },
-    #[returns(GetPoolReservesResponse)]
-    PoolReserves {},
 }
 
 #[cw_serde]
 pub struct GetPoolResponse {
-    pub pool: String,
+    pub pool: Pool,
 }
 // We define a custom struct for each query response
 #[cw_serde]
@@ -129,7 +118,7 @@ pub struct AllPoolsResponse {
 }
 #[cw_serde]
 pub struct PoolVlpResponse {
-    pub pool: String,
+    pub pool: Pool,
     pub vlp: String,
 }
 

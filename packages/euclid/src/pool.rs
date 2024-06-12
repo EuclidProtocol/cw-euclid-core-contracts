@@ -42,6 +42,7 @@ pub struct PoolRequest {
     pub pool_rq_id: String,
     // The channel where the pool is deployed
     pub channel: String,
+    pub pair: PairInfo,
 }
 
 // Function to extract sender from pool_rq_id

@@ -3,14 +3,11 @@ use euclid::{
     error::ContractError,
     msgs::{
         factory::{AllPoolsResponse, GetPoolResponse, PoolVlpResponse, StateResponse},
-        pool::{
-            GetPairInfoResponse, GetPendingLiquidityResponse, GetPendingSwapsResponse,
-            GetPoolReservesResponse, GetVLPResponse,
-        },
+        pool::{GetPendingLiquidityResponse, GetPendingSwapsResponse},
     },
 };
 
-use crate::state::{PENDING_LIQUIDITY, PENDING_SWAPS, POOL_STATE, STATE, VLP_TO_POOL};
+use crate::state::{PENDING_LIQUIDITY, PENDING_SWAPS, STATE, VLP_TO_POOL};
 
 // Returns the Pair Info of the Pair in the pool
 pub fn get_pool(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
@@ -40,24 +37,6 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
         .collect();
 
     to_json_binary(&AllPoolsResponse { pools }).map_err(Into::into)
-}
-
-// Pool Queries //
-
-// Returns the Pair Info of the Pair in the pool
-pub fn pair_info(deps: Deps) -> Result<Binary, ContractError> {
-    let state = POOL_STATE.load(deps.storage)?;
-    Ok(to_json_binary(&GetPairInfoResponse {
-        pair_info: state.pair_info,
-    })?)
-}
-
-// Returns the Pair Info of the Pair in the pool
-pub fn get_vlp(deps: Deps) -> Result<Binary, ContractError> {
-    let state = POOL_STATE.load(deps.storage)?;
-    Ok(to_json_binary(&GetVLPResponse {
-        vlp: state.vlp_contract,
-    })?)
 }
 
 // Returns the pending swaps for this pair with pagination
@@ -92,14 +71,5 @@ pub fn pending_liquidity(
 
     Ok(to_json_binary(&GetPendingLiquidityResponse {
         pending_liquidity,
-    })?)
-}
-
-// Returns the current reserves of tokens in the pool
-pub fn pool_reserves(deps: Deps) -> Result<Binary, ContractError> {
-    let state = POOL_STATE.load(deps.storage)?;
-    Ok(to_json_binary(&GetPoolReservesResponse {
-        reserve_1: state.reserve_1,
-        reserve_2: state.reserve_2,
     })?)
 }

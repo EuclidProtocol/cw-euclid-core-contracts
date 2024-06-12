@@ -46,7 +46,7 @@ pub fn execute_add_allowed_denom(
         !allowed_denoms.contains(&denom),
         ContractError::DuplicateDenominations {}
     );
-    allowed_denoms.push(denom);
+    allowed_denoms.push(denom.clone());
 
     ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
 
@@ -54,7 +54,7 @@ pub fn execute_add_allowed_denom(
     // The is_native will be overwriting once the denom is funded
     DENOM_TO_AMOUNT.save(
         deps.storage,
-        denom,
+        denom.clone(),
         &AmountAndType {
             amount: Uint128::zero(),
             is_native: true,
@@ -129,7 +129,7 @@ pub fn execute_deposit_native(
         );
 
         // Check current balance of denom
-        let current_balance = DENOM_TO_AMOUNT.load(deps.storage, token.denom)?;
+        let current_balance = DENOM_TO_AMOUNT.load(deps.storage, token.denom.clone())?;
 
         // Add the sent amount to current balance and save it
         DENOM_TO_AMOUNT.save(
@@ -193,12 +193,12 @@ pub fn execute_deposit_cw20(
     );
 
     // Check current balance of denom
-    let current_balance = DENOM_TO_AMOUNT.load(deps.storage, denom)?;
+    let current_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.clone())?;
 
     // Add the sent amount to current balance and save it
     DENOM_TO_AMOUNT.save(
         deps.storage,
-        denom,
+        denom.clone(),
         &AmountAndType {
             amount: current_balance.amount.checked_add(amount)?,
             is_native: false,
@@ -283,7 +283,7 @@ pub fn execute_withdraw(
         // If denom is native
         if amount.is_native {
             messages.push(CosmosMsg::Bank(BankMsg::Send {
-                to_address: recipient,
+                to_address: recipient.clone(),
                 amount: vec![Coin {
                     denom: denom.to_string(),
                     amount: amount_to_send,
