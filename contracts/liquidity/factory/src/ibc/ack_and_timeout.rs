@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement, IbcBasicResponse,
-    IbcPacketAckMsg, IbcPacketTimeoutMsg, StdResult, SubMsg, Uint128, WasmMsg,
+    IbcPacketAckMsg, IbcPacketTimeoutMsg, StdResult, SubMsg, WasmMsg,
 };
 use euclid::{
     error::ContractError,
@@ -98,7 +98,7 @@ pub fn ibc_packet_timeout(
 // TODO change this function
 pub fn ack_pool_creation(
     deps: DepsMut,
-    pair_info: PairInfo,
+    _pair_info: PairInfo,
     res: AcknowledgementMsg<PoolCreationResponse>,
     pool_rq_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
@@ -108,7 +108,7 @@ pub fn ack_pool_creation(
             req: pool_rq_id.clone(),
         })?;
     // Load the state
-    let state = STATE.load(deps.storage)?;
+
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {

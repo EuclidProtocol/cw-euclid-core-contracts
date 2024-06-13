@@ -5,8 +5,8 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 
 use crate::execute::{
-    add_liquidity_request, execute_request_add_allowed_denom, execute_request_pool_creation,
-    execute_swap_request, receive_cw20,
+    add_liquidity_request, execute_request_add_allowed_denom, execute_request_deregister_denom,
+    execute_request_pool_creation, execute_swap_request, receive_cw20,
 };
 use crate::query::{get_pool, pending_liquidity, pending_swaps, query_all_pools, query_state};
 use crate::reply;
@@ -54,6 +54,9 @@ pub fn execute(
     match msg {
         ExecuteMsg::RequestAddAllowedDenom { denom, token_id } => {
             execute_request_add_allowed_denom(deps, env, info, token_id, denom)
+        }
+        ExecuteMsg::RequestDeregisterDenom { denom, token_id } => {
+            execute_request_deregister_denom(deps, env, info, token_id, denom)
         }
         ExecuteMsg::RequestPoolCreation { pair_info, timeout } => {
             execute_request_pool_creation(deps, env, info, pair_info, timeout)

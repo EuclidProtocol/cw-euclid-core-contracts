@@ -23,6 +23,10 @@ pub enum ExecuteMsg {
         denom: String,
         token_id: Token,
     },
+    RequestDeregisterDenom {
+        denom: String,
+        token_id: Token,
+    },
 
     // // Add Liquidity Request to the VLP
     // AddLiquidity {

@@ -80,7 +80,7 @@ pub fn execute_disallow_denom(
     //TODO refund the disallowed funds
     Ok(Response::new()
         .add_attribute("method", "disallow_denom")
-        .add_attribute("new_denom", denom))
+        .add_attribute("deregistered_denom", denom))
 }
 
 pub fn execute_deposit_native(

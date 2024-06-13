@@ -403,6 +403,33 @@ pub fn execute_request_add_allowed_denom(
     }
 }
 
+pub fn execute_request_deregister_denom(
+    deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    token: Token,
+    denom: String,
+) -> Result<Response, ContractError> {
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone())?;
+    match escrow_address {
+        Some(escrow_address) => {
+            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_address.into_string(),
+                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom {
+                    denom: denom.clone(),
+                })?,
+                funds: vec![],
+            });
+            Ok(Response::new()
+                .add_submessage(SubMsg::new(msg))
+                .add_attribute("method", "request_disallow_denom")
+                .add_attribute("token", token.id)
+                .add_attribute("denom", denom))
+        }
+        None => Err(ContractError::EscrowDoesNotExist {}),
+    }
+}
+
 pub fn execute_request_disallow_denom(
     deps: DepsMut,
     _env: Env,

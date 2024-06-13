@@ -4,7 +4,7 @@ use cw_storage_plus::{Item, Map};
 use euclid::{
     error::ContractError,
     liquidity::{self, LiquidityTxInfo},
-    pool::{self, Pool, PoolRequest},
+    pool::{self, PoolRequest},
     swap::{self, NextSwap, SwapInfo},
     token::{PairInfo, Token, TokenInfo},
 };
