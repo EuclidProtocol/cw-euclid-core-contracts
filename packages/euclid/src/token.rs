@@ -213,6 +213,11 @@ impl PairInfo {
             token_2: self.token_2.token.clone(),
         }
     }
+
+    pub fn get_vec_token_info(&self) -> Vec<TokenInfo> {
+        let tokens: Vec<TokenInfo> = vec![self.token_1.clone(), self.token_2.clone()];
+        tokens
+    }
 }
 
 // Struct to handle Acknowledgement Response for a Pool Creation Request

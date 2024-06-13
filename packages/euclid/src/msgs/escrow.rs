@@ -8,6 +8,7 @@ pub struct InstantiateMsg {
     // The only allowed Token ID for the contract
     pub token_id: Token,
     // Possibly add allowed denoms in Instantiation
+    pub allowed_denom: Option<String>,
 }
 
 #[cw_serde]

@@ -7,6 +7,7 @@ use cosmwasm_std::{
 use euclid::{
     error::ContractError,
     liquidity,
+    msgs::escrow::ExecuteMsg as EscrowExecuteMsg,
     pool::{InstantiateEscrowResponse, LiquidityResponse, PoolCreationResponse, WithdrawResponse},
     swap::{self, SwapResponse},
     token::{PairInfo, Token},
@@ -37,12 +38,12 @@ pub fn ibc_packet_ack(
             let res: AcknowledgementMsg<PoolCreationResponse> =
                 from_json(ack.acknowledgement.data)?;
 
-            ack_pool_creation(deps, pair_info, res, pool_rq_id)
+            ack_pool_creation(deps, env, pair_info, res, pool_rq_id)
         }
 
         ChainIbcExecuteMsg::AddLiquidity {
             liquidity_id,
-            pool_address,
+            pool_address: _,
             ..
         } => {
             // Process acknowledgment for add liquidity
@@ -98,7 +99,8 @@ pub fn ibc_packet_timeout(
 // TODO change this function
 pub fn ack_pool_creation(
     deps: DepsMut,
-    _pair_info: PairInfo,
+    env: Env,
+    pair_info: PairInfo,
     res: AcknowledgementMsg<PoolCreationResponse>,
     pool_rq_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
@@ -107,31 +109,64 @@ pub fn ack_pool_creation(
         .ok_or(ContractError::PoolRequestDoesNotExists {
             req: pool_rq_id.clone(),
         })?;
-    // Load the state
+
+    // Remove pool request from MAP
+    POOL_REQUESTS.remove(deps.storage, pool_rq_id);
+
+    // Load state to get escrow code id in case we need to instantiate
+    let escrow_code_id = STATE.load(deps.storage)?.escrow_code_id;
 
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
-            // Remove pool request from MAP
-            POOL_REQUESTS.remove(deps.storage, pool_rq_id);
-
             VLP_TO_POOL.save(
                 deps.storage,
                 data.vlp_contract.clone(),
                 &existing_req.pair_info,
             )?;
-            Ok(IbcBasicResponse::new()
+            // Prepare response
+            let mut res = IbcBasicResponse::new()
                 .add_attribute("method", "pool_creation")
-                .add_attribute("vlp", data.vlp_contract))
+                .add_attribute("vlp", data.vlp_contract);
+            // Collects PairInfo into a vector of Token Info for easy iteration
+            let tokens = pair_info.get_vec_token_info();
+            for token in tokens {
+                let escrow_contract = TOKEN_TO_ESCROW.may_load(deps.storage, token.get_token())?;
+                match escrow_contract {
+                    Some(escrow_address) => {
+                        // Add allowed denom in existing escrow contract
+                        let add_denom_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+                            contract_addr: escrow_address.into_string(),
+                            msg: to_json_binary(&EscrowExecuteMsg::AddAllowedDenom {
+                                denom: token.get_denom(),
+                            })?,
+                            funds: vec![],
+                        });
+                        res = res.add_message(add_denom_msg);
+                    }
+
+                    None => {
+                        // Instantiate escrow contract
+                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                            admin: Some(env.contract.address.clone().into_string()),
+                            code_id: escrow_code_id,
+                            msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
+                                token_id: token.get_token(),
+                                allowed_denom: Some(token.get_denom()),
+                            })?,
+                            funds: vec![],
+                            label: "".to_string(),
+                        });
+                        res = res.add_message(init_msg);
+                    }
+                }
+            }
+            Ok(res)
         }
 
-        AcknowledgementMsg::Error(err) => {
-            // Remove pool request from MAP
-            POOL_REQUESTS.remove(deps.storage, pool_rq_id);
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "reject_pool_request")
-                .add_attribute("error", err.clone()))
-        }
+        AcknowledgementMsg::Error(err) => Ok(IbcBasicResponse::new()
+            .add_attribute("method", "reject_pool_request")
+            .add_attribute("error", err.clone())),
     }
 }
 
@@ -148,7 +183,7 @@ pub fn ack_swap_request(
             let extracted_swap_id = swap::parse_swap_id(&swap_id)?;
 
             // Validate that the pending swap exists for the sender
-            let swap_info = PENDING_SWAPS.load(
+            let _swap_info = PENDING_SWAPS.load(
                 deps.storage,
                 (extracted_swap_id.sender.clone(), extracted_swap_id.index),
             )?;
@@ -202,7 +237,7 @@ pub fn ack_add_liquidity(
 ) -> Result<IbcBasicResponse, ContractError> {
     // Check whether res is an error or not
     match res {
-        AcknowledgementMsg::Ok(data) => {
+        AcknowledgementMsg::Ok(_data) => {
             let extracted_liquidity_id = liquidity::parse_liquidity_id(&liquidity_id)?;
 
             // Validate that the pending exists for the sender
@@ -282,7 +317,7 @@ pub fn ack_request_withdraw(
 ) -> Result<IbcBasicResponse, ContractError> {
     match res {
         AcknowledgementMsg::Ok(_) => {
-            let escrow_address = TOKEN_TO_ESCROW
+            let _escrow_address = TOKEN_TO_ESCROW
                 .load(deps.storage, token_id.clone())
                 .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
 
@@ -309,13 +344,14 @@ pub fn ack_request_instantiate_escrow(
         AcknowledgementMsg::Ok(data) => {
             let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token_id.clone())?;
             match escrow_address {
-                Some(escrow_address) => Err(ContractError::EscrowAlreadyExists {}),
+                Some(_) => Err(ContractError::EscrowAlreadyExists {}),
                 None => {
                     let msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                         admin: Some(env.contract.address.into_string()),
                         code_id: data.escrow_code_id,
                         msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
                             token_id: token_id.clone(),
+                            allowed_denom: None,
                         })?,
                         funds: vec![],
                         label: "".to_string(),
