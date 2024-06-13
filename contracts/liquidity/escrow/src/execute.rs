@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo,
     Response, StdResult, Uint128, WasmMsg,
@@ -14,20 +12,9 @@ use euclid::{
 
 use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
 
-fn check_duplicates(denoms: Vec<String>) -> Result<(), ContractError> {
-    let mut seen = HashSet::new();
-    for denom in denoms {
-        if seen.contains(&denom) {
-            return Err(ContractError::DuplicateDenominations {});
-        }
-        seen.insert(denom);
-    }
-    Ok(())
-}
-
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     denom: String,
 ) -> Result<Response, ContractError> {
@@ -68,7 +55,7 @@ pub fn execute_add_allowed_denom(
 
 pub fn execute_disallow_denom(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     denom: String,
 ) -> Result<Response, ContractError> {
@@ -98,7 +85,7 @@ pub fn execute_disallow_denom(
 
 pub fn execute_deposit_native(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
@@ -139,7 +126,7 @@ pub fn execute_deposit_native(
                 amount: current_balance.amount.checked_add(token.amount)?,
                 is_native: true,
             },
-        );
+        )?;
     }
 
     Ok(Response::new().add_attribute("method", "deposit"))
@@ -149,7 +136,7 @@ pub fn execute_deposit_native(
 ///
 /// * **cw20_msg** is the CW20 message that has to be processed.
 pub fn receive_cw20(
-    mut deps: DepsMut,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
@@ -177,8 +164,8 @@ pub fn receive_cw20(
 
 pub fn execute_deposit_cw20(
     deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
+    _env: Env,
+    _info: MessageInfo,
     amount: Uint128,
     denom: String,
 ) -> Result<Response, ContractError> {
@@ -203,7 +190,7 @@ pub fn execute_deposit_cw20(
             amount: current_balance.amount.checked_add(amount)?,
             is_native: false,
         },
-    );
+    )?;
 
     Ok(Response::new()
         .add_attribute("method", "deposit_cw20")
@@ -236,7 +223,7 @@ pub fn execute_withdraw(
 
     // Ensure that the amount desired doesn't exceed the current balance
     let mut sum = Uint128::zero();
-    let mut total_sum: Result<(), ContractError> = DENOM_TO_AMOUNT
+    let mut _total_sum: Result<(), ContractError> = DENOM_TO_AMOUNT
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .try_for_each(|item| {
             let (_, value) = item?;
@@ -256,7 +243,7 @@ pub fn execute_withdraw(
         })
         .collect::<StdResult<Vec<(String, AmountAndType)>>>()?;
     let mut amount_to_withdraw = amount;
-    let mut amount_to_send = Uint128::zero();
+    let mut amount_to_send: Uint128;
 
     // Iterate through the amounts and deduct the required amount
     for (denom, amount) in &mut amounts {
