@@ -2,6 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, DepsMut, IbcTimeout, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
+    common::generate_id,
     error::ContractError,
     liquidity::{self, LiquidityTxInfo},
     pool::{self, PoolRequest},
@@ -50,7 +51,7 @@ pub fn generate_pool_req(
         .may_load(deps.storage, sender.to_string())?
         .unwrap_or_default();
 
-    let pool_rq_id = pool::generate_id(sender.as_str(), count);
+    let pool_rq_id = generate_id(sender.as_str(), count);
     let pool_request = PoolRequest {
         chain,
         channel,
@@ -86,7 +87,7 @@ pub fn generate_swap_req(
         .may_load(deps.storage, sender.clone())?
         .unwrap_or_default();
 
-    let rq_id = swap::generate_id(&sender, count);
+    let rq_id = generate_id(&sender, count);
     let request = SwapInfo {
         asset_in,
         asset_out,
@@ -127,7 +128,7 @@ pub fn generate_liquidity_req(
         .may_load(deps.storage, sender.clone())?
         .unwrap_or_default();
 
-    let rq_id = liquidity::generate_id(&sender, count);
+    let rq_id = generate_id(&sender, count);
     let request = LiquidityTxInfo {
         token_1_liquidity,
         token_2_liquidity,

@@ -39,10 +39,6 @@ pub struct SwapResponse {
     pub swap_id: String,
 }
 
-pub fn generate_id(sender: &str, count: u128) -> String {
-    format!("{sender}-{count}")
-}
-
 #[cw_serde]
 pub struct SwapExtractedId {
     pub sender: String,

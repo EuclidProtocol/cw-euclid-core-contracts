@@ -13,10 +13,6 @@ pub struct LiquidityTxInfo {
     pub pair_info: PairInfo,
 }
 
-pub fn generate_id(sender: &str, count: u128) -> String {
-    format!("{sender}-{count}")
-}
-
 #[cw_serde]
 pub struct LiquidityExtractedId {
     pub sender: String,

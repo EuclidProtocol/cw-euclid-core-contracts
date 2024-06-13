@@ -1,3 +1,4 @@
+pub mod common;
 pub mod cw20;
 pub mod error;
 pub mod fee;
