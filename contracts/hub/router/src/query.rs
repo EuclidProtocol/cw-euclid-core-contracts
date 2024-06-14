@@ -12,6 +12,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&StateResponse {
         admin: state.admin,
         vlp_code_id: state.vlp_code_id,
+        vcoin_address: state.vcoin_address,
     })?)
 }
 

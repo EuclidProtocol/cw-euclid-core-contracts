@@ -1,4 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_std::Addr;
 
 use crate::token::Token;
 #[cw_serde]
@@ -49,6 +50,7 @@ pub struct Chain {
 pub struct StateResponse {
     pub admin: String,
     pub vlp_code_id: u64,
+    pub vcoin_address: Option<Addr>,
 }
 
 #[cw_serde]
