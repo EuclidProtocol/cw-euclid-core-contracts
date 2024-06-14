@@ -7,18 +7,19 @@ use cosmwasm_std::{
 use euclid::{
     error::ContractError,
     fee::Fee,
-    msgs,
+    msgs::{self, vcoin::ExecuteMint},
     swap::NextSwap,
     token::{PairInfo, Token},
+    vcoin::BalanceKey,
 };
 use euclid_ibc::{ack::make_ack_fail, msg::ChainIbcExecuteMsg};
 
 use crate::{
     reply::{
-        ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
-        VLP_POOL_REGISTER_REPLY_ID,
+        ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_MINT_REPLY_ID,
+        VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
-    state::{CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID, STATE, VLPS},
+    state::{CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID, ESCROW_BALANCES, STATE, VLPS},
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -85,6 +86,7 @@ pub fn do_ibc_packet_receive(
         } => ibc_execute_swap(
             deps,
             env,
+            chain.factory_chain_id,
             to_chain_id,
             to_address,
             asset_in,
@@ -166,27 +168,93 @@ fn execute_request_pool_creation(
 }
 
 fn ibc_execute_add_liquidity(
-    _deps: DepsMut,
-    _env: Env,
+    deps: DepsMut,
+    env: Env,
     chain_id: String,
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
     vlp_address: String,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    let pair: euclid::msgs::vlp::GetLiquidityResponse = deps.querier.query_wasm_smart(
+        vlp_address.clone(),
+        &euclid::msgs::vlp::QueryMsg::Liquidity {},
+    )?;
+
     let add_liquidity_msg = msgs::vlp::ExecuteMsg::AddLiquidity {
-        chain_id,
+        chain_id: chain_id.clone(),
         token_1_liquidity,
         token_2_liquidity,
         slippage_tolerance,
     };
 
     let msg = WasmMsg::Execute {
-        contract_addr: vlp_address,
+        contract_addr: vlp_address.clone(),
         msg: to_json_binary(&add_liquidity_msg)?,
         funds: vec![],
     };
+
+    let vcoin_address = STATE
+        .load(deps.storage)?
+        .vcoin_address
+        .ok_or(ContractError::Generic {
+            err: "vcoin address doesn't exist".to_string(),
+        })?;
+
+    let mint_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Mint(ExecuteMint {
+        amount: token_1_liquidity,
+        balance_key: BalanceKey {
+            chain_id: env.block.chain_id.clone(),
+            address: vlp_address.to_string(),
+            token_id: pair.pair.token_1.id.clone(),
+        },
+    });
+
+    let mint_vcoin_msg = WasmMsg::Execute {
+        contract_addr: vcoin_address.to_string(),
+        msg: to_json_binary(&mint_vcoin_msg)?,
+        funds: vec![],
+    };
+
+    let mint_vcoin_2_msg = euclid::msgs::vcoin::ExecuteMsg::Mint(ExecuteMint {
+        amount: token_2_liquidity,
+        balance_key: BalanceKey {
+            chain_id: env.block.chain_id,
+            address: vlp_address.to_string(),
+            token_id: pair.pair.token_2.id.clone(),
+        },
+    });
+
+    let mint_vcoin_2_msg = WasmMsg::Execute {
+        contract_addr: vcoin_address.to_string(),
+        msg: to_json_binary(&mint_vcoin_2_msg)?,
+        funds: vec![],
+    };
+
+    let token_1_escrow_key = (pair.pair.token_1, chain_id.clone());
+    let token_1_escrow_balance = ESCROW_BALANCES
+        .may_load(deps.storage, token_1_escrow_key.clone())?
+        .unwrap_or(Uint128::zero());
+
+    ESCROW_BALANCES.save(
+        deps.storage,
+        token_1_escrow_key,
+        &token_1_escrow_balance.checked_add(token_1_liquidity)?,
+    )?;
+
+    let token_2_escrow_key = (pair.pair.token_2, chain_id.clone());
+    let token_2_escrow_balance = ESCROW_BALANCES
+        .may_load(deps.storage, token_2_escrow_key.clone())?
+        .unwrap_or(Uint128::zero());
+    ESCROW_BALANCES.save(
+        deps.storage,
+        token_2_escrow_key,
+        &token_2_escrow_balance.checked_add(token_2_liquidity)?,
+    )?;
+
     Ok(IbcReceiveResponse::new()
+        .add_submessage(SubMsg::reply_always(mint_vcoin_msg, VCOIN_MINT_REPLY_ID))
+        .add_submessage(SubMsg::reply_always(mint_vcoin_2_msg, VCOIN_MINT_REPLY_ID))
         .add_submessage(SubMsg::reply_always(msg, ADD_LIQUIDITY_REPLY_ID))
         .set_ack(make_ack_fail("Reply Failed".to_string())?))
 }
@@ -214,8 +282,9 @@ fn ibc_execute_remove_liquidity(
 }
 
 fn ibc_execute_swap(
-    _deps: DepsMut,
-    _env: Env,
+    deps: DepsMut,
+    env: Env,
+    factory_chain: String,
     to_chain_id: String,
     to_address: String,
     asset_in: Token,
@@ -224,9 +293,60 @@ fn ibc_execute_swap(
     swap_id: String,
     swaps: Vec<NextSwap>,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    let all_vlps: Result<Vec<String>, ContractError> = VLPS
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .map(|item| {
+            let item = item?;
+            Ok(item.1)
+        })
+        .collect();
+
+    let all_vlps = all_vlps?;
+
+    // Do an early check that all vlps are present
+    for swap in swaps.clone() {
+        ensure!(
+            all_vlps.contains(&swap.vlp_address),
+            ContractError::UnsupportedOperation {}
+        );
+    }
+
     let (first_swap, next_swaps) = swaps.split_first().ok_or(ContractError::Generic {
         err: "Swaps cannot be empty".to_string(),
     })?;
+
+    let token_escrow_key = (asset_in.clone(), factory_chain.clone());
+    let token_1_escrow_balance = ESCROW_BALANCES
+        .may_load(deps.storage, token_escrow_key.clone())?
+        .unwrap_or(Uint128::zero());
+
+    ESCROW_BALANCES.save(
+        deps.storage,
+        token_escrow_key,
+        &token_1_escrow_balance.checked_add(amount_in)?,
+    )?;
+
+    let vcoin_address = STATE
+        .load(deps.storage)?
+        .vcoin_address
+        .ok_or(ContractError::Generic {
+            err: "vcoin address doesn't exist".to_string(),
+        })?;
+
+    let mint_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Mint(ExecuteMint {
+        amount: amount_in,
+        balance_key: BalanceKey {
+            chain_id: env.block.chain_id.clone(),
+            address: first_swap.vlp_address.to_string(),
+            token_id: asset_in.id.clone(),
+        },
+    });
+
+    let mint_vcoin_msg = WasmMsg::Execute {
+        contract_addr: vcoin_address.to_string(),
+        msg: to_json_binary(&mint_vcoin_msg)?,
+        funds: vec![],
+    };
 
     let swap_msg = msgs::vlp::ExecuteMsg::Swap {
         to_address,
@@ -244,6 +364,7 @@ fn ibc_execute_swap(
         funds: vec![],
     };
     Ok(IbcReceiveResponse::new()
+        .add_submessage(SubMsg::reply_always(mint_vcoin_msg, VCOIN_MINT_REPLY_ID))
         .add_submessage(SubMsg::reply_always(msg, SWAP_REPLY_ID))
         .set_ack(make_ack_fail("Reply Failed".to_string())?))
 }

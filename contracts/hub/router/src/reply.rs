@@ -19,6 +19,10 @@ pub const SWAP_REPLY_ID: u64 = 5;
 pub const VCOIN_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 
+pub const VCOIN_MINT_REPLY_ID: u64 = 8;
+pub const VCOIN_BURN_REPLY_ID: u64 = 9;
+pub const VCOIN_TRANSFER_REPLY_ID: u64 = 10;
+
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::InstantiateError { err }),
@@ -161,5 +165,32 @@ pub fn on_vcoin_instantiate_reply(_deps: DepsMut, msg: Reply) -> Result<Response
                 .add_attribute("action", "reply_vcoin_instantiate")
                 .add_attribute("vcoin_address", vcoin_address))
         }
+    }
+}
+
+pub fn on_vcoin_mint_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => Ok(Response::new()
+            .add_attribute("action", "reply_mint_vcoin")
+            .add_attribute("mint_success", "true")),
+    }
+}
+
+pub fn on_vcoin_burn_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => Ok(Response::new()
+            .add_attribute("action", "reply_burn_vcoin")
+            .add_attribute("burn_success", "true")),
+    }
+}
+
+pub fn on_vcoin_transfer_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => Ok(Response::new()
+            .add_attribute("action", "reply_transfer_vcoin")
+            .add_attribute("transfer_success", "true")),
     }
 }

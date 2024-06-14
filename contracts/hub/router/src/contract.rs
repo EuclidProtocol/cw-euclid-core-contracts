@@ -8,8 +8,9 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 
 use crate::reply::{
-    self, ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
-    VCOIN_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    self, ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_BURN_REPLY_ID,
+    VCOIN_INSTANTIATE_REPLY_ID, VCOIN_MINT_REPLY_ID, VCOIN_TRANSFER_REPLY_ID,
+    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, STATE};
 use crate::{execute, query};
@@ -30,7 +31,6 @@ pub fn instantiate(
         vlp_code_id: msg.vlp_code_id,
         admin: info.sender.to_string(),
         vcoin_address: None,
-        escrow_balance_address: None,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
@@ -94,6 +94,10 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
         SWAP_REPLY_ID => reply::on_swap_reply(deps, msg),
 
         VCOIN_INSTANTIATE_REPLY_ID => reply::on_vcoin_instantiate_reply(deps, msg),
+
+        VCOIN_MINT_REPLY_ID => reply::on_vcoin_mint_reply(deps, msg),
+        VCOIN_BURN_REPLY_ID => reply::on_vcoin_burn_reply(deps, msg),
+        VCOIN_TRANSFER_REPLY_ID => reply::on_vcoin_transfer_reply(deps, msg),
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",

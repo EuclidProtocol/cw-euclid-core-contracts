@@ -98,7 +98,7 @@ pub fn execute_swap_request(
     )?;
 
     ensure!(
-        token_allowed.allowed == true,
+        token_allowed.allowed,
         ContractError::UnsupportedDenomination {}
     );
 

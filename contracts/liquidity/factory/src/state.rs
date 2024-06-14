@@ -4,9 +4,9 @@ use cw_storage_plus::{Item, Map};
 use euclid::{
     common::generate_id,
     error::ContractError,
-    liquidity::{self, LiquidityTxInfo},
-    pool::{self, PoolRequest},
-    swap::{self, NextSwap, SwapInfo},
+    liquidity::LiquidityTxInfo,
+    pool::PoolRequest,
+    swap::{NextSwap, SwapInfo},
     token::{PairInfo, Token, TokenInfo},
 };
 

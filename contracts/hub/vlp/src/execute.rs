@@ -96,6 +96,9 @@ pub fn add_liquidity(
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
 ) -> Result<Response, ContractError> {
+    // TODO: Check for pool liquidity balance and balance in vcoin
+    // Router mints new tokens for this vlp so token_liquidity = vcoin_balance - pool_current_liquidity
+
     // Get the pool for the chain_id provided
     let mut pool = POOLS.load(deps.storage, &chain_id)?;
     let mut state = STATE.load(deps.storage)?;
@@ -240,6 +243,9 @@ pub fn execute_swap(
     swap_id: String,
     next_swaps: Vec<NextSwap>,
 ) -> Result<Response, ContractError> {
+    // TODO: Check for pool liquidity balance and balance in vcoin
+    // Router mints new tokens for this vlp so amount_in = vcoin_balance - pool_current_liquidity
+
     // Get the pool for the chain_id provided
     let mut pool = POOLS.load(deps.storage, &to_chain_id)?;
     let mut state = state::STATE.load(deps.storage)?;
@@ -372,7 +378,7 @@ pub fn execute_swap(
         Some((next_swap, forward_swaps)) => {
             // There are more swaps
             let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
-                amount: swap_response.amount_out.clone(),
+                amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.id.clone(),
 
                 // Source Address
