@@ -8,7 +8,7 @@ use euclid::{
 };
 use euclid_ibc::msg::AcknowledgementMsg;
 
-use crate::state::VLPS;
+use crate::state::{STATE, VLPS};
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
@@ -150,7 +150,7 @@ pub fn on_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractErr
     }
 }
 
-pub fn on_vcoin_instantiate_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_vcoin_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -159,11 +159,13 @@ pub fn on_vcoin_instantiate_reply(_deps: DepsMut, msg: Reply) -> Result<Response
                     err: res.to_string(),
                 })?;
 
-            let vcoin_address = instantiate_data.contract_address;
+            let mut state = STATE.load(deps.storage)?;
+            state.vcoin_address = Some(deps.api.addr_validate(&instantiate_data.contract_address)?);
+            STATE.save(deps.storage, &state)?;
 
             Ok(Response::new()
                 .add_attribute("action", "reply_vcoin_instantiate")
-                .add_attribute("vcoin_address", vcoin_address))
+                .add_attribute("vcoin_address", instantiate_data.contract_address))
         }
     }
 }
