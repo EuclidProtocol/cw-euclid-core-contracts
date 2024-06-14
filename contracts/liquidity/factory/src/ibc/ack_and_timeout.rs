@@ -131,37 +131,37 @@ pub fn ack_pool_creation(
                 .add_attribute("vlp", data.vlp_contract);
             // Collects PairInfo into a vector of Token Info for easy iteration
             let tokens = pair_info.get_vec_token_info();
-            for token in tokens {
-                let escrow_contract = TOKEN_TO_ESCROW.may_load(deps.storage, token.get_token())?;
-                match escrow_contract {
-                    Some(escrow_address) => {
-                        // Add allowed denom in existing escrow contract
-                        let add_denom_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: escrow_address.into_string(),
-                            msg: to_json_binary(&EscrowExecuteMsg::AddAllowedDenom {
-                                denom: token.get_denom(),
-                            })?,
-                            funds: vec![],
-                        });
-                        res = res.add_message(add_denom_msg);
-                    }
+            // for token in tokens {
+            //     let escrow_contract = TOKEN_TO_ESCROW.may_load(deps.storage, token.get_token())?;
+            //     match escrow_contract {
+            //         Some(escrow_address) => {
+            //             // Add allowed denom in existing escrow contract
+            //             let add_denom_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+            //                 contract_addr: escrow_address.into_string(),
+            //                 msg: to_json_binary(&EscrowExecuteMsg::AddAllowedDenom {
+            //                     denom: token.get_denom(),
+            //                 })?,
+            //                 funds: vec![],
+            //             });
+            //             res = res.add_message(add_denom_msg);
+            //         }
 
-                    None => {
-                        // Instantiate escrow contract
-                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                            admin: Some(env.contract.address.clone().into_string()),
-                            code_id: escrow_code_id,
-                            msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
-                                token_id: token.get_token(),
-                                allowed_denom: Some(token.get_denom()),
-                            })?,
-                            funds: vec![],
-                            label: "".to_string(),
-                        });
-                        res = res.add_message(init_msg);
-                    }
-                }
-            }
+            //         None => {
+            //             // Instantiate escrow contract
+            //             let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+            //                 admin: Some(env.contract.address.clone().into_string()),
+            //                 code_id: escrow_code_id,
+            //                 msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
+            //                     token_id: token.get_token(),
+            //                     allowed_denom: Some(token.get_denom()),
+            //                 })?,
+            //                 funds: vec![],
+            //                 label: "".to_string(),
+            //             });
+            //             res = res.add_message(init_msg);
+            //         }
+            //     }
+            // }
             Ok(res)
         }
 
