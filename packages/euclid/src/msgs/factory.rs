@@ -1,5 +1,4 @@
 use crate::{
-    pool::Pool,
     swap::NextSwap,
     token::{PairInfo, Token, TokenInfo},
 };

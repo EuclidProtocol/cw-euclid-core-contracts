@@ -1,13 +1,14 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement, IbcBasicResponse,
+    coin, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement, IbcBasicResponse,
     IbcPacketAckMsg, IbcPacketTimeoutMsg, StdResult, SubMsg, WasmMsg,
 };
+use cw20::Cw20ReceiveMsg;
 use euclid::{
     error::ContractError,
     liquidity,
-    msgs::escrow::ExecuteMsg as EscrowExecuteMsg,
+    msgs::{escrow::ExecuteMsg as EscrowExecuteMsg, pool::Cw20HookMsg},
     pool::{InstantiateEscrowResponse, LiquidityResponse, PoolCreationResponse, WithdrawResponse},
     swap::{self, SwapResponse},
     token::{PairInfo, Token},
@@ -183,7 +184,7 @@ pub fn ack_swap_request(
             let extracted_swap_id = swap::parse_swap_id(&swap_id)?;
 
             // Validate that the pending swap exists for the sender
-            let _swap_info = PENDING_SWAPS.load(
+            let swap_info = PENDING_SWAPS.load(
                 deps.storage,
                 (extracted_swap_id.sender.clone(), extracted_swap_id.index),
             )?;
@@ -193,9 +194,33 @@ pub fn ack_swap_request(
                 (extracted_swap_id.sender.clone(), extracted_swap_id.index),
             );
 
-            // TODO:: Add msg to send these funds to escrow
+            // TODO:: Add msg to send asset_in to escrow
+            let asset_in = swap_info.asset_in;
+
+            // Get corresponding escrow
+            let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.get_token())?;
+
+            let send_msg: CosmosMsg = if asset_in.is_native() {
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: escrow_address.into_string(),
+                    msg: to_json_binary(&EscrowExecuteMsg::DepositNative {})?,
+                    funds: vec![coin(data.amount_in.u128(), asset_in.get_denom())],
+                })
+            } else {
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: escrow_address.into_string(),
+                    msg: to_json_binary(&EscrowExecuteMsg::Receive(Cw20ReceiveMsg {
+                        //TODO Unsure what to set the sender as
+                        sender: asset_in.get_denom(),
+                        amount: data.amount_in,
+                        msg: to_json_binary(&Cw20HookMsg::Deposit {})?,
+                    }))?,
+                    funds: vec![],
+                })
+            };
 
             Ok(IbcBasicResponse::new()
+                .add_message(send_msg)
                 .add_attribute("method", "process_successfull_swap")
                 .add_attribute("swap_response", format!("{data:?}")))
         }
