@@ -60,7 +60,11 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(GetSwapResponse)]
-    SimulateSwap { asset: Token, asset_amount: Uint128 },
+    SimulateSwap {
+        asset: Token,
+        asset_amount: Uint128,
+        swaps: Vec<NextSwap>,
+    },
     // Queries the total reserve of the pair in the VLP
     #[returns(GetLiquidityResponse)]
     Liquidity {},
@@ -80,7 +84,8 @@ pub enum QueryMsg {
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct GetSwapResponse {
-    pub token_out: Uint128,
+    pub amount_out: Uint128,
+    pub asset_out: Token,
 }
 
 #[cw_serde]

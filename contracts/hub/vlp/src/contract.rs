@@ -100,7 +100,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::SimulateSwap {
             asset,
             asset_amount,
-        } => query_simulate_swap(deps, asset, asset_amount),
+            swaps,
+        } => query_simulate_swap(deps, asset, asset_amount, swaps),
         QueryMsg::Liquidity {} => query_liquidity(deps),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),

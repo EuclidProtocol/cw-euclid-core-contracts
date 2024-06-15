@@ -41,7 +41,7 @@ pub const POOL_REQUESTS: Map<String, PoolRequest> = Map::new("request_to_pool");
 pub const POOL_REQUEST_COUNT: Map<String, u128> = Map::new("request_to_pool_count");
 
 pub fn generate_pool_req(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     sender: &Addr,
     chain: String,
     channel: String,

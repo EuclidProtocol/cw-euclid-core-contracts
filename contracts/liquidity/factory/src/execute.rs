@@ -18,7 +18,7 @@ use crate::state::{
 
 // Function to send IBC request to Router in VLS to create a new pool
 pub fn execute_request_pool_creation(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     pair_info: PairInfo,
@@ -35,7 +35,7 @@ pub fn execute_request_pool_creation(
 
     // Create a Request in state
     let pool_request = generate_pool_req(
-        deps,
+        &mut deps,
         &info.sender,
         env.block.chain_id,
         channel.clone(),
