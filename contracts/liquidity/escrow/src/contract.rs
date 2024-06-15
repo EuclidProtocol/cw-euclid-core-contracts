@@ -10,8 +10,8 @@ use euclid::error::ContractError;
 // use cw2::set_contract_version;
 
 use crate::execute::{
-    execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom, execute_withdraw,
-    receive_cw20,
+    self, execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom,
+    execute_withdraw, receive_cw20,
 };
 use crate::query::{self, query_token_id};
 use crate::state::{State, STATE};
@@ -35,15 +35,19 @@ pub fn instantiate(
         factory_address: info.sender.clone(),
     };
     STATE.save(deps.storage, &state)?;
-
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     let data = EscrowInstantiateResponse {
         token: msg.token_id.clone(),
         address: env.contract.address.to_string(),
     };
+    let mut res = Response::new();
 
-    Ok(Response::new()
+    if let Some(denom) = msg.allowed_denom {
+        res = execute::execute_add_allowed_denom(deps, env, info.clone(), denom)?;
+    }
+
+    Ok(res
         .add_attribute("method", "instantiate")
         .add_attribute("token_id", msg.token_id.id)
         .add_attribute("factory_address", info.sender)

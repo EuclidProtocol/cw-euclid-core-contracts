@@ -136,15 +136,24 @@ pub fn ack_pool_creation(
                 let escrow_contract = TOKEN_TO_ESCROW.may_load(deps.storage, token.get_token())?;
                 match escrow_contract {
                     Some(escrow_address) => {
-                        // Add allowed denom in existing escrow contract
-                        let add_denom_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: escrow_address.into_string(),
-                            msg: to_json_binary(&EscrowExecuteMsg::AddAllowedDenom {
-                                denom: token.get_denom(),
-                            })?,
-                            funds: vec![],
-                        });
-                        res = res.add_message(add_denom_msg);
+                        let token_allowed_query_msg =
+                            euclid::msgs::escrow::QueryMsg::TokenAllowed {
+                                token: token.clone(),
+                            };
+                        let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps
+                            .querier
+                            .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+                        if !token_allowed.allowed {
+                            // Add allowed denom in existing escrow contract
+                            let add_denom_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+                                contract_addr: escrow_address.into_string(),
+                                msg: to_json_binary(&EscrowExecuteMsg::AddAllowedDenom {
+                                    denom: token.get_denom(),
+                                })?,
+                                funds: vec![],
+                            });
+                            res = res.add_message(add_denom_msg);
+                        }
                     }
 
                     None => {

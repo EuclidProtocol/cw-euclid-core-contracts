@@ -26,7 +26,7 @@ pub fn execute_add_allowed_denom(
         ContractError::Unauthorized {}
     );
 
-    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
+    let mut allowed_denoms = ALLOWED_DENOMS.may_load(deps.storage)?.unwrap_or_default();
 
     // Make sure that the denom isn't already in the list
     ensure!(

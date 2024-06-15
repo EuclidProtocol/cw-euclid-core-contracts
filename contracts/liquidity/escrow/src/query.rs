@@ -23,7 +23,7 @@ pub fn query_token_allowed(deps: Deps, token: TokenInfo) -> Result<Binary, Contr
     let mut response = AllowedTokenResponse { allowed: false };
 
     if state.token_id == token.get_token() {
-        let registered_denom = ALLOWED_DENOMS.load(deps.storage)?;
+        let registered_denom = ALLOWED_DENOMS.may_load(deps.storage)?.unwrap_or_default();
         response.allowed = registered_denom.contains(&token.get_denom());
     }
 

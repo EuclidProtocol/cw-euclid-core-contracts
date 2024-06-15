@@ -314,6 +314,12 @@ fn ibc_execute_swap(
     let (first_swap, next_swaps) = swaps.split_first().ok_or(ContractError::Generic {
         err: "Swaps cannot be empty".to_string(),
     })?;
+    let vcoin_address = STATE
+        .load(deps.storage)?
+        .vcoin_address
+        .ok_or(ContractError::Generic {
+            err: "vcoin address doesn't exist".to_string(),
+        })?;
 
     let token_escrow_key = (asset_in.clone(), factory_chain.clone());
     let token_1_escrow_balance = ESCROW_BALANCES
@@ -325,13 +331,6 @@ fn ibc_execute_swap(
         token_escrow_key,
         &token_1_escrow_balance.checked_add(amount_in)?,
     )?;
-
-    let vcoin_address = STATE
-        .load(deps.storage)?
-        .vcoin_address
-        .ok_or(ContractError::Generic {
-            err: "vcoin address doesn't exist".to_string(),
-        })?;
 
     let mint_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Mint(ExecuteMint {
         amount: amount_in,
