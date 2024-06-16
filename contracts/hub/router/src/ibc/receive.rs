@@ -15,6 +15,7 @@ use euclid::{
 use euclid_ibc::{ack::make_ack_fail, msg::ChainIbcExecuteMsg};
 
 use crate::{
+    query::validate_swap_vlps,
     reply::{
         ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_MINT_REPLY_ID,
         VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
@@ -82,7 +83,6 @@ pub fn do_ibc_packet_receive(
             swaps,
             to_chain_id,
             to_address,
-            ..
         } => ibc_execute_swap(
             deps,
             env,
@@ -293,23 +293,12 @@ fn ibc_execute_swap(
     swap_id: String,
     swaps: Vec<NextSwap>,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let all_vlps: Result<Vec<String>, ContractError> = VLPS
-        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .map(|item| {
-            let item = item?;
-            Ok(item.1)
-        })
-        .collect();
-
-    let all_vlps = all_vlps?;
-
-    // Do an early check that all vlps are present
-    for swap in swaps.clone() {
-        ensure!(
-            all_vlps.contains(&swap.vlp_address),
-            ContractError::UnsupportedOperation {}
-        );
-    }
+    ensure!(
+        validate_swap_vlps(deps.as_ref(), &swaps).is_ok(),
+        ContractError::Generic {
+            err: "VLPS listed in swaps are not registered".to_string()
+        }
+    );
 
     let (first_swap, next_swaps) = swaps.split_first().ok_or(ContractError::Generic {
         err: "Swaps cannot be empty".to_string(),

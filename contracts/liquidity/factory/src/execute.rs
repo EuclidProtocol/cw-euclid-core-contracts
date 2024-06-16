@@ -179,7 +179,6 @@ pub fn execute_swap_request(
             asset_in: asset_in.get_token(),
             amount_in,
             min_amount_out,
-            channel,
             swap_id: swap_info.swap_id,
             swaps,
         })?,

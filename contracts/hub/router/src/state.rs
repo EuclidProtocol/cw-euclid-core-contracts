@@ -17,6 +17,7 @@ pub const STATE: Item<State> = Item::new("state");
 // Convert it to multi index map?
 pub const VLPS: Map<(Token, Token), String> = Map::new("vlps");
 
+// Token escrow balance on each chain
 pub const ESCROW_BALANCES: Map<(Token, String), Uint128> = Map::new("escrow_balances");
 
 pub const CHAIN_ID_TO_CHAIN: Map<String, Chain> = Map::new("chain_id_to_chain");

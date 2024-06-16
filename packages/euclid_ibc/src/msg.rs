@@ -37,7 +37,6 @@ pub enum ChainIbcExecuteMsg {
         asset_in: Token,
         amount_in: Uint128,
         min_amount_out: Uint128,
-        channel: String,
         swap_id: String,
         swaps: Vec<NextSwap>,
     },

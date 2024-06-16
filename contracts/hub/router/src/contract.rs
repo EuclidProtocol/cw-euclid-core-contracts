@@ -82,6 +82,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetAllChains {} => query::query_all_chains(deps),
         QueryMsg::GetVlp { token_1, token_2 } => query::query_vlp(deps, token_1, token_2),
         QueryMsg::GetAllVlps {} => query::query_all_vlps(deps),
+        QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

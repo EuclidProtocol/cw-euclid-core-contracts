@@ -26,35 +26,10 @@ pub enum ExecuteMsg {
         denom: String,
         token_id: Token,
     },
-
-    // // Add Liquidity Request to the VLP
-    // AddLiquidity {
-    //     token_1_liquidity: Uint128,
-    //     token_2_liquidity: Uint128,
-    //     slippage_tolerance: u64,
-    //     liquidity_id: String,
-    //     timeout: Option<u64>,
-    //     vlp_address: String,
-    // },
-    // ExecuteSwap {
-    //     asset: Token,
-    //     asset_amount: Uint128,
-    //     min_amount_out: Uint128,
-    //     swap_id: String,
-    //     timeout: Option<u64>,
-    //     vlp_address: String,
-    // },
-    // Request Pool Creation
     RequestPoolCreation {
         pair_info: PairInfo,
         timeout: Option<u64>,
     },
-    // // Update Pool Code ID
-    // UpdatePoolCodeId {
-    //     new_pool_code_id: u64,
-    // },
-    // Pool ExecuteMsgs //
-    // Add Liquidity Request to the VLP
     AddLiquidityRequest {
         vlp_address: String,
         token_1_liquidity: Uint128,

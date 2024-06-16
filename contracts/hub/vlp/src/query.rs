@@ -49,14 +49,14 @@ pub fn query_simulate_swap(
             swap_amount,
             state.total_reserve_1,
             state.total_reserve_2,
-            state.pair.token_1,
+            state.pair.token_2,
         )
     } else {
         (
             swap_amount,
             state.total_reserve_2,
             state.total_reserve_1,
-            state.pair.token_2,
+            state.pair.token_1,
         )
     };
 
