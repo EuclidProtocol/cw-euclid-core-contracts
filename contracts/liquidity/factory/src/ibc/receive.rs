@@ -1,9 +1,16 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Env, IbcPacketReceiveMsg, IbcReceiveResponse,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
+    IbcReceiveResponse, WasmMsg,
 };
-use euclid::{error::ContractError, msgs::factory::RegisterFactoryResponse};
+use euclid::{
+    error::ContractError,
+    msgs::{
+        escrow::ExecuteMsg as EscrowExecuteMsg,
+        factory::{RegisterFactoryResponse, ReleaseEscrowResponse},
+    },
+};
 use euclid_ibc::{
     ack::make_ack_fail,
     msg::{AcknowledgementMsg, HubIbcExecuteMsg},
@@ -69,6 +76,44 @@ fn execute_register_router(
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
     Ok(IbcReceiveResponse::new()
+        .add_attribute("method", "register_router")
+        .add_attribute("router", router)
+        .add_attribute("channel", channel)
+        .set_ack(ack))
+}
+
+fn execute_release_escrow(
+    deps: DepsMut,
+    env: Env,
+    router: String,
+    channel: String,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let mut state = STATE.load(deps.storage)?;
+    ensure!(
+        state.router_contract == router,
+        ContractError::Unauthorized {}
+    );
+
+    let withdraw_msg = EscrowExecuteMsg::Withdraw {
+        recipient: todo!(),
+        amount: todo!(),
+        chain_id: state.chain_id,
+    };
+
+    let ack_msg = ReleaseEscrowResponse {
+        factory_address: env.contract.address.to_string(),
+        chain_id: env.block.chain_id,
+    };
+
+    let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
+
+    Ok(IbcReceiveResponse::new()
+        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            // Get escrow address
+            contract_addr: todo!(),
+            msg: to_json_binary(&withdraw_msg)?,
+            funds: vec![],
+        }))
         .add_attribute("method", "register_router")
         .add_attribute("router", router)
         .add_attribute("channel", channel)

@@ -108,3 +108,9 @@ pub struct RegisterFactoryResponse {
     pub factory_address: String,
     pub chain_id: String,
 }
+
+#[cw_serde]
+pub struct ReleaseEscrowResponse {
+    pub factory_address: String,
+    pub chain_id: String,
+}
