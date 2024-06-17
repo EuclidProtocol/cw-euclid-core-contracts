@@ -32,6 +32,16 @@ pub fn ibc_packet_ack(
                 res,
             )
         }
+        HubIbcExecuteMsg::ReleaseEscrow { .. } => {
+            let res = from_json(ack.acknowledgement.data)?;
+            ibc_ack_register_factory(
+                deps,
+                env,
+                ack.original_packet.src.channel_id,
+                ack.original_packet.dest.channel_id,
+                res,
+            )
+        }
     }
 }
 
@@ -64,6 +74,36 @@ pub fn ibc_packet_timeout(
 
 // Function to create pool
 pub fn ibc_ack_register_factory(
+    deps: DepsMut,
+    _env: Env,
+    from_hub_channel: String,
+    from_factory_channel: String,
+    res: AcknowledgementMsg<RegisterFactoryResponse>,
+) -> Result<IbcBasicResponse, ContractError> {
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            CHANNEL_TO_CHAIN_ID.save(deps.storage, from_hub_channel.clone(), &data.chain_id)?;
+            let chain_data = Chain {
+                factory_chain_id: data.chain_id.clone(),
+                factory: data.factory_address.clone(),
+                from_hub_channel,
+                from_factory_channel,
+            };
+            CHAIN_ID_TO_CHAIN.save(deps.storage, data.chain_id.clone(), &chain_data)?;
+            Ok(IbcBasicResponse::new()
+                .add_attribute("method", "register_factory_ack_success")
+                .add_attribute("factory_chain", data.chain_id)
+                .add_attribute("factory_address", data.factory_address))
+        }
+
+        AcknowledgementMsg::Error(err) => Ok(IbcBasicResponse::new()
+            .add_attribute("method", "register_factory_ack_error")
+            .add_attribute("error", err.clone())),
+    }
+}
+
+//TODO this is just like the above function for now
+pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,
     from_hub_channel: String,

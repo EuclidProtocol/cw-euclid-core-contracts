@@ -40,6 +40,9 @@ pub fn do_ibc_packet_receive(
         HubIbcExecuteMsg::RegisterFactory { router } => {
             execute_register_router(deps, env, router, channel)
         }
+        HubIbcExecuteMsg::ReleaseEscrow { .. } => {
+            todo!()
+        }
     }
 }
 

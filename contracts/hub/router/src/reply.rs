@@ -1,5 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Reply, Response, SubMsgResult, Uint128,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, Reply,
+    Response, SubMsgResult, Uint128,
 };
 use cw0::{parse_reply_execute_data, parse_reply_instantiate_data};
 use euclid::{
@@ -7,8 +8,9 @@ use euclid::{
     msgs,
     pool::{LiquidityResponse, PoolCreationResponse, RemoveLiquidityResponse},
     swap::SwapResponse,
+    timeout::get_timeout,
 };
-use euclid_ibc::msg::AcknowledgementMsg;
+use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
 use crate::state::{ESCROW_BALANCES, STATE, SWAP_ID_TO_CHAIN_ID, VLPS};
 
@@ -132,7 +134,7 @@ pub fn on_remove_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response,
     }
 }
 
-pub fn on_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -144,7 +146,7 @@ pub fn on_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractErro
 
             let ack = AcknowledgementMsg::Ok(swap_response.clone());
             let chain_id = SWAP_ID_TO_CHAIN_ID.load(deps.storage, swap_response.swap_id.clone())?;
-            let token_out_escrow_key = (swap_response.asset_out.clone(), chain_id);
+            let token_out_escrow_key = (swap_response.asset_out.clone(), chain_id.clone());
 
             let token_out_escrow_balance = ESCROW_BALANCES
                 .may_load(deps.storage, token_out_escrow_key.clone())?
@@ -157,7 +159,18 @@ pub fn on_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractErro
                 }
             );
 
+            let packet = IbcMsg::SendPacket {
+                channel_id: chain_id.clone(),
+                data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
+                    router: env.contract.address.to_string(),
+                })?,
+                timeout: IbcTimeout::with_timestamp(
+                    env.block.time.plus_seconds(get_timeout(None)?),
+                ),
+            };
+
             Ok(Response::new()
+                .add_message(CosmosMsg::Ibc(packet))
                 .add_attribute("action", "reply_swap")
                 .add_attribute("swap", format!("{swap_response:?}"))
                 .set_data(to_json_binary(&ack)?))
