@@ -1,15 +1,17 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, DepsMut, Env, IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, StdResult,
+    from_json, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg,
+    StdResult, WasmMsg,
 };
 use cosmwasm_std::{to_json_binary, IbcAcknowledgement};
 use euclid::error::ContractError;
 use euclid::msgs::factory::RegisterFactoryResponse;
 use euclid::msgs::router::Chain;
+use euclid::msgs::vcoin::{ExecuteMint, ExecuteMsg as VcoinExecuteMsg};
 use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
-use crate::state::{CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID};
+use crate::state::{CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID, STATE};
 
 use super::channel::TIMEOUT_COUNTS;
 
@@ -34,7 +36,7 @@ pub fn ibc_packet_ack(
         }
         HubIbcExecuteMsg::ReleaseEscrow { .. } => {
             let res = from_json(ack.acknowledgement.data)?;
-            ibc_ack_register_factory(
+            ibc_ack_release_escrow(
                 deps,
                 env,
                 ack.original_packet.src.channel_id,
@@ -125,9 +127,26 @@ pub fn ibc_ack_release_escrow(
                 .add_attribute("factory_chain", data.chain_id)
                 .add_attribute("factory_address", data.factory_address))
         }
+        // Re-mint tokens
+        AcknowledgementMsg::Error(err) => {
+            let vcoin_address = STATE.load(deps.storage)?.vcoin_address.unwrap();
 
-        AcknowledgementMsg::Error(err) => Ok(IbcBasicResponse::new()
-            .add_attribute("method", "register_factory_ack_error")
-            .add_attribute("error", err.clone())),
+            let mint_msg = VcoinExecuteMsg::Mint(ExecuteMint {
+                amount: todo!(),
+                balance_key: todo!(),
+            });
+            let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: vcoin_address.into_string(),
+                msg: to_json_binary(&mint_msg)?,
+                funds: vec![],
+            });
+
+            Ok(IbcBasicResponse::new()
+                .add_message(msg)
+                .add_attribute("method", "register_factory_ack_error")
+                .add_attribute("error", err)
+                .add_attribute("mint_amount", "value")
+                .add_attribute("balance_key", "balance_key"))
+        }
     }
 }
