@@ -403,15 +403,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "escrow"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus 1.2.0",
+ "cw0",
+ "cw2",
+ "cw20",
+ "euclid",
+ "euclid-ibc",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "euclid"
 version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-storage-plus 0.15.1",
+ "cw-storage-plus 1.2.0",
  "cw-utils",
  "cw20",
  "itertools 0.10.5",
+ "schemars",
+ "serde",
  "thiserror",
 ]
 
@@ -586,23 +606,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pool"
-version = "0.1.0"
-dependencies = [
- "cosmwasm-schema",
- "cosmwasm-std",
- "cw-multi-test",
- "cw-storage-plus 1.2.0",
- "cw2",
- "cw20",
- "euclid",
- "euclid-ibc",
- "schemars",
- "serde",
- "thiserror",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -666,6 +669,24 @@ checksum = "f8dd2a808d456c4a54e300a23e9f5a67e122c3024119acbfd73e3bf664491cb2"
 dependencies = [
  "hmac",
  "subtle",
+]
+
+[[package]]
+name = "router"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus 1.2.0",
+ "cw0",
+ "cw2",
+ "cw20",
+ "euclid",
+ "euclid-ibc",
+ "schemars",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -880,6 +901,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 
 [[package]]
+name = "vcoin"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus 1.2.0",
+ "cw2",
+ "euclid",
+ "euclid-ibc",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -893,6 +930,7 @@ dependencies = [
  "cosmwasm-std",
  "cw-multi-test",
  "cw-storage-plus 1.2.0",
+ "cw0",
  "cw2",
  "euclid",
  "euclid-ibc",

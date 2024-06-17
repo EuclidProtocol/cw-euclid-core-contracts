@@ -1,43 +1,64 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
-use euclid::token::{PairInfo, Token};
+use cosmwasm_std::Uint128;
+use euclid::{
+    swap::NextSwap,
+    token::{PairInfo, Token},
+};
 
 // Message that implements an ExecuteSwap on the VLP contract
 
 #[cw_serde]
-pub enum IbcExecuteMsg {
+pub enum ChainIbcExecuteMsg {
+    // Request Pool Creation
+    RequestPoolCreation {
+        pool_rq_id: String,
+        pair_info: PairInfo,
+    },
     AddLiquidity {
-        chain_id: String,
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         liquidity_id: String,
         pool_address: String,
+        vlp_address: String,
     },
 
     // Remove liquidity from a chain pool to VLP
     RemoveLiquidity {
         chain_id: String,
         lp_allocation: Uint128,
+        vlp_address: String,
     },
 
     // Swap tokens on VLP
     Swap {
-        chain_id: String,
-        asset: Token,
-        asset_amount: Uint128,
+        to_address: String,
+        to_chain_id: String,
+        asset_in: Token,
+        amount_in: Uint128,
         min_amount_out: Uint128,
-        channel: String,
         swap_id: String,
-        pool_address: Addr,
+        swaps: Vec<NextSwap>,
     },
+    // New Factory Msg
+    RequestWithdraw {
+        token_id: Token,
+        recipient: String,
+        amount: Uint128,
+        chain_id: String,
+    },
+    RequestEscrowCreation {
+        token_id: Token,
+        //TODO Add allowed denoms?
+    },
+}
 
-    // Request Pool Creation
-    RequestPoolCreation {
-        pool_rq_id: String,
-        chain: String,
-        pair_info: PairInfo,
-    },
+#[cw_serde]
+pub enum HubIbcExecuteMsg {
+    // Send Factory Registration Message from Router to Factory
+    RegisterFactory { router: String },
+
+    ReleaseEscrow { router: String },
 }
 
 /// A custom acknowledgement type.

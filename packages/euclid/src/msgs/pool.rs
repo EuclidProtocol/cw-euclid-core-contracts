@@ -2,7 +2,7 @@ use crate::{
     liquidity::LiquidityTxInfo,
     pool::{LiquidityResponse, Pool},
     swap::{SwapInfo, SwapResponse},
-    token::{Pair, PairInfo, TokenInfo},
+    token::{PairInfo, TokenInfo},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
@@ -11,27 +11,24 @@ use cw20::Cw20ReceiveMsg;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub vlp_contract: String,
-    pub token_pair: Pair,
-    pub pair_info: PairInfo,
     pub pool: Pool,
     pub chain_id: String,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    ExecuteSwap {
-        asset: TokenInfo,
-        asset_amount: Uint128,
-        min_amount_out: Uint128,
-        channel: String,
-    },
-
     // Add Liquidity Request to the VLP
     AddLiquidity {
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
-        channel: String,
+        timeout: Option<u64>,
+    },
+    ExecuteSwap {
+        asset: TokenInfo,
+        asset_amount: Uint128,
+        min_amount_out: Uint128,
+        timeout: Option<u64>,
     },
 
     // Recieve CW20 TOKENS structure
@@ -90,10 +87,11 @@ pub enum QueryMsg {
 // CW20 Hook Msg
 #[cw_serde]
 pub enum Cw20HookMsg {
+    Deposit {},
     Swap {
         asset: TokenInfo,
         min_amount_out: Uint128,
-        channel: String,
+        timeout: Option<u64>,
     },
 }
 
@@ -121,3 +119,6 @@ pub struct GetPoolReservesResponse {
     pub reserve_1: Uint128,
     pub reserve_2: Uint128,
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}

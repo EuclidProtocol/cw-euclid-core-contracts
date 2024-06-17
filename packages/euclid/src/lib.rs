@@ -1,3 +1,4 @@
+pub mod common;
 pub mod cw20;
 pub mod error;
 pub mod fee;
@@ -5,4 +6,6 @@ pub mod liquidity;
 pub mod msgs;
 pub mod pool;
 pub mod swap;
+pub mod timeout;
 pub mod token;
+pub mod vcoin;

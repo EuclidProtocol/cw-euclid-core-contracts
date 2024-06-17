@@ -1,24 +1,48 @@
 use crate::{
     fee::Fee,
     pool::Pool,
-    token::{Pair, Token},
+    swap::NextSwap,
+    token::{Pair, PairInfo, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Decimal256, Uint128};
+use cosmwasm_std::Uint128;
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
+    pub vcoin: String,
     pub pair: Pair,
     pub fee: Fee,
-    pub pool: Pool,
-    pub lq_ratio: Decimal256,
+    pub execute: Option<ExecuteMsg>,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
     // Registers a new pool from a new chain to an already existing VLP
-    // RegisterPool { pool: Pool },
+    RegisterPool {
+        chain_id: String,
+        pair_info: PairInfo,
+    },
+
+    Swap {
+        to_chain_id: String,
+        to_address: String,
+        asset_in: Token,
+        amount_in: Uint128,
+        min_token_out: Uint128,
+        swap_id: String,
+        next_swaps: Vec<NextSwap>,
+    },
+    AddLiquidity {
+        chain_id: String,
+        token_1_liquidity: Uint128,
+        token_2_liquidity: Uint128,
+        slippage_tolerance: u64,
+    },
+    RemoveLiquidity {
+        chain_id: String,
+        lp_allocation: Uint128,
+    },
     /*
 
     // Update the fee for the VLP
@@ -36,7 +60,11 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(GetSwapResponse)]
-    SimulateSwap { asset: Token, asset_amount: Uint128 },
+    SimulateSwap {
+        asset: Token,
+        asset_amount: Uint128,
+        swaps: Vec<NextSwap>,
+    },
     // Queries the total reserve of the pair in the VLP
     #[returns(GetLiquidityResponse)]
     Liquidity {},
@@ -56,22 +84,22 @@ pub enum QueryMsg {
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct GetSwapResponse {
-    pub token_out: Uint128,
+    pub amount_out: Uint128,
+    pub asset_out: Token,
 }
 
 #[cw_serde]
 pub struct GetLiquidityResponse {
-    pub pair: PairInfo,
+    pub pair: Pair,
     pub token_1_reserve: Uint128,
     pub token_2_reserve: Uint128,
     pub total_lp_tokens: Uint128,
 }
 
 #[cw_serde]
-
-pub struct PairInfo {
-    pub token_1: Token,
-    pub token_2: Token,
+pub struct PoolInfo {
+    pub chain: String,
+    pub pool: Pool,
 }
 #[cw_serde]
 pub struct FeeResponse {
@@ -85,5 +113,8 @@ pub struct PoolResponse {
 
 #[cw_serde]
 pub struct AllPoolsResponse {
-    pub pools: Vec<String>,
+    pub pools: Vec<PoolInfo>,
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}

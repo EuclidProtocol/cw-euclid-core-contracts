@@ -4,11 +4,9 @@ use cosmwasm_std::{DivideByZeroError, OverflowError, StdError, Uint128};
 
 use thiserror::Error;
 
-use crate::{liquidity::LiquidityTxInfo, pool::PoolRequest, swap::SwapInfo};
 #[derive(Error, Debug)]
 pub enum Never {}
 #[derive(Error, Debug, PartialEq)]
-
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
@@ -28,11 +26,35 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
-    #[error("Duplicate Tokens")]
-    DuplicateTokens {},
+    #[error("ZeroWithdrawalAmount")]
+    ZeroWithdrawalAmount {},
 
-    #[error("Pool request {req:?} already exist")]
-    PoolRequestAlreadyExists { req: PoolRequest },
+    #[error("InvalidWithdrawalAmount")]
+    InvalidWithdrawalAmount {},
+
+    #[error("DuplicateDenominations")]
+    DuplicateDenominations {},
+
+    #[error("UnsupportedDenomination")]
+    UnsupportedDenomination {},
+
+    #[error("UnsupportedMessage")]
+    UnsupportedMessage {},
+
+    #[error("UnsupportedOperation")]
+    UnsupportedOperation {},
+
+    #[error("Not Implemented")]
+    NotImplemented {},
+
+    #[error("DenomDoesNotExist")]
+    DenomDoesNotExist {},
+
+    #[error("Instantiate Error - {err}")]
+    InstantiateError { err: String },
+
+    #[error("Pool request already exist")]
+    PoolRequestAlreadyExists {},
 
     #[error("Pool request {req:?} already exist")]
     PoolRequestDoesNotExists { req: String },
@@ -55,6 +77,12 @@ pub enum ContractError {
     #[error("Cannot Swap 0 tokens")]
     ZeroAssetAmount {},
 
+    #[error("DuplicateTokens")]
+    DuplicateTokens {},
+
+    #[error("Zero Slippage Amount")]
+    ZeroSlippageAmount {},
+
     #[error("Slippage has not been tolerated for set amount, amount: {amount}, min_amount_out: {min_amount_out}")]
     SlippageExceeded {
         amount: Uint128,
@@ -64,26 +92,38 @@ pub enum ContractError {
     #[error("Invalid Liquidity Ratio")]
     InvalidLiquidityRatio {},
 
+    #[error("Invalid Timeout")]
+    InvalidTimeout {},
+
     #[error("Slippage Tolerance must be between 0 and 100")]
     InvalidSlippageTolerance {},
 
     #[error("The Channel specified does not currently exist")]
     ChannelDoesNotExist {},
 
+    #[error("EscrowDoesNotExist")]
+    EscrowDoesNotExist {},
+
+    #[error("EscrowAlreadyExists")]
+    EscrowAlreadyExists {},
+
     #[error("The swap does not exist in state for the sender")]
     SwapDoesNotExist {},
 
-    #[error("The swap - {req:?} already exist in state for the sender")]
-    SwapAlreadyExist { req: SwapInfo },
+    #[error("Swap already exist in state for the sender")]
+    SwapAlreadyExist {},
 
     #[error("The deposit amount is insufficient to add the liquidity")]
     InsufficientDeposit {},
 
+    #[error("InsufficientFunds")]
+    InsufficientFunds {},
+
     #[error("The CHAIN ID is not valid")]
     InvalidChainId {},
 
-    #[error("The liquity tx - {req:?} already exist in state for the sender")]
-    LiquidityTxAlreadyExist { req: LiquidityTxInfo },
+    #[error("Liquity already exist in state for the sender")]
+    LiquidityTxAlreadyExist {},
 
     #[error("Slippage has been exceeded when providing liquidity.")]
     LiquiditySlippageExceeded {},
