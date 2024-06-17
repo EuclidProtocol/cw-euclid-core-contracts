@@ -1,4 +1,6 @@
-use cosmwasm_std::{from_json, to_json_binary, DepsMut, Reply, Response, SubMsgResult};
+use cosmwasm_std::{
+    ensure, from_json, to_json_binary, DepsMut, Reply, Response, SubMsgResult, Uint128,
+};
 use cw0::{parse_reply_execute_data, parse_reply_instantiate_data};
 use euclid::{
     error::ContractError,
@@ -8,7 +10,7 @@ use euclid::{
 };
 use euclid_ibc::msg::AcknowledgementMsg;
 
-use crate::state::{STATE, VLPS};
+use crate::state::{ESCROW_BALANCES, STATE, SWAP_ID_TO_CHAIN_ID, VLPS};
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
@@ -130,7 +132,7 @@ pub fn on_remove_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response,
     }
 }
 
-pub fn on_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -141,6 +143,19 @@ pub fn on_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractErr
             let swap_response: SwapResponse = from_json(execute_data.data.unwrap_or_default())?;
 
             let ack = AcknowledgementMsg::Ok(swap_response.clone());
+            let chain_id = SWAP_ID_TO_CHAIN_ID.load(deps.storage, swap_response.swap_id.clone())?;
+            let token_out_escrow_key = (swap_response.asset_out.clone(), chain_id);
+
+            let token_out_escrow_balance = ESCROW_BALANCES
+                .may_load(deps.storage, token_out_escrow_key.clone())?
+                .unwrap_or(Uint128::zero());
+
+            ensure!(
+                token_out_escrow_balance.ge(&swap_response.amount_out),
+                ContractError::Generic {
+                    err: "Insufficient Escrow Balance on out chain".to_string()
+                }
+            );
 
             Ok(Response::new()
                 .add_attribute("action", "reply_swap")
