@@ -20,7 +20,9 @@ use crate::{
         ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_MINT_REPLY_ID,
         VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
-    state::{CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID, ESCROW_BALANCES, STATE, VLPS},
+    state::{
+        CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID, ESCROW_BALANCES, STATE, SWAP_ID_TO_CHAIN_ID, VLPS,
+    },
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -338,13 +340,15 @@ fn ibc_execute_swap(
 
     let swap_msg = msgs::vlp::ExecuteMsg::Swap {
         to_address,
-        to_chain_id,
+        to_chain_id: to_chain_id.clone(),
         asset_in,
         amount_in,
         min_token_out,
-        swap_id,
+        swap_id: swap_id.clone(),
         next_swaps: next_swaps.to_vec(),
     };
+
+    SWAP_ID_TO_CHAIN_ID.save(deps.storage, swap_id, &to_chain_id)?;
 
     let msg = WasmMsg::Execute {
         contract_addr: first_swap.vlp_address.clone(),

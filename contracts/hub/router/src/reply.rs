@@ -12,7 +12,7 @@ use euclid::{
 };
 use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
-use crate::state::{ESCROW_BALANCES, STATE, SWAP_ID_TO_CHAIN_ID, VLPS};
+use crate::state::{CHAIN_ID_TO_CHAIN, ESCROW_BALANCES, STATE, SWAP_ID_TO_CHAIN_ID, VLPS};
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
@@ -146,7 +146,10 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
 
             let ack = AcknowledgementMsg::Ok(swap_response.clone());
             let chain_id = SWAP_ID_TO_CHAIN_ID.load(deps.storage, swap_response.swap_id.clone())?;
-            let token_out_escrow_key = (swap_response.asset_out.clone(), chain_id.clone());
+
+            let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, chain_id)?;
+
+            let token_out_escrow_key = (swap_response.asset_out.clone(), chain.factory_chain_id);
 
             let token_out_escrow_balance = ESCROW_BALANCES
                 .may_load(deps.storage, token_out_escrow_key.clone())?
@@ -160,7 +163,7 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
             );
 
             let packet = IbcMsg::SendPacket {
-                channel_id: chain_id.clone(),
+                channel_id: chain.from_hub_channel,
                 data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
                     router: env.contract.address.to_string(),
                 })?,
