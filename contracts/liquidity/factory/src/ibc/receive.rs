@@ -47,8 +47,8 @@ pub fn do_ibc_packet_receive(
         HubIbcExecuteMsg::RegisterFactory { router } => {
             execute_register_router(deps, env, router, channel)
         }
-        HubIbcExecuteMsg::ReleaseEscrow { .. } => {
-            todo!()
+        HubIbcExecuteMsg::ReleaseEscrow { router } => {
+            execute_release_escrow(deps, env, router, channel)
         }
     }
 }
