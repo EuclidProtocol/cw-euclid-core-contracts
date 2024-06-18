@@ -68,11 +68,17 @@ pub enum ContractError {
     #[error("invalid IBC channel version. Got ({actual}), expected ({expected})")]
     InvalidVersion { actual: String, expected: String },
 
+    #[error("Invalid Token ID")]
+    InvalidTokenID {},
+
     #[error("Asset does not exist in VLP")]
     AssetDoesNotExist {},
 
     #[error("Cannot Swap 0 tokens")]
     ZeroAssetAmount {},
+
+    #[error("DuplicateTokens")]
+    DuplicateTokens {},
 
     #[error("Zero Slippage Amount")]
     ZeroSlippageAmount {},
