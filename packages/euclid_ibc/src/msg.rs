@@ -56,9 +56,17 @@ pub enum ChainIbcExecuteMsg {
 #[cw_serde]
 pub enum HubIbcExecuteMsg {
     // Send Factory Registration Message from Router to Factory
-    RegisterFactory { router: String },
+    RegisterFactory {
+        router: String,
+    },
 
-    ReleaseEscrow { router: String },
+    ReleaseEscrow {
+        router: String,
+        amount: Uint128,
+        token_id: String,
+        to_address: String,
+        to_chain_id: String,
+    },
 }
 
 /// A custom acknowledgement type.

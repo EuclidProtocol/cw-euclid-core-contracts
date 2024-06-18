@@ -6,9 +6,10 @@ use cosmwasm_std::{
 };
 use cosmwasm_std::{to_json_binary, IbcAcknowledgement};
 use euclid::error::ContractError;
-use euclid::msgs::factory::RegisterFactoryResponse;
+use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
 use euclid::msgs::router::Chain;
 use euclid::msgs::vcoin::{ExecuteMint, ExecuteMsg as VcoinExecuteMsg};
+use euclid::vcoin::BalanceKey;
 use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
 use crate::state::{CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID, STATE};
@@ -104,13 +105,12 @@ pub fn ibc_ack_register_factory(
     }
 }
 
-//TODO this is just like the above function for now
 pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,
     from_hub_channel: String,
     from_factory_channel: String,
-    res: AcknowledgementMsg<RegisterFactoryResponse>,
+    res: AcknowledgementMsg<ReleaseEscrowResponse>,
 ) -> Result<IbcBasicResponse, ContractError> {
     match res {
         AcknowledgementMsg::Ok(data) => {
@@ -133,7 +133,11 @@ pub fn ibc_ack_release_escrow(
 
             let mint_msg = VcoinExecuteMsg::Mint(ExecuteMint {
                 amount: todo!(),
-                balance_key: todo!(),
+                balance_key: BalanceKey {
+                    chain_id: todo!(),
+                    address: todo!(),
+                    token_id: todo!(),
+                },
             });
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: vcoin_address.into_string(),

@@ -1,14 +1,18 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, Reply,
-    Response, SubMsgResult, Uint128,
+    Response, SubMsgResult, Uint128, WasmMsg,
 };
 use cw0::{parse_reply_execute_data, parse_reply_instantiate_data};
 use euclid::{
     error::ContractError,
-    msgs,
+    msgs::{
+        self,
+        vcoin::{ExecuteBurn, ExecuteMsg as VcoinExecuteMsg},
+    },
     pool::{LiquidityResponse, PoolCreationResponse, RemoveLiquidityResponse},
     swap::SwapResponse,
     timeout::get_timeout,
+    vcoin::BalanceKey,
 };
 use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
@@ -147,7 +151,7 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
             let ack = AcknowledgementMsg::Ok(swap_response.clone());
             let chain_id = SWAP_ID_TO_CHAIN_ID.load(deps.storage, swap_response.swap_id.clone())?;
 
-            let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, chain_id)?;
+            let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, chain_id.clone())?;
 
             let token_out_escrow_key = (swap_response.asset_out.clone(), chain.factory_chain_id);
 
@@ -166,14 +170,36 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 channel_id: chain.from_hub_channel,
                 data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
                     router: env.contract.address.to_string(),
+                    amount: swap_response.amount_in,
+                    token_id: swap_response.asset_in.id,
+                    to_address: todo!(),
+                    to_chain_id: chain_id,
                 })?,
                 timeout: IbcTimeout::with_timestamp(
                     env.block.time.plus_seconds(get_timeout(None)?),
                 ),
             };
 
+            // Prepare burn msg
+            let burn_msg = VcoinExecuteMsg::Burn(ExecuteBurn {
+                amount: swap_response.amount_out,
+                balance_key: BalanceKey {
+                    chain_id,
+                    address: chain.from_factory_channel,
+                    token_id: swap_response.asset_out.id.clone(),
+                },
+            });
+            // Load state to get vcoin address
+            let state = STATE.load(deps.storage)?;
+            let vcoin_address = state.vcoin_address.unwrap().into_string();
+
             Ok(Response::new()
                 .add_message(CosmosMsg::Ibc(packet))
+                .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: vcoin_address,
+                    msg: to_json_binary(&burn_msg)?,
+                    funds: vec![],
+                }))
                 .add_attribute("action", "reply_swap")
                 .add_attribute("swap", format!("{swap_response:?}"))
                 .set_data(to_json_binary(&ack)?))

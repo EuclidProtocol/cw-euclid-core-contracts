@@ -113,4 +113,8 @@ pub struct RegisterFactoryResponse {
 pub struct ReleaseEscrowResponse {
     pub factory_address: String,
     pub chain_id: String,
+    pub amount: Uint128,
+    pub token_id: String,
+    pub to_address: String,
+    pub to_chain_id: String,
 }
