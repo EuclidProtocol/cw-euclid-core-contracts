@@ -6,3 +6,6 @@ pub mod helpers;
 pub mod migrate;
 pub mod query;
 pub mod state;
+
+#[cfg(test)]
+mod tests;
