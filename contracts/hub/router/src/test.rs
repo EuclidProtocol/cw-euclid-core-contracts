@@ -485,7 +485,6 @@ mod tests {
             }
         }
     }
-
     #[test]
     fn test_query_simulate_swap() {
         let mut deps = mock_dependencies();
@@ -503,7 +502,7 @@ mod tests {
                 Err(err) => {
                     return SystemResult::Err(SystemError::InvalidRequest {
                         error: format!("Failed to serialize response: {}", err),
-                        request: Binary::default(), // Provide appropriate Binary here
+                        request: Binary::default(),
                     });
                 }
             };
@@ -524,9 +523,9 @@ mod tests {
                     vlp_address: "vlp1".to_string(),
                 }],
                 to_chain_id: "chain1".to_string(),
-                factory_chain: "factory_chain".to_string(), // Provide factory_chain
-                min_amount_out: Uint128::one(),             // Provide min_amount_out
-                to_address: "recipient_address".to_string(), // Provide to_address
+                factory_chain: "factory_chain".to_string(),
+                min_amount_out: Uint128::one(),
+                to_address: "recipient_address".to_string(),
             },
             expected_response: SimulateSwapResponse {
                 amount_out: Uint128::new(100),
@@ -557,7 +556,7 @@ mod tests {
             VLPS.save(
                 &mut deps.storage,
                 (token_1.clone(), token_2.clone()),
-                &"vlp1".to_string(), // Pass a reference to a String object
+                &"vlp1".to_string(),
             )
             .unwrap();
 
@@ -574,6 +573,20 @@ mod tests {
                     &mut deps.storage,
                     (token_2.clone(), "chain1".to_string()),
                     &Uint128::new(100000),
+                )
+                .unwrap();
+
+            // Mock chain data
+            CHAIN_ID_TO_CHAIN
+                .save(
+                    &mut deps.storage,
+                    "chain1".to_string(),
+                    &Chain {
+                        factory_chain_id: "chain1".to_string(),
+                        factory: "factory1".to_string(),
+                        from_hub_channel: "hub_channel1".to_string(),
+                        from_factory_channel: "factory_channel1".to_string(),
+                    },
                 )
                 .unwrap();
 
