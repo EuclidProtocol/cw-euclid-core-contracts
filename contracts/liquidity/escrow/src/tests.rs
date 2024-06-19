@@ -1,14 +1,17 @@
 use cosmwasm_std::{
     coin,
     testing::{mock_dependencies, mock_env, mock_info},
-    to_json_binary, Addr, Binary, CosmosMsg, IbcMsg,
+    to_json_binary, Addr, Binary, CosmosMsg, IbcMsg, Uint128,
 };
 
-use crate::contract::{execute, instantiate, query};
+use crate::{
+    contract::{execute, instantiate, query},
+    state::DENOM_TO_AMOUNT,
+};
 
 use euclid::{
     error::ContractError,
-    msgs::escrow::{ExecuteMsg, InstantiateMsg, QueryMsg},
+    msgs::escrow::{AmountAndType, ExecuteMsg, InstantiateMsg, QueryMsg},
     token::Token,
 };
 
@@ -64,6 +67,18 @@ fn test_deposit_native() {
 
     // Send zero amount
     let info = mock_info("creator", &[coin(0_u128, "eucl")]);
-    let err = execute(deps.as_mut(), env, info, msg.clone()).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
     assert_eq!(err, ContractError::InsufficientDeposit {});
+
+    // Should work
+    let info = mock_info("creator", &[coin(10_u128, "eucl")]);
+    let _res = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap();
+    let denom_to_amount = DENOM_TO_AMOUNT
+        .load(&deps.storage, "eucl".to_string())
+        .unwrap();
+    let expected_denom_to_amount = AmountAndType {
+        amount: Uint128::new(10),
+        is_native: true,
+    };
+    assert_eq!(denom_to_amount, expected_denom_to_amount);
 }
