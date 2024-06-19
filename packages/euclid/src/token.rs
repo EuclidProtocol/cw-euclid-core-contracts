@@ -142,8 +142,8 @@ impl KeyDeserialize for Pair {
 
 #[cw_serde]
 pub struct TokenInfo {
-    token: Token,
-    token_type: TokenType,
+    pub token: Token,
+    pub token_type: TokenType,
 }
 // TokenInfo stores the native or smart contract token information from incoming chain
 #[cw_serde]

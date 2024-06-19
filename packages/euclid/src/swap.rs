@@ -28,6 +28,14 @@ pub struct SwapInfo {
 pub struct NextSwap {
     pub vlp_address: String,
 }
+impl Default for NextSwap {
+    fn default() -> Self {
+        NextSwap {
+            vlp_address: Default::default(),  // Initialize each field with its default value
+            // Initialize other fields similarly
+        }
+    }
+}
 
 #[cw_serde]
 pub struct SwapResponse {

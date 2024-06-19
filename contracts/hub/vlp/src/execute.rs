@@ -154,6 +154,7 @@ pub fn add_liquidity(
 
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
+    
 
     Ok(Response::new()
         .add_attribute("action", "add_liquidity")
