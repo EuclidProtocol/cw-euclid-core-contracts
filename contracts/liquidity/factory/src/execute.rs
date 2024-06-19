@@ -375,7 +375,7 @@ pub fn add_liquidity_request(
 }
 
 // New factory functions //
-pub fn execute_request_add_allowed_denom(
+pub fn execute_request_register_denom(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,

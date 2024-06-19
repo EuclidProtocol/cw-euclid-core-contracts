@@ -18,7 +18,7 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     // New Factory Messages that call Escrow
-    RequestAddAllowedDenom {
+    RequestRegisterDenom {
         denom: String,
         token_id: Token,
     },
