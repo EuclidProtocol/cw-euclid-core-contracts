@@ -4,11 +4,20 @@ mod tests {
 
     use super::*;
     use crate::contract::{execute, instantiate, query};
-    use crate::query::{self, query_all_chains, query_all_vlps, query_chain, query_simulate_swap, query_vlp};
+    use crate::query::{
+        self, query_all_chains, query_all_vlps, query_chain, query_simulate_swap, query_vlp,
+    };
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{from_binary, to_binary, Binary, ContractResult, CosmosMsg, IbcMsg, IbcTimeout, SystemError, SystemResult, Uint128, WasmMsg};
+    use cosmwasm_std::{
+        from_binary, to_binary, Binary, ContractResult, CosmosMsg, IbcMsg, IbcTimeout, SystemError,
+        SystemResult, Uint128, WasmMsg,
+    };
     use euclid::error::ContractError;
-    use euclid::msgs::router::{AllChainResponse, AllVlpResponse, Chain, ChainResponse, ExecuteMsg, InstantiateMsg, QueryMsg, QuerySimulateSwap, SimulateSwapResponse, StateResponse, SwapOutChain, VlpResponse};
+    use euclid::msgs::router::{
+        AllChainResponse, AllVlpResponse, Chain, ChainResponse, ExecuteMsg, InstantiateMsg,
+        QueryMsg, QuerySimulateSwap, SimulateSwapResponse, StateResponse, SwapOutChain,
+        VlpResponse,
+    };
     use euclid::msgs::vlp::GetSwapResponse;
     use euclid::swap::NextSwap;
     use euclid::token::{Pair, Token};
@@ -104,7 +113,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let env = mock_env();
         let info = mock_info("creator", &[]);
-        
+
         // Instantiate the contract first
         let msg = InstantiateMsg {
             vlp_code_id: 1,
@@ -156,7 +165,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let env = mock_env();
         let info = mock_info("creator", &[]);
-        
+
         // Instantiate the contract first
         let msg = InstantiateMsg {
             vlp_code_id: 1,
@@ -212,113 +221,162 @@ mod tests {
                     // Verify the IBC packet message
                     let messages = res.messages;
                     assert_eq!(messages.len(), 1);
-                    if let CosmosMsg::Ibc(IbcMsg::SendPacket { channel_id, timeout, data }) = &messages[0].msg {
+                    if let CosmosMsg::Ibc(IbcMsg::SendPacket {
+                        channel_id,
+                        timeout,
+                        data,
+                    }) = &messages[0].msg
+                    {
                         assert_eq!(channel_id, "channel-1");
                         assert!(timeout.timestamp().is_some());
                         let msg: HubIbcExecuteMsg = from_binary(data).unwrap();
-                        assert_eq!(msg, HubIbcExecuteMsg::RegisterFactory {
-                            router: env.contract.address.to_string(),
-                        });
+                        assert_eq!(
+                            msg,
+                            HubIbcExecuteMsg::RegisterFactory {
+                                router: env.contract.address.to_string(),
+                            }
+                        );
                     } else {
                         panic!("Expected IbcMsg::SendPacket");
                     }
                 }
             }
         }
-}
-#[test]
-fn test_query_all_vlps() {
-    let mut deps = mock_dependencies();
+    }
+    #[test]
+    fn test_query_all_vlps() {
+        let mut deps = mock_dependencies();
 
-    // Test cases
-    let test_cases = vec![
-        TestQueryAllVlps {
+        // Test cases
+        let test_cases = vec![TestQueryAllVlps {
             name: "Valid query all vlps",
             vlps: vec![
-                ((Token { id: "token_1".to_string() }, Token { id: "token2".to_string() }), "vlp1".to_string()),
-                ((Token { id: "token3".to_string() }, Token { id: "token4".to_string() }), "vlp2".to_string()),
+                (
+                    (
+                        Token {
+                            id: "token_1".to_string(),
+                        },
+                        Token {
+                            id: "token2".to_string(),
+                        },
+                    ),
+                    "vlp1".to_string(),
+                ),
+                (
+                    (
+                        Token {
+                            id: "token3".to_string(),
+                        },
+                        Token {
+                            id: "token4".to_string(),
+                        },
+                    ),
+                    "vlp2".to_string(),
+                ),
             ],
             expected_response: AllVlpResponse {
                 vlps: vec![
                     VlpResponse {
                         vlp: "vlp1".to_string(),
-                        token_1: Token { id: "token_1".to_string() },
-                        token_2: Token { id: "token2".to_string() },
+                        token_1: Token {
+                            id: "token_1".to_string(),
+                        },
+                        token_2: Token {
+                            id: "token2".to_string(),
+                        },
                     },
                     VlpResponse {
                         vlp: "vlp2".to_string(),
-                        token_1: Token { id: "token3".to_string() },
-                        token_2: Token { id: "token4".to_string() },
+                        token_1: Token {
+                            id: "token3".to_string(),
+                        },
+                        token_2: Token {
+                            id: "token4".to_string(),
+                        },
                     },
                 ],
             },
             expected_error: None,
-        },
-    ];
+        }];
 
-    for mut test in test_cases {
-        for ((token1, token2), vlp) in &test.vlps {
-            let vlp_response = VlpResponse {
-                vlp: vlp.clone(),
-                token_1: token1.clone(),
-                token_2: token2.clone(),
-            };
-            VLPS.save(&mut deps.storage, (token1.clone(), token2.clone()), vlp).unwrap();
-        }
-        let res = query_all_vlps(deps.as_ref());
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => {
-                let bin = res.unwrap();
-                let mut response: AllVlpResponse = from_binary(&bin).unwrap();
-                
-                // Sort both actual and expected responses to ensure consistent order
-                response.vlps.sort_by(|a, b| a.vlp.cmp(&b.vlp));
-                test.expected_response.vlps.sort_by(|a, b| a.vlp.cmp(&b.vlp));
+        for mut test in test_cases {
+            for ((token1, token2), vlp) in &test.vlps {
+                let vlp_response = VlpResponse {
+                    vlp: vlp.clone(),
+                    token_1: token1.clone(),
+                    token_2: token2.clone(),
+                };
+                VLPS.save(&mut deps.storage, (token1.clone(), token2.clone()), vlp)
+                    .unwrap();
+            }
+            let res = query_all_vlps(deps.as_ref());
+            match test.expected_error {
+                Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
+                None => {
+                    let bin = res.unwrap();
+                    let mut response: AllVlpResponse = from_binary(&bin).unwrap();
 
-                assert_eq!(response, test.expected_response, "{}", test.name);
+                    // Sort both actual and expected responses to ensure consistent order
+                    response.vlps.sort_by(|a, b| a.vlp.cmp(&b.vlp));
+                    test.expected_response
+                        .vlps
+                        .sort_by(|a, b| a.vlp.cmp(&b.vlp));
+
+                    assert_eq!(response, test.expected_response, "{}", test.name);
+                }
             }
         }
     }
-}
 
+    #[test]
+    fn test_query_vlp() {
+        let mut deps = mock_dependencies();
 
-
-#[test]
-fn test_query_vlp() {
-    let mut deps = mock_dependencies();
-
-    // Test cases
-    let test_cases = vec![
-        TestQueryVlp {
+        // Test cases
+        let test_cases = vec![TestQueryVlp {
             name: "Valid query vlp",
-            token_1: Token{id:"token1".to_string()},
-            token_2: Token{id:"token2".to_string()},
-            expected_response: VlpResponse { vlp: "vlp1".to_string(), token_1: Token{id:"token1".to_string()}, token_2:Token{id:"token2".to_string()}},
+            token_1: Token {
+                id: "token1".to_string(),
+            },
+            token_2: Token {
+                id: "token2".to_string(),
+            },
+            expected_response: VlpResponse {
+                vlp: "vlp1".to_string(),
+                token_1: Token {
+                    id: "token1".to_string(),
+                },
+                token_2: Token {
+                    id: "token2".to_string(),
+                },
+            },
             expected_error: None,
-        },
-    ];
+        }];
 
-    for test in test_cases {
-        VLPS.save(&mut deps.storage, (test.token_1.clone(), test.token_2.clone()), &test.expected_response.vlp).unwrap();
-        let res = query_vlp(deps.as_ref(), test.token_1.clone(), test.token_2.clone());
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => {
-                let bin = res.unwrap();
-                let response: VlpResponse = from_binary(&bin).unwrap();
-                assert_eq!(response, test.expected_response);
+        for test in test_cases {
+            VLPS.save(
+                &mut deps.storage,
+                (test.token_1.clone(), test.token_2.clone()),
+                &test.expected_response.vlp,
+            )
+            .unwrap();
+            let res = query_vlp(deps.as_ref(), test.token_1.clone(), test.token_2.clone());
+            match test.expected_error {
+                Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
+                None => {
+                    let bin = res.unwrap();
+                    let response: VlpResponse = from_binary(&bin).unwrap();
+                    assert_eq!(response, test.expected_response);
+                }
             }
         }
     }
-}
-#[test]
-fn test_query_all_chains() {
-    let mut deps = mock_dependencies();
+    #[test]
+    fn test_query_all_chains() {
+        let mut deps = mock_dependencies();
 
-    // Test cases
-    let test_cases = vec![
-        TestQueryAllChains {
+        // Test cases
+        let test_cases = vec![TestQueryAllChains {
             name: "Valid query all chains",
             chains: vec![
                 ("chain1".to_string(), "factory_chain_id_1".to_string()),
@@ -326,7 +384,7 @@ fn test_query_all_chains() {
             ],
             expected_response: AllChainResponse {
                 chains: vec![
-                    ChainResponse { 
+                    ChainResponse {
                         chain: Chain {
                             factory_chain_id: "factory_chain_id_1".to_string(),
                             factory: "factory_1".to_string(),
@@ -334,7 +392,7 @@ fn test_query_all_chains() {
                             from_factory_channel: "factory_channel_1".to_string(),
                         },
                     },
-                    ChainResponse { 
+                    ChainResponse {
                         chain: Chain {
                             factory_chain_id: "factory_chain_id_2".to_string(),
                             factory: "factory_2".to_string(),
@@ -345,46 +403,53 @@ fn test_query_all_chains() {
                 ],
             },
             expected_error: None,
-        },
-    ];
+        }];
 
-    for mut test in test_cases {
-        for (chain_id, factory_chain_id) in &test.chains {
-            // Create Chain object from chain_data string
-            let chain = Chain {
-                factory_chain_id: factory_chain_id.clone(),
-                factory: format!("factory_{}", chain_id.chars().last().unwrap()), // Example factory name
-                from_hub_channel: format!("hub_channel_{}", chain_id.chars().last().unwrap()), // Example hub channel name
-                from_factory_channel: format!("factory_channel_{}", chain_id.chars().last().unwrap()), // Example factory channel name
-            };
+        for mut test in test_cases {
+            for (chain_id, factory_chain_id) in &test.chains {
+                // Create Chain object from chain_data string
+                let chain = Chain {
+                    factory_chain_id: factory_chain_id.clone(),
+                    factory: format!("factory_{}", chain_id.chars().last().unwrap()), // Example factory name
+                    from_hub_channel: format!("hub_channel_{}", chain_id.chars().last().unwrap()), // Example hub channel name
+                    from_factory_channel: format!(
+                        "factory_channel_{}",
+                        chain_id.chars().last().unwrap()
+                    ), // Example factory channel name
+                };
 
-            // Save the Chain object into storage
-            CHAIN_ID_TO_CHAIN.save(&mut deps.storage, chain_id.clone(), &chain).unwrap();
-        }
+                // Save the Chain object into storage
+                CHAIN_ID_TO_CHAIN
+                    .save(&mut deps.storage, chain_id.clone(), &chain)
+                    .unwrap();
+            }
 
-        let res = query_all_chains(deps.as_ref());
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => {
-                let bin = res.unwrap();
-                let mut response: AllChainResponse = from_binary(&bin).unwrap();
-                
-                // Sort both actual and expected responses to ensure consistent order
-                response.chains.sort_by(|a, b| a.chain.factory_chain_id.cmp(&b.chain.factory_chain_id));
-                test.expected_response.chains.sort_by(|a, b| a.chain.factory_chain_id.cmp(&b.chain.factory_chain_id));
+            let res = query_all_chains(deps.as_ref());
+            match test.expected_error {
+                Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
+                None => {
+                    let bin = res.unwrap();
+                    let mut response: AllChainResponse = from_binary(&bin).unwrap();
 
-                assert_eq!(response, test.expected_response, "{}", test.name);
+                    // Sort both actual and expected responses to ensure consistent order
+                    response
+                        .chains
+                        .sort_by(|a, b| a.chain.factory_chain_id.cmp(&b.chain.factory_chain_id));
+                    test.expected_response
+                        .chains
+                        .sort_by(|a, b| a.chain.factory_chain_id.cmp(&b.chain.factory_chain_id));
+
+                    assert_eq!(response, test.expected_response, "{}", test.name);
+                }
             }
         }
     }
-}
-#[test]
-fn test_query_chain() {
-    let mut deps = mock_dependencies();
+    #[test]
+    fn test_query_chain() {
+        let mut deps = mock_dependencies();
 
-    // Test cases
-    let test_cases = vec![
-        TestQueryChain {
+        // Test cases
+        let test_cases = vec![TestQueryChain {
             name: "Valid query chain",
             chain_id: "chain1".to_string(),
             expected_response: ChainResponse {
@@ -396,71 +461,78 @@ fn test_query_chain() {
                 },
             },
             expected_error: None,
-        },
-    ];
+        }];
 
-    for test in test_cases {
-        let chain_data = Chain {
-            factory_chain_id: test.expected_response.chain.factory_chain_id.clone(),
-            factory: test.expected_response.chain.factory.clone(),
-            from_hub_channel: test.expected_response.chain.from_hub_channel.clone(),
-            from_factory_channel: test.expected_response.chain.from_factory_channel.clone(),
-        };
+        for test in test_cases {
+            let chain_data = Chain {
+                factory_chain_id: test.expected_response.chain.factory_chain_id.clone(),
+                factory: test.expected_response.chain.factory.clone(),
+                from_hub_channel: test.expected_response.chain.from_hub_channel.clone(),
+                from_factory_channel: test.expected_response.chain.from_factory_channel.clone(),
+            };
 
-        CHAIN_ID_TO_CHAIN.save(&mut deps.storage, test.chain_id.clone(), &chain_data).unwrap();
-        let res = query_chain(deps.as_ref(), test.chain_id.clone());
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => {
-                let bin = res.unwrap();
-                let response: ChainResponse = from_binary(&bin).unwrap();
-                assert_eq!(response, test.expected_response);
+            CHAIN_ID_TO_CHAIN
+                .save(&mut deps.storage, test.chain_id.clone(), &chain_data)
+                .unwrap();
+            let res = query_chain(deps.as_ref(), test.chain_id.clone());
+            match test.expected_error {
+                Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
+                None => {
+                    let bin = res.unwrap();
+                    let response: ChainResponse = from_binary(&bin).unwrap();
+                    assert_eq!(response, test.expected_response);
+                }
             }
         }
     }
-}
 
-#[test]
-fn test_query_simulate_swap() {
-    let mut deps = mock_dependencies();
+    #[test]
+    fn test_query_simulate_swap() {
+        let mut deps = mock_dependencies();
 
-    // Mock querier to return a simulated swap response
-    deps.querier.update_wasm(|_query| {
-        // Simulate constructing the binary response
-        let binary_response = match to_binary(&GetSwapResponse {
-            amount_out: Uint128::new(100),
-            asset_out: Token { id: "token_out".to_string() },
-        }) {
-            Ok(binary) => binary,
-            Err(err) => return SystemResult::Err(SystemError::InvalidRequest {
-                error: format!("Failed to serialize response: {}", err),
-                request: Binary::default(),  // Provide appropriate Binary here
-            }),
-        };
-        // Wrap the binary response in ContractResult and SystemResult
-        let contract_result = ContractResult::Ok(binary_response);
-        SystemResult::Ok(contract_result)
-    });
+        // Mock querier to return a simulated swap response
+        deps.querier.update_wasm(|_query| {
+            // Simulate constructing the binary response
+            let binary_response = match to_binary(&GetSwapResponse {
+                amount_out: Uint128::new(100),
+                asset_out: Token {
+                    id: "token_out".to_string(),
+                },
+            }) {
+                Ok(binary) => binary,
+                Err(err) => {
+                    return SystemResult::Err(SystemError::InvalidRequest {
+                        error: format!("Failed to serialize response: {}", err),
+                        request: Binary::default(), // Provide appropriate Binary here
+                    });
+                }
+            };
+            // Wrap the binary response in ContractResult and SystemResult
+            let contract_result = ContractResult::Ok(binary_response);
+            SystemResult::Ok(contract_result)
+        });
 
-    // Test cases
-    let test_cases = vec![
-        TestQuerySimulateSwap {
+        // Test cases
+        let test_cases = vec![TestQuerySimulateSwap {
             name: "Valid simulate swap",
             msg: QuerySimulateSwap {
-                asset_in: Token { id: "token_in".to_string() },
+                asset_in: Token {
+                    id: "token_in".to_string(),
+                },
                 amount_in: Uint128::new(50),
                 swaps: vec![NextSwap {
                     vlp_address: "vlp1".to_string(),
-                    ..Default::default()
                 }],
                 to_chain_id: "chain1".to_string(),
-                factory_chain: "factory_chain".to_string(),  // Provide factory_chain
-                min_amount_out: Uint128::zero(),  // Provide min_amount_out
-                to_address: "recipient_address".to_string(),  // Provide to_address
+                factory_chain: "factory_chain".to_string(), // Provide factory_chain
+                min_amount_out: Uint128::one(),             // Provide min_amount_out
+                to_address: "recipient_address".to_string(), // Provide to_address
             },
             expected_response: SimulateSwapResponse {
                 amount_out: Uint128::new(100),
-                asset_out: Token { id: "token_out".to_string() },
+                asset_out: Token {
+                    id: "token_out".to_string(),
+                },
                 out_chains: vec![SwapOutChain {
                     amount: Uint128::new(100),
                     chain: Chain {
@@ -472,30 +544,49 @@ fn test_query_simulate_swap() {
                 }],
             },
             expected_error: None,
-        },
-    ];
+        }];
 
-    for test in test_cases {
-        // Register the VLP in storage
-        VLPS.save(
-            &mut deps.storage,
-            (Token { id: "token_in".to_string() }, Token { id: "token_out".to_string() }),
-            &"vlps".to_string(),  // Pass a reference to a String object
-        )
-        .unwrap();
+        for test in test_cases {
+            let token_1 = Token {
+                id: "token_in".to_string(),
+            };
+            let token_2 = Token {
+                id: "token_out".to_string(),
+            };
+            // Register the VLP in storage
+            VLPS.save(
+                &mut deps.storage,
+                (token_1.clone(), token_2.clone()),
+                &"vlp1".to_string(), // Pass a reference to a String object
+            )
+            .unwrap();
 
-        let res = query::query_simulate_swap(*deps.as_ref().borrow(), test.msg.clone());
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => {
-                assert!(res.is_ok(), "{}", test.name);
-                let bin = res.unwrap();
-                let response: SimulateSwapResponse = from_binary(&bin).unwrap();
-                assert_eq!(response, test.expected_response, "{}", test.name);
+            ESCROW_BALANCES
+                .save(
+                    &mut deps.storage,
+                    (token_1.clone(), "chain1".to_string()),
+                    &Uint128::new(100000),
+                )
+                .unwrap();
+
+            ESCROW_BALANCES
+                .save(
+                    &mut deps.storage,
+                    (token_2.clone(), "chain1".to_string()),
+                    &Uint128::new(100000),
+                )
+                .unwrap();
+
+            let res = query::query_simulate_swap(*deps.as_ref().borrow(), test.msg.clone());
+            match test.expected_error {
+                Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
+                None => {
+                    assert!(res.is_ok(), "{:?}", res.err());
+                    let bin = res.unwrap();
+                    let response: SimulateSwapResponse = from_binary(&bin).unwrap();
+                    assert_eq!(response, test.expected_response, "{}", test.name);
+                }
             }
         }
     }
 }
-}
-
-
