@@ -81,4 +81,15 @@ fn test_deposit_native() {
         is_native: true,
     };
     assert_eq!(denom_to_amount, expected_denom_to_amount);
+    // Deposit more
+    let info = mock_info("creator", &[coin(10_u128, "eucl")]);
+    let _res = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap();
+    let denom_to_amount = DENOM_TO_AMOUNT
+        .load(&deps.storage, "eucl".to_string())
+        .unwrap();
+    let expected_denom_to_amount = AmountAndType {
+        amount: Uint128::new(20),
+        is_native: true,
+    };
+    assert_eq!(denom_to_amount, expected_denom_to_amount);
 }
