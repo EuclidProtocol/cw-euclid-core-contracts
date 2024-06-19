@@ -167,8 +167,8 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         // Add liquidity
-        let token_1_liquidity = Uint128::new(100);
-        let token_2_liquidity = Uint128::new(200);
+        let token_1_liquidity = Uint128::new(10000);
+        let token_2_liquidity = Uint128::new(20000);
         let slippage_tolerance = 5;
 
         let msg = ExecuteMsg::AddLiquidity {
@@ -403,8 +403,8 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         // Add liquidity
-        let token_1_liquidity = Uint128::new(100);
-        let token_2_liquidity = Uint128::new(200);
+        let token_1_liquidity = Uint128::new(10000);
+        let token_2_liquidity = Uint128::new(20000);
         let slippage_tolerance = 1;
 
         let msg = ExecuteMsg::AddLiquidity {
@@ -576,8 +576,8 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         // Add liquidity
-        let token_1_liquidity = Uint128::new(100);
-        let token_2_liquidity = Uint128::new(200);
+        let token_1_liquidity = Uint128::new(10000);
+        let token_2_liquidity = Uint128::new(20000);
         let slippage_tolerance = 1;
 
         let msg = ExecuteMsg::AddLiquidity {
