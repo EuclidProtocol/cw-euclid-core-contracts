@@ -145,7 +145,11 @@ pub fn receive_cw20(
         Cw20HookMsg::Deposit {} => {
             // Only the factory can call this function
             let factory_address = STATE.load(deps.storage)?.factory_address;
+
             let sender = cw20_msg.sender;
+            
+            dbg!(&factory_address, &sender);
+
             ensure!(sender == factory_address, ContractError::Unauthorized {});
 
             let asset_sent = info.sender.clone().into_string();
@@ -198,7 +202,7 @@ pub fn execute_deposit_cw20(
         .add_attribute("amount", amount))
 }
 
-pub fn execute_withdraw(
+pub fn execute_withdraw1(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -294,6 +298,97 @@ pub fn execute_withdraw(
     }
 
     // Update the storage with new amounts
+    for (denom, amount) in amounts {
+        DENOM_TO_AMOUNT.save(deps.storage, denom, &amount)?;
+    }
+
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attribute("method", "withdraw")
+        .add_attribute("amount", amount)
+        .add_attribute("recipient", recipient))
+}
+pub fn execute_withdraw(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    recipient: String,
+    amount: Uint128,
+    chain_id: String,
+) -> Result<Response, ContractError> {
+    // Only the factory can call this function
+    let factory_address = STATE.load(deps.storage)?.factory_address;
+    ensure!(
+        info.sender == factory_address,
+        ContractError::Unauthorized {}
+    );
+
+    // Ensure that the amount desired is above zero
+    ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
+
+    // For now we only support local chain transfers
+    ensure!(
+        env.block.chain_id == chain_id,
+        ContractError::UnsupportedOperation {}
+    );
+
+    // Ensure that the amount desired doesn't exceed the current balance
+    let mut sum = Uint128::zero();
+    let denom_to_amount: Vec<_> = DENOM_TO_AMOUNT.range(deps.storage, None, None, cosmwasm_std::Order::Ascending).collect();
+    for item in denom_to_amount {
+        let (_, value) = item?;
+        sum = sum.checked_add(value.amount)?;
+    }
+    ensure!(amount <= sum, ContractError::InsufficientDeposit {});
+
+    let mut messages: Vec<CosmosMsg> = Vec::new();
+    let mut amounts: Vec<(String, AmountAndType)> = DENOM_TO_AMOUNT
+        .range(deps.storage, None, None, cosmwasm_std::Order::Descending)
+        .map(|item| {
+            let (key, value) = item?;
+            Ok((key.to_string(), value))
+        })
+        .collect::<StdResult<Vec<(String, AmountAndType)>>>()?;
+    let mut amount_to_withdraw = amount;
+    let mut amount_to_send: Uint128;
+
+    for (denom, amount) in &mut amounts {
+        if amount_to_withdraw.is_zero() {
+            break;
+        }
+        if amount.amount >= amount_to_withdraw {
+            amount.amount -= amount_to_withdraw;
+            amount_to_send = amount_to_withdraw;
+            amount_to_withdraw = Uint128::zero();
+        } else {
+            amount_to_withdraw -= amount.amount;
+            amount_to_send = amount.amount;
+            amount.amount = Uint128::zero();
+        }
+        if amount.is_native {
+            messages.push(CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient.clone(),
+                amount: vec![Coin {
+                    denom: denom.to_string(),
+                    amount: amount_to_send,
+                }],
+            }));
+        } else {
+            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: denom.to_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient: recipient.to_string(),
+                    amount: amount_to_send,
+                })?,
+                funds: vec![],
+            }))
+        }
+    }
+
+    if !amount_to_withdraw.is_zero() {
+        return Err(ContractError::InsufficientDeposit {});
+    }
+
     for (denom, amount) in amounts {
         DENOM_TO_AMOUNT.save(deps.storage, denom, &amount)?;
     }

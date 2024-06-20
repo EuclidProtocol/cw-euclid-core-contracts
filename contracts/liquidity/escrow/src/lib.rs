@@ -6,3 +6,4 @@ pub mod helpers;
 pub mod migrate;
 pub mod query;
 pub mod state;
+pub mod test;
