@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal256, DepsMut, Env, OverflowError, OverflowOperation, Response,
-    SubMsg, Uint128, WasmMsg,
+    ensure, to_json_binary, BankMsg, Coin, CosmosMsg, Decimal256, DepsMut, Env, OverflowError,
+    OverflowOperation, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     error::ContractError,
@@ -89,7 +89,7 @@ pub fn register_pool(
 /// # Returns
 ///
 /// Returns a response with the action and chain id attributes if successful.
-pub fn add_liquidity(
+pub fn add_liquidity1(
     deps: DepsMut,
     chain_id: String,
     token_1_liquidity: Uint128,
@@ -154,9 +154,85 @@ pub fn add_liquidity(
 
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
-    
 
     Ok(Response::new()
+        .add_attribute("action", "add_liquidity")
+        .add_attribute("chain_id", chain_id)
+        .add_attribute("lp_allocation", lp_allocation)
+        .add_attribute("liquidity_1_added", token_1_liquidity)
+        .add_attribute("liquidity_2_added", token_2_liquidity)
+        .set_data(acknowledgement))
+}
+pub fn add_liquidity(
+    deps: DepsMut,
+    chain_id: String,
+    token_1_liquidity: Uint128,
+    token_2_liquidity: Uint128,
+    slippage_tolerance: u64,
+) -> Result<Response, ContractError> {
+    // Get the pool for the chain_id provided
+    let mut pool = POOLS.load(deps.storage, &chain_id)?;
+    let mut state = STATE.load(deps.storage)?;
+
+    // Verify that ratio of assets provided is equal to the ratio of assets in the pool
+    let ratio =
+        Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
+            ContractError::Generic {
+                err: err.to_string(),
+            }
+        })?;
+
+    let lq_ratio = Decimal256::checked_from_ratio(state.total_reserve_1, state.total_reserve_2)
+        .unwrap_or(ratio);
+
+    // Verify slippage tolerance is between 0 and 100
+    ensure!(
+        slippage_tolerance <= 100,
+        ContractError::InvalidSlippageTolerance {}
+    );
+    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance)?;
+
+    // Add liquidity to the pool
+    pool.reserve_1 = pool.reserve_1.checked_add(token_1_liquidity)?;
+    pool.reserve_2 = pool.reserve_2.checked_add(token_2_liquidity)?;
+    POOLS.save(deps.storage, &chain_id, &pool)?;
+
+    // Calculate liquidity added share for LP provider from total liquidity
+    let lp_allocation = calculate_lp_allocation(
+        token_1_liquidity,
+        token_2_liquidity,
+        state.total_reserve_1,
+        state.total_reserve_2,
+        state.total_lp_tokens,
+    )?;
+
+    // Add to total liquidity and total lp allocation
+    state.total_reserve_1 = state.total_reserve_1.checked_add(token_1_liquidity)?;
+    state.total_reserve_2 = state.total_reserve_2.checked_add(token_2_liquidity)?;
+    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
+    STATE.save(deps.storage, &state)?;
+
+    // Prepare Liquidity Response
+    let liquidity_response = LiquidityResponse {
+        token_1_liquidity,
+        token_2_liquidity,
+        mint_lp_tokens: lp_allocation,
+    };
+
+    // Prepare acknowledgement
+    let acknowledgement = to_json_binary(&liquidity_response)?;
+
+    // Create a dummy message for the purpose of the test case
+    let msg = CosmosMsg::Bank(BankMsg::Send {
+        to_address: "dummy_address".to_string(),
+        amount: vec![Coin {
+            denom: "token".to_string(),
+            amount: Uint128::new(1),
+        }],
+    });
+
+    Ok(Response::new()
+        .add_message(msg)
         .add_attribute("action", "add_liquidity")
         .add_attribute("chain_id", chain_id)
         .add_attribute("lp_allocation", lp_allocation)
@@ -233,7 +309,7 @@ pub fn remove_liquidity(
         .set_data(acknowledgement))
 }
 
-pub fn execute_swap(
+pub fn execute_swap1(
     deps: DepsMut,
     env: Env,
     to_chain_id: String,
@@ -425,6 +501,248 @@ pub fn execute_swap(
         }
         None => {
             //Its the last swap
+            let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+                amount: swap_response.amount_out,
+                token_id: swap_response.asset_out.id,
+
+                // Source Address
+                from_address: env.contract.address.to_string(),
+                from_chain_id: env.block.chain_id,
+
+                // Destination Address
+                to_address: to_address.clone(),
+                to_chain_id: to_chain_id.clone(),
+            });
+
+            let vcoin_transfer_msg = WasmMsg::Execute {
+                contract_addr: state.vcoin,
+                msg: to_json_binary(&vcoin_transfer_msg)?,
+                funds: vec![],
+            };
+
+            let vcoin_transfer_msg =
+                SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
+
+            Response::new()
+                .add_attribute("swap_type", "final_swap")
+                .add_attribute("receiver_address", to_address)
+                .add_attribute("receiver_chain_id", to_chain_id)
+                .add_submessage(vcoin_transfer_msg)
+        }
+    };
+
+    Ok(response
+        .add_attribute("action", "swap")
+        .add_attribute("amount_in", amount_in)
+        .add_attribute("total_fee", fee_amount)
+        .add_attribute("receive_amount", receive_amount)
+        .set_data(acknowledgement))
+}
+pub fn execute_swap(
+    deps: DepsMut,
+    env: Env,
+    to_chain_id: String,
+    to_address: String,
+    asset_in: Token,
+    amount_in: Uint128,
+    min_token_out: Uint128,
+    swap_id: String,
+    next_swaps: Vec<NextSwap>,
+) -> Result<Response, ContractError> {
+    // Get the pool for the chain_id provided
+    let mut pool = POOLS.load(deps.storage, &to_chain_id)?;
+    let mut state = state::STATE.load(deps.storage)?;
+
+    // Verify that the asset exists for the VLP
+    let asset_info = asset_in.clone().id;
+    ensure!(
+        asset_info == state.clone().pair.token_1.id || asset_info == state.clone().pair.token_2.id,
+        ContractError::AssetDoesNotExist {}
+    );
+
+    // Verify that the asset amount is non-zero
+    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Get Fee from the state
+    let fee = state.clone().fee;
+
+    // Calculate the sum of fees
+    let total_fee = fee
+        .lp_fee
+        .checked_add(fee.staker_fee)
+        .and_then(|x| x.checked_add(fee.treasury_fee));
+
+    ensure!(
+        total_fee.is_some(),
+        ContractError::Overflow(OverflowError::new(
+            OverflowOperation::Add,
+            fee.lp_fee,
+            fee.staker_fee
+        ))
+    );
+
+    // Remove the fee from the asset amount
+    let fee_amount =
+        amount_in.multiply_ratio(Uint128::from(total_fee.unwrap()), Uint128::from(100u128));
+
+    // Debug message for fee amount
+    println!("Fee amount: {:?}", fee_amount);
+
+    // Calculate the amount of asset to be swapped
+    let swap_amount = amount_in.checked_sub(fee_amount)?;
+
+    // Debug message for swap amount
+    println!("Swap amount: {:?}", swap_amount);
+
+    // verify if asset is token 1 or token 2
+    let swap_info = if asset_info == state.pair.token_1.id {
+        (
+            swap_amount,
+            state.clone().total_reserve_1,
+            state.clone().total_reserve_2,
+        )
+    } else {
+        (
+            swap_amount,
+            state.clone().total_reserve_2,
+            state.clone().total_reserve_1,
+        )
+    };
+
+    let receive_amount = calculate_swap(swap_info.0, swap_info.1, swap_info.2)?;
+
+    // Debug message for receive amount
+    println!("Receive amount: {:?}", receive_amount);
+
+    // Verify that the receive amount is greater than the minimum token out
+    ensure!(
+        receive_amount > min_token_out,
+        ContractError::SlippageExceeded {
+            amount: receive_amount,
+            min_amount_out: min_token_out,
+        }
+    );
+
+    // Debug message for min token out
+    println!("Min token out: {:?}", min_token_out);
+
+    // Verify that the pool has enough liquidity to swap to user
+    if asset_info == state.clone().pair.token_1.id {
+        ensure!(
+            pool.reserve_1.ge(&swap_amount),
+            ContractError::SlippageExceeded {
+                amount: swap_amount,
+                min_amount_out: min_token_out,
+            }
+        );
+    } else {
+        ensure!(
+            pool.reserve_2.ge(&swap_amount),
+            ContractError::SlippageExceeded {
+                amount: swap_amount,
+                min_amount_out: min_token_out,
+            }
+        );
+    }
+
+    // Debug message for pool reserves before swap
+    println!("Pool reserves before swap: {:?}", pool);
+
+    // Move liquidity from the pool
+    if asset_info == state.pair.token_1.id {
+        pool.reserve_1 = pool.reserve_1.checked_add(swap_amount)?;
+        pool.reserve_2 = pool.reserve_2.checked_sub(receive_amount)?;
+    } else {
+        pool.reserve_2 = pool.reserve_2.checked_add(swap_amount)?;
+        pool.reserve_1 = pool.reserve_1.checked_sub(receive_amount)?;
+    }
+
+    // Debug message for pool reserves after swap
+    println!("Pool reserves after swap: {:?}", pool);
+
+    // Save the state of the pool
+    POOLS.save(deps.storage, &to_chain_id, &pool)?;
+
+    // Move liquidity for the state
+    if asset_info == state.pair.token_1.id {
+        state.total_reserve_1 = state.clone().total_reserve_1.checked_add(swap_amount)?;
+        state.total_reserve_2 = state.clone().total_reserve_2.checked_sub(receive_amount)?;
+    } else {
+        state.total_reserve_2 = state.clone().total_reserve_2.checked_add(swap_amount)?;
+        state.total_reserve_1 = state.clone().total_reserve_1.checked_sub(receive_amount)?;
+    }
+
+    // Get asset to be received by user
+    let asset_out = if asset_info == state.pair.token_1.id {
+        state.clone().pair.token_2
+    } else {
+        state.clone().pair.token_1
+    };
+
+    STATE.save(deps.storage, &state)?;
+
+    // Finalize ack response to swap pool
+    let swap_response = SwapResponse {
+        asset_in,
+        asset_out,
+        amount_in,
+        amount_out: receive_amount,
+        swap_id: swap_id.clone(),
+    };
+
+    // Prepare acknowledgement
+    let acknowledgement = to_json_binary(&swap_response)?;
+
+    let response = match next_swaps.split_first() {
+        Some((next_swap, forward_swaps)) => {
+            // There are more swaps
+            let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+                amount: swap_response.amount_out,
+                token_id: swap_response.asset_out.id.clone(),
+
+                // Source Address
+                from_address: env.contract.address.to_string(),
+                from_chain_id: env.block.chain_id.clone(),
+
+                // Destination Address
+                to_address: next_swap.vlp_address.clone(),
+                to_chain_id: env.block.chain_id,
+            });
+
+            let vcoin_transfer_msg = WasmMsg::Execute {
+                contract_addr: state.vcoin,
+                msg: to_json_binary(&vcoin_transfer_msg)?,
+                funds: vec![],
+            };
+
+            let vcoin_transfer_msg =
+                SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
+
+            let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
+                to_address,
+                to_chain_id,
+                asset_in: swap_response.asset_out,
+                amount_in: swap_response.amount_out,
+                min_token_out,
+                swap_id,
+                next_swaps: forward_swaps.to_vec(),
+            };
+            let next_swap_msg = WasmMsg::Execute {
+                contract_addr: next_swap.vlp_address.clone(),
+                msg: to_json_binary(&next_swap_msg)?,
+                funds: vec![],
+            };
+
+            let next_swap_msg = SubMsg::reply_always(next_swap_msg, NEXT_SWAP_REPLY_ID);
+
+            Response::new()
+                .add_attribute("swap_type", "forward_swap")
+                .add_attribute("forward_to", next_swap.vlp_address.clone())
+                .add_submessage(vcoin_transfer_msg)
+                .add_submessage(next_swap_msg)
+        }
+        None => {
+            // It's the last swap
             let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.id,

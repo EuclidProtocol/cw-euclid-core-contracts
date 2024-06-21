@@ -147,8 +147,6 @@ pub fn receive_cw20(
             let factory_address = STATE.load(deps.storage)?.factory_address;
 
             let sender = cw20_msg.sender;
-            
-            dbg!(&factory_address, &sender);
 
             ensure!(sender == factory_address, ContractError::Unauthorized {});
 
@@ -334,7 +332,9 @@ pub fn execute_withdraw(
 
     // Ensure that the amount desired doesn't exceed the current balance
     let mut sum = Uint128::zero();
-    let denom_to_amount: Vec<_> = DENOM_TO_AMOUNT.range(deps.storage, None, None, cosmwasm_std::Order::Ascending).collect();
+    let denom_to_amount: Vec<_> = DENOM_TO_AMOUNT
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .collect();
     for item in denom_to_amount {
         let (_, value) = item?;
         sum = sum.checked_add(value.amount)?;

@@ -249,6 +249,7 @@ pub fn add_liquidity_request(
 ) -> Result<Response, ContractError> {
     // Load the state
     let state = STATE.load(deps.storage)?;
+    dbg!(&state);
 
     ensure!(
         state.hub_channel.is_some(),
@@ -257,32 +258,38 @@ pub fn add_liquidity_request(
         }
     );
     let channel = state.hub_channel.unwrap();
+    dbg!(&channel);
 
     let pool_address = info.sender.clone();
 
     let pair_info = VLP_TO_POOL.load(deps.storage, vlp_address.clone())?;
+    dbg!(&pair_info);
 
     // Check that slippage tolerance is between 1 and 100
     ensure!(
         (1..=100).contains(&slippage_tolerance),
         ContractError::InvalidSlippageTolerance {}
     );
+    dbg!(slippage_tolerance);
 
     // if `msg_sender` is not None, then the sender is the one who initiated the swap
     let sender = match msg_sender {
         Some(sender) => sender,
         None => info.sender.clone().to_string(),
     };
+    dbg!(&sender);
 
     // Check that the liquidity is greater than 0
     ensure!(
         !token_1_liquidity.is_zero() && !token_2_liquidity.is_zero(),
         ContractError::ZeroAssetAmount {}
     );
+    dbg!(token_1_liquidity, token_2_liquidity);
 
     // Get the token 1 and token 2 from the pair info
     let token_1 = pair_info.token_1.clone();
     let token_2 = pair_info.token_2.clone();
+    dbg!(&token_1, &token_2);
 
     // Prepare msg vector
     let mut msgs: Vec<CosmosMsg> = Vec::new();
@@ -298,6 +305,7 @@ pub fn add_liquidity_request(
             !info.funds.is_empty(),
             ContractError::InsufficientDeposit {}
         );
+        dbg!(&info.funds);
 
         // Check for funds sent with the message
         let amt = info
@@ -307,6 +315,7 @@ pub fn add_liquidity_request(
             .ok_or(ContractError::Generic {
                 err: "Denom not found".to_string(),
             })?;
+        dbg!(&amt);
 
         ensure!(
             amt.amount.ge(&token_1_liquidity),
@@ -333,6 +342,7 @@ pub fn add_liquidity_request(
             .ok_or(ContractError::Generic {
                 err: "Denom not found".to_string(),
             })?;
+        dbg!(&amt);
 
         ensure!(
             amt.amount.ge(&token_2_liquidity),
@@ -349,9 +359,11 @@ pub fn add_liquidity_request(
         vlp_address.clone(),
         pair_info,
     )?;
+    dbg!(&liquidity_info);
 
     let timeout_duration = get_timeout(timeout)?;
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout_duration));
+    dbg!(&timeout);
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
@@ -366,6 +378,7 @@ pub fn add_liquidity_request(
         })?,
         timeout,
     };
+    dbg!(&ibc_packet);
 
     let msg = CosmosMsg::Ibc(ibc_packet);
 

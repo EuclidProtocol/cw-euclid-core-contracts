@@ -31,8 +31,8 @@ pub struct NextSwap {
 impl Default for NextSwap {
     fn default() -> Self {
         NextSwap {
-            vlp_address: Default::default(),  // Initialize each field with its default value
-            // Initialize other fields similarly
+            vlp_address: Default::default(), // Initialize each field with its default value
+                                             // Initialize other fields similarly
         }
     }
 }

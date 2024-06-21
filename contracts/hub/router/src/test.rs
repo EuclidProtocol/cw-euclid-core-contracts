@@ -2,25 +2,21 @@
 mod tests {
     use std::borrow::Borrow;
 
-    use super::*;
-    use crate::contract::{execute, instantiate, query};
-    use crate::query::{
-        self, query_all_chains, query_all_vlps, query_chain, query_simulate_swap, query_vlp,
-    };
+    use crate::contract::{execute, instantiate};
+    use crate::query::{self, query_all_chains, query_all_vlps, query_chain, query_vlp};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{
-        from_binary, to_binary, Binary, ContractResult, CosmosMsg, IbcMsg, IbcTimeout, SystemError,
-        SystemResult, Uint128, WasmMsg,
+        from_json, to_json_binary, Binary, ContractResult, CosmosMsg, IbcMsg, SystemError,
+        SystemResult, Uint128,
     };
     use euclid::error::ContractError;
     use euclid::msgs::router::{
         AllChainResponse, AllVlpResponse, Chain, ChainResponse, ExecuteMsg, InstantiateMsg,
-        QueryMsg, QuerySimulateSwap, SimulateSwapResponse, StateResponse, SwapOutChain,
-        VlpResponse,
+        QuerySimulateSwap, SimulateSwapResponse, SwapOutChain, VlpResponse,
     };
     use euclid::msgs::vlp::GetSwapResponse;
     use euclid::swap::NextSwap;
-    use euclid::token::{Pair, Token};
+    use euclid::token::Token;
     use euclid_ibc::msg::HubIbcExecuteMsg;
     // use euclid_ibc::msg::{InstantiateMsg, ExecuteMsg, QueryMsg};
     use crate::state::{State, CHAIN_ID_TO_CHAIN, ESCROW_BALANCES, STATE, VLPS};
@@ -229,7 +225,7 @@ mod tests {
                     {
                         assert_eq!(channel_id, "channel-1");
                         assert!(timeout.timestamp().is_some());
-                        let msg: HubIbcExecuteMsg = from_binary(data).unwrap();
+                        let msg: HubIbcExecuteMsg = from_json(data).unwrap();
                         assert_eq!(
                             msg,
                             HubIbcExecuteMsg::RegisterFactory {
@@ -314,7 +310,7 @@ mod tests {
                 Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
                 None => {
                     let bin = res.unwrap();
-                    let mut response: AllVlpResponse = from_binary(&bin).unwrap();
+                    let mut response: AllVlpResponse = from_json(&bin).unwrap();
 
                     // Sort both actual and expected responses to ensure consistent order
                     response.vlps.sort_by(|a, b| a.vlp.cmp(&b.vlp));
@@ -365,7 +361,7 @@ mod tests {
                 Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
                 None => {
                     let bin = res.unwrap();
-                    let response: VlpResponse = from_binary(&bin).unwrap();
+                    let response: VlpResponse = from_json(&bin).unwrap();
                     assert_eq!(response, test.expected_response);
                 }
             }
@@ -429,7 +425,7 @@ mod tests {
                 Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
                 None => {
                     let bin = res.unwrap();
-                    let mut response: AllChainResponse = from_binary(&bin).unwrap();
+                    let mut response: AllChainResponse = from_json(&bin).unwrap();
 
                     // Sort both actual and expected responses to ensure consistent order
                     response
@@ -479,7 +475,7 @@ mod tests {
                 Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
                 None => {
                     let bin = res.unwrap();
-                    let response: ChainResponse = from_binary(&bin).unwrap();
+                    let response: ChainResponse = from_json(&bin).unwrap();
                     assert_eq!(response, test.expected_response);
                 }
             }
@@ -492,7 +488,7 @@ mod tests {
         // Mock querier to return a simulated swap response
         deps.querier.update_wasm(|_query| {
             // Simulate constructing the binary response
-            let binary_response = match to_binary(&GetSwapResponse {
+            let binary_response = match to_json_binary(&GetSwapResponse {
                 amount_out: Uint128::new(100),
                 asset_out: Token {
                     id: "token_out".to_string(),
@@ -596,7 +592,7 @@ mod tests {
                 None => {
                     assert!(res.is_ok(), "{:?}", res.err());
                     let bin = res.unwrap();
-                    let response: SimulateSwapResponse = from_binary(&bin).unwrap();
+                    let response: SimulateSwapResponse = from_json(&bin).unwrap();
                     assert_eq!(response, test.expected_response, "{}", test.name);
                 }
             }
