@@ -105,6 +105,7 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetPool { vlp } => get_pool(deps, vlp),
+        QueryMsg::GetEscrow { token_id } => get_pool(deps, token_id),
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
         // Pool Queries //

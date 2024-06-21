@@ -2,17 +2,26 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, Order};
 use euclid::{
     error::ContractError,
     msgs::{
-        factory::{AllPoolsResponse, GetPoolResponse, PoolVlpResponse, StateResponse},
+        factory::{
+            AllPoolsResponse, GetEscrowResponse, GetPoolResponse, PoolVlpResponse, StateResponse,
+        },
         pool::{GetPendingLiquidityResponse, GetPendingSwapsResponse},
     },
 };
 
-use crate::state::{PENDING_LIQUIDITY, PENDING_SWAPS, STATE, VLP_TO_POOL};
+use crate::state::{PENDING_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_POOL};
 
 // Returns the Pair Info of the Pair in the pool
 pub fn get_pool(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
     let pair_info = VLP_TO_POOL.load(deps.storage, vlp)?;
     Ok(to_json_binary(&GetPoolResponse { pair_info })?)
+}
+
+// Returns the Pair Info of the Pair in the pool
+pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
+    let escrow_address =
+        TOKEN_TO_ESCROW.may_load(deps.storage, euclid::token::Token { id: token_id })?;
+    Ok(to_json_binary(&GetEscrowResponse { escrow_address })?)
 }
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {

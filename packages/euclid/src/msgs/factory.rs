@@ -3,7 +3,7 @@ use crate::{
     token::{PairInfo, Token, TokenInfo},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 use super::pool::{GetPendingLiquidityResponse, GetPendingSwapsResponse};
@@ -75,11 +75,19 @@ pub enum QueryMsg {
         lower_limit: Option<u128>,
         upper_limit: Option<u128>,
     },
+
+    #[returns(GetEscrowResponse)]
+    GetEscrow { token_id: String },
 }
 
 #[cw_serde]
 pub struct GetPoolResponse {
     pub pair_info: PairInfo,
+}
+
+#[cw_serde]
+pub struct GetEscrowResponse {
+    pub escrow_address: Option<Addr>,
 }
 // We define a custom struct for each query response
 #[cw_serde]
