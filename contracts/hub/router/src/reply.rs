@@ -16,7 +16,7 @@ use euclid::{
 };
 use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
-use crate::state::{CHAIN_ID_TO_CHAIN, ESCROW_BALANCES, STATE, SWAP_ID_TO_CHAIN_ID, VLPS};
+use crate::state::{CHAIN_ID_TO_CHAIN, ESCROW_BALANCES, STATE, SWAP_ID_TO_MSG, VLPS};
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
@@ -149,9 +149,9 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
             let swap_response: SwapResponse = from_json(execute_data.data.unwrap_or_default())?;
 
             let ack = AcknowledgementMsg::Ok(swap_response.clone());
-            let chain_id = SWAP_ID_TO_CHAIN_ID.load(deps.storage, swap_response.swap_id.clone())?;
+            let swap_msg = SWAP_ID_TO_MSG.load(deps.storage, swap_response.swap_id.clone())?;
 
-            let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, chain_id.clone())?;
+            let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, swap_msg.to_chain_id.clone())?;
 
             let token_out_escrow_key = (swap_response.asset_out.clone(), chain.factory_chain_id);
 
@@ -159,21 +159,22 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 .may_load(deps.storage, token_out_escrow_key.clone())?
                 .unwrap_or(Uint128::zero());
 
+            let escrow_amout_out = swap_response.amount_out.min(token_out_escrow_balance);
+
             ensure!(
-                token_out_escrow_balance.ge(&swap_response.amount_out),
+                !escrow_amout_out.is_zero(),
                 ContractError::Generic {
-                    err: "Insufficient Escrow Balance on out chain".to_string()
+                    err: "Escrow release amount cannot be zero".to_string()
                 }
             );
 
             let packet = IbcMsg::SendPacket {
                 channel_id: chain.from_hub_channel,
                 data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
-                    router: env.contract.address.to_string(),
-                    amount: swap_response.amount_in,
-                    token_id: swap_response.asset_in.id,
-                    to_address: todo!(),
-                    to_chain_id: chain_id,
+                    amount: escrow_amout_out,
+                    token_id: swap_response.asset_out.id.clone(),
+                    to_address: swap_msg.to_address,
+                    to_chain_id: swap_msg.to_chain_id,
                 })?,
                 timeout: IbcTimeout::with_timestamp(
                     env.block.time.plus_seconds(get_timeout(None)?),
@@ -182,10 +183,10 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
 
             // Prepare burn msg
             let burn_msg = VcoinExecuteMsg::Burn(ExecuteBurn {
-                amount: swap_response.amount_out,
+                amount: escrow_amout_out,
                 balance_key: BalanceKey {
-                    chain_id,
-                    address: chain.from_factory_channel,
+                    chain_id: swap_response.to_chain_id.clone(),
+                    address: swap_response.to_address.clone(),
                     token_id: swap_response.asset_out.id.clone(),
                 },
             });

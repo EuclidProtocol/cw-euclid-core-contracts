@@ -42,6 +42,7 @@ pub fn do_ibc_packet_receive(
     env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    // TODO: Check for channel with hub channel in state
     let channel = msg.packet.dest.channel_id;
     let msg: HubIbcExecuteMsg = from_json(msg.packet.data)?;
     match msg {
@@ -49,7 +50,6 @@ pub fn do_ibc_packet_receive(
             execute_register_router(deps, env, router, channel)
         }
         HubIbcExecuteMsg::ReleaseEscrow {
-            router,
             amount,
             token_id,
             to_address,
@@ -57,7 +57,6 @@ pub fn do_ibc_packet_receive(
         } => execute_release_escrow(
             deps,
             env,
-            router,
             channel,
             amount,
             token_id,
@@ -99,7 +98,6 @@ fn execute_register_router(
 fn execute_release_escrow(
     deps: DepsMut,
     env: Env,
-    router: String,
     channel: String,
     amount: Uint128,
     token_id: String,
@@ -107,10 +105,6 @@ fn execute_release_escrow(
     to_chain_id: String,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(
-        state.router_contract == router,
-        ContractError::Unauthorized {}
-    );
 
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
         recipient: to_address.clone(),
@@ -140,8 +134,7 @@ fn execute_release_escrow(
             msg: to_json_binary(&withdraw_msg)?,
             funds: vec![],
         }))
-        .add_attribute("method", "register_router")
-        .add_attribute("router", router)
+        .add_attribute("method", "release escrow")
         .add_attribute("channel", channel)
         .set_ack(ack))
 }

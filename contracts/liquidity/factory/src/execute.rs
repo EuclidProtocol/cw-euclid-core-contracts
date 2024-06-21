@@ -147,7 +147,9 @@ pub fn execute_swap_request(
             .amount
             < amount_in
         {
-            return Err(ContractError::Unauthorized {});
+            return Err(ContractError::Generic {
+                err: "Funds attached are less than funds needed".to_string(),
+            });
         }
     } else {
         // Verify that the contract address is the same as the asset contract address
@@ -173,15 +175,17 @@ pub fn execute_swap_request(
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::Swap {
-            to_address: sender,
-            to_chain_id: state.chain_id,
-            asset_in: asset_in.get_token(),
-            amount_in,
-            min_amount_out,
-            swap_id: swap_info.swap_id,
-            swaps,
-        })?,
+        data: to_json_binary(&ChainIbcExecuteMsg::Swap(
+            euclid_ibc::msg::ChainIbcSwapExecuteMsg {
+                to_address: sender,
+                to_chain_id: state.chain_id,
+                asset_in: asset_in.get_token(),
+                amount_in,
+                min_amount_out,
+                swap_id: swap_info.swap_id,
+                swaps,
+            },
+        ))?,
         timeout,
     };
 
@@ -283,6 +287,7 @@ pub fn add_liquidity_request(
     // Get the token 1 and token 2 from the pair info
     let token_1 = pair_info.token_1.clone();
     let token_2 = pair_info.token_2.clone();
+
 
     // Prepare msg vector
     let mut msgs: Vec<CosmosMsg> = Vec::new();

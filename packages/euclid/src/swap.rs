@@ -35,6 +35,8 @@ pub struct SwapResponse {
     pub asset_out: Token,
     pub amount_in: Uint128,
     pub amount_out: Uint128,
+    pub to_address: String,
+    pub to_chain_id: String,
     // Add Swap Unique Identifier
     pub swap_id: String,
 }

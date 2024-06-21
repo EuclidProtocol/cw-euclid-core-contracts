@@ -7,6 +7,7 @@ use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
 
 use super::pool::{GetPendingLiquidityResponse, GetPendingSwapsResponse};
+
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP

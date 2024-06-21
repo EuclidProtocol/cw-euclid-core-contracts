@@ -304,7 +304,7 @@ pub fn execute_swap(
 
     // Verify that the receive amount is greater than the minimum token out
     ensure!(
-        receive_amount > min_token_out,
+        !receive_amount.is_zero(),
         ContractError::SlippageExceeded {
             amount: receive_amount,
             min_amount_out: min_token_out,
@@ -368,6 +368,8 @@ pub fn execute_swap(
         asset_out,
         amount_in,
         amount_out: receive_amount,
+        to_address: to_address.clone(),
+        to_chain_id: to_chain_id.clone(),
         swap_id: swap_id.clone(),
     };
 
@@ -400,8 +402,11 @@ pub fn execute_swap(
                 SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
 
             let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
+                // Final user address and chain id
                 to_address,
                 to_chain_id,
+
+                // Carry forward amount to next swap
                 asset_in: swap_response.asset_out,
                 amount_in: swap_response.amount_out,
                 min_token_out,
@@ -424,6 +429,15 @@ pub fn execute_swap(
         }
         None => {
             //Its the last swap
+
+            // Verify that the receive amount is greater than the minimum token out
+            ensure!(
+                receive_amount > min_token_out,
+                ContractError::SlippageExceeded {
+                    amount: receive_amount,
+                    min_amount_out: min_token_out,
+                }
+            );
             let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.id,
