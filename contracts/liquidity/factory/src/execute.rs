@@ -61,7 +61,7 @@ pub fn execute_request_pool_creation(
 
 // TODO make execute_swap an internal function OR merge execute_swap_request and execute_swap into one function
 
-pub fn execute_swap_request(
+pub fn execute_swap_request1(
     deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
@@ -191,6 +191,163 @@ pub fn execute_swap_request(
         .add_attribute("method", "execute_request_swap")
         .add_message(msg))
 }
+pub fn execute_swap_request(
+    deps: &mut DepsMut,
+    info: MessageInfo,
+    env: Env,
+    asset_in: TokenInfo,
+    asset_out: TokenInfo,
+    amount_in: Uint128,
+    min_amount_out: Uint128,
+    swaps: Vec<NextSwap>,
+    msg_sender: Option<String>,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    println!("State loaded: {:?}", state);
+
+    ensure!(
+        state.hub_channel.is_some(),
+        ContractError::Generic {
+            err: "Hub Channel doesn't exist".to_string()
+        }
+    );
+    let channel = state.hub_channel.unwrap();
+
+    println!("Channel loaded: {:?}", channel);
+
+    let first_swap = swaps.first().ok_or(ContractError::Generic {
+        err: "Empty Swap not allowed".to_string(),
+    })?;
+
+    println!("First swap: {:?}", first_swap);
+
+    // Verify that this asset is allowed
+    let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.get_token())?;
+
+    println!("Escrow loaded: {:?}", escrow);
+
+    let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps.querier.query_wasm_smart(
+        escrow,
+        &euclid::msgs::escrow::QueryMsg::TokenAllowed {
+            token: asset_in.clone(),
+        },
+    )?;
+
+    println!("Token allowed: {:?}", token_allowed);
+
+    ensure!(
+        token_allowed.allowed,
+        ContractError::UnsupportedDenomination {}
+    );
+
+    let pair = VLP_TO_POOL.load(deps.storage, first_swap.vlp_address.clone());
+
+    println!("Pair loaded: {:?}", pair);
+
+    ensure!(
+        pair.is_ok(),
+        ContractError::Generic {
+            err: "vlp not registered with this chain".to_string()
+        }
+    );
+
+    let pair = pair?;
+
+    // if `msg_sender` is not None, then the sender is the one who initiated the swap
+    let sender = match msg_sender {
+        Some(sender) => sender,
+        None => info.sender.clone().to_string(),
+    };
+
+    println!("Sender: {}", sender);
+
+    // Verify that the asset exists in the pool
+    ensure!(
+        asset_in == pair.token_1 || asset_in == pair.token_2,
+        ContractError::AssetDoesNotExist {}
+    );
+
+    println!("Asset in pair: {:?}", asset_in);
+
+    // Verify that the asset amount is greater than 0
+    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
+
+    println!("Amount in: {:?}", amount_in);
+
+    // Verify that the min amount out is greater than 0
+    ensure!(!min_amount_out.is_zero(), ContractError::ZeroAssetAmount {});
+
+    println!("Min amount out: {:?}", min_amount_out);
+
+    // Verify if the token is native
+    if asset_in.is_native() {
+        // Get the denom of native token
+        let denom = asset_in.get_denom();
+
+        println!("Native denom: {}", denom);
+
+        // Verify that the amount of funds passed is greater than the asset amount
+        if info
+            .funds
+            .iter()
+            .find(|x| x.denom == denom)
+            .ok_or(ContractError::Generic {
+                err: "Denom not found".to_string(),
+            })?
+            .amount
+            < amount_in
+        {
+            return Err(ContractError::Unauthorized {});
+        }
+    } else {
+        // Verify that the contract address is the same as the asset contract address
+        ensure!(
+            info.sender == asset_in.get_denom(),
+            ContractError::Unauthorized {}
+        );
+    }
+
+    let timeout_duration = get_timeout(timeout)?;
+    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout_duration));
+    let swap_info = generate_swap_req(
+        deps.branch(),
+        sender.clone(),
+        asset_in.clone(),
+        asset_out,
+        amount_in,
+        min_amount_out,
+        swaps.clone(),
+        timeout.clone(),
+    )?;
+
+    println!("Swap info: {:?}", swap_info);
+
+    // Create IBC packet to send to Router
+    let ibc_packet = IbcMsg::SendPacket {
+        channel_id: channel.clone(),
+        data: to_json_binary(&ChainIbcExecuteMsg::Swap {
+            to_address: sender,
+            to_chain_id: state.chain_id,
+            asset_in: asset_in.get_token(),
+            amount_in,
+            min_amount_out,
+            swap_id: swap_info.swap_id,
+            swaps,
+        })?,
+        timeout,
+    };
+
+    println!("IBC packet created: {:?}", ibc_packet);
+
+    let msg = CosmosMsg::Ibc(ibc_packet);
+
+    Ok(Response::new()
+        .add_attribute("method", "execute_request_swap")
+        .add_message(msg))
+}
+
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
 ///

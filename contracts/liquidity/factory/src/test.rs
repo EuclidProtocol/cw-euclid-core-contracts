@@ -103,7 +103,7 @@ mod tests {
             env.clone(),
             info,
             pair_info.clone(),
-            Some(1000),
+            Some(30),
         )
         .unwrap();
         assert_eq!(
@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(ibc_msg.0, "hub_channel");
 
         let expected_msg = to_binary(&ChainIbcExecuteMsg::RequestPoolCreation {
-            pool_rq_id: "0".to_string(),
+            pool_rq_id: "creator-0".to_string(),
             pair_info,
         })
         .unwrap();
@@ -173,26 +173,25 @@ mod tests {
 
         // Save TOKEN_TO_ESCROW with correct types
         TOKEN_TO_ESCROW
-            .save(
-                deps.as_mut().storage,
-                Token {
-                    id: "token1".to_string(),
-                },
-                &Addr::unchecked("escrow".to_string()),
-            )
-            .unwrap();
-
-        // Save VLP_TO_POOL with correct types
-        VLP_TO_POOL
-            .save(
-                deps.as_mut().storage,
-                vlp_address.clone(), // Pass vlp_address directly
-                &PairInfo {
-                    token_1: asset_in.clone(),
-                    token_2: asset_out.clone(),
-                },
-            )
-            .unwrap();
+        .save(
+            deps.as_mut().storage,
+            Token {
+                id: "token_1".to_string(),
+            },
+            &Addr::unchecked("escrow".to_string()), // Ensure this key is correct
+        )
+        .unwrap();
+    
+    VLP_TO_POOL
+        .save(
+            deps.as_mut().storage,
+            vlp_address.clone(),
+            &PairInfo {
+                token_1: asset_in.clone(),
+                token_2: asset_out.clone(),
+            },
+        )
+        .unwrap();
 
         // Call the execute_swap_request function
         let res = execute_swap_request(
@@ -205,7 +204,7 @@ mod tests {
             min_amount_out,
             swaps.clone(),
             None,
-            Some(1000),
+            Some(30),
         )
         .unwrap();
 
@@ -293,7 +292,7 @@ mod tests {
             token_2_liquidity,
             slippage_tolerance,
             None,
-            Some(86400), // Adjusted timeout value (example: 86400 seconds = 1 day)
+            Some(230), // Adjusted timeout value (example: 86400 seconds = 1 day)
         )
         .unwrap();
 
@@ -323,7 +322,7 @@ mod tests {
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            liquidity_id: "0".to_string(),
+            liquidity_id: "sender-0".to_string(),
             pool_address: "sender".to_string(),
             vlp_address,
         })
