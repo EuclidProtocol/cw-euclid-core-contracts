@@ -1,6 +1,7 @@
 use crate::{
     fee::Fee,
     pool::Pool,
+    swap::NextSwap,
     token::{Pair, PairInfo, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
@@ -9,6 +10,7 @@ use cosmwasm_std::Uint128;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
+    pub vcoin: String,
     pub pair: Pair,
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
@@ -23,11 +25,13 @@ pub enum ExecuteMsg {
     },
 
     Swap {
-        chain_id: String,
-        asset: Token,
-        asset_amount: Uint128,
+        to_chain_id: String,
+        to_address: String,
+        asset_in: Token,
+        amount_in: Uint128,
         min_token_out: Uint128,
         swap_id: String,
+        next_swaps: Vec<NextSwap>,
     },
     AddLiquidity {
         chain_id: String,
@@ -56,7 +60,11 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(GetSwapResponse)]
-    SimulateSwap { asset: Token, asset_amount: Uint128 },
+    SimulateSwap {
+        asset: Token,
+        asset_amount: Uint128,
+        swaps: Vec<NextSwap>,
+    },
     // Queries the total reserve of the pair in the VLP
     #[returns(GetLiquidityResponse)]
     Liquidity {},
@@ -76,7 +84,8 @@ pub enum QueryMsg {
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct GetSwapResponse {
-    pub token_out: Uint128,
+    pub amount_out: Uint128,
+    pub asset_out: Token,
 }
 
 #[cw_serde]

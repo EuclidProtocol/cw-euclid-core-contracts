@@ -1,10 +1,11 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
 use cw2::set_contract_version;
 
-use crate::execute;
+use crate::reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID};
 use crate::state::{State, STATE};
+use crate::{execute, reply};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
@@ -20,8 +21,12 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    // Validate token pair
+    msg.pair.validate()?;
+
     let state = State {
         pair: msg.pair,
+        vcoin: msg.vcoin,
         router: info.sender.to_string(),
         fee: msg.fee,
         last_updated: 0,
@@ -55,12 +60,24 @@ pub fn execute(
             pair_info,
         } => execute::register_pool(deps, env, chain_id, pair_info),
         ExecuteMsg::Swap {
-            chain_id,
-            asset,
-            asset_amount,
+            to_chain_id,
+            to_address,
+            asset_in,
+            amount_in,
             min_token_out,
             swap_id,
-        } => execute::execute_swap(deps, chain_id, asset, asset_amount, min_token_out, swap_id),
+            next_swaps,
+        } => execute::execute_swap(
+            deps,
+            env,
+            to_chain_id,
+            to_address,
+            asset_in,
+            amount_in,
+            min_token_out,
+            swap_id,
+            next_swaps,
+        ),
         ExecuteMsg::AddLiquidity {
             chain_id,
             token_1_liquidity,
@@ -86,10 +103,23 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::SimulateSwap {
             asset,
             asset_amount,
-        } => query_simulate_swap(deps, asset, asset_amount),
+            swaps,
+        } => query_simulate_swap(deps, asset, asset_amount, swaps),
         QueryMsg::Liquidity {} => query_liquidity(deps),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
+    }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        VCOIN_TRANSFER_REPLY_ID => reply::on_vcoin_transfer_reply(deps, msg),
+        NEXT_SWAP_REPLY_ID => reply::on_next_swap_reply(deps, msg),
+
+        id => Err(ContractError::Generic {
+            err: format!("Unknown reply id: {id}"),
+        }),
     }
 }

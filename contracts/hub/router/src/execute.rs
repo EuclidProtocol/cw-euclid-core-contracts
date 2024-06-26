@@ -45,7 +45,6 @@ pub fn execute_register_factory(
     let packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&msg)?,
-        // TODO: Add Joe min max timestamp logic here!
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
 

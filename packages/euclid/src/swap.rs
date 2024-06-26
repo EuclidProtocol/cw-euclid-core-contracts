@@ -10,11 +10,14 @@ use crate::{
 #[cw_serde]
 pub struct SwapInfo {
     // The asset being swapped
-    pub asset: TokenInfo,
+    pub asset_in: TokenInfo,
     // The asset being received
     pub asset_out: TokenInfo,
     // The amount of asset being swapped
-    pub asset_amount: Uint128,
+    pub amount_in: Uint128,
+    // The min amount of asset being received
+    pub min_amount_out: Uint128,
+    pub swaps: Vec<NextSwap>,
     // The timeout specified for the swap
     pub timeout: IbcTimeout,
     // The Swap Main Identifier
@@ -22,17 +25,20 @@ pub struct SwapInfo {
 }
 
 #[cw_serde]
-pub struct SwapResponse {
-    pub asset: Token,
-    pub asset_out: Token,
-    pub asset_amount: Uint128,
-    pub amount_out: Uint128,
-    // Add Swap Unique Identifier
-    pub swap_id: String,
+pub struct NextSwap {
+    pub vlp_address: String,
 }
 
-pub fn generate_id(sender: &str, count: u128) -> String {
-    format!("{sender}-{count}")
+#[cw_serde]
+pub struct SwapResponse {
+    pub asset_in: Token,
+    pub asset_out: Token,
+    pub amount_in: Uint128,
+    pub amount_out: Uint128,
+    pub to_address: String,
+    pub to_chain_id: String,
+    // Add Swap Unique Identifier
+    pub swap_id: String,
 }
 
 #[cw_serde]

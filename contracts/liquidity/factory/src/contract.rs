@@ -3,12 +3,15 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
 use euclid::error::ContractError;
-// use cw2::set_contract_version;
 
-use crate::query::{query_all_pools, query_state};
-use crate::reply::INSTANTIATE_REPLY_ID;
+use crate::execute::{
+    add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
+    execute_request_register_denom, execute_swap_request, receive_cw20,
+};
+use crate::query::{get_pool, pending_liquidity, pending_swaps, query_all_pools, query_state};
+use crate::reply;
+use crate::reply::ESCROW_INSTANTIATE_REPLY_ID;
 use crate::state::{State, STATE};
-use crate::{execute, query, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -26,8 +29,8 @@ pub fn instantiate(
         router_contract: msg.router_contract.clone(),
         chain_id: env.block.chain_id,
         admin: info.sender.clone().to_string(),
-        pool_code_id: msg.pool_code_id,
         hub_channel: None,
+        escrow_code_id: msg.escrow_code_id,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -37,74 +40,91 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
-        .add_attribute("chain_id", state.chain_id))
+        .add_attribute("chain_id", state.chain_id)
+        .add_attribute("escrow_code_id", state.escrow_code_id.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
+        ExecuteMsg::RequestRegisterDenom { denom, token_id } => {
+            execute_request_register_denom(deps, env, info, token_id, denom)
+        }
+        ExecuteMsg::RequestDeregisterDenom { denom, token_id } => {
+            execute_request_deregister_denom(deps, env, info, token_id, denom)
+        }
         ExecuteMsg::RequestPoolCreation { pair_info, timeout } => {
-            execute::execute_request_pool_creation(deps, env, info, pair_info, timeout)
+            execute_request_pool_creation(deps, env, info, pair_info, timeout)
         }
-        ExecuteMsg::ExecuteSwap {
-            asset,
-            asset_amount,
-            min_amount_out,
-            swap_id,
-            timeout,
+        ExecuteMsg::AddLiquidityRequest {
             vlp_address,
-        } => execute::execute_swap(
-            deps,
-            env,
-            info,
-            asset,
-            asset_amount,
-            min_amount_out,
-            swap_id,
-            timeout,
-            vlp_address,
-        ),
-        ExecuteMsg::AddLiquidity {
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            liquidity_id,
             timeout,
-            vlp_address,
-        } => execute::execute_add_liquidity(
+        } => add_liquidity_request(
             deps,
-            env,
             info,
+            env,
+            vlp_address,
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            liquidity_id,
+            None,
             timeout,
-            vlp_address,
         ),
-        ExecuteMsg::UpdatePoolCodeId { new_pool_code_id } => {
-            execute::execute_update_pool_code_id(deps, info, new_pool_code_id)
-        }
+        ExecuteMsg::ExecuteSwapRequest {
+            asset_in,
+            asset_out,
+            amount_in,
+            min_amount_out,
+            timeout,
+            swaps,
+        } => execute_swap_request(
+            &mut deps,
+            info,
+            env,
+            asset_in,
+            asset_out,
+            amount_in,
+            min_amount_out,
+            swaps,
+            None,
+            timeout,
+        ),
+        ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::GetPool { vlp } => query::get_pool(deps, vlp),
+        QueryMsg::GetPool { vlp } => get_pool(deps, vlp),
+        QueryMsg::GetEscrow { token_id } => get_pool(deps, token_id),
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
+        // Pool Queries //
+        QueryMsg::PendingSwapsUser {
+            user,
+            upper_limit,
+            lower_limit,
+        } => pending_swaps(deps, user, lower_limit, upper_limit),
+        QueryMsg::PendingLiquidity {
+            user,
+            lower_limit,
+            upper_limit,
+        } => pending_liquidity(deps, user, lower_limit, upper_limit),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        INSTANTIATE_REPLY_ID => reply::on_pool_instantiate_reply(deps, msg),
+        ESCROW_INSTANTIATE_REPLY_ID => reply::on_escrow_instantiate_reply(deps, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

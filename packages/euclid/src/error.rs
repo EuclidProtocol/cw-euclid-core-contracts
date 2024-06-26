@@ -26,6 +26,30 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("ZeroWithdrawalAmount")]
+    ZeroWithdrawalAmount {},
+
+    #[error("InvalidWithdrawalAmount")]
+    InvalidWithdrawalAmount {},
+
+    #[error("DuplicateDenominations")]
+    DuplicateDenominations {},
+
+    #[error("UnsupportedDenomination")]
+    UnsupportedDenomination {},
+
+    #[error("UnsupportedMessage")]
+    UnsupportedMessage {},
+
+    #[error("UnsupportedOperation")]
+    UnsupportedOperation {},
+
+    #[error("Not Implemented")]
+    NotImplemented {},
+
+    #[error("DenomDoesNotExist")]
+    DenomDoesNotExist {},
+
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },
 
@@ -44,11 +68,17 @@ pub enum ContractError {
     #[error("invalid IBC channel version. Got ({actual}), expected ({expected})")]
     InvalidVersion { actual: String, expected: String },
 
+    #[error("Invalid Token ID")]
+    InvalidTokenID {},
+
     #[error("Asset does not exist in VLP")]
     AssetDoesNotExist {},
 
     #[error("Cannot Swap 0 tokens")]
     ZeroAssetAmount {},
+
+    #[error("DuplicateTokens")]
+    DuplicateTokens {},
 
     #[error("Zero Slippage Amount")]
     ZeroSlippageAmount {},
@@ -71,6 +101,12 @@ pub enum ContractError {
     #[error("The Channel specified does not currently exist")]
     ChannelDoesNotExist {},
 
+    #[error("EscrowDoesNotExist")]
+    EscrowDoesNotExist {},
+
+    #[error("EscrowAlreadyExists")]
+    EscrowAlreadyExists {},
+
     #[error("The swap does not exist in state for the sender")]
     SwapDoesNotExist {},
 
@@ -79,6 +115,9 @@ pub enum ContractError {
 
     #[error("The deposit amount is insufficient to add the liquidity")]
     InsufficientDeposit {},
+
+    #[error("InsufficientFunds")]
+    InsufficientFunds {},
 
     #[error("The CHAIN ID is not valid")]
     InvalidChainId {},

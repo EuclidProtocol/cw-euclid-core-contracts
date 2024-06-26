@@ -42,17 +42,13 @@ pub struct PoolRequest {
     pub pool_rq_id: String,
     // The channel where the pool is deployed
     pub channel: String,
+    pub pair_info: PairInfo,
 }
 
 // Function to extract sender from pool_rq_id
 pub fn extract_sender(pool_rq_id: &str) -> String {
     let parts: Vec<&str> = pool_rq_id.split('-').collect();
     parts[0].to_string()
-}
-
-// Function to extract sender from pool_rq_id
-pub fn generate_id(sender: &str, count: u128) -> String {
-    format!("{sender}-{count}")
 }
 
 // Struct to handle Acknowledgement Response for a Liquidity Request
@@ -75,4 +71,12 @@ pub struct RemoveLiquidityResponse {
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
+}
+
+#[cw_serde]
+pub struct WithdrawResponse {}
+
+#[cw_serde]
+pub struct InstantiateEscrowResponse {
+    pub escrow_code_id: u64,
 }

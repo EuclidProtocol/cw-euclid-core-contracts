@@ -17,18 +17,17 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    ExecuteSwap {
-        asset: TokenInfo,
-        asset_amount: Uint128,
-        min_amount_out: Uint128,
-        timeout: Option<u64>,
-    },
-
     // Add Liquidity Request to the VLP
     AddLiquidity {
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
+        timeout: Option<u64>,
+    },
+    ExecuteSwap {
+        asset: TokenInfo,
+        asset_amount: Uint128,
+        min_amount_out: Uint128,
         timeout: Option<u64>,
     },
 
@@ -88,6 +87,7 @@ pub enum QueryMsg {
 // CW20 Hook Msg
 #[cw_serde]
 pub enum Cw20HookMsg {
+    Deposit {},
     Swap {
         asset: TokenInfo,
         min_amount_out: Uint128,

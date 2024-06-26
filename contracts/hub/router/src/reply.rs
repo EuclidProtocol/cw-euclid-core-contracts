@@ -1,20 +1,35 @@
-use cosmwasm_std::{from_json, to_json_binary, DepsMut, Reply, Response, SubMsgResult};
+use cosmwasm_std::{
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, Reply,
+    Response, SubMsgResult, Uint128, WasmMsg,
+};
 use cw0::{parse_reply_execute_data, parse_reply_instantiate_data};
 use euclid::{
     error::ContractError,
-    msgs,
+    msgs::{
+        self,
+        vcoin::{ExecuteBurn, ExecuteMsg as VcoinExecuteMsg},
+    },
     pool::{LiquidityResponse, PoolCreationResponse, RemoveLiquidityResponse},
     swap::SwapResponse,
+    timeout::get_timeout,
+    vcoin::BalanceKey,
 };
-use euclid_ibc::msg::AcknowledgementMsg;
+use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
-use crate::state::VLPS;
+use crate::state::{CHAIN_ID_TO_CHAIN, ESCROW_BALANCES, STATE, SWAP_ID_TO_MSG, VLPS};
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
 pub const ADD_LIQUIDITY_REPLY_ID: u64 = 3;
 pub const REMOVE_LIQUIDITY_REPLY_ID: u64 = 4;
 pub const SWAP_REPLY_ID: u64 = 5;
+
+pub const VCOIN_INSTANTIATE_REPLY_ID: u64 = 6;
+pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
+
+pub const VCOIN_MINT_REPLY_ID: u64 = 8;
+pub const VCOIN_BURN_REPLY_ID: u64 = 9;
+pub const VCOIN_TRANSFER_REPLY_ID: u64 = 10;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -123,7 +138,7 @@ pub fn on_remove_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response,
     }
 }
 
-pub fn on_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -134,11 +149,108 @@ pub fn on_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractErr
             let swap_response: SwapResponse = from_json(execute_data.data.unwrap_or_default())?;
 
             let ack = AcknowledgementMsg::Ok(swap_response.clone());
+            let swap_msg = SWAP_ID_TO_MSG.load(deps.storage, swap_response.swap_id.clone())?;
+
+            let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, swap_msg.to_chain_id.clone())?;
+
+            let token_out_escrow_key = (swap_response.asset_out.clone(), chain.factory_chain_id);
+
+            let token_out_escrow_balance = ESCROW_BALANCES
+                .may_load(deps.storage, token_out_escrow_key.clone())?
+                .unwrap_or(Uint128::zero());
+
+            let escrow_amout_out = swap_response.amount_out.min(token_out_escrow_balance);
+
+            ensure!(
+                !escrow_amout_out.is_zero(),
+                ContractError::Generic {
+                    err: "Escrow release amount cannot be zero".to_string()
+                }
+            );
+
+            let packet = IbcMsg::SendPacket {
+                channel_id: chain.from_hub_channel,
+                data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
+                    amount: escrow_amout_out,
+                    token_id: swap_response.asset_out.id.clone(),
+                    to_address: swap_msg.to_address,
+                    to_chain_id: swap_msg.to_chain_id,
+                })?,
+                timeout: IbcTimeout::with_timestamp(
+                    env.block.time.plus_seconds(get_timeout(None)?),
+                ),
+            };
+
+            // Prepare burn msg
+            let burn_msg = VcoinExecuteMsg::Burn(ExecuteBurn {
+                amount: escrow_amout_out,
+                balance_key: BalanceKey {
+                    chain_id: swap_response.to_chain_id.clone(),
+                    address: swap_response.to_address.clone(),
+                    token_id: swap_response.asset_out.id.clone(),
+                },
+            });
+            // Load state to get vcoin address
+            let state = STATE.load(deps.storage)?;
+            let vcoin_address = state.vcoin_address.unwrap().into_string();
 
             Ok(Response::new()
+                .add_message(CosmosMsg::Ibc(packet))
+                .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: vcoin_address,
+                    msg: to_json_binary(&burn_msg)?,
+                    funds: vec![],
+                }))
                 .add_attribute("action", "reply_swap")
                 .add_attribute("swap", format!("{swap_response:?}"))
                 .set_data(to_json_binary(&ack)?))
         }
+    }
+}
+
+pub fn on_vcoin_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => {
+            let instantiate_data =
+                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+
+            let mut state = STATE.load(deps.storage)?;
+            state.vcoin_address = Some(deps.api.addr_validate(&instantiate_data.contract_address)?);
+            STATE.save(deps.storage, &state)?;
+
+            Ok(Response::new()
+                .add_attribute("action", "reply_vcoin_instantiate")
+                .add_attribute("vcoin_address", instantiate_data.contract_address))
+        }
+    }
+}
+
+pub fn on_vcoin_mint_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => Ok(Response::new()
+            .add_attribute("action", "reply_mint_vcoin")
+            .add_attribute("mint_success", "true")),
+    }
+}
+
+pub fn on_vcoin_burn_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => Ok(Response::new()
+            .add_attribute("action", "reply_burn_vcoin")
+            .add_attribute("burn_success", "true")),
+    }
+}
+
+pub fn on_vcoin_transfer_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => Ok(Response::new()
+            .add_attribute("action", "reply_transfer_vcoin")
+            .add_attribute("transfer_success", "true")),
     }
 }
