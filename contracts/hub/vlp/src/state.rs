@@ -15,6 +15,8 @@ pub struct State {
     pub router: String,
     // Virtual Coin Contract
     pub vcoin: String,
+    // CW20 contract
+    pub cw20: String,
     // Fee per swap for each transaction
     pub fee: Fee,
     // The last timestamp where the balances for each token have been updated

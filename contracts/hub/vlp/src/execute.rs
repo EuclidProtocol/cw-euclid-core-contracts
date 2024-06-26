@@ -1,9 +1,10 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal256, DepsMut, Env, OverflowError, OverflowOperation, Response,
-    SubMsg, Uint128, WasmMsg,
+    ensure, to_json_binary, CosmosMsg, Decimal256, DepsMut, Env, OverflowError, OverflowOperation,
+    Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     error::ContractError,
+    msgs::cw20::ExecuteMsg as Cw20ExecuteMsg,
     msgs::vcoin::ExecuteTransfer,
     pool::{LiquidityResponse, Pool, PoolCreationResponse, RemoveLiquidityResponse},
     swap::{NextSwap, SwapResponse},
@@ -155,7 +156,25 @@ pub fn add_liquidity(
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
+    // Mint LP tokens with CW20 contract
+
+    // Get cw20 contract address
+    let contract_addr = state.cw20;
+
+    // Get LP token recipient address
+    let recipient = todo!();
+
+    let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr,
+        msg: to_json_binary(&Cw20ExecuteMsg::Mint {
+            recipient,
+            amount: lp_allocation,
+        })?,
+        funds: vec![],
+    });
+
     Ok(Response::new()
+        .add_message(mint_msg)
         .add_attribute("action", "add_liquidity")
         .add_attribute("chain_id", chain_id)
         .add_attribute("lp_allocation", lp_allocation)

@@ -28,6 +28,7 @@ pub fn instantiate(
         pair: msg.pair,
         vcoin: msg.vcoin,
         router: info.sender.to_string(),
+        cw20: msg.cw20,
         fee: msg.fee,
         last_updated: 0,
         total_reserve_1: Uint128::zero(),

@@ -11,6 +11,7 @@ use cosmwasm_std::Uint128;
 pub struct InstantiateMsg {
     pub router: String,
     pub vcoin: String,
+    pub cw20: String,
     pub pair: Pair,
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
