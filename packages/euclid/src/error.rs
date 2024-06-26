@@ -1,6 +1,7 @@
 use std::num::ParseIntError;
 
-use cosmwasm_std::{DivideByZeroError, OverflowError, StdError, Uint128};
+use cosmwasm_std::{Addr, DivideByZeroError, OverflowError, StdError, Uint128};
+use cw20_base::ContractError as Cw20ContractError;
 
 use thiserror::Error;
 
@@ -130,4 +131,66 @@ pub enum ContractError {
 
     #[error("Pool Instantiate Failed {err}")]
     PoolInstantiateFailed { err: String },
+
+    // BEGIN CW20 ERRORS
+    #[error("Cannot set to own account")]
+    CannotSetOwnAccount {},
+
+    #[error("Invalid zero amount")]
+    InvalidZeroAmount {},
+
+    #[error("Invalid Denom")]
+    InvalidDenom {},
+
+    #[error("Allowance is expired")]
+    Expired {},
+
+    #[error("No allowance for this account")]
+    NoAllowance {},
+
+    #[error("Minting cannot exceed the cap")]
+    CannotExceedCap {},
+
+    #[error("Logo binary data exceeds 5KB limit")]
+    LogoTooBig {},
+
+    #[error("Invalid migration. Unable to migrate from version {prev}")]
+    InvalidMigration { prev: String },
+
+    #[error("Invalid xml preamble for SVG")]
+    InvalidXmlPreamble {},
+
+    #[error("Invalid png header")]
+    InvalidPngHeader {},
+
+    #[error("Instantiate2 Address Mistmatch: expected: {expected}, received: {received}")]
+    Instantiate2AddressMismatch { expected: Addr, received: Addr },
+
+    #[error("Duplicate initial balance addresses")]
+    DuplicateInitialBalanceAddresses {},
+
+    #[error("Invalid expiration")]
+    InvalidExpiration {},
+    // END CW20 ERRORS
+}
+
+impl From<Cw20ContractError> for ContractError {
+    fn from(err: Cw20ContractError) -> Self {
+        match err {
+            Cw20ContractError::Std(std) => ContractError::Std(std),
+            Cw20ContractError::Expired {} => ContractError::Expired {},
+            Cw20ContractError::LogoTooBig {} => ContractError::LogoTooBig {},
+            Cw20ContractError::NoAllowance {} => ContractError::NoAllowance {},
+            Cw20ContractError::Unauthorized {} => ContractError::Unauthorized {},
+            Cw20ContractError::CannotExceedCap {} => ContractError::CannotExceedCap {},
+            Cw20ContractError::InvalidPngHeader {} => ContractError::InvalidPngHeader {},
+            Cw20ContractError::InvalidXmlPreamble {} => ContractError::InvalidXmlPreamble {},
+            Cw20ContractError::CannotSetOwnAccount {} => ContractError::CannotSetOwnAccount {},
+            Cw20ContractError::DuplicateInitialBalanceAddresses {} => {
+                ContractError::DuplicateInitialBalanceAddresses {}
+            }
+            Cw20ContractError::InvalidExpiration {} => ContractError::InvalidExpiration {},
+            _ => panic!("Unsupported cw20 error: {err:?}"),
+        }
+    }
 }

@@ -11,6 +11,7 @@ cw-storage-plus = "1.1.0"
 itertools = "0.10"
 cosmwasm-schema = "1.1"
 cw-utils = "1.0"
+cw20-base = "=1.1.2"
 thiserror = { workspace = true }
 cw20 = { workspace = true }
 serde = { workspace = true }
