@@ -129,12 +129,7 @@ fn execute_request_pool_creation(
                     err: "vcoin not instantiated".to_string(),
                 })?
                 .to_string(),
-            cw20: state
-                .cw20_address
-                .ok_or(ContractError::Generic {
-                    err: "cw20 not instantiated".to_string(),
-                })?
-                .into_string(),
+            cw20: None,
             pair: pair_info.get_pair(),
             fee: Fee {
                 lp_fee: 0,

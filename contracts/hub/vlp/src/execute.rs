@@ -159,7 +159,9 @@ pub fn add_liquidity(
     // Mint LP tokens with CW20 contract
 
     // Get cw20 contract address
-    let contract_addr = state.cw20;
+    let contract_addr = state.cw20.ok_or(ContractError::Generic {
+        err: "cw20 not instantiated".to_string(),
+    })?;
 
     // Get LP token recipient address
     let recipient = todo!();

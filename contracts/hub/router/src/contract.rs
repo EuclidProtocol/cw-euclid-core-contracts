@@ -31,7 +31,6 @@ pub fn instantiate(
         vlp_code_id: msg.vlp_code_id,
         admin: info.sender.to_string(),
         vcoin_address: None,
-        cw20_address: None,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
