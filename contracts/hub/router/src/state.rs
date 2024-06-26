@@ -11,6 +11,7 @@ pub struct State {
     // Pool Code ID
     pub vlp_code_id: u64,
     pub vcoin_address: Option<Addr>,
+    pub cw20_address: Option<Addr>,
 }
 
 pub const STATE: Item<State> = Item::new("state");

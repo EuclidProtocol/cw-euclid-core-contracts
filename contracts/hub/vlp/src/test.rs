@@ -18,6 +18,7 @@ mod tests {
         let msg = InstantiateMsg {
             router: "router".to_string(),
             vcoin: "vcoin".to_string(),
+            cw20: "cw20".to_string(),
             pair: Pair {
                 token_1: Token {
                     id: "token_1".to_string(),
