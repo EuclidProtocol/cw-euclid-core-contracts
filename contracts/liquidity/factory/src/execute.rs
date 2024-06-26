@@ -288,7 +288,6 @@ pub fn add_liquidity_request(
     let token_1 = pair_info.token_1.clone();
     let token_2 = pair_info.token_2.clone();
 
-
     // Prepare msg vector
     let mut msgs: Vec<CosmosMsg> = Vec::new();
 
