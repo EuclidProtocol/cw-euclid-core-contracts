@@ -2,7 +2,7 @@ use crate::{
     fee::Fee,
     pool::Pool,
     swap::NextSwap,
-    token::{Pair, PairInfo, Token},
+    token::{Pair, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
@@ -20,12 +20,12 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     // Registers a new pool from a new chain to an already existing VLP
     RegisterPool {
-        chain_id: String,
-        pair_info: PairInfo,
+        chain_uid: String,
+        pair: Pair,
     },
 
     Swap {
-        to_chain_id: String,
+        to_chain_uid: String,
         to_address: String,
         asset_in: Token,
         amount_in: Uint128,
@@ -34,13 +34,13 @@ pub enum ExecuteMsg {
         next_swaps: Vec<NextSwap>,
     },
     AddLiquidity {
-        chain_id: String,
+        chain_uid: String,
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
     },
     RemoveLiquidity {
-        chain_id: String,
+        chain_uid: String,
         lp_allocation: Uint128,
     },
     /*

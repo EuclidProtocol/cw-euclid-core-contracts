@@ -55,12 +55,28 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RegisterPool {
-            chain_id,
-            pair_info,
-        } => execute::register_pool(deps, env, chain_id, pair_info),
+        ExecuteMsg::RegisterPool { chain_uid, pair } => {
+            execute::register_pool(deps, env, chain_uid, pair)
+        }
+        ExecuteMsg::AddLiquidity {
+            chain_uid,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+        } => execute::add_liquidity(
+            deps,
+            env,
+            chain_uid,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+        ),
+        ExecuteMsg::RemoveLiquidity {
+            chain_uid,
+            lp_allocation,
+        } => execute::remove_liquidity(deps, env, chain_uid, lp_allocation),
         ExecuteMsg::Swap {
-            to_chain_id,
+            to_chain_uid,
             to_address,
             asset_in,
             amount_in,
@@ -70,7 +86,7 @@ pub fn execute(
         } => execute::execute_swap(
             deps,
             env,
-            to_chain_id,
+            to_chain_uid,
             to_address,
             asset_in,
             amount_in,
@@ -78,22 +94,6 @@ pub fn execute(
             swap_id,
             next_swaps,
         ),
-        ExecuteMsg::AddLiquidity {
-            chain_id,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-        } => execute::add_liquidity(
-            deps,
-            chain_id,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-        ),
-        ExecuteMsg::RemoveLiquidity {
-            chain_id,
-            lp_allocation,
-        } => execute::remove_liquidity(deps, chain_id, lp_allocation),
     }
 }
 

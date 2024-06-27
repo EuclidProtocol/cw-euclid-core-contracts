@@ -1,12 +1,11 @@
 use crate::{
-    swap::NextSwap,
-    token::{PairInfo, Token, TokenInfo},
+    liquidity::LiquidityTxInfo,
+    swap::{NextSwap, SwapInfo},
+    token::{Pair, PairWithDenom, Token, TokenWithDenom},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
-
-use super::pool::{GetPendingLiquidityResponse, GetPendingSwapsResponse};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -18,33 +17,33 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    // New Factory Messages that call Escrow
     RequestRegisterDenom {
-        denom: String,
-        token_id: Token,
+        token: TokenWithDenom,
     },
     RequestDeregisterDenom {
-        denom: String,
-        token_id: Token,
+        token: TokenWithDenom,
     },
     RequestPoolCreation {
-        pair_info: PairInfo,
+        pair: PairWithDenom,
         timeout: Option<u64>,
+        tx_id: String,
     },
     AddLiquidityRequest {
-        vlp_address: String,
+        pair_info: PairWithDenom,
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         timeout: Option<u64>,
+        tx_id: String,
     },
     ExecuteSwapRequest {
-        asset_in: TokenInfo,
-        asset_out: TokenInfo,
+        asset_in: TokenWithDenom,
+        asset_out: Token,
         amount_in: Uint128,
         min_amount_out: Uint128,
         timeout: Option<u64>,
         swaps: Vec<NextSwap>,
+        tx_id: String,
     },
 
     // Recieve CW20 TOKENS structure
@@ -82,7 +81,7 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct GetPoolResponse {
-    pub pair_info: PairInfo,
+    pub pair: Pair,
 }
 
 #[cw_serde]
@@ -105,7 +104,7 @@ pub struct AllPoolsResponse {
 }
 #[cw_serde]
 pub struct PoolVlpResponse {
-    pub pair_info: PairInfo,
+    pub pair: Pair,
     pub vlp: String,
 }
 
@@ -126,4 +125,13 @@ pub struct ReleaseEscrowResponse {
     pub token_id: String,
     pub to_address: String,
     pub to_chain_id: String,
+}
+
+#[cw_serde]
+pub struct GetPendingSwapsResponse {
+    pub pending_swaps: Vec<SwapInfo>,
+}
+#[cw_serde]
+pub struct GetPendingLiquidityResponse {
+    pub pending_liquidity: Vec<LiquidityTxInfo>,
 }

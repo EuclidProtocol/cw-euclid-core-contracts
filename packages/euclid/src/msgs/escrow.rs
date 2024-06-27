@@ -1,4 +1,4 @@
-use crate::token::{Token, TokenInfo};
+use crate::token::{Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 use cw20::Cw20ReceiveMsg;
@@ -8,18 +8,18 @@ pub struct InstantiateMsg {
     // The only allowed Token ID for the contract
     pub token_id: Token,
     // Possibly add allowed denoms in Instantiation
-    pub allowed_denom: Option<String>,
+    pub allowed_denom: Option<TokenType>,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
     // Updates allowed denoms
     AddAllowedDenom {
-        denom: String,
+        denom: TokenType,
     },
     // Removes a denom from allowed denoms
     DisallowDenom {
-        denom: String,
+        denom: TokenType,
     },
     DepositNative {},
     // ReleaseTokens { recipient: Addr, amount: Uint128 },
@@ -44,7 +44,7 @@ pub enum QueryMsg {
 
     // New escrow queries
     #[returns(AllowedTokenResponse)]
-    TokenAllowed { token: TokenInfo },
+    TokenAllowed { denom: TokenType },
 }
 
 #[cw_serde]
