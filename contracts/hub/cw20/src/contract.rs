@@ -3,7 +3,6 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
-use crate::state::STATE;
 use crate::{execute, query};
 use cw20::{Cw20Coin, Cw20ExecuteMsg};
 use euclid::error::ContractError;
