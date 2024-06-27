@@ -16,6 +16,7 @@ use crate::state::{State, STATE};
 use crate::{execute, query};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
+
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:factory";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");

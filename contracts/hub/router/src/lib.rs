@@ -8,3 +8,4 @@ pub mod query;
 pub mod reply;
 pub mod state;
 mod test;
+pub mod integration_test;
