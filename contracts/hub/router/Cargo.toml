@@ -42,6 +42,7 @@ cosmwasm-std = { version = "1.5.3", features = [
   "ibc3",
 ] }
 cw-storage-plus = "1.1.0"
+cw-multi-test = "=1.2.0"
 cw0 = "0.10.3"
 cw2 = "1.1.1"
 cw20 = "1.1"
