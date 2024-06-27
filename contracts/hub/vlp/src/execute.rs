@@ -244,7 +244,24 @@ pub fn remove_liquidity(
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
+    // Burn LP tokens with CW20 contract
+
+    // Get cw20 contract address
+    let contract_addr = state.cw20.ok_or(ContractError::Generic {
+        err: "cw20 not instantiated".to_string(),
+    })?;
+
+    // Create cw20 burn message
+    let burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr,
+        msg: to_json_binary(&Cw20ExecuteMsg::Burn {
+            amount: lp_allocation,
+        })?,
+        funds: vec![],
+    });
+
     Ok(Response::new()
+        .add_message(burn_msg)
         .add_attribute("action", "remove_liquidity")
         .add_attribute("chain_id", chain_id)
         .add_attribute("token_1_removed_liquidity", token_1_liquidity)
