@@ -161,7 +161,6 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
                 marketing,
             },
             ExecuteMsg::UploadLogo(logo) => Cw20ExecuteMsg::UploadLogo(logo),
-            _ => panic!("Unsupported message"),
         }
     }
 }
@@ -242,7 +241,6 @@ impl From<QueryMsg> for Cw20QueryMsg {
             }
             QueryMsg::MarketingInfo {} => Cw20QueryMsg::MarketingInfo {},
             QueryMsg::DownloadLogo {} => Cw20QueryMsg::DownloadLogo {},
-            _ => panic!("Unsupported Msg"),
         }
     }
 }

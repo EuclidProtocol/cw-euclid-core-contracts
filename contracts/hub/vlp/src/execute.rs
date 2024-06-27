@@ -4,8 +4,7 @@ use cosmwasm_std::{
 };
 use euclid::{
     error::ContractError,
-    msgs::cw20::ExecuteMsg as Cw20ExecuteMsg,
-    msgs::vcoin::ExecuteTransfer,
+    msgs::{cw20::ExecuteMsg as Cw20ExecuteMsg, vcoin::ExecuteTransfer},
     pool::{LiquidityResponse, Pool, PoolCreationResponse, RemoveLiquidityResponse},
     swap::{NextSwap, SwapResponse},
     token::{PairInfo, Token},
@@ -165,12 +164,12 @@ pub fn add_liquidity(
     })?;
 
     // Get LP token recipient address
-    let recipient = outpost_sender;
+    let recipient_string = format!("{}:{}", chain_id, outpost_sender);
 
     let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr,
         msg: to_json_binary(&Cw20ExecuteMsg::Mint {
-            recipient,
+            recipient: recipient_string,
             amount: lp_allocation,
         })?,
         funds: vec![],
