@@ -96,6 +96,7 @@ pub fn add_liquidity(
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
+    outpost_sender: String,
 ) -> Result<Response, ContractError> {
     // TODO: Check for pool liquidity balance and balance in vcoin
     // Router mints new tokens for this vlp so token_liquidity = vcoin_balance - pool_current_liquidity
@@ -164,7 +165,7 @@ pub fn add_liquidity(
     })?;
 
     // Get LP token recipient address
-    let recipient = todo!();
+    let recipient = outpost_sender;
 
     let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr,

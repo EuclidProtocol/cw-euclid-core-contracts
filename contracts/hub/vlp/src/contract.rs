@@ -84,12 +84,14 @@ pub fn execute(
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
+            outpost_sender,
         } => execute::add_liquidity(
             deps,
             chain_id,
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
+            outpost_sender,
         ),
         ExecuteMsg::RemoveLiquidity {
             chain_id,

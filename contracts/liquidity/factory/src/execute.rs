@@ -367,6 +367,7 @@ pub fn add_liquidity_request(
             liquidity_id: liquidity_info.liquidity_id,
             pool_address: pool_address.clone().to_string(),
             vlp_address,
+            outpost_sender: info.sender.into_string(),
         })?,
         timeout,
     };

@@ -62,6 +62,7 @@ pub fn do_ibc_packet_receive(
             token_2_liquidity,
             slippage_tolerance,
             vlp_address,
+            outpost_sender,
             ..
         } => ibc_execute_add_liquidity(
             deps,
@@ -71,6 +72,7 @@ pub fn do_ibc_packet_receive(
             token_2_liquidity,
             slippage_tolerance,
             vlp_address,
+            outpost_sender,
         ),
         ChainIbcExecuteMsg::RemoveLiquidity {
             chain_id,
@@ -159,6 +161,7 @@ fn ibc_execute_add_liquidity(
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
     vlp_address: String,
+    outpost_sender: String,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let pair: euclid::msgs::vlp::GetLiquidityResponse = deps.querier.query_wasm_smart(
         vlp_address.clone(),
@@ -170,6 +173,7 @@ fn ibc_execute_add_liquidity(
         token_1_liquidity,
         token_2_liquidity,
         slippage_tolerance,
+        outpost_sender,
     };
 
     let msg = WasmMsg::Execute {

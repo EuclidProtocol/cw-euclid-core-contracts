@@ -39,6 +39,7 @@ pub enum ExecuteMsg {
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
+        outpost_sender: String,
     },
     RemoveLiquidity {
         chain_id: String,

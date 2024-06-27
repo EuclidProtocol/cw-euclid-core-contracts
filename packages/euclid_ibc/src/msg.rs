@@ -21,6 +21,7 @@ pub enum ChainIbcExecuteMsg {
         liquidity_id: String,
         pool_address: String,
         vlp_address: String,
+        outpost_sender: String,
     },
 
     // Remove liquidity from a chain pool to VLP
