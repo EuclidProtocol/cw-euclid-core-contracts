@@ -67,7 +67,7 @@ pub enum QueryMsg {
     },
     // Queries the total reserve of the pair in the VLP
     #[returns(GetLiquidityResponse)]
-    Liquidity {},
+    Liquidity { height: Option<u64> },
 
     // Queries the fee of this specific pool
     #[returns(FeeResponse)]

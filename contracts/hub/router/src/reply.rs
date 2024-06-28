@@ -42,9 +42,10 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
 
             let vlp_address = instantiate_data.contract_address;
 
-            let liquidity: msgs::vlp::GetLiquidityResponse = deps
-                .querier
-                .query_wasm_smart(vlp_address.clone(), &msgs::vlp::QueryMsg::Liquidity {})?;
+            let liquidity: msgs::vlp::GetLiquidityResponse = deps.querier.query_wasm_smart(
+                vlp_address.clone(),
+                &msgs::vlp::QueryMsg::Liquidity { height: None },
+            )?;
 
             VLPS.save(
                 deps.storage,
@@ -172,9 +173,9 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 channel_id: chain.from_hub_channel,
                 data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
                     amount: escrow_amout_out,
-                    token_id: swap_response.asset_out.id.clone(),
+                    token_id: swap_response.asset_out.to_string().clone(),
                     to_address: swap_msg.to_address,
-                    to_chain_id: swap_msg.to_chain_id,
+                    to_chain_uid: swap_msg.to_chain_id,
                 })?,
                 timeout: IbcTimeout::with_timestamp(
                     env.block.time.plus_seconds(get_timeout(None)?),
@@ -185,9 +186,9 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
             let burn_msg = VcoinExecuteMsg::Burn(ExecuteBurn {
                 amount: escrow_amout_out,
                 balance_key: BalanceKey {
-                    chain_id: swap_response.to_chain_id.clone(),
+                    chain_uid: swap_response.to_chain_uid.clone(),
                     address: swap_response.to_address.clone(),
-                    token_id: swap_response.asset_out.id.clone(),
+                    token_id: swap_response.asset_out.to_string().clone(),
                 },
             });
             // Load state to get vcoin address

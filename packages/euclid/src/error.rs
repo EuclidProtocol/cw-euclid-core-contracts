@@ -26,6 +26,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Tx already exist")]
+    TxAlreadyExist {},
+
     #[error("ZeroWithdrawalAmount")]
     ZeroWithdrawalAmount {},
 

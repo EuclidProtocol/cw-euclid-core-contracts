@@ -25,6 +25,8 @@ pub struct State {
 
 pub const STATE: Item<State> = Item::new("state");
 
+// TODO:: This is not needed because pool is unified and removed from any chains
+// and escrow is independent of each chains
 // A map of chain-uids connected to the VLP to pools
 pub const POOLS: Map<&String, Pool> = Map::new("pools");
 

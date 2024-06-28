@@ -19,7 +19,7 @@ pub struct SwapInfo {
     // The timeout specified for the swap
     pub timeout: IbcTimeout,
     // The Swap Main Identifier
-    pub swap_id: String,
+    pub tx_id: String,
 }
 
 #[cw_serde]
@@ -35,7 +35,7 @@ pub struct SwapResponse {
     pub amount_in: Uint128,
     pub amount_out: Uint128,
     pub to_address: String,
-    pub to_chain_id: String,
+    pub to_chain_uid: String,
     // Add Swap Unique Identifier
-    pub swap_id: String,
+    pub tx_id: String,
 }

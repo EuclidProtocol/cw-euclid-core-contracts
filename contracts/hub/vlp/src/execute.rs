@@ -114,6 +114,9 @@ pub fn add_liquidity(
     // Get the pool for the chain_id provided
     let mut pool = POOLS.load(deps.storage, &chain_uid)?;
     let mut state = STATE.load(deps.storage)?;
+
+    let pair = state.pair.clone();
+
     // Verify that ratio of assets provided is equal to the ratio of assets in the pool
     let ratio =
         Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
@@ -122,8 +125,8 @@ pub fn add_liquidity(
             }
         })?;
 
-    let mut total_reserve_1 = BALANCES.load(deps.storage, state.pair.token_1)?;
-    let mut total_reserve_2 = BALANCES.load(deps.storage, state.pair.token_2)?;
+    let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
+    let mut total_reserve_2 = BALANCES.load(deps.storage, pair.token_2.clone())?;
 
     // Lets get lq ratio, it will be the current ratio of token reserves or if its first time then it will be ratio of tokens provided
     let lq_ratio =
@@ -167,14 +170,14 @@ pub fn add_liquidity(
 
     BALANCES.save(
         deps.storage,
-        state.pair.token_1,
+        pair.token_1,
         &total_reserve_1,
         env.block.height,
     )?;
 
     BALANCES.save(
         deps.storage,
-        state.pair.token_2,
+        pair.token_2,
         &total_reserve_2,
         env.block.height,
     )?;
@@ -224,44 +227,34 @@ pub fn remove_liquidity(
     lp_allocation: Uint128,
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
-    let mut pool = POOLS.load(deps.storage, &chain_uid)?;
     let mut state = STATE.load(deps.storage)?;
+    let pair = state.pair.clone();
+
+    let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
+    let mut total_reserve_2 = BALANCES.load(deps.storage, pair.token_2.clone())?;
 
     // Fetch allocated liquidity to LP tokens
     let lp_tokens = state.total_lp_tokens;
     let lp_share = lp_allocation.multiply_ratio(Uint128::from(100u128), lp_tokens);
 
     // Calculate tokens_1 to send
-    let token_1_liquidity = pool
-        .reserve_1
-        .multiply_ratio(lp_share, Uint128::from(100u128));
+    let token_1_liquidity = total_reserve_1.multiply_ratio(lp_share, Uint128::from(100u128));
     // Calculate tokens_2 to send
-    let token_2_liquidity = pool
-        .reserve_2
-        .multiply_ratio(lp_share, Uint128::from(100u128));
-
-    // Remove liquidity from the pool
-    pool.reserve_1 = pool.reserve_1.checked_sub(token_1_liquidity)?;
-    pool.reserve_2 = pool.reserve_2.checked_sub(token_2_liquidity)?;
-    POOLS.save(deps.storage, &chain_uid, &pool)?;
-
-    // Remove from total VLP liquidity
-    let mut total_reserve_1 = BALANCES.load(deps.storage, state.pair.token_1)?;
-    let mut total_reserve_2 = BALANCES.load(deps.storage, state.pair.token_2)?;
+    let token_2_liquidity = total_reserve_2.multiply_ratio(lp_share, Uint128::from(100u128));
 
     total_reserve_1 = total_reserve_1.checked_sub(token_1_liquidity)?;
     total_reserve_2 = total_reserve_2.checked_sub(token_2_liquidity)?;
 
     BALANCES.save(
         deps.storage,
-        state.pair.token_1,
+        pair.token_1,
         &total_reserve_1,
         env.block.height,
     )?;
 
     BALANCES.save(
         deps.storage,
-        state.pair.token_2,
+        pair.token_2,
         &total_reserve_2,
         env.block.height,
     )?;
@@ -304,12 +297,10 @@ pub fn execute_swap(
     // Verify that the asset amount is non-zero
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
-    let mut state = state::STATE.load(deps.storage)?;
+    let state = state::STATE.load(deps.storage)?;
+    let pair = state.pair.clone();
 
-    ensure!(
-        asset_in.exists(state.pair),
-        ContractError::AssetDoesNotExist {}
-    );
+    ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
 
     // Get Fee from the state
     let fee = state.clone().fee;
@@ -336,14 +327,12 @@ pub fn execute_swap(
     // Calculate the amount of asset to be swapped
     let swap_amount = amount_in.checked_sub(fee_amount)?;
 
-    // verify if asset is token 1 or token 2
-    let swap_info = (
-        swap_amount,
-        BALANCES.load(deps.storage, asset_in)?,
-        BALANCES.load(deps.storage, state.pair.get_other_token(asset_in))?,
-    );
+    let asset_out = state.pair.get_other_token(asset_in.clone());
 
-    let receive_amount = calculate_swap(swap_info.0, swap_info.1, swap_info.2)?;
+    let mut token_in_reserve = BALANCES.load(deps.storage, asset_in.clone())?;
+    let mut token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
+
+    let receive_amount = calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?;
 
     // Verify that the receive amount is greater than the minimum token out
     ensure!(
@@ -353,45 +342,21 @@ pub fn execute_swap(
             min_amount_out: min_token_out,
         }
     );
+    token_in_reserve = token_in_reserve.checked_add(swap_amount)?;
+    token_out_reserve = token_out_reserve.checked_sub(receive_amount)?;
 
-    // Verify that the pool has enough liquidity to swap to user
-    // Should activate ELP algorithm to get liquidity from other available pool
-
-    ensure!(
-        pool.reserve_1.ge(&swap_amount),
-        ContractError::SlippageExceeded {
-            amount: swap_amount,
-            min_amount_out: min_token_out,
-        }
-    );
-
-    // Move liquidity from the pool
-    if asset_info == state.pair.token_1.id {
-        pool.reserve_1 = pool.reserve_1.checked_add(swap_amount)?;
-        pool.reserve_2 = pool.reserve_2.checked_sub(receive_amount)?;
-    } else {
-        pool.reserve_2 = pool.reserve_2.checked_add(swap_amount)?;
-        pool.reserve_1 = pool.reserve_1.checked_sub(receive_amount)?;
-    }
-
-    // Save the state of the pool
-    POOLS.save(deps.storage, &to_chain_id, &pool)?;
-
-    // Move liquidity for the state
-    if asset_info == state.pair.token_1.id {
-        state.total_reserve_1 = state.clone().total_reserve_1.checked_add(swap_amount)?;
-        state.total_reserve_2 = state.clone().total_reserve_2.checked_sub(receive_amount)?;
-    } else {
-        state.total_reserve_2 = state.clone().total_reserve_2.checked_add(swap_amount)?;
-        state.total_reserve_1 = state.clone().total_reserve_1.checked_sub(receive_amount)?;
-    }
-
-    // Get asset to be recieved by user
-    let asset_out = if asset_info == state.pair.token_1.id {
-        state.clone().pair.token_2
-    } else {
-        state.clone().pair.token_1
-    };
+    BALANCES.save(
+        deps.storage,
+        asset_in.clone(),
+        &token_in_reserve,
+        env.block.height,
+    )?;
+    BALANCES.save(
+        deps.storage,
+        asset_out.clone(),
+        &token_out_reserve,
+        env.block.height,
+    )?;
 
     STATE.save(deps.storage, &state)?;
 
@@ -402,7 +367,7 @@ pub fn execute_swap(
         amount_in,
         amount_out: receive_amount,
         to_address: to_address.clone(),
-        to_chain_id: to_chain_id.clone(),
+        to_chain_uid: to_chain_uid.clone(),
         swap_id: swap_id.clone(),
     };
 
@@ -414,15 +379,15 @@ pub fn execute_swap(
             // There are more swaps
             let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
-                token_id: swap_response.asset_out.id.clone(),
+                token_id: swap_response.asset_out.to_string(),
 
                 // Source Address
                 from_address: env.contract.address.to_string(),
-                from_chain_id: env.block.chain_id.clone(),
+                from_chain_uid: env.block.chain_id.clone(),
 
                 // Destination Address
                 to_address: next_swap.vlp_address.clone(),
-                to_chain_id: env.block.chain_id,
+                to_chain_uid: env.block.chain_id,
             });
 
             let vcoin_transfer_msg = WasmMsg::Execute {
@@ -437,7 +402,7 @@ pub fn execute_swap(
             let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
                 // Final user address and chain id
                 to_address,
-                to_chain_id,
+                to_chain_uid,
 
                 // Carry forward amount to next swap
                 asset_in: swap_response.asset_out,
@@ -473,15 +438,15 @@ pub fn execute_swap(
             );
             let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
-                token_id: swap_response.asset_out.id,
+                token_id: swap_response.asset_out.to_string(),
 
                 // Source Address
                 from_address: env.contract.address.to_string(),
-                from_chain_id: env.block.chain_id,
+                from_chain_uid: env.block.chain_id,
 
                 // Destination Address
                 to_address: to_address.clone(),
-                to_chain_id: to_chain_id.clone(),
+                to_chain_uid: to_chain_uid.clone(),
             });
 
             let vcoin_transfer_msg = WasmMsg::Execute {
@@ -496,7 +461,7 @@ pub fn execute_swap(
             Response::new()
                 .add_attribute("swap_type", "final_swap")
                 .add_attribute("receiver_address", to_address)
-                .add_attribute("receiver_chain_id", to_chain_id)
+                .add_attribute("receiver_chain_id", to_chain_uid)
                 .add_submessage(vcoin_transfer_msg)
         }
     };

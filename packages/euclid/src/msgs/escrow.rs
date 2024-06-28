@@ -31,7 +31,7 @@ pub enum ExecuteMsg {
     Withdraw {
         recipient: String,
         amount: Uint128,
-        chain_id: String,
+        chain_uid: String,
     },
 }
 

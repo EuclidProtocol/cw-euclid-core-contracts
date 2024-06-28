@@ -8,7 +8,6 @@ use euclid::{
     error::ContractError,
     fee::Fee,
     msgs::{self, vcoin::ExecuteMint},
-    token::PairInfo,
     vcoin::BalanceKey,
 };
 use euclid_ibc::{

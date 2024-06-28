@@ -8,7 +8,7 @@ use cosmwasm_std::{
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
-use crate::{cw20::Cw20ExecuteMsg, error::ContractError};
+use crate::{cw20::Cw20ExecuteMsg, error::ContractError, pool::Pool};
 
 // Token asset that represents an identifier for a token
 #[cw_serde]
@@ -124,6 +124,14 @@ impl Pair {
             (self.token_1.clone(), self.token_2.clone())
         } else {
             (self.token_2.clone(), self.token_1.clone())
+        }
+    }
+
+    pub fn get_pool(&self, reserve_1: Uint128, reserve_2: Uint128) -> Pool {
+        Pool {
+            pair: self.clone(),
+            reserve_1,
+            reserve_2,
         }
     }
 }
@@ -244,6 +252,20 @@ pub struct TokenWithDenom {
     pub token_type: TokenType,
 }
 
+impl TokenWithDenom {
+    pub fn get_denom(&self) -> String {
+        self.token_type.get_denom()
+    }
+
+    pub fn create_transfer_msg(
+        &self,
+        amount: Uint128,
+        recipient: String,
+    ) -> Result<CosmosMsg, ContractError> {
+        self.token_type.create_transfer_msg(amount, recipient)
+    }
+}
+
 #[cw_serde]
 pub struct PairWithDenom {
     pub token_1: TokenWithDenom,
@@ -253,6 +275,11 @@ pub struct PairWithDenom {
 impl PairWithDenom {
     pub fn get_pair(&self) -> Result<Pair, ContractError> {
         Pair::new(self.token_1.token.clone(), self.token_2.token.clone())
+    }
+
+    pub fn get_vec_token_info(&self) -> Vec<TokenWithDenom> {
+        let tokens: Vec<TokenWithDenom> = vec![self.token_1.clone(), self.token_2.clone()];
+        tokens
     }
 }
 

@@ -41,11 +41,11 @@ impl Pool {
 #[cw_serde]
 pub struct PoolCreateRequest {
     // Request source chain
-    pub chain: String,
+    pub chain_uid: String,
     // Request sender
     pub sender: String,
     // Pool request id
-    pub pool_rq_id: String,
+    pub tx_id: String,
     // Pool Pair
     pub pair_info: PairWithDenom,
 }

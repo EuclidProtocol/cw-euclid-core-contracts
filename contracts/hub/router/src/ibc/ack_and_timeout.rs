@@ -39,10 +39,10 @@ pub fn ibc_packet_ack(
             amount,
             token_id,
             to_address,
-            to_chain_id,
+            to_chain_uid,
         } => {
             let res = from_json(ack.acknowledgement.data)?;
-            ibc_ack_release_escrow(deps, env, amount, token_id, to_address, to_chain_id, res)
+            ibc_ack_release_escrow(deps, env, amount, token_id, to_address, to_chain_uid, res)
         }
     }
 }
@@ -110,7 +110,7 @@ pub fn ibc_ack_release_escrow(
     amount: Uint128,
     token_id: String,
     to_address: String,
-    to_chain_id: String,
+    to_chain_uid: String,
     res: AcknowledgementMsg<ReleaseEscrowResponse>,
 ) -> Result<IbcBasicResponse, ContractError> {
     match res {
@@ -132,7 +132,7 @@ pub fn ibc_ack_release_escrow(
             let mint_msg = VcoinExecuteMsg::Mint(ExecuteMint {
                 amount,
                 balance_key: BalanceKey {
-                    chain_id: to_chain_id,
+                    chain_uid: to_chain_uid,
                     address: to_address,
                     token_id,
                 },

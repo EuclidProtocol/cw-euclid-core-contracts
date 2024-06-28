@@ -11,24 +11,39 @@ use euclid::{
 pub enum ChainIbcExecuteMsg {
     // Request Pool Creation
     RequestPoolCreation {
-        pool_rq_id: String,
         pair: Pair,
+        // Factory will set this using info.sender
+        sender: String,
+        // Unique per tx
+        tx_id: String,
     },
     AddLiquidity {
+        // Factory will set this using info.sender
         sender: String,
+
+        // User will provide this data and factory will verify using info funds
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
+
+        // User will provide this data
         slippage_tolerance: u64,
-        liquidity_id: String,
-        pool_address: String,
+
         vlp_address: String,
+
+        // Unique per tx
+        tx_id: String,
     },
 
     // Remove liquidity from a chain pool to VLP
     RemoveLiquidity {
+        // Factory will set this using info.sender
         sender: String,
+
         lp_allocation: Uint128,
         vlp_address: String,
+
+        // Unique per tx
+        tx_id: String,
     },
 
     // Swap tokens on VLP
@@ -36,25 +51,44 @@ pub enum ChainIbcExecuteMsg {
     // New Factory Msg
     RequestWithdraw {
         token_id: Token,
-        recipient: String,
         amount: Uint128,
-        chain_id: String,
+
+        // Factory will set this using info.sender
+        sender: String,
+
+        // User will provide this data
+        to_address: String,
+        to_chain_uid: String,
+
+        // Unique per tx
+        tx_id: String,
     },
     RequestEscrowCreation {
         token_id: Token,
+        // Factory will set this using info.sender
+        sender: String,
+        // Unique per tx
+        tx_id: String,
         //TODO Add allowed denoms?
     },
 }
 
 #[cw_serde]
 pub struct ChainIbcSwapExecuteMsg {
+    // Factory will set this to info.sender
+    pub sender: String,
+    // Factory will set this to info.sender
     pub to_address: String,
-    pub to_chain_id: String,
+    pub to_chain_uid: String,
+
+    // User will provide this
     pub asset_in: Token,
     pub amount_in: Uint128,
     pub min_amount_out: Uint128,
-    pub swap_id: String,
     pub swaps: Vec<NextSwap>,
+
+    // Unique per tx
+    pub tx_id: String,
 }
 
 #[cw_serde]
@@ -62,13 +96,18 @@ pub enum HubIbcExecuteMsg {
     // Send Factory Registration Message from Router to Factory
     RegisterFactory {
         router: String,
+        // Unique per tx
+        tx_id: String,
     },
 
     ReleaseEscrow {
         amount: Uint128,
         token_id: String,
         to_address: String,
-        to_chain_id: String,
+        to_chain_uid: String,
+
+        // Unique per tx
+        tx_id: String,
     },
 }
 

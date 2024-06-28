@@ -2,7 +2,7 @@ use cosmwasm_std::{
     ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
 };
 use euclid::{error::ContractError, timeout::get_timeout};
-use euclid_ibc::msg::HubIbcExecuteMsg;
+use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::state::STATE;
 
@@ -53,4 +53,12 @@ pub fn execute_register_factory(
         .add_attribute("channel", channel)
         .add_attribute("timeout", timeout.to_string())
         .add_message(CosmosMsg::Ibc(packet)))
+}
+
+pub fn execute_internal_msg(
+    deps: DepsMut,
+    env: Env,
+    msg: ChainIbcExecuteMsg,
+) -> Result<Response, ContractError> {
+    Ok(Response::new())
 }

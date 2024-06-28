@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 
-use crate::vcoin::BalanceKey;
+use crate::{token::Token, vcoin::BalanceKey};
 
 #[cw_serde]
 pub struct State {
@@ -35,11 +35,11 @@ pub struct ExecuteTransfer {
 
     // Source Address
     pub from_address: String,
-    pub from_chain_id: String,
+    pub from_chain_uid: String,
 
     // Destination Address
     pub to_address: String,
-    pub to_chain_id: String,
+    pub to_chain_uid: String,
 }
 
 #[cw_serde]
@@ -77,10 +77,15 @@ pub struct GetStateResponse {
 #[cw_serde]
 pub struct GetBalanceResponse {
     pub amount: Uint128,
-    pub balance_key: BalanceKey,
 }
 
 #[cw_serde]
 pub struct GetUserBalancesResponse {
-    pub balances: Vec<GetBalanceResponse>,
+    pub balances: Vec<GetUserBalancesResponseItem>,
+}
+
+#[cw_serde]
+pub struct GetUserBalancesResponseItem {
+    pub amount: Uint128,
+    pub token_id: String,
 }

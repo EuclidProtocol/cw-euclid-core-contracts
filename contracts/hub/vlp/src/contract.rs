@@ -30,8 +30,6 @@ pub fn instantiate(
         router: info.sender.to_string(),
         fee: msg.fee,
         last_updated: 0,
-        total_reserve_1: Uint128::zero(),
-        total_reserve_2: Uint128::zero(),
         total_lp_tokens: Uint128::zero(),
     };
 
@@ -98,14 +96,14 @@ pub fn execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::SimulateSwap {
             asset,
             asset_amount,
             swaps,
         } => query_simulate_swap(deps, asset, asset_amount, swaps),
-        QueryMsg::Liquidity {} => query_liquidity(deps),
+        QueryMsg::Liquidity { height } => query_liquidity(deps, env, height),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
