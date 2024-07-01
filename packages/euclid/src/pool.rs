@@ -65,6 +65,8 @@ pub struct RemoveLiquidityResponse {
     pub token_1_liquidity: Uint128,
     pub token_2_liquidity: Uint128,
     pub burn_lp_tokens: Uint128,
+    pub chain_id: String,
+    pub token_id: String,
 }
 
 // Struct to handle Acknowledgement Response for a Pool Creation Request

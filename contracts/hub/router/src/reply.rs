@@ -117,7 +117,11 @@ pub fn on_add_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
     }
 }
 
-pub fn on_remove_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_remove_liquidity_reply(
+    deps: DepsMut,
+    env: Env,
+    msg: Reply,
+) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -129,8 +133,25 @@ pub fn on_remove_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response,
                 from_json(execute_data.data.unwrap_or_default())?;
 
             let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
+            let chain =
+                CHAIN_ID_TO_CHAIN.load(deps.storage, liquidity_response.chain_id.clone())?;
+
+            let packet = IbcMsg::SendPacket {
+                channel_id: chain.from_hub_channel,
+                data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
+                    // TODO token_2 or token_1 ?
+                    amount: liquidity_response.token_2_liquidity,
+                    token_id: liquidity_response.token_id.clone(),
+                    to_address: swap_msg.to_address,
+                    to_chain_id: liquidity_response.chain_id,
+                })?,
+                timeout: IbcTimeout::with_timestamp(
+                    env.block.time.plus_seconds(get_timeout(None)?),
+                ),
+            };
 
             Ok(Response::new()
+                .add_message(CosmosMsg::Ibc(packet))
                 .add_attribute("action", "reply_remove_liquidity")
                 .add_attribute("liquidity", format!("{liquidity_response:?}"))
                 .set_data(to_json_binary(&ack)?))

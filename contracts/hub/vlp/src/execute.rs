@@ -4,7 +4,10 @@ use cosmwasm_std::{
 };
 use euclid::{
     error::ContractError,
-    msgs::{cw20::ExecuteMsg as Cw20ExecuteMsg, vcoin::ExecuteTransfer},
+    msgs::{
+        cw20::ExecuteMsg as Cw20ExecuteMsg, vcoin::ExecuteMsg as VcoinExecuteMsg,
+        vcoin::ExecuteTransfer,
+    },
     pool::{LiquidityResponse, Pool, PoolCreationResponse, RemoveLiquidityResponse},
     swap::{NextSwap, SwapResponse},
     token::{PairInfo, Token},
@@ -238,6 +241,9 @@ pub fn remove_liquidity(
         token_1_liquidity,
         token_2_liquidity,
         burn_lp_tokens: lp_allocation,
+        chain_id: chain_id.clone(),
+        // TODO token 2 or 1?
+        token_id: pool.pair.token_2.get_token().id,
     };
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
@@ -413,7 +419,7 @@ pub fn execute_swap(
     let response = match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             // There are more swaps
-            let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+            let vcoin_transfer_msg = VcoinExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.id.clone(),
 
@@ -472,7 +478,7 @@ pub fn execute_swap(
                     min_amount_out: min_token_out,
                 }
             );
-            let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+            let vcoin_transfer_msg = VcoinExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.id,
 
