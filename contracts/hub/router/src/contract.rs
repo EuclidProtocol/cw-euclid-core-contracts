@@ -29,6 +29,7 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     let state = State {
         vlp_code_id: msg.vlp_code_id,
+        cw20_code_id: msg.cw20_code_id,
         admin: info.sender.to_string(),
         vcoin_address: None,
     };

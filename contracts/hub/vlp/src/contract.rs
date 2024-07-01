@@ -2,6 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
 use cw2::set_contract_version;
+use euclid::common::{generate_instantiate2_message, get_new_addr};
 
 use crate::reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID};
 use crate::state::{State, STATE};
@@ -24,11 +25,20 @@ pub fn instantiate(
     // Validate token pair
     msg.pair.validate()?;
 
+    // Get Instantiate2 address of cw20
+    let cw20_addr = get_new_addr(
+        deps.api,
+        msg.cw20_code_id,
+        env.contract.address.clone().into_string(),
+        &deps.querier,
+    )?;
+
     let state = State {
         pair: msg.pair,
         vcoin: msg.vcoin,
         router: info.sender.to_string(),
-        cw20: msg.cw20,
+        // TODO handle None instance
+        cw20: cw20_addr.unwrap().into_string(),
         fee: msg.fee,
         last_updated: 0,
         total_reserve_1: Uint128::zero(),
@@ -42,9 +52,17 @@ pub fn instantiate(
     let response = msg.execute.map_or(Ok(Response::default()), |execute_msg| {
         execute(deps, env.clone(), info.clone(), execute_msg)
     })?;
+    // TODO create idx for this instantiation process
+    let instaniate2_msg = generate_instantiate2_message(
+        msg.cw20_code_id,
+        env.clone().contract.address.into_string(),
+        1,
+    )?;
+
     Ok(response
+        .add_submessage(instaniate2_msg)
         .add_attribute("method", "instantiate")
-        .add_attribute("vlp_address", env.contract.address.to_string())
+        .add_attribute("vlp_address", env.clone().contract.address.to_string())
         .add_attribute("owner", info.sender))
 }
 

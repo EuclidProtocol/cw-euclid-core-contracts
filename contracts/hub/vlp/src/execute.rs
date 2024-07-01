@@ -159,9 +159,7 @@ pub fn add_liquidity(
     // Mint LP tokens with CW20 contract
 
     // Get cw20 contract address
-    let contract_addr = state.cw20.ok_or(ContractError::Generic {
-        err: "cw20 not instantiated".to_string(),
-    })?;
+    let contract_addr = state.cw20;
 
     // Get LP token recipient address
     let recipient_string = format!("{}:{}", chain_id, outpost_sender);
@@ -247,9 +245,7 @@ pub fn remove_liquidity(
     // Burn LP tokens with CW20 contract
 
     // Get cw20 contract address
-    let contract_addr = state.cw20.ok_or(ContractError::Generic {
-        err: "cw20 not instantiated".to_string(),
-    })?;
+    let contract_addr = state.cw20;
 
     // Create cw20 burn message
     let burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {

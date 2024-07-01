@@ -6,6 +6,7 @@ use crate::{swap::NextSwap, token::Token};
 pub struct InstantiateMsg {
     // Pool Code ID
     pub vlp_code_id: u64,
+    pub cw20_code_id: u64,
     pub vcoin_code_id: u64,
 }
 

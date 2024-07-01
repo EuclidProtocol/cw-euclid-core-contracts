@@ -131,7 +131,7 @@ fn execute_request_pool_creation(
                     err: "vcoin not instantiated".to_string(),
                 })?
                 .to_string(),
-            cw20: None,
+            cw20_code_id: state.cw20_code_id,
             pair: pair_info.get_pair(),
             fee: Fee {
                 lp_fee: 0,
