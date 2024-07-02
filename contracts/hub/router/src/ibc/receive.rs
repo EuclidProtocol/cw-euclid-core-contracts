@@ -78,7 +78,15 @@ pub fn do_ibc_packet_receive(
             chain_id,
             vlp_address,
             lp_allocation,
-        } => ibc_execute_remove_liquidity(deps, env, chain_id, lp_allocation, vlp_address),
+            outpost_sender,
+        } => ibc_execute_remove_liquidity(
+            deps,
+            env,
+            chain_id,
+            lp_allocation,
+            vlp_address,
+            outpost_sender,
+        ),
         ChainIbcExecuteMsg::Swap(msg) => ibc_execute_swap(deps, env, chain.factory_chain_id, msg),
         _ => Err(ContractError::NotImplemented {}),
     }
@@ -253,10 +261,12 @@ fn ibc_execute_remove_liquidity(
     chain_id: String,
     lp_allocation: Uint128,
     vlp_address: String,
+    outpost_sender: String,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let remove_liquidity_msg = msgs::vlp::ExecuteMsg::RemoveLiquidity {
         chain_id,
         lp_allocation,
+        outpost_sender,
     };
 
     let msg = WasmMsg::Execute {

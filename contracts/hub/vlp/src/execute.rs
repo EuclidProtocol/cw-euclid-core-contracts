@@ -206,6 +206,7 @@ pub fn remove_liquidity(
     deps: DepsMut,
     chain_id: String,
     lp_allocation: Uint128,
+    outpost_sender: String,
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
     let mut pool = POOLS.load(deps.storage, &chain_id)?;
@@ -244,6 +245,7 @@ pub fn remove_liquidity(
         chain_id: chain_id.clone(),
         // TODO token 2 or 1?
         token_id: pool.pair.token_2.get_token().id,
+        to_address: outpost_sender,
     };
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;

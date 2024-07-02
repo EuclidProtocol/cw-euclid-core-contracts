@@ -29,6 +29,7 @@ pub enum ChainIbcExecuteMsg {
         chain_id: String,
         lp_allocation: Uint128,
         vlp_address: String,
+        outpost_sender: String,
     },
 
     // Swap tokens on VLP

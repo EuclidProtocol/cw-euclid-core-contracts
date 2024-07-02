@@ -142,8 +142,8 @@ pub fn on_remove_liquidity_reply(
                     // TODO token_2 or token_1 ?
                     amount: liquidity_response.token_2_liquidity,
                     token_id: liquidity_response.token_id.clone(),
-                    to_address: swap_msg.to_address,
-                    to_chain_id: liquidity_response.chain_id,
+                    to_address: liquidity_response.clone().to_address,
+                    to_chain_id: liquidity_response.clone().chain_id,
                 })?,
                 timeout: IbcTimeout::with_timestamp(
                     env.block.time.plus_seconds(get_timeout(None)?),

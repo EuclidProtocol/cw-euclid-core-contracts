@@ -44,6 +44,7 @@ pub enum ExecuteMsg {
     RemoveLiquidity {
         chain_id: String,
         lp_allocation: Uint128,
+        outpost_sender: String,
     },
     /*
 
