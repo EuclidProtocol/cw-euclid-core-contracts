@@ -1,6 +1,6 @@
 use crate::token::{Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -14,13 +14,9 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     // Updates allowed denoms
-    AddAllowedDenom {
-        denom: TokenType,
-    },
+    AddAllowedDenom { denom: TokenType },
     // Removes a denom from allowed denoms
-    DisallowDenom {
-        denom: TokenType,
-    },
+    DisallowDenom { denom: TokenType },
     DepositNative {},
     // ReleaseTokens { recipient: Addr, amount: Uint128 },
 
@@ -28,11 +24,7 @@ pub enum ExecuteMsg {
     Receive(Cw20ReceiveMsg),
 
     // Have a separate Msg for cw20 tokens? flow should be better if the message is unified
-    Withdraw {
-        recipient: String,
-        amount: Uint128,
-        chain_uid: String,
-    },
+    Withdraw { recipient: Addr, amount: Uint128 },
 }
 
 #[cw_serde]

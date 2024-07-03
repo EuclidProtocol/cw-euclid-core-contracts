@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 
-use crate::{swap::NextSwap, token::Token};
+use crate::{chain::ChainUid, swap::NextSwap, token::Token};
 #[cw_serde]
 pub struct InstantiateMsg {
     // Pool Code ID
@@ -16,8 +16,10 @@ pub enum ExecuteMsg {
         new_vlp_code_id: u64,
     },
     RegisterFactory {
+        chain_uid: ChainUid,
         channel: String,
         timeout: Option<u64>,
+        tx_id: String,
     },
 }
 

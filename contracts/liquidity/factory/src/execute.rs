@@ -15,8 +15,8 @@ use euclid::{
 use euclid_ibc::msg::ChainIbcExecuteMsg;
 
 use crate::state::{
-    HUB_CHANNEL, PAIR_TO_VLP, PENDING_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-    POOL_REQUESTS, STATE, TOKEN_TO_ESCROW,
+    CHAIN_UID, HUB_CHANNEL, PAIR_TO_VLP, PENDING_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
+    PENDING_SWAPS, POOL_REQUESTS, STATE, TOKEN_TO_ESCROW,
 };
 
 // Function to send IBC request to Router in VLS to create a new pool
@@ -29,7 +29,7 @@ pub fn execute_request_pool_creation(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     ensure!(
-        !POOL_REQUESTS.has(deps.storage, (info.sender, tx_id)),
+        !POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
     ensure!(
@@ -38,17 +38,15 @@ pub fn execute_request_pool_creation(
     );
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
 
     let req = PoolCreateRequest {
-        chain_uid: state.chain_uid,
-        tx_id,
+        tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
-        pair_info: pair,
+        pair_info: pair.clone(),
     };
 
-    POOL_REQUESTS.save(deps.storage, (info.sender, tx_id), &req)?;
+    POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
@@ -56,7 +54,7 @@ pub fn execute_request_pool_creation(
         data: to_json_binary(&ChainIbcExecuteMsg::RequestPoolCreation {
             pair: pair.get_pair()?,
             sender: info.sender.to_string(),
-            tx_id,
+            tx_id: tx_id.clone(),
         })?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };
@@ -74,7 +72,7 @@ pub fn execute_request_pool_creation(
 // Add liquidity to the pool
 // TODO look into alternatives of using .branch(), maybe unifying the functions would help
 pub fn add_liquidity_request(
-    mut deps: DepsMut,
+    deps: DepsMut,
     info: MessageInfo,
     env: Env,
     pair_info: PairWithDenom,
@@ -91,7 +89,7 @@ pub fn add_liquidity_request(
     );
 
     ensure!(
-        !PENDING_LIQUIDITY.has(deps.storage, (info.sender, tx_id)),
+        !PENDING_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
 
@@ -108,7 +106,6 @@ pub fn add_liquidity_request(
     let vlp_address = vlp_address?;
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
 
     let sender = info.sender.to_string();
@@ -203,25 +200,29 @@ pub fn add_liquidity_request(
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
     let liquidity_tx_info = LiquidityTxInfo {
-        sender,
+        sender: sender.clone(),
         token_1_liquidity,
         token_2_liquidity,
         pair_info,
-        tx_id,
+        tx_id: tx_id.clone(),
     };
 
-    PENDING_LIQUIDITY.save(deps.storage, (info.sender, tx_id), &liquidity_tx_info)?;
+    PENDING_LIQUIDITY.save(
+        deps.storage,
+        (info.sender, tx_id.clone()),
+        &liquidity_tx_info,
+    )?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&ChainIbcExecuteMsg::AddLiquidity {
-            sender,
+            sender: sender.clone(),
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
             vlp_address,
-            tx_id,
+            tx_id: tx_id.clone(),
         })?,
         timeout,
     };
@@ -241,7 +242,7 @@ pub fn add_liquidity_request(
 // Add liquidity to the pool
 // TODO look into alternatives of using .branch(), maybe unifying the functions would help
 pub fn remove_liquidity_request(
-    mut deps: DepsMut,
+    deps: DepsMut,
     info: MessageInfo,
     env: Env,
     pair: Pair,
@@ -250,7 +251,7 @@ pub fn remove_liquidity_request(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     ensure!(
-        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender, tx_id)),
+        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
 
@@ -265,7 +266,6 @@ pub fn remove_liquidity_request(
     let vlp_address = vlp_address?;
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
 
     let sender = info.sender.to_string();
@@ -276,22 +276,26 @@ pub fn remove_liquidity_request(
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
     let liquidity_tx_info = RemoveLiquidityTxInfo {
-        sender,
+        sender: sender.clone(),
         lp_allocation,
         pair,
-        tx_id,
+        tx_id: tx_id.clone(),
     };
 
-    PENDING_REMOVE_LIQUIDITY.save(deps.storage, (info.sender, tx_id), &liquidity_tx_info)?;
+    PENDING_REMOVE_LIQUIDITY.save(
+        deps.storage,
+        (info.sender, tx_id.clone()),
+        &liquidity_tx_info,
+    )?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&ChainIbcExecuteMsg::RemoveLiquidity {
-            sender,
+            sender: sender.clone(),
             lp_allocation,
             vlp_address,
-            tx_id,
+            tx_id: tx_id.clone(),
         })?,
         timeout,
     };
@@ -329,27 +333,32 @@ pub fn execute_swap_request(
     ensure!(!min_amount_out.is_zero(), ContractError::ZeroAssetAmount {});
 
     ensure!(
-        !PENDING_SWAPS.has(deps.storage, (info.sender, tx_id)),
+        !PENDING_SWAPS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
 
-    let first_swap = swaps.first().ok_or(ContractError::Generic {
+    let chain_uid = CHAIN_UID
+        .load(deps.storage)
+        .map_err(|_err| ContractError::Generic {
+            err: "Chain UID not registered".to_string(),
+        })?;
+
+    swaps.first().ok_or(ContractError::Generic {
         err: "Empty Swap not allowed".to_string(),
     })?;
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
     let sender = info.sender.to_string();
     // Verify that this asset is allowed
-    let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token)?;
+    let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
 
     let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps.querier.query_wasm_smart(
         escrow,
         &euclid::msgs::escrow::QueryMsg::TokenAllowed {
-            denom: asset_in.token_type,
+            denom: asset_in.token_type.clone(),
         },
     )?;
 
@@ -386,15 +395,15 @@ pub fn execute_swap_request(
         );
     }
     let swap_info = SwapInfo {
-        asset_in,
+        asset_in: asset_in.clone(),
         asset_out,
         amount_in,
         min_amount_out,
-        swaps,
-        timeout,
-        tx_id,
+        swaps: swaps.clone(),
+        timeout: timeout.clone(),
+        tx_id: tx_id.clone(),
     };
-    PENDING_SWAPS.save(deps.storage, (info.sender, tx_id), &swap_info)?;
+    PENDING_SWAPS.save(deps.storage, (info.sender, tx_id.clone()), &swap_info)?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
@@ -402,13 +411,13 @@ pub fn execute_swap_request(
         data: to_json_binary(&ChainIbcExecuteMsg::Swap(
             euclid_ibc::msg::ChainIbcSwapExecuteMsg {
                 sender: sender.clone(),
-                to_address: sender,
-                to_chain_uid: state.chain_uid,
+                to_address: sender.clone(),
+                to_chain_uid: chain_uid,
                 asset_in: asset_in.token,
                 amount_in,
                 min_amount_out,
                 swaps,
-                tx_id,
+                tx_id: tx_id.clone(),
             },
         ))?,
         timeout,

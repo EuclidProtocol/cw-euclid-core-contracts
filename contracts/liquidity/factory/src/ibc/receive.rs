@@ -6,6 +6,7 @@ use cosmwasm_std::{
 };
 use euclid::{
     error::ContractError,
+    events::{tx_event, TxType},
     msgs::{
         escrow::ExecuteMsg as EscrowExecuteMsg,
         factory::{ExecuteMsg, RegisterFactoryResponse, ReleaseEscrowResponse},
@@ -19,16 +20,18 @@ use euclid_ibc::{
 
 use crate::{
     reply::IBC_RECEIVE_REPLY_ID,
-    state::{HUB_CHANNEL, STATE, TOKEN_TO_ESCROW},
+    state::{CHAIN_UID, HUB_CHANNEL, STATE, TOKEN_TO_ESCROW},
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_receive(
-    deps: DepsMut,
+    _deps: DepsMut,
     env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let internal_msg = ExecuteMsg::IbcCallbackReceive { receive_msg: msg };
+    let internal_msg = ExecuteMsg::IbcCallbackReceive {
+        receive_msg: msg.clone(),
+    };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
         msg: to_json_binary(&internal_msg)?,
@@ -47,12 +50,19 @@ pub fn ibc_receive_internal_call(
     env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
-    // TODO: Check for channel with hub channel in state
+    let router = msg.packet.src.port_id.replace("wasm.", "");
+
+    // Ensure that channel is same as registered in the state
     let channel = msg.packet.dest.channel_id;
+    ensure!(
+        HUB_CHANNEL.load(deps.storage)? == channel,
+        ContractError::Unauthorized {}
+    );
+
     let msg: HubIbcExecuteMsg = from_json(msg.packet.data)?;
     match msg {
-        HubIbcExecuteMsg::RegisterFactory { router, .. } => {
-            execute_register_router(deps, env, router, channel)
+        HubIbcExecuteMsg::RegisterFactory { chain_uid, tx_id } => {
+            execute_register_router(deps, env, router, channel, chain_uid, tx_id)
         }
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
@@ -77,16 +87,10 @@ fn execute_register_router(
     env: Env,
     router: String,
     channel: String,
+    chain_uid: String,
+    tx_id: String,
 ) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
-    ensure!(
-        state.router_contract == router,
-        ContractError::Unauthorized {}
-    );
-    HUB_CHANNEL.save(deps.storage, &channel)?;
-
-    STATE.save(deps.storage, &state)?;
-
+    CHAIN_UID.save(deps.storage, &chain_uid)?;
     let ack_msg = RegisterFactoryResponse {
         factory_address: env.contract.address.to_string(),
         chain_id: env.block.chain_id,
@@ -95,6 +99,7 @@ fn execute_register_router(
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
     Ok(Response::new()
+        .add_event(tx_event(&tx_id, &router, TxType::RegisterFactory))
         .add_attribute("method", "register_router")
         .add_attribute("router", router)
         .add_attribute("channel", channel)

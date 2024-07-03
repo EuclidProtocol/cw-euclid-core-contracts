@@ -1,7 +1,9 @@
+use core::fmt;
+
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Event;
 
-use crate::{pool::Pool, swap::SwapInfo};
+use crate::{pool::Pool, swap::SwapRequest};
 
 pub fn liquidity_event(pool: &Pool, tx_id: &str) -> Event {
     Event::new("euclid")
@@ -14,21 +16,18 @@ pub fn liquidity_event(pool: &Pool, tx_id: &str) -> Event {
         .add_attribute("tx_id", tx_id)
 }
 
-pub fn swap_event(tx_id: &str, swap_info: &SwapInfo) -> Event {
+pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
     Event::new("euclid")
         .add_attribute("constant", "euclid")
         .add_attribute("action", "swap")
         .add_attribute("tx_id", tx_id)
-        .add_attribute("asset_in", swap_info.asset_in.token.to_string())
-        .add_attribute("asset_in_denom", swap_info.asset_in.token_type.get_key())
-        .add_attribute("asset_out", swap_info.asset_out.to_string())
-        .add_attribute("amount_in", swap_info.amount_in)
-        .add_attribute("min_amount_out", swap_info.min_amount_out)
-        .add_attribute("swaps", format!("{swaps:?}", swaps = swap_info.swaps))
-        .add_attribute(
-            "timeout",
-            format!("{timeout:?}", timeout = swap_info.timeout),
-        )
+        .add_attribute("asset_in", swap.asset_in.token.to_string())
+        .add_attribute("asset_in_denom", swap.asset_in.token_type.get_key())
+        .add_attribute("asset_out", swap.asset_out.to_string())
+        .add_attribute("amount_in", swap.amount_in)
+        .add_attribute("min_amount_out", swap.min_amount_out)
+        .add_attribute("swaps", format!("{swaps:?}", swaps = swap.swaps))
+        .add_attribute("timeout", format!("{timeout:?}", timeout = swap.timeout))
 }
 
 pub fn register_factory_event(
@@ -54,6 +53,22 @@ pub enum TxType {
     PoolCreation,
     EscrowRelease,
     EscrowWithdraw,
+    RegisterFactory,
+}
+
+impl fmt::Display for TxType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            TxType::Swap => "swap",
+            TxType::AddLiquidity => "add_liquidity",
+            TxType::RemoveLiquidity => "remove_liquidity",
+            TxType::PoolCreation => "pool_creation",
+            TxType::EscrowRelease => "escrow_release",
+            TxType::EscrowWithdraw => "escrow_withdraw",
+            TxType::RegisterFactory => "register_factory",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 pub fn tx_event(tx_id: &str, sender: &str, tx_type: TxType) -> Event {

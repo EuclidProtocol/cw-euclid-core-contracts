@@ -1,7 +1,11 @@
 use cosmwasm_std::{
     ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
 };
-use euclid::{error::ContractError, timeout::get_timeout};
+use euclid::{
+    error::ContractError,
+    events::{tx_event, TxType},
+    timeout::get_timeout,
+};
 use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::state::STATE;
@@ -32,12 +36,14 @@ pub fn execute_register_factory(
     info: MessageInfo,
     channel: String,
     timeout: Option<u64>,
+    tx_id: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
     let msg = HubIbcExecuteMsg::RegisterFactory {
         router: env.contract.address.to_string(),
+        tx_id,
     };
 
     let timeout = get_timeout(timeout)?;
@@ -49,6 +55,11 @@ pub fn execute_register_factory(
     };
 
     Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            TxType::RegisterFactory,
+        ))
         .add_attribute("method", "register_factory")
         .add_attribute("channel", channel)
         .add_attribute("timeout", timeout.to_string())

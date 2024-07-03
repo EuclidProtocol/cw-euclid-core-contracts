@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 
-use crate::{token::Token, vcoin::BalanceKey};
+use crate::{chain::CrossChainUser, vcoin::BalanceKey};
 
 #[cw_serde]
 pub struct State {
@@ -34,12 +34,10 @@ pub struct ExecuteTransfer {
     pub token_id: String,
 
     // Source Address
-    pub from_address: String,
-    pub from_chain_uid: String,
+    pub from: CrossChainUser,
 
     // Destination Address
-    pub to_address: String,
-    pub to_chain_uid: String,
+    pub to: CrossChainUser,
 }
 
 #[cw_serde]
@@ -65,7 +63,7 @@ pub enum QueryMsg {
 
     // Query to simulate a swap for the asset
     #[returns(GetUserBalancesResponse)]
-    GetUserBalances { chain_id: String, address: String },
+    GetUserBalances { user: CrossChainUser },
 }
 
 // We define a custom struct for each query response

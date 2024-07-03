@@ -134,3 +134,11 @@ pub enum ContractError {
     #[error("Pool Instantiate Failed {err}")]
     PoolInstantiateFailed { err: String },
 }
+
+impl ContractError {
+    pub fn new(err: &str) -> Self {
+        ContractError::Generic {
+            err: err.to_string(),
+        }
+    }
+}

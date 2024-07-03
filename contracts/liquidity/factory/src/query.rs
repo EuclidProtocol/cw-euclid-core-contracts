@@ -10,8 +10,8 @@ use euclid::{
 };
 
 use crate::state::{
-    HUB_CHANNEL, PAIR_TO_VLP, PENDING_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE,
-    TOKEN_TO_ESCROW,
+    CHAIN_UID, HUB_CHANNEL, PAIR_TO_VLP, PENDING_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
+    PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
 };
 
 // Returns the Pair Info of the Pair in the pool
@@ -28,9 +28,10 @@ pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError>
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let chain_uid = CHAIN_UID.load(deps.storage)?;
     let hub = HUB_CHANNEL.may_load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
-        chain_uid: state.chain_uid,
+        chain_uid,
         router_contract: state.router_contract,
         admin: state.admin,
         hub_channel: hub,

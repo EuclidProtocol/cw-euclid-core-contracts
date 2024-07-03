@@ -10,16 +10,16 @@ use euclid::{
 
 #[cw_serde]
 pub struct State {
-    // The Unique Chain Identifier
-    // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
-    // IN THE EUCLID ECOSYSTEM
-    pub chain_uid: String,
     // The Router Contract Address on the Virtual Settlement Layer
     pub router_contract: String,
     // Contract admin
     pub admin: String,
     // Escrow Code ID
     pub escrow_code_id: u64,
+    // The Unique Chain Identifier
+    // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
+    // IN THE EUCLID ECOSYSTEM
+    pub chain_uid: String,
 }
 
 pub const STATE: Item<State> = Item::new("state");
@@ -33,13 +33,15 @@ pub const PAIR_TO_VLP: Map<(Token, Token), String> = Map::new("pair_to_vlp");
 // New Factory states
 pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 
-pub const POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> = Map::new("request_to_pool");
+// Map for pending pool requests for user
+pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =
+    Map::new("request_to_pool");
 
 // Map for pending swaps for user
 pub const PENDING_SWAPS: Map<(Addr, String), SwapInfo> = Map::new("pending_swaps");
 
 // Map for PENDING liquidity transactions
-pub const PENDING_LIQUIDITY: Map<(Addr, String), LiquidityTxInfo> =
+pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), LiquidityTxInfo> =
     Map::new("pending_add_liquidity");
 // Map for PENDING liquidity transactions
 pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityTxInfo> =

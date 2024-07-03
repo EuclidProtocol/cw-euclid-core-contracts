@@ -1,6 +1,7 @@
 use crate::{
-    liquidity::{LiquidityTxInfo, RemoveLiquidityTxInfo},
-    swap::{NextSwap, SwapInfo},
+    chain::CrossChainUser,
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    swap::{NextSwap, SwapRequest},
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
@@ -49,6 +50,8 @@ pub enum ExecuteMsg {
         min_amount_out: Uint128,
         timeout: Option<u64>,
         swaps: Vec<NextSwap>,
+        // First element in array has highest priority
+        cross_chain_address_map: Vec<CrossChainUser>,
         tx_id: String,
     },
 
@@ -154,16 +157,16 @@ pub struct ReleaseEscrowResponse {
 
 #[cw_serde]
 pub struct GetPendingSwapsResponse {
-    pub pending_swaps: Vec<SwapInfo>,
+    pub pending_swaps: Vec<SwapRequest>,
 }
 #[cw_serde]
 pub struct GetPendingLiquidityResponse {
-    pub pending_liquidity: Vec<LiquidityTxInfo>,
+    pub pending_add_liquidity: Vec<AddLiquidityRequest>,
 }
 
 #[cw_serde]
 pub struct GetPendingRemoveLiquidityResponse {
-    pub pending_remove_liquidity: Vec<RemoveLiquidityTxInfo>,
+    pub pending_remove_liquidity: Vec<RemoveLiquidityRequest>,
 }
 
 #[cw_serde]

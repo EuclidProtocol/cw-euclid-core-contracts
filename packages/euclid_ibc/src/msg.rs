@@ -95,7 +95,7 @@ pub struct ChainIbcSwapExecuteMsg {
 pub enum HubIbcExecuteMsg {
     // Send Factory Registration Message from Router to Factory
     RegisterFactory {
-        router: String,
+        chain_uid: String,
         // Unique per tx
         tx_id: String,
     },

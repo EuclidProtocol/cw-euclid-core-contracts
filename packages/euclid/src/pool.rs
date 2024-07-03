@@ -40,8 +40,6 @@ impl Pool {
 // Request to create pool saved in state to manage during acknowledgement
 #[cw_serde]
 pub struct PoolCreateRequest {
-    // Request source chain
-    pub chain_uid: String,
     // Request sender
     pub sender: String,
     // Pool request id
@@ -50,32 +48,12 @@ pub struct PoolCreateRequest {
     pub pair_info: PairWithDenom,
 }
 
-// Struct to handle Acknowledgement Response for a Liquidity Request
-#[cw_serde]
-pub struct LiquidityResponse {
-    pub token_1_liquidity: Uint128,
-    pub token_2_liquidity: Uint128,
-    pub mint_lp_tokens: Uint128,
-}
-
-// Struct to handle Acknowledgement Response for a Liquidity Request
-#[cw_serde]
-pub struct RemoveLiquidityResponse {
-    pub token_1_liquidity: Uint128,
-    pub token_2_liquidity: Uint128,
-    pub burn_lp_tokens: Uint128,
-}
-
 // Struct to handle Acknowledgement Response for a Pool Creation Request
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
 }
 
-#[cw_serde]
-pub struct WithdrawResponse {}
 
-#[cw_serde]
-pub struct InstantiateEscrowResponse {
-    pub escrow_code_id: u64,
-}
+
+

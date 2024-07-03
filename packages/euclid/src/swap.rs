@@ -5,7 +5,10 @@ use crate::token::{Token, TokenWithDenom};
 
 // Struct that stores a certain swap info
 #[cw_serde]
-pub struct SwapInfo {
+pub struct SwapRequest {
+    pub sender: String,
+    pub tx_id: String,
+
     // The asset being swapped
     pub asset_in: TokenWithDenom,
     // The asset being received
@@ -18,8 +21,9 @@ pub struct SwapInfo {
     pub swaps: Vec<NextSwap>,
     // The timeout specified for the swap
     pub timeout: IbcTimeout,
-    // The Swap Main Identifier
-    pub tx_id: String,
+
+    pub to_address: String,
+    pub to_chain_uid: String,
 }
 
 #[cw_serde]
@@ -30,12 +34,5 @@ pub struct NextSwap {
 
 #[cw_serde]
 pub struct SwapResponse {
-    pub asset_in: Token,
-    pub asset_out: Token,
-    pub amount_in: Uint128,
     pub amount_out: Uint128,
-    pub to_address: String,
-    pub to_chain_uid: String,
-    // Add Swap Unique Identifier
-    pub tx_id: String,
 }

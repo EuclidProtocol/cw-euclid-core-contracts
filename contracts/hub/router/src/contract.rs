@@ -68,9 +68,11 @@ pub fn execute(
         ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
             execute::execute_update_vlp_code_id(deps, info, new_vlp_code_id)
         }
-        ExecuteMsg::RegisterFactory { channel, timeout } => {
-            execute::execute_register_factory(deps, env, info, channel, timeout)
-        }
+        ExecuteMsg::RegisterFactory {
+            channel,
+            timeout,
+            tx_id,
+        } => execute::execute_register_factory(deps, env, info, channel, timeout, tx_id),
     }
 }
 

@@ -30,7 +30,6 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     let state = State {
         router_contract: msg.router_contract.clone(),
-        chain_uid: msg.chain_uid,
         admin: info.sender.clone().to_string(),
         escrow_code_id: msg.escrow_code_id,
     };
@@ -42,7 +41,6 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
-        .add_attribute("chain_id", state.chain_uid)
         .add_attribute("escrow_code_id", state.escrow_code_id.to_string()))
 }
 
