@@ -204,6 +204,7 @@ pub fn add_liquidity(
 /// Returns a response with the action and chain id attributes if successful.
 pub fn remove_liquidity(
     deps: DepsMut,
+    env: Env,
     chain_id: String,
     lp_allocation: Uint128,
     outpost_sender: String,
@@ -245,7 +246,7 @@ pub fn remove_liquidity(
         chain_id: chain_id.clone(),
         // TODO token 2 or 1?
         token_id: pool.pair.token_2.get_token().id,
-        to_address: outpost_sender,
+        to_address: outpost_sender.clone(),
     };
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
@@ -264,7 +265,42 @@ pub fn remove_liquidity(
         funds: vec![],
     });
 
+    // Send vcoin transfer message for both token_1 and token_2 for the to_address and to_chain_id
+    let vcoin_transfer_msg_1 = VcoinExecuteMsg::Transfer(ExecuteTransfer {
+        amount: token_1_liquidity,
+        token_id: pool.pair.token_1.get_token().id,
+        from_address: env.contract.address.into_string(),
+        // Vlp chain id
+        from_chain_id: todo!(),
+        to_address: outpost_sender,
+        // Sender chain id
+        to_chain_id: chain_id.clone(),
+    });
+
+    let vcoin_transfer_msg_2 = VcoinExecuteMsg::Transfer(ExecuteTransfer {
+        amount: token_2_liquidity,
+        token_id: pool.pair.token_2.get_token().id,
+        from_address: env.contract.address.into_string(),
+        // Vlp chain id
+        from_chain_id: todo!(),
+        to_address: outpost_sender,
+        to_chain_id: chain_id,
+    });
+    let transfer_1 = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: state.vcoin,
+        msg: to_json_binary(&vcoin_transfer_msg_1)?,
+        funds: vec![],
+    });
+
+    let transfer_2 = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: state.vcoin,
+        msg: to_json_binary(&vcoin_transfer_msg_2)?,
+        funds: vec![],
+    });
+
     Ok(Response::new()
+        .add_message(transfer_1)
+        .add_message(transfer_2)
         .add_message(burn_msg)
         .add_attribute("action", "remove_liquidity")
         .add_attribute("chain_id", chain_id)

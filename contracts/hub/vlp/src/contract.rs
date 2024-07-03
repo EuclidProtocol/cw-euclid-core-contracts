@@ -115,7 +115,7 @@ pub fn execute(
             chain_id,
             lp_allocation,
             outpost_sender,
-        } => execute::remove_liquidity(deps, chain_id, lp_allocation, outpost_sender),
+        } => execute::remove_liquidity(deps, env, chain_id, lp_allocation, outpost_sender),
     }
 }
 
