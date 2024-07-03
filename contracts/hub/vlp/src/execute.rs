@@ -266,41 +266,43 @@ pub fn remove_liquidity(
     });
 
     // Send vcoin transfer message for both token_1 and token_2 for the to_address and to_chain_id
+    let from_address = env.contract.address.to_string();
+    let from_chain_id = &env.block.chain_id;
+    let to_chain_id = &chain_id;
+
     let vcoin_transfer_msg_1 = VcoinExecuteMsg::Transfer(ExecuteTransfer {
         amount: token_1_liquidity,
         token_id: pool.pair.token_1.get_token().id,
-        from_address: env.contract.address.into_string(),
-        // Vlp chain id
-        from_chain_id: todo!(),
-        to_address: outpost_sender,
-        // Sender chain id
-        to_chain_id: chain_id.clone(),
+        from_address: from_address.to_string(),
+        from_chain_id: from_chain_id.to_string(),
+        to_address: outpost_sender.to_string(),
+        to_chain_id: to_chain_id.to_string(),
     });
 
     let vcoin_transfer_msg_2 = VcoinExecuteMsg::Transfer(ExecuteTransfer {
         amount: token_2_liquidity,
         token_id: pool.pair.token_2.get_token().id,
-        from_address: env.contract.address.into_string(),
-        // Vlp chain id
-        from_chain_id: todo!(),
+        from_address,
+        from_chain_id: from_chain_id.to_string(),
         to_address: outpost_sender,
-        to_chain_id: chain_id,
-    });
-    let transfer_1 = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: state.vcoin,
-        msg: to_json_binary(&vcoin_transfer_msg_1)?,
-        funds: vec![],
+        to_chain_id: to_chain_id.to_string(),
     });
 
-    let transfer_2 = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: state.vcoin,
-        msg: to_json_binary(&vcoin_transfer_msg_2)?,
-        funds: vec![],
-    });
+    let transfer_msgs: Vec<CosmosMsg> = vec![
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: state.vcoin.clone(),
+            msg: to_json_binary(&vcoin_transfer_msg_1)?,
+            funds: vec![],
+        }),
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: state.vcoin,
+            msg: to_json_binary(&vcoin_transfer_msg_2)?,
+            funds: vec![],
+        }),
+    ];
 
     Ok(Response::new()
-        .add_message(transfer_1)
-        .add_message(transfer_2)
+        .add_messages(transfer_msgs)
         .add_message(burn_msg)
         .add_attribute("action", "remove_liquidity")
         .add_attribute("chain_id", chain_id)
