@@ -362,8 +362,26 @@ pub fn execute_swap(
     let fee_amount =
         amount_in.multiply_ratio(Uint128::from(total_fee.unwrap()), Uint128::from(100u128));
 
+    // Send fee to its recipient
+    let vcoin_execute_msg = VcoinExecuteMsg::Transfer(ExecuteTransfer {
+        amount: fee_amount,
+        // Asset in or out?
+        token_id: asset_in.id,
+        from_address: env.contract.address.into_string(),
+        from_chain_id: env.block.chain_id,
+        // Who will be the fee's recipient?
+        to_address: todo!(),
+        // I assume that the fees will be collected on the hub
+        to_chain_id: env.block.chain_id,
+    });
+
     // Calculate the amount of asset to be swapped
     let swap_amount = amount_in.checked_sub(fee_amount)?;
+    let vcoin_transfer_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: state.vcoin,
+        msg: to_json_binary(&vcoin_execute_msg)?,
+        funds: vec![],
+    });
 
     // verify if asset is token 1 or token 2
     let swap_info = if asset_info == state.pair.token_1.id {
@@ -549,6 +567,7 @@ pub fn execute_swap(
     };
 
     Ok(response
+        .add_message(vcoin_transfer_msg)
         .add_attribute("action", "swap")
         .add_attribute("amount_in", amount_in)
         .add_attribute("total_fee", fee_amount)
