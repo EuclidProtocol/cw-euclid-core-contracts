@@ -5,12 +5,17 @@ use cw_multi_test::{Contract, ContractWrapper, Executor};
 
 use euclid::{
     mock::MockApp,
-    mock_eucl,
     msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg, StateResponse},
 };
 
 pub struct MockRouter(Addr);
-mock_eucl!(MockRouter, ExecuteMsg, QueryMsg);
+impl MockRouter {
+    fn addr(&self) -> &Addr {
+        &self.0
+    }
+}
+
+// mock_eucl!(MockRouter, ExecuteMsg, QueryMsg);
 
 impl MockRouter {
     pub fn instantiate(
@@ -39,9 +44,12 @@ impl MockRouter {
     //     Addr::unchecked(self.query::<StateResponse>(app, mock_query_state()).owner)
     // }
 
-    fn query_state(&self, app: &MockApp) -> StateResponse {
+    pub fn query_state(&self, app: &MockApp) -> StateResponse {
         app.wrap()
-            .query_wasm_smart::<StateResponse>(self.addr(), &mock_query_state())
+            .query_wasm_smart::<StateResponse>(
+                self.addr().clone().into_string(),
+                &mock_query_state(),
+            )
             .unwrap()
     }
 }

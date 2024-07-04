@@ -1,9 +1,11 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{coin, from_json, Addr, Coin, CosmosMsg, Empty, SubMsg, Uint128, WasmMsg};
-use cw_multi_test::{App, AppBuilder, BankSudo, Contract, ContractWrapper, Executor};
-use euclid::msgs::router::{InstantiateMsg, QueryMsg, StateResponse};
-use euclid::testing::{mock_app, MockEuclidBuilder};
+use cosmwasm_std::{coin, Addr};
+use euclid::{
+    mock::mock_app,
+    mock_builder::MockEuclidBuilder,
+    msgs::router::{InstantiateMsg, QueryMsg, StateResponse},
+};
 
 use router::mock::{mock_router, MockRouter};
 
@@ -39,7 +41,7 @@ fn test_proper_instantiation() {
     let vlp_code_id = 2;
     let vcoin_code_id = 3;
 
-    MockRouter::instantiate(
+    let mock_router = MockRouter::instantiate(
         &mut router,
         router_code_id,
         owner.clone(),
@@ -48,38 +50,15 @@ fn test_proper_instantiation() {
         Some(owner.clone().into_string()),
     );
 
-    // let mut app = mock_app();
-    // let owner = Addr::unchecked("owner");
-
-    // // Store the router contract code
-    // let router_code_id = app.store_code(router_contract());
-
-    // // Instantiate the router contract
-    // let instantiate_msg = InstantiateMsg {
-    //     vlp_code_id: 1,
-    //     vcoin_code_id: 2,
-    // };
-
-    // let contract_addr = app
-    //     .instantiate_contract(
-    //         router_code_id,
-    //         owner.clone(),
-    //         &instantiate_msg,
-    //         &[],
-    //         "Router Contract",
-    //         None,
-    //     )
-    //     .unwrap();
-
-    // // Query the state to verify the instantiation
-    // let state: StateResponse = app
-    //     .wrap()
-    //     .query_wasm_smart(contract_addr.clone(), &QueryMsg::GetState {})
-    //     .unwrap();
-
-    // assert_eq!(state.admin, owner.to_string());
-    // assert_eq!(state.vlp_code_id, 1);
-    // assert!(state.vcoin_address.is_none());
+    let state = MockRouter::query_state(&mock_router, &mut router);
+    let expected_state_response = StateResponse {
+        admin: owner.clone().into_string(),
+        vlp_code_id,
+        vcoin_address: Some(Addr::unchecked(
+            "eucl1hrpna9v7vs3stzyd4z3xf00676kf78zpe2u5ksvljswn2vnjp3ys8rp88c",
+        )),
+    };
+    assert_eq!(state, expected_state_response);
 }
 
 // #[test]
