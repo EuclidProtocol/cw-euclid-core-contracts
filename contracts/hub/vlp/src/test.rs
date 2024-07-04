@@ -179,10 +179,6 @@ mod tests {
         };
         let res: Response = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
-        // Debug messages to understand the response and its attributes
-        println!("Response: {:?}", res);
-        println!("Attributes: {:?}", res.attributes);
-
         // Assert the number of attributes
         assert_eq!(res.attributes.len(), 5);
 

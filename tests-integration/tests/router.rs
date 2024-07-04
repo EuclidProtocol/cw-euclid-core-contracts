@@ -5,25 +5,16 @@ use cw_multi_test::{App, AppBuilder, BankSudo, Contract, ContractWrapper, Execut
 use euclid::msgs::router::{InstantiateMsg, QueryMsg, StateResponse};
 use euclid::testing::{mock_app, MockEuclidBuilder};
 
-// use crate::contract::{execute, instantiate, query, reply};
-use router::contract::{execute, instantiate, query, reply};
 use router::mock::{mock_router, MockRouter};
 
+use vcoin::mock::mock_vcoin;
 use vlp::mock::mock_vlp;
-// // Mock application setup
-// fn mock_app() -> App {
-//     AppBuilder::new().build(|_router, _api, _storage| {})
-// }
 
-const USER: &str = "user";
-const NATIVE_DENOM: &str = "native";
-const IBC_DENOM_1: &str = "ibc/denom1";
-const IBC_DENOM_2: &str = "ibc/denom2";
-const SUPPLY: u128 = 1_000_000;
-// Define the router contract
-fn router_contract() -> Box<dyn Contract<Empty>> {
-    Box::new(ContractWrapper::new_with_empty(execute, instantiate, query).with_reply_empty(reply))
-}
+const _USER: &str = "user";
+const _NATIVE_DENOM: &str = "native";
+const _IBC_DENOM_1: &str = "ibc/denom1";
+const _IBC_DENOM_2: &str = "ibc/denom2";
+const _SUPPLY: u128 = 1_000_000;
 
 #[test]
 fn test_proper_instantiation() {
@@ -37,26 +28,25 @@ fn test_proper_instantiation() {
         .with_contracts(vec![
             ("router", mock_router()),
             ("vlp", mock_vlp()),
-            ("vcoin", mock_router()),
+            ("vcoin", mock_vcoin()),
         ])
         .build(&mut router);
     let owner = andr.get_wallet("owner");
-    let recipient_1 = andr.get_wallet("recipient1");
-    let recipient_2 = andr.get_wallet("recipient2");
+    let _recipient_1 = andr.get_wallet("recipient1");
+    let _recipient_2 = andr.get_wallet("recipient2");
 
-    // let router_code_id = andr.get_code_id(&mut router, "router");
-    let router_code_id = 3;
+    let router_code_id = 1;
+    let vlp_code_id = 2;
+    let vcoin_code_id = 3;
 
-    let router: MockRouter = MockRouter::instantiate(
+    MockRouter::instantiate(
         &mut router,
         router_code_id,
         owner.clone(),
+        vlp_code_id,
+        vcoin_code_id,
         Some(owner.clone().into_string()),
-        1,
-        2,
     );
-
-    //
 
     // let mut app = mock_app();
     // let owner = Addr::unchecked("owner");

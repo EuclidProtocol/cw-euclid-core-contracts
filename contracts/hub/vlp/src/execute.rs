@@ -283,14 +283,8 @@ pub fn execute_swap(
     let fee_amount =
         amount_in.multiply_ratio(Uint128::from(total_fee.unwrap()), Uint128::from(100u128));
 
-    // Debug message for fee amount
-    println!("Fee amount: {:?}", fee_amount);
-
     // Calculate the amount of asset to be swapped
     let swap_amount = amount_in.checked_sub(fee_amount)?;
-
-    // Debug message for swap amount
-    println!("Swap amount: {:?}", swap_amount);
 
     // verify if asset is token 1 or token 2
     let swap_info = if asset_info == state.pair.token_1.id {
@@ -309,9 +303,6 @@ pub fn execute_swap(
 
     let receive_amount = calculate_swap(swap_info.0, swap_info.1, swap_info.2)?;
 
-    // Debug message for receive amount
-    println!("Receive amount: {:?}", receive_amount);
-
     // Verify that the receive amount is greater than the minimum token out
     ensure!(
         receive_amount > min_token_out,
@@ -320,9 +311,6 @@ pub fn execute_swap(
             min_amount_out: min_token_out,
         }
     );
-
-    // Debug message for min token out
-    println!("Min token out: {:?}", min_token_out);
 
     // Verify that the pool has enough liquidity to swap to user
     if asset_info == state.clone().pair.token_1.id {
@@ -343,9 +331,6 @@ pub fn execute_swap(
         );
     }
 
-    // Debug message for pool reserves before swap
-    println!("Pool reserves before swap: {:?}", pool);
-
     // Move liquidity from the pool
     if asset_info == state.pair.token_1.id {
         pool.reserve_1 = pool.reserve_1.checked_add(swap_amount)?;
@@ -354,9 +339,6 @@ pub fn execute_swap(
         pool.reserve_2 = pool.reserve_2.checked_add(swap_amount)?;
         pool.reserve_1 = pool.reserve_1.checked_sub(receive_amount)?;
     }
-
-    // Debug message for pool reserves after swap
-    println!("Pool reserves after swap: {:?}", pool);
 
     // Save the state of the pool
     POOLS.save(deps.storage, &to_chain_id, &pool)?;
