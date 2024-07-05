@@ -31,15 +31,7 @@ pub enum ChainIbcExecuteMsg {
     },
 
     // Swap tokens on VLP
-    Swap {
-        to_address: String,
-        to_chain_id: String,
-        asset_in: Token,
-        amount_in: Uint128,
-        min_amount_out: Uint128,
-        swap_id: String,
-        swaps: Vec<NextSwap>,
-    },
+    Swap(ChainIbcSwapExecuteMsg),
     // New Factory Msg
     RequestWithdraw {
         token_id: Token,
@@ -54,11 +46,29 @@ pub enum ChainIbcExecuteMsg {
 }
 
 #[cw_serde]
+pub struct ChainIbcSwapExecuteMsg {
+    pub to_address: String,
+    pub to_chain_id: String,
+    pub asset_in: Token,
+    pub amount_in: Uint128,
+    pub min_amount_out: Uint128,
+    pub swap_id: String,
+    pub swaps: Vec<NextSwap>,
+}
+
+#[cw_serde]
 pub enum HubIbcExecuteMsg {
     // Send Factory Registration Message from Router to Factory
-    RegisterFactory { router: String },
+    RegisterFactory {
+        router: String,
+    },
 
-    ReleaseEscrow { router: String },
+    ReleaseEscrow {
+        amount: Uint128,
+        token_id: String,
+        to_address: String,
+        to_chain_id: String,
+    },
 }
 
 /// A custom acknowledgement type.

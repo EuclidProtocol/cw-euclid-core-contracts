@@ -2,13 +2,14 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_json, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg,
-    StdResult, WasmMsg,
+    StdResult, Uint128, WasmMsg,
 };
 use cosmwasm_std::{to_json_binary, IbcAcknowledgement};
 use euclid::error::ContractError;
-use euclid::msgs::factory::RegisterFactoryResponse;
+use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
 use euclid::msgs::router::Chain;
 use euclid::msgs::vcoin::{ExecuteMint, ExecuteMsg as VcoinExecuteMsg};
+use euclid::vcoin::BalanceKey;
 use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
 use crate::state::{CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID, STATE};
@@ -34,15 +35,14 @@ pub fn ibc_packet_ack(
                 res,
             )
         }
-        HubIbcExecuteMsg::ReleaseEscrow { .. } => {
+        HubIbcExecuteMsg::ReleaseEscrow {
+            amount,
+            token_id,
+            to_address,
+            to_chain_id,
+        } => {
             let res = from_json(ack.acknowledgement.data)?;
-            ibc_ack_release_escrow(
-                deps,
-                env,
-                ack.original_packet.src.channel_id,
-                ack.original_packet.dest.channel_id,
-                res,
-            )
+            ibc_ack_release_escrow(deps, env, amount, token_id, to_address, to_chain_id, res)
         }
     }
 }
@@ -104,36 +104,38 @@ pub fn ibc_ack_register_factory(
     }
 }
 
-//TODO this is just like the above function for now
 pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,
-    from_hub_channel: String,
-    from_factory_channel: String,
-    res: AcknowledgementMsg<RegisterFactoryResponse>,
+    amount: Uint128,
+    token_id: String,
+    to_address: String,
+    to_chain_id: String,
+    res: AcknowledgementMsg<ReleaseEscrowResponse>,
 ) -> Result<IbcBasicResponse, ContractError> {
     match res {
-        AcknowledgementMsg::Ok(data) => {
-            CHANNEL_TO_CHAIN_ID.save(deps.storage, from_hub_channel.clone(), &data.chain_id)?;
-            let chain_data = Chain {
-                factory_chain_id: data.chain_id.clone(),
-                factory: data.factory_address.clone(),
-                from_hub_channel,
-                from_factory_channel,
-            };
-            CHAIN_ID_TO_CHAIN.save(deps.storage, data.chain_id.clone(), &chain_data)?;
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "register_factory_ack_success")
-                .add_attribute("factory_chain", data.chain_id)
-                .add_attribute("factory_address", data.factory_address))
-        }
+        AcknowledgementMsg::Ok(data) => Ok(IbcBasicResponse::new()
+            .add_attribute("method", "release_escrow_success")
+            .add_attribute("factory_chain", data.chain_id)
+            .add_attribute("factory_address", data.factory_address)),
         // Re-mint tokens
         AcknowledgementMsg::Error(err) => {
-            let vcoin_address = STATE.load(deps.storage)?.vcoin_address.unwrap();
+            let vcoin_address =
+                STATE
+                    .load(deps.storage)?
+                    .vcoin_address
+                    .ok_or(ContractError::Generic {
+                        err: "Vcoin not available".to_string(),
+                    })?;
 
+            // TODO: Revisit this as this should be original sender in case of multiple escrow release on different chain
             let mint_msg = VcoinExecuteMsg::Mint(ExecuteMint {
-                amount: todo!(),
-                balance_key: todo!(),
+                amount,
+                balance_key: BalanceKey {
+                    chain_id: to_chain_id,
+                    address: to_address,
+                    token_id,
+                },
             });
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: vcoin_address.into_string(),
@@ -143,7 +145,7 @@ pub fn ibc_ack_release_escrow(
 
             Ok(IbcBasicResponse::new()
                 .add_message(msg)
-                .add_attribute("method", "register_factory_ack_error")
+                .add_attribute("method", "escrow_release_ack")
                 .add_attribute("error", err)
                 .add_attribute("mint_amount", "value")
                 .add_attribute("balance_key", "balance_key"))

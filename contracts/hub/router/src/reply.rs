@@ -1,18 +1,22 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, Reply,
-    Response, SubMsgResult, Uint128,
+    Response, SubMsgResult, Uint128, WasmMsg,
 };
 use cw0::{parse_reply_execute_data, parse_reply_instantiate_data};
 use euclid::{
     error::ContractError,
-    msgs,
+    msgs::{
+        self,
+        vcoin::{ExecuteBurn, ExecuteMsg as VcoinExecuteMsg},
+    },
     pool::{LiquidityResponse, PoolCreationResponse, RemoveLiquidityResponse},
     swap::SwapResponse,
     timeout::get_timeout,
+    vcoin::BalanceKey,
 };
 use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
 
-use crate::state::{ESCROW_BALANCES, STATE, SWAP_ID_TO_CHAIN_ID, VLPS};
+use crate::state::{CHAIN_ID_TO_CHAIN, ESCROW_BALANCES, STATE, SWAP_ID_TO_MSG, VLPS};
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
@@ -145,32 +149,58 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
             let swap_response: SwapResponse = from_json(execute_data.data.unwrap_or_default())?;
 
             let ack = AcknowledgementMsg::Ok(swap_response.clone());
-            let chain_id = SWAP_ID_TO_CHAIN_ID.load(deps.storage, swap_response.swap_id.clone())?;
-            let token_out_escrow_key = (swap_response.asset_out.clone(), chain_id.clone());
+            let swap_msg = SWAP_ID_TO_MSG.load(deps.storage, swap_response.swap_id.clone())?;
+
+            let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, swap_msg.to_chain_id.clone())?;
+
+            let token_out_escrow_key = (swap_response.asset_out.clone(), chain.factory_chain_id);
 
             let token_out_escrow_balance = ESCROW_BALANCES
                 .may_load(deps.storage, token_out_escrow_key.clone())?
                 .unwrap_or(Uint128::zero());
 
+            let escrow_amout_out = swap_response.amount_out.min(token_out_escrow_balance);
+
             ensure!(
-                token_out_escrow_balance.ge(&swap_response.amount_out),
+                !escrow_amout_out.is_zero(),
                 ContractError::Generic {
-                    err: "Insufficient Escrow Balance on out chain".to_string()
+                    err: "Escrow release amount cannot be zero".to_string()
                 }
             );
 
             let packet = IbcMsg::SendPacket {
-                channel_id: chain_id.clone(),
+                channel_id: chain.from_hub_channel,
                 data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
-                    router: env.contract.address.to_string(),
+                    amount: escrow_amout_out,
+                    token_id: swap_response.asset_out.id.clone(),
+                    to_address: swap_msg.to_address,
+                    to_chain_id: swap_msg.to_chain_id,
                 })?,
                 timeout: IbcTimeout::with_timestamp(
                     env.block.time.plus_seconds(get_timeout(None)?),
                 ),
             };
 
+            // Prepare burn msg
+            let burn_msg = VcoinExecuteMsg::Burn(ExecuteBurn {
+                amount: escrow_amout_out,
+                balance_key: BalanceKey {
+                    chain_id: swap_response.to_chain_id.clone(),
+                    address: swap_response.to_address.clone(),
+                    token_id: swap_response.asset_out.id.clone(),
+                },
+            });
+            // Load state to get vcoin address
+            let state = STATE.load(deps.storage)?;
+            let vcoin_address = state.vcoin_address.unwrap().into_string();
+
             Ok(Response::new()
                 .add_message(CosmosMsg::Ibc(packet))
+                .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: vcoin_address,
+                    msg: to_json_binary(&burn_msg)?,
+                    funds: vec![],
+                }))
                 .add_attribute("action", "reply_swap")
                 .add_attribute("swap", format!("{swap_response:?}"))
                 .set_data(to_json_binary(&ack)?))

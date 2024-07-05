@@ -52,10 +52,10 @@ pub fn ibc_packet_ack(
             let res: AcknowledgementMsg<LiquidityResponse> = from_json(ack.acknowledgement.data)?;
             ack_add_liquidity(deps, res, liquidity_id)
         }
-        ChainIbcExecuteMsg::Swap { swap_id, .. } => {
+        ChainIbcExecuteMsg::Swap(swap) => {
             // Process acknowledgment for swap
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
-            ack_swap_request(deps, res, swap_id)
+            ack_swap_request(deps, res, swap.swap_id)
         }
         ChainIbcExecuteMsg::RequestWithdraw { token_id, .. } => {
             let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack.acknowledgement.data)?;
@@ -115,12 +115,12 @@ pub fn ack_pool_creation(
     // Remove pool request from MAP
     POOL_REQUESTS.remove(deps.storage, pool_rq_id);
 
-    // Load state to get escrow code id in case we need to instantiate
-    let escrow_code_id = STATE.load(deps.storage)?.escrow_code_id;
-
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
+            // Load state to get escrow code id in case we need to instantiate
+            let escrow_code_id = STATE.load(deps.storage)?.escrow_code_id;
+
             VLP_TO_POOL.save(
                 deps.storage,
                 data.vlp_contract.clone(),
@@ -194,22 +194,21 @@ pub fn ack_swap_request(
     res: AcknowledgementMsg<SwapResponse>,
     swap_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
+    let extracted_swap_id = swap::parse_swap_id(&swap_id)?;
+
+    // Validate that the pending swap exists for the sender
+    let swap_info = PENDING_SWAPS.load(
+        deps.storage,
+        (extracted_swap_id.sender.clone(), extracted_swap_id.index),
+    )?;
+    // Remove this from pending swaps
+    PENDING_SWAPS.remove(
+        deps.storage,
+        (extracted_swap_id.sender.clone(), extracted_swap_id.index),
+    );
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
-            let extracted_swap_id = swap::parse_swap_id(&swap_id)?;
-
-            // Validate that the pending swap exists for the sender
-            let swap_info = PENDING_SWAPS.load(
-                deps.storage,
-                (extracted_swap_id.sender.clone(), extracted_swap_id.index),
-            )?;
-            // Remove this from pending swaps
-            PENDING_SWAPS.remove(
-                deps.storage,
-                (extracted_swap_id.sender.clone(), extracted_swap_id.index),
-            );
-
             // TODO:: Add msg to send asset_in to escrow
             let asset_in = swap_info.asset_in;
 
@@ -220,7 +219,7 @@ pub fn ack_swap_request(
                 CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: escrow_address.into_string(),
                     msg: to_json_binary(&EscrowExecuteMsg::DepositNative {})?,
-                    funds: vec![coin(data.amount_in.u128(), asset_in.get_denom())],
+                    funds: vec![coin(swap_info.amount_in.u128(), asset_in.get_denom())],
                 })
             } else {
                 CosmosMsg::Wasm(WasmMsg::Execute {
@@ -242,19 +241,6 @@ pub fn ack_swap_request(
         }
 
         AcknowledgementMsg::Error(err) => {
-            let extracted_swap_id = swap::parse_swap_id(&swap_id)?;
-
-            // Validate that the pending swap exists for the sender
-            let swap_info = PENDING_SWAPS.load(
-                deps.storage,
-                (extracted_swap_id.sender.clone(), extracted_swap_id.index),
-            )?;
-            // Remove this from pending swaps
-            PENDING_SWAPS.remove(
-                deps.storage,
-                (extracted_swap_id.sender.clone(), extracted_swap_id.index),
-            );
-
             // Prepare messages to refund tokens back to user
             let msg = swap_info
                 .asset_in
@@ -276,57 +262,85 @@ pub fn ack_add_liquidity(
     res: AcknowledgementMsg<LiquidityResponse>,
     liquidity_id: String,
 ) -> Result<IbcBasicResponse, ContractError> {
+    let extracted_liquidity_id = liquidity::parse_liquidity_id(&liquidity_id)?;
+
+    // Validate that the pending exists for the sender
+    let liquidity_info = PENDING_LIQUIDITY.load(
+        deps.storage,
+        (
+            extracted_liquidity_id.sender.clone(),
+            extracted_liquidity_id.index,
+        ),
+    )?;
+    // Remove this from pending
+    PENDING_LIQUIDITY.remove(
+        deps.storage,
+        (
+            extracted_liquidity_id.sender.clone(),
+            extracted_liquidity_id.index,
+        ),
+    );
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(_data) => {
-            let extracted_liquidity_id = liquidity::parse_liquidity_id(&liquidity_id)?;
+            // Prepare response
+            let mut res = IbcBasicResponse::new().add_attribute("method", "ack_add_liquidity");
 
-            // Validate that the pending exists for the sender
-            let liquidity_info = PENDING_LIQUIDITY.load(
-                deps.storage,
-                (
-                    extracted_liquidity_id.sender.clone(),
-                    extracted_liquidity_id.index,
-                ),
-            )?;
-            // Remove this from pending
-            PENDING_LIQUIDITY.remove(
-                deps.storage,
-                (
-                    extracted_liquidity_id.sender.clone(),
-                    extracted_liquidity_id.index,
-                ),
-            );
+            let token_info = liquidity_info.pair_info.token_1;
+            let liquidity = liquidity_info.token_1_liquidity;
+            let escrow_contract = TOKEN_TO_ESCROW.load(deps.storage, token_info.get_token())?;
 
-            // TODO:: Add message to send these funds to escrow
+            let send_msg: CosmosMsg = if token_info.is_native() {
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: escrow_contract.into_string(),
+                    msg: to_json_binary(&EscrowExecuteMsg::DepositNative {})?,
+                    funds: vec![coin(liquidity.u128(), token_info.get_denom())],
+                })
+            } else {
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: escrow_contract.into_string(),
+                    msg: to_json_binary(&EscrowExecuteMsg::Receive(Cw20ReceiveMsg {
+                        //TODO Unsure what to set the sender as
+                        sender: token_info.get_denom(),
+                        amount: liquidity,
+                        msg: to_json_binary(&Cw20HookMsg::Deposit {})?,
+                    }))?,
+                    funds: vec![],
+                })
+            };
+            res = res.add_message(send_msg);
 
-            Ok(IbcBasicResponse::new()
-                .add_attribute("method", "process_add_liquidity")
+            // Token 2
+            let token_info = liquidity_info.pair_info.token_2;
+            let liquidity = liquidity_info.token_2_liquidity;
+            let escrow_contract = TOKEN_TO_ESCROW.load(deps.storage, token_info.get_token())?;
+
+            let send_msg: CosmosMsg = if token_info.is_native() {
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: escrow_contract.into_string(),
+                    msg: to_json_binary(&EscrowExecuteMsg::DepositNative {})?,
+                    funds: vec![coin(liquidity.u128(), token_info.get_denom())],
+                })
+            } else {
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: escrow_contract.into_string(),
+                    msg: to_json_binary(&EscrowExecuteMsg::Receive(Cw20ReceiveMsg {
+                        //TODO Unsure what to set the sender as
+                        sender: token_info.get_denom(),
+                        amount: liquidity,
+                        msg: to_json_binary(&Cw20HookMsg::Deposit {})?,
+                    }))?,
+                    funds: vec![],
+                })
+            };
+            res = res.add_message(send_msg);
+
+            Ok(res
                 .add_attribute("sender", extracted_liquidity_id.sender)
-                .add_attribute("liquidity_id", liquidity_id.clone())
-                .add_attribute("pending_liquidity", format!("{liquidity_info:?}")))
+                .add_attribute("liquidity_id", liquidity_id.clone()))
         }
 
         AcknowledgementMsg::Error(err) => {
-            let extracted_liquidity_id = liquidity::parse_liquidity_id(&liquidity_id)?;
-
-            // Validate that the pending exists for the sender
-            let liquidity_info = PENDING_LIQUIDITY.load(
-                deps.storage,
-                (
-                    extracted_liquidity_id.sender.clone(),
-                    extracted_liquidity_id.index,
-                ),
-            )?;
-            // Remove this from pending
-            PENDING_LIQUIDITY.remove(
-                deps.storage,
-                (
-                    extracted_liquidity_id.sender.clone(),
-                    extracted_liquidity_id.index,
-                ),
-            );
-
             // Prepare messages to refund tokens back to user
             let mut msgs: Vec<CosmosMsg> = Vec::new();
             let msg = liquidity_info.pair_info.token_1.create_transfer_msg(

@@ -5,8 +5,8 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 
 use crate::execute::{
-    add_liquidity_request, execute_request_add_allowed_denom, execute_request_deregister_denom,
-    execute_request_pool_creation, execute_swap_request, receive_cw20,
+    add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
+    execute_request_register_denom, execute_swap_request, receive_cw20,
 };
 use crate::query::{get_pool, pending_liquidity, pending_swaps, query_all_pools, query_state};
 use crate::reply;
@@ -52,8 +52,8 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RequestAddAllowedDenom { denom, token_id } => {
-            execute_request_add_allowed_denom(deps, env, info, token_id, denom)
+        ExecuteMsg::RequestRegisterDenom { denom, token_id } => {
+            execute_request_register_denom(deps, env, info, token_id, denom)
         }
         ExecuteMsg::RequestDeregisterDenom { denom, token_id } => {
             execute_request_deregister_denom(deps, env, info, token_id, denom)
@@ -105,6 +105,7 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetPool { vlp } => get_pool(deps, vlp),
+        QueryMsg::GetEscrow { token_id } => get_pool(deps, token_id),
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
         // Pool Queries //
