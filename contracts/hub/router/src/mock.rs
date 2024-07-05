@@ -5,7 +5,7 @@ use cw_multi_test::{Contract, ContractWrapper, Executor};
 
 use euclid::{
     mock::MockApp,
-    msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg, StateResponse},
+    msgs::router::{InstantiateMsg, QueryMsg, StateResponse},
 };
 
 pub struct MockRouter(Addr);
@@ -14,8 +14,6 @@ impl MockRouter {
         &self.0
     }
 }
-
-// mock_eucl!(MockRouter, ExecuteMsg, QueryMsg);
 
 impl MockRouter {
     pub fn instantiate(
