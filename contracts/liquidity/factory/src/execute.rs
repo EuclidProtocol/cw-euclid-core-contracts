@@ -9,7 +9,7 @@ use euclid::{
     timeout::get_timeout,
     token::{PairInfo, Token, TokenInfo},
 };
-use euclid_ibc::msg::ChainIbcExecuteMsg;
+use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcSwapExecuteMsg};
 
 use crate::state::{
     generate_liquidity_req, generate_pool_req, generate_swap_req, STATE, TOKEN_TO_ESCROW,
@@ -306,7 +306,7 @@ pub fn execute_swap_request(
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::Swap {
+        data: to_json_binary(&ChainIbcExecuteMsg::Swap(ChainIbcSwapExecuteMsg {
             to_address: sender,
             to_chain_id: state.chain_id,
             asset_in: asset_in.get_token(),
@@ -314,7 +314,7 @@ pub fn execute_swap_request(
             min_amount_out,
             swap_id: swap_info.swap_id,
             swaps,
-        })?,
+        }))?,
         timeout,
     };
 
