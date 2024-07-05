@@ -13,7 +13,7 @@ use crate::reply::{
     VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, STATE};
-use crate::{execute, query};
+use crate::{execute, ibc, query};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -72,7 +72,32 @@ pub fn execute(
             channel,
             timeout,
             tx_id,
-        } => execute::execute_register_factory(deps, env, info, channel, timeout, tx_id),
+            chain_uid,
+        } => execute::execute_register_factory(deps, env, info, chain_uid, channel, timeout, tx_id),
+        ExecuteMsg::ReleaseEscrowInternal {
+            sender,
+            token,
+            amount,
+            cross_chain_addresses,
+            timeout,
+            tx_id,
+        } => execute::execute_release_escrow(
+            deps,
+            env,
+            info,
+            sender,
+            token,
+            amount,
+            cross_chain_addresses,
+            timeout,
+            tx_id,
+        ),
+        ExecuteMsg::IbcCallbackReceive { receive_msg } => {
+            ibc::receive::ibc_receive_internal_call(deps, env, receive_msg)
+        }
+        ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
+            ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)
+        }
     }
 }
 
@@ -80,10 +105,15 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => query::query_state(deps),
-        QueryMsg::GetChain { chain_id } => query::query_chain(deps, chain_id),
+        QueryMsg::GetChain { chain_uid } => query::query_chain(deps, chain_uid),
         QueryMsg::GetAllChains {} => query::query_all_chains(deps),
         QueryMsg::GetVlp { token_1, token_2 } => query::query_vlp(deps, token_1, token_2),
-        QueryMsg::GetAllVlps {} => query::query_all_vlps(deps),
+        QueryMsg::GetAllVlps {
+            start,
+            end,
+            skip,
+            limit,
+        } => query::query_all_vlps(deps, start, end, skip, limit),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
     }
 }
@@ -93,7 +123,7 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         VLP_INSTANTIATE_REPLY_ID => reply::on_vlp_instantiate_reply(deps, msg),
         VLP_POOL_REGISTER_REPLY_ID => reply::on_pool_register_reply(deps, msg),
         ADD_LIQUIDITY_REPLY_ID => reply::on_add_liquidity_reply(deps, msg),
-        REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, msg),
+        REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, env, msg),
         SWAP_REPLY_ID => reply::on_swap_reply(deps, env, msg),
 
         VCOIN_INSTANTIATE_REPLY_ID => reply::on_vcoin_instantiate_reply(deps, msg),

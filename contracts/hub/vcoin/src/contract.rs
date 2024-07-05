@@ -53,8 +53,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     match msg {
         QueryMsg::GetState {} => query::query_state(deps),
         QueryMsg::GetBalance { balance_key } => query::query_balance(deps, balance_key),
-        QueryMsg::GetUserBalances { chain_id, address } => {
-            query::query_user_balances(deps, chain_id, address)
+        QueryMsg::GetUserBalances { user } => {
+            query::query_user_balances(deps, user.chain_uid, user.address)
         }
     }
 }

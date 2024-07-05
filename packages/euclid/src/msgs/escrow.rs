@@ -53,12 +53,6 @@ pub struct AllowedTokenResponse {
 }
 
 #[cw_serde]
-pub struct AmountAndType {
-    pub amount: Uint128,
-    pub is_native: bool,
-}
-
-#[cw_serde]
 pub struct EscrowInstantiateResponse {
     pub token: Token,
     pub address: String,

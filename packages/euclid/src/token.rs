@@ -1,13 +1,15 @@
-use std::fmt;
 use std::ops::Deref;
+use std::{fmt, sync::mpsc::Receiver};
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, forward_ref_partial_eq, to_json_binary, BankMsg, Coin, CosmosMsg, StdError, StdResult,
-    Uint128, WasmMsg,
+    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, StdError,
+    StdResult, Uint128, WasmMsg,
 };
+use cw20::Cw20ReceiveMsg;
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
+use crate::cw20::Cw20HookMsg;
 use crate::{cw20::Cw20ExecuteMsg, error::ContractError, pool::Pool};
 
 // Token asset that represents an identifier for a token
@@ -34,10 +36,9 @@ impl Token {
     pub fn exists(&self, pair: Pair) -> bool {
         self == pair.token_1 || self == pair.token_2
     }
-    pub fn validate(&self) -> Result<(), ContractError> {
+    pub fn validate(&self) -> Result<&Self, ContractError> {
         ensure!(!self.is_empty(), ContractError::InvalidTokenID {});
-        // TODO additional checks required
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -107,7 +108,7 @@ impl Pair {
 
         ensure!(
             self.token_1.le(&self.token_2),
-            ContractError::InvalidTokenID {}
+            ContractError::new("Token order is wrong")
         );
         Ok(())
     }
@@ -244,6 +245,32 @@ impl TokenType {
         };
         Ok(msg)
     }
+
+    pub fn create_escrow_msg(
+        &self,
+        amount: Uint128,
+        escrow_contract: Addr,
+    ) -> Result<CosmosMsg, ContractError> {
+        let msg: CosmosMsg = if self.is_native() {
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_contract.into_string(),
+                msg: to_json_binary(&crate::msgs::escrow::ExecuteMsg::DepositNative {})?,
+                funds: vec![coin(amount.u128(), self.get_denom())],
+            })
+        } else {
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_contract.into_string(),
+                msg: to_json_binary(&crate::msgs::escrow::ExecuteMsg::Receive(Cw20ReceiveMsg {
+                    //TODO Unsure what to set the sender as
+                    sender: self.get_denom(),
+                    amount,
+                    msg: to_json_binary(&Cw20HookMsg::Deposit {})?,
+                }))?,
+                funds: vec![],
+            })
+        };
+        Ok(msg)
+    }
 }
 
 #[cw_serde]
@@ -263,6 +290,14 @@ impl TokenWithDenom {
         recipient: String,
     ) -> Result<CosmosMsg, ContractError> {
         self.token_type.create_transfer_msg(amount, recipient)
+    }
+
+    pub fn create_escrow_msg(
+        &self,
+        amount: Uint128,
+        escrow_contract: Addr,
+    ) -> Result<CosmosMsg, ContractError> {
+        self.token_type.create_escrow_msg(amount, escrow_contract)
     }
 }
 

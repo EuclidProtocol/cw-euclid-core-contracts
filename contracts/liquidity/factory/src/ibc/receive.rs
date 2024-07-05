@@ -5,6 +5,7 @@ use cosmwasm_std::{
     IbcReceiveResponse, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
+    chain::ChainUid,
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
@@ -14,13 +15,13 @@ use euclid::{
     token::Token,
 };
 use euclid_ibc::{
-    ack::make_ack_fail,
-    msg::{AcknowledgementMsg, HubIbcExecuteMsg},
+    ack::{make_ack_fail, AcknowledgementMsg},
+    msg::HubIbcExecuteMsg,
 };
 
 use crate::{
     reply::IBC_RECEIVE_REPLY_ID,
-    state::{CHAIN_UID, HUB_CHANNEL, STATE, TOKEN_TO_ESCROW},
+    state::{HUB_CHANNEL, STATE, TOKEN_TO_ESCROW},
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -66,19 +67,10 @@ pub fn ibc_receive_internal_call(
         }
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
-            token_id,
+            token,
             to_address,
-            to_chain_uid,
             ..
-        } => execute_release_escrow(
-            deps,
-            env,
-            channel,
-            amount,
-            token_id,
-            to_address,
-            to_chain_uid,
-        ),
+        } => execute_release_escrow(deps, env, channel, amount, token, to_address),
     }
 }
 
@@ -87,14 +79,20 @@ fn execute_register_router(
     env: Env,
     router: String,
     channel: String,
-    chain_uid: String,
+    chain_uid: ChainUid,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    CHAIN_UID.save(deps.storage, &chain_uid)?;
+    let chain_uid = chain_uid.validate()?.to_owned();
     let ack_msg = RegisterFactoryResponse {
         factory_address: env.contract.address.to_string(),
         chain_id: env.block.chain_id,
     };
+    let state = STATE.load(deps.storage)?;
+
+    ensure!(
+        state.chain_uid == chain_uid,
+        ContractError::new("Chain UID mismatch")
+    );
 
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
@@ -111,32 +109,27 @@ fn execute_release_escrow(
     env: Env,
     channel: String,
     amount: Uint128,
-    token_id: String,
+    token: Token,
     to_address: String,
-    to_chain_uid: String,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
-        recipient: to_address.clone(),
+        recipient: deps.api.addr_validate(&to_address)?,
         amount,
-        chain_uid: to_chain_uid,
     };
 
     let ack_msg = ReleaseEscrowResponse {
         factory_address: env.contract.address.to_string(),
         chain_id: env.block.chain_id,
         amount,
-        token_id: token_id.clone(),
+        token: token.clone(),
         to_address,
-        to_chain_uid,
     };
 
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
     // Get escrow address
     let escrow_address = TOKEN_TO_ESCROW
-        .load(deps.storage, Token::new(token_id)?)?
+        .load(deps.storage, token.validate()?.to_owned())?
         .into_string();
 
     Ok(Response::new()

@@ -21,6 +21,7 @@ pub struct AddLiquidityResponse {
     pub mint_lp_tokens: Uint128,
     pub reserve_1: Uint128,
     pub reserve_2: Uint128,
+    pub vlp_address: String,
 }
 
 #[cw_serde]
@@ -39,4 +40,5 @@ pub struct RemoveLiquidityResponse {
     pub burn_lp_tokens: Uint128,
     pub reserve_1: Uint128,
     pub reserve_2: Uint128,
+    pub vlp_address: String,
 }

@@ -1,7 +1,8 @@
 use crate::state::TOKEN_TO_ESCROW;
 use cosmwasm_std::{from_json, DepsMut, Reply, Response, SubMsgResult};
-use cw0::{parse_reply_execute_data, parse_reply_instantiate_data};
+use cw0::{parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data};
 use euclid::error::ContractError;
+use euclid_ibc::ack::make_ack_fail;
 
 pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1u64;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2u64;
@@ -29,12 +30,12 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     }
 }
 
-pub fn on_ibc_ack_and_timeout_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
             Ok(Response::new().add_attribute("reply_err_on_ibc_ack_or_timeout_processing", err))
         }
-        SubMsgResult::Ok(d) => {
+        SubMsgResult::Ok(_d) => {
             let execute_data: cw0::MsgExecuteContractResponse = parse_reply_execute_data(msg)
                 .map_err(|res| ContractError::Generic {
                     err: res.to_string(),
@@ -46,12 +47,12 @@ pub fn on_ibc_ack_and_timeout_reply(deps: DepsMut, msg: Reply) -> Result<Respons
     }
 }
 
-pub fn on_receive_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => {
-            Ok(Response::new().add_attribute("reply_err_on_ibc_receive_processing", err))
-        }
-        SubMsgResult::Ok(d) => {
+        SubMsgResult::Err(err) => Ok(Response::new()
+            .add_attribute("reply_err_on_ibc_receive_processing", err.clone())
+            .set_data(make_ack_fail(err)?)),
+        SubMsgResult::Ok(_data) => {
             let execute_data: cw0::MsgExecuteContractResponse = parse_reply_execute_data(msg)
                 .map_err(|res| ContractError::Generic {
                     err: res.to_string(),

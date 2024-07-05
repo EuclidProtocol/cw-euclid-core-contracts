@@ -10,8 +10,8 @@ use euclid::{
 };
 
 use crate::state::{
-    CHAIN_UID, HUB_CHANNEL, PAIR_TO_VLP, PENDING_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
-    PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
+    HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
+    STATE, TOKEN_TO_ESCROW,
 };
 
 // Returns the Pair Info of the Pair in the pool
@@ -28,10 +28,9 @@ pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError>
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
-    let chain_uid = CHAIN_UID.load(deps.storage)?;
     let hub = HUB_CHANNEL.may_load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
-        chain_uid,
+        chain_uid: state.chain_uid,
         router_contract: state.router_contract,
         admin: state.admin,
         hub_channel: hub,
@@ -86,7 +85,7 @@ pub fn pending_liquidity(
     _lower_limit: Option<u128>,
     _upper_limit: Option<u128>,
 ) -> Result<Binary, ContractError> {
-    let pending_liquidity = PENDING_LIQUIDITY
+    let pending_add_liquidity = PENDING_ADD_LIQUIDITY
         .prefix(user)
         .range(deps.storage, None, None, Order::Ascending)
         .map(|k| -> Result<_, ContractError> { Ok(k?.1) })
@@ -94,7 +93,7 @@ pub fn pending_liquidity(
         .collect();
 
     Ok(to_json_binary(&GetPendingLiquidityResponse {
-        pending_liquidity,
+        pending_add_liquidity,
     })?)
 }
 

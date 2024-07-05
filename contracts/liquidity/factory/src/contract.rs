@@ -28,10 +28,12 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    let chain_uid = msg.chain_uid.validate()?.to_owned();
     let state = State {
         router_contract: msg.router_contract.clone(),
         admin: info.sender.clone().to_string(),
         escrow_code_id: msg.escrow_code_id,
+        chain_uid,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -41,7 +43,8 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
-        .add_attribute("escrow_code_id", state.escrow_code_id.to_string()))
+        .add_attribute("escrow_code_id", state.escrow_code_id.to_string())
+        .add_attribute("chain_uid", state.chain_uid.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -83,8 +86,18 @@ pub fn execute(
             pair,
             lp_allocation,
             timeout,
+            cross_chain_addresses,
             tx_id,
-        } => remove_liquidity_request(deps, info, env, pair, lp_allocation, timeout, tx_id),
+        } => remove_liquidity_request(
+            deps,
+            info,
+            env,
+            pair,
+            lp_allocation,
+            timeout,
+            cross_chain_addresses,
+            tx_id,
+        ),
         ExecuteMsg::ExecuteSwapRequest {
             asset_in,
             asset_out,
@@ -93,6 +106,8 @@ pub fn execute(
             timeout,
             swaps,
             tx_id,
+            cross_chain_addresses,
+            partner_fee,
         } => execute_swap_request(
             &mut deps,
             info,
@@ -103,7 +118,9 @@ pub fn execute(
             min_amount_out,
             swaps,
             timeout,
+            cross_chain_addresses,
             tx_id,
+            partner_fee,
         ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {

@@ -3,19 +3,23 @@ use cosmwasm_std::{
     SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
+    chain::{ChainUid, CrossChainUser},
     error::ContractError,
-    msgs::vcoin::ExecuteTransfer,
-    pool::{
-        LiquidityResponse, Pool, PoolCreationResponse, RemoveLiquidityResponse, MINIMUM_LIQUIDITY,
+    events::{tx_event, TxType},
+    liquidity::AddLiquidityResponse,
+    msgs::{
+        vcoin::ExecuteTransfer,
+        vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
-    swap::{NextSwap, SwapResponse},
+    pool::{PoolCreationResponse, MINIMUM_LIQUIDITY},
+    swap::NextSwapVlp,
     token::{Pair, Token},
 };
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
     reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID},
-    state::{self, BALANCES, POOLS, STATE},
+    state::{self, BALANCES, CHAIN_LP_SHARES, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -36,14 +40,15 @@ use crate::{
 pub fn register_pool(
     deps: DepsMut,
     env: Env,
-    chain_uid: String,
+    sender: CrossChainUser,
     pair: Pair,
+    tx_id: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     // Verify that chain pool does not already exist
     ensure!(
-        POOLS.may_load(deps.storage, &chain_uid)?.is_none(),
+        !CHAIN_LP_SHARES.has(deps.storage, sender.chain_uid.clone()),
         ContractError::PoolAlreadyExists {}
     );
 
@@ -53,10 +58,8 @@ pub fn register_pool(
         ContractError::AssetDoesNotExist {}
     );
 
-    let pool = Pool::new(pair, Uint128::zero(), Uint128::zero());
-
     // Store the pool in the map
-    POOLS.save(deps.storage, &chain_uid, &pool)?;
+    CHAIN_LP_SHARES.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
 
     STATE.save(deps.storage, &state)?;
 
@@ -65,8 +68,13 @@ pub fn register_pool(
     };
 
     Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::PoolCreation,
+        ))
         .add_attribute("action", "register_pool")
-        .add_attribute("pool_chain", chain_uid)
+        .add_attribute("pool_chain", sender.chain_uid.to_string())
         .set_data(to_json_binary(&ack)?))
 }
 
@@ -89,10 +97,11 @@ pub fn register_pool(
 pub fn add_liquidity(
     deps: DepsMut,
     env: Env,
-    chain_uid: String,
+    sender: CrossChainUser,
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
+    tx_id: String,
 ) -> Result<Response, ContractError> {
     ensure!(
         token_1_liquidity.u128() > MINIMUM_LIQUIDITY,
@@ -108,11 +117,8 @@ pub fn add_liquidity(
         }
     );
 
-    // TODO: Check for pool liquidity balance and balance in vcoin
-    // Router mints new tokens for this vlp so token_liquidity = vcoin_balance - pool_current_liquidity
+    let mut chain_lp_shares = CHAIN_LP_SHARES.load(deps.storage, sender.chain_uid.clone())?;
 
-    // Get the pool for the chain_id provided
-    let mut pool = POOLS.load(deps.storage, &chain_uid)?;
     let mut state = STATE.load(deps.storage)?;
 
     let pair = state.pair.clone();
@@ -140,11 +146,6 @@ pub fn add_liquidity(
 
     assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance)?;
 
-    // Add liquidity to the pool
-    pool.reserve_1 = pool.reserve_1.checked_add(token_1_liquidity)?;
-    pool.reserve_2 = pool.reserve_2.checked_add(token_2_liquidity)?;
-    POOLS.save(deps.storage, &chain_uid, &pool)?;
-
     // Calculate liquidity added share for LP provider from total liquidity
     let lp_allocation = calculate_lp_allocation(
         token_1_liquidity,
@@ -160,6 +161,9 @@ pub fn add_liquidity(
             err: "LP Allocation cannot be zero".to_string()
         }
     );
+
+    chain_lp_shares = chain_lp_shares.checked_add(lp_allocation)?;
+    CHAIN_LP_SHARES.save(deps.storage, sender.chain_uid.clone(), &chain_lp_shares)?;
 
     // Add to total liquidity and total lp allocation
     total_reserve_1 = total_reserve_1.checked_add(token_1_liquidity)?;
@@ -186,18 +190,26 @@ pub fn add_liquidity(
     // [TODO] BALANCES snapshotMap Token variable does not inherit all needed values
 
     // Prepare Liquidity Response
-    let liquidity_response = LiquidityResponse {
+    let liquidity_response = AddLiquidityResponse {
         token_1_liquidity,
         token_2_liquidity,
         mint_lp_tokens: lp_allocation,
+        reserve_1: total_reserve_1,
+        reserve_2: total_reserve_2,
+        vlp_address: env.contract.address.to_string(),
     };
 
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
     Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::AddLiquidity,
+        ))
         .add_attribute("action", "add_liquidity")
-        .add_attribute("chain_uid", chain_uid)
+        .add_attribute("sender", sender.to_sender_string())
         .add_attribute("lp_allocation", lp_allocation)
         .add_attribute("liquidity_1_added", token_1_liquidity)
         .add_attribute("liquidity_2_added", token_2_liquidity)
@@ -223,8 +235,9 @@ pub fn add_liquidity(
 pub fn remove_liquidity(
     deps: DepsMut,
     env: Env,
-    chain_uid: String,
+    sender: CrossChainUser,
     lp_allocation: Uint128,
+    tx_id: String,
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
     let mut state = STATE.load(deps.storage)?;
@@ -263,17 +276,28 @@ pub fn remove_liquidity(
     STATE.save(deps.storage, &state)?;
 
     // Prepare Liquidity Response
-    let liquidity_response = RemoveLiquidityResponse {
+    let liquidity_response = VlpRemoveLiquidityResponse {
         token_1_liquidity,
         token_2_liquidity,
         burn_lp_tokens: lp_allocation,
+        reserve_1: total_reserve_1,
+        reserve_2: total_reserve_2,
+        tx_id: tx_id.clone(),
+        sender: sender.clone(),
+        vlp_address: env.contract.address.to_string(),
     };
+
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
     Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::RemoveLiquidity,
+        ))
         .add_attribute("action", "remove_liquidity")
-        .add_attribute("chain_uid", chain_uid)
+        .add_attribute("sender", sender.to_sender_string())
         .add_attribute("token_1_removed_liquidity", token_1_liquidity)
         .add_attribute("token_2_removed_liquidity", token_2_liquidity)
         .add_attribute("burn_lp", lp_allocation)
@@ -283,13 +307,12 @@ pub fn remove_liquidity(
 pub fn execute_swap(
     deps: DepsMut,
     env: Env,
-    to_chain_uid: String,
-    to_address: String,
+    sender: CrossChainUser,
     asset_in: Token,
     amount_in: Uint128,
     min_token_out: Uint128,
-    swap_id: String,
-    next_swaps: Vec<NextSwap>,
+    tx_id: String,
+    next_swaps: Vec<NextSwapVlp>,
 ) -> Result<Response, ContractError> {
     // TODO: Check for pool liquidity balance and balance in vcoin
     // Router mints new tokens for this vlp so amount_in = vcoin_balance - pool_current_liquidity
@@ -361,14 +384,11 @@ pub fn execute_swap(
     STATE.save(deps.storage, &state)?;
 
     // Finalize ack response to swap pool
-    let swap_response = SwapResponse {
-        asset_in,
+    let swap_response = VlpSwapResponse {
+        sender: sender.clone(),
+        tx_id: tx_id.clone(),
         asset_out,
-        amount_in,
         amount_out: receive_amount,
-        to_address: to_address.clone(),
-        to_chain_uid: to_chain_uid.clone(),
-        swap_id: swap_id.clone(),
     };
 
     // Prepare acknowledgement
@@ -381,13 +401,15 @@ pub fn execute_swap(
                 amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.to_string(),
 
-                // Source Address
-                from_address: env.contract.address.to_string(),
-                from_chain_uid: env.block.chain_id.clone(),
+                from: CrossChainUser {
+                    address: env.contract.address.to_string(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
 
-                // Destination Address
-                to_address: next_swap.vlp_address.clone(),
-                to_chain_uid: env.block.chain_id,
+                to: CrossChainUser {
+                    address: next_swap.vlp_address.clone(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
             });
 
             let vcoin_transfer_msg = WasmMsg::Execute {
@@ -400,15 +422,14 @@ pub fn execute_swap(
                 SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
 
             let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
+                sender: sender.clone(),
                 // Final user address and chain id
-                to_address,
-                to_chain_uid,
 
                 // Carry forward amount to next swap
                 asset_in: swap_response.asset_out,
                 amount_in: swap_response.amount_out,
                 min_token_out,
-                swap_id,
+                tx_id: tx_id.clone(),
                 next_swaps: forward_swaps.to_vec(),
             };
             let next_swap_msg = WasmMsg::Execute {
@@ -441,12 +462,13 @@ pub fn execute_swap(
                 token_id: swap_response.asset_out.to_string(),
 
                 // Source Address
-                from_address: env.contract.address.to_string(),
-                from_chain_uid: env.block.chain_id,
+                from: CrossChainUser {
+                    address: env.contract.address.to_string(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
 
                 // Destination Address
-                to_address: to_address.clone(),
-                to_chain_uid: to_chain_uid.clone(),
+                to: sender.clone(),
             });
 
             let vcoin_transfer_msg = WasmMsg::Execute {
@@ -460,13 +482,14 @@ pub fn execute_swap(
 
             Response::new()
                 .add_attribute("swap_type", "final_swap")
-                .add_attribute("receiver_address", to_address)
-                .add_attribute("receiver_chain_id", to_chain_uid)
+                .add_attribute("receiver_address", sender.address.clone())
+                .add_attribute("receiver_chain_id", sender.chain_uid.to_string())
                 .add_submessage(vcoin_transfer_msg)
         }
     };
 
     Ok(response
+        .add_event(tx_event(&tx_id, &sender.to_sender_string(), TxType::Swap))
         .add_attribute("action", "swap")
         .add_attribute("amount_in", amount_in)
         .add_attribute("total_fee", fee_amount)

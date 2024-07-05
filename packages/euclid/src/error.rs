@@ -1,6 +1,9 @@
 use std::num::ParseIntError;
 
-use cosmwasm_std::{DivideByZeroError, OverflowError, StdError, Uint128};
+use cosmwasm_std::{
+    CheckedMultiplyFractionError, CheckedMultiplyRatioError, DivideByZeroError, OverflowError,
+    StdError, Uint128,
+};
 
 use thiserror::Error;
 
@@ -13,6 +16,12 @@ pub enum ContractError {
 
     #[error("{0}")]
     Overflow(#[from] OverflowError),
+
+    #[error("{0}")]
+    CheckedMultiplyFractionError(#[from] CheckedMultiplyFractionError),
+
+    #[error("{0}")]
+    CheckedMultiplyRatioError(#[from] CheckedMultiplyRatioError),
 
     #[error("{0}")]
     DivideByZero(#[from] DivideByZeroError),

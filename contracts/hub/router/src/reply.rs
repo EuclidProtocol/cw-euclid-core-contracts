@@ -1,22 +1,22 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, Reply,
-    Response, SubMsgResult, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Reply, Response, SubMsgResult,
+    WasmMsg,
 };
 use cw0::{parse_reply_execute_data, parse_reply_instantiate_data};
 use euclid::{
     error::ContractError,
+    liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
         self,
-        vcoin::{ExecuteBurn, ExecuteMsg as VcoinExecuteMsg},
+        router::ExecuteMsg,
+        vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
-    pool::{LiquidityResponse, PoolCreationResponse, RemoveLiquidityResponse},
+    pool::PoolCreationResponse,
     swap::SwapResponse,
-    timeout::get_timeout,
-    vcoin::BalanceKey,
 };
-use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
+use euclid_ibc::ack::AcknowledgementMsg;
 
-use crate::state::{CHAIN_ID_TO_CHAIN, ESCROW_BALANCES, STATE, SWAP_ID_TO_MSG, VLPS};
+use crate::state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS};
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
@@ -30,6 +30,9 @@ pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 pub const VCOIN_MINT_REPLY_ID: u64 = 8;
 pub const VCOIN_BURN_REPLY_ID: u64 = 9;
 pub const VCOIN_TRANSFER_REPLY_ID: u64 = 10;
+
+pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
+pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -105,7 +108,7 @@ pub fn on_add_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
                 parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
-            let liquidity_response: LiquidityResponse =
+            let liquidity_response: AddLiquidityResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
 
             let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
@@ -118,7 +121,11 @@ pub fn on_add_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
     }
 }
 
-pub fn on_remove_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_remove_liquidity_reply(
+    deps: DepsMut,
+    env: Env,
+    msg: Reply,
+) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -126,14 +133,63 @@ pub fn on_remove_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response,
                 parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
-            let liquidity_response: RemoveLiquidityResponse =
+            let vlp_liquidity_response: VlpRemoveLiquidityResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
+
+            let req_key = (
+                vlp_liquidity_response.sender.chain_uid.clone(),
+                vlp_liquidity_response.sender.address.clone(),
+                vlp_liquidity_response.tx_id.clone(),
+            );
+            let remove_liquidity_tx = PENDING_REMOVE_LIQUIDITY.load(deps.storage, req_key)?;
+
+            let token_1_escrow_release_msg =
+                euclid::msgs::router::ExecuteMsg::ReleaseEscrowInternal {
+                    sender: vlp_liquidity_response.sender.clone(),
+                    token: remove_liquidity_tx.pair.token_1.clone(),
+                    amount: vlp_liquidity_response.token_1_liquidity,
+                    cross_chain_addresses: remove_liquidity_tx.cross_chain_addresses.clone(),
+                    timeout: None,
+                    tx_id: vlp_liquidity_response.tx_id.clone(),
+                };
+
+            let token_1_escrow_release_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: env.contract.address.to_string(),
+                msg: to_json_binary(&token_1_escrow_release_msg)?,
+                funds: vec![],
+            });
+
+            let token_2_escrow_release_msg =
+                euclid::msgs::router::ExecuteMsg::ReleaseEscrowInternal {
+                    sender: vlp_liquidity_response.sender,
+                    token: remove_liquidity_tx.pair.token_1,
+                    amount: vlp_liquidity_response.token_1_liquidity,
+                    cross_chain_addresses: remove_liquidity_tx.cross_chain_addresses,
+                    timeout: None,
+                    tx_id: vlp_liquidity_response.tx_id,
+                };
+            let token_2_escrow_release_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: env.contract.address.to_string(),
+                msg: to_json_binary(&token_2_escrow_release_msg)?,
+                funds: vec![],
+            });
+
+            let liquidity_response = RemoveLiquidityResponse {
+                token_1_liquidity: vlp_liquidity_response.token_1_liquidity,
+                token_2_liquidity: vlp_liquidity_response.token_2_liquidity,
+                burn_lp_tokens: vlp_liquidity_response.burn_lp_tokens,
+                reserve_1: vlp_liquidity_response.reserve_1,
+                reserve_2: vlp_liquidity_response.reserve_2,
+                vlp_address: vlp_liquidity_response.vlp_address,
+            };
 
             let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
 
             Ok(Response::new()
                 .add_attribute("action", "reply_remove_liquidity")
                 .add_attribute("liquidity", format!("{liquidity_response:?}"))
+                .add_message(token_1_escrow_release_msg)
+                .add_message(token_2_escrow_release_msg)
                 .set_data(to_json_binary(&ack)?))
         }
     }
@@ -147,59 +203,41 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
-            let swap_response: SwapResponse = from_json(execute_data.data.unwrap_or_default())?;
+            let vlp_swap_response: VlpSwapResponse =
+                from_json(execute_data.data.unwrap_or_default())?;
 
-            let ack = AcknowledgementMsg::Ok(swap_response.clone());
-            let swap_msg = SWAP_ID_TO_MSG.load(deps.storage, swap_response.swap_id.clone())?;
-
-            let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, swap_msg.to_chain_id.clone())?;
-
-            let token_out_escrow_key = (swap_response.asset_out.clone(), chain.factory_chain_id);
-
-            let token_out_escrow_balance = ESCROW_BALANCES
-                .may_load(deps.storage, token_out_escrow_key.clone())?
-                .unwrap_or(Uint128::zero());
-
-            let escrow_amout_out = swap_response.amount_out.min(token_out_escrow_balance);
+            let req_key = (
+                vlp_swap_response.sender.chain_uid,
+                vlp_swap_response.sender.address,
+                vlp_swap_response.tx_id.clone(),
+            );
+            let swap_msg = SWAP_ID_TO_MSG.load(deps.storage, req_key)?;
 
             ensure!(
-                !escrow_amout_out.is_zero(),
-                ContractError::Generic {
-                    err: "Escrow release amount cannot be zero".to_string()
-                }
+                vlp_swap_response.asset_out == swap_msg.asset_out,
+                ContractError::new("Asset Out Mismatch")
             );
 
-            let packet = IbcMsg::SendPacket {
-                channel_id: chain.from_hub_channel,
-                data: to_json_binary(&HubIbcExecuteMsg::ReleaseEscrow {
-                    amount: escrow_amout_out,
-                    token_id: swap_response.asset_out.to_string().clone(),
-                    to_address: swap_msg.to_address,
-                    to_chain_uid: swap_msg.to_chain_id,
-                })?,
-                timeout: IbcTimeout::with_timestamp(
-                    env.block.time.plus_seconds(get_timeout(None)?),
-                ),
+            let swap_response = SwapResponse {
+                amount_out: vlp_swap_response.amount_out,
+                tx_id: vlp_swap_response.tx_id,
             };
+            let ack = AcknowledgementMsg::Ok(swap_response.clone());
 
             // Prepare burn msg
-            let burn_msg = VcoinExecuteMsg::Burn(ExecuteBurn {
-                amount: escrow_amout_out,
-                balance_key: BalanceKey {
-                    chain_uid: swap_response.to_chain_uid.clone(),
-                    address: swap_response.to_address.clone(),
-                    token_id: swap_response.asset_out.to_string().clone(),
-                },
-            });
-            // Load state to get vcoin address
-            let state = STATE.load(deps.storage)?;
-            let vcoin_address = state.vcoin_address.unwrap().into_string();
+            let release_msg = ExecuteMsg::ReleaseEscrowInternal {
+                sender: swap_msg.sender,
+                token: swap_msg.asset_out,
+                amount: swap_response.amount_out,
+                cross_chain_addresses: swap_msg.cross_chain_addresses,
+                timeout: None,
+                tx_id: swap_msg.tx_id,
+            };
 
             Ok(Response::new()
-                .add_message(CosmosMsg::Ibc(packet))
                 .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: vcoin_address,
-                    msg: to_json_binary(&burn_msg)?,
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&release_msg)?,
                     funds: vec![],
                 }))
                 .add_attribute("action", "reply_swap")

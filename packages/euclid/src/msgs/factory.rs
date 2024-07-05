@@ -1,18 +1,18 @@
 use crate::{
-    chain::CrossChainUser,
+    chain::{ChainUid, CrossChainUser},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    swap::{NextSwap, SwapRequest},
+    swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, Decimal, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
-    pub chain_uid: String,
+    pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
 }
 
@@ -41,6 +41,8 @@ pub enum ExecuteMsg {
         pair: Pair,
         lp_allocation: Uint128,
         timeout: Option<u64>,
+        // First element in array has highest priority
+        cross_chain_addresses: Vec<CrossChainUser>,
         tx_id: String,
     },
     ExecuteSwapRequest {
@@ -49,10 +51,12 @@ pub enum ExecuteMsg {
         amount_in: Uint128,
         min_amount_out: Uint128,
         timeout: Option<u64>,
-        swaps: Vec<NextSwap>,
+        swaps: Vec<NextSwapPair>,
         // First element in array has highest priority
-        cross_chain_address_map: Vec<CrossChainUser>,
+        cross_chain_addresses: Vec<CrossChainUser>,
         tx_id: String,
+
+        partner_fee: Option<Decimal>,
     },
 
     // Recieve CW20 TOKENS structure
@@ -119,7 +123,7 @@ pub struct GetEscrowResponse {
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct StateResponse {
-    pub chain_uid: String,
+    pub chain_uid: ChainUid,
     pub router_contract: String,
     pub hub_channel: Option<String>,
     pub admin: String,
@@ -150,9 +154,8 @@ pub struct ReleaseEscrowResponse {
     pub factory_address: String,
     pub chain_id: String,
     pub amount: Uint128,
-    pub token_id: String,
+    pub token: Token,
     pub to_address: String,
-    pub to_chain_uid: String,
 }
 
 #[cw_serde]

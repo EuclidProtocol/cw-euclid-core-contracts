@@ -1,27 +1,28 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
-    SubMsg, Uint128, WasmMsg,
+    ensure, to_json_binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo,
+    Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
+    chain::CrossChainUser,
     error::ContractError,
     events::{swap_event, tx_event},
-    liquidity::{LiquidityTxInfo, RemoveLiquidityTxInfo},
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     pool::PoolCreateRequest,
-    swap::{NextSwap, SwapInfo},
+    swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
 };
-use euclid_ibc::msg::ChainIbcExecuteMsg;
+use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg};
 
 use crate::state::{
-    CHAIN_UID, HUB_CHANNEL, PAIR_TO_VLP, PENDING_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
-    PENDING_SWAPS, POOL_REQUESTS, STATE, TOKEN_TO_ESCROW,
+    HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS,
+    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
 };
 
 // Function to send IBC request to Router in VLS to create a new pool
 pub fn execute_request_pool_creation(
-    mut deps: DepsMut,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     pair: PairWithDenom,
@@ -29,13 +30,19 @@ pub fn execute_request_pool_creation(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     ensure!(
-        !POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
     ensure!(
         !PAIR_TO_VLP.has(deps.storage, pair.get_pair()?.get_tupple()),
         ContractError::PoolAlreadyExists {}
     );
+
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
@@ -46,14 +53,14 @@ pub fn execute_request_pool_creation(
         pair_info: pair.clone(),
     };
 
-    POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
+    PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&ChainIbcExecuteMsg::RequestPoolCreation {
             pair: pair.get_pair()?,
-            sender: info.sender.to_string(),
+            sender,
             tx_id: tx_id.clone(),
         })?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
@@ -89,26 +96,27 @@ pub fn add_liquidity_request(
     );
 
     ensure!(
-        !PENDING_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_ADD_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
 
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+
     let pair = pair_info.get_pair()?;
 
-    let vlp_address = PAIR_TO_VLP.load(deps.storage, pair.get_tupple());
     ensure!(
-        vlp_address.is_ok(),
+        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
         ContractError::Generic {
             err: "Pool doesn't exist".to_string()
         }
     );
 
-    let vlp_address = vlp_address?;
-
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
-
-    let sender = info.sender.to_string();
 
     // Check that the liquidity is greater than 0
     ensure!(
@@ -199,17 +207,17 @@ pub fn add_liquidity_request(
 
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
-    let liquidity_tx_info = LiquidityTxInfo {
-        sender: sender.clone(),
+    let liquidity_tx_info = AddLiquidityRequest {
+        sender: info.sender.to_string(),
         token_1_liquidity,
         token_2_liquidity,
         pair_info,
         tx_id: tx_id.clone(),
     };
 
-    PENDING_LIQUIDITY.save(
+    PENDING_ADD_LIQUIDITY.save(
         deps.storage,
-        (info.sender, tx_id.clone()),
+        (info.sender.clone(), tx_id.clone()),
         &liquidity_tx_info,
     )?;
 
@@ -217,11 +225,11 @@ pub fn add_liquidity_request(
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&ChainIbcExecuteMsg::AddLiquidity {
-            sender: sender.clone(),
+            sender,
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
-            vlp_address,
+            pair,
             tx_id: tx_id.clone(),
         })?,
         timeout,
@@ -232,7 +240,7 @@ pub fn add_liquidity_request(
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
-            &sender,
+            info.sender.as_str(),
             euclid::events::TxType::AddLiquidity,
         ))
         .add_attribute("method", "add_liquidity_request")
@@ -248,55 +256,61 @@ pub fn remove_liquidity_request(
     pair: Pair,
     lp_allocation: Uint128,
     timeout: Option<u64>,
+    cross_chain_addresses: Vec<CrossChainUser>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
+    pair.validate()?;
     ensure!(
         !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
 
-    let vlp_address = PAIR_TO_VLP.load(deps.storage, pair.get_tupple());
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+
     ensure!(
-        vlp_address.is_ok(),
+        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
         ContractError::Generic {
             err: "Pool doesn't exist".to_string()
         }
     );
 
-    let vlp_address = vlp_address?;
-
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
-
-    let sender = info.sender.to_string();
 
     // Check that the liquidity is greater than 0
     ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
 
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
-    let liquidity_tx_info = RemoveLiquidityTxInfo {
-        sender: sender.clone(),
+    let liquidity_tx_info = RemoveLiquidityRequest {
+        sender: info.sender.to_string(),
         lp_allocation,
-        pair,
+        pair: pair.clone(),
         tx_id: tx_id.clone(),
     };
 
     PENDING_REMOVE_LIQUIDITY.save(
         deps.storage,
-        (info.sender, tx_id.clone()),
+        (info.sender.clone(), tx_id.clone()),
         &liquidity_tx_info,
     )?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::RemoveLiquidity {
-            sender: sender.clone(),
-            lp_allocation,
-            vlp_address,
-            tx_id: tx_id.clone(),
-        })?,
+        data: to_json_binary(&ChainIbcExecuteMsg::RemoveLiquidity(
+            ChainIbcRemoveLiquidityExecuteMsg {
+                sender,
+                lp_allocation,
+                pair,
+                cross_chain_addresses,
+                tx_id: tx_id.clone(),
+            },
+        ))?,
         timeout,
     };
 
@@ -305,7 +319,7 @@ pub fn remove_liquidity_request(
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
-            &sender,
+            info.sender.as_str(),
             euclid::events::TxType::RemoveLiquidity,
         ))
         .add_attribute("method", "remove_liquidity_request")
@@ -322,10 +336,21 @@ pub fn execute_swap_request(
     asset_out: Token,
     amount_in: Uint128,
     min_amount_out: Uint128,
-    swaps: Vec<NextSwap>,
+    swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
+    cross_chain_addresses: Vec<CrossChainUser>,
     tx_id: String,
+    partner_fee: Option<Decimal>,
 ) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+
+    let partner_fee = amount_in.checked_mul_ceil(partner_fee.unwrap_or(Decimal::zero()))?;
+
+    let amount_in = amount_in.checked_sub(partner_fee)?;
     // Verify that the asset amount is greater than 0
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -337,21 +362,28 @@ pub fn execute_swap_request(
         ContractError::TxAlreadyExist {}
     );
 
-    let chain_uid = CHAIN_UID
-        .load(deps.storage)
-        .map_err(|_err| ContractError::Generic {
-            err: "Chain UID not registered".to_string(),
-        })?;
-
-    swaps.first().ok_or(ContractError::Generic {
+    let first_swap = swaps.first().ok_or(ContractError::Generic {
         err: "Empty Swap not allowed".to_string(),
     })?;
+
+    ensure!(
+        first_swap.token_in == asset_in.token,
+        ContractError::new("Amount in doesn't match swap route")
+    );
+
+    let last_swap = swaps.last().ok_or(ContractError::Generic {
+        err: "Empty Swap not allowed".to_string(),
+    })?;
+
+    ensure!(
+        last_swap.token_out == asset_out,
+        ContractError::new("Amount out doesn't match swap route")
+    );
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
-    let sender = info.sender.to_string();
     // Verify that this asset is allowed
     let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
 
@@ -394,30 +426,36 @@ pub fn execute_swap_request(
             ContractError::Unauthorized {}
         );
     }
-    let swap_info = SwapInfo {
+    let swap_info = SwapRequest {
+        sender: info.sender.to_string(),
         asset_in: asset_in.clone(),
-        asset_out,
+        asset_out: asset_out.clone(),
         amount_in,
         min_amount_out,
         swaps: swaps.clone(),
         timeout: timeout.clone(),
         tx_id: tx_id.clone(),
+        cross_chain_addresses: cross_chain_addresses.clone(),
     };
-    PENDING_SWAPS.save(deps.storage, (info.sender, tx_id.clone()), &swap_info)?;
+    PENDING_SWAPS.save(
+        deps.storage,
+        (info.sender.clone(), tx_id.clone()),
+        &swap_info,
+    )?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
         channel_id: channel.clone(),
         data: to_json_binary(&ChainIbcExecuteMsg::Swap(
             euclid_ibc::msg::ChainIbcSwapExecuteMsg {
-                sender: sender.clone(),
-                to_address: sender.clone(),
-                to_chain_uid: chain_uid,
+                sender,
                 asset_in: asset_in.token,
                 amount_in,
+                asset_out,
                 min_amount_out,
                 swaps,
                 tx_id: tx_id.clone(),
+                cross_chain_addresses,
             },
         ))?,
         timeout,
@@ -426,7 +464,11 @@ pub fn execute_swap_request(
     let msg = CosmosMsg::Ibc(ibc_packet);
 
     Ok(Response::new()
-        .add_event(tx_event(&tx_id, &sender, euclid::events::TxType::Swap))
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::Swap,
+        ))
         .add_event(swap_event(&tx_id, &swap_info))
         .add_attribute("method", "execute_request_swap")
         .add_message(msg))

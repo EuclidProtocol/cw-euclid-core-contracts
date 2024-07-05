@@ -1,5 +1,6 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
 use euclid::{
+    chain::ChainUid,
     error::ContractError,
     msgs::vcoin::{
         GetBalanceResponse, GetStateResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
@@ -26,7 +27,7 @@ pub fn query_balance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, Cont
 
 pub fn query_user_balances(
     deps: Deps,
-    chain_uid: String,
+    chain_uid: ChainUid,
     address: String,
 ) -> Result<Binary, ContractError> {
     let balances: Result<_, ContractError> = SNAPSHOT_BALANCES

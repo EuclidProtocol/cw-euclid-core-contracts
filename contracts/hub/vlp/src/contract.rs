@@ -53,43 +53,46 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RegisterPool { chain_uid, pair } => {
-            execute::register_pool(deps, env, chain_uid, pair)
-        }
+        ExecuteMsg::RegisterPool {
+            sender,
+            pair,
+            tx_id,
+        } => execute::register_pool(deps, env, sender, pair, tx_id),
         ExecuteMsg::AddLiquidity {
-            chain_uid,
+            sender,
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
+            tx_id,
         } => execute::add_liquidity(
             deps,
             env,
-            chain_uid,
+            sender,
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
+            tx_id,
         ),
         ExecuteMsg::RemoveLiquidity {
-            chain_uid,
+            sender,
             lp_allocation,
-        } => execute::remove_liquidity(deps, env, chain_uid, lp_allocation),
+            tx_id,
+        } => execute::remove_liquidity(deps, env, sender, lp_allocation, tx_id),
         ExecuteMsg::Swap {
-            to_chain_uid,
-            to_address,
+            sender,
             asset_in,
             amount_in,
             min_token_out,
-            swap_id,
+            tx_id,
             next_swaps,
         } => execute::execute_swap(
             deps,
             env,
-            to_chain_uid,
-            to_address,
+            sender,
             asset_in,
             amount_in,
             min_token_out,
-            swap_id,
+            tx_id,
             next_swaps,
         ),
     }
@@ -105,7 +108,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         } => query_simulate_swap(deps, asset, asset_amount, swaps),
         QueryMsg::Liquidity { height } => query_liquidity(deps, env, height),
         QueryMsg::Fee {} => query_fee(deps),
-        QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),
+        QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
+
         QueryMsg::GetAllPools {} => query_all_pools(deps),
     }
 }

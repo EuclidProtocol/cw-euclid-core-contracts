@@ -2,6 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
 use euclid::{
+    chain::ChainUid,
     fee::Fee,
     pool::Pool,
     token::{Pair, Token},
@@ -25,10 +26,7 @@ pub struct State {
 
 pub const STATE: Item<State> = Item::new("state");
 
-// TODO:: This is not needed because pool is unified and removed from any chains
-// and escrow is independent of each chains
-// A map of chain-uids connected to the VLP to pools
-pub const POOLS: Map<&String, Pool> = Map::new("pools");
+pub const CHAIN_LP_SHARES: Map<ChainUid, Uint128> = Map::new("chain_lp_shares");
 
 // Stores a snapshotMap in order to keep track of prices for blocks for charts and other purposes
 pub const BALANCES: SnapshotMap<Token, Uint128> = SnapshotMap::new(
