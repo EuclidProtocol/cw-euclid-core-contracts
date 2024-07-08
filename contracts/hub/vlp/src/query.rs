@@ -1,7 +1,7 @@
 use cosmwasm_std::{ensure, to_json_binary, Binary, Decimal256, Deps, Env, Isqrt, Uint128};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
-use euclid::pool::{Pool, MINIMUM_LIQUIDITY};
+use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
 
@@ -136,10 +136,10 @@ fn get_pool(
     reserve_1: Uint128,
     reserve_2: Uint128,
 ) -> Result<PoolResponse, ContractError> {
-    let total_shares = state.total_lp_tokens;
     Ok(PoolResponse {
         reserve_1: reserve_1.checked_multiply_ratio(chain_lp_shares, state.total_lp_tokens)?,
-        reserve_2: reserve_1.checked_multiply_ratio(chain_lp_shares, state.total_lp_tokens)?,
+        reserve_2: reserve_2.checked_multiply_ratio(chain_lp_shares, state.total_lp_tokens)?,
+        lp_shares: chain_lp_shares,
     })
 }
 // Function to calculate the asset to be recieved after a swap

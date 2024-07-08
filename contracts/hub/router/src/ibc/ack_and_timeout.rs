@@ -35,8 +35,8 @@ pub fn ibc_packet_ack(
     });
     let sub_msg = SubMsg::reply_always(internal_msg, IBC_ACK_AND_TIMEOUT_REPLY_ID);
     Ok(IbcBasicResponse::new()
-        .add_submessage(sub_msg)
-        .add_attribute("ibc_ack", format!("{ack:?}")))
+        .add_attribute("ibc_ack", ack.acknowledgement.data.to_string())
+        .add_submessage(sub_msg))
 }
 
 pub fn ibc_ack_packet_internal_call(
@@ -64,7 +64,6 @@ pub fn ibc_ack_packet_internal_call(
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
             token,
-            to_address,
             tx_id,
             sender,
             ..
@@ -141,7 +140,7 @@ pub fn ibc_ack_register_factory(
 
 pub fn ibc_ack_release_escrow(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     sender: CrossChainUser,
     amount: Uint128,
     token: Token,

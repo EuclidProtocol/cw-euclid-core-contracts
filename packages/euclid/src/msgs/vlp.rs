@@ -1,7 +1,6 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::Fee,
-    pool::Pool,
     swap::NextSwapVlp,
     token::{Pair, Token},
 };
@@ -106,6 +105,7 @@ pub struct FeeResponse {
 
 #[cw_serde]
 pub struct PoolResponse {
+    pub lp_shares: Uint128,
     pub reserve_1: Uint128,
     pub reserve_2: Uint128,
 }

@@ -1,12 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
-use euclid::{
-    chain::ChainUid,
-    escrow::EscrowReleaseRequest,
-    msgs::{router::Chain, vlp::VlpRemoveLiquidityResponse},
-    token::Token,
-};
+use euclid::{chain::ChainUid, escrow::EscrowReleaseRequest, msgs::router::Chain, token::Token};
 use euclid_ibc::msg::{ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg};
 
 #[cw_serde]

@@ -8,9 +8,10 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 
 use crate::reply::{
-    self, ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_BURN_REPLY_ID,
-    VCOIN_INSTANTIATE_REPLY_ID, VCOIN_MINT_REPLY_ID, VCOIN_TRANSFER_REPLY_ID,
-    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
+    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_BURN_REPLY_ID, VCOIN_INSTANTIATE_REPLY_ID,
+    VCOIN_MINT_REPLY_ID, VCOIN_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
+    VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, STATE};
 use crate::{execute, ibc, query};
@@ -107,7 +108,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetState {} => query::query_state(deps),
         QueryMsg::GetChain { chain_uid } => query::query_chain(deps, chain_uid),
         QueryMsg::GetAllChains {} => query::query_all_chains(deps),
-        QueryMsg::GetVlp { token_1, token_2 } => query::query_vlp(deps, token_1, token_2),
+        QueryMsg::GetVlp { pair } => query::query_vlp(deps, pair),
         QueryMsg::GetAllVlps {
             start,
             end,
@@ -131,6 +132,9 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         VCOIN_MINT_REPLY_ID => reply::on_vcoin_mint_reply(deps, msg),
         VCOIN_BURN_REPLY_ID => reply::on_vcoin_burn_reply(deps, msg),
         VCOIN_TRANSFER_REPLY_ID => reply::on_vcoin_transfer_reply(deps, msg),
+
+        IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
+        IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",

@@ -1,3 +1,4 @@
+pub mod chain;
 pub mod cw20;
 pub mod error;
 pub mod escrow;
@@ -9,6 +10,5 @@ pub mod swap;
 pub mod timeout;
 pub mod token;
 pub mod vcoin;
-pub mod chain;
 
 pub mod msgs;

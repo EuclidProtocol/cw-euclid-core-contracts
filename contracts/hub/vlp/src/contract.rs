@@ -4,7 +4,7 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 
 use crate::reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID};
-use crate::state::{State, STATE};
+use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -35,6 +35,19 @@ pub fn instantiate(
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
+
+    BALANCES.save(
+        deps.storage,
+        state.pair.token_1,
+        &Uint128::zero(),
+        env.block.height,
+    )?;
+    BALANCES.save(
+        deps.storage,
+        state.pair.token_2,
+        &Uint128::zero(),
+        env.block.height,
+    )?;
 
     let response = msg.execute.map_or(Ok(Response::default()), |execute_msg| {
         execute(deps, env.clone(), info.clone(), execute_msg)

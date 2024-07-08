@@ -10,7 +10,6 @@ use euclid::{
     msgs::factory::ExecuteMsg,
     pool::PoolCreationResponse,
     swap::SwapResponse,
-    token::Pair,
 };
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 
@@ -38,8 +37,8 @@ pub fn ibc_packet_ack(
     });
     let sub_msg = SubMsg::reply_always(internal_msg, IBC_ACK_AND_TIMEOUT_REPLY_ID);
     Ok(IbcBasicResponse::new()
-        .add_submessage(sub_msg)
-        .add_attribute("ibc_ack", format!("{ack:?}")))
+        .add_attribute("ibc_ack", ack.acknowledgement.data.to_string())
+        .add_submessage(sub_msg))
 }
 
 pub fn ibc_ack_packet_internal_call(

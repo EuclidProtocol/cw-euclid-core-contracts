@@ -2,7 +2,7 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Reply, Response, SubMsgResult,
     WasmMsg,
 };
-use cw0::{parse_reply_execute_data, parse_reply_instantiate_data};
+use cw0::{parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data};
 use euclid::{
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
@@ -14,7 +14,7 @@ use euclid::{
     pool::PoolCreationResponse,
     swap::SwapResponse,
 };
-use euclid_ibc::ack::AcknowledgementMsg;
+use euclid_ibc::ack::{make_ack_fail, AcknowledgementMsg};
 
 use crate::state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS};
 
@@ -291,5 +291,47 @@ pub fn on_vcoin_transfer_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
         SubMsgResult::Ok(..) => Ok(Response::new()
             .add_attribute("action", "reply_transfer_vcoin")
             .add_attribute("transfer_success", "true")),
+    }
+}
+
+pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => {
+            Ok(Response::new().add_attribute("reply_err_on_ibc_ack_or_timeout_processing", err))
+        }
+        SubMsgResult::Ok(res) => {
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            Ok(Response::new()
+                .add_attribute("action", "reply_sucess_on_ibc_ack_or_timeout_processing")
+                .set_data(data))
+        }
+    }
+}
+
+pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Ok(Response::new()
+            .add_attribute("reply_err_on_ibc_receive_processing", err.clone())
+            .set_data(make_ack_fail(err)?)),
+        SubMsgResult::Ok(res) => {
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            Ok(Response::new()
+                .add_attribute("action", "reply_sucess_on_ibc_receive_processing")
+                .set_data(data))
+        }
     }
 }

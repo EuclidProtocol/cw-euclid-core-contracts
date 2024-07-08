@@ -1,5 +1,5 @@
+use std::fmt;
 use std::ops::Deref;
-use std::{fmt, sync::mpsc::Receiver};
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{

@@ -20,6 +20,21 @@ use crate::state::{
     PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
 };
 
+pub fn execute_update_hub_channel(
+    deps: DepsMut,
+    info: MessageInfo,
+    new_channel: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let old_channel = HUB_CHANNEL.may_load(deps.storage)?;
+    HUB_CHANNEL.save(deps.storage, &new_channel)?;
+    Ok(Response::new()
+        .add_attribute("method", "execute_update_hub_channel")
+        .add_attribute("new_channel", new_channel)
+        .add_attribute("old_channel", old_channel.unwrap_or_default()))
+}
+
 // Function to send IBC request to Router in VLS to create a new pool
 pub fn execute_request_pool_creation(
     deps: DepsMut,
@@ -256,7 +271,7 @@ pub fn remove_liquidity_request(
     pair: Pair,
     lp_allocation: Uint128,
     timeout: Option<u64>,
-    cross_chain_addresses: Vec<CrossChainUser>,
+    mut cross_chain_addresses: Vec<CrossChainUser>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     pair.validate()?;
@@ -270,6 +285,8 @@ pub fn remove_liquidity_request(
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
+
+    cross_chain_addresses.push(sender.clone());
 
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
@@ -338,7 +355,7 @@ pub fn execute_swap_request(
     min_amount_out: Uint128,
     swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
-    cross_chain_addresses: Vec<CrossChainUser>,
+    mut cross_chain_addresses: Vec<CrossChainUser>,
     tx_id: String,
     partner_fee: Option<Decimal>,
 ) -> Result<Response, ContractError> {
@@ -347,6 +364,7 @@ pub fn execute_swap_request(
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
+    cross_chain_addresses.push(sender.clone());
 
     let partner_fee = amount_in.checked_mul_ceil(partner_fee.unwrap_or(Decimal::zero()))?;
 

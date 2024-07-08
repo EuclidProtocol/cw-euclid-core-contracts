@@ -18,6 +18,9 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
+    UpdateHubChannel {
+        new_channel: String,
+    },
     RequestRegisterDenom {
         token: TokenWithDenom,
     },
@@ -76,7 +79,7 @@ pub enum ExecuteMsg {
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(GetVlpResponse)]
-    GetPool { pair: Pair },
+    GetVlp { pair: Pair },
     #[returns(StateResponse)]
     GetState {},
     // Query to get all pools in the factory

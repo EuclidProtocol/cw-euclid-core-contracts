@@ -40,10 +40,10 @@ pub fn ibc_packet_receive(
     });
     let sub_msg = SubMsg::reply_always(internal_msg, IBC_RECEIVE_REPLY_ID);
     Ok(IbcReceiveResponse::new()
-        .add_submessage(sub_msg)
-        .add_attribute("ibc_ack", format!("{msg:?}"))
+        .add_attribute("ibc_receive", msg.packet.data.to_string())
         .add_attribute("method", "ibc_packet_receive")
-        .set_ack(make_ack_fail("deafult_fail".to_string())?))
+        .set_ack(make_ack_fail("deafult_fail".to_string())?)
+        .add_submessage(sub_msg))
 }
 
 pub fn ibc_receive_internal_call(

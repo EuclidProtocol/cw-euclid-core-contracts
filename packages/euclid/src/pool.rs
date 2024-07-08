@@ -53,7 +53,3 @@ pub struct PoolCreateRequest {
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
 }
-
-
-
-

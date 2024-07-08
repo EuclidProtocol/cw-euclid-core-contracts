@@ -136,16 +136,22 @@ pub fn execute_release_escrow(
             .next()
             .ok_or(ContractError::new("Cross Chain Address Iter Faiiled"))?;
         let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.chain_uid.clone())?;
-        let escrow_balance = ESCROW_BALANCES.load(
-            deps.storage,
-            (token.clone(), cross_chain_address.chain_uid.clone()),
-        )?;
+        let escrow_balance = ESCROW_BALANCES
+            .may_load(
+                deps.storage,
+                (token.clone(), cross_chain_address.chain_uid.clone()),
+            )?
+            .unwrap_or(Uint128::zero());
 
         let release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
             escrow_balance
         } else {
             amount
         };
+
+        if release_amount.is_zero() {
+            continue;
+        }
 
         transfer_amount = transfer_amount.checked_add(release_amount)?;
 

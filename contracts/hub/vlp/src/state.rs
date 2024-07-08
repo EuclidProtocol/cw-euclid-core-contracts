@@ -4,7 +4,6 @@ use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
 use euclid::{
     chain::ChainUid,
     fee::Fee,
-    pool::Pool,
     token::{Pair, Token},
 };
 

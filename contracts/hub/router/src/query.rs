@@ -49,13 +49,14 @@ pub fn query_all_vlps(
     Ok(to_json_binary(&AllVlpResponse { vlps: vlps? })?)
 }
 
-pub fn query_vlp(deps: Deps, token_1: Token, token_2: Token) -> Result<Binary, ContractError> {
-    let vlp = VLPS.load(deps.storage, (token_1.clone(), token_2.clone()))?;
+pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
+    let key = pair.get_tupple();
+    let vlp = VLPS.load(deps.storage, key.clone())?;
 
     Ok(to_json_binary(&VlpResponse {
         vlp,
-        token_1,
-        token_2,
+        token_1: key.0,
+        token_2: key.1,
     })?)
 }
 

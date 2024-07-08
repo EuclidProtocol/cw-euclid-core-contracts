@@ -6,13 +6,16 @@ use euclid::error::ContractError;
 
 use crate::execute::{
     add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
-    execute_request_register_denom, execute_swap_request, receive_cw20, remove_liquidity_request,
+    execute_request_register_denom, execute_swap_request, execute_update_hub_channel, receive_cw20,
+    remove_liquidity_request,
 };
 use crate::query::{
     get_escrow, get_vlp, pending_liquidity, pending_remove_liquidity, pending_swaps,
     query_all_pools, query_all_tokens, query_state,
 };
-use crate::reply::{ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID};
+use crate::reply::{
+    ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
+};
 use crate::state::{State, STATE};
 use crate::{ibc, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -24,7 +27,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -55,6 +58,9 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
+        ExecuteMsg::UpdateHubChannel { new_channel } => {
+            execute_update_hub_channel(deps, info, new_channel)
+        }
         ExecuteMsg::RequestRegisterDenom { token } => execute_request_register_denom(deps, token),
         ExecuteMsg::RequestDeregisterDenom { token } => {
             execute_request_deregister_denom(deps, token)
@@ -135,7 +141,7 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::GetPool { pair } => get_vlp(deps, pair),
+        QueryMsg::GetVlp { pair } => get_vlp(deps, pair),
         QueryMsg::GetEscrow { token_id } => get_escrow(deps, token_id),
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
@@ -162,7 +168,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
         ESCROW_INSTANTIATE_REPLY_ID => reply::on_escrow_instantiate_reply(deps, msg),
-        IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_escrow_instantiate_reply(deps, msg),
+        IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
+        IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

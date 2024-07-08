@@ -32,7 +32,7 @@ use crate::{
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_receive(
-    deps: DepsMut,
+    _deps: DepsMut,
     env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
@@ -46,10 +46,10 @@ pub fn ibc_packet_receive(
     });
     let sub_msg = SubMsg::reply_always(internal_msg, IBC_RECEIVE_REPLY_ID);
     Ok(IbcReceiveResponse::new()
-        .add_submessage(sub_msg)
-        .add_attribute("ibc_ack", format!("{msg:?}"))
+        .add_attribute("ibc_receive", msg.packet.data.to_string())
         .add_attribute("method", "ibc_packet_receive")
-        .set_ack(make_ack_fail("deafult_fail".to_string())?))
+        .set_ack(make_ack_fail("deafult_fail".to_string())?)
+        .add_submessage(sub_msg))
 }
 
 pub fn ibc_receive_internal_call(
@@ -361,7 +361,7 @@ fn ibc_execute_swap(
         ContractError::TxAlreadyExist {}
     );
 
-    SWAP_ID_TO_MSG.save(deps.storage, req_key, &msg);
+    SWAP_ID_TO_MSG.save(deps.storage, req_key, &msg)?;
 
     let mut response = Response::new().add_event(tx_event(
         &msg.tx_id,
@@ -426,8 +426,8 @@ fn ibc_execute_swap(
     let swap_msg = msgs::vlp::ExecuteMsg::Swap {
         sender: sender.clone(),
         asset_in: msg.asset_in.clone(),
-        amount_in: msg.amount_in.clone(),
-        min_token_out: msg.min_amount_out.clone(),
+        amount_in: msg.amount_in,
+        min_token_out: msg.min_amount_out,
         next_swaps: next_swaps.to_vec(),
         tx_id: msg.tx_id.clone(),
     };

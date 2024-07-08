@@ -4,7 +4,7 @@ use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use crate::{
     chain::{ChainUid, CrossChainUser},
     swap::NextSwapPair,
-    token::Token,
+    token::{Pair, Token},
 };
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -54,7 +54,7 @@ pub enum QueryMsg {
     #[returns(AllChainResponse)]
     GetAllChains {},
     #[returns(VlpResponse)]
-    GetVlp { token_1: Token, token_2: Token },
+    GetVlp { pair: Pair },
     #[returns(AllVlpResponse)]
     GetAllVlps {
         start: Option<(Token, Token)>,

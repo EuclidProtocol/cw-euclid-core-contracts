@@ -39,14 +39,13 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
     let pools = PAIR_TO_VLP
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .map(|item| -> Result<_, ContractError> {
+        .flat_map(|item| -> Result<_, ContractError> {
             let item = item.unwrap();
             Ok(PoolVlpResponse {
                 pair: Pair::new(item.0 .0, item.0 .1)?,
                 vlp: item.1,
             })
         })
-        .flatten()
         .collect();
 
     to_json_binary(&AllPoolsResponse { pools }).map_err(Into::into)
@@ -88,8 +87,7 @@ pub fn pending_liquidity(
     let pending_add_liquidity = PENDING_ADD_LIQUIDITY
         .prefix(user)
         .range(deps.storage, None, None, Order::Ascending)
-        .map(|k| -> Result<_, ContractError> { Ok(k?.1) })
-        .flatten()
+        .flat_map(|k| -> Result<_, ContractError> { Ok(k?.1) })
         .collect();
 
     Ok(to_json_binary(&GetPendingLiquidityResponse {
@@ -107,8 +105,7 @@ pub fn pending_remove_liquidity(
     let pending_remove_liquidity = PENDING_REMOVE_LIQUIDITY
         .prefix(user)
         .range(deps.storage, None, None, Order::Ascending)
-        .map(|k| -> Result<_, ContractError> { Ok(k?.1) })
-        .flatten()
+        .flat_map(|k| -> Result<_, ContractError> { Ok(k?.1) })
         .collect();
 
     Ok(to_json_binary(&GetPendingRemoveLiquidityResponse {
