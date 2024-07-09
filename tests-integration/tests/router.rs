@@ -1,5 +1,3 @@
-#![cfg(not(target_arch = "wasm32"))]
-
 use cosmwasm_std::{coin, Addr};
 use euclid::{mock::mock_app, mock_builder::MockEuclidBuilder, msgs::router::StateResponse};
 

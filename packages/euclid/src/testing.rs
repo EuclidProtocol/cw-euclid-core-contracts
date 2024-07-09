@@ -1,4 +1,4 @@
-// #![cfg(not(target_arch = "wasm32"))]
+// #!
 
 // use cosmwasm_std::Empty;
 // use cw_multi_test::Contract;

@@ -1,4 +1,4 @@
-#![cfg(not(target_arch = "wasm32"))]
+#!
 use crate::contract::{execute, instantiate, query, reply};
 use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
