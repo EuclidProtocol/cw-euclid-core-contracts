@@ -27,8 +27,12 @@ impl Deref for Token {
 }
 
 impl Token {
-    pub fn new(id: String) -> Result<Self, ContractError> {
-        let token = Self(id);
+    fn new(id: String) -> Self {
+        Self(id)
+    }
+
+    pub fn create(id: String) -> Result<Self, ContractError> {
+        let token = Self::new(id);
         token.validate()?;
         Ok(token)
     }
@@ -38,6 +42,14 @@ impl Token {
     }
     pub fn validate(&self) -> Result<&Self, ContractError> {
         ensure!(!self.is_empty(), ContractError::InvalidTokenID {});
+
+        for c in self.0.chars() {
+            if !c.is_ascii_alphanumeric() && c != '.' {
+                return Err(ContractError::new(
+                    "Invalid Token Id format: must be lowercase, alphanumeric or '.'",
+                ));
+            }
+        }
         Ok(self)
     }
 }

@@ -10,7 +10,6 @@ use crate::{
 pub struct AddLiquidityRequest {
     pub sender: String,
     pub tx_id: String,
-
     pub token_1_liquidity: Uint128,
     pub token_2_liquidity: Uint128,
     pub pair_info: PairWithDenom,

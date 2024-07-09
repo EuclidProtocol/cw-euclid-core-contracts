@@ -7,7 +7,7 @@ use crate::{pool::Pool, swap::SwapRequest};
 
 pub fn liquidity_event(pool: &Pool, tx_id: &str) -> Event {
     Event::new("euclid")
-        .add_attribute("constant", "euclid")
+        .add_attribute("version", "0.1.0")
         .add_attribute("action", "liquidity_change")
         .add_attribute("token_1_id", pool.pair.token_1.to_string())
         .add_attribute("token_1_liquidity", pool.reserve_1)
@@ -18,7 +18,7 @@ pub fn liquidity_event(pool: &Pool, tx_id: &str) -> Event {
 
 pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
     Event::new("euclid")
-        .add_attribute("constant", "euclid")
+        .add_attribute("version", "0.1.0")
         .add_attribute("action", "swap")
         .add_attribute("tx_id", tx_id)
         .add_attribute("asset_in", swap.asset_in.token.to_string())
@@ -37,7 +37,7 @@ pub fn register_factory_event(
     router: &str,
 ) -> Event {
     Event::new("euclid")
-        .add_attribute("constant", "euclid")
+        .add_attribute("version", "0.1.0")
         .add_attribute("action", "register_factory")
         .add_attribute("factory_address", factory_address)
         .add_attribute("channel", channel)

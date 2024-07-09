@@ -21,7 +21,7 @@ fn init_escrow() {
     let env = mock_env();
 
     let msg = InstantiateMsg {
-        token_id: Token::new("eucl".to_string()).unwrap(),
+        token_id: Token::create("eucl".to_string()).unwrap(),
         allowed_denom: Some(TokenType::Native {
             denom: "eucl".to_string(),
         }),
@@ -42,7 +42,7 @@ fn test_deposit_native() {
     let info = mock_info("creator", &[]);
     let env = mock_env();
     let msg = InstantiateMsg {
-        token_id: Token::new("eucl".to_string()).unwrap(),
+        token_id: Token::create("eucl".to_string()).unwrap(),
         allowed_denom: Some(TokenType::Native {
             denom: "eucl".to_string(),
         }),

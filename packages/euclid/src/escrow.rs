@@ -7,7 +7,6 @@ use crate::{chain::CrossChainUser, token::Token};
 pub struct EscrowReleaseRequest {
     pub sender: CrossChainUser,
     pub tx_id: String,
-
     pub token: Token,
     pub amount: Uint128,
     pub to_address: String,

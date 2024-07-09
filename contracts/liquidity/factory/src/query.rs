@@ -22,7 +22,7 @@ pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
 
 // Returns the Pair Info of the Pair in the pool
 pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, Token::new(token_id)?)?;
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, Token::create(token_id)?)?;
     Ok(to_json_binary(&GetEscrowResponse { escrow_address })?)
 }
 

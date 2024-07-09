@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{StdError, StdResult, Uint128};
+use cosmwasm_std::{ensure, StdError, StdResult, Uint128};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::error::ContractError;
@@ -28,6 +28,10 @@ impl ChainUid {
         chain_uid.validate().cloned()
     }
     pub fn validate(&self) -> Result<&Self, ContractError> {
+        ensure!(
+            !self.0.is_empty(),
+            ContractError::new("Chain UID cannot be empty")
+        );
         for c in self.0.chars() {
             if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '.' {
                 return Err(ContractError::new(
