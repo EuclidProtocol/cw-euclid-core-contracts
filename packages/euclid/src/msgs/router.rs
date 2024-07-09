@@ -2,7 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
 use crate::{
-    chain::{ChainUid, CrossChainUser},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
     token::{Pair, Token},
 };
@@ -29,7 +29,7 @@ pub enum ExecuteMsg {
         sender: CrossChainUser,
         token: Token,
         amount: Uint128,
-        cross_chain_addresses: Vec<CrossChainUser>,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
         tx_id: String,
     },

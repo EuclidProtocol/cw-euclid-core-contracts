@@ -172,11 +172,11 @@ pub fn calculate_lp_allocation(
         let sq_root = Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?);
         return Ok(sq_root.checked_sub(Uint128::new(MINIMUM_LIQUIDITY))?);
     }
-    let share_1 = token_1_amount.checked_div(total_liquidity_1)?;
-    let share_2 = token_2_amount.checked_div(total_liquidity_2)?;
 
-    // LP allocation is minimum of the two shares multiplied by the total_lp_supply
-    let lp_allocation = share_1.min(share_2).checked_mul(total_lp_supply)?;
+    let lp_allocation = token_1_amount
+        .checked_multiply_ratio(total_lp_supply, total_liquidity_1)?
+        .min(token_2_amount.checked_multiply_ratio(total_lp_supply, total_liquidity_2)?);
+
     Ok(lp_allocation)
 }
 

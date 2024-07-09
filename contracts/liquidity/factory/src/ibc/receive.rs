@@ -70,7 +70,7 @@ pub fn ibc_receive_internal_call(
             token,
             to_address,
             ..
-        } => execute_release_escrow(deps, env, channel, amount, token, to_address),
+        } => execute_release_escrow(deps, env, amount, token, to_address),
     }
 }
 
@@ -107,7 +107,6 @@ fn execute_register_router(
 fn execute_release_escrow(
     deps: DepsMut,
     env: Env,
-    channel: String,
     amount: Uint128,
     token: Token,
     to_address: String,
@@ -122,7 +121,7 @@ fn execute_release_escrow(
         chain_id: env.block.chain_id,
         amount,
         token: token.clone(),
-        to_address,
+        to_address: to_address.clone(),
     };
 
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
@@ -139,6 +138,6 @@ fn execute_release_escrow(
             funds: vec![],
         }))
         .add_attribute("method", "release escrow")
-        .add_attribute("channel", channel)
+        .add_attribute("to_address", to_address)
         .set_data(ack))
 }

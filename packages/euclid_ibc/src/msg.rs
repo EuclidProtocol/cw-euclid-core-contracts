@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
     token::{Pair, Token},
 };
@@ -72,7 +72,7 @@ pub struct ChainIbcRemoveLiquidityExecuteMsg {
     pub pair: Pair,
 
     // First element in array has highest priority
-    pub cross_chain_addresses: Vec<CrossChainUser>,
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 
     // Unique per tx
     pub tx_id: String,
@@ -91,7 +91,7 @@ pub struct ChainIbcSwapExecuteMsg {
     pub swaps: Vec<NextSwapPair>,
 
     // First element in array has highest priority
-    pub cross_chain_addresses: Vec<CrossChainUser>,
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 
     // Unique per tx
     pub tx_id: String,

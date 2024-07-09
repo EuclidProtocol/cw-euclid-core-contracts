@@ -1,5 +1,5 @@
 use crate::{
-    chain::{ChainUid, CrossChainUser},
+    chain::{ChainUid, CrossChainUserWithLimit},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
@@ -45,7 +45,7 @@ pub enum ExecuteMsg {
         lp_allocation: Uint128,
         timeout: Option<u64>,
         // First element in array has highest priority
-        cross_chain_addresses: Vec<CrossChainUser>,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         tx_id: String,
     },
     ExecuteSwapRequest {
@@ -56,7 +56,7 @@ pub enum ExecuteMsg {
         timeout: Option<u64>,
         swaps: Vec<NextSwapPair>,
         // First element in array has highest priority
-        cross_chain_addresses: Vec<CrossChainUser>,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         tx_id: String,
 
         partner_fee: Option<Decimal>,

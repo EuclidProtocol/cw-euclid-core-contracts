@@ -5,13 +5,13 @@ use cosmwasm_std::{
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
-    events::{tx_event, TxType},
+    events::{liquidity_event, tx_event, TxType},
     liquidity::AddLiquidityResponse,
     msgs::{
         vcoin::ExecuteTransfer,
         vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
-    pool::{PoolCreationResponse, MINIMUM_LIQUIDITY},
+    pool::{Pool, PoolCreationResponse},
     swap::NextSwapVlp,
     token::{Pair, Token},
 };
@@ -103,20 +103,6 @@ pub fn add_liquidity(
     slippage_tolerance: u64,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    ensure!(
-        token_1_liquidity.u128() > MINIMUM_LIQUIDITY,
-        ContractError::Generic {
-            err: format!("Atleast provided {MINIMUM_LIQUIDITY} liquidity")
-        }
-    );
-
-    ensure!(
-        token_2_liquidity.u128() > MINIMUM_LIQUIDITY,
-        ContractError::Generic {
-            err: format!("Atleast provided {MINIMUM_LIQUIDITY} liquidity")
-        }
-    );
-
     let mut chain_lp_shares = CHAIN_LP_SHARES.load(deps.storage, sender.chain_uid.clone())?;
 
     let mut state = STATE.load(deps.storage)?;
@@ -174,14 +160,14 @@ pub fn add_liquidity(
 
     BALANCES.save(
         deps.storage,
-        pair.token_1,
+        pair.token_1.clone(),
         &total_reserve_1,
         env.block.height,
     )?;
 
     BALANCES.save(
         deps.storage,
-        pair.token_2,
+        pair.token_2.clone(),
         &total_reserve_2,
         env.block.height,
     )?;
@@ -202,12 +188,19 @@ pub fn add_liquidity(
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
+    let pool = Pool {
+        pair,
+        reserve_1: total_reserve_1,
+        reserve_2: total_reserve_2,
+    };
+
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
             TxType::AddLiquidity,
         ))
+        .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "add_liquidity")
         .add_attribute("sender", sender.to_sender_string())
         .add_attribute("lp_allocation", lp_allocation)
@@ -260,14 +253,14 @@ pub fn remove_liquidity(
 
     BALANCES.save(
         deps.storage,
-        pair.token_1,
+        pair.token_1.clone(),
         &total_reserve_1,
         env.block.height,
     )?;
 
     BALANCES.save(
         deps.storage,
-        pair.token_2,
+        pair.token_2.clone(),
         &total_reserve_2,
         env.block.height,
     )?;
@@ -290,12 +283,19 @@ pub fn remove_liquidity(
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
+    let pool = Pool {
+        pair,
+        reserve_1: total_reserve_1,
+        reserve_2: total_reserve_2,
+    };
+
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
             TxType::RemoveLiquidity,
         ))
+        .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "remove_liquidity")
         .add_attribute("sender", sender.to_sender_string())
         .add_attribute("token_1_removed_liquidity", token_1_liquidity)
@@ -313,10 +313,15 @@ pub fn execute_swap(
     min_token_out: Uint128,
     tx_id: String,
     next_swaps: Vec<NextSwapVlp>,
+    test_fail: Option<bool>,
 ) -> Result<Response, ContractError> {
     // TODO: Check for pool liquidity balance and balance in vcoin
     // Router mints new tokens for this vlp so amount_in = vcoin_balance - pool_current_liquidity
 
+    ensure!(
+        !test_fail.unwrap_or(false),
+        ContractError::new("Force fail flag")
+    );
     // Verify that the asset amount is non-zero
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -359,7 +364,7 @@ pub fn execute_swap(
 
     // Verify that the receive amount is greater than the minimum token out
     ensure!(
-        !receive_amount.is_zero(),
+        receive_amount.ge(&min_token_out),
         ContractError::SlippageExceeded {
             amount: receive_amount,
             min_amount_out: min_token_out,
@@ -380,6 +385,20 @@ pub fn execute_swap(
         &token_out_reserve,
         env.block.height,
     )?;
+
+    let pool = Pool {
+        pair: state.pair.clone(),
+        reserve_1: if state.pair.token_1 == asset_in {
+            token_in_reserve
+        } else {
+            token_out_reserve
+        },
+        reserve_2: if state.pair.token_1 == asset_out {
+            token_out_reserve
+        } else {
+            token_in_reserve
+        },
+    };
 
     STATE.save(deps.storage, &state)?;
 
@@ -431,6 +450,7 @@ pub fn execute_swap(
                 min_token_out,
                 tx_id: tx_id.clone(),
                 next_swaps: forward_swaps.to_vec(),
+                test_fail: next_swap.test_fail,
             };
             let next_swap_msg = WasmMsg::Execute {
                 contract_addr: next_swap.vlp_address.clone(),
@@ -490,6 +510,7 @@ pub fn execute_swap(
 
     Ok(response
         .add_event(tx_event(&tx_id, &sender.to_sender_string(), TxType::Swap))
+        .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "swap")
         .add_attribute("amount_in", amount_in)
         .add_attribute("total_fee", fee_amount)

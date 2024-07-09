@@ -2,7 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{IbcTimeout, Uint128};
 
 use crate::{
-    chain::CrossChainUser,
+    chain::CrossChainUserWithLimit,
     token::{Token, TokenWithDenom},
 };
 
@@ -25,7 +25,7 @@ pub struct SwapRequest {
     // The timeout specified for the swap
     pub timeout: IbcTimeout,
 
-    pub cross_chain_addresses: Vec<CrossChainUser>,
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 }
 
 #[cw_serde]

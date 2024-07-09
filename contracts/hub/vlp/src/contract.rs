@@ -98,6 +98,7 @@ pub fn execute(
             min_token_out,
             tx_id,
             next_swaps,
+            test_fail,
         } => execute::execute_swap(
             deps,
             env,
@@ -107,6 +108,7 @@ pub fn execute(
             min_token_out,
             tx_id,
             next_swaps,
+            test_fail,
         ),
     }
 }

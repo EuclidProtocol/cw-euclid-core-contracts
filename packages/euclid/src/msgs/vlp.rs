@@ -32,6 +32,7 @@ pub enum ExecuteMsg {
         amount_in: Uint128,
         min_token_out: Uint128,
         next_swaps: Vec<NextSwapVlp>,
+        test_fail: Option<bool>,
     },
     AddLiquidity {
         sender: CrossChainUser,

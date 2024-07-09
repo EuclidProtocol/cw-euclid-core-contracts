@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
-    chain::CrossChainUser,
+    chain::{CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{swap_event, tx_event},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
@@ -271,7 +271,7 @@ pub fn remove_liquidity_request(
     pair: Pair,
     lp_allocation: Uint128,
     timeout: Option<u64>,
-    mut cross_chain_addresses: Vec<CrossChainUser>,
+    mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     pair.validate()?;
@@ -286,7 +286,10 @@ pub fn remove_liquidity_request(
         chain_uid: state.chain_uid,
     };
 
-    cross_chain_addresses.push(sender.clone());
+    cross_chain_addresses.push(CrossChainUserWithLimit {
+        user: sender.clone(),
+        limit: None,
+    });
 
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
@@ -308,6 +311,7 @@ pub fn remove_liquidity_request(
         lp_allocation,
         pair: pair.clone(),
         tx_id: tx_id.clone(),
+        cross_chain_addresses: cross_chain_addresses.clone(),
     };
 
     PENDING_REMOVE_LIQUIDITY.save(
@@ -355,7 +359,7 @@ pub fn execute_swap_request(
     min_amount_out: Uint128,
     swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
-    mut cross_chain_addresses: Vec<CrossChainUser>,
+    mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     tx_id: String,
     partner_fee: Option<Decimal>,
 ) -> Result<Response, ContractError> {
@@ -364,7 +368,10 @@ pub fn execute_swap_request(
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
-    cross_chain_addresses.push(sender.clone());
+    cross_chain_addresses.push(CrossChainUserWithLimit {
+        user: sender.clone(),
+        limit: None,
+    });
 
     let partner_fee = amount_in.checked_mul_ceil(partner_fee.unwrap_or(Decimal::zero()))?;
 

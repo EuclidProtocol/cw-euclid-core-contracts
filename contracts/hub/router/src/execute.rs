@@ -3,7 +3,7 @@ use cosmwasm_std::{
     SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
     msgs::vcoin::ExecuteBurn,
@@ -93,7 +93,7 @@ pub fn execute_release_escrow(
     sender: CrossChainUser,
     token: Token,
     amount: Uint128,
-    cross_chain_addresses: Vec<CrossChainUser>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
@@ -135,11 +135,12 @@ pub fn execute_release_escrow(
         let cross_chain_address = cross_chain_addresses_iterator
             .next()
             .ok_or(ContractError::new("Cross Chain Address Iter Faiiled"))?;
-        let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.chain_uid.clone())?;
+        let chain =
+            CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
         let escrow_balance = ESCROW_BALANCES
             .may_load(
                 deps.storage,
-                (token.clone(), cross_chain_address.chain_uid.clone()),
+                (token.clone(), cross_chain_address.user.chain_uid.clone()),
             )?
             .unwrap_or(Uint128::zero());
 
@@ -148,6 +149,8 @@ pub fn execute_release_escrow(
         } else {
             amount
         };
+
+        let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
 
         if release_amount.is_zero() {
             continue;
@@ -160,7 +163,7 @@ pub fn execute_release_escrow(
             sender: sender.clone(),
             amount: release_amount,
             token: token.clone(),
-            to_address: cross_chain_address.address.clone(),
+            to_address: cross_chain_address.user.address.clone(),
             tx_id: tx_id.clone(),
         };
         let packet = IbcMsg::SendPacket {
@@ -195,9 +198,11 @@ pub fn execute_release_escrow(
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            TxType::RegisterFactory,
+            TxType::EscrowRelease,
         ))
         .add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID))
         .add_attribute("method", "release_escrow")
+        .add_attribute("release_expected", amount)
+        .add_attribute("actual_released", transfer_amount)
         .add_messages(ibc_messages))
 }

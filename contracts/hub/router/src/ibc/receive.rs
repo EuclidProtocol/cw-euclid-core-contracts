@@ -430,6 +430,7 @@ fn ibc_execute_swap(
         min_token_out: msg.min_amount_out,
         next_swaps: next_swaps.to_vec(),
         tx_id: msg.tx_id.clone(),
+        test_fail: first_swap.test_fail,
     };
 
     let msg = WasmMsg::Execute {

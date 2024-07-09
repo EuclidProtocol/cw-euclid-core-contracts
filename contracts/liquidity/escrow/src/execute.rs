@@ -87,9 +87,10 @@ pub fn execute_deposit_native(
     );
 
     // Only the factory can call this function
-    let factory_address = STATE.load(deps.storage)?.factory_address;
+    let mut state = STATE.load(deps.storage)?;
+
     ensure!(
-        info.sender == factory_address,
+        info.sender == state.factory_address,
         ContractError::Unauthorized {}
     );
 
@@ -116,10 +117,13 @@ pub fn execute_deposit_native(
         // Add the sent amount to current balance and save it
         DENOM_TO_AMOUNT.save(
             deps.storage,
-            token.denom,
+            token_type.get_key(),
             &current_balance.checked_add(token.amount)?,
         )?;
+        state.total_amount = state.total_amount.checked_add(token.amount)?;
     }
+
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new().add_attribute("method", "deposit"))
 }
@@ -198,9 +202,9 @@ pub fn execute_withdraw(
     amount: Uint128,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
-    let factory_address = STATE.load(deps.storage)?.factory_address;
+    let mut state = STATE.load(deps.storage)?;
     ensure!(
-        info.sender == factory_address,
+        info.sender == state.factory_address,
         ContractError::Unauthorized {}
     );
     // Ensure that the amount desired is above zero
@@ -240,6 +244,9 @@ pub fn execute_withdraw(
         remaining_withdraw_amount.is_zero(),
         ContractError::InsufficientDeposit {}
     );
+
+    state.total_amount = state.total_amount.checked_sub(amount)?;
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_messages(messages)

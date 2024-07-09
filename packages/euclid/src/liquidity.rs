@@ -1,7 +1,10 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 
-use crate::token::{Pair, PairWithDenom};
+use crate::{
+    chain::CrossChainUserWithLimit,
+    token::{Pair, PairWithDenom},
+};
 
 #[cw_serde]
 pub struct AddLiquidityRequest {
@@ -31,6 +34,8 @@ pub struct RemoveLiquidityRequest {
 
     pub lp_allocation: Uint128,
     pub pair: Pair,
+
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 }
 // Struct to handle Acknowledgement Response for a Liquidity Request
 #[cw_serde]

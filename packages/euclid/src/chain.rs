@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{StdError, StdResult};
+use cosmwasm_std::{StdError, StdResult, Uint128};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::error::ContractError;
@@ -87,4 +87,10 @@ impl CrossChainUser {
             address = self.address.as_str()
         )
     }
+}
+
+#[cw_serde]
+pub struct CrossChainUserWithLimit {
+    pub user: CrossChainUser,
+    pub limit: Option<Uint128>,
 }
