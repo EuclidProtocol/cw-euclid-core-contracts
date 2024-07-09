@@ -56,7 +56,7 @@ fn test_deposit_native() {
     assert_eq!(err, ContractError::InsufficientDeposit {});
 
     // Unauthorized sender (address that instantiated the contract is set as factory, which is the only authorized address)
-    let info = mock_info("not_factory", &[]);
+    let info = mock_info("not_factory", &[coin(100_u128, "usdc")]);
     let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
     assert_eq!(err, ContractError::Unauthorized {});
 
