@@ -6,4 +6,5 @@ pub mod reply;
 pub mod state;
 
 pub mod mock;
+#[cfg(test)]
 mod test;

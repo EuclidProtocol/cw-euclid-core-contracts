@@ -1,12 +1,11 @@
-#!
+#![cfg(not(target_arch = "wasm32"))]
+
 use crate::contract::{execute, instantiate, query, reply};
 use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
 
-use euclid::{
-    mock::MockApp,
-    msgs::router::{InstantiateMsg, QueryMsg, StateResponse},
-};
+use euclid::msgs::router::{InstantiateMsg, QueryMsg, StateResponse};
+use mock::mock::MockApp;
 
 pub struct MockRouter(Addr);
 impl MockRouter {

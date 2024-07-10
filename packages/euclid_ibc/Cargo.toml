@@ -12,4 +12,4 @@ itertools = "0.10"
 cosmwasm-schema = "1.1"
 cw-utils = "1.0"
 thiserror = { version = "1.0.49" }
-euclid = {workspace = true}
+euclid = { workspace = true }

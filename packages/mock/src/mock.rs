@@ -1,5 +1,3 @@
-#!
-
 use std::collections::HashMap;
 
 use cosmwasm_std::{coin, BlockInfo, Decimal, Timestamp, Validator};

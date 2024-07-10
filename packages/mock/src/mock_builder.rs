@@ -1,7 +1,8 @@
 use cosmwasm_std::{Addr, Coin, Empty};
-use cw_multi_test::{Contract, Executor};
+use cw_multi_test::Contract;
 
-use crate::mock::{MockApp, MockEuclid};
+use super::mock::{MockApp, MockEuclid};
+use cw_multi_test::Executor;
 
 pub struct MockEuclidBuilder {
     contracts: Vec<(&'static str, Box<dyn Contract<Empty>>)>,

@@ -1,12 +1,12 @@
-#![cfg(all(not(target_arch = "wasm32")))]
+#![cfg(not(target_arch = "wasm32"))]
 
 use crate::contract::{execute, instantiate, query, reply};
 use cosmwasm_std::{Addr, Coin, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
 use euclid::fee::Fee;
-use euclid::mock::MockApp;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use euclid::token::Pair;
+use mock::mock::MockApp;
 
 pub struct MockVlp(Addr);
 

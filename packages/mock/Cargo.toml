@@ -1,5 +1,5 @@
 [package]
-name = "euclid"
+name = "mock"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,3 +16,6 @@ cw20 = { workspace = true }
 serde = { workspace = true }
 schemars = { workspace = true }
 anyhow = "1.0.79"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cw-multi-test = { version = "1.0.0", features = ["cosmwasm_1_2"] }

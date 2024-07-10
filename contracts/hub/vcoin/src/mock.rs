@@ -1,8 +1,10 @@
-#!
+#![cfg(not(target_arch = "wasm32"))]
+
 use crate::contract::{execute, instantiate, query};
 use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
-use euclid::{mock::MockApp, msgs::vcoin::InstantiateMsg};
+use euclid::msgs::vcoin::InstantiateMsg;
+use mock::mock::MockApp;
 
 pub struct MockVcoin(Addr);
 

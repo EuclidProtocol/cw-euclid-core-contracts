@@ -1,10 +1,12 @@
-use crate::mock::MockApp;
 pub use anyhow::Result as AnyResult;
 use core::fmt;
 use cosmwasm_std::{Addr, Coin};
-use cw_multi_test::{AppResponse, Executor};
+use cw_multi_test::AppResponse;
 use serde::{de::DeserializeOwned, Serialize};
+
+use super::mock::MockApp;
 pub type ExecuteResult = AnyResult<AppResponse>;
+use cw_multi_test::Executor;
 
 pub trait MockContract<E: Serialize + fmt::Debug, Q: Serialize + fmt::Debug> {
     fn addr(&self) -> &Addr;
