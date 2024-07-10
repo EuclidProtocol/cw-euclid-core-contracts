@@ -333,7 +333,7 @@ pub fn execute_swap(
     // Get Fee from the state
     let fee = state.clone().fee;
 
-    // Calcuate the sum of fees
+    // Calculate the sum of fees
     let total_fee = fee
         .lp_fee
         .checked_add(fee.staker_fee)
