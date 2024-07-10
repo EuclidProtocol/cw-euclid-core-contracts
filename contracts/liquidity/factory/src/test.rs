@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use crate::contract::instantiate;
+    use crate::contract::{execute, instantiate};
     use crate::execute::{
         add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
         execute_swap_request,
     };
     use crate::query::{pending_liquidity, pending_swaps, query_all_pools, query_state};
-    use crate::state::{State, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW};
+    use crate::state::{State, HUB_CHANNEL, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW};
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{
@@ -14,7 +14,8 @@ mod tests {
         IbcTimeoutBlock, Response, SubMsg, Uint128, WasmMsg,
     };
     use euclid::chain::ChainUid;
-    use euclid::msgs::factory::{AllPoolsResponse, InstantiateMsg, StateResponse};
+    use euclid::error::ContractError;
+    use euclid::msgs::factory::{AllPoolsResponse, ExecuteMsg, InstantiateMsg, StateResponse};
     use euclid::token::{Token, TokenType};
     use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcSwapExecuteMsg};
 
@@ -51,6 +52,28 @@ mod tests {
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
+    }
+    #[test]
+    fn test_update_hub_channel() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let info = mock_info("not_owner", &[]);
+        init(deps.as_mut());
+
+        HUB_CHANNEL
+            .save(deps.as_mut().storage, &"1".to_string())
+            .unwrap();
+        let msg = ExecuteMsg::UpdateHubChannel {
+            new_channel: "2".to_string(),
+        };
+        // Unauthorized
+        let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+
+        let info = mock_info("owner", &[]);
+        let _res = execute(deps.as_mut(), env, info, msg).unwrap();
+
+        assert_eq!(HUB_CHANNEL.load(&deps.storage).unwrap(), "2".to_string());
     }
 
     //     #[test]
