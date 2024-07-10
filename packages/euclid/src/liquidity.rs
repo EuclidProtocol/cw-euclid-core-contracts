@@ -1,29 +1,48 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 
-use crate::{error::ContractError, token::PairInfo};
+use crate::{
+    chain::CrossChainUserWithLimit,
+    token::{Pair, PairWithDenom},
+};
 
 #[cw_serde]
-pub struct LiquidityTxInfo {
+pub struct AddLiquidityRequest {
     pub sender: String,
+    pub tx_id: String,
     pub token_1_liquidity: Uint128,
     pub token_2_liquidity: Uint128,
-    pub liquidity_id: String,
+    pub pair_info: PairWithDenom,
+}
+
+// Struct to handle Acknowledgement Response for a Liquidity Request
+#[cw_serde]
+pub struct AddLiquidityResponse {
+    pub token_1_liquidity: Uint128,
+    pub token_2_liquidity: Uint128,
+    pub mint_lp_tokens: Uint128,
+    pub reserve_1: Uint128,
+    pub reserve_2: Uint128,
     pub vlp_address: String,
-    pub pair_info: PairInfo,
 }
 
 #[cw_serde]
-pub struct LiquidityExtractedId {
+pub struct RemoveLiquidityRequest {
     pub sender: String,
-    pub index: u128,
-}
+    pub tx_id: String,
 
-// Function to extract sender from swap_id
-pub fn parse_liquidity_id(liquidity_id: &str) -> Result<LiquidityExtractedId, ContractError> {
-    let parsed: Vec<&str> = liquidity_id.split('-').collect();
-    Ok(LiquidityExtractedId {
-        sender: parsed[0].to_string(),
-        index: parsed[1].parse()?,
-    })
+    pub lp_allocation: Uint128,
+    pub pair: Pair,
+
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+}
+// Struct to handle Acknowledgement Response for a Liquidity Request
+#[cw_serde]
+pub struct RemoveLiquidityResponse {
+    pub token_1_liquidity: Uint128,
+    pub token_2_liquidity: Uint128,
+    pub burn_lp_tokens: Uint128,
+    pub reserve_1: Uint128,
+    pub reserve_2: Uint128,
+    pub vlp_address: String,
 }

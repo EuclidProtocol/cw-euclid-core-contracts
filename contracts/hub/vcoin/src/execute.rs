@@ -1,5 +1,6 @@
 use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, Uint128};
 use euclid::{
+    chain::ChainUid,
     error::ContractError,
     msgs::vcoin::{ExecuteBurn, ExecuteMint, ExecuteTransfer},
     vcoin::BalanceKey,
@@ -29,8 +30,14 @@ pub fn execute_mint(
     Ok(Response::new()
         .add_attribute("action", "execute_mint")
         .add_attribute("mint_amount", msg.amount)
-        .add_attribute("mint_address", msg.balance_key.address)
-        .add_attribute("mint_address_chain", msg.balance_key.chain_id)
+        .add_attribute(
+            "mint_address",
+            msg.balance_key.cross_chain_user.to_sender_string(),
+        )
+        .add_attribute(
+            "mint_address_chain",
+            msg.balance_key.cross_chain_user.chain_uid.to_string(),
+        )
         .add_attribute("mint_token_id", msg.balance_key.token_id)
         .add_attribute("new_balance", new_balance))
 }
@@ -57,8 +64,14 @@ pub fn execute_burn(
     Ok(Response::new()
         .add_attribute("action", "execute_burn")
         .add_attribute("burn_amount", msg.amount)
-        .add_attribute("burn_address", msg.balance_key.address)
-        .add_attribute("burn_address_chain", msg.balance_key.chain_id)
+        .add_attribute(
+            "burn_address",
+            msg.balance_key.cross_chain_user.to_sender_string(),
+        )
+        .add_attribute(
+            "burn_address_chain",
+            msg.balance_key.cross_chain_user.chain_uid.to_string(),
+        )
         .add_attribute("burn_token_id", msg.balance_key.token_id)
         .add_attribute("new_balance", new_balance))
 }
@@ -74,21 +87,20 @@ pub fn execute_transfer(
     // Router can send on behalf of anyone, or any user can transfer his own funds
     ensure!(
         state.router == info.sender
-            || (msg.from_address == info.sender && msg.from_chain_id == env.block.chain_id),
+            || (msg.from.address == info.sender
+                && msg.from.chain_uid == ChainUid::vsl_chain_uid()?),
         ContractError::Unauthorized {}
     );
 
     let sender_balance_key = BalanceKey {
         token_id: msg.token_id.clone(),
-        address: msg.from_address,
-        chain_id: msg.from_chain_id,
+        cross_chain_user: msg.from,
     };
     let sender_key = sender_balance_key.clone().to_serialized_balance_key();
 
     let receiver_balance_key = BalanceKey {
         token_id: msg.token_id.clone(),
-        address: msg.to_address,
-        chain_id: msg.to_chain_id,
+        cross_chain_user: msg.to,
     };
     let receiver_key = receiver_balance_key.clone().to_serialized_balance_key();
 

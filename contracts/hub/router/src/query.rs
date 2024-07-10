@@ -1,15 +1,17 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order};
+use cw_storage_plus::Bound;
 use euclid::{
+    chain::ChainUid,
     error::ContractError,
     msgs::router::{
         AllChainResponse, AllVlpResponse, ChainResponse, QuerySimulateSwap, SimulateSwapResponse,
-        StateResponse, SwapOutChain, VlpResponse,
+        StateResponse, VlpResponse,
     },
-    swap::NextSwap,
-    token::Token,
+    swap::{NextSwapPair, NextSwapVlp},
+    token::{Pair, Token},
 };
 
-use crate::state::{CHAIN_ID_TO_CHAIN, ESCROW_BALANCES, STATE, VLPS};
+use crate::state::{CHAIN_UID_TO_CHAIN, STATE, VLPS};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -20,9 +22,20 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     })?)
 }
 
-pub fn query_all_vlps(deps: Deps) -> Result<Binary, ContractError> {
+pub fn query_all_vlps(
+    deps: Deps,
+    start: Option<(Token, Token)>,
+    end: Option<(Token, Token)>,
+    skip: Option<usize>,
+    limit: Option<usize>,
+) -> Result<Binary, ContractError> {
+    let start = start.map(Bound::inclusive);
+    let end: Option<Bound<(Token, Token)>> = end.map(Bound::exclusive);
+
     let vlps: Result<_, ContractError> = VLPS
-        .range(deps.storage, None, None, Order::Ascending)
+        .range(deps.storage, start, end, Order::Ascending)
+        .skip(skip.unwrap_or(0))
+        .take(limit.unwrap_or(10))
         .map(|v| {
             let v = v?;
             Ok(VlpResponse {
@@ -36,41 +49,66 @@ pub fn query_all_vlps(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&AllVlpResponse { vlps: vlps? })?)
 }
 
-pub fn query_vlp(deps: Deps, token_1: Token, token_2: Token) -> Result<Binary, ContractError> {
-    let vlp = VLPS.load(deps.storage, (token_1.clone(), token_2.clone()))?;
+pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
+    let key = pair.get_tupple();
+    let vlp = VLPS.load(deps.storage, key.clone())?;
 
     Ok(to_json_binary(&VlpResponse {
         vlp,
-        token_1,
-        token_2,
+        token_1: key.0,
+        token_2: key.1,
     })?)
 }
 
 pub fn query_all_chains(deps: Deps) -> Result<Binary, ContractError> {
-    let chains: Result<_, ContractError> = CHAIN_ID_TO_CHAIN
+    let chains: Result<_, ContractError> = CHAIN_UID_TO_CHAIN
         .range(deps.storage, None, None, Order::Ascending)
         .map(|v| {
             let v = v?;
-            Ok(ChainResponse { chain: v.1 })
+            Ok(ChainResponse {
+                chain: v.1,
+                chain_uid: v.0,
+            })
         })
         .collect();
 
     Ok(to_json_binary(&AllChainResponse { chains: chains? })?)
 }
 
-pub fn query_chain(deps: Deps, chain_id: String) -> Result<Binary, ContractError> {
-    let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, chain_id)?;
-    Ok(to_json_binary(&ChainResponse { chain })?)
+pub fn query_chain(deps: Deps, chain_uid: ChainUid) -> Result<Binary, ContractError> {
+    let chain_uid = chain_uid.validate()?.to_owned();
+    let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+    Ok(to_json_binary(&ChainResponse { chain, chain_uid })?)
 }
 
 pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary, ContractError> {
+    let first_swap = msg.swaps.first().ok_or(ContractError::Generic {
+        err: "Swaps cannot be empty".to_string(),
+    })?;
+
+    let last_swap = msg.swaps.last().ok_or(ContractError::Generic {
+        err: "Swaps cannot be empty".to_string(),
+    })?;
+
     ensure!(
-        validate_swap_vlps(deps, &msg.swaps).is_ok(),
+        first_swap.token_in == msg.asset_in,
+        ContractError::new("Asset IN doen't match router")
+    );
+
+    ensure!(
+        last_swap.token_out == msg.asset_out,
+        ContractError::new("Asset OUT doen't match router")
+    );
+
+    let swap_vlps = validate_swap_pairs(deps, &msg.swaps);
+    ensure!(
+        swap_vlps.is_ok(),
         ContractError::Generic {
             err: "VLPS listed in swaps are not registered".to_string()
         }
     );
-    let (first_swap, next_swaps) = msg.swaps.split_first().ok_or(ContractError::Generic {
+    let swap_vlps = swap_vlps?;
+    let (first_swap, next_swaps) = swap_vlps.split_first().ok_or(ContractError::Generic {
         err: "Swaps cannot be empty".to_string(),
     })?;
 
@@ -84,48 +122,31 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
         .querier
         .query_wasm_smart(first_swap.vlp_address.clone(), &simulate_msg)?;
 
-    let token_out_escrow_key = (simulate_res.asset_out.clone(), msg.to_chain_id.clone());
-
-    let token_out_escrow_balance = ESCROW_BALANCES
-        .may_load(deps.storage, token_out_escrow_key.clone())?
-        .unwrap_or(Uint128::zero());
-
     ensure!(
-        token_out_escrow_balance.ge(&simulate_res.amount_out),
-        ContractError::Generic {
-            err: "Insufficient Escrow Balance on out chain".to_string()
-        }
+        simulate_res.asset_out == msg.asset_out,
+        ContractError::new("Invalid Asset OUT after swap")
     );
-    let chain = CHAIN_ID_TO_CHAIN.load(deps.storage, msg.to_chain_id)?;
-
-    let out_chain = SwapOutChain {
-        amount: simulate_res.amount_out,
-        chain,
-    };
 
     Ok(to_json_binary(&SimulateSwapResponse {
         amount_out: simulate_res.amount_out,
         asset_out: simulate_res.asset_out,
-        out_chains: vec![out_chain],
     })?)
 }
 
-pub fn validate_swap_vlps(deps: Deps, swaps: &[NextSwap]) -> Result<(), ContractError> {
-    let all_vlps: Result<Vec<String>, ContractError> = VLPS
-        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .map(|item| {
-            let item = item?;
-            Ok(item.1)
+pub fn validate_swap_pairs(
+    deps: Deps,
+    swaps: &[NextSwapPair],
+) -> Result<Vec<NextSwapVlp>, ContractError> {
+    let swap_vlps: Result<_, ContractError> = swaps
+        .iter()
+        .map(|swap| -> Result<_, ContractError> {
+            let pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
+            let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
+            Ok(NextSwapVlp {
+                vlp_address,
+                test_fail: swap.test_fail,
+            })
         })
         .collect();
-
-    let all_vlps = all_vlps?;
-    // Do an early check that all vlps are present
-    for swap in swaps {
-        ensure!(
-            all_vlps.contains(&swap.vlp_address),
-            ContractError::UnsupportedOperation {}
-        );
-    }
-    Ok(())
+    swap_vlps
 }

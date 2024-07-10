@@ -1,6 +1,9 @@
 use std::num::ParseIntError;
 
-use cosmwasm_std::{DivideByZeroError, OverflowError, StdError, Uint128};
+use cosmwasm_std::{
+    CheckedMultiplyFractionError, CheckedMultiplyRatioError, DivideByZeroError, OverflowError,
+    StdError, Uint128,
+};
 
 use thiserror::Error;
 
@@ -15,6 +18,12 @@ pub enum ContractError {
     Overflow(#[from] OverflowError),
 
     #[error("{0}")]
+    CheckedMultiplyFractionError(#[from] CheckedMultiplyFractionError),
+
+    #[error("{0}")]
+    CheckedMultiplyRatioError(#[from] CheckedMultiplyRatioError),
+
+    #[error("{0}")]
     DivideByZero(#[from] DivideByZeroError),
 
     #[error("{0}")]
@@ -25,6 +34,9 @@ pub enum ContractError {
 
     #[error("Unauthorized")]
     Unauthorized {},
+
+    #[error("Tx already exist")]
+    TxAlreadyExist {},
 
     #[error("ZeroWithdrawalAmount")]
     ZeroWithdrawalAmount {},
@@ -130,4 +142,12 @@ pub enum ContractError {
 
     #[error("Pool Instantiate Failed {err}")]
     PoolInstantiateFailed { err: String },
+}
+
+impl ContractError {
+    pub fn new(err: &str) -> Self {
+        ContractError::Generic {
+            err: err.to_string(),
+        }
+    }
 }

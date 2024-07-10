@@ -1,16 +1,16 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 
-use crate::token::PairInfo;
+use crate::{
+    error::ContractError,
+    token::{Pair, PairWithDenom, Token},
+};
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
 #[cw_serde]
 pub struct Pool {
-    // The chain where the pool is deployed
-    pub chain: String,
-    // The PairInfo of the pool
-    pub pair: PairInfo,
+    pub pair: Pair,
     // The total reserve of token_1
     pub reserve_1: Uint128,
     // The total reserve of token_2
@@ -18,65 +18,38 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn new(
-        chain: impl Into<String>,
-        pair: PairInfo,
-        reserve_1: Uint128,
-        reserve_2: Uint128,
-    ) -> Pool {
+    pub fn new(pair: Pair, reserve_1: Uint128, reserve_2: Uint128) -> Pool {
         Pool {
-            chain: chain.into(),
             pair,
             reserve_1,
             reserve_2,
+        }
+    }
+
+    pub fn get_reserve(&self, token: Token) -> Result<Uint128, ContractError> {
+        if token == self.pair.token_1 {
+            Ok(self.reserve_1)
+        } else if token == self.pair.token_2 {
+            Ok(self.reserve_2)
+        } else {
+            Err(ContractError::AssetDoesNotExist {})
         }
     }
 }
 
 // Request to create pool saved in state to manage during acknowledgement
 #[cw_serde]
-pub struct PoolRequest {
-    // The chain where the pool is deployed
-    pub chain: String,
+pub struct PoolCreateRequest {
+    // Request sender
+    pub sender: String,
     // Pool request id
-    pub pool_rq_id: String,
-    // The channel where the pool is deployed
-    pub channel: String,
-    pub pair_info: PairInfo,
-}
-
-// Function to extract sender from pool_rq_id
-pub fn extract_sender(pool_rq_id: &str) -> String {
-    let parts: Vec<&str> = pool_rq_id.split('-').collect();
-    parts[0].to_string()
-}
-
-// Struct to handle Acknowledgement Response for a Liquidity Request
-#[cw_serde]
-pub struct LiquidityResponse {
-    pub token_1_liquidity: Uint128,
-    pub token_2_liquidity: Uint128,
-    pub mint_lp_tokens: Uint128,
-}
-
-// Struct to handle Acknowledgement Response for a Liquidity Request
-#[cw_serde]
-pub struct RemoveLiquidityResponse {
-    pub token_1_liquidity: Uint128,
-    pub token_2_liquidity: Uint128,
-    pub burn_lp_tokens: Uint128,
+    pub tx_id: String,
+    // Pool Pair
+    pub pair_info: PairWithDenom,
 }
 
 // Struct to handle Acknowledgement Response for a Pool Creation Request
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
-}
-
-#[cw_serde]
-pub struct WithdrawResponse {}
-
-#[cw_serde]
-pub struct InstantiateEscrowResponse {
-    pub escrow_code_id: u64,
 }

@@ -2,67 +2,75 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, Uint128, WasmMsg,
+    IbcReceiveResponse, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
+    chain::ChainUid,
     error::ContractError,
+    events::{tx_event, TxType},
     msgs::{
         escrow::ExecuteMsg as EscrowExecuteMsg,
-        factory::{RegisterFactoryResponse, ReleaseEscrowResponse},
+        factory::{ExecuteMsg, RegisterFactoryResponse, ReleaseEscrowResponse},
     },
     token::Token,
 };
 use euclid_ibc::{
-    ack::make_ack_fail,
-    msg::{AcknowledgementMsg, HubIbcExecuteMsg},
+    ack::{make_ack_fail, AcknowledgementMsg},
+    msg::HubIbcExecuteMsg,
 };
 
-use crate::state::{STATE, TOKEN_TO_ESCROW};
+use crate::{
+    reply::IBC_RECEIVE_REPLY_ID,
+    state::{HUB_CHANNEL, STATE, TOKEN_TO_ESCROW},
+};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_receive(
-    deps: DepsMut,
+    _deps: DepsMut,
     env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    // Regardless of if our processing of this packet works we need to
-    // commit an ACK to the chain. As such, we wrap all handling logic
-    // in a seprate function and on error write out an error ack.
-    match do_ibc_packet_receive(deps, env, msg) {
-        Ok(response) => Ok(response),
-        Err(error) => Ok(IbcReceiveResponse::new()
-            .add_attribute("method", "ibc_packet_receive")
-            .add_attribute("error", error.to_string())
-            .set_ack(make_ack_fail(error.to_string())?)),
-    }
+    let internal_msg = ExecuteMsg::IbcCallbackReceive {
+        receive_msg: msg.clone(),
+    };
+    let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: env.contract.address.to_string(),
+        msg: to_json_binary(&internal_msg)?,
+        funds: vec![],
+    });
+    let sub_msg = SubMsg::reply_always(internal_msg, IBC_RECEIVE_REPLY_ID);
+    Ok(IbcReceiveResponse::new()
+        .add_attribute("ibc_receive", msg.packet.data.to_string())
+        .add_attribute("method", "ibc_packet_receive")
+        .set_ack(make_ack_fail("deafult_fail".to_string())?)
+        .add_submessage(sub_msg))
 }
 
-pub fn do_ibc_packet_receive(
+pub fn ibc_receive_internal_call(
     deps: DepsMut,
     env: Env,
     msg: IbcPacketReceiveMsg,
-) -> Result<IbcReceiveResponse, ContractError> {
-    // TODO: Check for channel with hub channel in state
+) -> Result<Response, ContractError> {
+    let router = msg.packet.src.port_id.replace("wasm.", "");
+
+    // Ensure that channel is same as registered in the state
     let channel = msg.packet.dest.channel_id;
+    ensure!(
+        HUB_CHANNEL.load(deps.storage)? == channel,
+        ContractError::Unauthorized {}
+    );
+
     let msg: HubIbcExecuteMsg = from_json(msg.packet.data)?;
     match msg {
-        HubIbcExecuteMsg::RegisterFactory { router } => {
-            execute_register_router(deps, env, router, channel)
+        HubIbcExecuteMsg::RegisterFactory { chain_uid, tx_id } => {
+            execute_register_router(deps, env, router, channel, chain_uid, tx_id)
         }
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
-            token_id,
+            token,
             to_address,
-            to_chain_id,
-        } => execute_release_escrow(
-            deps,
-            env,
-            channel,
-            amount,
-            token_id,
-            to_address,
-            to_chain_id,
-        ),
+            ..
+        } => execute_release_escrow(deps, env, amount, token, to_address),
     }
 }
 
@@ -71,70 +79,65 @@ fn execute_register_router(
     env: Env,
     router: String,
     channel: String,
-) -> Result<IbcReceiveResponse, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
-    ensure!(
-        state.router_contract == router,
-        ContractError::Unauthorized {}
-    );
-    state.hub_channel = Some(channel.clone());
-
-    STATE.save(deps.storage, &state)?;
-
+    chain_uid: ChainUid,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let chain_uid = chain_uid.validate()?.to_owned();
     let ack_msg = RegisterFactoryResponse {
         factory_address: env.contract.address.to_string(),
         chain_id: env.block.chain_id,
     };
+    let state = STATE.load(deps.storage)?;
+
+    ensure!(
+        state.chain_uid == chain_uid,
+        ContractError::new("Chain UID mismatch")
+    );
 
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
-    Ok(IbcReceiveResponse::new()
+    Ok(Response::new()
+        .add_event(tx_event(&tx_id, &router, TxType::RegisterFactory))
         .add_attribute("method", "register_router")
         .add_attribute("router", router)
         .add_attribute("channel", channel)
-        .set_ack(ack))
+        .set_data(ack))
 }
 
 fn execute_release_escrow(
     deps: DepsMut,
     env: Env,
-    channel: String,
     amount: Uint128,
-    token_id: String,
+    token: Token,
     to_address: String,
-    to_chain_id: String,
-) -> Result<IbcReceiveResponse, ContractError> {
-    let state = STATE.load(deps.storage)?;
-
+) -> Result<Response, ContractError> {
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
-        recipient: to_address.clone(),
+        recipient: deps.api.addr_validate(&to_address)?,
         amount,
-        chain_id: state.chain_id,
     };
 
     let ack_msg = ReleaseEscrowResponse {
         factory_address: env.contract.address.to_string(),
         chain_id: env.block.chain_id,
         amount,
-        token_id: token_id.clone(),
-        to_address,
-        to_chain_id,
+        token: token.clone(),
+        to_address: to_address.clone(),
     };
 
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
     // Get escrow address
     let escrow_address = TOKEN_TO_ESCROW
-        .load(deps.storage, Token { id: token_id })?
+        .load(deps.storage, token.validate()?.to_owned())?
         .into_string();
 
-    Ok(IbcReceiveResponse::new()
+    Ok(Response::new()
         .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: escrow_address,
             msg: to_json_binary(&withdraw_msg)?,
             funds: vec![],
         }))
         .add_attribute("method", "release escrow")
-        .add_attribute("channel", channel)
-        .set_ack(ack))
+        .add_attribute("to_address", to_address)
+        .set_data(ack))
 }

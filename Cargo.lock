@@ -430,8 +430,11 @@ dependencies = [
  "cw-utils",
  "cw20",
  "itertools 0.10.5",
+ "proc-macro2",
+ "quote",
  "schemars",
  "serde",
+ "syn 1.0.109",
  "thiserror",
 ]
 

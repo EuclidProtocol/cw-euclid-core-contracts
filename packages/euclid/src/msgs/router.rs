@@ -1,7 +1,11 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
-use crate::{swap::NextSwap, token::Token};
+use crate::{
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    swap::NextSwapPair,
+    token::{Pair, Token},
+};
 #[cw_serde]
 pub struct InstantiateMsg {
     // Pool Code ID
@@ -16,8 +20,27 @@ pub enum ExecuteMsg {
         new_vlp_code_id: u64,
     },
     RegisterFactory {
+        chain_uid: ChainUid,
         channel: String,
         timeout: Option<u64>,
+        tx_id: String,
+    },
+    ReleaseEscrowInternal {
+        sender: CrossChainUser,
+        token: Token,
+        amount: Uint128,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        timeout: Option<u64>,
+        tx_id: String,
+    },
+
+    // IBC Callbacks
+    IbcCallbackAckAndTimeout {
+        ack: IbcPacketAckMsg,
+    },
+    // IBC Callbacks
+    IbcCallbackReceive {
+        receive_msg: IbcPacketReceiveMsg,
     },
 }
 
@@ -27,13 +50,18 @@ pub enum QueryMsg {
     #[returns(StateResponse)]
     GetState {},
     #[returns(ChainResponse)]
-    GetChain { chain_id: String },
+    GetChain { chain_uid: ChainUid },
     #[returns(AllChainResponse)]
     GetAllChains {},
     #[returns(VlpResponse)]
-    GetVlp { token_1: Token, token_2: Token },
+    GetVlp { pair: Pair },
     #[returns(AllVlpResponse)]
-    GetAllVlps {},
+    GetAllVlps {
+        start: Option<(Token, Token)>,
+        end: Option<(Token, Token)>,
+        skip: Option<usize>,
+        limit: Option<usize>,
+    },
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
 }
@@ -43,13 +71,11 @@ pub struct MigrateMsg {}
 
 #[cw_serde]
 pub struct QuerySimulateSwap {
-    pub factory_chain: String,
-    pub to_address: String,
-    pub to_chain_id: String,
     pub asset_in: Token,
     pub amount_in: Uint128,
+    pub asset_out: Token,
     pub min_amount_out: Uint128,
-    pub swaps: Vec<NextSwap>,
+    pub swaps: Vec<NextSwapPair>,
 }
 
 #[cw_serde]
@@ -81,6 +107,7 @@ pub struct VlpResponse {
 #[cw_serde]
 pub struct ChainResponse {
     pub chain: Chain,
+    pub chain_uid: ChainUid,
 }
 
 #[cw_serde]
@@ -92,11 +119,4 @@ pub struct AllChainResponse {
 pub struct SimulateSwapResponse {
     pub amount_out: Uint128,
     pub asset_out: Token,
-    pub out_chains: Vec<SwapOutChain>,
-}
-
-#[cw_serde]
-pub struct SwapOutChain {
-    pub chain: Chain,
-    pub amount: Uint128,
 }

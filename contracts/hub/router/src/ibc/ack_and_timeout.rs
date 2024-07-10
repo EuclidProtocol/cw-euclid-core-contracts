@@ -2,47 +2,74 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_json, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg,
-    StdResult, Uint128, WasmMsg,
+    Response, StdResult, SubMsg, Uint128, WasmMsg,
 };
 use cosmwasm_std::{to_json_binary, IbcAcknowledgement};
+use euclid::chain::{ChainUid, CrossChainUser};
 use euclid::error::ContractError;
+use euclid::events::{tx_event, TxType};
 use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
-use euclid::msgs::router::Chain;
+use euclid::msgs::router::{Chain, ExecuteMsg};
 use euclid::msgs::vcoin::{ExecuteMint, ExecuteMsg as VcoinExecuteMsg};
+use euclid::token::Token;
 use euclid::vcoin::BalanceKey;
-use euclid_ibc::msg::{AcknowledgementMsg, HubIbcExecuteMsg};
+use euclid_ibc::ack::AcknowledgementMsg;
+use euclid_ibc::msg::HubIbcExecuteMsg;
 
-use crate::state::{CHAIN_ID_TO_CHAIN, CHANNEL_TO_CHAIN_ID, STATE};
+use crate::reply::IBC_ACK_AND_TIMEOUT_REPLY_ID;
+use crate::state::{CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, STATE};
 
 use super::channel::TIMEOUT_COUNTS;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_ack(
-    deps: DepsMut,
+    _deps: DepsMut,
     env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
+    let internal_msg = ExecuteMsg::IbcCallbackAckAndTimeout { ack: ack.clone() };
+    let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: env.contract.address.to_string(),
+        msg: to_json_binary(&internal_msg)?,
+        funds: vec![],
+    });
+    let sub_msg = SubMsg::reply_always(internal_msg, IBC_ACK_AND_TIMEOUT_REPLY_ID);
+    Ok(IbcBasicResponse::new()
+        .add_attribute("ibc_ack", ack.acknowledgement.data.to_string())
+        .add_submessage(sub_msg))
+}
+
+pub fn ibc_ack_packet_internal_call(
+    deps: DepsMut,
+    env: Env,
+    ack: IbcPacketAckMsg,
+) -> Result<Response, ContractError> {
     // Parse the ack based on request
     let msg: HubIbcExecuteMsg = from_json(ack.original_packet.data)?;
     match msg {
-        HubIbcExecuteMsg::RegisterFactory { .. } => {
+        HubIbcExecuteMsg::RegisterFactory {
+            chain_uid, tx_id, ..
+        } => {
             let res = from_json(ack.acknowledgement.data)?;
             ibc_ack_register_factory(
                 deps,
                 env,
+                chain_uid,
                 ack.original_packet.src.channel_id,
                 ack.original_packet.dest.channel_id,
                 res,
+                tx_id,
             )
         }
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
-            token_id,
-            to_address,
-            to_chain_id,
+            token,
+            tx_id,
+            sender,
+            ..
         } => {
             let res = from_json(ack.acknowledgement.data)?;
-            ibc_ack_release_escrow(deps, env, amount, token_id, to_address, to_chain_id, res)
+            ibc_ack_release_escrow(deps, env, sender, amount, token, res, tx_id)
         }
     }
 }
@@ -77,28 +104,35 @@ pub fn ibc_packet_timeout(
 // Function to create pool
 pub fn ibc_ack_register_factory(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
+    chain_uid: ChainUid,
     from_hub_channel: String,
     from_factory_channel: String,
     res: AcknowledgementMsg<RegisterFactoryResponse>,
-) -> Result<IbcBasicResponse, ContractError> {
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let response = Response::new().add_event(tx_event(
+        &tx_id,
+        env.contract.address.as_str(),
+        TxType::RegisterFactory,
+    ));
     match res {
         AcknowledgementMsg::Ok(data) => {
-            CHANNEL_TO_CHAIN_ID.save(deps.storage, from_hub_channel.clone(), &data.chain_id)?;
+            CHANNEL_TO_CHAIN_UID.save(deps.storage, from_hub_channel.clone(), &chain_uid)?;
             let chain_data = Chain {
                 factory_chain_id: data.chain_id.clone(),
                 factory: data.factory_address.clone(),
                 from_hub_channel,
                 from_factory_channel,
             };
-            CHAIN_ID_TO_CHAIN.save(deps.storage, data.chain_id.clone(), &chain_data)?;
-            Ok(IbcBasicResponse::new()
+            CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid.clone(), &chain_data)?;
+            Ok(response
                 .add_attribute("method", "register_factory_ack_success")
                 .add_attribute("factory_chain", data.chain_id)
                 .add_attribute("factory_address", data.factory_address))
         }
 
-        AcknowledgementMsg::Error(err) => Ok(IbcBasicResponse::new()
+        AcknowledgementMsg::Error(err) => Ok(response
             .add_attribute("method", "register_factory_ack_error")
             .add_attribute("error", err.clone())),
     }
@@ -107,14 +141,19 @@ pub fn ibc_ack_register_factory(
 pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,
+    sender: CrossChainUser,
     amount: Uint128,
-    token_id: String,
-    to_address: String,
-    to_chain_id: String,
+    token: Token,
     res: AcknowledgementMsg<ReleaseEscrowResponse>,
-) -> Result<IbcBasicResponse, ContractError> {
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let response = Response::new().add_event(tx_event(
+        &tx_id,
+        sender.address.as_str(),
+        TxType::EscrowRelease,
+    ));
     match res {
-        AcknowledgementMsg::Ok(data) => Ok(IbcBasicResponse::new()
+        AcknowledgementMsg::Ok(data) => Ok(response
             .add_attribute("method", "release_escrow_success")
             .add_attribute("factory_chain", data.chain_id)
             .add_attribute("factory_address", data.factory_address)),
@@ -128,13 +167,12 @@ pub fn ibc_ack_release_escrow(
                         err: "Vcoin not available".to_string(),
                     })?;
 
-            // TODO: Revisit this as this should be original sender in case of multiple escrow release on different chain
+            // Escrow release failed, mint tokens again for the original cross chain sender
             let mint_msg = VcoinExecuteMsg::Mint(ExecuteMint {
                 amount,
                 balance_key: BalanceKey {
-                    chain_id: to_chain_id,
-                    address: to_address,
-                    token_id,
+                    cross_chain_user: sender,
+                    token_id: token.to_string(),
                 },
             });
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
@@ -143,7 +181,7 @@ pub fn ibc_ack_release_escrow(
                 funds: vec![],
             });
 
-            Ok(IbcBasicResponse::new()
+            Ok(response
                 .add_message(msg)
                 .add_attribute("method", "escrow_release_ack")
                 .add_attribute("error", err)

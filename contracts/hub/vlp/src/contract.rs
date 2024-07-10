@@ -4,7 +4,7 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 
 use crate::reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID};
-use crate::state::{State, STATE};
+use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -30,13 +30,24 @@ pub fn instantiate(
         router: info.sender.to_string(),
         fee: msg.fee,
         last_updated: 0,
-        total_reserve_1: Uint128::zero(),
-        total_reserve_2: Uint128::zero(),
         total_lp_tokens: Uint128::zero(),
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
+
+    BALANCES.save(
+        deps.storage,
+        state.pair.token_1,
+        &Uint128::zero(),
+        env.block.height,
+    )?;
+    BALANCES.save(
+        deps.storage,
+        state.pair.token_2,
+        &Uint128::zero(),
+        env.block.height,
+    )?;
 
     let response = msg.execute.map_or(Ok(Response::default()), |execute_msg| {
         execute(deps, env.clone(), info.clone(), execute_msg)
@@ -56,58 +67,64 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::RegisterPool {
-            chain_id,
-            pair_info,
-        } => execute::register_pool(deps, env, chain_id, pair_info),
+            sender,
+            pair,
+            tx_id,
+        } => execute::register_pool(deps, env, sender, pair, tx_id),
+        ExecuteMsg::AddLiquidity {
+            sender,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+            tx_id,
+        } => execute::add_liquidity(
+            deps,
+            env,
+            sender,
+            token_1_liquidity,
+            token_2_liquidity,
+            slippage_tolerance,
+            tx_id,
+        ),
+        ExecuteMsg::RemoveLiquidity {
+            sender,
+            lp_allocation,
+            tx_id,
+        } => execute::remove_liquidity(deps, env, sender, lp_allocation, tx_id),
         ExecuteMsg::Swap {
-            to_chain_id,
-            to_address,
+            sender,
             asset_in,
             amount_in,
             min_token_out,
-            swap_id,
+            tx_id,
             next_swaps,
+            test_fail,
         } => execute::execute_swap(
             deps,
             env,
-            to_chain_id,
-            to_address,
+            sender,
             asset_in,
             amount_in,
             min_token_out,
-            swap_id,
+            tx_id,
             next_swaps,
+            test_fail,
         ),
-        ExecuteMsg::AddLiquidity {
-            chain_id,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-        } => execute::add_liquidity(
-            deps,
-            chain_id,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-        ),
-        ExecuteMsg::RemoveLiquidity {
-            chain_id,
-            lp_allocation,
-        } => execute::remove_liquidity(deps, chain_id, lp_allocation),
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::SimulateSwap {
             asset,
             asset_amount,
             swaps,
         } => query_simulate_swap(deps, asset, asset_amount, swaps),
-        QueryMsg::Liquidity {} => query_liquidity(deps),
+        QueryMsg::Liquidity { height } => query_liquidity(deps, env, height),
         QueryMsg::Fee {} => query_fee(deps),
-        QueryMsg::Pool { chain_id } => query_pool(deps, chain_id),
+        QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
+
         QueryMsg::GetAllPools {} => query_all_pools(deps),
     }
 }

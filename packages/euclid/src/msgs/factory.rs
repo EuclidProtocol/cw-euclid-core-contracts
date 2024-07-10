@@ -1,77 +1,111 @@
 use crate::{
-    swap::NextSwap,
-    token::{PairInfo, Token, TokenInfo},
+    chain::{ChainUid, CrossChainUserWithLimit},
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    swap::{NextSwapPair, SwapRequest},
+    token::{Pair, PairWithDenom, Token, TokenWithDenom},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Decimal, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use cw20::Cw20ReceiveMsg;
-
-use super::pool::{GetPendingLiquidityResponse, GetPendingSwapsResponse};
 
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
-    pub chain_id: String,
+    pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    // New Factory Messages that call Escrow
+    UpdateHubChannel {
+        new_channel: String,
+    },
     RequestRegisterDenom {
-        denom: String,
-        token_id: Token,
+        token: TokenWithDenom,
     },
     RequestDeregisterDenom {
-        denom: String,
-        token_id: Token,
+        token: TokenWithDenom,
     },
     RequestPoolCreation {
-        pair_info: PairInfo,
+        pair: PairWithDenom,
         timeout: Option<u64>,
+        tx_id: String,
     },
     AddLiquidityRequest {
-        vlp_address: String,
+        pair_info: PairWithDenom,
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         timeout: Option<u64>,
+        tx_id: String,
+    },
+    RemoveLiquidityRequest {
+        pair: Pair,
+        lp_allocation: Uint128,
+        timeout: Option<u64>,
+        // First element in array has highest priority
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        tx_id: String,
     },
     ExecuteSwapRequest {
-        asset_in: TokenInfo,
-        asset_out: TokenInfo,
+        asset_in: TokenWithDenom,
+        asset_out: Token,
         amount_in: Uint128,
         min_amount_out: Uint128,
         timeout: Option<u64>,
-        swaps: Vec<NextSwap>,
+        swaps: Vec<NextSwapPair>,
+        // First element in array has highest priority
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        tx_id: String,
+
+        partner_fee: Option<Decimal>,
     },
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
+
+    // IBC Callbacks
+    IbcCallbackAckAndTimeout {
+        ack: IbcPacketAckMsg,
+    },
+    // IBC Callbacks
+    IbcCallbackReceive {
+        receive_msg: IbcPacketReceiveMsg,
+    },
 }
 
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    #[returns(GetPoolResponse)]
-    GetPool { vlp: String },
+    #[returns(GetVlpResponse)]
+    GetVlp { pair: Pair },
     #[returns(StateResponse)]
     GetState {},
     // Query to get all pools in the factory
     #[returns(AllPoolsResponse)]
     GetAllPools {},
 
+    // Query to get all pools in the factory
+    #[returns(AllTokensResponse)]
+    GetAllTokens {},
+
     // Fetch pending swaps with pagination for a user
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
-        user: String,
+        user: Addr,
         lower_limit: Option<u128>,
         upper_limit: Option<u128>,
     },
     #[returns(GetPendingLiquidityResponse)]
     PendingLiquidity {
-        user: String,
+        user: Addr,
+        lower_limit: Option<u128>,
+        upper_limit: Option<u128>,
+    },
+    #[returns(GetPendingLiquidityResponse)]
+    PendingRemoveLiquidity {
+        user: Addr,
         lower_limit: Option<u128>,
         upper_limit: Option<u128>,
     },
@@ -81,8 +115,8 @@ pub enum QueryMsg {
 }
 
 #[cw_serde]
-pub struct GetPoolResponse {
-    pub pair_info: PairInfo,
+pub struct GetVlpResponse {
+    pub vlp_address: String,
 }
 
 #[cw_serde]
@@ -92,7 +126,7 @@ pub struct GetEscrowResponse {
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct StateResponse {
-    pub chain_id: String,
+    pub chain_uid: ChainUid,
     pub router_contract: String,
     pub hub_channel: Option<String>,
     pub admin: String,
@@ -105,7 +139,7 @@ pub struct AllPoolsResponse {
 }
 #[cw_serde]
 pub struct PoolVlpResponse {
-    pub pair_info: PairInfo,
+    pub pair: Pair,
     pub vlp: String,
 }
 
@@ -123,7 +157,25 @@ pub struct ReleaseEscrowResponse {
     pub factory_address: String,
     pub chain_id: String,
     pub amount: Uint128,
-    pub token_id: String,
+    pub token: Token,
     pub to_address: String,
-    pub to_chain_id: String,
+}
+
+#[cw_serde]
+pub struct GetPendingSwapsResponse {
+    pub pending_swaps: Vec<SwapRequest>,
+}
+#[cw_serde]
+pub struct GetPendingLiquidityResponse {
+    pub pending_add_liquidity: Vec<AddLiquidityRequest>,
+}
+
+#[cw_serde]
+pub struct GetPendingRemoveLiquidityResponse {
+    pub pending_remove_liquidity: Vec<RemoveLiquidityRequest>,
+}
+
+#[cw_serde]
+pub struct AllTokensResponse {
+    pub tokens: Vec<Token>, // Assuming pool addresses are strings
 }

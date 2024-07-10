@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
+    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128,
 };
 
 use cw2::set_contract_version;
@@ -33,6 +33,7 @@ pub fn instantiate(
         token_id: msg.token_id.clone(),
         // Set the sender as the factory address, since we want the factory to instantiate the escrow.
         factory_address: info.sender.clone(),
+        total_amount: Uint128::zero(),
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -49,7 +50,7 @@ pub fn instantiate(
 
     Ok(res
         .add_attribute("method", "instantiate")
-        .add_attribute("token_id", msg.token_id.id)
+        .add_attribute("token_id", msg.token_id.as_str())
         .add_attribute("factory_address", info.sender)
         .set_data(to_json_binary(&data)?))
 }
@@ -66,11 +67,9 @@ pub fn execute(
         ExecuteMsg::AddAllowedDenom { denom } => execute_add_allowed_denom(deps, env, info, denom),
         ExecuteMsg::DisallowDenom { denom } => execute_disallow_denom(deps, env, info, denom),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
-        ExecuteMsg::Withdraw {
-            recipient,
-            amount,
-            chain_id,
-        } => execute_withdraw(deps, env, info, recipient, amount, chain_id),
+        ExecuteMsg::Withdraw { recipient, amount } => {
+            execute_withdraw(deps, env, info, recipient, amount)
+        }
     }
 }
 
@@ -79,17 +78,16 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     match msg {
         // New escrow queries
         QueryMsg::TokenId {} => query_token_id(deps),
-        QueryMsg::TokenAllowed { token } => query::query_token_allowed(deps, token),
+        QueryMsg::TokenAllowed { denom } => query::query_token_allowed(deps, denom),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
-    match msg.id {
-        id => Err(ContractError::Std(StdError::generic_err(format!(
-            "Unknown reply id: {}",
-            id
-        )))),
-    }
+    let id = msg.id;
+    Err(ContractError::Std(StdError::generic_err(format!(
+        "Unknown reply id: {}",
+        id
+    ))))
 }
 
 #[cfg(test)]

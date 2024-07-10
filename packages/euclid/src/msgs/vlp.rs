@@ -1,8 +1,8 @@
 use crate::{
+    chain::{ChainUid, CrossChainUser},
     fee::Fee,
-    pool::Pool,
-    swap::NextSwap,
-    token::{Pair, PairInfo, Token},
+    swap::NextSwapVlp,
+    token::{Pair, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
@@ -20,27 +20,30 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     // Registers a new pool from a new chain to an already existing VLP
     RegisterPool {
-        chain_id: String,
-        pair_info: PairInfo,
+        sender: CrossChainUser,
+        pair: Pair,
+        tx_id: String,
     },
 
     Swap {
-        to_chain_id: String,
-        to_address: String,
+        sender: CrossChainUser,
+        tx_id: String,
         asset_in: Token,
         amount_in: Uint128,
         min_token_out: Uint128,
-        swap_id: String,
-        next_swaps: Vec<NextSwap>,
+        next_swaps: Vec<NextSwapVlp>,
+        test_fail: Option<bool>,
     },
     AddLiquidity {
-        chain_id: String,
+        sender: CrossChainUser,
+        tx_id: String,
         token_1_liquidity: Uint128,
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
     },
     RemoveLiquidity {
-        chain_id: String,
+        sender: CrossChainUser,
+        tx_id: String,
         lp_allocation: Uint128,
     },
     /*
@@ -63,11 +66,11 @@ pub enum QueryMsg {
     SimulateSwap {
         asset: Token,
         asset_amount: Uint128,
-        swaps: Vec<NextSwap>,
+        swaps: Vec<NextSwapVlp>,
     },
     // Queries the total reserve of the pair in the VLP
     #[returns(GetLiquidityResponse)]
-    Liquidity {},
+    Liquidity { height: Option<u64> },
 
     // Queries the fee of this specific pool
     #[returns(FeeResponse)]
@@ -75,7 +78,7 @@ pub enum QueryMsg {
 
     // Queries the pool information for a chain id
     #[returns(PoolResponse)]
-    Pool { chain_id: String },
+    Pool { chain_uid: ChainUid },
     // Query to get all pools
     #[returns(AllPoolsResponse)]
     GetAllPools {},
@@ -97,20 +100,22 @@ pub struct GetLiquidityResponse {
 }
 
 #[cw_serde]
-pub struct PoolInfo {
-    pub chain: String,
-    pub pool: Pool,
-}
-#[cw_serde]
 pub struct FeeResponse {
     pub fee: Fee,
 }
 
 #[cw_serde]
 pub struct PoolResponse {
-    pub pool: Pool,
+    pub lp_shares: Uint128,
+    pub reserve_1: Uint128,
+    pub reserve_2: Uint128,
 }
 
+#[cw_serde]
+pub struct PoolInfo {
+    pub chain_uid: ChainUid,
+    pub pool: PoolResponse,
+}
 #[cw_serde]
 pub struct AllPoolsResponse {
     pub pools: Vec<PoolInfo>,
@@ -118,3 +123,23 @@ pub struct AllPoolsResponse {
 
 #[cw_serde]
 pub struct MigrateMsg {}
+
+#[cw_serde]
+pub struct VlpRemoveLiquidityResponse {
+    pub token_1_liquidity: Uint128,
+    pub token_2_liquidity: Uint128,
+    pub burn_lp_tokens: Uint128,
+    pub reserve_1: Uint128,
+    pub reserve_2: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub vlp_address: String,
+}
+
+#[cw_serde]
+pub struct VlpSwapResponse {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub asset_out: Token,
+    pub amount_out: Uint128,
+}

@@ -19,12 +19,8 @@ mod tests {
             router: "router".to_string(),
             vcoin: "vcoin".to_string(),
             pair: Pair {
-                token_1: Token {
-                    id: "token_1".to_string(),
-                },
-                token_2: Token {
-                    id: "token_2".to_string(),
-                },
+                token_1: Token::create("token1".to_string()).unwrap(),
+                token_2: Token::create("token2".to_string()).unwrap(),
             },
             fee: Fee {
                 lp_fee: 1,

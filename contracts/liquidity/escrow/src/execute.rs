@@ -1,14 +1,9 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, WasmMsg,
+    ensure, from_json, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, Uint128,
 };
 
 use cw20::Cw20ReceiveMsg;
-use euclid::{
-    cw20::Cw20ExecuteMsg,
-    error::ContractError,
-    msgs::{escrow::AmountAndType, pool::Cw20HookMsg},
-};
+use euclid::{cw20::Cw20HookMsg, error::ContractError, token::TokenType};
 
 use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
 
@@ -16,7 +11,7 @@ pub fn execute_add_allowed_denom(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    denom: String,
+    denom: TokenType,
 ) -> Result<Response, ContractError> {
     // TODO nonpayable to this function? would be better to limit depositing funds through the deposit functions
     // Only the factory can call this function
@@ -37,27 +32,24 @@ pub fn execute_add_allowed_denom(
 
     ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
 
-    // Add the new denom to denom to amount map, and set its balance as zero
-    // The is_native will be overwriting once the denom is funded
-    DENOM_TO_AMOUNT.save(
-        deps.storage,
-        denom.clone(),
-        &AmountAndType {
-            amount: Uint128::zero(),
-            is_native: true,
-        },
-    )?;
+    // Add the new denom to denom to amount map
+    let new_amount =
+        DENOM_TO_AMOUNT.update(deps.storage, denom.get_key(), |existing| match existing {
+            Some(existing) => Ok::<_, ContractError>(existing),
+            None => Ok(Uint128::zero()),
+        })?;
 
     Ok(Response::new()
         .add_attribute("method", "add_allowed_denom")
-        .add_attribute("new_denom", denom))
+        .add_attribute("new_denom", denom.get_key())
+        .add_attribute("amount", new_amount))
 }
 
 pub fn execute_disallow_denom(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    denom: String,
+    denom: TokenType,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
     let factory_address = STATE.load(deps.storage)?.factory_address;
@@ -80,7 +72,7 @@ pub fn execute_disallow_denom(
     //TODO refund the disallowed funds
     Ok(Response::new()
         .add_attribute("method", "disallow_denom")
-        .add_attribute("deregistered_denom", denom))
+        .add_attribute("deregistered_denom", denom.get_key()))
 }
 
 pub fn execute_deposit_native(
@@ -88,20 +80,21 @@ pub fn execute_deposit_native(
     _env: Env,
     info: MessageInfo,
 ) -> Result<Response, ContractError> {
-    // Only the factory can call this function
-    let factory_address = STATE.load(deps.storage)?.factory_address;
-    ensure!(
-        info.sender == factory_address,
-        ContractError::Unauthorized {}
-    );
-
-    let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
-
     // Make sure funds were sent
     ensure!(
         !info.funds.is_empty(),
         ContractError::InsufficientDeposit {}
     );
+
+    // Only the factory can call this function
+    let mut state = STATE.load(deps.storage)?;
+
+    ensure!(
+        info.sender == state.factory_address,
+        ContractError::Unauthorized {}
+    );
+
+    let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
 
     for token in info.funds {
         // Check that the amount of token sent is not zero
@@ -109,25 +102,28 @@ pub fn execute_deposit_native(
             !token.amount.is_zero(),
             ContractError::InsufficientDeposit {}
         );
+        let token_type = TokenType::Native {
+            denom: token.denom.clone(),
+        };
         // Make sure token is part of allowed denoms
         ensure!(
-            allowed_denoms.contains(&token.denom),
+            allowed_denoms.contains(&token_type),
             ContractError::UnsupportedDenomination {}
         );
 
         // Check current balance of denom
-        let current_balance = DENOM_TO_AMOUNT.load(deps.storage, token.denom.clone())?;
+        let current_balance = DENOM_TO_AMOUNT.load(deps.storage, token_type.get_key())?;
 
         // Add the sent amount to current balance and save it
         DENOM_TO_AMOUNT.save(
             deps.storage,
-            token.denom,
-            &AmountAndType {
-                amount: current_balance.amount.checked_add(token.amount)?,
-                is_native: true,
-            },
+            token_type.get_key(),
+            &current_balance.checked_add(token.amount)?,
         )?;
+        state.total_amount = state.total_amount.checked_add(token.amount)?;
     }
+
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new().add_attribute("method", "deposit"))
 }
@@ -143,18 +139,21 @@ pub fn receive_cw20(
 ) -> Result<Response, ContractError> {
     match from_json(&cw20_msg.msg)? {
         Cw20HookMsg::Deposit {} => {
-            // Only the factory can call this function
             let factory_address = STATE.load(deps.storage)?.factory_address;
+            // Only the factory can call this function
             let sender = cw20_msg.sender;
             ensure!(sender == factory_address, ContractError::Unauthorized {});
 
-            let asset_sent = info.sender.clone().into_string();
             let amount_sent = cw20_msg.amount;
             // TODO should this check be on the factory level? Or even before the factory
             ensure!(
                 !amount_sent.is_zero(),
                 ContractError::InsufficientDeposit {}
             );
+            let asset_sent = info.sender.clone().into_string();
+            let asset_sent = TokenType::Smart {
+                contract_address: asset_sent,
+            };
 
             execute_deposit_cw20(deps, env, info, amount_sent, asset_sent)
         }
@@ -167,7 +166,7 @@ pub fn execute_deposit_cw20(
     _env: Env,
     _info: MessageInfo,
     amount: Uint128,
-    denom: String,
+    denom: TokenType,
 ) -> Result<Response, ContractError> {
     // Non-zero and unauthorized checks were made in receive_cw20
 
@@ -180,123 +179,74 @@ pub fn execute_deposit_cw20(
     );
 
     // Check current balance of denom
-    let current_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.clone())?;
+    let current_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
 
     // Add the sent amount to current balance and save it
     DENOM_TO_AMOUNT.save(
         deps.storage,
-        denom.clone(),
-        &AmountAndType {
-            amount: current_balance.amount.checked_add(amount)?,
-            is_native: false,
-        },
+        denom.get_key(),
+        &current_balance.checked_add(amount)?,
     )?;
 
     Ok(Response::new()
         .add_attribute("method", "deposit_cw20")
-        .add_attribute("asset", denom)
+        .add_attribute("asset", denom.get_key())
         .add_attribute("amount", amount))
 }
 
 pub fn execute_withdraw(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
-    recipient: String,
+    recipient: Addr,
     amount: Uint128,
-    chain_id: String,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
-    let factory_address = STATE.load(deps.storage)?.factory_address;
+    let mut state = STATE.load(deps.storage)?;
     ensure!(
-        info.sender == factory_address,
+        info.sender == state.factory_address,
         ContractError::Unauthorized {}
     );
     // Ensure that the amount desired is above zero
     ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
 
-    // For now we only support local chain transfers
+    let mut messages: Vec<CosmosMsg> = Vec::new();
+    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
+
+    let mut remaining_withdraw_amount = amount;
+    // Ensure that the amount desired doesn't exceed the current balance
+    while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
+        let denom = allowed_denoms
+            .next()
+            .ok_or(ContractError::new("Denom Iter Faiiled"))?;
+
+        let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
+
+        let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
+            denom_balance
+        } else {
+            amount
+        };
+
+        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string())?;
+        messages.push(send_msg);
+        remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
+
+        DENOM_TO_AMOUNT.save(
+            deps.storage,
+            denom.get_key(),
+            &denom_balance.checked_sub(transfer_amount)?,
+        )?;
+    }
+
+    // After all the transfer messages, ensure that total amount that needs to be sent is zero
     ensure!(
-        env.block.chain_id == chain_id,
-        ContractError::UnsupportedOperation {}
+        remaining_withdraw_amount.is_zero(),
+        ContractError::InsufficientDeposit {}
     );
 
-    // Ensure that the amount desired doesn't exceed the current balance
-    let mut sum = Uint128::zero();
-    let mut _total_sum: Result<(), ContractError> = DENOM_TO_AMOUNT
-        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .try_for_each(|item| {
-            let (_, value) = item?;
-            sum = sum.checked_add(value.amount)?;
-            Ok(())
-        });
-    ensure!(amount.le(&sum), ContractError::InvalidWithdrawalAmount {});
-
-    let mut messages: Vec<CosmosMsg> = Vec::new();
-
-    // Create a vector of (key, value) pairs
-    let mut amounts: Vec<(String, AmountAndType)> = DENOM_TO_AMOUNT
-        .range(deps.storage, None, None, cosmwasm_std::Order::Descending)
-        .map(|item| {
-            let (key, value) = item?;
-            Ok((key.to_string(), value))
-        })
-        .collect::<StdResult<Vec<(String, AmountAndType)>>>()?;
-    let mut amount_to_withdraw = amount;
-    let mut amount_to_send: Uint128;
-
-    // Iterate through the amounts and deduct the required amount
-    for (denom, amount) in &mut amounts {
-        if amount_to_withdraw.is_zero() {
-            break;
-        }
-        if amount.amount >= amount_to_withdraw {
-            // If the current denom has enough amount to cover the withdrawal
-            amount.amount -= amount_to_withdraw;
-            // Send the amount to withdraw since it can cover the entire amount
-            amount_to_send = amount_to_withdraw;
-            amount_to_withdraw = Uint128::zero();
-        } else {
-            // If the current denom doesn't have enough amount
-            amount_to_withdraw -= amount.amount;
-
-            // Send the entire amount
-            amount_to_send = amount.amount;
-
-            // Update balance
-            amount.amount = Uint128::zero();
-            // Create message
-        }
-        // If denom is native
-        if amount.is_native {
-            messages.push(CosmosMsg::Bank(BankMsg::Send {
-                to_address: recipient.clone(),
-                amount: vec![Coin {
-                    denom: denom.to_string(),
-                    amount: amount_to_send,
-                }],
-            }));
-        } else {
-            // If denom is cw20
-            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: denom.to_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
-                    recipient: recipient.to_string(),
-                    amount: amount_to_send,
-                })?,
-                funds: vec![],
-            }))
-        }
-    }
-    // Check if we could fulfill the entire amount_to_withdraw
-    if !amount_to_withdraw.is_zero() {
-        return Err(ContractError::InsufficientDeposit {});
-    }
-
-    // Update the storage with new amounts
-    for (denom, amount) in amounts {
-        DENOM_TO_AMOUNT.save(deps.storage, denom, &amount)?;
-    }
+    state.total_amount = state.total_amount.checked_sub(amount)?;
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_messages(messages)
