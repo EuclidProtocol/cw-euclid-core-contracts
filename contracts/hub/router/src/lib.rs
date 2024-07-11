@@ -5,7 +5,7 @@ pub mod migrate;
 pub mod query;
 pub mod reply;
 pub mod state;
-mod test;
+mod tests;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mock;
