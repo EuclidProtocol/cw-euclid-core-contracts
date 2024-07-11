@@ -61,8 +61,6 @@ pub fn register_pool(
     // Store the pool in the map
     CHAIN_LP_SHARES.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
 
-    STATE.save(deps.storage, &state)?;
-
     let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
     };

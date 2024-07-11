@@ -10,6 +10,7 @@ mod tests {
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins, from_json, DepsMut, Response, Uint128};
+    use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::Fee;
     use euclid::msgs::vlp::{
@@ -70,71 +71,34 @@ mod tests {
 
         assert_eq!(balance_2, expected_balance_2);
     }
-    // }
-    // #[test]
-    // fn test_execute_register_pool() {
-    //     let mut deps = mock_dependencies();
-    //     let env = mock_env();
-    //     let info = mock_info("creator", &coins(1000, "earth"));
+    #[test]
+    fn test_execute_register_pool() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let info = mock_info("creator", &coins(1000, "earth"));
 
-    //     // Instantiate the contract first
-    //     let msg = InstantiateMsg {
-    //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
-    //         pair: Pair {
-    //             token_1: Token::create("token_1".to_string()).unwrap(),
-    //             token_2: Token::create("token_2".to_string()).unwrap(),
-    //         },
-    //         fee: Fee {
-    //             lp_fee: 1,
-    //             treasury_fee: 1,
-    //             staker_fee: 1,
-    //         },
-    //         execute: None,
-    //     };
-    //     let res = instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
-    //     assert_eq!(0, res.messages.len());
+        init(deps.as_mut());
 
-    //     // Prepare the pool registration message
-    //     let pair_info = PairInfo {
-    //         token_1: TokenInfo {
-    //             token: Token {
-    //                 id: "token_1".to_string(),
-    //             },
-    //             token_type: TokenType::Native {
-    //                 denom: "token_1".to_string(),
-    //             },
-    //         },
-    //         token_2: TokenInfo {
-    //             token: Token {
-    //                 id: "token_2".to_string(),
-    //             },
-    //             token_type: TokenType::Native {
-    //                 denom: "token_2".to_string(),
-    //             },
-    //         },
-    //     };
+        let sender = CrossChainUser {
+            chain_uid: ChainUid::create("1".to_string()).unwrap(),
+            address: "sender_address".to_string(),
+        };
 
-    //     let msg = ExecuteMsg::RegisterPool {
-    //         sender: todo!(),
-    //         pair: todo!(),
-    //         tx_id: todo!(),
-    //     };
+        let pair = Pair {
+            token_1: Token::create("token1".to_string()).unwrap(),
+            token_2: Token::create("token2".to_string()).unwrap(),
+        };
 
-    //     // Execute the register_pool function
-    //     let res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
-    //     assert_eq!(res.messages.len(), 0); // Ensure no extra messages are sent
+        let msg = ExecuteMsg::RegisterPool {
+            sender,
+            pair,
+            tx_id: "1".to_string(),
+        };
 
-    //     // Verify that the pool was registered correctly
-    //     let pool_data = POOLS
-    //         .load(deps.as_ref().storage, &"chain_id".to_string())
-    //         .unwrap();
-    //     assert_eq!(pool_data.chain, "chain_id".to_string());
-    //     assert_eq!(pool_data.pair.token_1, pair_info.token_1);
-    //     assert_eq!(pool_data.pair.token_2, pair_info.token_2);
-    //     assert_eq!(pool_data.reserve_1, Uint128::zero());
-    //     assert_eq!(pool_data.reserve_2, Uint128::zero());
-    // }
+        // Execute the register_pool function
+        let res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        assert_eq!(res.messages.len(), 0); // Ensure no extra messages are sent
+    }
 
     // #[test]
     // fn test_add_liquidity_success() {
