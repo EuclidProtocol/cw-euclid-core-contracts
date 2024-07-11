@@ -5,7 +5,7 @@ mod tests {
     use crate::state::{SNAPSHOT_BALANCES, STATE};
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, Addr, DepsMut, Response, Uint128};
+    use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::msgs::vcoin::{

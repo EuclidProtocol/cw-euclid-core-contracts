@@ -1,18 +1,18 @@
 use cosmwasm_std::{
-    coin,
+    coin, from_json,
     testing::{mock_dependencies, mock_env, mock_info},
     to_json_binary, Addr, Coin, Uint128,
 };
 
 use crate::{
-    contract::{execute, instantiate},
+    contract::{execute, instantiate, query},
     query::query_token_id,
     state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT},
 };
 
 use euclid::{
     error::ContractError,
-    msgs::escrow::{ExecuteMsg, InstantiateMsg, TokenIdResponse},
+    msgs::escrow::{AllowedTokenResponse, ExecuteMsg, InstantiateMsg, QueryMsg, TokenIdResponse},
     token::{Token, TokenType},
 };
 
@@ -389,47 +389,38 @@ fn test_query_token_id() {
     assert_eq!(to_json_binary(&expected_response).unwrap(), res);
 }
 
-// #[test]
-// fn test_query_token_allowed() {
-//     let mut deps = mock_dependencies();
+#[test]
+fn test_query_token_allowed() {
+    let mut deps = mock_dependencies();
 
-//     let env = mock_env();
-//     let info = mock_info("creator", &[]);
+    let env = mock_env();
+    let info = mock_info("creator", &[]);
 
-//     // Instantiate the contract with a sample token and allowed denomination
-//     let instantiate_msg = InstantiateMsg {
-//         token_id: Token::create("token1".to_string()).unwrap(),
-//         allowed_denom: Some(TokenType::Native {
-//             denom: "denom1".to_string(),
-//         }),
-//     };
-//     instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+    // Instantiate the contract with a sample token and allowed denomination
+    let instantiate_msg = InstantiateMsg {
+        token_id: Token::create("token1".to_string()).unwrap(),
+        allowed_denom: Some(TokenType::Native {
+            denom: "denom1".to_string(),
+        }),
+    };
+    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
 
-//     // Test querying an allowed token with the same denomination
-//     let token_info = TokenInfo {
-//         token_id: Token::create("token1".to_string()).unwrap(),
-//         token_type: TokenType::Native {
-//             denom: TokenType::Native {
-//                 denom: "denom1".to_string(),
-//             },
-//         },
-//     };
-//     let res = query_token_allowed(deps.as_ref(), token_info).unwrap();
-//     let expected_response = AllowedTokenResponse { allowed: true };
-//     assert_eq!(to_json_binary(&expected_response).unwrap(), res);
+    let query_msg = QueryMsg::TokenAllowed {
+        denom: TokenType::Native {
+            denom: "denom1".to_string(),
+        },
+    };
+    let res: AllowedTokenResponse =
+        from_json(&query(deps.as_ref(), env.clone(), query_msg).unwrap()).unwrap();
+    assert!(res.allowed);
 
-//     // Test querying a non-allowed token with a different denomination
-//     let token_info = TokenInfo {
-//         token: Token {
-//             id: "token1".to_string(),
-//         },
-//         token_type: TokenType::Native {
-//             denom: TokenType::Native {
-//                 denom: "denom2".to_string(),
-//             },
-//         },
-//     };
-//     let res = query_token_allowed(deps.as_ref(), token_info).unwrap();
-//     let expected_response = AllowedTokenResponse { allowed: false };
-//     assert_eq!(to_json_binary(&expected_response).unwrap(), res);
-// }
+    // Try an unallowed denom
+    let query_msg = QueryMsg::TokenAllowed {
+        denom: TokenType::Native {
+            denom: "unallowed_denom".to_string(),
+        },
+    };
+    let res: AllowedTokenResponse =
+        from_json(&query(deps.as_ref(), env, query_msg).unwrap()).unwrap();
+    assert!(!res.allowed);
+}
