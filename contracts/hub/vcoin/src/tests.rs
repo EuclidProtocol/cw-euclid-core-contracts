@@ -8,7 +8,9 @@ mod tests {
     use cosmwasm_std::{coins, Addr, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
-    use euclid::msgs::vcoin::{ExecuteBurn, ExecuteMint, ExecuteMsg, InstantiateMsg, State};
+    use euclid::msgs::vcoin::{
+        ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer, InstantiateMsg, State,
+    };
     use euclid::vcoin::BalanceKey;
 
     fn init(deps: DepsMut) -> Response {
@@ -35,7 +37,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mint_and_burn() {
+    fn test_mint_burn_transfer() {
         let mut deps = mock_dependencies();
         let env = mock_env();
         init(deps.as_mut());
@@ -47,7 +49,7 @@ mod tests {
             address: "cross_chain_user_address".to_string(),
         };
         let balance_key = BalanceKey {
-            cross_chain_user,
+            cross_chain_user: cross_chain_user.clone(),
             token_id: "token1".to_string(),
         };
 
@@ -107,7 +109,39 @@ mod tests {
             balance_key: balance_key.clone(),
         });
 
-        let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+        let err = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap_err();
         assert_eq!(ContractError::ZeroAssetAmount {}, err);
+
+        // Transfer //
+
+        let cross_chain_user_2 = CrossChainUser {
+            chain_uid: ChainUid::create("1".to_string()).unwrap(),
+            address: "cross_chain_user_address_2".to_string(),
+        };
+
+        let balance_key_2 = BalanceKey {
+            cross_chain_user: cross_chain_user_2.clone(),
+            token_id: "token1".to_string(),
+        };
+
+        let msg = ExecuteMsg::Transfer(ExecuteTransfer {
+            amount: Uint128::new(2_u128),
+            token_id: "token1".to_string(),
+            from: cross_chain_user,
+            to: cross_chain_user_2,
+        });
+
+        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let expected_snapshot_balance_user_1 = Uint128::new(3_u128);
+        let expected_snapshot_balance_user_2 = Uint128::new(2_u128);
+
+        let key = balance_key.clone().to_serialized_balance_key();
+        let key_2 = balance_key_2.clone().to_serialized_balance_key();
+
+        let snapshot_balance = SNAPSHOT_BALANCES.load(&deps.storage, key).unwrap();
+        let snapshot_balance_2 = SNAPSHOT_BALANCES.load(&deps.storage, key_2).unwrap();
+
+        assert_eq!(expected_snapshot_balance_user_1, snapshot_balance);
+        assert_eq!(expected_snapshot_balance_user_2, snapshot_balance_2);
     }
 }
