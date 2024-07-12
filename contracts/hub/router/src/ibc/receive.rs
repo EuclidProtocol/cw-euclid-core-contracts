@@ -160,11 +160,15 @@ fn execute_request_pool_creation(
                 .to_string(),
             pair,
             fee: Fee {
-                lp_fee: 0,
-                treasury_fee: 0,
-                staker_fee: 0,
+                lp_fee_bps: 10,
+                euclid_fee_bps: 10,
+                recipient: CrossChainUser {
+                    address: state.admin.clone(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
             },
             execute: Some(register_msg),
+            admin: state.admin,
         };
         let msg = WasmMsg::Instantiate {
             admin: Some(env.contract.address.to_string()),

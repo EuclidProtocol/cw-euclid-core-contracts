@@ -1,11 +1,12 @@
 use crate::{
     chain::{ChainUid, CrossChainUserWithLimit},
+    fee::PartnerFee,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Decimal, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -59,7 +60,7 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         tx_id: String,
 
-        partner_fee: Option<Decimal>,
+        partner_fee: Option<PartnerFee>,
     },
 
     // Recieve CW20 TOKENS structure
