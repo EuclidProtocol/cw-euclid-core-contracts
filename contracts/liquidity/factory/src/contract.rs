@@ -14,7 +14,8 @@ use crate::query::{
     query_all_pools, query_all_tokens, query_state,
 };
 use crate::reply::{
-    ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
+    CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
+    IBC_RECEIVE_REPLY_ID,
 };
 use crate::state::{State, STATE};
 use crate::{ibc, reply};
@@ -169,6 +170,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
         ESCROW_INSTANTIATE_REPLY_ID => reply::on_escrow_instantiate_reply(deps, msg),
+        CW20_INSTANTIATE_REPLY_ID => reply::on_cw20_instantiate_reply(deps, msg),
         IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(

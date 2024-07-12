@@ -39,6 +39,9 @@ pub const VLP_TO_LP_SHARES: Map<String, Uint128> = Map::new("vlp_to_lp_shares");
 // New Factory states
 pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 
+// New CW20 states
+pub const TOKEN_TO_CW20: Map<Token, Addr> = Map::new("token_to_cw20");
+
 // Map for pending pool requests for user
 pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =
     Map::new("request_to_pool");
