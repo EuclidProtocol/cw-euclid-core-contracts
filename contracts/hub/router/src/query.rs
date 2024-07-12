@@ -22,8 +22,6 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     })?)
 }
 
-
-
 pub fn query_all_vlps(
     deps: Deps,
     start: Option<(Token, Token)>,

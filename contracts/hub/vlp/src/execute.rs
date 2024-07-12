@@ -3,10 +3,19 @@ use cosmwasm_std::{
     Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{ChainUid, CrossChainUser}, error::ContractError, events::{liquidity_event, simple_event, tx_event, TxType}, fee::MAX_FEE_BPS, liquidity::AddLiquidityResponse, msgs::{
+    chain::{ChainUid, CrossChainUser},
+    error::ContractError,
+    events::{liquidity_event, simple_event, tx_event, TxType},
+    fee::MAX_FEE_BPS,
+    liquidity::AddLiquidityResponse,
+    msgs::{
         vcoin::ExecuteTransfer,
         vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
-    }, pool::{Pool, PoolCreationResponse}, swap::NextSwapVlp, token::{Pair, Token}, vcoin::BalanceKey
+    },
+    pool::{Pool, PoolCreationResponse},
+    swap::NextSwapVlp,
+    token::{Pair, Token},
+    vcoin::BalanceKey,
 };
 
 use crate::{
@@ -573,9 +582,15 @@ pub fn update_fee(
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
     state.fee.lp_fee_bps = lp_fee_bps.unwrap_or(state.fee.lp_fee_bps);
-    ensure!(state.fee.lp_fee_bps.le(&MAX_FEE_BPS), ContractError::new("LP Fee cannot exceed maximum limit"));
+    ensure!(
+        state.fee.lp_fee_bps.le(&MAX_FEE_BPS),
+        ContractError::new("LP Fee cannot exceed maximum limit")
+    );
     state.fee.euclid_fee_bps = euclid_fee_bps.unwrap_or(state.fee.euclid_fee_bps);
-    ensure!(state.fee.euclid_fee_bps.le(&MAX_FEE_BPS), ContractError::new("Euclid Fee cannot exceed maximum limit"));
+    ensure!(
+        state.fee.euclid_fee_bps.le(&MAX_FEE_BPS),
+        ContractError::new("Euclid Fee cannot exceed maximum limit")
+    );
     state.fee.recipient = recipient.unwrap_or(state.fee.recipient);
 
     STATE.save(deps.storage, &state)?;
