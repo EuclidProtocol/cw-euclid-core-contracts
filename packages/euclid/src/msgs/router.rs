@@ -64,6 +64,23 @@ pub enum QueryMsg {
     },
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
+
+    #[returns(TokenEscrowsResponse)]
+    QueryTokenEscrows {
+        token: Token,
+        start: Option<ChainUid>,
+        end: Option<ChainUid>,
+        skip: Option<usize>,
+        limit: Option<usize>,
+    },
+
+    #[returns(AllTokensResponse)]
+    QueryAllTokens {
+        start: Option<Token>,
+        end: Option<Token>,
+        skip: Option<usize>,
+        limit: Option<usize>,
+    },
 }
 // We define a custom struct for each query response
 #[cw_serde]
@@ -119,4 +136,14 @@ pub struct AllChainResponse {
 pub struct SimulateSwapResponse {
     pub amount_out: Uint128,
     pub asset_out: Token,
+}
+
+#[cw_serde]
+pub struct TokenEscrowsResponse {
+    pub chains: Vec<ChainUid>,
+}
+
+#[cw_serde]
+pub struct AllTokensResponse {
+    pub tokens: Vec<Token>,
 }

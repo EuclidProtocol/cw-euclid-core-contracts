@@ -1,17 +1,17 @@
 use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order};
-use cw_storage_plus::Bound;
+use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
     msgs::router::{
-        AllChainResponse, AllVlpResponse, ChainResponse, QuerySimulateSwap, SimulateSwapResponse,
-        StateResponse, VlpResponse,
+        AllChainResponse, AllTokensResponse, AllVlpResponse, ChainResponse, QuerySimulateSwap,
+        SimulateSwapResponse, StateResponse, TokenEscrowsResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
 };
 
-use crate::state::{CHAIN_UID_TO_CHAIN, STATE, VLPS};
+use crate::state::{CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, STATE, VLPS};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -21,6 +21,8 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         vcoin_address: state.vcoin_address,
     })?)
 }
+
+
 
 pub fn query_all_vlps(
     deps: Deps,
@@ -149,4 +151,52 @@ pub fn validate_swap_pairs(
         })
         .collect();
     swap_vlps
+}
+
+pub fn query_token_escrows(
+    deps: Deps,
+    token: Token,
+    start: Option<ChainUid>,
+    end: Option<ChainUid>,
+    skip: Option<usize>,
+    limit: Option<usize>,
+) -> Result<Binary, ContractError> {
+    let start = start.map(Bound::inclusive);
+    let end = end.map(Bound::exclusive);
+
+    let chains: Result<_, ContractError> = ESCROW_BALANCES
+        .prefix(token)
+        .range(deps.storage, start, end, Order::Ascending)
+        .skip(skip.unwrap_or(0))
+        .take(limit.unwrap_or(10))
+        .map(|v| {
+            let v = v?;
+            Ok(v.0)
+        })
+        .collect();
+
+    Ok(to_json_binary(&TokenEscrowsResponse { chains: chains? })?)
+}
+
+pub fn query_all_tokens(
+    deps: Deps,
+    start: Option<Token>,
+    end: Option<Token>,
+    skip: Option<usize>,
+    limit: Option<usize>,
+) -> Result<Binary, ContractError> {
+    let start = start.map(PrefixBound::inclusive);
+    let end = end.map(PrefixBound::exclusive);
+
+    let tokens: Result<_, ContractError> = ESCROW_BALANCES
+        .prefix_range(deps.storage, start, end, Order::Ascending)
+        .skip(skip.unwrap_or(0))
+        .take(limit.unwrap_or(10))
+        .map(|v| {
+            let v = v?;
+            Ok(v.0 .0)
+        })
+        .collect();
+
+    Ok(to_json_binary(&AllTokensResponse { tokens: tokens? })?)
 }
