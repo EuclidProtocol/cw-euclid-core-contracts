@@ -14,6 +14,7 @@ pub struct InstantiateMsg {
     pub router_contract: String,
     pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
+    pub cw20_code_id: u64,
 }
 
 #[cw_serde]

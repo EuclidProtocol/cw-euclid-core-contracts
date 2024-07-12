@@ -17,6 +17,8 @@ pub struct State {
     pub admin: String,
     // Escrow Code ID
     pub escrow_code_id: u64,
+    // CW20 Code ID
+    pub cw20_code_id: u64,
     // The Unique Chain Identifier
     // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
     // IN THE EUCLID ECOSYSTEM

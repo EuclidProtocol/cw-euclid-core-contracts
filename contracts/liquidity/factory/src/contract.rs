@@ -36,6 +36,7 @@ pub fn instantiate(
         router_contract: msg.router_contract.clone(),
         admin: info.sender.clone().to_string(),
         escrow_code_id: msg.escrow_code_id,
+        cw20_code_id: msg.cw20_code_id,
         chain_uid,
     };
 

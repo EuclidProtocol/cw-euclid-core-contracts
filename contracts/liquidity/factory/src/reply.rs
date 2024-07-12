@@ -4,9 +4,10 @@ use cw0::{parse_execute_response_data, parse_reply_instantiate_data};
 use euclid::error::ContractError;
 use euclid_ibc::ack::make_ack_fail;
 
-pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1u64;
-pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2u64;
-pub const IBC_RECEIVE_REPLY_ID: u64 = 3u64;
+pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
+pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
+pub const IBC_RECEIVE_REPLY_ID: u64 = 3;
+pub const CW20_INSTANTIATE_REPLY_ID: u64 = 4;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {

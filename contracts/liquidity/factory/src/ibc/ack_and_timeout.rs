@@ -4,6 +4,7 @@ use cosmwasm_std::{
     from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement, IbcBasicResponse,
     IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdResult, SubMsg, Uint128, WasmMsg,
 };
+use cw20::MinterResponse;
 use euclid::{
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
@@ -14,7 +15,7 @@ use euclid::{
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 
 use crate::{
-    reply::{ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
+    reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
     state::{
         PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY,
         PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES,
@@ -136,6 +137,7 @@ fn ack_pool_creation(
         AcknowledgementMsg::Ok(data) => {
             // Load state to get escrow code id in case we need to instantiate
             let escrow_code_id = STATE.load(deps.storage)?.escrow_code_id;
+            let cw20_code_id = STATE.load(deps.storage)?.cw20_code_id;
 
             PAIR_TO_VLP.save(
                 deps.storage,
@@ -187,6 +189,7 @@ fn ack_pool_creation(
                             funds: vec![],
                             label: "escrow".to_string(),
                         });
+
                         // Needs to be submsg for reply event
                         res = res.add_submessage(SubMsg {
                             id: ESCROW_INSTANTIATE_REPLY_ID,
@@ -197,7 +200,36 @@ fn ack_pool_creation(
                     }
                 }
             }
-            Ok(res)
+            let state = STATE.load(deps.storage)?;
+            // Instantiate cw20
+            let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                admin: Some(state.admin.clone()),
+                code_id: cw20_code_id,
+                msg: to_json_binary(&euclid::msgs::cw20::InstantiateMsg {
+                    name: "cw20".to_string(),
+                    symbol: format!(
+                        "{}:{}",
+                        existing_req.pair_info.token_1.token.to_string(),
+                        existing_req.pair_info.token_2.token.to_string()
+                    ),
+                    decimals: 6,
+                    initial_balances: vec![],
+                    mint: Some(MinterResponse {
+                        minter: state.admin,
+                        cap: None,
+                    }),
+                    marketing: None,
+                })?,
+                funds: vec![],
+                label: "cw20".to_string(),
+            });
+
+            Ok(res.add_submessage(SubMsg {
+                id: CW20_INSTANTIATE_REPLY_ID,
+                msg: init_cw20_msg,
+                gas_limit: None,
+                reply_on: ReplyOn::Always,
+            }))
         }
 
         AcknowledgementMsg::Error(err) => Ok(Response::new()
