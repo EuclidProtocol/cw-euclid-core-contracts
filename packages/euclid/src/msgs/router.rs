@@ -144,6 +144,12 @@ pub struct TokenEscrowsResponse {
 }
 
 #[cw_serde]
+pub struct TokenResponse {
+    pub token: Token,
+    pub chain_uid: ChainUid,
+}
+
+#[cw_serde]
 pub struct AllTokensResponse {
-    pub tokens: Vec<Token>,
+    pub tokens: Vec<TokenResponse>,
 }
