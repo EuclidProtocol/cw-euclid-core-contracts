@@ -337,18 +337,40 @@ fn ack_swap_request(
             let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
 
             let send_msg = asset_in.create_escrow_msg(swap_info.amount_in, escrow_address)?;
-
-            Ok(Response::new()
+            let mut response = Response::new()
                 .add_message(send_msg)
                 .add_attribute("method", "process_successfull_swap")
-                .add_attribute("swap_response", format!("{data:?}")))
+                .add_attribute("swap_response", format!("{data:?}"));
+
+            if !swap_info.partner_fee_amount.is_zero() {
+                // Send the partner fee amount to recipient of the fee, if no recipient was provided, send the
+                // funds back to the user
+                let partner_fee_recipient = swap_info
+                    .partner_fee_recipient
+                    .unwrap_or(sender)
+                    .to_string();
+                let partner_send_msg = asset_in.create_transfer_msg(
+                    swap_info.partner_fee_amount,
+                    partner_fee_recipient.clone(),
+                )?;
+                response = response
+                    .add_message(partner_send_msg)
+                    .add_attribute("partner_fee_amount", swap_info.partner_fee_amount)
+                    .add_attribute("partner_fee_recipient", partner_fee_recipient)
+            }
+
+            Ok(response)
         }
 
         AcknowledgementMsg::Error(err) => {
             // Prepare messages to refund tokens back to user
-            let msg = swap_info
-                .asset_in
-                .create_transfer_msg(swap_info.amount_in, sender.to_string())?;
+            // Send back both amount in and fee amount
+            let msg = swap_info.asset_in.create_transfer_msg(
+                swap_info
+                    .amount_in
+                    .checked_add(swap_info.partner_fee_amount)?,
+                sender.to_string(),
+            )?;
 
             Ok(Response::new()
                 .add_attribute("method", "process_failed_swap")

@@ -21,11 +21,12 @@ pub struct State {
     pub last_updated: u64,
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
+    pub admin: String,
 }
 
 pub const STATE: Item<State> = Item::new("state");
 
-pub const CHAIN_LP_SHARES: Map<ChainUid, Uint128> = Map::new("chain_lp_shares");
+pub const CHAIN_LP_TOKENS: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
 
 // Stores a snapshotMap in order to keep track of prices for blocks for charts and other purposes
 pub const BALANCES: SnapshotMap<Token, Uint128> = SnapshotMap::new(

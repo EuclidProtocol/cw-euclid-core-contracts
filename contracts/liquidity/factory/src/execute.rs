@@ -7,6 +7,7 @@ use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{swap_event, tx_event},
+    fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     pool::PoolCreateRequest,
     swap::{NextSwapPair, SwapRequest},
@@ -361,7 +362,7 @@ pub fn execute_swap_request(
     timeout: Option<u64>,
     mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     tx_id: String,
-    partner_fee: Option<Decimal>,
+    partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
@@ -373,9 +374,19 @@ pub fn execute_swap_request(
         limit: None,
     });
 
-    let partner_fee = amount_in.checked_mul_ceil(partner_fee.unwrap_or(Decimal::zero()))?;
+    let partner_fee_bps = partner_fee
+        .clone()
+        .map(|fee| fee.partner_fee_bps)
+        .unwrap_or(0);
 
-    let amount_in = amount_in.checked_sub(partner_fee)?;
+    ensure!(
+        partner_fee_bps <= MAX_PARTNER_FEE_BPS,
+        ContractError::new("Invalid partner fee")
+    );
+
+    let partner_fee_amount = amount_in.checked_mul_ceil(Decimal::bps(partner_fee_bps))?;
+
+    let amount_in = amount_in.checked_sub(partner_fee_amount)?;
     // Verify that the asset amount is greater than 0
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -461,6 +472,10 @@ pub fn execute_swap_request(
         timeout: timeout.clone(),
         tx_id: tx_id.clone(),
         cross_chain_addresses: cross_chain_addresses.clone(),
+        partner_fee_amount,
+        partner_fee_recipient: partner_fee
+            .map(|partner_fee| deps.api.addr_validate(&partner_fee.recipient))
+            .transpose()?,
     };
     PENDING_SWAPS.save(
         deps.storage,

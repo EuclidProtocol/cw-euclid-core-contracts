@@ -218,6 +218,14 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 ContractError::new("Asset Out Mismatch")
             );
 
+            ensure!(
+                vlp_swap_response.amount_out >= swap_msg.min_amount_out,
+                ContractError::SlippageExceeded {
+                    amount: vlp_swap_response.amount_out,
+                    min_amount_out: swap_msg.min_amount_out
+                }
+            );
+
             let swap_response = SwapResponse {
                 amount_out: vlp_swap_response.amount_out,
                 tx_id: vlp_swap_response.tx_id,

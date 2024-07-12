@@ -105,7 +105,10 @@ pub fn execute_release_escrow(
         ContractError::Unauthorized {}
     );
 
-    let vcoin_address = state.vcoin_address.unwrap().into_string();
+    let vcoin_address = state
+        .vcoin_address
+        .ok_or(ContractError::new("vcoin doesn't exist"))?
+        .into_string();
 
     let user_balance: euclid::msgs::vcoin::GetBalanceResponse = deps.querier.query_wasm_smart(
         vcoin_address.clone(),
