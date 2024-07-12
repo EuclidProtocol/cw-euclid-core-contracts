@@ -7,7 +7,7 @@ pub const MAX_FEE_BPS: u64 = 1000;
 // Fee Config for a VLP contract
 #[cw_serde]
 pub struct Fee {
-    // Feee for lp providers
+    // Fee for lp providers
     pub lp_fee_bps: u64,
     // Fee for euclid treasury, distributed among stakers and other euclid related rewards
     pub euclid_fee_bps: u64,
