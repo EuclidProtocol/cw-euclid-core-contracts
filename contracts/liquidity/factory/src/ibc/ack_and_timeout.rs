@@ -8,6 +8,7 @@ use cw20::MinterResponse;
 use euclid::{
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
+    msgs::cw20::ExecuteMsg as Cw20ExecuteMsg,
     msgs::factory::ExecuteMsg,
     pool::PoolCreationResponse,
     swap::SwapResponse,
@@ -18,7 +19,7 @@ use crate::{
     reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
     state::{
         PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES,
+        PENDING_SWAPS, STATE, TOKEN_TO_CW20, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES,
     },
 };
 
@@ -279,7 +280,22 @@ fn ack_add_liquidity(
             let send_msg = token_info.create_escrow_msg(liquidity, escrow_contract)?;
             res = res.add_message(send_msg);
 
+            // Mint cw20 tokens for sender //
+            // Get cw20 contract address
+            let cw20_address = TOKEN_TO_CW20.load(deps.storage, token_info.token)?;
+
+            // Send mint msg
+            let cw20_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: cw20_address.into_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Mint {
+                    recipient: liquidity_info.sender,
+                    amount: liquidity_info.token_1_liquidity,
+                })?,
+                funds: vec![],
+            });
+
             Ok(res
+                .add_message(cw20_mint_msg)
                 .add_attribute("sender", sender)
                 .add_attribute("liquidity_id", tx_id))
         }
