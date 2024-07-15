@@ -3,7 +3,7 @@ use crate::{
     fee::PartnerFee,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
-    token::{Pair, PairWithDenom, Token, TokenWithDenom},
+    token::{Pair, PairWithDenom, Token, TokenType, TokenWithDenom},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
@@ -129,6 +129,7 @@ pub struct GetLPTokenResponse {
 #[cw_serde]
 pub struct GetEscrowResponse {
     pub escrow_address: Option<Addr>,
+    pub denoms: Vec<TokenType>,
 }
 // We define a custom struct for each query response
 #[cw_serde]

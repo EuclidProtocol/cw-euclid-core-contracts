@@ -37,6 +37,9 @@ pub enum QueryMsg {
     // New escrow queries
     #[returns(AllowedTokenResponse)]
     TokenAllowed { denom: TokenType },
+
+    #[returns(AllowedDenomsResponse)]
+    AllowedDenoms {},
 }
 
 #[cw_serde]
@@ -45,6 +48,11 @@ pub struct MigrateMsg {}
 #[cw_serde]
 pub struct TokenIdResponse {
     pub token_id: String,
+}
+
+#[cw_serde]
+pub struct AllowedDenomsResponse {
+    pub denoms: Vec<TokenType>,
 }
 
 #[cw_serde]

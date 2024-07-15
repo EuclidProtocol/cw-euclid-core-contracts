@@ -79,6 +79,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         // New escrow queries
         QueryMsg::TokenId {} => query_token_id(deps),
         QueryMsg::TokenAllowed { denom } => query::query_token_allowed(deps, denom),
+        QueryMsg::AllowedDenoms {} => query::query_allowed_denoms(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
