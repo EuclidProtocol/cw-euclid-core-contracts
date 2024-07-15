@@ -266,7 +266,7 @@ fn ack_add_liquidity(
             let mut res = Response::new().add_attribute("method", "ack_add_liquidity");
 
             // Token 1
-            let token_info = liquidity_info.pair_info.token_1;
+            let token_info = liquidity_info.pair_info.token_1.clone();
             let liquidity = liquidity_info.token_1_liquidity;
             let escrow_contract = TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
 
@@ -282,7 +282,8 @@ fn ack_add_liquidity(
 
             // Mint cw20 tokens for sender //
             // Get cw20 contract address
-            let cw20_address = TOKEN_TO_CW20.load(deps.storage, token_info.token)?;
+            let cw20_address =
+                TOKEN_TO_CW20.load(deps.storage, liquidity_info.pair_info.token_1.token)?;
 
             // Send mint msg
             let cw20_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
@@ -333,7 +334,7 @@ fn ack_remove_liquidity(
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
     // Validate that the pending exists for the sender
-    PENDING_REMOVE_LIQUIDITY.load(deps.storage, req_key.clone())?;
+    let liquidity_info = PENDING_REMOVE_LIQUIDITY.load(deps.storage, req_key.clone())?;
     // Remove this from pending
     PENDING_REMOVE_LIQUIDITY.remove(deps.storage, req_key.clone());
     // Check whether res is an error or not
@@ -348,7 +349,23 @@ fn ack_remove_liquidity(
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address, &shares)?;
             // Prepare response
             let res = Response::new().add_attribute("method", "ack_remove_liquidity");
+
+            // Burn cw20 tokens for sender //
+            // Get cw20 contract address
+            let cw20_address = TOKEN_TO_CW20.load(deps.storage, liquidity_info.pair.token_2)?;
+
+            // Send burn msg
+            let cw20_burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: cw20_address.into_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Mint {
+                    recipient: liquidity_info.sender,
+                    amount: liquidity_info.lp_allocation,
+                })?,
+                funds: vec![],
+            });
+
             Ok(res
+                .add_message(cw20_burn_msg)
                 .add_attribute("sender", sender)
                 .add_attribute("liquidity_id", tx_id))
         }
