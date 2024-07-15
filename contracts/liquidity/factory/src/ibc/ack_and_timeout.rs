@@ -357,8 +357,7 @@ fn ack_remove_liquidity(
             // Send burn msg
             let cw20_burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: cw20_address.into_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Mint {
-                    recipient: liquidity_info.sender,
+                msg: to_json_binary(&Cw20ExecuteMsg::Burn {
                     amount: liquidity_info.lp_allocation,
                 })?,
                 funds: vec![],
