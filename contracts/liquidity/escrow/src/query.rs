@@ -1,7 +1,7 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps};
 use euclid::{
     error::ContractError,
-    msgs::escrow::{AllowedTokenResponse, TokenIdResponse},
+    msgs::escrow::{AllowedDenomsResponse, AllowedTokenResponse, TokenIdResponse},
     token::TokenType,
 };
 
@@ -23,6 +23,14 @@ pub fn query_token_allowed(deps: Deps, denom: TokenType) -> Result<Binary, Contr
     let response = AllowedTokenResponse {
         allowed: registered_denom.contains(&denom),
     };
+
+    Ok(to_json_binary(&response)?)
+}
+
+// Returns the token id
+pub fn query_allowed_denoms(deps: Deps) -> Result<Binary, ContractError> {
+    let denoms = ALLOWED_DENOMS.may_load(deps.storage)?.unwrap_or_default();
+    let response = AllowedDenomsResponse { denoms };
 
     Ok(to_json_binary(&response)?)
 }

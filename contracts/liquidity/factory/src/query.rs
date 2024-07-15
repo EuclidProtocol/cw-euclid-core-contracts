@@ -29,7 +29,18 @@ pub fn get_lp_token_address(deps: Deps, vlp: String) -> Result<Binary, ContractE
 // Returns the Pair Info of the Pair in the pool
 pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
     let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, Token::create(token_id)?)?;
-    Ok(to_json_binary(&GetEscrowResponse { escrow_address })?)
+    let mut response = GetEscrowResponse {
+        escrow_address: escrow_address.clone(),
+        denoms: vec![],
+    };
+    if escrow_address.is_some() {
+        let denoms: euclid::msgs::escrow::AllowedDenomsResponse = deps.querier.query_wasm_smart(
+            escrow_address.unwrap(),
+            &euclid::msgs::escrow::QueryMsg::AllowedDenoms {},
+        )?;
+        response.denoms = denoms.denoms;
+    }
+    Ok(to_json_binary(&response)?)
 }
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
