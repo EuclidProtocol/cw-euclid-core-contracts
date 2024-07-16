@@ -41,14 +41,6 @@ pub enum ExecuteMsg {
         timeout: Option<u64>,
         tx_id: String,
     },
-    RemoveLiquidityRequest {
-        pair: Pair,
-        lp_allocation: Uint128,
-        timeout: Option<u64>,
-        // First element in array has highest priority
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-        tx_id: String,
-    },
     ExecuteSwapRequest {
         asset_in: TokenWithDenom,
         asset_out: Token,

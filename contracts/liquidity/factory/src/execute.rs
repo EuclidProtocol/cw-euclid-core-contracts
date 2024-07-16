@@ -547,6 +547,23 @@ pub fn receive_cw20(
                 partner_fee,
             )
         }
+        Cw20HookMsg::RemoveLiquidity {
+            pair,
+            lp_allocation,
+            timeout,
+            cross_chain_addresses,
+            tx_id,
+        } => remove_liquidity_request(
+            deps,
+            info,
+            env,
+            pair,
+            lp_allocation,
+            timeout,
+            cross_chain_addresses,
+            tx_id,
+        ),
+
         _ => Err(ContractError::NotImplemented {}),
     }
 }

@@ -7,7 +7,6 @@ use euclid::error::ContractError;
 use crate::execute::{
     add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
     execute_request_register_denom, execute_swap_request, execute_update_hub_channel, receive_cw20,
-    remove_liquidity_request,
 };
 use crate::query::{
     get_escrow, get_vlp, pending_liquidity, pending_remove_liquidity, pending_swaps,
@@ -88,22 +87,6 @@ pub fn execute(
             token_2_liquidity,
             slippage_tolerance,
             timeout,
-            tx_id,
-        ),
-        ExecuteMsg::RemoveLiquidityRequest {
-            pair,
-            lp_allocation,
-            timeout,
-            cross_chain_addresses,
-            tx_id,
-        } => remove_liquidity_request(
-            deps,
-            info,
-            env,
-            pair,
-            lp_allocation,
-            timeout,
-            cross_chain_addresses,
             tx_id,
         ),
         ExecuteMsg::ExecuteSwapRequest {
