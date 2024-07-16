@@ -3,6 +3,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
+use crate::state::{State, STATE};
 use crate::{execute, query};
 use cw20::{Cw20Coin, Cw20ExecuteMsg};
 use euclid::error::ContractError;
@@ -19,14 +20,20 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let cw20_resp = cw20_instantiate(deps, env, info, msg.into())?;
+    let cw20_resp = cw20_instantiate(deps.branch(), env, info, msg.clone().into())?;
+    let state = State {
+        token_pair: msg.token_pair,
+        factory_address: msg.factory,
+        vlp: msg.vlp,
+    };
+    STATE.save(deps.storage, &state)?;
 
     Ok(cw20_resp)
 }

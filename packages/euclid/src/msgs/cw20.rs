@@ -1,11 +1,13 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 use cw20::{Cw20Coin, Logo, MinterResponse};
 use cw20_base::msg::{
     ExecuteMsg as Cw20ExecuteMsg, InstantiateMarketingInfo, InstantiateMsg as Cw20InstantiateMsg,
     QueryMsg as Cw20QueryMsg,
 };
 use cw_utils::Expiration;
+
+use crate::token::Pair;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -15,6 +17,10 @@ pub struct InstantiateMsg {
     pub initial_balances: Vec<Cw20Coin>,
     pub mint: Option<MinterResponse>,
     pub marketing: Option<InstantiateMarketingInfo>,
+    // Custom Params
+    pub vlp: String,
+    pub factory: Addr,
+    pub token_pair: Pair,
 }
 
 impl From<InstantiateMsg> for Cw20InstantiateMsg {

@@ -148,7 +148,7 @@ fn ack_pool_creation(
             // Prepare response
             let mut res = Response::new()
                 .add_attribute("method", "pool_creation")
-                .add_attribute("vlp", data.vlp_contract);
+                .add_attribute("vlp", data.vlp_contract.clone());
             // Collects PairInfo into a vector of Token Info for easy iteration
             let tokens = existing_req.pair_info.get_vec_token_info();
             for token in tokens {
@@ -216,10 +216,13 @@ fn ack_pool_creation(
                     decimals: 6,
                     initial_balances: vec![],
                     mint: Some(MinterResponse {
-                        minter: env.contract.address.into_string(),
+                        minter: env.contract.address.clone().into_string(),
                         cap: None,
                     }),
                     marketing: None,
+                    vlp: data.vlp_contract,
+                    factory: env.contract.address,
+                    token_pair: existing_req.pair_info.get_pair()?,
                 })?,
                 funds: vec![],
                 label: "cw20".to_string(),
