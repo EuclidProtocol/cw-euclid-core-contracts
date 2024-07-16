@@ -19,7 +19,7 @@ use crate::{
     reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
     state::{
         PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SWAPS, STATE, TOKEN_TO_CW20, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES,
+        PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20, VLP_TO_LP_SHARES,
     },
 };
 
@@ -261,7 +261,7 @@ fn ack_add_liquidity(
                 .unwrap_or(Uint128::zero());
             let shares = shares.checked_add(data.mint_lp_tokens)?;
 
-            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address, &shares)?;
+            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
             let mut res = Response::new().add_attribute("method", "ack_add_liquidity");
 
@@ -282,8 +282,7 @@ fn ack_add_liquidity(
 
             // Mint cw20 tokens for sender //
             // Get cw20 contract address
-            let cw20_address =
-                TOKEN_TO_CW20.load(deps.storage, liquidity_info.pair_info.token_1.token)?;
+            let cw20_address = VLP_TO_CW20.load(deps.storage, data.vlp_address)?;
 
             // Send mint msg
             let cw20_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
@@ -346,13 +345,13 @@ fn ack_remove_liquidity(
                 .unwrap_or(Uint128::zero());
             let shares = shares.checked_sub(data.burn_lp_tokens)?;
 
-            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address, &shares)?;
+            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
             let res = Response::new().add_attribute("method", "ack_remove_liquidity");
 
             // Burn cw20 tokens for sender //
             // Get cw20 contract address
-            let cw20_address = TOKEN_TO_CW20.load(deps.storage, liquidity_info.pair.token_2)?;
+            let cw20_address = VLP_TO_CW20.load(deps.storage, data.vlp_address)?;
 
             // Send burn msg
             let cw20_burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {

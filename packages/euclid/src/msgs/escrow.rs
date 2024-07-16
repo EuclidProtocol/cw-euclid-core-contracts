@@ -62,4 +62,5 @@ pub struct EscrowInstantiateResponse {
 pub struct Cw20InstantiateResponse {
     pub token: Token,
     pub address: String,
+    pub vlp: String,
 }

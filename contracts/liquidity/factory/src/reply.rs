@@ -1,4 +1,4 @@
-use crate::state::{TOKEN_TO_CW20, TOKEN_TO_ESCROW};
+use crate::state::{TOKEN_TO_ESCROW, VLP_TO_CW20};
 use cosmwasm_std::{from_json, DepsMut, Reply, Response, SubMsgResult};
 use cw0::{parse_execute_response_data, parse_reply_instantiate_data};
 use euclid::error::ContractError;
@@ -44,7 +44,7 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
             let cw20_data: euclid::msgs::escrow::Cw20InstantiateResponse =
                 from_json(instantiate_data.data.unwrap_or_default())?;
 
-            TOKEN_TO_CW20.save(deps.storage, cw20_data.token.clone(), &cw20_address)?;
+            VLP_TO_CW20.save(deps.storage, cw20_data.vlp, &cw20_address)?;
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
                 .add_attribute("cw20", cw20_address)
