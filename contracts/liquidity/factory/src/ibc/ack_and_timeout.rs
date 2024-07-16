@@ -216,7 +216,7 @@ fn ack_pool_creation(
                     decimals: 6,
                     initial_balances: vec![],
                     mint: Some(MinterResponse {
-                        minter: state.admin,
+                        minter: env.contract.address.into_string(),
                         cap: None,
                     }),
                     marketing: None,
