@@ -372,11 +372,23 @@ fn ack_remove_liquidity(
         }
 
         // Todo:: Return LP Tokens back to sender
-        AcknowledgementMsg::Error(err) => Ok(Response::new()
-            .add_attribute("method", "liquidity_tx_err_refund")
-            .add_attribute("sender", sender)
-            .add_attribute("liquidity_id", tx_id)
-            .add_attribute("error", err)),
+        AcknowledgementMsg::Error(err) => {
+            // Send back cw20 to original sender
+            let cw20_send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: liquidity_info.pair.token_1.to_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient: sender.clone().into_string(),
+                    amount: liquidity_info.lp_allocation,
+                })?,
+                funds: vec![],
+            });
+            Ok(Response::new()
+                .add_message(cw20_send_msg)
+                .add_attribute("method", "liquidity_tx_err_refund")
+                .add_attribute("sender", sender)
+                .add_attribute("liquidity_id", tx_id)
+                .add_attribute("error", err))
+        }
     }
 }
 
