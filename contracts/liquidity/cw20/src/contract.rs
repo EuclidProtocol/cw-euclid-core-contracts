@@ -1,7 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
+use euclid::msgs::escrow::Cw20InstantiateResponse;
 
 use crate::state::{State, STATE};
 use crate::{execute, query};
@@ -27,15 +28,21 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let cw20_resp = cw20_instantiate(deps.branch(), env, info, msg.clone().into())?;
+    let cw20_resp = cw20_instantiate(deps.branch(), env.clone(), info, msg.clone().into())?;
     let state = State {
-        token_pair: msg.token_pair,
+        token_pair: msg.token_pair.clone(),
         factory_address: msg.factory,
-        vlp: msg.vlp,
+        vlp: msg.vlp.clone(),
     };
     STATE.save(deps.storage, &state)?;
 
-    Ok(cw20_resp)
+    let data = Cw20InstantiateResponse {
+        token: msg.token_pair.token_1,
+        address: env.contract.address.into_string(),
+        vlp: msg.vlp,
+    };
+
+    Ok(cw20_resp.set_data(to_json_binary(&data)?))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
