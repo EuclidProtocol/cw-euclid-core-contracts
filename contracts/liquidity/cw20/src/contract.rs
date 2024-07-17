@@ -5,14 +5,11 @@ use cw2::set_contract_version;
 use euclid::msgs::escrow::Cw20InstantiateResponse;
 
 use crate::state::{State, STATE};
-use crate::{execute, query};
-use cw20::{Cw20Coin, Cw20ExecuteMsg};
 use euclid::error::ContractError;
 use euclid::msgs::cw20::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
-use cw20_base::{
-    contract::{execute as execute_cw20, instantiate as cw20_instantiate, query as cw20_query},
-    state::BALANCES,
+use cw20_base::contract::{
+    execute as execute_cw20, instantiate as cw20_instantiate, query as cw20_query,
 };
 
 // version info for migration info
@@ -37,7 +34,7 @@ pub fn instantiate(
     STATE.save(deps.storage, &state)?;
 
     let data = Cw20InstantiateResponse {
-        token: msg.token_pair.token_1,
+        pair: msg.token_pair,
         address: env.contract.address.into_string(),
         vlp: msg.vlp,
     };

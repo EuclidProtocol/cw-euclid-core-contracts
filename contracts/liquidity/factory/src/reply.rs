@@ -47,8 +47,7 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
             VLP_TO_CW20.save(deps.storage, cw20_data.vlp, &cw20_address)?;
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
-                .add_attribute("cw20", cw20_address)
-                .add_attribute("token_id", cw20_data.token.to_string()))
+                .add_attribute("cw20", cw20_address))
         }
     }
 }

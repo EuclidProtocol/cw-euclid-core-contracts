@@ -210,8 +210,7 @@ fn ack_pool_creation(
                     name: "cw20".to_string(),
                     symbol: format!(
                         "{}:{}",
-                        existing_req.pair_info.token_1.token.to_string(),
-                        existing_req.pair_info.token_2.token.to_string()
+                        existing_req.pair_info.token_1.token, existing_req.pair_info.token_2.token
                     ),
                     decimals: 6,
                     initial_balances: vec![],

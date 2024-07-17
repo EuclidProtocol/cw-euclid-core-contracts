@@ -1,4 +1,4 @@
-use crate::token::{Token, TokenType};
+use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
@@ -60,7 +60,7 @@ pub struct EscrowInstantiateResponse {
 
 #[cw_serde]
 pub struct Cw20InstantiateResponse {
-    pub token: Token,
+    pub pair: Pair,
     pub address: String,
     pub vlp: String,
 }
