@@ -15,6 +15,7 @@ pub struct InstantiateMsg {
     pub router_contract: String,
     pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
+    pub cw20_code_id: u64,
 }
 
 #[cw_serde]
@@ -39,14 +40,6 @@ pub enum ExecuteMsg {
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         timeout: Option<u64>,
-        tx_id: String,
-    },
-    RemoveLiquidityRequest {
-        pair: Pair,
-        lp_allocation: Uint128,
-        timeout: Option<u64>,
-        // First element in array has highest priority
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         tx_id: String,
     },
     ExecuteSwapRequest {

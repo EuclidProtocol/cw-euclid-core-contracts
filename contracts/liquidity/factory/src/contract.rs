@@ -7,14 +7,14 @@ use euclid::error::ContractError;
 use crate::execute::{
     add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
     execute_request_register_denom, execute_swap_request, execute_update_hub_channel, receive_cw20,
-    remove_liquidity_request,
 };
 use crate::query::{
     get_escrow, get_vlp, pending_liquidity, pending_remove_liquidity, pending_swaps,
     query_all_pools, query_all_tokens, query_state,
 };
 use crate::reply::{
-    ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
+    CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
+    IBC_RECEIVE_REPLY_ID,
 };
 use crate::state::{State, STATE};
 use crate::{ibc, reply};
@@ -36,6 +36,7 @@ pub fn instantiate(
         router_contract: msg.router_contract.clone(),
         admin: info.sender.clone().to_string(),
         escrow_code_id: msg.escrow_code_id,
+        cw20_code_id: msg.cw20_code_id,
         chain_uid,
     };
 
@@ -86,22 +87,6 @@ pub fn execute(
             token_2_liquidity,
             slippage_tolerance,
             timeout,
-            tx_id,
-        ),
-        ExecuteMsg::RemoveLiquidityRequest {
-            pair,
-            lp_allocation,
-            timeout,
-            cross_chain_addresses,
-            tx_id,
-        } => remove_liquidity_request(
-            deps,
-            info,
-            env,
-            pair,
-            lp_allocation,
-            timeout,
-            cross_chain_addresses,
             tx_id,
         ),
         ExecuteMsg::ExecuteSwapRequest {
@@ -168,6 +153,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
         ESCROW_INSTANTIATE_REPLY_ID => reply::on_escrow_instantiate_reply(deps, msg),
+        CW20_INSTANTIATE_REPLY_ID => reply::on_cw20_instantiate_reply(deps, msg),
         IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(

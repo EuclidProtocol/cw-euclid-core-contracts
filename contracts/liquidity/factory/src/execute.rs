@@ -1,10 +1,11 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo,
-    Response, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg, IbcTimeout,
+    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
+    cw20::Cw20HookMsg,
     error::ContractError,
     events::{swap_event, tx_event},
     fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
@@ -518,42 +519,68 @@ pub fn execute_swap_request(
 ///
 /// * **cw20_msg** is the CW20 message that has to be processed.
 pub fn receive_cw20(
-    _deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    _cw20_msg: Cw20ReceiveMsg,
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
-    // match from_json(&cw20_msg.msg)? {
-    //     // Allow to swap using a CW20 hook message
-    //     Cw20HookMsg::Swap {
-    //         asset,
-    //         min_amount_out,
-    //         timeout,
-    //     } => {
-    //         let contract_adr = info.sender.clone();
+    match from_json(&cw20_msg.msg)? {
+        // Allow to swap using a CW20 hook message
+        Cw20HookMsg::Swap {
+            asset_in,
+            asset_out,
+            min_amount_out,
+            timeout,
+            swaps,
+            cross_chain_addresses,
+            tx_id,
+            partner_fee,
+        } => {
+            let contract_adr = info.sender.clone();
 
-    //         // ensure that contract address is same as asset being swapped
-    //         ensure!(
-    //             contract_adr == asset.get_contract_address(),
-    //             ContractError::AssetDoesNotExist {}
-    //         );
-    //         // Add sender as the option
+            // ensure that contract address is same as asset being swapped
+            ensure!(
+                contract_adr == asset_in.get_denom(),
+                ContractError::AssetDoesNotExist {}
+            );
 
-    //         // ensure that the contract address is the same as the asset contract address
-    //         execute_swap_request(
-    //             &mut deps,
-    //             info,
-    //             env,
-    //             asset,
-    //             cw20_msg.amount,
-    //             min_amount_out,
-    //             Some(cw20_msg.sender),
-    //             timeout,
-    //         )
-    //     }
-    //     Cw20HookMsg::Deposit {} => {}
-    // }
-    Err(ContractError::NotImplemented {})
+            let amount_in = cw20_msg.amount;
+
+            // ensure that the contract address is the same as the asset contract address
+            execute_swap_request(
+                &mut deps,
+                info,
+                env,
+                asset_in,
+                asset_out,
+                amount_in,
+                min_amount_out,
+                swaps,
+                timeout,
+                cross_chain_addresses,
+                tx_id,
+                partner_fee,
+            )
+        }
+        Cw20HookMsg::RemoveLiquidity {
+            pair,
+            lp_allocation,
+            timeout,
+            cross_chain_addresses,
+            tx_id,
+        } => remove_liquidity_request(
+            deps,
+            info,
+            env,
+            pair,
+            lp_allocation,
+            timeout,
+            cross_chain_addresses,
+            tx_id,
+        ),
+
+        _ => Err(ContractError::NotImplemented {}),
+    }
 }
 
 // New factory functions //
