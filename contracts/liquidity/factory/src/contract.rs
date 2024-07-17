@@ -9,8 +9,8 @@ use crate::execute::{
     execute_request_register_denom, execute_swap_request, execute_update_hub_channel, receive_cw20,
 };
 use crate::query::{
-    get_escrow, get_vlp, pending_liquidity, pending_remove_liquidity, pending_swaps,
-    query_all_pools, query_all_tokens, query_state,
+    get_escrow, get_lp_token_address, get_vlp, pending_liquidity, pending_remove_liquidity,
+    pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
 use crate::reply::{
     CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
@@ -68,16 +68,28 @@ pub fn execute(
         }
         ExecuteMsg::RequestPoolCreation {
             pair,
+            lp_token_name,
+            lp_token_symbol,
+            lp_token_decimal,
+            lp_token_marketing,
             timeout,
-            tx_id,
-        } => execute_request_pool_creation(deps, env, info, pair, timeout, tx_id),
+        } => execute_request_pool_creation(
+            deps,
+            env,
+            info,
+            pair,
+            lp_token_name,
+            lp_token_symbol,
+            lp_token_decimal,
+            lp_token_marketing,
+            timeout,
+        ),
         ExecuteMsg::AddLiquidityRequest {
             pair_info,
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
             timeout,
-            tx_id,
         } => add_liquidity_request(
             deps,
             info,
@@ -87,7 +99,6 @@ pub fn execute(
             token_2_liquidity,
             slippage_tolerance,
             timeout,
-            tx_id,
         ),
         ExecuteMsg::ExecuteSwapRequest {
             asset_in,
@@ -96,7 +107,6 @@ pub fn execute(
             min_amount_out,
             timeout,
             swaps,
-            tx_id,
             cross_chain_addresses,
             partner_fee,
         } => execute_swap_request(
@@ -110,7 +120,6 @@ pub fn execute(
             swaps,
             timeout,
             cross_chain_addresses,
-            tx_id,
             partner_fee,
         ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
@@ -127,6 +136,7 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetVlp { pair } => get_vlp(deps, pair),
+        QueryMsg::GetLPToken { vlp } => get_lp_token_address(deps, vlp),
         QueryMsg::GetEscrow { token_id } => get_escrow(deps, token_id),
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),

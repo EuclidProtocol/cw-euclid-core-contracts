@@ -9,6 +9,7 @@ use euclid::{
     msgs::vcoin::ExecuteBurn,
     timeout::get_timeout,
     token::Token,
+    utils::generate_tx,
     vcoin::BalanceKey,
 };
 use euclid_ibc::msg::HubIbcExecuteMsg;
@@ -45,11 +46,16 @@ pub fn execute_register_factory(
     chain_uid: ChainUid,
     channel: String,
     timeout: Option<u64>,
-    tx_id: String,
 ) -> Result<Response, ContractError> {
     let chain_uid = chain_uid.validate()?.to_owned();
 
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+    let sender = CrossChainUser {
+        chain_uid: vsl_chain_uid.clone(),
+        address: info.sender.to_string(),
+    };
+
+    let tx_id = generate_tx(&env, &sender);
 
     ensure!(
         chain_uid != vsl_chain_uid,

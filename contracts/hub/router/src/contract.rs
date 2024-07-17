@@ -72,9 +72,8 @@ pub fn execute(
         ExecuteMsg::RegisterFactory {
             channel,
             timeout,
-            tx_id,
             chain_uid,
-        } => execute::execute_register_factory(deps, env, info, chain_uid, channel, timeout, tx_id),
+        } => execute::execute_register_factory(deps, env, info, chain_uid, channel, timeout),
         ExecuteMsg::ReleaseEscrowInternal {
             sender,
             token,

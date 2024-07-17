@@ -18,11 +18,7 @@ pub struct AddLiquidityRequest {
 // Struct to handle Acknowledgement Response for a Liquidity Request
 #[cw_serde]
 pub struct AddLiquidityResponse {
-    pub token_1_liquidity: Uint128,
-    pub token_2_liquidity: Uint128,
     pub mint_lp_tokens: Uint128,
-    pub reserve_1: Uint128,
-    pub reserve_2: Uint128,
     pub vlp_address: String,
 }
 
@@ -42,7 +38,5 @@ pub struct RemoveLiquidityResponse {
     pub token_1_liquidity: Uint128,
     pub token_2_liquidity: Uint128,
     pub burn_lp_tokens: Uint128,
-    pub reserve_1: Uint128,
-    pub reserve_2: Uint128,
     pub vlp_address: String,
 }

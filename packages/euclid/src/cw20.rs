@@ -1,6 +1,6 @@
-use crate::token::Pair;
+use crate::{fee::PartnerFee, token::Pair};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal, Uint128};
+use cosmwasm_std::Uint128;
 
 use crate::{
     chain::CrossChainUserWithLimit,
@@ -24,8 +24,7 @@ pub enum Cw20HookMsg {
         swaps: Vec<NextSwapPair>,
         timeout: Option<u64>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-        tx_id: String,
-        partner_fee: Option<Decimal>,
+        partner_fee: Option<PartnerFee>,
     },
     RemoveLiquidity {
         pair: Pair,
@@ -33,6 +32,5 @@ pub enum Cw20HookMsg {
         timeout: Option<u64>,
         // First element in array has highest priority
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-        tx_id: String,
     },
 }

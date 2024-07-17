@@ -14,6 +14,7 @@ use euclid::{
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
+    utils::generate_tx,
 };
 use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg};
 
@@ -43,9 +44,19 @@ pub fn execute_request_pool_creation(
     env: Env,
     info: MessageInfo,
     pair: PairWithDenom,
+    lp_token_name: String,
+    lp_token_symbol: String,
+    lp_token_decimal: u8,
+    lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     timeout: Option<u64>,
-    tx_id: String,
 ) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+    let tx_id = generate_tx(&env, &sender);
+
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
@@ -55,19 +66,26 @@ pub fn execute_request_pool_creation(
         ContractError::PoolAlreadyExists {}
     );
 
-    let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
-    };
-
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
 
+    let lp_token_instantiate_msg = cw20_base::msg::InstantiateMsg {
+        name: lp_token_name,
+        symbol: lp_token_symbol,
+        decimals: lp_token_decimal,
+        initial_balances: vec![],
+        mint: Some(cw20::MinterResponse {
+            minter: env.contract.address.clone().into_string(),
+            cap: None,
+        }),
+        marketing: lp_token_marketing,
+    };
+    lp_token_instantiate_msg.validate()?;
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
         pair_info: pair.clone(),
+        lp_token_instantiate_msg,
     };
 
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
@@ -104,9 +122,17 @@ pub fn add_liquidity_request(
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
     timeout: Option<u64>,
-    tx_id: String,
 ) -> Result<Response, ContractError> {
+    let pair = pair_info.get_pair()?;
+
     // Check that slippage tolerance is between 1 and 100
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+    let tx_id = generate_tx(&env, &sender);
+
     ensure!(
         (1..=100).contains(&slippage_tolerance),
         ContractError::InvalidSlippageTolerance {}
@@ -116,20 +142,9 @@ pub fn add_liquidity_request(
         !PENDING_ADD_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-
-    let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
-    };
-
-    let pair = pair_info.get_pair()?;
-
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::Generic {
-            err: "Pool doesn't exist".to_string()
-        }
+        ContractError::PoolDoesNotExists {}
     );
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
@@ -274,19 +289,19 @@ pub fn remove_liquidity_request(
     lp_allocation: Uint128,
     timeout: Option<u64>,
     mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-    tx_id: String,
 ) -> Result<Response, ContractError> {
-    pair.validate()?;
-    ensure!(
-        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
-
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
+
+    let tx_id = generate_tx(&env, &sender);
+
+    ensure!(
+        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
 
     cross_chain_addresses.push(CrossChainUserWithLimit {
         user: sender.clone(),
@@ -295,10 +310,9 @@ pub fn remove_liquidity_request(
 
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::Generic {
-            err: "Pool doesn't exist".to_string()
-        }
+        ContractError::PoolDoesNotExists {}
     );
+    // TODO: Do we want to add check for lp shares for early fail?
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
@@ -362,7 +376,6 @@ pub fn execute_swap_request(
     swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
     mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-    tx_id: String,
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -370,6 +383,9 @@ pub fn execute_swap_request(
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
+
+    let tx_id = generate_tx(&env, &sender);
+
     cross_chain_addresses.push(CrossChainUserWithLimit {
         user: sender.clone(),
         limit: None,
@@ -533,7 +549,6 @@ pub fn receive_cw20(
             timeout,
             swaps,
             cross_chain_addresses,
-            tx_id,
             partner_fee,
         } => {
             let contract_adr = info.sender.clone();
@@ -558,7 +573,6 @@ pub fn receive_cw20(
                 swaps,
                 timeout,
                 cross_chain_addresses,
-                tx_id,
                 partner_fee,
             )
         }
@@ -567,7 +581,6 @@ pub fn receive_cw20(
             lp_allocation,
             timeout,
             cross_chain_addresses,
-            tx_id,
         } => remove_liquidity_request(
             deps,
             info,
@@ -576,7 +589,6 @@ pub fn receive_cw20(
             lp_allocation,
             timeout,
             cross_chain_addresses,
-            tx_id,
         ),
 
         _ => Err(ContractError::NotImplemented {}),

@@ -4,7 +4,7 @@ use cosmwasm_std::{
     from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement, IbcBasicResponse,
     IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdResult, SubMsg, Uint128, WasmMsg,
 };
-use cw20::MinterResponse;
+
 use euclid::{
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
@@ -137,8 +137,9 @@ fn ack_pool_creation(
     match res {
         AcknowledgementMsg::Ok(data) => {
             // Load state to get escrow code id in case we need to instantiate
-            let escrow_code_id = STATE.load(deps.storage)?.escrow_code_id;
-            let cw20_code_id = STATE.load(deps.storage)?.cw20_code_id;
+            let state = STATE.load(deps.storage)?;
+            let escrow_code_id = state.escrow_code_id;
+            let cw20_code_id = state.cw20_code_id;
 
             PAIR_TO_VLP.save(
                 deps.storage,
@@ -201,24 +202,18 @@ fn ack_pool_creation(
                     }
                 }
             }
-            let state = STATE.load(deps.storage)?;
+            let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
             // Instantiate cw20
             let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                 admin: Some(state.admin.clone()),
                 code_id: cw20_code_id,
                 msg: to_json_binary(&euclid::msgs::cw20::InstantiateMsg {
-                    name: "cw20".to_string(),
-                    symbol: format!(
-                        "{}:{}",
-                        existing_req.pair_info.token_1.token, existing_req.pair_info.token_2.token
-                    ),
-                    decimals: 6,
+                    name: lp_token_instantiate_data.name,
+                    symbol: lp_token_instantiate_data.symbol,
+                    decimals: lp_token_instantiate_data.decimals,
                     initial_balances: vec![],
-                    mint: Some(MinterResponse {
-                        minter: env.contract.address.clone().into_string(),
-                        cap: None,
-                    }),
-                    marketing: None,
+                    mint: lp_token_instantiate_data.mint,
+                    marketing: lp_token_instantiate_data.marketing,
                     vlp: data.vlp_contract,
                     factory: env.contract.address,
                     token_pair: existing_req.pair_info.get_pair()?,

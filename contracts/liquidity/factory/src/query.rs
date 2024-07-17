@@ -2,22 +2,28 @@ use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Order};
 use euclid::{
     error::ContractError,
     msgs::factory::{
-        AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetPendingLiquidityResponse,
-        GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse, GetVlpResponse,
-        PoolVlpResponse, StateResponse,
+        AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
+        GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
+        GetVlpResponse, PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
 };
 
 use crate::state::{
     HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-    STATE, TOKEN_TO_ESCROW,
+    STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
 };
 
 // Returns the Pair Info of the Pair in the pool
 pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let vlp_address = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
     Ok(to_json_binary(&GetVlpResponse { vlp_address })?)
+}
+
+// Returns the Pair Info of the Pair in the pool
+pub fn get_lp_token_address(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
+    let token_address = VLP_TO_CW20.load(deps.storage, vlp)?;
+    Ok(to_json_binary(&GetLPTokenResponse { token_address })?)
 }
 
 // Returns the Pair Info of the Pair in the pool

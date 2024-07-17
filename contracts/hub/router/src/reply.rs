@@ -178,8 +178,6 @@ pub fn on_remove_liquidity_reply(
                 token_1_liquidity: vlp_liquidity_response.token_1_liquidity,
                 token_2_liquidity: vlp_liquidity_response.token_2_liquidity,
                 burn_lp_tokens: vlp_liquidity_response.burn_lp_tokens,
-                reserve_1: vlp_liquidity_response.reserve_1,
-                reserve_2: vlp_liquidity_response.reserve_2,
                 vlp_address: vlp_liquidity_response.vlp_address,
             };
 
