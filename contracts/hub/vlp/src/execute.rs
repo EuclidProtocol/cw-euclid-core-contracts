@@ -281,11 +281,9 @@ pub fn remove_liquidity(
 
     // Prepare Liquidity Response
     let liquidity_response = VlpRemoveLiquidityResponse {
-        token_1_liquidity,
-        token_2_liquidity,
+        token_1_liquidity_released: token_1_liquidity,
+        token_2_liquidity_released: token_2_liquidity,
         burn_lp_tokens: lp_allocation,
-        reserve_1: total_reserve_1,
-        reserve_2: total_reserve_2,
         tx_id: tx_id.clone(),
         sender: sender.clone(),
         vlp_address: env.contract.address.to_string(),
@@ -295,16 +293,43 @@ pub fn remove_liquidity(
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
     let pool = Pool {
-        pair,
+        pair: pair.clone(),
         reserve_1: total_reserve_1,
         reserve_2: total_reserve_2,
     };
+
+    let vlp_cross_chain_struct = CrossChainUser {
+        address: env.contract.address.to_string(),
+        chain_uid: ChainUid::vsl_chain_uid()?,
+    };
+
+    let token_1_transfer_msg = pair.token_1.create_vcoin_transfer_msg(
+        state.vcoin.clone(),
+        token_1_liquidity,
+        vlp_cross_chain_struct.clone(),
+        sender.clone(),
+    )?;
+
+    let token_2_transfer_msg = pair.token_2.create_vcoin_transfer_msg(
+        state.vcoin,
+        token_2_liquidity,
+        vlp_cross_chain_struct,
+        sender.clone(),
+    )?;
 
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
             TxType::RemoveLiquidity,
+        ))
+        .add_submessage(SubMsg::reply_always(
+            token_1_transfer_msg,
+            VCOIN_TRANSFER_REPLY_ID,
+        ))
+        .add_submessage(SubMsg::reply_always(
+            token_2_transfer_msg,
+            VCOIN_TRANSFER_REPLY_ID,
         ))
         .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "remove_liquidity")

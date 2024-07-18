@@ -2,6 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
+use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
 
 use crate::execute::{
@@ -109,19 +110,27 @@ pub fn execute(
             swaps,
             cross_chain_addresses,
             partner_fee,
-        } => execute_swap_request(
-            &mut deps,
-            info,
-            env,
-            asset_in,
-            asset_out,
-            amount_in,
-            min_amount_out,
-            swaps,
-            timeout,
-            cross_chain_addresses,
-            partner_fee,
-        ),
+        } => {
+            let state = STATE.load(deps.storage)?;
+            let sender = CrossChainUser {
+                address: info.sender.to_string(),
+                chain_uid: state.chain_uid,
+            };
+            execute_swap_request(
+                &mut deps,
+                info,
+                env,
+                sender,
+                asset_in,
+                asset_out,
+                amount_in,
+                min_amount_out,
+                swaps,
+                timeout,
+                cross_chain_addresses,
+                partner_fee,
+            )
+        }
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
             ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)

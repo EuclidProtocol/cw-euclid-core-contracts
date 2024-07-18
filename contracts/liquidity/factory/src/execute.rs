@@ -20,7 +20,7 @@ use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg};
 
 use crate::state::{
     HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS,
-    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
+    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
 };
 
 pub fn execute_update_hub_channel(
@@ -287,23 +287,25 @@ pub fn remove_liquidity_request(
     deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
+    sender: CrossChainUser,
     pair: Pair,
     lp_allocation: Uint128,
     timeout: Option<u64>,
     mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
-    };
+    let sender_addr = deps.api.addr_validate(&sender.address)?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
-        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
+
+    let vlp = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
+    let cw20 = VLP_TO_CW20.load(deps.storage, vlp)?;
+
+    ensure!(cw20 == info.sender, ContractError::Unauthorized {});
 
     cross_chain_addresses.push(CrossChainUserWithLimit {
         user: sender.clone(),
@@ -325,16 +327,16 @@ pub fn remove_liquidity_request(
     let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
     let liquidity_tx_info = RemoveLiquidityRequest {
-        sender: info.sender.to_string(),
+        sender: sender_addr.to_string(),
         lp_allocation,
         pair: pair.clone(),
         tx_id: tx_id.clone(),
-        cross_chain_addresses: cross_chain_addresses.clone(),
+        cw20,
     };
 
     PENDING_REMOVE_LIQUIDITY.save(
         deps.storage,
-        (info.sender.clone(), tx_id.clone()),
+        (sender_addr.clone(), tx_id.clone()),
         &liquidity_tx_info,
     )?;
 
@@ -358,7 +360,7 @@ pub fn remove_liquidity_request(
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
-            info.sender.as_str(),
+            sender_addr.as_str(),
             euclid::events::TxType::RemoveLiquidity,
         ))
         .add_attribute("tx_id", tx_id)
@@ -372,6 +374,7 @@ pub fn execute_swap_request(
     deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
+    sender: CrossChainUser,
     asset_in: TokenWithDenom,
     asset_out: Token,
     amount_in: Uint128,
@@ -381,11 +384,7 @@ pub fn execute_swap_request(
     mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
-    };
+    let sender_addr = deps.api.addr_validate(&sender.address)?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
@@ -414,7 +413,7 @@ pub fn execute_swap_request(
     ensure!(!min_amount_out.is_zero(), ContractError::ZeroAssetAmount {});
 
     ensure!(
-        !PENDING_SWAPS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_SWAPS.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
 
@@ -483,7 +482,7 @@ pub fn execute_swap_request(
         );
     }
     let swap_info = SwapRequest {
-        sender: info.sender.to_string(),
+        sender: sender_addr.to_string(),
         asset_in: asset_in.clone(),
         asset_out: asset_out.clone(),
         amount_in,
@@ -499,7 +498,7 @@ pub fn execute_swap_request(
     };
     PENDING_SWAPS.save(
         deps.storage,
-        (info.sender.clone(), tx_id.clone()),
+        (sender_addr.clone(), tx_id.clone()),
         &swap_info,
     )?;
 
@@ -526,7 +525,7 @@ pub fn execute_swap_request(
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
-            info.sender.as_str(),
+            sender_addr.as_str(),
             euclid::events::TxType::Swap,
         ))
         .add_event(swap_event(&tx_id, &swap_info))
@@ -544,6 +543,13 @@ pub fn receive_cw20(
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    let sender = CrossChainUser {
+        address: cw20_msg.sender,
+        chain_uid: state.chain_uid,
+    };
+
     match from_json(&cw20_msg.msg)? {
         // Allow to swap using a CW20 hook message
         Cw20HookMsg::Swap {
@@ -570,6 +576,7 @@ pub fn receive_cw20(
                 &mut deps,
                 info,
                 env,
+                sender,
                 asset_in,
                 asset_out,
                 amount_in,
@@ -589,6 +596,7 @@ pub fn receive_cw20(
             &mut deps,
             info,
             env,
+            sender,
             pair,
             lp_allocation,
             timeout,
