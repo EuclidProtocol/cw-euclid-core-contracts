@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
-use euclid::{chain::ChainUid, escrow::EscrowReleaseRequest, msgs::router::Chain, token::Token};
+use euclid::{chain::ChainUid, msgs::router::Chain, token::Token};
 use euclid_ibc::msg::{ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg};
 
 #[cw_serde]
@@ -33,7 +33,3 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<
     (ChainUid, String, String),
     ChainIbcRemoveLiquidityExecuteMsg,
 > = Map::new("pending_remove_liquidity");
-
-// Map for (ChainUID ,Sender, TX ID, Token)
-pub const PENDING_ESCROW_RELEASE: Map<(ChainUid, String, String, Token), EscrowReleaseRequest> =
-    Map::new("pending_escrow_release");

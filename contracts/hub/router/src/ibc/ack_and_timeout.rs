@@ -17,7 +17,7 @@ use euclid_ibc::ack::AcknowledgementMsg;
 use euclid_ibc::msg::HubIbcExecuteMsg;
 
 use crate::reply::IBC_ACK_AND_TIMEOUT_REPLY_ID;
-use crate::state::{CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, STATE};
+use crate::state::{CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, ESCROW_BALANCES, STATE};
 
 use super::channel::TIMEOUT_COUNTS;
 
@@ -68,8 +68,10 @@ pub fn ibc_ack_packet_internal_call(
             sender,
             ..
         } => {
+            let chain_uid =
+                CHANNEL_TO_CHAIN_UID.load(deps.storage, ack.original_packet.src.channel_id)?;
             let res = from_json(ack.acknowledgement.data)?;
-            ibc_ack_release_escrow(deps, env, sender, amount, token, res, tx_id)
+            ibc_ack_release_escrow(deps, env, chain_uid, sender, amount, token, res, tx_id)
         }
     }
 }
@@ -141,6 +143,7 @@ pub fn ibc_ack_register_factory(
 pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,
+    chain_uid: ChainUid,
     sender: CrossChainUser,
     amount: Uint128,
     token: Token,
@@ -180,6 +183,11 @@ pub fn ibc_ack_release_escrow(
                 msg: to_json_binary(&mint_msg)?,
                 funds: vec![],
             });
+
+            // Escrow release is failed, add the old escrow balance again
+            let escrow_key = ESCROW_BALANCES.key((token, chain_uid));
+            let new_balance = escrow_key.load(deps.storage)?.checked_add(amount)?;
+            escrow_key.save(deps.storage, &new_balance)?;
 
             Ok(response
                 .add_message(msg)

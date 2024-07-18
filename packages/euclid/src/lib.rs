@@ -11,4 +11,6 @@ pub mod timeout;
 pub mod token;
 pub mod vcoin;
 
+pub mod utils;
+
 pub mod msgs;

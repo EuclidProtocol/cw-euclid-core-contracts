@@ -184,11 +184,7 @@ pub fn add_liquidity(
 
     // Prepare Liquidity Response
     let liquidity_response = AddLiquidityResponse {
-        token_1_liquidity,
-        token_2_liquidity,
         mint_lp_tokens: lp_allocation,
-        reserve_1: total_reserve_1,
-        reserve_2: total_reserve_2,
         vlp_address: env.contract.address.to_string(),
     };
 

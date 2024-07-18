@@ -3,7 +3,6 @@ use cosmwasm_std::{Addr, IbcTimeout, Uint128};
 
 use crate::{
     chain::CrossChainUserWithLimit,
-    fee::PartnerFee,
     token::{Token, TokenWithDenom},
 };
 

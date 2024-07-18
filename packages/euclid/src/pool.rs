@@ -46,6 +46,7 @@ pub struct PoolCreateRequest {
     pub tx_id: String,
     // Pool Pair
     pub pair_info: PairWithDenom,
+    pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
 }
 
 // Struct to handle Acknowledgement Response for a Pool Creation Request

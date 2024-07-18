@@ -23,7 +23,6 @@ pub enum ExecuteMsg {
         chain_uid: ChainUid,
         channel: String,
         timeout: Option<u64>,
-        tx_id: String,
     },
     ReleaseEscrowInternal {
         sender: CrossChainUser,
