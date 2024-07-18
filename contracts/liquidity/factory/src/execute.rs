@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg, IbcTimeout,
-    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg, IbcPacket,
+    IbcTimeout, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
@@ -16,7 +16,9 @@ use euclid::{
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
     utils::generate_tx,
 };
-use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg};
+use euclid_ibc::msg::{
+    ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcWithdrawExecuteMsg,
+};
 
 use crate::state::{
     HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS,
@@ -656,4 +658,46 @@ pub fn execute_request_deregister_denom(
         .add_attribute("method", "request_disallow_denom")
         .add_attribute("token", token.token.to_string())
         .add_attribute("denom", token.token_type.get_key()))
+}
+
+pub fn execute_withdraw_vcoin(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        state.admin == info.sender.clone().into_string(),
+        ContractError::Unauthorized {}
+    );
+    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+    let tx_id = generate_tx(deps, &env, &sender)?;
+    let timeout = get_timeout(timeout)?;
+
+    // Create IBC packet to send to Router
+    let ibc_packet = IbcMsg::SendPacket {
+        channel_id: channel.clone(),
+        data: to_json_binary(&ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
+            sender,
+            token: todo!(),
+            amount_in: todo!(),
+            cross_chain_addresses: todo!(),
+            tx_id,
+        }))?,
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+    };
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::PoolCreation,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "request_pool_creation")
+        .add_message(ibc_packet))
 }

@@ -11,7 +11,8 @@ use euclid::{
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{cw20::ExecuteMsg as Cw20ExecuteMsg, factory::ExecuteMsg},
     pool::PoolCreationResponse,
-    swap::SwapResponse,
+    swap::{SwapResponse, WithdrawResponse},
+    token::Token,
 };
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 
@@ -75,6 +76,10 @@ pub fn ibc_ack_packet_internal_call(
             // Process acknowledgment for swap
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
             ack_swap_request(deps, res, swap.sender.address, swap.tx_id)
+        }
+        ChainIbcExecuteMsg::Withdraw(msg) => {
+            let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack.acknowledgement.data)?;
+            ack_withdraw_request(deps, res, msg.sender.address, msg.token, msg.tx_id)
         } // ChainIbcExecuteMsg::RequestWithdraw {
           //     token_id, tx_id, ..
           // } => {
@@ -435,30 +440,31 @@ fn ack_swap_request(
     }
 }
 
-// fn ack_request_withdraw(
-//     deps: DepsMut,
-//     res: AcknowledgementMsg<WithdrawResponse>,
-//     token_id: Token,
-//     tx_id: String,
-// ) -> Result<Response, ContractError> {
-//     match res {
-//         AcknowledgementMsg::Ok(_) => {
-//             let _escrow_address = TOKEN_TO_ESCROW
-//                 .load(deps.storage, token_id.clone())
-//                 .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
+fn ack_withdraw_request(
+    deps: DepsMut,
+    res: AcknowledgementMsg<WithdrawResponse>,
+    sender: String,
+    token_id: Token,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            let _escrow_address = TOKEN_TO_ESCROW
+                .load(deps.storage, token_id.clone())
+                .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
 
-//             // Use it for logging, Router will send packets instead of ack to release tokens from escrow
-//             // Here you will get a response of escrows that router is going to release so it can be used in frontend
+            // Use it for logging, Router will send packets instead of ack to release tokens from escrow
+            // Here you will get a response of escrows that router is going to release so it can be used in frontend
 
-//             Ok(Response::new()
-//                 .add_attribute("method", "request_withdraw_submitted")
-//                 .add_attribute("token", token_id.to_string()))
-//         }
-//         AcknowledgementMsg::Error(err) => Ok(Response::new()
-//             .add_attribute("method", "request_withdraw_error")
-//             .add_attribute("error", err.clone())),
-//     }
-// }
+            Ok(Response::new()
+                .add_attribute("method", "request_withdraw_submitted")
+                .add_attribute("token", token_id.to_string()))
+        }
+        AcknowledgementMsg::Error(err) => Ok(Response::new()
+            .add_attribute("method", "request_withdraw_error")
+            .add_attribute("error", err.clone())),
+    }
+}
 
 // fn ack_request_instantiate_escrow(
 //     deps: DepsMut,

@@ -20,23 +20,6 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    UpdateHubChannel {
-        new_channel: String,
-    },
-    RequestRegisterDenom {
-        token: TokenWithDenom,
-    },
-    RequestDeregisterDenom {
-        token: TokenWithDenom,
-    },
-    RequestPoolCreation {
-        pair: PairWithDenom,
-        timeout: Option<u64>,
-        lp_token_name: String,
-        lp_token_symbol: String,
-        lp_token_decimal: u8,
-        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
-    },
     AddLiquidityRequest {
         pair_info: PairWithDenom,
         token_1_liquidity: Uint128,
@@ -55,6 +38,26 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 
         partner_fee: Option<PartnerFee>,
+    },
+    RequestRegisterDenom {
+        token: TokenWithDenom,
+    },
+    RequestDeregisterDenom {
+        token: TokenWithDenom,
+    },
+    RequestPoolCreation {
+        pair: PairWithDenom,
+        timeout: Option<u64>,
+        lp_token_name: String,
+        lp_token_symbol: String,
+        lp_token_decimal: u8,
+        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+    },
+    UpdateHubChannel {
+        new_channel: String,
+    },
+    WithdrawVcoin {
+        timeout: Option<u64>,
     },
 
     // Recieve CW20 TOKENS structure

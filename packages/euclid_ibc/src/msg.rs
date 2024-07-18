@@ -39,6 +39,9 @@ pub enum ChainIbcExecuteMsg {
 
     // Swap tokens on VLP
     Swap(ChainIbcSwapExecuteMsg),
+
+    // Withdraw Vcoin message sent from factory
+    Withdraw(ChainIbcWithdrawExecuteMsg),
     // RequestWithdraw {
     //     token_id: Token,
     //     amount: Uint128,
@@ -88,6 +91,22 @@ pub struct ChainIbcSwapExecuteMsg {
     pub asset_out: Token,
     pub min_amount_out: Uint128,
     pub swaps: Vec<NextSwapPair>,
+
+    // First element in array has highest priority
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+
+    // Unique per tx
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct ChainIbcWithdrawExecuteMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+
+    // User will provide this
+    pub token: Token,
+    pub amount_in: Uint128,
 
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,

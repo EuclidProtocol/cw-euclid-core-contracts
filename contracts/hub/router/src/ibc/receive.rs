@@ -19,6 +19,7 @@ use euclid_ibc::{
 };
 
 use crate::{
+    execute::execute_release_escrow,
     query::validate_swap_pairs,
     reply::{
         ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
@@ -112,6 +113,23 @@ pub fn ibc_receive_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
             ibc_execute_swap(deps, env, msg)
+        }
+        ChainIbcExecuteMsg::Withdraw(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            execute_release_escrow(
+                deps,
+                env,
+                info,
+                sender,
+                token,
+                amount,
+                cross_chain_addresses,
+                timeout,
+                msg.tx_id,
+            )
         }
     }
 }
