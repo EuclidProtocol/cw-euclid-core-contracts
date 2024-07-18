@@ -602,12 +602,18 @@ pub fn receive_cw20(
 // New factory functions //
 pub fn execute_request_register_denom(
     deps: DepsMut,
+    info: MessageInfo,
     token: TokenWithDenom,
 ) -> Result<Response, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone());
-    ensure!(escrow_address.is_ok(), ContractError::EscrowDoesNotExist {});
+    let admin = STATE.load(deps.storage)?.admin;
+    ensure!(
+        admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
 
-    let escrow_address = escrow_address?;
+    let escrow_address = TOKEN_TO_ESCROW
+        .load(deps.storage, token.token.clone())
+        .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
 
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: escrow_address.into_string(),
@@ -625,11 +631,18 @@ pub fn execute_request_register_denom(
 
 pub fn execute_request_deregister_denom(
     deps: DepsMut,
+    info: MessageInfo,
     token: TokenWithDenom,
 ) -> Result<Response, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone());
-    ensure!(escrow_address.is_ok(), ContractError::EscrowDoesNotExist {});
-    let escrow_address = escrow_address?;
+    let admin = STATE.load(deps.storage)?.admin;
+    ensure!(
+        admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
+
+    let escrow_address = TOKEN_TO_ESCROW
+        .load(deps.storage, token.token.clone())
+        .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
 
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: escrow_address.into_string(),

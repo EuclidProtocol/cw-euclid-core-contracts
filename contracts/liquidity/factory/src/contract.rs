@@ -62,9 +62,11 @@ pub fn execute(
         ExecuteMsg::UpdateHubChannel { new_channel } => {
             execute_update_hub_channel(deps, info, new_channel)
         }
-        ExecuteMsg::RequestRegisterDenom { token } => execute_request_register_denom(deps, token),
+        ExecuteMsg::RequestRegisterDenom { token } => {
+            execute_request_register_denom(deps, info, token)
+        }
         ExecuteMsg::RequestDeregisterDenom { token } => {
-            execute_request_deregister_denom(deps, token)
+            execute_request_deregister_denom(deps, info, token)
         }
         ExecuteMsg::RequestPoolCreation {
             pair,
