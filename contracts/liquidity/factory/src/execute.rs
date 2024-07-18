@@ -8,11 +8,13 @@ use euclid::{
     cw20::Cw20HookMsg,
     error::ContractError,
     events::{swap_event, tx_event},
+    fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     pool::PoolCreateRequest,
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
+    utils::generate_tx,
 };
 use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg};
 
@@ -38,13 +40,23 @@ pub fn execute_update_hub_channel(
 
 // Function to send IBC request to Router in VLS to create a new pool
 pub fn execute_request_pool_creation(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     pair: PairWithDenom,
+    lp_token_name: String,
+    lp_token_symbol: String,
+    lp_token_decimal: u8,
+    lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     timeout: Option<u64>,
-    tx_id: String,
 ) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
@@ -54,19 +66,26 @@ pub fn execute_request_pool_creation(
         ContractError::PoolAlreadyExists {}
     );
 
-    let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
-    };
-
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
 
+    let lp_token_instantiate_msg = cw20_base::msg::InstantiateMsg {
+        name: lp_token_name,
+        symbol: lp_token_symbol,
+        decimals: lp_token_decimal,
+        initial_balances: vec![],
+        mint: Some(cw20::MinterResponse {
+            minter: env.contract.address.clone().into_string(),
+            cap: None,
+        }),
+        marketing: lp_token_marketing,
+    };
+    lp_token_instantiate_msg.validate()?;
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
         pair_info: pair.clone(),
+        lp_token_instantiate_msg,
     };
 
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
@@ -88,6 +107,7 @@ pub fn execute_request_pool_creation(
             info.sender.as_str(),
             euclid::events::TxType::PoolCreation,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation")
         .add_message(ibc_packet))
 }
@@ -95,7 +115,7 @@ pub fn execute_request_pool_creation(
 // Add liquidity to the pool
 // TODO look into alternatives of using .branch(), maybe unifying the functions would help
 pub fn add_liquidity_request(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
     pair_info: PairWithDenom,
@@ -103,9 +123,17 @@ pub fn add_liquidity_request(
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
     timeout: Option<u64>,
-    tx_id: String,
 ) -> Result<Response, ContractError> {
+    let pair = pair_info.get_pair()?;
+
     // Check that slippage tolerance is between 1 and 100
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
     ensure!(
         (1..=100).contains(&slippage_tolerance),
         ContractError::InvalidSlippageTolerance {}
@@ -115,20 +143,9 @@ pub fn add_liquidity_request(
         !PENDING_ADD_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-
-    let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
-    };
-
-    let pair = pair_info.get_pair()?;
-
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::Generic {
-            err: "Pool doesn't exist".to_string()
-        }
+        ContractError::PoolDoesNotExists {}
     );
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
@@ -259,6 +276,7 @@ pub fn add_liquidity_request(
             info.sender.as_str(),
             euclid::events::TxType::AddLiquidity,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "add_liquidity_request")
         .add_messages(msgs))
 }
@@ -266,26 +284,26 @@ pub fn add_liquidity_request(
 // Add liquidity to the pool
 // TODO look into alternatives of using .branch(), maybe unifying the functions would help
 pub fn remove_liquidity_request(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
     pair: Pair,
     lp_allocation: Uint128,
     timeout: Option<u64>,
     mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-    tx_id: String,
 ) -> Result<Response, ContractError> {
-    pair.validate()?;
-    ensure!(
-        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
-
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
+
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
 
     cross_chain_addresses.push(CrossChainUserWithLimit {
         user: sender.clone(),
@@ -294,10 +312,9 @@ pub fn remove_liquidity_request(
 
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::Generic {
-            err: "Pool doesn't exist".to_string()
-        }
+        ContractError::PoolDoesNotExists {}
     );
+    // TODO: Do we want to add check for lp shares for early fail?
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
@@ -344,6 +361,7 @@ pub fn remove_liquidity_request(
             info.sender.as_str(),
             euclid::events::TxType::RemoveLiquidity,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "remove_liquidity_request")
         .add_message(msg))
 }
@@ -361,22 +379,34 @@ pub fn execute_swap_request(
     swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
     mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-    tx_id: String,
-    partner_fee: Option<Decimal>,
+    partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
+
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
     cross_chain_addresses.push(CrossChainUserWithLimit {
         user: sender.clone(),
         limit: None,
     });
 
-    let partner_fee = amount_in.checked_mul_ceil(partner_fee.unwrap_or(Decimal::zero()))?;
+    let partner_fee_bps = partner_fee
+        .clone()
+        .map(|fee| fee.partner_fee_bps)
+        .unwrap_or(0);
 
-    let amount_in = amount_in.checked_sub(partner_fee)?;
+    ensure!(
+        partner_fee_bps <= MAX_PARTNER_FEE_BPS,
+        ContractError::new("Invalid partner fee")
+    );
+
+    let partner_fee_amount = amount_in.checked_mul_ceil(Decimal::bps(partner_fee_bps))?;
+
+    let amount_in = amount_in.checked_sub(partner_fee_amount)?;
     // Verify that the asset amount is greater than 0
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -462,6 +492,10 @@ pub fn execute_swap_request(
         timeout: timeout.clone(),
         tx_id: tx_id.clone(),
         cross_chain_addresses: cross_chain_addresses.clone(),
+        partner_fee_amount,
+        partner_fee_recipient: partner_fee
+            .map(|partner_fee| deps.api.addr_validate(&partner_fee.recipient))
+            .transpose()?,
     };
     PENDING_SWAPS.save(
         deps.storage,
@@ -496,6 +530,7 @@ pub fn execute_swap_request(
             euclid::events::TxType::Swap,
         ))
         .add_event(swap_event(&tx_id, &swap_info))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
         .add_message(msg))
 }
@@ -518,7 +553,6 @@ pub fn receive_cw20(
             timeout,
             swaps,
             cross_chain_addresses,
-            tx_id,
             partner_fee,
         } => {
             let contract_adr = info.sender.clone();
@@ -543,7 +577,6 @@ pub fn receive_cw20(
                 swaps,
                 timeout,
                 cross_chain_addresses,
-                tx_id,
                 partner_fee,
             )
         }
@@ -552,16 +585,14 @@ pub fn receive_cw20(
             lp_allocation,
             timeout,
             cross_chain_addresses,
-            tx_id,
         } => remove_liquidity_request(
-            deps,
+            &mut deps,
             info,
             env,
             pair,
             lp_allocation,
             timeout,
             cross_chain_addresses,
-            tx_id,
         ),
 
         _ => Err(ContractError::NotImplemented {}),

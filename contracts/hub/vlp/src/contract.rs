@@ -31,6 +31,7 @@ pub fn instantiate(
         fee: msg.fee,
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
+        admin: msg.admin,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -49,9 +50,17 @@ pub fn instantiate(
         env.block.height,
     )?;
 
-    let response = msg.execute.map_or(Ok(Response::default()), |execute_msg| {
-        execute(deps, env.clone(), info.clone(), execute_msg)
-    })?;
+    let response =
+        msg.execute
+            .map_or(Ok(Response::default()), |execute_msg| match execute_msg {
+                ExecuteMsg::RegisterPool {
+                    sender,
+                    pair,
+                    tx_id,
+                } => execute::register_pool(deps, env.clone(), info.clone(), sender, pair, tx_id),
+                _ => Err(ContractError::Unauthorized {}),
+            })?;
+
     Ok(response
         .add_attribute("method", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
@@ -62,7 +71,7 @@ pub fn instantiate(
 pub fn execute(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
@@ -70,7 +79,12 @@ pub fn execute(
             sender,
             pair,
             tx_id,
-        } => execute::register_pool(deps, env, sender, pair, tx_id),
+        } => execute::register_pool(deps, env, info, sender, pair, tx_id),
+        ExecuteMsg::UpdateFee {
+            lp_fee_bps,
+            euclid_fee_bps,
+            recipient,
+        } => execute::update_fee(deps, info, lp_fee_bps, euclid_fee_bps, recipient),
         ExecuteMsg::AddLiquidity {
             sender,
             token_1_liquidity,
@@ -80,6 +94,7 @@ pub fn execute(
         } => execute::add_liquidity(
             deps,
             env,
+            info,
             sender,
             token_1_liquidity,
             token_2_liquidity,
@@ -90,7 +105,7 @@ pub fn execute(
             sender,
             lp_allocation,
             tx_id,
-        } => execute::remove_liquidity(deps, env, sender, lp_allocation, tx_id),
+        } => execute::remove_liquidity(deps, env, info, sender, lp_allocation, tx_id),
         ExecuteMsg::Swap {
             sender,
             asset_in,

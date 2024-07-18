@@ -1,4 +1,6 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Decimal256, Deps, Env, Isqrt, Uint128};
+use cosmwasm_std::{
+    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Isqrt, Uint128,
+};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::pool::MINIMUM_LIQUIDITY;
@@ -9,7 +11,7 @@ use euclid::msgs::vlp::{
     AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetSwapResponse, PoolInfo, PoolResponse,
 };
 
-use crate::state::{State, BALANCES, CHAIN_LP_SHARES, STATE};
+use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
 
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
@@ -29,16 +31,16 @@ pub fn query_simulate_swap(
     ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
 
     // Get Fee from the state
-    let fee = state.fee;
+    let fee = state.clone().fee;
+
+    let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
+    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
 
     // Calcuate the sum of fees
-    let total_fee = fee.lp_fee + fee.staker_fee + fee.treasury_fee;
-
-    // Remove the fee from the asset amount
-    let fee_amount = amount_in.multiply_ratio(Uint128::from(total_fee), Uint128::from(100u128));
+    let total_fee = lp_fee.checked_add(euclid_fee)?;
 
     // Calculate the amount of asset to be swapped
-    let swap_amount = amount_in.checked_sub(fee_amount)?;
+    let swap_amount = amount_in.checked_sub(total_fee)?;
 
     let asset_out = state.pair.get_other_token(asset_in.clone());
 
@@ -99,13 +101,13 @@ pub fn query_fee(deps: Deps) -> Result<Binary, ContractError> {
 pub fn query_pool(deps: Deps, chain_uid: ChainUid) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let chain_lp_shares = CHAIN_LP_SHARES.load(deps.storage, chain_uid)?;
+    let chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, chain_uid)?;
 
     let reserve_1 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
 
     let reserve_2 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
 
-    let pool = get_pool(&state, chain_lp_shares, reserve_1, reserve_2)?;
+    let pool = get_pool(&state, chain_lp_tokens, reserve_1, reserve_2)?;
 
     Ok(to_json_binary(&pool)?)
 }
@@ -117,11 +119,11 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
 
     let reserve_2 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
 
-    let pools: Result<_, ContractError> = CHAIN_LP_SHARES
+    let pools: Result<_, ContractError> = CHAIN_LP_TOKENS
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .map(|item| {
-            let (chain_uid, chain_lp_shares) = item?;
-            let pool = get_pool(&state, chain_lp_shares, reserve_1, reserve_2)?;
+            let (chain_uid, chain_lp_tokens) = item?;
+            let pool = get_pool(&state, chain_lp_tokens, reserve_1, reserve_2)?;
 
             Ok::<PoolInfo, ContractError>(PoolInfo { chain_uid, pool })
         })
@@ -132,14 +134,14 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
 
 fn get_pool(
     state: &State,
-    chain_lp_shares: Uint128,
+    chain_lp_tokens: Uint128,
     reserve_1: Uint128,
     reserve_2: Uint128,
 ) -> Result<PoolResponse, ContractError> {
     Ok(PoolResponse {
-        reserve_1: reserve_1.checked_multiply_ratio(chain_lp_shares, state.total_lp_tokens)?,
-        reserve_2: reserve_2.checked_multiply_ratio(chain_lp_shares, state.total_lp_tokens)?,
-        lp_shares: chain_lp_shares,
+        reserve_1: reserve_1.checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)?,
+        reserve_2: reserve_2.checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)?,
+        lp_shares: chain_lp_tokens,
     })
 }
 // Function to calculate the asset to be recieved after a swap

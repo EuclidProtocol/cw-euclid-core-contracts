@@ -69,8 +69,9 @@ pub fn ibc_receive_internal_call(
             amount,
             token,
             to_address,
+            tx_id,
             ..
-        } => execute_release_escrow(deps, env, amount, token, to_address),
+        } => execute_release_escrow(deps, env, amount, token, to_address, tx_id),
     }
 }
 
@@ -98,6 +99,7 @@ fn execute_register_router(
 
     Ok(Response::new()
         .add_event(tx_event(&tx_id, &router, TxType::RegisterFactory))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "register_router")
         .add_attribute("router", router)
         .add_attribute("channel", channel)
@@ -110,6 +112,7 @@ fn execute_release_escrow(
     amount: Uint128,
     token: Token,
     to_address: String,
+    tx_id: String,
 ) -> Result<Response, ContractError> {
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
         recipient: deps.api.addr_validate(&to_address)?,
@@ -138,6 +141,7 @@ fn execute_release_escrow(
             funds: vec![],
         }))
         .add_attribute("method", "release escrow")
+        .add_attribute("tx_id", tx_id)
         .add_attribute("to_address", to_address)
         .set_data(ack))
 }

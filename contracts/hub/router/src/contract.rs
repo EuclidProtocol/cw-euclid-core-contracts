@@ -60,7 +60,7 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
@@ -72,9 +72,8 @@ pub fn execute(
         ExecuteMsg::RegisterFactory {
             channel,
             timeout,
-            tx_id,
             chain_uid,
-        } => execute::execute_register_factory(deps, env, info, chain_uid, channel, timeout, tx_id),
+        } => execute::execute_register_factory(&mut deps, env, info, chain_uid, channel, timeout),
         ExecuteMsg::ReleaseEscrowInternal {
             sender,
             token,
@@ -116,6 +115,19 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             limit,
         } => query::query_all_vlps(deps, start, end, skip, limit),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
+        QueryMsg::QueryTokenEscrows {
+            token,
+            start,
+            end,
+            skip,
+            limit,
+        } => query::query_token_escrows(deps, token, start, end, skip, limit),
+        QueryMsg::QueryAllTokens {
+            start,
+            end,
+            skip,
+            limit,
+        } => query::query_all_tokens(deps, start, end, skip, limit),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

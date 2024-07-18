@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use euclid::msgs::vcoin::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::cw20::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     write_api! {

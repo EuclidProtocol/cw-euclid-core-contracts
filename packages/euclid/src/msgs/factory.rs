@@ -1,11 +1,12 @@
 use crate::{
     chain::{ChainUid, CrossChainUserWithLimit},
+    fee::PartnerFee,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Decimal, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -31,7 +32,10 @@ pub enum ExecuteMsg {
     RequestPoolCreation {
         pair: PairWithDenom,
         timeout: Option<u64>,
-        tx_id: String,
+        lp_token_name: String,
+        lp_token_symbol: String,
+        lp_token_decimal: u8,
+        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     },
     AddLiquidityRequest {
         pair_info: PairWithDenom,
@@ -39,7 +43,6 @@ pub enum ExecuteMsg {
         token_2_liquidity: Uint128,
         slippage_tolerance: u64,
         timeout: Option<u64>,
-        tx_id: String,
     },
     ExecuteSwapRequest {
         asset_in: TokenWithDenom,
@@ -50,9 +53,8 @@ pub enum ExecuteMsg {
         swaps: Vec<NextSwapPair>,
         // First element in array has highest priority
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-        tx_id: String,
 
-        partner_fee: Option<Decimal>,
+        partner_fee: Option<PartnerFee>,
     },
 
     // Recieve CW20 TOKENS structure
@@ -73,6 +75,10 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(GetVlpResponse)]
     GetVlp { pair: Pair },
+
+    #[returns(GetLPTokenResponse)]
+    GetLPToken { vlp: String },
+
     #[returns(StateResponse)]
     GetState {},
     // Query to get all pools in the factory
@@ -96,7 +102,7 @@ pub enum QueryMsg {
         lower_limit: Option<u128>,
         upper_limit: Option<u128>,
     },
-    #[returns(GetPendingLiquidityResponse)]
+    #[returns(GetPendingRemoveLiquidityResponse)]
     PendingRemoveLiquidity {
         user: Addr,
         lower_limit: Option<u128>,
@@ -110,6 +116,11 @@ pub enum QueryMsg {
 #[cw_serde]
 pub struct GetVlpResponse {
     pub vlp_address: String,
+}
+
+#[cw_serde]
+pub struct GetLPTokenResponse {
+    pub token_address: Addr,
 }
 
 #[cw_serde]

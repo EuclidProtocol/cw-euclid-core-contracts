@@ -5,6 +5,7 @@ mod tests {
 
     use cosmwasm_std::coins;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::fee::Fee;
     use euclid::msgs::vlp::InstantiateMsg;
     use euclid::token::{Pair, Token};
@@ -23,10 +24,14 @@ mod tests {
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
             fee: Fee {
-                lp_fee: 1,
-                treasury_fee: 1,
-                staker_fee: 1,
+                lp_fee_bps: 10,
+                euclid_fee_bps: 10,
+                recipient: CrossChainUser {
+                    address: info.sender.to_string(),
+                    chain_uid: ChainUid::vsl_chain_uid().unwrap(),
+                },
             },
+            admin: info.sender.to_string(),
             execute: None,
         };
         let res = instantiate(deps.as_mut(), env, info, msg).unwrap();

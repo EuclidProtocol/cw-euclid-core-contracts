@@ -14,6 +14,7 @@ pub struct InstantiateMsg {
     pub pair: Pair,
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
+    pub admin: String,
 }
 
 #[cw_serde]
@@ -23,6 +24,13 @@ pub enum ExecuteMsg {
         sender: CrossChainUser,
         pair: Pair,
         tx_id: String,
+    },
+
+    // Registers a new pool from a new chain to an already existing VLP
+    UpdateFee {
+        lp_fee_bps: Option<u64>,
+        euclid_fee_bps: Option<u64>,
+        recipient: Option<CrossChainUser>,
     },
 
     Swap {

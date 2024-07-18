@@ -9,6 +9,7 @@ use euclid::{
     msgs::vcoin::ExecuteBurn,
     timeout::get_timeout,
     token::Token,
+    utils::generate_tx,
     vcoin::BalanceKey,
 };
 use euclid_ibc::msg::HubIbcExecuteMsg;
@@ -39,17 +40,22 @@ pub fn execute_update_vlp_code_id(
 
 // Function to update the pool code ID
 pub fn execute_register_factory(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     chain_uid: ChainUid,
     channel: String,
     timeout: Option<u64>,
-    tx_id: String,
 ) -> Result<Response, ContractError> {
     let chain_uid = chain_uid.validate()?.to_owned();
 
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+    let sender = CrossChainUser {
+        chain_uid: vsl_chain_uid.clone(),
+        address: info.sender.to_string(),
+    };
+
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
         chain_uid != vsl_chain_uid,
@@ -105,7 +111,10 @@ pub fn execute_release_escrow(
         ContractError::Unauthorized {}
     );
 
-    let vcoin_address = state.vcoin_address.unwrap().into_string();
+    let vcoin_address = state
+        .vcoin_address
+        .ok_or(ContractError::new("vcoin doesn't exist"))?
+        .into_string();
 
     let user_balance: euclid::msgs::vcoin::GetBalanceResponse = deps.querier.query_wasm_smart(
         vcoin_address.clone(),
@@ -137,17 +146,17 @@ pub fn execute_release_escrow(
             .ok_or(ContractError::new("Cross Chain Address Iter Faiiled"))?;
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
-        let escrow_balance = ESCROW_BALANCES
-            .may_load(
-                deps.storage,
-                (token.clone(), cross_chain_address.user.chain_uid.clone()),
-            )?
+
+        let escrow_key =
+            ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
+        let escrow_balance = escrow_key
+            .may_load(deps.storage)?
             .unwrap_or(Uint128::zero());
 
         let release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
             escrow_balance
         } else {
-            amount
+            remaining_withdraw_amount
         };
 
         let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
@@ -155,6 +164,8 @@ pub fn execute_release_escrow(
         if release_amount.is_zero() {
             continue;
         }
+
+        escrow_key.save(deps.storage, &escrow_balance.checked_sub(release_amount)?)?;
 
         transfer_amount = transfer_amount.checked_add(release_amount)?;
 
@@ -200,6 +211,7 @@ pub fn execute_release_escrow(
             info.sender.as_str(),
             TxType::EscrowRelease,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID))
         .add_attribute("method", "release_escrow")
         .add_attribute("release_expected", amount)

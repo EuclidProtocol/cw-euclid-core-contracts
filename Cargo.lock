@@ -498,6 +498,7 @@ dependencies = [
  "cw0",
  "cw2",
  "cw20 1.1.2",
+ "cw20-base",
  "euclid",
  "euclid-ibc",
  "schemars",
