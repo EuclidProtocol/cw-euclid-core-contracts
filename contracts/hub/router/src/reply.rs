@@ -148,7 +148,7 @@ pub fn on_remove_liquidity_reply(
                 euclid::msgs::router::ExecuteMsg::ReleaseEscrowInternal {
                     sender: remove_liquidity_tx.sender.clone(),
                     token: remove_liquidity_tx.pair.token_1.clone(),
-                    amount: vlp_liquidity_response.token_1_liquidity,
+                    amount: vlp_liquidity_response.token_1_liquidity_released,
                     cross_chain_addresses: remove_liquidity_tx.cross_chain_addresses.clone(),
                     timeout: None,
                     tx_id: vlp_liquidity_response.tx_id.clone(),
@@ -164,7 +164,7 @@ pub fn on_remove_liquidity_reply(
                 euclid::msgs::router::ExecuteMsg::ReleaseEscrowInternal {
                     sender: remove_liquidity_tx.sender,
                     token: remove_liquidity_tx.pair.token_2,
-                    amount: vlp_liquidity_response.token_2_liquidity,
+                    amount: vlp_liquidity_response.token_2_liquidity_released,
                     cross_chain_addresses: remove_liquidity_tx.cross_chain_addresses,
                     timeout: None,
                     tx_id: vlp_liquidity_response.tx_id,
@@ -176,8 +176,8 @@ pub fn on_remove_liquidity_reply(
             });
 
             let liquidity_response = RemoveLiquidityResponse {
-                token_1_liquidity: vlp_liquidity_response.token_1_liquidity,
-                token_2_liquidity: vlp_liquidity_response.token_2_liquidity,
+                token_1_liquidity: vlp_liquidity_response.token_1_liquidity_released,
+                token_2_liquidity: vlp_liquidity_response.token_2_liquidity_released,
                 burn_lp_tokens: vlp_liquidity_response.burn_lp_tokens,
                 vlp_address: vlp_liquidity_response.vlp_address,
             };

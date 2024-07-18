@@ -187,10 +187,10 @@ fn execute_request_pool_creation(
                 },
             },
             execute: Some(register_msg),
-            admin: state.admin,
+            admin: state.admin.clone(),
         };
         let msg = WasmMsg::Instantiate {
-            admin: Some(env.contract.address.to_string()),
+            admin: Some(state.admin),
             code_id: state.vlp_code_id,
             msg: to_json_binary(&instantiate_msg)?,
             funds: vec![],

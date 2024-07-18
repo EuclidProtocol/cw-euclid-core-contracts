@@ -351,7 +351,7 @@ fn ack_remove_liquidity(
         AcknowledgementMsg::Error(err) => {
             // Send back cw20 to original sender
             let cw20_send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: liquidity_info.pair.token_1.to_string(),
+                contract_addr: liquidity_info.cw20.to_string(),
                 msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                     recipient: sender.clone().into_string(),
                     amount: liquidity_info.lp_allocation,
