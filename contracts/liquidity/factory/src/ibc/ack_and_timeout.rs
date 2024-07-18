@@ -7,9 +7,9 @@ use cosmwasm_std::{
 
 use euclid::{
     error::ContractError,
+    events::swap_event,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
-    msgs::cw20::ExecuteMsg as Cw20ExecuteMsg,
-    msgs::factory::ExecuteMsg,
+    msgs::{cw20::ExecuteMsg as Cw20ExecuteMsg, factory::ExecuteMsg},
     pool::PoolCreationResponse,
     swap::SwapResponse,
 };
@@ -148,6 +148,7 @@ fn ack_pool_creation(
             )?;
             // Prepare response
             let mut res = Response::new()
+                .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "pool_creation")
                 .add_attribute("vlp", data.vlp_contract.clone());
             // Collects PairInfo into a vector of Token Info for easy iteration
@@ -231,6 +232,7 @@ fn ack_pool_creation(
         }
 
         AcknowledgementMsg::Error(err) => Ok(Response::new()
+            .add_attribute("tx_id", tx_id)
             .add_attribute("method", "reject_pool_request")
             .add_attribute("error", err.clone())),
     }
@@ -293,8 +295,8 @@ fn ack_add_liquidity(
 
             Ok(res
                 .add_message(cw20_mint_msg)
-                .add_attribute("sender", sender)
-                .add_attribute("liquidity_id", tx_id))
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("sender", sender))
         }
 
         AcknowledgementMsg::Error(err) => {
@@ -314,7 +316,7 @@ fn ack_add_liquidity(
             Ok(Response::new()
                 .add_attribute("method", "liquidity_tx_err_refund")
                 .add_attribute("sender", sender)
-                .add_attribute("liquidity_id", tx_id)
+                .add_attribute("tx_id", tx_id)
                 .add_attribute("error", err)
                 .add_messages(msgs))
         }
@@ -362,7 +364,7 @@ fn ack_remove_liquidity(
             Ok(res
                 .add_message(cw20_burn_msg)
                 .add_attribute("sender", sender)
-                .add_attribute("liquidity_id", tx_id))
+                .add_attribute("tx_id", tx_id))
         }
 
         // Todo:: Return LP Tokens back to sender
@@ -380,7 +382,7 @@ fn ack_remove_liquidity(
                 .add_message(cw20_send_msg)
                 .add_attribute("method", "liquidity_tx_err_refund")
                 .add_attribute("sender", sender)
-                .add_attribute("liquidity_id", tx_id)
+                .add_attribute("tx_id", tx_id)
                 .add_attribute("error", err))
         }
     }
@@ -398,20 +400,23 @@ fn ack_swap_request(
     // Validate that the pending swap exists for the sender
     let swap_info = PENDING_SWAPS.load(deps.storage, (sender.clone(), tx_id.clone()))?;
     // Remove this from pending swaps
-    PENDING_SWAPS.remove(deps.storage, (sender.clone(), tx_id));
+    PENDING_SWAPS.remove(deps.storage, (sender.clone(), tx_id.clone()));
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
             // TODO:: Add msg to send asset_in to escrow
-            let asset_in = swap_info.asset_in;
+            let asset_in = swap_info.asset_in.clone();
 
             // Get corresponding escrow
             let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
 
             let send_msg = asset_in.create_escrow_msg(swap_info.amount_in, escrow_address)?;
             let mut response = Response::new()
-                .add_message(send_msg)
+                .add_event(swap_event(&tx_id, &swap_info))
                 .add_attribute("method", "process_successfull_swap")
+                .add_message(send_msg)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("amount_out", data.amount_out)
                 .add_attribute("swap_response", format!("{data:?}"));
 
             if !swap_info.partner_fee_amount.is_zero() {
@@ -446,7 +451,8 @@ fn ack_swap_request(
 
             Ok(Response::new()
                 .add_attribute("method", "process_failed_swap")
-                .add_attribute("refund_to", "sender")
+                .add_attribute("refund_to", sender)
+                .add_attribute("tx_id", tx_id)
                 .add_attribute("refund_amount", swap_info.amount_in)
                 .add_attribute("error", err)
                 .add_message(msg))

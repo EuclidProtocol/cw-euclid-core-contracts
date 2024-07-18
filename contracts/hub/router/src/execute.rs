@@ -211,6 +211,7 @@ pub fn execute_release_escrow(
             info.sender.as_str(),
             TxType::EscrowRelease,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID))
         .add_attribute("method", "release_escrow")
         .add_attribute("release_expected", amount)

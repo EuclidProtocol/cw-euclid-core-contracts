@@ -107,6 +107,7 @@ pub fn execute_request_pool_creation(
             info.sender.as_str(),
             euclid::events::TxType::PoolCreation,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation")
         .add_message(ibc_packet))
 }
@@ -275,6 +276,7 @@ pub fn add_liquidity_request(
             info.sender.as_str(),
             euclid::events::TxType::AddLiquidity,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "add_liquidity_request")
         .add_messages(msgs))
 }
@@ -359,6 +361,7 @@ pub fn remove_liquidity_request(
             info.sender.as_str(),
             euclid::events::TxType::RemoveLiquidity,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "remove_liquidity_request")
         .add_message(msg))
 }
@@ -527,6 +530,7 @@ pub fn execute_swap_request(
             euclid::events::TxType::Swap,
         ))
         .add_event(swap_event(&tx_id, &swap_info))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
         .add_message(msg))
 }
