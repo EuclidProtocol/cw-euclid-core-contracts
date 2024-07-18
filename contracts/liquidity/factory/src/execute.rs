@@ -40,7 +40,7 @@ pub fn execute_update_hub_channel(
 
 // Function to send IBC request to Router in VLS to create a new pool
 pub fn execute_request_pool_creation(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     pair: PairWithDenom,
@@ -55,7 +55,7 @@ pub fn execute_request_pool_creation(
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
-    let tx_id = generate_tx(&env, &sender);
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
@@ -114,7 +114,7 @@ pub fn execute_request_pool_creation(
 // Add liquidity to the pool
 // TODO look into alternatives of using .branch(), maybe unifying the functions would help
 pub fn add_liquidity_request(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
     pair_info: PairWithDenom,
@@ -131,7 +131,7 @@ pub fn add_liquidity_request(
         address: info.sender.to_string(),
         chain_uid: state.chain_uid,
     };
-    let tx_id = generate_tx(&env, &sender);
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
         (1..=100).contains(&slippage_tolerance),
@@ -282,7 +282,7 @@ pub fn add_liquidity_request(
 // Add liquidity to the pool
 // TODO look into alternatives of using .branch(), maybe unifying the functions would help
 pub fn remove_liquidity_request(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
     pair: Pair,
@@ -296,7 +296,7 @@ pub fn remove_liquidity_request(
         chain_uid: state.chain_uid,
     };
 
-    let tx_id = generate_tx(&env, &sender);
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
         !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
@@ -384,7 +384,7 @@ pub fn execute_swap_request(
         chain_uid: state.chain_uid,
     };
 
-    let tx_id = generate_tx(&env, &sender);
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     cross_chain_addresses.push(CrossChainUserWithLimit {
         user: sender.clone(),
@@ -582,7 +582,7 @@ pub fn receive_cw20(
             timeout,
             cross_chain_addresses,
         } => remove_liquidity_request(
-            deps,
+            &mut deps,
             info,
             env,
             pair,

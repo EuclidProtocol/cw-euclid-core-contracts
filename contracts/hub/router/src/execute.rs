@@ -40,7 +40,7 @@ pub fn execute_update_vlp_code_id(
 
 // Function to update the pool code ID
 pub fn execute_register_factory(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     chain_uid: ChainUid,
@@ -55,7 +55,7 @@ pub fn execute_register_factory(
         address: info.sender.to_string(),
     };
 
-    let tx_id = generate_tx(&env, &sender);
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
         chain_uid != vsl_chain_uid,
@@ -146,17 +146,17 @@ pub fn execute_release_escrow(
             .ok_or(ContractError::new("Cross Chain Address Iter Faiiled"))?;
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
-        let escrow_balance = ESCROW_BALANCES
-            .may_load(
-                deps.storage,
-                (token.clone(), cross_chain_address.user.chain_uid.clone()),
-            )?
+
+        let escrow_key =
+            ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
+        let escrow_balance = escrow_key
+            .may_load(deps.storage)?
             .unwrap_or(Uint128::zero());
 
         let release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
             escrow_balance
         } else {
-            amount
+            remaining_withdraw_amount
         };
 
         let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
@@ -164,6 +164,8 @@ pub fn execute_release_escrow(
         if release_amount.is_zero() {
             continue;
         }
+
+        escrow_key.save(deps.storage, &escrow_balance.checked_sub(release_amount)?)?;
 
         transfer_amount = transfer_amount.checked_add(release_amount)?;
 

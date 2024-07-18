@@ -74,7 +74,7 @@ pub fn execute(
             lp_token_marketing,
             timeout,
         } => execute_request_pool_creation(
-            deps,
+            &mut deps,
             env,
             info,
             pair,
@@ -91,7 +91,7 @@ pub fn execute(
             slippage_tolerance,
             timeout,
         } => add_liquidity_request(
-            deps,
+            &mut deps,
             info,
             env,
             pair_info,

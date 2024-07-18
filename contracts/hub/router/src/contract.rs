@@ -60,7 +60,7 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
@@ -73,7 +73,7 @@ pub fn execute(
             channel,
             timeout,
             chain_uid,
-        } => execute::execute_register_factory(deps, env, info, chain_uid, channel, timeout),
+        } => execute::execute_register_factory(&mut deps, env, info, chain_uid, channel, timeout),
         ExecuteMsg::ReleaseEscrowInternal {
             sender,
             token,

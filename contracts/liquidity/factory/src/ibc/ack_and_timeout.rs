@@ -307,7 +307,7 @@ fn ack_add_liquidity(
             msgs.push(msg);
             let msg = liquidity_info
                 .pair_info
-                .token_1
+                .token_2
                 .create_transfer_msg(liquidity_info.token_2_liquidity, sender.to_string())?;
             msgs.push(msg);
 

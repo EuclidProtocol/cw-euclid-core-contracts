@@ -305,17 +305,17 @@ fn ibc_execute_remove_liquidity(
         TxType::AddLiquidity,
     ));
 
-    let req_key = (
+    let req_key = PENDING_REMOVE_LIQUIDITY.key((
         msg.sender.chain_uid.clone(),
         msg.sender.address.clone(),
         msg.tx_id.clone(),
-    );
+    ));
     ensure!(
-        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, req_key.clone()),
+        !req_key.has(deps.storage),
         ContractError::new("tx already present")
     );
 
-    PENDING_REMOVE_LIQUIDITY.save(deps.storage, req_key, &msg)?;
+    req_key.save(deps.storage, &msg)?;
 
     let remove_liquidity_msg = msgs::vlp::ExecuteMsg::RemoveLiquidity {
         sender: msg.sender,

@@ -33,7 +33,3 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<
     (ChainUid, String, String),
     ChainIbcRemoveLiquidityExecuteMsg,
 > = Map::new("pending_remove_liquidity");
-
-// Map for (ChainUID ,Sender, TX ID, Token)
-pub const PENDING_ESCROW_RELEASE: Map<(ChainUid, String, String, Token), EscrowReleaseRequest> =
-    Map::new("pending_escrow_release");
