@@ -156,51 +156,26 @@ fn ack_pool_creation(
             for token in tokens {
                 let escrow_contract =
                     TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
-                match escrow_contract {
-                    Some(escrow_address) => {
-                        let token_allowed_query_msg =
-                            euclid::msgs::escrow::QueryMsg::TokenAllowed {
-                                denom: token.token_type.clone(),
-                            };
-                        let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps
-                            .querier
-                            .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
-                        if !token_allowed.allowed {
-                            // Add allowed denom in existing escrow contract
-                            let add_denom_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
-                                contract_addr: escrow_address.into_string(),
-                                msg: to_json_binary(
-                                    &euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom {
-                                        denom: token.token_type,
-                                    },
-                                )?,
-                                funds: vec![],
-                            });
-                            res = res.add_message(add_denom_msg);
-                        }
-                    }
 
-                    None => {
-                        // Instantiate escrow contract
-                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                            admin: Some(env.contract.address.clone().into_string()),
-                            code_id: escrow_code_id,
-                            msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
-                                token_id: token.token,
-                                allowed_denom: Some(token.token_type),
-                            })?,
-                            funds: vec![],
-                            label: "escrow".to_string(),
-                        });
+                // Instantiate escrow if one doesn't exist
+                if escrow_contract.is_none() {
+                    let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                        admin: Some(env.contract.address.clone().into_string()),
+                        code_id: escrow_code_id,
+                        msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
+                            token_id: token.token,
+                            allowed_denom: None,
+                        })?,
+                        funds: vec![],
+                        label: "escrow".to_string(),
+                    });
 
-                        // Needs to be submsg for reply event
-                        res = res.add_submessage(SubMsg {
-                            id: ESCROW_INSTANTIATE_REPLY_ID,
-                            msg: init_msg,
-                            gas_limit: None,
-                            reply_on: ReplyOn::Always,
-                        });
-                    }
+                    res = res.add_submessage(SubMsg {
+                        id: ESCROW_INSTANTIATE_REPLY_ID,
+                        msg: init_msg,
+                        gas_limit: None,
+                        reply_on: ReplyOn::Always,
+                    });
                 }
             }
             let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
