@@ -25,6 +25,7 @@ mod tests {
             router_contract: "router_contract".to_string(),
             admin: "admin".to_string(),
             escrow_code_id: 1,
+            cw20_code_id: 2,
         };
         STATE.save(deps.storage, &state).unwrap();
     }
@@ -34,6 +35,7 @@ mod tests {
             router_contract: "router".to_string(),
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             escrow_code_id: 1,
+            cw20_code_id: 2,
         };
         let info = mock_info("owner", &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -49,6 +51,7 @@ mod tests {
             admin: "owner".to_string(),
             escrow_code_id: 1,
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
+            cw20_code_id: 2,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

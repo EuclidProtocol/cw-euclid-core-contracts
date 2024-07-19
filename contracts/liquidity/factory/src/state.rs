@@ -17,6 +17,8 @@ pub struct State {
     pub admin: String,
     // Escrow Code ID
     pub escrow_code_id: u64,
+    // CW20 Code ID
+    pub cw20_code_id: u64,
     // The Unique Chain Identifier
     // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
     // IN THE EUCLID ECOSYSTEM
@@ -36,6 +38,9 @@ pub const VLP_TO_LP_SHARES: Map<String, Uint128> = Map::new("vlp_to_lp_shares");
 
 // New Factory states
 pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
+
+// New CW20 states
+pub const VLP_TO_CW20: Map<String, Addr> = Map::new("vlp_to_cw20");
 
 // Map for pending pool requests for user
 pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =

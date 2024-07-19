@@ -28,11 +28,15 @@ mod tests {
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
             fee: Fee {
-                lp_fee: 1,
-                treasury_fee: 2,
-                staker_fee: 3,
+                lp_fee_bps: 1,
+                euclid_fee_bps: 1,
+                recipient: CrossChainUser {
+                    chain_uid: ChainUid::create("1".to_string()).unwrap(),
+                    address: "addr".to_string(),
+                },
             },
             execute: None,
+            admin: "admin".to_string(),
         };
         let info = mock_info("router", &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -51,12 +55,16 @@ mod tests {
             router: "router".to_string(),
             vcoin: "vcoin".to_string(),
             fee: Fee {
-                lp_fee: 1,
-                treasury_fee: 2,
-                staker_fee: 3,
+                lp_fee_bps: 1,
+                euclid_fee_bps: 1,
+                recipient: CrossChainUser {
+                    chain_uid: ChainUid::create("1".to_string()).unwrap(),
+                    address: "addr".to_string(),
+                },
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
+            admin: "admin".to_string(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -75,7 +83,6 @@ mod tests {
     fn test_execute_register_pool() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("creator", &coins(1000, "earth"));
 
         init(deps.as_mut());
 
@@ -94,9 +101,10 @@ mod tests {
             pair,
             tx_id: "1".to_string(),
         };
+        let info = mock_info("router", &coins(1000, "earth"));
 
         // Execute the register_pool function
-        let res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         assert_eq!(res.messages.len(), 0); // Ensure no extra messages are sent
     }
 

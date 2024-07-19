@@ -136,18 +136,19 @@ pub fn on_remove_liquidity_reply(
             let vlp_liquidity_response: VlpRemoveLiquidityResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
 
-            let req_key = (
+            let req_key = PENDING_REMOVE_LIQUIDITY.key((
                 vlp_liquidity_response.sender.chain_uid.clone(),
                 vlp_liquidity_response.sender.address.clone(),
                 vlp_liquidity_response.tx_id.clone(),
-            );
-            let remove_liquidity_tx = PENDING_REMOVE_LIQUIDITY.load(deps.storage, req_key)?;
+            ));
+            let remove_liquidity_tx = req_key.load(deps.storage)?;
+            req_key.remove(deps.storage);
 
             let token_1_escrow_release_msg =
                 euclid::msgs::router::ExecuteMsg::ReleaseEscrowInternal {
-                    sender: vlp_liquidity_response.sender.clone(),
+                    sender: remove_liquidity_tx.sender.clone(),
                     token: remove_liquidity_tx.pair.token_1.clone(),
-                    amount: vlp_liquidity_response.token_1_liquidity,
+                    amount: vlp_liquidity_response.token_1_liquidity_released,
                     cross_chain_addresses: remove_liquidity_tx.cross_chain_addresses.clone(),
                     timeout: None,
                     tx_id: vlp_liquidity_response.tx_id.clone(),
@@ -161,9 +162,9 @@ pub fn on_remove_liquidity_reply(
 
             let token_2_escrow_release_msg =
                 euclid::msgs::router::ExecuteMsg::ReleaseEscrowInternal {
-                    sender: vlp_liquidity_response.sender,
-                    token: remove_liquidity_tx.pair.token_1,
-                    amount: vlp_liquidity_response.token_1_liquidity,
+                    sender: remove_liquidity_tx.sender,
+                    token: remove_liquidity_tx.pair.token_2,
+                    amount: vlp_liquidity_response.token_2_liquidity_released,
                     cross_chain_addresses: remove_liquidity_tx.cross_chain_addresses,
                     timeout: None,
                     tx_id: vlp_liquidity_response.tx_id,
@@ -175,11 +176,9 @@ pub fn on_remove_liquidity_reply(
             });
 
             let liquidity_response = RemoveLiquidityResponse {
-                token_1_liquidity: vlp_liquidity_response.token_1_liquidity,
-                token_2_liquidity: vlp_liquidity_response.token_2_liquidity,
+                token_1_liquidity: vlp_liquidity_response.token_1_liquidity_released,
+                token_2_liquidity: vlp_liquidity_response.token_2_liquidity_released,
                 burn_lp_tokens: vlp_liquidity_response.burn_lp_tokens,
-                reserve_1: vlp_liquidity_response.reserve_1,
-                reserve_2: vlp_liquidity_response.reserve_2,
                 vlp_address: vlp_liquidity_response.vlp_address,
             };
 
@@ -206,16 +205,25 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
             let vlp_swap_response: VlpSwapResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
 
-            let req_key = (
+            let swap_req_key = SWAP_ID_TO_MSG.key((
                 vlp_swap_response.sender.chain_uid,
                 vlp_swap_response.sender.address,
                 vlp_swap_response.tx_id.clone(),
-            );
-            let swap_msg = SWAP_ID_TO_MSG.load(deps.storage, req_key)?;
+            ));
+            let swap_msg = swap_req_key.load(deps.storage)?;
+            swap_req_key.remove(deps.storage);
 
             ensure!(
                 vlp_swap_response.asset_out == swap_msg.asset_out,
                 ContractError::new("Asset Out Mismatch")
+            );
+
+            ensure!(
+                vlp_swap_response.amount_out >= swap_msg.min_amount_out,
+                ContractError::SlippageExceeded {
+                    amount: vlp_swap_response.amount_out,
+                    min_amount_out: swap_msg.min_amount_out
+                }
             );
 
             let swap_response = SwapResponse {

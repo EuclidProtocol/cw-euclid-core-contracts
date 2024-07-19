@@ -227,6 +227,25 @@ dependencies = [
 
 [[package]]
 name = "cw-multi-test"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d818f5323c80ed4890db7f89d65eda3f0261fe21878e628c27ea2d8de4b7ba4"
+dependencies = [
+ "anyhow",
+ "cosmwasm-std",
+ "cw-storage-plus 1.2.0",
+ "cw-utils",
+ "derivative",
+ "itertools 0.11.0",
+ "prost",
+ "schemars",
+ "serde",
+ "sha2 0.10.8",
+ "thiserror",
+]
+
+[[package]]
+name = "cw-multi-test"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91fc33b1d65c102d72f46548c64dca423c337e528d6747d0c595316aa65f887b"
@@ -311,6 +330,24 @@ dependencies = [
 
 [[package]]
 name = "cw20"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test 0.17.0",
+ "cw-storage-plus 1.2.0",
+ "cw2",
+ "cw20 1.1.2",
+ "cw20-base",
+ "euclid",
+ "euclid-ibc",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "cw20"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "526e39bb20534e25a1cd0386727f0038f4da294e5e535729ba3ef54055246abd"
@@ -320,6 +357,23 @@ dependencies = [
  "cw-utils",
  "schemars",
  "serde",
+]
+
+[[package]]
+name = "cw20-base"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17ad79e86ea3707229bf78df94e08732e8f713207b4a77b2699755596725e7d9"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus 1.2.0",
+ "cw2",
+ "cw20 1.1.2",
+ "schemars",
+ "semver",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -433,7 +487,7 @@ dependencies = [
  "cw-storage-plus 1.2.0",
  "cw0",
  "cw2",
- "cw20",
+ "cw20 1.1.2",
  "euclid",
  "euclid-ibc",
  "schemars",
@@ -450,7 +504,8 @@ dependencies = [
  "cosmwasm-std",
  "cw-storage-plus 1.2.0",
  "cw-utils",
- "cw20",
+ "cw20 1.1.2",
+ "cw20-base",
  "itertools 0.10.5",
  "proc-macro2",
  "quote",
@@ -482,7 +537,8 @@ dependencies = [
  "cw-storage-plus 1.2.0",
  "cw0",
  "cw2",
- "cw20",
+ "cw20 1.1.2",
+ "cw20-base",
  "euclid",
  "euclid-ibc",
  "schemars",
@@ -730,10 +786,10 @@ dependencies = [
  "anyhow",
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-multi-test",
+ "cw-multi-test 1.2.0",
  "cw-storage-plus 1.2.0",
  "cw-utils",
- "cw20",
+ "cw20 1.1.2",
  "itertools 0.10.5",
  "schemars",
  "serde",
@@ -881,11 +937,11 @@ version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-multi-test",
+ "cw-multi-test 1.2.0",
  "cw-storage-plus 1.2.0",
  "cw0",
  "cw2",
- "cw20",
+ "cw20 1.1.2",
  "euclid",
  "euclid-ibc",
  "mock",
@@ -1127,7 +1183,7 @@ dependencies = [
  "anyhow",
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-multi-test",
+ "cw-multi-test 1.2.0",
  "cw-storage-plus 1.2.0",
  "cw-utils",
  "euclid",
@@ -1177,7 +1233,7 @@ version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-multi-test",
+ "cw-multi-test 1.2.0",
  "cw-storage-plus 1.2.0",
  "cw2",
  "euclid",
@@ -1200,7 +1256,7 @@ version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-multi-test",
+ "cw-multi-test 1.2.0",
  "cw-storage-plus 1.2.0",
  "cw0",
  "cw2",

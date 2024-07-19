@@ -1,4 +1,4 @@
-use crate::token::{Token, TokenType};
+use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
@@ -37,6 +37,9 @@ pub enum QueryMsg {
     // New escrow queries
     #[returns(AllowedTokenResponse)]
     TokenAllowed { denom: TokenType },
+
+    #[returns(AllowedDenomsResponse)]
+    AllowedDenoms {},
 }
 
 #[cw_serde]
@@ -48,6 +51,11 @@ pub struct TokenIdResponse {
 }
 
 #[cw_serde]
+pub struct AllowedDenomsResponse {
+    pub denoms: Vec<TokenType>,
+}
+
+#[cw_serde]
 pub struct AllowedTokenResponse {
     pub allowed: bool,
 }
@@ -56,4 +64,11 @@ pub struct AllowedTokenResponse {
 pub struct EscrowInstantiateResponse {
     pub token: Token,
     pub address: String,
+}
+
+#[cw_serde]
+pub struct Cw20InstantiateResponse {
+    pub pair: Pair,
+    pub address: String,
+    pub vlp: String,
 }

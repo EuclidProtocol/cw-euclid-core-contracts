@@ -140,6 +140,7 @@ fn execute_request_pool_creation(
             &sender.to_sender_string(),
             TxType::PoolCreation,
         ))
+        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation");
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
     if vlp.is_some() {
@@ -160,14 +161,18 @@ fn execute_request_pool_creation(
                 .to_string(),
             pair,
             fee: Fee {
-                lp_fee: 0,
-                treasury_fee: 0,
-                staker_fee: 0,
+                lp_fee_bps: 10,
+                euclid_fee_bps: 10,
+                recipient: CrossChainUser {
+                    address: state.admin.clone(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
             },
             execute: Some(register_msg),
+            admin: state.admin.clone(),
         };
         let msg = WasmMsg::Instantiate {
-            admin: Some(env.contract.address.to_string()),
+            admin: Some(state.admin),
             code_id: state.vlp_code_id,
             msg: to_json_binary(&instantiate_msg)?,
             funds: vec![],
@@ -193,11 +198,10 @@ fn ibc_execute_add_liquidity(
         &euclid::msgs::vlp::QueryMsg::Liquidity { height: None },
     )?;
 
-    let mut response = Response::new().add_event(tx_event(
-        &tx_id,
-        &sender.to_sender_string(),
-        TxType::AddLiquidity,
-    ));
+    let mut response = Response::new().add_event(
+        tx_event(&tx_id, &sender.to_sender_string(), TxType::AddLiquidity)
+            .add_attribute("tx_id", tx_id.clone()),
+    );
     // Increase token 1 escrow balance
     let token_1_escrow_key = (
         pool_liquidity.pair.token_1.clone(),
@@ -295,23 +299,25 @@ fn ibc_execute_remove_liquidity(
     msg: ChainIbcRemoveLiquidityExecuteMsg,
 ) -> Result<Response, ContractError> {
     let vlp_address = VLPS.load(deps.storage, msg.pair.get_tupple())?;
-    let response = Response::new().add_event(tx_event(
-        &msg.tx_id,
-        &msg.sender.to_sender_string(),
-        TxType::AddLiquidity,
-    ));
+    let response = Response::new()
+        .add_event(tx_event(
+            &msg.tx_id,
+            &msg.sender.to_sender_string(),
+            TxType::AddLiquidity,
+        ))
+        .add_attribute("tx_id", msg.tx_id.clone());
 
-    let req_key = (
+    let req_key = PENDING_REMOVE_LIQUIDITY.key((
         msg.sender.chain_uid.clone(),
         msg.sender.address.clone(),
         msg.tx_id.clone(),
-    );
+    ));
     ensure!(
-        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, req_key.clone()),
+        !req_key.has(deps.storage),
         ContractError::new("tx already present")
     );
 
-    PENDING_REMOVE_LIQUIDITY.save(deps.storage, req_key, &msg)?;
+    req_key.save(deps.storage, &msg)?;
 
     let remove_liquidity_msg = msgs::vlp::ExecuteMsg::RemoveLiquidity {
         sender: msg.sender,
@@ -363,11 +369,10 @@ fn ibc_execute_swap(
 
     SWAP_ID_TO_MSG.save(deps.storage, req_key, &msg)?;
 
-    let mut response = Response::new().add_event(tx_event(
-        &msg.tx_id,
-        &msg.sender.to_sender_string(),
-        TxType::Swap,
-    ));
+    let mut response = Response::new().add_event(
+        tx_event(&msg.tx_id, &msg.sender.to_sender_string(), TxType::Swap)
+            .add_attribute("tx_id", msg.tx_id.clone()),
+    );
 
     let sender = msg.sender;
 

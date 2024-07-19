@@ -1,11 +1,12 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal256, DepsMut, Env, OverflowError, OverflowOperation, Response,
-    SubMsg, Uint128, WasmMsg,
+    ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, MessageInfo, Response, SubMsg,
+    Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
-    events::{liquidity_event, tx_event, TxType},
+    events::{liquidity_event, simple_event, tx_event, TxType},
+    fee::MAX_FEE_BPS,
     liquidity::AddLiquidityResponse,
     msgs::{
         vcoin::ExecuteTransfer,
@@ -14,12 +15,13 @@ use euclid::{
     pool::{Pool, PoolCreationResponse},
     swap::NextSwapVlp,
     token::{Pair, Token},
+    vcoin::BalanceKey,
 };
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
     reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID},
-    state::{self, BALANCES, CHAIN_LP_SHARES, STATE},
+    state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -40,15 +42,18 @@ use crate::{
 pub fn register_pool(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     sender: CrossChainUser,
     pair: Pair,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
     // Verify that chain pool does not already exist
     ensure!(
-        !CHAIN_LP_SHARES.has(deps.storage, sender.chain_uid.clone()),
+        !CHAIN_LP_TOKENS.has(deps.storage, sender.chain_uid.clone()),
         ContractError::PoolAlreadyExists {}
     );
 
@@ -59,7 +64,7 @@ pub fn register_pool(
     );
 
     // Store the pool in the map
-    CHAIN_LP_SHARES.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
+    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
 
     let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
@@ -95,15 +100,17 @@ pub fn register_pool(
 pub fn add_liquidity(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     sender: CrossChainUser,
     token_1_liquidity: Uint128,
     token_2_liquidity: Uint128,
     slippage_tolerance: u64,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    let mut chain_lp_shares = CHAIN_LP_SHARES.load(deps.storage, sender.chain_uid.clone())?;
-
     let mut state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
+    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
 
     let pair = state.pair.clone();
 
@@ -146,8 +153,8 @@ pub fn add_liquidity(
         }
     );
 
-    chain_lp_shares = chain_lp_shares.checked_add(lp_allocation)?;
-    CHAIN_LP_SHARES.save(deps.storage, sender.chain_uid.clone(), &chain_lp_shares)?;
+    chain_lp_tokens = chain_lp_tokens.checked_add(lp_allocation)?;
+    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
 
     // Add to total liquidity and total lp allocation
     total_reserve_1 = total_reserve_1.checked_add(token_1_liquidity)?;
@@ -175,11 +182,7 @@ pub fn add_liquidity(
 
     // Prepare Liquidity Response
     let liquidity_response = AddLiquidityResponse {
-        token_1_liquidity,
-        token_2_liquidity,
         mint_lp_tokens: lp_allocation,
-        reserve_1: total_reserve_1,
-        reserve_2: total_reserve_2,
         vlp_address: env.contract.address.to_string(),
     };
 
@@ -226,25 +229,33 @@ pub fn add_liquidity(
 pub fn remove_liquidity(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     sender: CrossChainUser,
     lp_allocation: Uint128,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
     let mut state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
     let pair = state.pair.clone();
 
     let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
     let mut total_reserve_2 = BALANCES.load(deps.storage, pair.token_2.clone())?;
 
+    // Remove chain lp tokens from the sender, remove liquidity only works for a single chain remove liquidity
+    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
+    chain_lp_tokens = chain_lp_tokens.checked_sub(lp_allocation)?;
+    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
+
     // Fetch allocated liquidity to LP tokens
     let lp_tokens = state.total_lp_tokens;
-    let lp_share = lp_allocation.multiply_ratio(Uint128::from(100u128), lp_tokens);
+    let lp_share = Decimal::checked_from_ratio(lp_allocation, lp_tokens)
+        .map_err(|err| ContractError::new(&err.to_string()))?;
 
     // Calculate tokens_1 to send
-    let token_1_liquidity = total_reserve_1.multiply_ratio(lp_share, Uint128::from(100u128));
+    let token_1_liquidity = total_reserve_1.checked_mul_ceil(lp_share)?;
     // Calculate tokens_2 to send
-    let token_2_liquidity = total_reserve_2.multiply_ratio(lp_share, Uint128::from(100u128));
+    let token_2_liquidity = total_reserve_2.checked_mul_ceil(lp_share)?;
 
     total_reserve_1 = total_reserve_1.checked_sub(token_1_liquidity)?;
     total_reserve_2 = total_reserve_2.checked_sub(token_2_liquidity)?;
@@ -268,11 +279,9 @@ pub fn remove_liquidity(
 
     // Prepare Liquidity Response
     let liquidity_response = VlpRemoveLiquidityResponse {
-        token_1_liquidity,
-        token_2_liquidity,
+        token_1_liquidity_released: token_1_liquidity,
+        token_2_liquidity_released: token_2_liquidity,
         burn_lp_tokens: lp_allocation,
-        reserve_1: total_reserve_1,
-        reserve_2: total_reserve_2,
         tx_id: tx_id.clone(),
         sender: sender.clone(),
         vlp_address: env.contract.address.to_string(),
@@ -282,16 +291,43 @@ pub fn remove_liquidity(
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
     let pool = Pool {
-        pair,
+        pair: pair.clone(),
         reserve_1: total_reserve_1,
         reserve_2: total_reserve_2,
     };
+
+    let vlp_cross_chain_struct = CrossChainUser {
+        address: env.contract.address.to_string(),
+        chain_uid: ChainUid::vsl_chain_uid()?,
+    };
+
+    let token_1_transfer_msg = pair.token_1.create_vcoin_transfer_msg(
+        state.vcoin.clone(),
+        token_1_liquidity,
+        vlp_cross_chain_struct.clone(),
+        sender.clone(),
+    )?;
+
+    let token_2_transfer_msg = pair.token_2.create_vcoin_transfer_msg(
+        state.vcoin,
+        token_2_liquidity,
+        vlp_cross_chain_struct,
+        sender.clone(),
+    )?;
 
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
             TxType::RemoveLiquidity,
+        ))
+        .add_submessage(SubMsg::reply_always(
+            token_1_transfer_msg,
+            VCOIN_TRANSFER_REPLY_ID,
+        ))
+        .add_submessage(SubMsg::reply_always(
+            token_2_transfer_msg,
+            VCOIN_TRANSFER_REPLY_ID,
         ))
         .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "remove_liquidity")
@@ -313,9 +349,6 @@ pub fn execute_swap(
     next_swaps: Vec<NextSwapVlp>,
     test_fail: Option<bool>,
 ) -> Result<Response, ContractError> {
-    // TODO: Check for pool liquidity balance and balance in vcoin
-    // Router mints new tokens for this vlp so amount_in = vcoin_balance - pool_current_liquidity
-
     ensure!(
         !test_fail.unwrap_or(false),
         ContractError::new("Force fail flag")
@@ -324,6 +357,7 @@ pub fn execute_swap(
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
     let state = state::STATE.load(deps.storage)?;
+
     let pair = state.pair.clone();
 
     ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
@@ -331,44 +365,54 @@ pub fn execute_swap(
     // Get Fee from the state
     let fee = state.clone().fee;
 
-    // Calculate the sum of fees
-    let total_fee = fee
-        .lp_fee
-        .checked_add(fee.staker_fee)
-        .and_then(|x| x.checked_add(fee.treasury_fee));
+    let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
+    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
 
-    ensure!(
-        total_fee.is_some(),
-        ContractError::Overflow(OverflowError::new(
-            OverflowOperation::Add,
-            fee.lp_fee,
-            fee.staker_fee
-        ))
-    );
-
-    // Remove the fee from the asset amount
-    let fee_amount =
-        amount_in.multiply_ratio(Uint128::from(total_fee.unwrap()), Uint128::from(100u128));
+    // Calcuate the sum of fees
+    let total_fee = lp_fee.checked_add(euclid_fee)?;
 
     // Calculate the amount of asset to be swapped
-    let swap_amount = amount_in.checked_sub(fee_amount)?;
+    let swap_amount = amount_in.checked_sub(total_fee)?;
 
     let asset_out = state.pair.get_other_token(asset_in.clone());
 
     let mut token_in_reserve = BALANCES.load(deps.storage, asset_in.clone())?;
     let mut token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
 
+    // Router mints new tokens or this vlp gets new balance from token transfer by previous, so vcoin_balance = amount_in + pool_current_liquidity
+    let vlp_vcoin_balance: euclid::msgs::vcoin::GetBalanceResponse =
+        deps.querier.query_wasm_smart(
+            state.vcoin.clone(),
+            &euclid::msgs::vcoin::QueryMsg::GetBalance {
+                balance_key: BalanceKey {
+                    cross_chain_user: CrossChainUser {
+                        address: env.contract.address.to_string(),
+                        chain_uid: ChainUid::vsl_chain_uid()?,
+                    },
+                    token_id: asset_in.to_string(),
+                },
+            },
+        )?;
+
+    ensure!(
+        vlp_vcoin_balance.amount == token_in_reserve.checked_add(amount_in)?,
+        ContractError::new("Swap didn't receive any funds!")
+    );
+
     let receive_amount = calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?;
 
-    // Verify that the receive amount is greater than the minimum token out
+    // Verify that the receive amount is greater than 0 to be eligible for any swap
     ensure!(
-        receive_amount.ge(&min_token_out),
+        !receive_amount.is_zero(),
         ContractError::SlippageExceeded {
             amount: receive_amount,
             min_amount_out: min_token_out,
         }
     );
-    token_in_reserve = token_in_reserve.checked_add(swap_amount)?;
+
+    token_in_reserve = token_in_reserve
+        .checked_add(swap_amount)?
+        .checked_add(lp_fee)?;
     token_out_reserve = token_out_reserve.checked_sub(receive_amount)?;
 
     BALANCES.save(
@@ -398,8 +442,6 @@ pub fn execute_swap(
         },
     };
 
-    STATE.save(deps.storage, &state)?;
-
     // Finalize ack response to swap pool
     let swap_response = VlpSwapResponse {
         sender: sender.clone(),
@@ -411,7 +453,36 @@ pub fn execute_swap(
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&swap_response)?;
 
-    let response = match next_swaps.split_first() {
+    let mut response = Response::new();
+
+    if !euclid_fee.is_zero() {
+        let euclid_fee_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+            amount: euclid_fee,
+            token_id: asset_in.to_string(),
+
+            // Source Address
+            from: CrossChainUser {
+                address: env.contract.address.to_string(),
+                chain_uid: ChainUid::vsl_chain_uid()?,
+            },
+
+            // Destination Address
+            to: fee.recipient,
+        });
+
+        let euclid_fee_transfer_msg = WasmMsg::Execute {
+            contract_addr: state.vcoin.clone(),
+            msg: to_json_binary(&euclid_fee_transfer_msg)?,
+            funds: vec![],
+        };
+
+        let euclid_fee_transfer_msg =
+            SubMsg::reply_on_error(euclid_fee_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
+
+        response = response.add_submessage(euclid_fee_transfer_msg);
+    }
+
+    match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             // There are more swaps
             let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
@@ -430,7 +501,7 @@ pub fn execute_swap(
             });
 
             let vcoin_transfer_msg = WasmMsg::Execute {
-                contract_addr: state.vcoin,
+                contract_addr: state.vcoin.clone(),
                 msg: to_json_binary(&vcoin_transfer_msg)?,
                 funds: vec![],
             };
@@ -458,23 +529,24 @@ pub fn execute_swap(
 
             let next_swap_msg = SubMsg::reply_always(next_swap_msg, NEXT_SWAP_REPLY_ID);
 
-            Response::new()
+            response = response
                 .add_attribute("swap_type", "forward_swap")
                 .add_attribute("forward_to", next_swap.vlp_address.clone())
                 .add_submessage(vcoin_transfer_msg)
-                .add_submessage(next_swap_msg)
+                .add_submessage(next_swap_msg);
         }
         None => {
             //Its the last swap
 
-            // Verify that the receive amount is greater than the minimum token out
+            // Verify that the receive amount is >= min amount as its last swap
             ensure!(
-                receive_amount > min_token_out,
+                receive_amount.ge(&min_token_out),
                 ContractError::SlippageExceeded {
                     amount: receive_amount,
                     min_amount_out: min_token_out,
                 }
             );
+
             let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.to_string(),
@@ -490,7 +562,7 @@ pub fn execute_swap(
             });
 
             let vcoin_transfer_msg = WasmMsg::Execute {
-                contract_addr: state.vcoin,
+                contract_addr: state.vcoin.clone(),
                 msg: to_json_binary(&vcoin_transfer_msg)?,
                 funds: vec![],
             };
@@ -498,11 +570,11 @@ pub fn execute_swap(
             let vcoin_transfer_msg =
                 SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
 
-            Response::new()
+            response = response
                 .add_attribute("swap_type", "final_swap")
                 .add_attribute("receiver_address", sender.address.clone())
                 .add_attribute("receiver_chain_id", sender.chain_uid.to_string())
-                .add_submessage(vcoin_transfer_msg)
+                .add_submessage(vcoin_transfer_msg);
         }
     };
 
@@ -511,7 +583,38 @@ pub fn execute_swap(
         .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "swap")
         .add_attribute("amount_in", amount_in)
-        .add_attribute("total_fee", fee_amount)
+        .add_attribute("total_fee", total_fee)
+        .add_attribute("euclid_fee", euclid_fee)
+        .add_attribute("lp_fee", lp_fee)
         .add_attribute("receive_amount", receive_amount)
         .set_data(acknowledgement))
+}
+
+pub fn update_fee(
+    deps: DepsMut,
+    info: MessageInfo,
+    lp_fee_bps: Option<u64>,
+    euclid_fee_bps: Option<u64>,
+    recipient: Option<CrossChainUser>,
+) -> Result<Response, ContractError> {
+    let mut state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    state.fee.lp_fee_bps = lp_fee_bps.unwrap_or(state.fee.lp_fee_bps);
+    ensure!(
+        state.fee.lp_fee_bps.le(&MAX_FEE_BPS),
+        ContractError::new("LP Fee cannot exceed maximum limit")
+    );
+    state.fee.euclid_fee_bps = euclid_fee_bps.unwrap_or(state.fee.euclid_fee_bps);
+    ensure!(
+        state.fee.euclid_fee_bps.le(&MAX_FEE_BPS),
+        ContractError::new("Euclid Fee cannot exceed maximum limit")
+    );
+    state.fee.recipient = recipient.unwrap_or(state.fee.recipient);
+
+    STATE.save(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_event(simple_event())
+        .add_attribute("action", "update_fee"))
 }

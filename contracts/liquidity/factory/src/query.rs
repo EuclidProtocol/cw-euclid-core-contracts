@@ -2,16 +2,16 @@ use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Order};
 use euclid::{
     error::ContractError,
     msgs::factory::{
-        AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetPendingLiquidityResponse,
-        GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse, GetVlpResponse,
-        PoolVlpResponse, StateResponse,
+        AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
+        GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
+        GetVlpResponse, PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
 };
 
 use crate::state::{
     HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-    STATE, TOKEN_TO_ESCROW,
+    STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
 };
 
 // Returns the Pair Info of the Pair in the pool
@@ -21,9 +21,26 @@ pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
 }
 
 // Returns the Pair Info of the Pair in the pool
+pub fn get_lp_token_address(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
+    let token_address = VLP_TO_CW20.load(deps.storage, vlp)?;
+    Ok(to_json_binary(&GetLPTokenResponse { token_address })?)
+}
+
+// Returns the Pair Info of the Pair in the pool
 pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
     let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, Token::create(token_id)?)?;
-    Ok(to_json_binary(&GetEscrowResponse { escrow_address })?)
+    let mut response = GetEscrowResponse {
+        escrow_address: escrow_address.clone(),
+        denoms: vec![],
+    };
+    if escrow_address.is_some() {
+        let denoms: euclid::msgs::escrow::AllowedDenomsResponse = deps.querier.query_wasm_smart(
+            escrow_address.unwrap(),
+            &euclid::msgs::escrow::QueryMsg::AllowedDenoms {},
+        )?;
+        response.denoms = denoms.denoms;
+    }
+    Ok(to_json_binary(&response)?)
 }
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {

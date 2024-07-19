@@ -177,7 +177,6 @@ mod tests {
                     channel: "channel-1".to_string(),
                     timeout: Some(60),
                     chain_uid: ChainUid::create("1".to_string()).unwrap(),
-                    tx_id: "1".to_string(),
                 },
                 expected_error: None,
             },
@@ -187,7 +186,6 @@ mod tests {
                     channel: "channel-1".to_string(),
                     timeout: Some(60),
                     chain_uid: ChainUid::create("1".to_string()).unwrap(),
-                    tx_id: "1".to_string(),
                 },
                 expected_error: Some(ContractError::Unauthorized {}),
             },
@@ -235,7 +233,7 @@ mod tests {
                             msg,
                             HubIbcExecuteMsg::RegisterFactory {
                                 chain_uid: ChainUid::create("1".to_string()).unwrap(),
-                                tx_id: "1".to_string(),
+                                tx_id: "vsl:creator:cosmos-testnet-14002:12345:3:1".to_string(),
                             }
                         );
                     } else {
