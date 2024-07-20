@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_json, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg,
-    Response, StdResult, SubMsg, Uint128, WasmMsg,
+    Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
 };
 use cosmwasm_std::{to_json_binary, IbcAcknowledgement};
 use euclid::chain::{ChainUid, CrossChainUser};
@@ -33,9 +33,16 @@ pub fn ibc_packet_ack(
         msg: to_json_binary(&internal_msg)?,
         funds: vec![],
     });
+
+    let msg: Result<HubIbcExecuteMsg, StdError> = from_json(&ack.original_packet.data);
+    let tx_id = msg
+        .map(|m| m.get_tx_id())
+        .unwrap_or("tx_id_not_found".to_string());
+
     let sub_msg = SubMsg::reply_always(internal_msg, IBC_ACK_AND_TIMEOUT_REPLY_ID);
     Ok(IbcBasicResponse::new()
         .add_attribute("ibc_ack", ack.acknowledgement.data.to_string())
+        .add_attribute("tx_id", tx_id)
         .add_submessage(sub_msg))
 }
 
