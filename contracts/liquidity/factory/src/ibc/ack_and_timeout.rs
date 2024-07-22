@@ -440,15 +440,16 @@ fn ack_swap_request(
     }
 }
 
+// TODO review this
 fn ack_withdraw_request(
     deps: DepsMut,
     res: AcknowledgementMsg<WithdrawResponse>,
-    sender: String,
+    _sender: String,
     token_id: Token,
-    tx_id: String,
+    _tx_id: String,
 ) -> Result<Response, ContractError> {
     match res {
-        AcknowledgementMsg::Ok(data) => {
+        AcknowledgementMsg::Ok(_data) => {
             let _escrow_address = TOKEN_TO_ESCROW
                 .load(deps.storage, token_id.clone())
                 .map_err(|_err| ContractError::EscrowDoesNotExist {})?;

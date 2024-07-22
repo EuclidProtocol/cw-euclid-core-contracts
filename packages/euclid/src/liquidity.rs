@@ -1,10 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128};
 
-use crate::{
-    chain::CrossChainUserWithLimit,
-    token::{Pair, PairWithDenom},
-};
+use crate::token::{Pair, PairWithDenom};
 
 #[cw_serde]
 pub struct AddLiquidityRequest {
