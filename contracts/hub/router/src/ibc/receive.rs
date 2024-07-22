@@ -68,6 +68,8 @@ pub fn ibc_receive_internal_call(
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
     let _chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
+    let locked = STATE.load(deps.storage)?.locked;
+    ensure!(!locked, ContractError::ContractLocked {});
     match msg {
         ChainIbcExecuteMsg::RequestPoolCreation {
             pair,
