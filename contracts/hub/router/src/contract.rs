@@ -7,13 +7,19 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use euclid::error::ContractError;
 
+use crate::execute::{
+    execute_register_factory, execute_release_escrow, execute_update_lock,
+    execute_update_vlp_code_id,
+};
+use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
+use crate::ibc::receive::ibc_receive_internal_call;
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
     REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_BURN_REPLY_ID, VCOIN_INSTANTIATE_REPLY_ID,
     VCOIN_MINT_REPLY_ID, VCOIN_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
     VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{State, STATE};
+use crate::state::{self, State, STATE};
 use crate::{execute, ibc, query};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
@@ -32,6 +38,7 @@ pub fn instantiate(
         vlp_code_id: msg.vlp_code_id,
         admin: info.sender.to_string(),
         vcoin_address: None,
+        locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
@@ -65,38 +72,50 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    match msg {
-        ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
-            execute::execute_update_vlp_code_id(deps, info, new_vlp_code_id)
+    // If the contract is locked and the message isn't UpdateLock, return error
+    let locked = STATE.load(deps.storage)?.locked;
+
+    if locked {
+        if let ExecuteMsg::UpdateLock {} = msg {
+            execute_update_lock(deps, info)
+        } else {
+            Err(ContractError::ContractLocked {})
         }
-        ExecuteMsg::RegisterFactory {
-            channel,
-            timeout,
-            chain_uid,
-        } => execute::execute_register_factory(&mut deps, env, info, chain_uid, channel, timeout),
-        ExecuteMsg::ReleaseEscrowInternal {
-            sender,
-            token,
-            amount,
-            cross_chain_addresses,
-            timeout,
-            tx_id,
-        } => execute::execute_release_escrow(
-            deps,
-            env,
-            info,
-            sender,
-            token,
-            amount,
-            cross_chain_addresses,
-            timeout,
-            tx_id,
-        ),
-        ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-            ibc::receive::ibc_receive_internal_call(deps, env, receive_msg)
-        }
-        ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
-            ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)
+    } else {
+        match msg {
+            ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
+                execute_update_vlp_code_id(deps, info, new_vlp_code_id)
+            }
+            ExecuteMsg::RegisterFactory {
+                channel,
+                timeout,
+                chain_uid,
+            } => execute_register_factory(&mut deps, env, info, chain_uid, channel, timeout),
+            ExecuteMsg::ReleaseEscrowInternal {
+                sender,
+                token,
+                amount,
+                cross_chain_addresses,
+                timeout,
+                tx_id,
+            } => execute_release_escrow(
+                deps,
+                env,
+                info,
+                sender,
+                token,
+                amount,
+                cross_chain_addresses,
+                timeout,
+                tx_id,
+            ),
+            ExecuteMsg::IbcCallbackReceive { receive_msg } => {
+                ibc_receive_internal_call(deps, env, receive_msg)
+            }
+            ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
+                ibc_ack_packet_internal_call(deps, env, ack)
+            }
+            ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
         }
     }
 }

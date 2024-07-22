@@ -146,6 +146,9 @@ pub enum ContractError {
     #[error("Pool Instantiate Failed {err}")]
     PoolInstantiateFailed { err: String },
 
+    #[error("ContractLocked")]
+    ContractLocked {},
+
     // BEGIN CW20 ERRORS
     #[error("Cannot set to own account")]
     CannotSetOwnAccount {},

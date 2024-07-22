@@ -38,6 +38,21 @@ pub fn execute_update_vlp_code_id(
         .add_attribute("new_vlp_code_id", new_vlp_code_id.to_string()))
 }
 
+pub fn execute_update_lock(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    let mut state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    // Switch to opposite lock state
+    state.locked = !state.locked;
+
+    STATE.save(deps.storage, &state)?;
+    let lock_message = if state.locked { "locked" } else { "unlocked" };
+
+    Ok(Response::new()
+        .add_attribute("method", "update_lock")
+        .add_attribute("new_lock_state", lock_message.to_string()))
+}
+
 // Function to update the pool code ID
 pub fn execute_register_factory(
     deps: &mut DepsMut,
