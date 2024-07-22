@@ -82,6 +82,10 @@ pub fn execute(
     if locked {
         if let ExecuteMsg::UpdateLock {} = msg {
             execute_update_lock(deps, info)
+        } else if let ExecuteMsg::ReregisterChain { chain } = msg {
+            execute_reregister_chain(deps, info, chain)
+        } else if let ExecuteMsg::DeregisterChain { chain } = msg {
+            execute_deregister_chain(deps, info, chain)
         } else {
             Err(ContractError::ContractLocked {})
         }
