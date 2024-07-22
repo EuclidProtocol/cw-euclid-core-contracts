@@ -134,7 +134,20 @@ pub fn execute(
             lp_token_marketing,
             timeout,
         ),
-        ExecuteMsg::WithdrawVcoin { timeout } => execute_withdraw_vcoin(deps, env, info, timeout),
+        ExecuteMsg::WithdrawVcoin {
+            token,
+            amount_in,
+            cross_chain_addresses,
+            timeout,
+        } => execute_withdraw_vcoin(
+            deps,
+            env,
+            info,
+            token,
+            amount_in,
+            cross_chain_addresses,
+            timeout,
+        ),
 
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {

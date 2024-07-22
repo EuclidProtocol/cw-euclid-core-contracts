@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg, IbcPacket,
-    IbcTimeout, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg, IbcTimeout,
+    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
@@ -672,6 +672,9 @@ pub fn execute_withdraw_vcoin(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
+    token: Token,
+    amount_in: Uint128,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -692,10 +695,10 @@ pub fn execute_withdraw_vcoin(
         channel_id: channel.clone(),
         data: to_json_binary(&ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
             sender,
-            token: todo!(),
-            amount_in: todo!(),
-            cross_chain_addresses: todo!(),
-            tx_id,
+            token,
+            amount_in,
+            cross_chain_addresses,
+            tx_id: tx_id.clone(),
         }))?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };

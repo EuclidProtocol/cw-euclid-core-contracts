@@ -57,6 +57,9 @@ pub enum ExecuteMsg {
         new_channel: String,
     },
     WithdrawVcoin {
+        token: Token,
+        amount_in: Uint128,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
 
