@@ -25,8 +25,8 @@ use crate::{
         VCOIN_MINT_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, ESCROW_BALANCES, PENDING_REMOVE_LIQUIDITY, STATE,
-        SWAP_ID_TO_MSG, VLPS,
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
+        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS,
     },
 };
 
@@ -66,6 +66,11 @@ pub fn ibc_receive_internal_call(
     // Get the chain data from current channel received
     let channel = msg.packet.dest.channel_id;
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
+    let deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
+    ensure!(
+        !deregistered_chains.contains(&chain_uid),
+        ContractError::DeregisteredChain {}
+    );
     let _chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
     let locked = STATE.load(deps.storage)?.locked;

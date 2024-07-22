@@ -38,6 +38,9 @@ pub enum ContractError {
     #[error("Tx already exist")]
     TxAlreadyExist {},
 
+    #[error("Chain already exist")]
+    ChainAlreadyExist {},
+
     #[error("ZeroWithdrawalAmount")]
     ZeroWithdrawalAmount {},
 
@@ -46,6 +49,9 @@ pub enum ContractError {
 
     #[error("DuplicateDenominations")]
     DuplicateDenominations {},
+
+    #[error("DeregisteredChain")]
+    DeregisteredChain {},
 
     #[error("UnsupportedDenomination")]
     UnsupportedDenomination {},
@@ -61,6 +67,9 @@ pub enum ContractError {
 
     #[error("DenomDoesNotExist")]
     DenomDoesNotExist {},
+
+    #[error("ChainNotFound")]
+    ChainNotFound {},
 
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },

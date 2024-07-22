@@ -16,7 +16,7 @@ use euclid_ibc::msg::HubIbcExecuteMsg;
 
 use crate::{
     reply::VCOIN_BURN_REPLY_ID,
-    state::{CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, STATE},
+    state::{CHAIN_UID_TO_CHAIN, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE},
 };
 
 // Function to update the pool code ID
@@ -51,6 +51,52 @@ pub fn execute_update_lock(deps: DepsMut, info: MessageInfo) -> Result<Response,
     Ok(Response::new()
         .add_attribute("method", "update_lock")
         .add_attribute("new_lock_state", lock_message.to_string()))
+}
+
+pub fn execute_deregister_chain(
+    deps: DepsMut,
+    info: MessageInfo,
+    chain: ChainUid,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let mut deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
+
+    ensure!(
+        !deregistered_chains.contains(&chain),
+        ContractError::ChainAlreadyExist {}
+    );
+
+    deregistered_chains.push(chain.clone());
+
+    DEREGISTERED_CHAINS.save(deps.storage, &deregistered_chains)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "deregister_chain")
+        .add_attribute("chain", chain.to_string()))
+}
+
+pub fn execute_reregister_chain(
+    deps: DepsMut,
+    info: MessageInfo,
+    chain: ChainUid,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let mut deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
+
+    ensure!(
+        deregistered_chains.contains(&chain),
+        ContractError::ChainNotFound {}
+    );
+
+    deregistered_chains.retain(|x| x != &chain);
+
+    DEREGISTERED_CHAINS.save(deps.storage, &deregistered_chains)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "reregister_chain")
+        .add_attribute("chain", chain.to_string()))
 }
 
 // Function to update the pool code ID

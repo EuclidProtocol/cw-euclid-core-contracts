@@ -8,8 +8,8 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 
 use crate::execute::{
-    execute_register_factory, execute_release_escrow, execute_update_lock,
-    execute_update_vlp_code_id,
+    execute_deregister_chain, execute_register_factory, execute_release_escrow,
+    execute_reregister_chain, execute_update_lock, execute_update_vlp_code_id,
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
@@ -83,6 +83,8 @@ pub fn execute(
         }
     } else {
         match msg {
+            ExecuteMsg::ReregisterChain { chain } => execute_reregister_chain(deps, info, chain),
+            ExecuteMsg::DeregisterChain { chain } => execute_deregister_chain(deps, info, chain),
             ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
                 execute_update_vlp_code_id(deps, info, new_vlp_code_id)
             }

@@ -15,6 +15,12 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
+    ReregisterChain {
+        chain: ChainUid,
+    },
+    DeregisterChain {
+        chain: ChainUid,
+    },
     UpdateLock {},
     // Update Pool Code ID
     UpdateVLPCodeId {
