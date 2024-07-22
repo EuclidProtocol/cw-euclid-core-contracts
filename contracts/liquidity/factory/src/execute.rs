@@ -35,7 +35,7 @@ pub fn execute_update_hub_channel(
     Ok(Response::new()
         .add_attribute("method", "execute_update_hub_channel")
         .add_attribute("new_channel", new_channel)
-        .add_attribute("old_channel", old_channel.unwrap_or_default()))
+        .add_attribute("old_channel", old_channel.unwrap_or("no_old_channel".to_string())))
 }
 
 // Function to send IBC request to Router in VLS to create a new pool
