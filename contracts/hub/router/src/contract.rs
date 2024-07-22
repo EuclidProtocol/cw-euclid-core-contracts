@@ -5,6 +5,7 @@ use cosmwasm_std::{
     WasmMsg,
 };
 use cw2::set_contract_version;
+use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 
 use crate::execute::{
@@ -13,14 +14,14 @@ use crate::execute::{
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
+use crate::query;
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
     REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_BURN_REPLY_ID, VCOIN_INSTANTIATE_REPLY_ID,
     VCOIN_MINT_REPLY_ID, VCOIN_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
     VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{self, State, STATE};
-use crate::{execute, ibc, query};
+use crate::state::{State, DEREGISTERED_CHAINS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -58,6 +59,9 @@ pub fn instantiate(
 
     let vcoin_instantiate_msg =
         SubMsg::reply_always(vcoin_instantiate_msg, VCOIN_INSTANTIATE_REPLY_ID);
+
+    let empty_chains: Vec<ChainUid> = vec![];
+    DEREGISTERED_CHAINS.save(deps.storage, &empty_chains)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
