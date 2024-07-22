@@ -122,12 +122,11 @@ pub fn ibc_receive_internal_call(
             execute_release_escrow(
                 deps,
                 env,
-                info,
-                sender,
-                token,
-                amount,
-                cross_chain_addresses,
-                timeout,
+                msg.sender,
+                msg.token,
+                msg.amount,
+                msg.cross_chain_addresses,
+                msg.timeout,
                 msg.tx_id,
             )
         }

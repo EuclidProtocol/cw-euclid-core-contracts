@@ -84,7 +84,6 @@ pub fn execute(
         } => execute::execute_release_escrow(
             deps,
             env,
-            info,
             sender,
             token,
             amount,

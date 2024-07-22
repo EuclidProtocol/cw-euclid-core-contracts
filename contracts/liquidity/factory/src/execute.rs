@@ -673,7 +673,7 @@ pub fn execute_withdraw_vcoin(
     env: Env,
     info: MessageInfo,
     token: Token,
-    amount_in: Uint128,
+    amount: Uint128,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -688,7 +688,7 @@ pub fn execute_withdraw_vcoin(
         chain_uid: state.chain_uid,
     };
     let tx_id = generate_tx(deps, &env, &sender)?;
-    let timeout = get_timeout(timeout)?;
+    let final_timeout = get_timeout(timeout)?;
 
     // Create IBC packet to send to Router
     let ibc_packet = IbcMsg::SendPacket {
@@ -696,11 +696,12 @@ pub fn execute_withdraw_vcoin(
         data: to_json_binary(&ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
             sender,
             token,
-            amount_in,
+            amount,
             cross_chain_addresses,
             tx_id: tx_id.clone(),
+            timeout,
         }))?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(final_timeout)),
     };
     Ok(Response::new()
         .add_event(tx_event(

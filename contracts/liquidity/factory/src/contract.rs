@@ -136,7 +136,7 @@ pub fn execute(
         ),
         ExecuteMsg::WithdrawVcoin {
             token,
-            amount_in,
+            amount,
             cross_chain_addresses,
             timeout,
         } => execute_withdraw_vcoin(
@@ -144,7 +144,7 @@ pub fn execute(
             env,
             info,
             token,
-            amount_in,
+            amount,
             cross_chain_addresses,
             timeout,
         ),

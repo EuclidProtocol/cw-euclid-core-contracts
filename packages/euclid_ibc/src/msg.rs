@@ -103,16 +103,14 @@ pub struct ChainIbcSwapExecuteMsg {
 pub struct ChainIbcWithdrawExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
-
     // User will provide this
     pub token: Token,
-    pub amount_in: Uint128,
-
+    pub amount: Uint128,
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
     // Unique per tx
     pub tx_id: String,
+    pub timeout: Option<u64>,
 }
 
 #[cw_serde]
