@@ -304,9 +304,9 @@ pub fn on_vcoin_transfer_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
 
 pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => {
-            Ok(Response::new().add_attribute("reply_err_on_ibc_ack_or_timeout_processing", err))
-        }
+        SubMsgResult::Err(err) => Ok(Response::new()
+            .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
+            .add_attribute("error", err)),
         SubMsgResult::Ok(res) => {
             let data = res
                 .data
@@ -317,7 +317,7 @@ pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
                 })
                 .unwrap_or_default();
             Ok(Response::new()
-                .add_attribute("action", "reply_sucess_on_ibc_ack_or_timeout_processing")
+                .add_attribute("reply_on_ibc_ack_or_timeout_processing", "success")
                 .set_data(data))
         }
     }
@@ -326,7 +326,8 @@ pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
 pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Ok(Response::new()
-            .add_attribute("reply_err_on_ibc_receive_processing", err.clone())
+            .add_attribute("reply_on_ibc_receive_processing", "error")
+            .add_attribute("error", err.clone())
             .set_data(make_ack_fail(err)?)),
         SubMsgResult::Ok(res) => {
             let data = res
@@ -338,7 +339,7 @@ pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
                 })
                 .unwrap_or_default();
             Ok(Response::new()
-                .add_attribute("action", "reply_sucess_on_ibc_receive_processing")
+                .add_attribute("reply_on_ibc_receive_processing", "success")
                 .set_data(data))
         }
     }

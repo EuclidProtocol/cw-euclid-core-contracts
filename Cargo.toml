@@ -1,7 +1,12 @@
 [workspace]
 resolver = "2"
 
-members = ["contracts/hub/*", "contracts/liquidity/*", "packages/*"]
+members = [
+    "contracts/hub/*",
+    "contracts/liquidity/*",
+    "packages/*",
+    "tests-integration",
+]
 
 [profile.release]
 opt-level = "z"
@@ -27,3 +32,6 @@ cw20-base = "=1.1.2"
 schemars = "0.8.15"
 serde = { version = "1.0.189", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.49" }
+
+mock = { path = "./packages/mock" }
+cw-multi-test = { version = "1.2.0", features = ["cosmwasm_1_2"] }

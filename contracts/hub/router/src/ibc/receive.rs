@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, Response, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
@@ -45,10 +45,16 @@ pub fn ibc_packet_receive(
         msg: to_json_binary(&internal_msg)?,
         funds: vec![],
     });
+
     let sub_msg = SubMsg::reply_always(internal_msg, IBC_RECEIVE_REPLY_ID);
+    let msg: Result<ChainIbcExecuteMsg, StdError> = from_json(&msg.packet.data);
+    let tx_id = msg
+        .map(|m| m.get_tx_id())
+        .unwrap_or("tx_id_not_found".to_string());
+
     Ok(IbcReceiveResponse::new()
-        .add_attribute("ibc_receive", msg.packet.data.to_string())
         .add_attribute("method", "ibc_packet_receive")
+        .add_attribute("tx_id", tx_id)
         .set_ack(make_ack_fail("deafult_fail".to_string())?)
         .add_submessage(sub_msg))
 }

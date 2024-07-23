@@ -65,6 +65,17 @@ pub enum ChainIbcExecuteMsg {
     // },
 }
 
+impl ChainIbcExecuteMsg {
+    pub fn get_tx_id(&self) -> String {
+        match self {
+            Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
+            Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
+            Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
+            Self::Swap(msg) => msg.tx_id.clone(),
+        }
+    }
+}
+
 #[cw_serde]
 pub struct ChainIbcRemoveLiquidityExecuteMsg {
     // Factory will set this using info.sender
@@ -131,4 +142,13 @@ pub enum HubIbcExecuteMsg {
         // Unique per tx
         tx_id: String,
     },
+}
+
+impl HubIbcExecuteMsg {
+    pub fn get_tx_id(&self) -> String {
+        match self {
+            Self::RegisterFactory { tx_id, .. } => tx_id.clone(),
+            Self::ReleaseEscrow { tx_id, .. } => tx_id.clone(),
+        }
+    }
 }
