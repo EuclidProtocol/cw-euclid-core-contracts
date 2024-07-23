@@ -1,11 +1,11 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use crate::contract::{execute, instantiate, query, reply};
-use cosmwasm_std::{Addr, Empty};
-use cw_multi_test::{Contract, ContractWrapper, Executor};
+use cosmwasm_std::{to_json_binary, Addr, Coin, CosmosMsg, Empty, WasmMsg};
+use cw_multi_test::{AppResponse, Contract, ContractWrapper, Executor};
 
 use euclid::{
-    msgs::escrow::{InstantiateMsg, QueryMsg, TokenIdResponse},
+    msgs::escrow::{ExecuteMsg, InstantiateMsg, QueryMsg, TokenIdResponse},
     token::{Token, TokenType},
 };
 use mock::mock::MockApp;
@@ -31,11 +31,23 @@ impl MockEscrow {
         Self(res.unwrap())
     }
 
-    // pub fn execute_send(&self, app: &mut MockApp, sender: Addr, funds: &[Coin]) -> ExecuteResult {
-    //     let msg = mock_escrow_send_msg();
-
-    //     self.execute(app, &msg, sender, funds)
-    // }
+    pub fn execute_deposit_native(
+        &self,
+        app: &mut MockApp,
+        sender: Addr,
+        funds: Vec<Coin>,
+    ) -> AppResponse {
+        let msg = mock_escrow_deposit_native();
+        app.execute(
+            sender,
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: self.0.clone().into_string(),
+                msg: to_json_binary(&msg).unwrap(),
+                funds,
+            }),
+        )
+        .unwrap()
+    }
 
     pub fn query_token_id(&self, app: &MockApp) -> TokenIdResponse {
         app.wrap()
@@ -62,9 +74,9 @@ pub fn mock_escrow_instantiate_msg(
     }
 }
 
-// pub fn mock_escrow_send_msg() -> ExecuteMsg {
-
-// }
+pub fn mock_escrow_deposit_native() -> ExecuteMsg {
+    ExecuteMsg::DepositNative {}
+}
 
 pub fn mock_query_token_id() -> QueryMsg {
     QueryMsg::TokenId {}

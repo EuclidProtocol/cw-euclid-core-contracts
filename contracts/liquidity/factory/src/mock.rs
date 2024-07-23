@@ -6,14 +6,13 @@ use cw_multi_test::{Contract, ContractWrapper, Executor};
 
 use euclid::{
     chain::ChainUid,
-    msgs::factory::{GetEscrowResponse, InstantiateMsg, QueryMsg},
-    token::{Token, TokenType},
+    msgs::factory::{GetEscrowResponse, InstantiateMsg, QueryMsg, StateResponse},
 };
 use mock::mock::MockApp;
 
 pub struct MockFactory(Addr);
 impl MockFactory {
-    fn addr(&self) -> &Addr {
+    pub fn addr(&self) -> &Addr {
         &self.0
     }
 }
@@ -49,6 +48,15 @@ impl MockFactory {
             )
             .unwrap()
     }
+
+    pub fn query_state(&self, app: &MockApp) -> StateResponse {
+        app.wrap()
+            .query_wasm_smart::<StateResponse>(
+                self.addr().clone().into_string(),
+                &mock_query_get_state(),
+            )
+            .unwrap()
+    }
 }
 
 pub fn mock_factory() -> Box<dyn Contract<Empty>> {
@@ -76,4 +84,8 @@ pub fn mock_factory_instantiate_msg(
 
 pub fn mock_query_get_escrow(token_id: String) -> QueryMsg {
     QueryMsg::GetEscrow { token_id }
+}
+
+pub fn mock_query_get_state() -> QueryMsg {
+    QueryMsg::GetState {}
 }

@@ -2,10 +2,12 @@
 use cosmwasm_std::coin;
 use escrow::mock::{mock_escrow, MockEscrow};
 use euclid::{
+    chain::ChainUid,
     msgs::escrow::TokenIdResponse,
     token::{Token, TokenType},
 };
 use factory::mock::mock_factory;
+use factory::mock::MockFactory;
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 
 const _USER: &str = "user";
@@ -28,15 +30,30 @@ fn test_proper_instantiation() {
     let owner = andr.get_wallet("owner");
 
     let escrow_code_id = 1;
+    let factory_code_id = 2;
+    let cw20_code_id = 3;
+    let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+    let router_contract = "router_contract".to_string();
+
     let token_id = Token::create("token1".to_string()).unwrap();
     let allowed_denom = Some(TokenType::Native {
         denom: "eucl".to_string(),
     });
 
+    let mock_factory = MockFactory::instantiate(
+        &mut escrow,
+        factory_code_id,
+        owner.clone(),
+        router_contract,
+        chain_uid,
+        escrow_code_id,
+        cw20_code_id,
+    );
+
     let mock_escrow = MockEscrow::instantiate(
         &mut escrow,
         escrow_code_id,
-        owner.clone(),
+        mock_factory.addr().clone(),
         token_id.clone(),
         allowed_denom,
     );

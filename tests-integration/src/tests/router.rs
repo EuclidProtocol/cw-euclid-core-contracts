@@ -43,7 +43,6 @@ fn test_proper_instantiation() {
         owner.clone(),
         vlp_code_id,
         vcoin_code_id,
-        Some(owner.clone().into_string()),
     );
 
     let state = MockRouter::query_state(&mock_router, &mut router);
