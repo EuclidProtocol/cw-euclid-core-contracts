@@ -72,6 +72,7 @@ impl ChainIbcExecuteMsg {
             Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
+            Self::Withdraw(msg) => msg.tx_id.clone(),
         }
     }
 }
