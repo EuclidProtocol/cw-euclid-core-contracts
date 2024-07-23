@@ -110,7 +110,6 @@ pub fn ibc_packet_timeout(
     ))
 }
 
-// Function to create pool
 pub fn ibc_ack_register_factory(
     deps: DepsMut,
     env: Env,
