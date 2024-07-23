@@ -16,6 +16,8 @@ pub fn execute_mint(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    // Zero amounts not allowed
+    ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
@@ -50,6 +52,9 @@ pub fn execute_burn(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
+    // Zero amounts not allowed
+    ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
