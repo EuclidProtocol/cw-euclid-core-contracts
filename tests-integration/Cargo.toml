@@ -13,6 +13,7 @@ router = { path = "../contracts/hub/router" }
 vcoin = { path = "../contracts/hub/vcoin" }
 vlp = { path = "../contracts/hub/vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
+factory = { path = "../contracts/liquidity/factory" }
 
 
 #Other Crates

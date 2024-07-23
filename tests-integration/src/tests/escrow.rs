@@ -1,10 +1,11 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{coin, Addr};
+use cosmwasm_std::coin;
 use escrow::mock::{mock_escrow, MockEscrow};
 use euclid::{
     msgs::escrow::TokenIdResponse,
     token::{Token, TokenType},
 };
+use factory::mock::mock_factory;
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 
 const _USER: &str = "user";
@@ -22,7 +23,7 @@ fn test_proper_instantiation() {
             ("recipient1", vec![]),
             ("recipient2", vec![]),
         ])
-        .with_contracts(vec![("escrow", mock_escrow())])
+        .with_contracts(vec![("escrow", mock_escrow()), ("factory", mock_factory())])
         .build(&mut escrow);
     let owner = andr.get_wallet("owner");
 

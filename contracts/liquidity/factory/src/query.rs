@@ -14,19 +14,19 @@ use crate::state::{
     STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
 };
 
-// Returns the Pair Info of the Pair in the pool
+// Returns the VLP address
 pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let vlp_address = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
     Ok(to_json_binary(&GetVlpResponse { vlp_address })?)
 }
 
-// Returns the Pair Info of the Pair in the pool
+// Returns the LP token address
 pub fn get_lp_token_address(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
     let token_address = VLP_TO_CW20.load(deps.storage, vlp)?;
     Ok(to_json_binary(&GetLPTokenResponse { token_address })?)
 }
 
-// Returns the Pair Info of the Pair in the pool
+// Returns the Escrow address alongside allowed denoms if available
 pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
     let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, Token::create(token_id)?)?;
     let mut response = GetEscrowResponse {

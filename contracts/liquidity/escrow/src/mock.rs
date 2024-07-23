@@ -37,12 +37,6 @@ impl MockEscrow {
     //     self.execute(app, &msg, sender, funds)
     // }
 
-    // pub fn query_state(&self, app: &MockApp, token_id: impl Into<String>) -> Addr
-    // {
-    //     app.wrap().query(request)
-    //     Addr::unchecked(self.query::<StateResponse>(app, mock_query_state()).owner)
-    // }
-
     pub fn query_token_id(&self, app: &MockApp) -> TokenIdResponse {
         app.wrap()
             .query_wasm_smart::<TokenIdResponse>(

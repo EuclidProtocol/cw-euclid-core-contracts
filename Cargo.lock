@@ -536,6 +536,7 @@ version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
+ "cw-multi-test 1.2.0",
  "cw-storage-plus 1.2.0",
  "cw0",
  "cw2",
@@ -543,6 +544,7 @@ dependencies = [
  "cw20-base",
  "euclid",
  "euclid-ibc",
+ "mock",
  "schemars",
  "serde",
  "thiserror",
@@ -1190,6 +1192,7 @@ dependencies = [
  "cw-utils",
  "escrow",
  "euclid",
+ "factory",
  "itertools 0.10.5",
  "mock",
  "router",
