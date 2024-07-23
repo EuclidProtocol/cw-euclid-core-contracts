@@ -53,6 +53,7 @@ fn test_proper_instantiation() {
         vcoin_address: Some(Addr::unchecked(
             "eucl1hrpna9v7vs3stzyd4z3xf00676kf78zpe2u5ksvljswn2vnjp3ys8rp88c",
         )),
+        locked: false,
     };
     assert_eq!(state, expected_state_response);
 }
