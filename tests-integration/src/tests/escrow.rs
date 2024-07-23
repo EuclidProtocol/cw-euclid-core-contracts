@@ -1,95 +1,51 @@
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use cw20::{Cw20Coin, Cw20Contract, Cw20ExecuteMsg, Cw20ReceiveMsg};
-//     use euclid::msgs::pool::Cw20HookMsg;
-//     use cosmwasm_std::{Addr, Coin, Empty, Uint128,to_binary};
-//     use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor};
-//     use euclid::{msgs::escrow::{AllowedTokenResponse, ExecuteMsg, InstantiateMsg, QueryMsg, TokenIdResponse}, token::{Token, TokenInfo, TokenType}};
-//     use crate::contract::{self, execute, instantiate, query, reply};
+#![cfg(not(target_arch = "wasm32"))]
+use cosmwasm_std::{coin, Addr};
+use escrow::mock::{mock_escrow, MockEscrow};
+use euclid::{
+    msgs::escrow::TokenIdResponse,
+    token::{Token, TokenType},
+};
+use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 
-//     const FACTORY: &str = "factory";
+const _USER: &str = "user";
+const _NATIVE_DENOM: &str = "native";
+const _IBC_DENOM_1: &str = "ibc/denom1";
+const _IBC_DENOM_2: &str = "ibc/denom2";
+const _SUPPLY: u128 = 1_000_000;
 
-//     const USER: &str = "user";
-//     const NATIVE_DENOM: &str = "native";
-//     const SUPPLY: u128 = 1_000_000;
+#[test]
+fn test_proper_instantiation() {
+    let mut escrow = mock_app(None);
+    let andr = MockEuclidBuilder::new(&mut escrow, "admin")
+        .with_wallets(vec![
+            ("owner", vec![coin(1000, "eucl")]),
+            ("recipient1", vec![]),
+            ("recipient2", vec![]),
+        ])
+        .with_contracts(vec![("escrow", mock_escrow())])
+        .build(&mut escrow);
+    let owner = andr.get_wallet("owner");
 
-//     fn contract_escrow() -> Box<dyn Contract<Empty>> {
-//         Box::new(
-//             ContractWrapper::new_with_empty(
-//                 crate::contract::execute,
-//                 crate::contract::instantiate,
-//                 crate::contract::query,
-//             )
-//             .with_reply_empty(contract::reply),
-//         )
-//     }
+    let escrow_code_id = 1;
+    let token_id = Token::create("token1".to_string()).unwrap();
+    let allowed_denom = Some(TokenType::Native {
+        denom: "eucl".to_string(),
+    });
 
-//     fn mock_app() -> App {
-//         AppBuilder::new().build(|router, _, storage| {
-//             router
-//                 .bank
-//                 .init_balance(
-//                     storage,
-//                     &Addr::unchecked(USER),
-//                     vec![Coin {
-//                         denom: NATIVE_DENOM.to_string(),
-//                         amount: Uint128::from(SUPPLY),
-//                     }],
-//                 )
-//                 .unwrap();
-//         })
-//     }
+    let mock_escrow = MockEscrow::instantiate(
+        &mut escrow,
+        escrow_code_id,
+        owner.clone(),
+        token_id.clone(),
+        allowed_denom,
+    );
 
-//     #[test]
-//     fn test_instantiate_contract() {
-//         let mut app = mock_app();
-//         let owner = Addr::unchecked("owner");
-
-//         // Register the contract code
-//         let code_id = app.store_code(contract_escrow());
-
-//         let instantiate_msg = InstantiateMsg {
-//             token_id: Token { id: "test_token".to_string() },
-//             allowed_denom: Some("ucosm".to_string()),
-//         };
-
-//         let contract_addr = app
-//             .instantiate_contract(
-//                 code_id,
-//                 owner.clone(),
-//                 &instantiate_msg,
-//                 &[],
-//                 "Contract",
-//                 None,
-//             )
-//             .unwrap();
-
-//         // Query the state to verify the instantiation
-//         let res: TokenIdResponse = app
-//             .wrap()
-//             .query_wasm_smart(contract_addr.clone(), &QueryMsg::TokenId {})
-//             .unwrap();
-
-//         assert_eq!(res.token_id, "test_token".to_string());
-
-//         // Verify the allowed denom
-//         let allowed_denom_response: AllowedTokenResponse = app.wrap().query_wasm_smart(
-//             contract_addr.clone(),
-//             &QueryMsg::TokenAllowed {
-//                 token: TokenInfo {
-//                     token: Token {
-//                         id: "test_token".to_string(),
-//                     },
-//                     token_type: TokenType::Native {
-//                         denom: "ucosm".to_string(),
-//                     },
-//                 },
-//             },
-//         ).unwrap();
-
-//         assert!(allowed_denom_response.allowed);
-//     }
+    let token_id_response = MockEscrow::query_token_id(&mock_escrow, &mut escrow);
+    let expected_token_id = TokenIdResponse {
+        token_id: token_id.to_string(),
+    };
+    assert_eq!(token_id_response, expected_token_id);
+}
 
 //     #[test]
 //     fn test_add_allowed_denom() {

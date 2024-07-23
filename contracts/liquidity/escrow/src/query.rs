@@ -17,7 +17,7 @@ pub fn query_token_id(deps: Deps) -> Result<Binary, ContractError> {
     })?)
 }
 
-// Returns the token id
+// Returns allowed tokens
 pub fn query_token_allowed(deps: Deps, denom: TokenType) -> Result<Binary, ContractError> {
     let registered_denom = ALLOWED_DENOMS.may_load(deps.storage)?.unwrap_or_default();
     let response = AllowedTokenResponse {
@@ -27,7 +27,7 @@ pub fn query_token_allowed(deps: Deps, denom: TokenType) -> Result<Binary, Contr
     Ok(to_json_binary(&response)?)
 }
 
-// Returns the token id
+// Returns the allowed denoms
 pub fn query_allowed_denoms(deps: Deps) -> Result<Binary, ContractError> {
     let denoms = ALLOWED_DENOMS.may_load(deps.storage)?.unwrap_or_default();
     let response = AllowedDenomsResponse { denoms };
