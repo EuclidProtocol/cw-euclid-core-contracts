@@ -9,7 +9,7 @@ use mock::mock::MockApp;
 
 pub struct MockRouter(Addr);
 impl MockRouter {
-    fn addr(&self) -> &Addr {
+    pub fn addr(&self) -> &Addr {
         &self.0
     }
 }
@@ -21,9 +21,8 @@ impl MockRouter {
         sender: Addr,
         vlp_code_id: u64,
         vcoin_code_id: u64,
-        owner: Option<String>,
     ) -> Self {
-        let msg = mock_router_instantiate_msg(vlp_code_id, vcoin_code_id, owner);
+        let msg = mock_router_instantiate_msg(vlp_code_id, vcoin_code_id);
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid router", None);
 
         Self(res.unwrap())
@@ -56,11 +55,7 @@ pub fn mock_router() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
-pub fn mock_router_instantiate_msg(
-    vlp_code_id: u64,
-    vcoin_code_id: u64,
-    owner: Option<String>,
-) -> InstantiateMsg {
+pub fn mock_router_instantiate_msg(vlp_code_id: u64, vcoin_code_id: u64) -> InstantiateMsg {
     InstantiateMsg {
         vlp_code_id,
         vcoin_code_id,
