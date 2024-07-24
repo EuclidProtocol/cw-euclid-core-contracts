@@ -3,3 +3,4 @@
 mod escrow;
 mod factory;
 mod router;
+mod vcoin;

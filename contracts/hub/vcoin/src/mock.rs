@@ -3,10 +3,15 @@
 use crate::contract::{execute, instantiate, query};
 use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
-use euclid::msgs::vcoin::InstantiateMsg;
+use euclid::msgs::vcoin::{ExecuteMsg, GetStateResponse, InstantiateMsg, QueryMsg};
 use mock::mock::MockApp;
 
 pub struct MockVcoin(Addr);
+impl MockVcoin {
+    pub fn addr(&self) -> &Addr {
+        &self.0
+    }
+}
 
 impl MockVcoin {
     pub fn instantiate(
@@ -27,6 +32,15 @@ impl MockVcoin {
 
     //     self.execute(app, &msg, sender, funds)
     // }
+
+    pub fn query_state(&self, app: &MockApp) -> GetStateResponse {
+        app.wrap()
+            .query_wasm_smart::<GetStateResponse>(
+                self.addr().clone().into_string(),
+                &mock_query_get_state(),
+            )
+            .unwrap()
+    }
 }
 
 pub fn mock_vcoin() -> Box<dyn Contract<Empty>> {
@@ -38,6 +52,6 @@ pub fn mock_vcoin_instantiate_msg(router: Addr, admin: Option<Addr>) -> Instanti
     InstantiateMsg { router, admin }
 }
 
-// pub fn mock_vcoin_send_msg() -> ExecuteMsg {
-
-// }
+pub fn mock_query_get_state() -> QueryMsg {
+    QueryMsg::GetState {}
+}
