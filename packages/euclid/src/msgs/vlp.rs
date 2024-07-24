@@ -69,6 +69,8 @@ pub enum ExecuteMsg {
 #[derive(QueryResponses)]
 
 pub enum QueryMsg {
+    #[returns(GetStateResponse)]
+    State {},
     // Query to simulate a swap for the asset
     #[returns(GetSwapResponse)]
     SimulateSwap {
@@ -97,6 +99,17 @@ pub enum QueryMsg {
 pub struct GetSwapResponse {
     pub amount_out: Uint128,
     pub asset_out: Token,
+}
+
+#[cw_serde]
+pub struct GetStateResponse {
+    pub pair: Pair,
+    pub router: String,
+    pub vcoin: String,
+    pub fee: Fee,
+    pub last_updated: u64,
+    pub total_lp_tokens: Uint128,
+    pub admin: String,
 }
 
 #[cw_serde]

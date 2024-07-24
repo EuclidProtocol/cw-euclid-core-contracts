@@ -9,7 +9,9 @@ use crate::{execute, reply};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
-use crate::query::{query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap};
+use crate::query::{
+    query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
+};
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -131,6 +133,7 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
+        QueryMsg::State {} => query_state(deps),
         QueryMsg::SimulateSwap {
             asset,
             asset_amount,

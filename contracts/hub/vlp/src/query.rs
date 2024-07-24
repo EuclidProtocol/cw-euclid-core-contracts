@@ -8,7 +8,8 @@ use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
 
 use euclid::msgs::vlp::{
-    AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetSwapResponse, PoolInfo, PoolResponse,
+    AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
+    PoolInfo, PoolResponse,
 };
 
 use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
@@ -97,6 +98,20 @@ pub fn query_fee(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&FeeResponse { fee: state.fee })?)
 }
+
+pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    Ok(to_json_binary(&GetStateResponse {
+        pair: state.pair,
+        router: state.router,
+        vcoin: state.vcoin,
+        fee: state.fee,
+        last_updated: state.last_updated,
+        total_lp_tokens: state.total_lp_tokens,
+        admin: state.admin,
+    })?)
+}
+
 // Function to query a Euclid Pool Information for this pair
 pub fn query_pool(deps: Deps, chain_uid: ChainUid) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;

@@ -6,12 +6,6 @@ use router::mock::mock_router;
 use router::mock::MockRouter;
 use vcoin::mock::{mock_vcoin, MockVcoin};
 
-const _USER: &str = "user";
-const _NATIVE_DENOM: &str = "native";
-const _IBC_DENOM_1: &str = "ibc/denom1";
-const _IBC_DENOM_2: &str = "ibc/denom2";
-const _SUPPLY: u128 = 1_000_000;
-
 #[test]
 fn test_proper_instantiation() {
     let mut vcoin = mock_app(None);
