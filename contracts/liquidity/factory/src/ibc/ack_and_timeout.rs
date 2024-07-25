@@ -70,7 +70,7 @@ pub fn ibc_ack_packet_internal_call(
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<AddLiquidityResponse> =
                 from_json(ack.acknowledgement.data)?;
-            ack_add_liquidity(deps, res, sender.address, tx_id)
+            ack_add_liquidity(deps, env, res, sender.address, tx_id)
         }
         ChainIbcExecuteMsg::RemoveLiquidity(msg) => {
             // Process acknowledgment for add liquidity
@@ -81,7 +81,7 @@ pub fn ibc_ack_packet_internal_call(
         ChainIbcExecuteMsg::Swap(swap) => {
             // Process acknowledgment for swap
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
-            ack_swap_request(deps, res, swap.sender.address, swap.tx_id)
+            ack_swap_request(deps, env, res, swap.sender.address, swap.tx_id)
         } // ChainIbcExecuteMsg::RequestWithdraw {
           //     token_id, tx_id, ..
           // } => {
@@ -248,6 +248,7 @@ fn ack_pool_creation(
 // Function to process add liquidity acknowledgment
 fn ack_add_liquidity(
     deps: DepsMut,
+    env: Env,
     res: AcknowledgementMsg<AddLiquidityResponse>,
     sender: String,
     tx_id: String,
@@ -276,14 +277,22 @@ fn ack_add_liquidity(
             let liquidity = liquidity_info.token_1_liquidity;
             let escrow_contract = TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
 
-            let send_msg = token_info.create_escrow_msg(liquidity, escrow_contract)?;
+            let send_msg = token_info.create_escrow_msg(
+                env.contract.address.to_string(),
+                liquidity,
+                escrow_contract,
+            )?;
             res = res.add_message(send_msg);
 
             // Token 2
             let token_info = liquidity_info.pair_info.token_2;
             let liquidity = liquidity_info.token_2_liquidity;
             let escrow_contract = TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
-            let send_msg = token_info.create_escrow_msg(liquidity, escrow_contract)?;
+            let send_msg = token_info.create_escrow_msg(
+                env.contract.address.to_string(),
+                liquidity,
+                escrow_contract,
+            )?;
             res = res.add_message(send_msg);
 
             // Mint cw20 tokens for sender //
@@ -401,6 +410,7 @@ fn ack_remove_liquidity(
 // TODO this needs to be changed, callback msgs should probably sent to escrow
 fn ack_swap_request(
     deps: DepsMut,
+    env: Env,
     res: AcknowledgementMsg<SwapResponse>,
     sender: String,
     tx_id: String,
@@ -419,7 +429,11 @@ fn ack_swap_request(
             // Get corresponding escrow
             let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
 
-            let send_msg = asset_in.create_escrow_msg(swap_info.amount_in, escrow_address)?;
+            let send_msg = asset_in.create_escrow_msg(
+                env.contract.address.to_string(),
+                swap_info.amount_in,
+                escrow_address,
+            )?;
             let mut response = Response::new()
                 .add_event(swap_event(&tx_id, &swap_info))
                 .add_attribute("method", "process_successfull_swap")

@@ -294,6 +294,7 @@ impl TokenType {
 
     pub fn create_escrow_msg(
         &self,
+        sender: String,
         amount: Uint128,
         escrow_contract: Addr,
     ) -> Result<CosmosMsg, ContractError> {
@@ -307,8 +308,7 @@ impl TokenType {
             CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_contract.into_string(),
                 msg: to_json_binary(&crate::msgs::escrow::ExecuteMsg::Receive(Cw20ReceiveMsg {
-                    //TODO Unsure what to set the sender as
-                    sender: self.get_denom(),
+                    sender,
                     amount,
                     msg: to_json_binary(&Cw20HookMsg::Deposit {})?,
                 }))?,
@@ -342,10 +342,12 @@ impl TokenWithDenom {
 
     pub fn create_escrow_msg(
         &self,
+        sender: String,
         amount: Uint128,
         escrow_contract: Addr,
     ) -> Result<CosmosMsg, ContractError> {
-        self.token_type.create_escrow_msg(amount, escrow_contract)
+        self.token_type
+            .create_escrow_msg(sender, amount, escrow_contract)
     }
 }
 
