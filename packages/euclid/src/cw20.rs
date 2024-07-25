@@ -8,11 +8,6 @@ use crate::{
     token::{Token, TokenWithDenom},
 };
 
-#[cw_serde]
-pub enum Cw20ExecuteMsg {
-    Transfer { recipient: String, amount: Uint128 },
-}
-
 // CW20 Hook Msg
 #[cw_serde]
 pub enum Cw20HookMsg {

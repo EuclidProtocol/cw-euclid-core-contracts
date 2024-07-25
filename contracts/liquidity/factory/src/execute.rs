@@ -35,7 +35,10 @@ pub fn execute_update_hub_channel(
     Ok(Response::new()
         .add_attribute("method", "execute_update_hub_channel")
         .add_attribute("new_channel", new_channel)
-        .add_attribute("old_channel", old_channel.unwrap_or("no_old_channel".to_string())))
+        .add_attribute(
+            "old_channel",
+            old_channel.unwrap_or("no_old_channel".to_string()),
+        ))
 }
 
 // Function to send IBC request to Router in VLS to create a new pool
@@ -185,9 +188,11 @@ pub fn add_liquidity_request(
 
     // IF TOKEN IS A SMART CONTRACT IT REQUIRES APPROVAL FOR TRANSFER
     if token_1.token_type.is_smart() {
-        let msg = token_1
-            .token_type
-            .create_transfer_msg(token_1_liquidity, env.contract.address.clone().to_string())?;
+        let msg = token_1.token_type.create_transfer_msg(
+            token_1_liquidity,
+            env.contract.address.clone().to_string(),
+            Some(sender.address.clone()),
+        )?;
         msgs.push(msg);
     } else {
         // If funds empty return error
@@ -213,9 +218,11 @@ pub fn add_liquidity_request(
 
     // Same for token 2
     if token_2.token_type.is_smart() {
-        let msg = token_2
-            .token_type
-            .create_transfer_msg(token_2_liquidity, env.contract.address.clone().to_string())?;
+        let msg = token_2.token_type.create_transfer_msg(
+            token_2_liquidity,
+            env.contract.address.clone().to_string(),
+            Some(sender.address.clone()),
+        )?;
         msgs.push(msg);
     } else {
         // If funds empty return error

@@ -228,7 +228,7 @@ pub fn execute_withdraw(
             amount
         };
 
-        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string())?;
+        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
         messages.push(send_msg);
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
