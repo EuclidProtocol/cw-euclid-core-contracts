@@ -6,7 +6,6 @@ use cosmwasm_std::{
     coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, StdError,
     StdResult, Uint128, WasmMsg,
 };
-use cw20::Cw20ReceiveMsg;
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::chain::CrossChainUser;
@@ -294,26 +293,24 @@ impl TokenType {
 
     pub fn create_escrow_msg(
         &self,
-        sender: String,
         amount: Uint128,
         escrow_contract: Addr,
     ) -> Result<CosmosMsg, ContractError> {
-        let msg: CosmosMsg = if self.is_native() {
-            CosmosMsg::Wasm(WasmMsg::Execute {
+        let msg: CosmosMsg = match self {
+            Self::Native { denom } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_contract.into_string(),
                 msg: to_json_binary(&crate::msgs::escrow::ExecuteMsg::DepositNative {})?,
-                funds: vec![coin(amount.u128(), self.get_denom())],
-            })
-        } else {
-            CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: escrow_contract.into_string(),
-                msg: to_json_binary(&crate::msgs::escrow::ExecuteMsg::Receive(Cw20ReceiveMsg {
-                    sender,
+                funds: vec![coin(amount.u128(), denom)],
+            }),
+            Self::Smart { contract_address } => CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: contract_address.clone(),
+                msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
+                    contract: escrow_contract.to_string(),
                     amount,
                     msg: to_json_binary(&Cw20HookMsg::Deposit {})?,
-                }))?,
+                })?,
                 funds: vec![],
-            })
+            }),
         };
         Ok(msg)
     }
@@ -342,12 +339,10 @@ impl TokenWithDenom {
 
     pub fn create_escrow_msg(
         &self,
-        sender: String,
         amount: Uint128,
         escrow_contract: Addr,
     ) -> Result<CosmosMsg, ContractError> {
-        self.token_type
-            .create_escrow_msg(sender, amount, escrow_contract)
+        self.token_type.create_escrow_msg(amount, escrow_contract)
     }
 }
 
