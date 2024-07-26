@@ -447,9 +447,8 @@ fn ack_swap_request(
     }
 }
 
-// TODO review this
 fn ack_withdraw_request(
-    deps: DepsMut,
+    _deps: DepsMut,
     res: AcknowledgementMsg<WithdrawResponse>,
     _sender: String,
     token_id: Token,
@@ -457,10 +456,6 @@ fn ack_withdraw_request(
 ) -> Result<Response, ContractError> {
     match res {
         AcknowledgementMsg::Ok(_data) => {
-            let _escrow_address = TOKEN_TO_ESCROW
-                .load(deps.storage, token_id.clone())
-                .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
-
             // Use it for logging, Router will send packets instead of ack to release tokens from escrow
             // Here you will get a response of escrows that router is going to release so it can be used in frontend
 
