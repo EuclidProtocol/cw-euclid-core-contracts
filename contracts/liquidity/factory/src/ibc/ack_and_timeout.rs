@@ -176,7 +176,7 @@ fn ack_pool_creation(
                         code_id: escrow_code_id,
                         msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
                             token_id: token.token,
-                            allowed_denom: None,
+                            allowed_denom: Some(token.token_type),
                         })?,
                         funds: vec![],
                         label: "escrow".to_string(),
