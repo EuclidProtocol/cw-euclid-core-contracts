@@ -95,6 +95,7 @@ pub fn execute_register_factory(
 pub fn execute_release_escrow(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     sender: CrossChainUser,
     token: Token,
     amount: Uint128,
@@ -103,12 +104,10 @@ pub fn execute_release_escrow(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-
-    // TODO sender authentication
-    // ensure!(
-    //     info.sender == env.contract.address,
-    //     ContractError::Unauthorized {}
-    // );
+    ensure!(
+        info.sender == env.contract.address,
+        ContractError::Unauthorized {}
+    );
 
     let vcoin_address = state
         .vcoin_address

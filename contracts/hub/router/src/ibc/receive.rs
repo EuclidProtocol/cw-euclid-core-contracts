@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
@@ -62,6 +62,7 @@ pub fn ibc_packet_receive(
 pub fn ibc_receive_internal_call(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
     // Get the chain data from current channel received
@@ -128,6 +129,7 @@ pub fn ibc_receive_internal_call(
             execute_release_escrow(
                 deps,
                 env,
+                info,
                 msg.sender,
                 msg.token,
                 msg.amount,
