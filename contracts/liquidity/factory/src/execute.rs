@@ -7,7 +7,7 @@ use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     cw20::Cw20HookMsg,
     error::ContractError,
-    events::{swap_event, tx_event},
+    events::{swap_event, tx_event, TxType},
     fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     pool::PoolCreateRequest,
@@ -707,9 +707,9 @@ pub fn execute_withdraw_vcoin(
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            euclid::events::TxType::PoolCreation,
+            TxType::WithdrawVcoin,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "request_pool_creation")
+        .add_attribute("method", "withdraw_vcoin")
         .add_message(ibc_packet))
 }
