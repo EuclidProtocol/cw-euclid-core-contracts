@@ -678,10 +678,7 @@ pub fn execute_withdraw_vcoin(
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(
-        state.admin == info.sender.clone().into_string(),
-        ContractError::Unauthorized {}
-    );
+
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
