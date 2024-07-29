@@ -82,13 +82,22 @@ pub fn ibc_receive_internal_call(
             pair,
             sender,
             tx_id,
-            ..
+            token_1_exists,
+            token_2_exists,
         } => {
             ensure!(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_pool_creation(deps, env, sender, pair, tx_id)
+            execute_request_pool_creation(
+                deps,
+                env,
+                sender,
+                pair,
+                tx_id,
+                token_1_exists,
+                token_2_exists,
+            )
         }
         ChainIbcExecuteMsg::AddLiquidity {
             token_1_liquidity,
@@ -154,6 +163,8 @@ fn execute_request_pool_creation(
     sender: CrossChainUser,
     pair: Pair,
     tx_id: String,
+    token_1_exists: bool,
+    token_2_exists: bool,
 ) -> Result<Response, ContractError> {
     pair.validate()?;
     let state = STATE.load(deps.storage)?;
@@ -175,13 +186,21 @@ fn execute_request_pool_creation(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation");
 
-    // let escrow_balances =
-    //     ESCROW_BALANCES.may_load(deps.storage, (pair.clone().token_1, sender.chain_uid))?;
+    let token_checks = vec![
+        (pair.clone().token_1, &token_1_exists),
+        (pair.clone().token_2, &token_2_exists),
+    ];
 
-    // ensure!(
-    //     escrow_balances.is_none(),
-    //     ContractError::PoolAlreadyExists {}
-    // );
+    for (token, exists) in token_checks.iter() {
+        if !*exists {
+            let escrow_balances = ESCROW_BALANCES
+                .may_load(deps.storage, (token.clone(), sender.clone().chain_uid))?;
+            ensure!(
+                escrow_balances.is_none(),
+                ContractError::PoolAlreadyExists {}
+            );
+        }
+    }
 
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
     if vlp.is_some() {

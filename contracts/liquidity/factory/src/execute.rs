@@ -72,12 +72,15 @@ pub fn execute_request_pool_creation(
         ContractError::PoolAlreadyExists {}
     );
 
+    let mut token_1_exists = false;
+    let mut token_2_exists = false;
+
     let tokens = pair.get_vec_token_info();
     for token in tokens {
-        let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.token)?;
+        let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
         if let Some(escrow_address) = escrow_address {
             let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
-                denom: token.token_type,
+                denom: token.clone().token_type,
             };
             let token_allowed: AllowedTokenResponse = deps
                 .querier
@@ -87,6 +90,12 @@ pub fn execute_request_pool_creation(
                 token_allowed.allowed,
                 ContractError::UnsupportedDenomination {}
             );
+
+            if token == pair.token_1 {
+                token_1_exists = true;
+            } else {
+                token_2_exists = true;
+            }
         }
     }
 
@@ -121,6 +130,8 @@ pub fn execute_request_pool_creation(
             pair: pair.get_pair()?,
             sender,
             tx_id: tx_id.clone(),
+            token_1_exists,
+            token_2_exists,
         })?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
     };

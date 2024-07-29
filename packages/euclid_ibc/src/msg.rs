@@ -16,6 +16,8 @@ pub enum ChainIbcExecuteMsg {
         sender: CrossChainUser,
         tx_id: String,
         pair: Pair,
+        token_1_exists: bool,
+        token_2_exists: bool,
     },
     AddLiquidity {
         // Factory will set this using info.sender
