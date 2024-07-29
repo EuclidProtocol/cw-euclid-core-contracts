@@ -10,6 +10,7 @@ use euclid::{
     events::{swap_event, tx_event, TxType},
     fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    msgs::escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
     pool::PoolCreateRequest,
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
@@ -70,6 +71,24 @@ pub fn execute_request_pool_creation(
         !PAIR_TO_VLP.has(deps.storage, pair.get_pair()?.get_tupple()),
         ContractError::PoolAlreadyExists {}
     );
+
+    let tokens = pair.get_vec_token_info();
+    for token in tokens {
+        let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.token)?;
+        if let Some(escrow_address) = escrow_address {
+            let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
+                denom: token.token_type,
+            };
+            let token_allowed: AllowedTokenResponse = deps
+                .querier
+                .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+
+            ensure!(
+                token_allowed.allowed,
+                ContractError::UnsupportedDenomination {}
+            );
+        }
+    }
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
@@ -168,10 +187,10 @@ pub fn add_liquidity_request(
         let escrow_address = TOKEN_TO_ESCROW
             .load(deps.storage, token.token)
             .or(Err(ContractError::EscrowDoesNotExist {}))?;
-        let token_allowed_query_msg = euclid::msgs::escrow::QueryMsg::TokenAllowed {
+        let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
             denom: token.token_type,
         };
-        let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps
+        let token_allowed: AllowedTokenResponse = deps
             .querier
             .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
 

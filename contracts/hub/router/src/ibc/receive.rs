@@ -174,6 +174,15 @@ fn execute_request_pool_creation(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation");
+
+    // let escrow_balances =
+    //     ESCROW_BALANCES.may_load(deps.storage, (pair.clone().token_1, sender.chain_uid))?;
+
+    // ensure!(
+    //     escrow_balances.is_none(),
+    //     ContractError::PoolAlreadyExists {}
+    // );
+
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
     if vlp.is_some() {
         let msg = WasmMsg::Execute {
