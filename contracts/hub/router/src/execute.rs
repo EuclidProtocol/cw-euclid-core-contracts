@@ -104,8 +104,6 @@ pub fn execute_release_escrow(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-
-    // Only router can call this internally
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
@@ -194,7 +192,7 @@ pub fn execute_release_escrow(
     let burn_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Burn(ExecuteBurn {
         amount: transfer_amount,
         balance_key: BalanceKey {
-            cross_chain_user: sender,
+            cross_chain_user: sender.clone(),
             token_id: token.to_string(),
         },
     });
@@ -208,7 +206,7 @@ pub fn execute_release_escrow(
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
-            info.sender.as_str(),
+            sender.address.as_str(),
             TxType::EscrowRelease,
         ))
         .add_attribute("tx_id", tx_id)

@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
@@ -19,6 +19,7 @@ use euclid_ibc::{
 };
 
 use crate::{
+    execute::execute_release_escrow,
     query::validate_swap_pairs,
     reply::{
         ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
@@ -61,6 +62,7 @@ pub fn ibc_packet_receive(
 pub fn ibc_receive_internal_call(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
     // Get the chain data from current channel received
@@ -118,6 +120,23 @@ pub fn ibc_receive_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
             ibc_execute_swap(deps, env, msg)
+        }
+        ChainIbcExecuteMsg::Withdraw(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            execute_release_escrow(
+                deps,
+                env,
+                info,
+                msg.sender,
+                msg.token,
+                msg.amount,
+                msg.cross_chain_addresses,
+                msg.timeout,
+                msg.tx_id,
+            )
         }
     }
 }

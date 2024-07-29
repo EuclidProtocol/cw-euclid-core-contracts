@@ -12,7 +12,8 @@ use euclid::{
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{cw20::ExecuteMsg as Cw20ExecuteMsg, factory::ExecuteMsg},
     pool::PoolCreationResponse,
-    swap::SwapResponse,
+    swap::{SwapResponse, WithdrawResponse},
+    token::Token,
 };
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 
@@ -82,6 +83,10 @@ pub fn ibc_ack_packet_internal_call(
             // Process acknowledgment for swap
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
             ack_swap_request(deps, res, swap.sender.address, swap.tx_id)
+        }
+        ChainIbcExecuteMsg::Withdraw(msg) => {
+            let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack.acknowledgement.data)?;
+            ack_withdraw_request(deps, res, msg.sender.address, msg.token, msg.tx_id)
         } // ChainIbcExecuteMsg::RequestWithdraw {
           //     token_id, tx_id, ..
           // } => {
@@ -163,51 +168,26 @@ fn ack_pool_creation(
             for token in tokens {
                 let escrow_contract =
                     TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
-                match escrow_contract {
-                    Some(escrow_address) => {
-                        let token_allowed_query_msg =
-                            euclid::msgs::escrow::QueryMsg::TokenAllowed {
-                                denom: token.token_type.clone(),
-                            };
-                        let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps
-                            .querier
-                            .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
-                        if !token_allowed.allowed {
-                            // Add allowed denom in existing escrow contract
-                            let add_denom_msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
-                                contract_addr: escrow_address.into_string(),
-                                msg: to_json_binary(
-                                    &euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom {
-                                        denom: token.token_type,
-                                    },
-                                )?,
-                                funds: vec![],
-                            });
-                            res = res.add_message(add_denom_msg);
-                        }
-                    }
 
-                    None => {
-                        // Instantiate escrow contract
-                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                            admin: Some(env.contract.address.clone().into_string()),
-                            code_id: escrow_code_id,
-                            msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
-                                token_id: token.token,
-                                allowed_denom: Some(token.token_type),
-                            })?,
-                            funds: vec![],
-                            label: "escrow".to_string(),
-                        });
+                // Instantiate escrow if one doesn't exist
+                if escrow_contract.is_none() {
+                    let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                        admin: Some(env.contract.address.clone().into_string()),
+                        code_id: escrow_code_id,
+                        msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
+                            token_id: token.token,
+                            allowed_denom: Some(token.token_type),
+                        })?,
+                        funds: vec![],
+                        label: "escrow".to_string(),
+                    });
 
-                        // Needs to be submsg for reply event
-                        res = res.add_submessage(SubMsg {
-                            id: ESCROW_INSTANTIATE_REPLY_ID,
-                            msg: init_msg,
-                            gas_limit: None,
-                            reply_on: ReplyOn::Always,
-                        });
-                    }
+                    res = res.add_submessage(SubMsg {
+                        id: ESCROW_INSTANTIATE_REPLY_ID,
+                        msg: init_msg,
+                        gas_limit: None,
+                        reply_on: ReplyOn::Always,
+                    });
                 }
             }
             let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
@@ -467,30 +447,27 @@ fn ack_swap_request(
     }
 }
 
-// fn ack_request_withdraw(
-//     deps: DepsMut,
-//     res: AcknowledgementMsg<WithdrawResponse>,
-//     token_id: Token,
-//     tx_id: String,
-// ) -> Result<Response, ContractError> {
-//     match res {
-//         AcknowledgementMsg::Ok(_) => {
-//             let _escrow_address = TOKEN_TO_ESCROW
-//                 .load(deps.storage, token_id.clone())
-//                 .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
+fn ack_withdraw_request(
+    _deps: DepsMut,
+    res: AcknowledgementMsg<WithdrawResponse>,
+    _sender: String,
+    token_id: Token,
+    _tx_id: String,
+) -> Result<Response, ContractError> {
+    match res {
+        AcknowledgementMsg::Ok(_data) => {
+            // Use it for logging, Router will send packets instead of ack to release tokens from escrow
+            // Here you will get a response of escrows that router is going to release so it can be used in frontend
 
-//             // Use it for logging, Router will send packets instead of ack to release tokens from escrow
-//             // Here you will get a response of escrows that router is going to release so it can be used in frontend
-
-//             Ok(Response::new()
-//                 .add_attribute("method", "request_withdraw_submitted")
-//                 .add_attribute("token", token_id.to_string()))
-//         }
-//         AcknowledgementMsg::Error(err) => Ok(Response::new()
-//             .add_attribute("method", "request_withdraw_error")
-//             .add_attribute("error", err.clone())),
-//     }
-// }
+            Ok(Response::new()
+                .add_attribute("method", "request_withdraw_submitted")
+                .add_attribute("token", token_id.to_string()))
+        }
+        AcknowledgementMsg::Error(err) => Ok(Response::new()
+            .add_attribute("method", "request_withdraw_error")
+            .add_attribute("error", err.clone())),
+    }
+}
 
 // fn ack_request_instantiate_escrow(
 //     deps: DepsMut,

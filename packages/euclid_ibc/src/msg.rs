@@ -39,6 +39,9 @@ pub enum ChainIbcExecuteMsg {
 
     // Swap tokens on VLP
     Swap(ChainIbcSwapExecuteMsg),
+
+    // Withdraw Vcoin message sent from factory
+    Withdraw(ChainIbcWithdrawExecuteMsg),
     // RequestWithdraw {
     //     token_id: Token,
     //     amount: Uint128,
@@ -69,6 +72,7 @@ impl ChainIbcExecuteMsg {
             Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
+            Self::Withdraw(msg) => msg.tx_id.clone(),
         }
     }
 }
@@ -105,6 +109,20 @@ pub struct ChainIbcSwapExecuteMsg {
 
     // Unique per tx
     pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct ChainIbcWithdrawExecuteMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+    // User will provide this
+    pub token: Token,
+    pub amount: Uint128,
+    // First element in array has highest priority
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    // Unique per tx
+    pub tx_id: String,
+    pub timeout: Option<u64>,
 }
 
 #[cw_serde]
