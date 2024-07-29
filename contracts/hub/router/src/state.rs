@@ -11,6 +11,7 @@ pub struct State {
     // Pool Code ID
     pub vlp_code_id: u64,
     pub vcoin_address: Option<Addr>,
+    pub locked: bool,
 }
 
 pub const STATE: Item<State> = Item::new("state");
@@ -23,6 +24,7 @@ pub const ESCROW_BALANCES: Map<(Token, ChainUid), Uint128> = Map::new("escrow_ba
 
 pub const CHAIN_UID_TO_CHAIN: Map<ChainUid, Chain> = Map::new("chain_uid_to_chain");
 pub const CHANNEL_TO_CHAIN_UID: Map<String, ChainUid> = Map::new("channel_to_chain_uid");
+pub const DEREGISTERED_CHAINS: Item<Vec<ChainUid>> = Item::new("deregistered_chains");
 
 // Map for (ChainUID ,Sender, TX ID)
 pub const SWAP_ID_TO_MSG: Map<(ChainUid, String, String), ChainIbcSwapExecuteMsg> =

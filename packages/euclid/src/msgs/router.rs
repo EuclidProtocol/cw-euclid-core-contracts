@@ -15,6 +15,13 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
+    ReregisterChain {
+        chain: ChainUid,
+    },
+    DeregisterChain {
+        chain: ChainUid,
+    },
+    UpdateLock {},
     // Update Pool Code ID
     UpdateVLPCodeId {
         new_vlp_code_id: u64,
@@ -106,6 +113,7 @@ pub struct StateResponse {
     pub admin: String,
     pub vlp_code_id: u64,
     pub vcoin_address: Option<Addr>,
+    pub locked: bool,
 }
 
 #[cw_serde]

@@ -5,16 +5,23 @@ use cosmwasm_std::{
     WasmMsg,
 };
 use cw2::set_contract_version;
+use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 
+use crate::execute::{
+    execute_deregister_chain, execute_register_factory, execute_release_escrow,
+    execute_reregister_chain, execute_update_lock, execute_update_vlp_code_id,
+};
+use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
+use crate::ibc::receive::ibc_receive_internal_call;
+use crate::query;
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
     REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_BURN_REPLY_ID, VCOIN_INSTANTIATE_REPLY_ID,
     VCOIN_MINT_REPLY_ID, VCOIN_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
     VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{State, STATE};
-use crate::{execute, ibc, query};
+use crate::state::{State, DEREGISTERED_CHAINS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -32,6 +39,7 @@ pub fn instantiate(
         vlp_code_id: msg.vlp_code_id,
         admin: info.sender.to_string(),
         vcoin_address: None,
+        locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
@@ -52,6 +60,9 @@ pub fn instantiate(
     let vcoin_instantiate_msg =
         SubMsg::reply_always(vcoin_instantiate_msg, VCOIN_INSTANTIATE_REPLY_ID);
 
+    let empty_chains: Vec<ChainUid> = vec![];
+    DEREGISTERED_CHAINS.save(deps.storage, &empty_chains)?;
+
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", env.contract.address)
@@ -65,38 +76,56 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    match msg {
-        ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
-            execute::execute_update_vlp_code_id(deps, info, new_vlp_code_id)
+    // If the contract is locked and the message isn't UpdateLock, return error
+    let locked = STATE.load(deps.storage)?.locked;
+
+    if locked {
+        if let ExecuteMsg::UpdateLock {} = msg {
+            execute_update_lock(deps, info)
+        } else if let ExecuteMsg::ReregisterChain { chain } = msg {
+            execute_reregister_chain(deps, info, chain)
+        } else if let ExecuteMsg::DeregisterChain { chain } = msg {
+            execute_deregister_chain(deps, info, chain)
+        } else {
+            Err(ContractError::ContractLocked {})
         }
-        ExecuteMsg::RegisterFactory {
-            channel,
-            timeout,
-            chain_uid,
-        } => execute::execute_register_factory(&mut deps, env, info, chain_uid, channel, timeout),
-        ExecuteMsg::ReleaseEscrowInternal {
-            sender,
-            token,
-            amount,
-            cross_chain_addresses,
-            timeout,
-            tx_id,
-        } => execute::execute_release_escrow(
-            deps,
-            env,
-            info,
-            sender,
-            token,
-            amount,
-            cross_chain_addresses,
-            timeout,
-            tx_id,
-        ),
-        ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-            ibc::receive::ibc_receive_internal_call(deps, env, info, receive_msg)
-        }
-        ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
-            ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)
+    } else {
+        match msg {
+            ExecuteMsg::ReregisterChain { chain } => execute_reregister_chain(deps, info, chain),
+            ExecuteMsg::DeregisterChain { chain } => execute_deregister_chain(deps, info, chain),
+            ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
+                execute_update_vlp_code_id(deps, info, new_vlp_code_id)
+            }
+            ExecuteMsg::RegisterFactory {
+                channel,
+                timeout,
+                chain_uid,
+            } => execute_register_factory(&mut deps, env, info, chain_uid, channel, timeout),
+            ExecuteMsg::ReleaseEscrowInternal {
+                sender,
+                token,
+                amount,
+                cross_chain_addresses,
+                timeout,
+                tx_id,
+            } => execute_release_escrow(
+                deps,
+                env,
+                info,
+                sender,
+                token,
+                amount,
+                cross_chain_addresses,
+                timeout,
+                tx_id,
+            ),
+            ExecuteMsg::IbcCallbackReceive { receive_msg } => {
+                ibc_receive_internal_call(deps, env, info, receive_msg)
+            }
+            ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
+                ibc_ack_packet_internal_call(deps, env, ack)
+            }
+            ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
         }
     }
 }

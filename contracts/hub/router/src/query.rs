@@ -19,6 +19,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         admin: state.admin,
         vlp_code_id: state.vlp_code_id,
         vcoin_address: state.vcoin_address,
+        locked: state.locked,
     })?)
 }
 
