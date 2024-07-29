@@ -188,6 +188,12 @@ pub fn execute_deposit_cw20(
         &current_balance.checked_add(amount)?,
     )?;
 
+    // Only the factory can call this function
+    let mut state = STATE.load(deps.storage)?;
+    state.total_amount = state.total_amount.checked_add(amount)?;
+
+    STATE.save(deps.storage, &state)?;
+
     Ok(Response::new()
         .add_attribute("method", "deposit_cw20")
         .add_attribute("asset", denom.get_key())
@@ -225,10 +231,10 @@ pub fn execute_withdraw(
         let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
             denom_balance
         } else {
-            amount
+            remaining_withdraw_amount
         };
 
-        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string())?;
+        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
         messages.push(send_msg);
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 

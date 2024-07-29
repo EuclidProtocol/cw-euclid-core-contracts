@@ -275,7 +275,7 @@ fn ack_add_liquidity(
                 contract_addr: cw20_address.into_string(),
                 msg: to_json_binary(&Cw20ExecuteMsg::Mint {
                     recipient: liquidity_info.sender,
-                    amount: liquidity_info.token_1_liquidity,
+                    amount: data.mint_lp_tokens,
                 })?,
                 funds: vec![],
             });
@@ -289,15 +289,17 @@ fn ack_add_liquidity(
         AcknowledgementMsg::Error(err) => {
             // Prepare messages to refund tokens back to user
             let mut msgs: Vec<CosmosMsg> = Vec::new();
-            let msg = liquidity_info
-                .pair_info
-                .token_1
-                .create_transfer_msg(liquidity_info.token_1_liquidity, sender.to_string())?;
+            let msg = liquidity_info.pair_info.token_1.create_transfer_msg(
+                liquidity_info.token_1_liquidity,
+                sender.to_string(),
+                None,
+            )?;
             msgs.push(msg);
-            let msg = liquidity_info
-                .pair_info
-                .token_2
-                .create_transfer_msg(liquidity_info.token_2_liquidity, sender.to_string())?;
+            let msg = liquidity_info.pair_info.token_2.create_transfer_msg(
+                liquidity_info.token_2_liquidity,
+                sender.to_string(),
+                None,
+            )?;
             msgs.push(msg);
 
             Ok(Response::new()
@@ -416,6 +418,7 @@ fn ack_swap_request(
                 let partner_send_msg = asset_in.create_transfer_msg(
                     swap_info.partner_fee_amount,
                     partner_fee_recipient.clone(),
+                    None,
                 )?;
                 response = response
                     .add_message(partner_send_msg)
@@ -434,6 +437,7 @@ fn ack_swap_request(
                     .amount_in
                     .checked_add(swap_info.partner_fee_amount)?,
                 sender.to_string(),
+                None,
             )?;
 
             Ok(Response::new()
