@@ -7,7 +7,7 @@ use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     cw20::Cw20HookMsg,
     error::ContractError,
-    events::{swap_event, tx_event},
+    events::{swap_event, tx_event, TxType},
     fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     pool::PoolCreateRequest,
@@ -16,7 +16,9 @@ use euclid::{
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
     utils::generate_tx,
 };
-use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg};
+use euclid_ibc::msg::{
+    ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcWithdrawExecuteMsg,
+};
 
 use crate::state::{
     HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS,
@@ -610,12 +612,18 @@ pub fn receive_cw20(
 // New factory functions //
 pub fn execute_request_register_denom(
     deps: DepsMut,
+    info: MessageInfo,
     token: TokenWithDenom,
 ) -> Result<Response, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone());
-    ensure!(escrow_address.is_ok(), ContractError::EscrowDoesNotExist {});
+    let admin = STATE.load(deps.storage)?.admin;
+    ensure!(
+        admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
 
-    let escrow_address = escrow_address?;
+    let escrow_address = TOKEN_TO_ESCROW
+        .load(deps.storage, token.token.clone())
+        .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
 
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: escrow_address.into_string(),
@@ -633,11 +641,18 @@ pub fn execute_request_register_denom(
 
 pub fn execute_request_deregister_denom(
     deps: DepsMut,
+    info: MessageInfo,
     token: TokenWithDenom,
 ) -> Result<Response, ContractError> {
-    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone());
-    ensure!(escrow_address.is_ok(), ContractError::EscrowDoesNotExist {});
-    let escrow_address = escrow_address?;
+    let admin = STATE.load(deps.storage)?.admin;
+    ensure!(
+        admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
+
+    let escrow_address = TOKEN_TO_ESCROW
+        .load(deps.storage, token.token.clone())
+        .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
 
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: escrow_address.into_string(),
@@ -651,4 +666,47 @@ pub fn execute_request_deregister_denom(
         .add_attribute("method", "request_disallow_denom")
         .add_attribute("token", token.token.to_string())
         .add_attribute("denom", token.token_type.get_key()))
+}
+
+pub fn execute_withdraw_vcoin(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token: Token,
+    amount: Uint128,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+    let tx_id = generate_tx(deps, &env, &sender)?;
+    let final_timeout = get_timeout(timeout)?;
+
+    // Create IBC packet to send to Router
+    let ibc_packet = IbcMsg::SendPacket {
+        channel_id: channel.clone(),
+        data: to_json_binary(&ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
+            sender,
+            token,
+            amount,
+            cross_chain_addresses,
+            tx_id: tx_id.clone(),
+            timeout,
+        }))?,
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(final_timeout)),
+    };
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            TxType::WithdrawVcoin,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "withdraw_vcoin")
+        .add_message(ibc_packet))
 }

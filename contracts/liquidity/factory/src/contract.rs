@@ -7,7 +7,8 @@ use euclid::error::ContractError;
 
 use crate::execute::{
     add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
-    execute_request_register_denom, execute_swap_request, execute_update_hub_channel, receive_cw20,
+    execute_request_register_denom, execute_swap_request, execute_update_hub_channel,
+    execute_withdraw_vcoin, receive_cw20,
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_vlp, pending_liquidity, pending_remove_liquidity,
@@ -60,31 +61,6 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::UpdateHubChannel { new_channel } => {
-            execute_update_hub_channel(deps, info, new_channel)
-        }
-        ExecuteMsg::RequestRegisterDenom { token } => execute_request_register_denom(deps, token),
-        ExecuteMsg::RequestDeregisterDenom { token } => {
-            execute_request_deregister_denom(deps, token)
-        }
-        ExecuteMsg::RequestPoolCreation {
-            pair,
-            lp_token_name,
-            lp_token_symbol,
-            lp_token_decimal,
-            lp_token_marketing,
-            timeout,
-        } => execute_request_pool_creation(
-            &mut deps,
-            env,
-            info,
-            pair,
-            lp_token_name,
-            lp_token_symbol,
-            lp_token_decimal,
-            lp_token_marketing,
-            timeout,
-        ),
         ExecuteMsg::AddLiquidityRequest {
             pair_info,
             token_1_liquidity,
@@ -131,6 +107,48 @@ pub fn execute(
                 partner_fee,
             )
         }
+        ExecuteMsg::UpdateHubChannel { new_channel } => {
+            execute_update_hub_channel(deps, info, new_channel)
+        }
+        ExecuteMsg::RequestRegisterDenom { token } => {
+            execute_request_register_denom(deps, info, token)
+        }
+        ExecuteMsg::RequestDeregisterDenom { token } => {
+            execute_request_deregister_denom(deps, info, token)
+        }
+        ExecuteMsg::RequestPoolCreation {
+            pair,
+            lp_token_name,
+            lp_token_symbol,
+            lp_token_decimal,
+            lp_token_marketing,
+            timeout,
+        } => execute_request_pool_creation(
+            &mut deps,
+            env,
+            info,
+            pair,
+            lp_token_name,
+            lp_token_symbol,
+            lp_token_decimal,
+            lp_token_marketing,
+            timeout,
+        ),
+        ExecuteMsg::WithdrawVcoin {
+            token,
+            amount,
+            cross_chain_addresses,
+            timeout,
+        } => execute_withdraw_vcoin(
+            deps,
+            env,
+            info,
+            token,
+            amount,
+            cross_chain_addresses,
+            timeout,
+        ),
+
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
             ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)

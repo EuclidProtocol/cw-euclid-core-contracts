@@ -120,7 +120,7 @@ pub fn execute(
                 tx_id,
             ),
             ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-                ibc_receive_internal_call(deps, env, receive_msg)
+                ibc_receive_internal_call(deps, env, info, receive_msg)
             }
             ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
                 ibc_ack_packet_internal_call(deps, env, ack)

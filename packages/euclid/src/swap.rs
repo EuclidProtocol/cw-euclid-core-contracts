@@ -49,3 +49,9 @@ pub struct SwapResponse {
     pub amount_out: Uint128,
     pub tx_id: String,
 }
+
+#[cw_serde]
+pub struct WithdrawResponse {
+    pub token: Token,
+    pub tx_id: String,
+}
