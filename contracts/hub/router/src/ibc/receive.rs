@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, MessageInfo, Order, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
@@ -82,22 +82,12 @@ pub fn ibc_receive_internal_call(
             pair,
             sender,
             tx_id,
-            token_1_exists,
-            token_2_exists,
         } => {
             ensure!(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_pool_creation(
-                deps,
-                env,
-                sender,
-                pair,
-                tx_id,
-                token_1_exists,
-                token_2_exists,
-            )
+            execute_request_pool_creation(deps, env, sender, pair, tx_id)
         }
         ChainIbcExecuteMsg::AddLiquidity {
             token_1_liquidity,
@@ -163,8 +153,6 @@ fn execute_request_pool_creation(
     sender: CrossChainUser,
     pair: Pair,
     tx_id: String,
-    token_1_exists: bool,
-    token_2_exists: bool,
 ) -> Result<Response, ContractError> {
     pair.validate()?;
     let state = STATE.load(deps.storage)?;
@@ -186,19 +174,42 @@ fn execute_request_pool_creation(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation");
 
+    let tokens = vec![pair.clone().token_1, pair.clone().token_2];
+    let mut token_1_exists = false;
+    let mut token_2_exists = false;
+
+    for token in tokens {
+        let escrow_balances =
+            ESCROW_BALANCES.may_load(deps.storage, (token.clone(), sender.clone().chain_uid))?;
+        if escrow_balances.is_some() {
+            if token == pair.token_1 {
+                token_1_exists = true;
+            } else {
+                token_2_exists = true;
+            }
+        }
+    }
+
     let token_checks = vec![
         (pair.clone().token_1, &token_1_exists),
         (pair.clone().token_2, &token_2_exists),
     ];
 
-    for (token, exists) in token_checks.iter() {
-        if !*exists {
-            let escrow_balances = ESCROW_BALANCES
-                .may_load(deps.storage, (token.clone(), sender.clone().chain_uid))?;
-            ensure!(
-                escrow_balances.is_none(),
-                ContractError::PoolAlreadyExists {}
-            );
+    let all_chains: Vec<ChainUid> = CHAIN_UID_TO_CHAIN
+        .keys(deps.storage, None, None, Order::Ascending)
+        .filter_map(Result::ok) // Only keep the Ok values, discard errors
+        .collect();
+
+    for chain_uid in all_chains {
+        for (token, exists) in token_checks.iter() {
+            if !*exists {
+                let escrow_balances =
+                    ESCROW_BALANCES.may_load(deps.storage, (token.clone(), chain_uid.clone()))?;
+                ensure!(
+                    escrow_balances.is_none(),
+                    ContractError::PoolAlreadyExists {}
+                );
+            }
         }
     }
 
