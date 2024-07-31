@@ -4,6 +4,7 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
     IbcReceiveResponse, MessageInfo, Order, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
+use cw_storage_plus::Bound;
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
@@ -183,35 +184,14 @@ fn execute_request_pool_creation(
         deps.storage,
         (pair.token_2.clone(), sender.clone().chain_uid),
     );
+    let range = ESCROW_BALANCES.range(deps.storage, None, None, Order::Ascending);
 
-    // Retrieve all chain UIDs, ignoring errors and keeping only valid ones
-    let all_chains: Vec<ChainUid> = CHAIN_UID_TO_CHAIN
-        .keys(deps.storage, None, None, Order::Ascending)
-        .filter_map(Result::ok) // Only keep the Ok values, discard errors
-        .collect();
+    for item in range {
+        let ((token, _chain), _value) = item?;
 
-    // Check for each token if it exists in any other chain
-    if !token_1_exists {
-        for chain_uid in &all_chains {
-            if chain_uid != &sender.chain_uid {
-                let escrow_balance_exists =
-                    ESCROW_BALANCES.has(deps.storage, (pair.token_1.clone(), chain_uid.clone()));
-                if escrow_balance_exists {
-                    return Err(ContractError::PoolAlreadyExists {});
-                }
-            }
-        }
-    }
-
-    if !token_2_exists {
-        for chain_uid in &all_chains {
-            if chain_uid != &sender.chain_uid {
-                let escrow_balance_exists =
-                    ESCROW_BALANCES.has(deps.storage, (pair.token_2.clone(), chain_uid.clone()));
-                if escrow_balance_exists {
-                    return Err(ContractError::PoolAlreadyExists {});
-                }
-            }
+        if (!token_1_exists && token == pair.token_1) || (!token_2_exists && token == pair.token_2)
+        {
+            return Err(ContractError::PoolAlreadyExists {});
         }
     }
 
