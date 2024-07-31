@@ -174,41 +174,43 @@ fn execute_request_pool_creation(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation");
 
-    let tokens = vec![pair.clone().token_1, pair.clone().token_2];
-    let mut token_1_exists = false;
-    let mut token_2_exists = false;
+    // Check if tokens exist in the current chain
+    let token_1_exists = ESCROW_BALANCES.has(
+        deps.storage,
+        (pair.token_1.clone(), sender.clone().chain_uid),
+    );
+    let token_2_exists = ESCROW_BALANCES.has(
+        deps.storage,
+        (pair.token_2.clone(), sender.clone().chain_uid),
+    );
 
-    for token in tokens {
-        let escrow_balances =
-            ESCROW_BALANCES.may_load(deps.storage, (token.clone(), sender.clone().chain_uid))?;
-        if escrow_balances.is_some() {
-            if token == pair.token_1 {
-                token_1_exists = true;
-            } else {
-                token_2_exists = true;
-            }
-        }
-    }
-
-    let token_checks = vec![
-        (pair.clone().token_1, &token_1_exists),
-        (pair.clone().token_2, &token_2_exists),
-    ];
-
+    // Retrieve all chain UIDs, ignoring errors and keeping only valid ones
     let all_chains: Vec<ChainUid> = CHAIN_UID_TO_CHAIN
         .keys(deps.storage, None, None, Order::Ascending)
         .filter_map(Result::ok) // Only keep the Ok values, discard errors
         .collect();
 
-    for chain_uid in all_chains {
-        for (token, exists) in token_checks.iter() {
-            if !*exists {
-                let escrow_balances =
-                    ESCROW_BALANCES.may_load(deps.storage, (token.clone(), chain_uid.clone()))?;
-                ensure!(
-                    escrow_balances.is_none(),
-                    ContractError::PoolAlreadyExists {}
-                );
+    // Check for each token if it exists in any other chain
+    if !token_1_exists {
+        for chain_uid in &all_chains {
+            if chain_uid != &sender.chain_uid {
+                let escrow_balance_exists =
+                    ESCROW_BALANCES.has(deps.storage, (pair.token_1.clone(), chain_uid.clone()));
+                if escrow_balance_exists {
+                    return Err(ContractError::PoolAlreadyExists {});
+                }
+            }
+        }
+    }
+
+    if !token_2_exists {
+        for chain_uid in &all_chains {
+            if chain_uid != &sender.chain_uid {
+                let escrow_balance_exists =
+                    ESCROW_BALANCES.has(deps.storage, (pair.token_2.clone(), chain_uid.clone()));
+                if escrow_balance_exists {
+                    return Err(ContractError::PoolAlreadyExists {});
+                }
             }
         }
     }

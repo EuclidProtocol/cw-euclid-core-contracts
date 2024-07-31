@@ -6,7 +6,7 @@ mod tests {
     use crate::query::{self, query_all_chains, query_all_vlps, query_chain, query_vlp};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{
-        from_json, to_json_binary, Binary, ContractResult, CosmosMsg, IbcMsg, SystemError,
+        ensure, from_json, to_json_binary, Binary, ContractResult, CosmosMsg, IbcMsg, SystemError,
         SystemResult, Uint128,
     };
     use euclid::chain::ChainUid;
