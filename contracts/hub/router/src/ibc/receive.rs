@@ -175,24 +175,20 @@ fn execute_request_pool_creation(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation");
 
-    // Check if tokens exist in the current chain
-    let token_1_exists = ESCROW_BALANCES.has(
-        deps.storage,
-        (pair.token_1.clone(), sender.clone().chain_uid),
-    );
-    let token_2_exists = ESCROW_BALANCES.has(
-        deps.storage,
-        (pair.token_2.clone(), sender.clone().chain_uid),
-    );
-    let range = ESCROW_BALANCES.range(deps.storage, None, None, Order::Ascending);
-
-    for item in range {
-        let ((token, _chain), _value) = item?;
-
-        if (!token_1_exists && token == pair.token_1) || (!token_2_exists && token == pair.token_2)
-        {
-            return Err(ContractError::PoolAlreadyExists {});
-        }
+    for token in pair.get_vec_token() {
+        let token_exists =
+            ESCROW_BALANCES.has(deps.storage, (token.clone(), sender.clone().chain_uid));
+        let range =
+            ESCROW_BALANCES
+                .prefix(token)
+                .keys_raw(deps.storage, None, None, Order::Ascending);
+        // There are two cases
+        // token already exists on the sender chain - We can safely assume that this was validated already by factory so allow pool creation
+        // token not present in sender chain -  This token should not have escrow on any other chain, i.e. This should be completely new token
+        ensure!(
+            token_exists || range.take(1).count() == 0,
+            ContractError::new("Cannot use already existing token without registering it first")
+        )
     }
 
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg

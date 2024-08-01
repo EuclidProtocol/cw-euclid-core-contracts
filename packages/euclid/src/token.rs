@@ -170,6 +170,11 @@ impl Pair {
             reserve_2,
         }
     }
+
+    pub fn get_vec_token(&self) -> Vec<Token> {
+        let tokens: Vec<Token> = vec![self.token_1.clone(), self.token_2.clone()];
+        tokens
+    }
 }
 
 impl<'a> PrimaryKey<'a> for Pair {
