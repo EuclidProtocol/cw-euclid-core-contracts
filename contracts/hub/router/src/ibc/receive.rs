@@ -251,23 +251,13 @@ fn execute_request_escrow_creation(
     token.validate()?;
 
     let token_exists = ESCROW_BALANCES.has(deps.storage, (token.clone(), sender.clone().chain_uid));
+    ensure!(!token_exists, ContractError::TokenAlreadyExist {});
 
     ESCROW_BALANCES.save(
         deps.storage,
         (token.clone(), sender.clone().chain_uid),
         &Uint128::zero(),
     )?;
-
-    let range = ESCROW_BALANCES
-        .prefix(token)
-        .keys_raw(deps.storage, None, None, Order::Ascending);
-    // There are two cases
-    // token already exists on the sender chain - We can safely assume that this was validated already by factory so allow pool creation
-    // token not present in sender chain -  This token should not have escrow on any other chain, i.e. This should be completely new token
-    ensure!(
-        token_exists || range.take(1).count() == 0,
-        ContractError::new("Cannot use already existing token without registering it first")
-    );
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -276,7 +266,7 @@ fn execute_request_escrow_creation(
             TxType::EscrowCreation,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "request_pool_creation"))
+        .add_attribute("method", "request_escrow_creation"))
 }
 
 fn ibc_execute_add_liquidity(
