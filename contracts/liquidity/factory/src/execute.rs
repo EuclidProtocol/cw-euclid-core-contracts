@@ -11,7 +11,7 @@ use euclid::{
     fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
-    pool::PoolCreateRequest,
+    pool::{EscrowCreateRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
     token::{Pair, PairWithDenom, Token, TokenWithDenom},
@@ -22,8 +22,9 @@ use euclid_ibc::msg::{
 };
 
 use crate::state::{
-    HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS,
-    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+    HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
+    PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
+    VLP_TO_CW20,
 };
 
 pub fn execute_update_hub_channel(
@@ -133,6 +134,61 @@ pub fn execute_request_pool_creation(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation")
+        .add_message(ibc_packet))
+}
+
+pub fn execute_request_register_escrow(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token: TokenWithDenom,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid,
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        !PENDING_ESCROW_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+
+    let escrow_address = TOKEN_TO_ESCROW.has(deps.storage, token.clone().token);
+    ensure!(!escrow_address, ContractError::TokenAlreadyExist {});
+
+    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let timeout = get_timeout(timeout)?;
+
+    // Create IBC packet to send to Router
+    let ibc_packet = IbcMsg::SendPacket {
+        channel_id: channel.clone(),
+        data: to_json_binary(&ChainIbcExecuteMsg::RequestEscrowCreation {
+            token: token.clone().token,
+            sender,
+            tx_id: tx_id.clone(),
+        })?,
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+    };
+
+    let req = EscrowCreateRequest {
+        tx_id: tx_id.clone(),
+        sender: info.sender.to_string(),
+        token,
+    };
+
+    PENDING_ESCROW_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::PoolCreation,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "request_escrow_creation")
         .add_message(ibc_packet))
 }
 

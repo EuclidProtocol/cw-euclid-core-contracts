@@ -17,6 +17,12 @@ pub enum ChainIbcExecuteMsg {
         tx_id: String,
         pair: Pair,
     },
+    // Request Pool Creation
+    RequestEscrowCreation {
+        sender: CrossChainUser,
+        tx_id: String,
+        token: Token,
+    },
     AddLiquidity {
         // Factory will set this using info.sender
         sender: CrossChainUser,
@@ -73,6 +79,7 @@ impl ChainIbcExecuteMsg {
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
             Self::Withdraw(msg) => msg.tx_id.clone(),
+            Self::RequestEscrowCreation { tx_id, .. } => tx_id.clone(),
         }
     }
 }

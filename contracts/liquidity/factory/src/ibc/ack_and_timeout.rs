@@ -10,8 +10,11 @@ use euclid::{
     error::ContractError,
     events::swap_event,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
-    msgs::{cw20::ExecuteMsg as Cw20ExecuteMsg, factory::ExecuteMsg},
-    pool::PoolCreationResponse,
+    msgs::{
+        cw20::ExecuteMsg as Cw20ExecuteMsg, escrow::InstantiateMsg as EscrowInstantiateMsg,
+        factory::ExecuteMsg,
+    },
+    pool::{EscrowCreationResponse, PoolCreationResponse},
     swap::{SwapResponse, WithdrawResponse},
     token::Token,
 };
@@ -20,8 +23,9 @@ use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 use crate::{
     reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
     state::{
-        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20, VLP_TO_LP_SHARES,
+        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS, PENDING_POOL_REQUESTS,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+        VLP_TO_LP_SHARES,
     },
 };
 
@@ -65,6 +69,14 @@ pub fn ibc_ack_packet_internal_call(
                 from_json(ack.acknowledgement.data)?;
 
             ack_pool_creation(deps, env, sender.address, res, tx_id)
+        }
+
+        ChainIbcExecuteMsg::RequestEscrowCreation { tx_id, sender, .. } => {
+            // Process acknowledgment for pool creation
+            let res: AcknowledgementMsg<EscrowCreationResponse> =
+                from_json(ack.acknowledgement.data)?;
+
+            ack_escrow_creation(deps, env, sender.address, res, tx_id)
         }
 
         ChainIbcExecuteMsg::AddLiquidity { tx_id, sender, .. } => {
@@ -174,7 +186,7 @@ fn ack_pool_creation(
                     let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                         admin: Some(env.contract.address.clone().into_string()),
                         code_id: escrow_code_id,
-                        msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
+                        msg: to_json_binary(&EscrowInstantiateMsg {
                             token_id: token.token,
                             allowed_denom: Some(token.token_type),
                         })?,
@@ -216,6 +228,59 @@ fn ack_pool_creation(
                 gas_limit: None,
                 reply_on: ReplyOn::Always,
             }))
+        }
+
+        AcknowledgementMsg::Error(err) => Ok(Response::new()
+            .add_attribute("tx_id", tx_id)
+            .add_attribute("method", "reject_pool_request")
+            .add_attribute("error", err.clone())),
+    }
+}
+
+fn ack_escrow_creation(
+    deps: DepsMut,
+    env: Env,
+    sender: String,
+    res: AcknowledgementMsg<EscrowCreationResponse>,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender, tx_id.clone());
+    let existing_req = PENDING_ESCROW_REQUESTS
+        .may_load(deps.storage, req_key.clone())?
+        .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
+
+    // Remove pool request from MAP
+    PENDING_ESCROW_REQUESTS.remove(deps.storage, req_key);
+
+    // Check whether res is an error or not
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            let escrow_code_id = STATE.load(deps.storage)?.escrow_code_id;
+            let token = existing_req.token;
+
+            // Instantiate escrow
+            let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                admin: Some(env.contract.address.clone().into_string()),
+                code_id: escrow_code_id,
+                msg: to_json_binary(&EscrowInstantiateMsg {
+                    token_id: token.token,
+                    allowed_denom: Some(token.token_type),
+                })?,
+                funds: vec![],
+                label: "escrow".to_string(),
+            });
+
+            Ok(Response::new()
+                .add_submessage(SubMsg {
+                    id: ESCROW_INSTANTIATE_REPLY_ID,
+                    msg: init_msg,
+                    gas_limit: None,
+                    reply_on: ReplyOn::Always,
+                })
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("method", "escrow_creation")
+                .add_attribute("vlp", data.vlp_contract.clone()))
         }
 
         AcknowledgementMsg::Error(err) => Ok(Response::new()

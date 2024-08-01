@@ -4,14 +4,13 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
     IbcReceiveResponse, MessageInfo, Order, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
-use cw_storage_plus::Bound;
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{tx_event, TxType},
     fee::Fee,
     msgs::{self, router::ExecuteMsg, vcoin::ExecuteMint},
-    token::Pair,
+    token::{Pair, Token},
     vcoin::BalanceKey,
 };
 use euclid_ibc::{
@@ -89,6 +88,17 @@ pub fn ibc_receive_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
             execute_request_pool_creation(deps, env, sender, pair, tx_id)
+        }
+        ChainIbcExecuteMsg::RequestEscrowCreation {
+            token,
+            sender,
+            tx_id,
+        } => {
+            ensure!(
+                sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            execute_request_escrow_creation(deps, env, sender, token, tx_id)
         }
         ChainIbcExecuteMsg::AddLiquidity {
             token_1_liquidity,
@@ -229,6 +239,44 @@ fn execute_request_pool_creation(
         };
         Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_INSTANTIATE_REPLY_ID)))
     }
+}
+
+fn execute_request_escrow_creation(
+    deps: DepsMut,
+    _env: Env,
+    sender: CrossChainUser,
+    token: Token,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    token.validate()?;
+
+    let token_exists = ESCROW_BALANCES.has(deps.storage, (token.clone(), sender.clone().chain_uid));
+
+    ESCROW_BALANCES.save(
+        deps.storage,
+        (token.clone(), sender.clone().chain_uid),
+        &Uint128::zero(),
+    )?;
+
+    let range = ESCROW_BALANCES
+        .prefix(token)
+        .keys_raw(deps.storage, None, None, Order::Ascending);
+    // There are two cases
+    // token already exists on the sender chain - We can safely assume that this was validated already by factory so allow pool creation
+    // token not present in sender chain -  This token should not have escrow on any other chain, i.e. This should be completely new token
+    ensure!(
+        token_exists || range.take(1).count() == 0,
+        ContractError::new("Cannot use already existing token without registering it first")
+    );
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::EscrowCreation,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "request_pool_creation"))
 }
 
 fn ibc_execute_add_liquidity(

@@ -7,19 +7,20 @@ use euclid::error::ContractError;
 
 use crate::execute::{
     add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
-    execute_request_register_denom, execute_swap_request, execute_update_hub_channel,
-    execute_withdraw_vcoin, receive_cw20,
+    execute_request_register_denom, execute_request_register_escrow, execute_swap_request,
+    execute_update_hub_channel, execute_withdraw_vcoin, receive_cw20,
 };
+use crate::ibc;
 use crate::query::{
     get_escrow, get_lp_token_address, get_vlp, pending_liquidity, pending_remove_liquidity,
     pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
 use crate::reply::{
-    CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
-    IBC_RECEIVE_REPLY_ID,
+    on_cw20_instantiate_reply, on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply,
+    on_ibc_receive_reply, CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID,
+    IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
 };
 use crate::state::{State, STATE};
-use crate::{ibc, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -134,6 +135,9 @@ pub fn execute(
             lp_token_marketing,
             timeout,
         ),
+        ExecuteMsg::RequestRegisterEscrow { token, timeout } => {
+            execute_request_register_escrow(&mut deps, env, info, token, timeout)
+        }
         ExecuteMsg::WithdrawVcoin {
             token,
             amount,
@@ -189,10 +193,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        ESCROW_INSTANTIATE_REPLY_ID => reply::on_escrow_instantiate_reply(deps, msg),
-        CW20_INSTANTIATE_REPLY_ID => reply::on_cw20_instantiate_reply(deps, msg),
-        IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
-        IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
+        ESCROW_INSTANTIATE_REPLY_ID => on_escrow_instantiate_reply(deps, msg),
+        CW20_INSTANTIATE_REPLY_ID => on_cw20_instantiate_reply(deps, msg),
+        IBC_ACK_AND_TIMEOUT_REPLY_ID => on_ibc_ack_and_timeout_reply(deps, msg),
+        IBC_RECEIVE_REPLY_ID => on_ibc_receive_reply(deps, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id
