@@ -38,6 +38,9 @@ pub enum ContractError {
     #[error("Tx already exist")]
     TxAlreadyExist {},
 
+    #[error("Token already exist")]
+    TokenAlreadyExist {},
+
     #[error("Chain already exist")]
     ChainAlreadyExist {},
 

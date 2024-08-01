@@ -3,7 +3,7 @@ use cosmwasm_std::Uint128;
 
 use crate::{
     error::ContractError,
-    token::{Pair, PairWithDenom, Token},
+    token::{Pair, PairWithDenom, Token, TokenWithDenom},
 };
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
@@ -49,8 +49,23 @@ pub struct PoolCreateRequest {
     pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
 }
 
+#[cw_serde]
+pub struct EscrowCreateRequest {
+    // Request sender
+    pub sender: String,
+    // Escrow request id
+    pub tx_id: String,
+    // Escrow Token
+    pub token: TokenWithDenom,
+}
+
 // Struct to handle Acknowledgement Response for a Pool Creation Request
 #[cw_serde]
 pub struct PoolCreationResponse {
+    pub vlp_contract: String,
+}
+
+#[cw_serde]
+pub struct EscrowCreationResponse {
     pub vlp_contract: String,
 }

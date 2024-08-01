@@ -53,6 +53,10 @@ pub enum ExecuteMsg {
         lp_token_decimal: u8,
         lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     },
+    RequestRegisterEscrow {
+        token: TokenWithDenom,
+        timeout: Option<u64>,
+    },
     UpdateHubChannel {
         new_channel: String,
     },
