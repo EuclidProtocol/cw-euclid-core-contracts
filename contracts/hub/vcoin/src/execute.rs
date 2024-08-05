@@ -6,11 +6,10 @@ use euclid::{
     vcoin::BalanceKey,
 };
 
-use crate::state::{SNAPSHOT_BALANCES, STATE};
+use crate::state::{BALANCES, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
-    env: Env,
     info: MessageInfo,
     msg: ExecuteMint,
 ) -> Result<Response, ContractError> {
@@ -21,13 +20,13 @@ pub fn execute_mint(
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
-    let old_balance = SNAPSHOT_BALANCES
+    let old_balance = BALANCES
         .may_load(deps.storage, key.clone())?
         .unwrap_or(Uint128::zero());
 
     let new_balance = old_balance.checked_add(msg.amount)?;
 
-    SNAPSHOT_BALANCES.save(deps.storage, key, &new_balance, env.block.height)?;
+    BALANCES.save(deps.storage, key, &new_balance)?;
 
     Ok(Response::new()
         .add_attribute("action", "execute_mint")
@@ -46,7 +45,6 @@ pub fn execute_mint(
 
 pub fn execute_burn(
     deps: DepsMut,
-    env: Env,
     info: MessageInfo,
     msg: ExecuteBurn,
 ) -> Result<Response, ContractError> {
@@ -58,13 +56,13 @@ pub fn execute_burn(
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
-    let old_balance = SNAPSHOT_BALANCES
+    let old_balance = BALANCES
         .may_load(deps.storage, key.clone())?
         .unwrap_or(Uint128::zero());
 
     let new_balance = old_balance.checked_sub(msg.amount)?;
 
-    SNAPSHOT_BALANCES.save(deps.storage, key, &new_balance, env.block.height)?;
+    BALANCES.save(deps.storage, key, &new_balance)?;
 
     Ok(Response::new()
         .add_attribute("action", "execute_burn")
@@ -83,7 +81,6 @@ pub fn execute_burn(
 
 pub fn execute_transfer(
     deps: DepsMut,
-    env: Env,
     info: MessageInfo,
     msg: ExecuteTransfer,
 ) -> Result<Response, ContractError> {
@@ -110,7 +107,7 @@ pub fn execute_transfer(
     let receiver_key = receiver_balance_key.clone().to_serialized_balance_key();
 
     // Decrease sender balance
-    let sender_old_balance = SNAPSHOT_BALANCES
+    let sender_old_balance = BALANCES
         .may_load(deps.storage, sender_key.clone())?
         .unwrap_or(Uint128::zero());
 
@@ -126,24 +123,14 @@ pub fn execute_transfer(
     let sender_new_balance = sender_old_balance.checked_sub(msg.amount)?;
 
     // Increase receiver balance
-    let receiver_old_balance = SNAPSHOT_BALANCES
+    let receiver_old_balance = BALANCES
         .may_load(deps.storage, receiver_key.clone())?
         .unwrap_or(Uint128::zero());
     let receiver_new_balance = receiver_old_balance.checked_add(msg.amount)?;
 
-    SNAPSHOT_BALANCES.save(
-        deps.storage,
-        sender_key,
-        &sender_new_balance,
-        env.block.height,
-    )?;
+    BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
 
-    SNAPSHOT_BALANCES.save(
-        deps.storage,
-        receiver_key,
-        &receiver_new_balance,
-        env.block.height,
-    )?;
+    BALANCES.save(deps.storage, receiver_key, &receiver_new_balance)?;
 
     Ok(Response::new()
         .add_attribute("action", "execute_transfer")

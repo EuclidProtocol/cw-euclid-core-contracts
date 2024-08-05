@@ -42,9 +42,9 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Mint(msg) => execute::execute_mint(deps, env, info, msg),
-        ExecuteMsg::Burn(msg) => execute::execute_burn(deps, env, info, msg),
-        ExecuteMsg::Transfer(msg) => execute::execute_transfer(deps, env, info, msg),
+        ExecuteMsg::Mint(msg) => execute::execute_mint(deps, info, msg),
+        ExecuteMsg::Burn(msg) => execute::execute_burn(deps, info, msg),
+        ExecuteMsg::Transfer(msg) => execute::execute_transfer(deps, info, msg),
     }
 }
 

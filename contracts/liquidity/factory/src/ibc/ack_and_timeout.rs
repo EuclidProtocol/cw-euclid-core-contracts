@@ -298,8 +298,7 @@ fn ack_escrow_creation(
                     reply_on: ReplyOn::Always,
                 })
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "escrow_creation")
-                .add_attribute("vlp", data.vlp_contract.clone()))
+                .add_attribute("method", "escrow_creation"))
         }
 
         AcknowledgementMsg::Error(err) => {

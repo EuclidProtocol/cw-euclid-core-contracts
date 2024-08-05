@@ -51,10 +51,9 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
 
             let vlp_address = instantiate_data.contract_address;
 
-            let liquidity: msgs::vlp::GetLiquidityResponse = deps.querier.query_wasm_smart(
-                vlp_address.clone(),
-                &msgs::vlp::QueryMsg::Liquidity { height: None },
-            )?;
+            let liquidity: msgs::vlp::GetLiquidityResponse = deps
+                .querier
+                .query_wasm_smart(vlp_address.clone(), &msgs::vlp::QueryMsg::Liquidity {})?;
 
             VLPS.save(
                 deps.storage,
@@ -356,8 +355,9 @@ pub fn on_reply_native_ibc_wrapper_call(
     env: Env,
     msg: Reply,
 ) -> Result<Response, ContractError> {
-    let chain_type = euclid::chain::ChainType::Native;
+    let chain_type = euclid::chain::ChainType::Native {};
     let original_msg = HUB_IBC_EXECUTE_MSG_QUEUE.load(deps.storage, msg.id)?;
+    HUB_IBC_EXECUTE_MSG_QUEUE.remove(deps.storage, msg.id);
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
             let ack = make_ack_fail(err)?;

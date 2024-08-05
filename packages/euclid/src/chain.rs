@@ -115,12 +115,12 @@ pub struct IbcChain {
 #[cw_serde]
 pub enum ChainType {
     Ibc(IbcChain),
-    Native,
+    Native {},
 }
 
 impl Chain {
     pub fn is_native(&self) -> bool {
-        matches!(self.chain_type, ChainType::Native)
+        matches!(self.chain_type, ChainType::Native {})
     }
 
     pub fn ibc_info(&self) -> Result<IbcChain, ContractError> {

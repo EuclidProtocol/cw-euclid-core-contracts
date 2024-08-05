@@ -5,16 +5,18 @@ use cosmwasm_std::{
     IbcReceiveResponse, MessageInfo, Order, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser},
+    chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{tx_event, TxType},
     fee::Fee,
     msgs::{self, router::ExecuteMsg, vcoin::ExecuteMint},
+    pool::EscrowCreationResponse,
+    swap::WithdrawResponse,
     token::{Pair, Token},
     vcoin::BalanceKey,
 };
 use euclid_ibc::{
-    ack::make_ack_fail,
+    ack::{make_ack_fail, AcknowledgementMsg},
     msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg},
 };
 
@@ -153,16 +155,22 @@ pub fn reusable_internal_call(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_release_escrow(
+            let res = execute_release_escrow(
                 deps,
                 env,
                 info,
                 msg.sender,
-                msg.token,
+                msg.token.clone(),
                 msg.amount,
                 msg.cross_chain_addresses,
                 msg.timeout,
-                msg.tx_id,
+                msg.tx_id.clone(),
+            );
+            Ok(
+                res?.set_data(to_json_binary(&AcknowledgementMsg::Ok(WithdrawResponse {
+                    token: msg.token,
+                    tx_id: msg.tx_id,
+                }))?),
             )
         }
     }
@@ -269,6 +277,7 @@ fn execute_request_escrow_creation(
         &Uint128::zero(),
     )?;
 
+    let ack = AcknowledgementMsg::Ok(EscrowCreationResponse {});
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
@@ -276,7 +285,8 @@ fn execute_request_escrow_creation(
             TxType::EscrowCreation,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "request_escrow_creation"))
+        .add_attribute("method", "request_escrow_creation")
+        .set_data(to_json_binary(&ack)?))
 }
 
 fn ibc_execute_add_liquidity(
@@ -292,7 +302,7 @@ fn ibc_execute_add_liquidity(
     let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
     let pool_liquidity: euclid::msgs::vlp::GetLiquidityResponse = deps.querier.query_wasm_smart(
         vlp_address.clone(),
-        &euclid::msgs::vlp::QueryMsg::Liquidity { height: None },
+        &euclid::msgs::vlp::QueryMsg::Liquidity {},
     )?;
 
     let mut response = Response::new().add_event(

@@ -1,3 +1,5 @@
+use std::borrow::BorrowMut;
+
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
@@ -6,13 +8,16 @@ use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{router::RegisterFactoryChainType, vcoin::ExecuteBurn},
+    msgs::{factory::ReleaseEscrowResponse, router::RegisterFactoryChainType, vcoin::ExecuteBurn},
     timeout::get_timeout,
     token::Token,
     utils::generate_tx,
     vcoin::BalanceKey,
 };
-use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
+use euclid_ibc::{
+    ack::AcknowledgementMsg,
+    msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg},
+};
 
 use crate::{
     ibc::receive,
@@ -157,7 +162,7 @@ pub fn execute_register_factory(
             let chain = Chain {
                 factory: native_info.factory_address,
                 factory_chain_id: env.block.chain_id.clone(),
-                chain_type: euclid::chain::ChainType::Native,
+                chain_type: euclid::chain::ChainType::Native {},
             };
             CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid, &chain)?;
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
@@ -247,7 +252,8 @@ pub fn execute_release_escrow(
             amount: release_amount,
             token: token.clone(),
             to_address: cross_chain_address.user.address.clone(),
-            tx_id: tx_id.clone(),
+            // We can't use same tx id because it might conflict with pending requests on receiving chain
+            tx_id: generate_tx(deps.branch(), &env, &sender)?,
             chain_uid: cross_chain_address.user.chain_uid.clone(),
         }
         .to_msg(deps, &env, chain, timeout)?;
@@ -260,28 +266,33 @@ pub fn execute_release_escrow(
         transfer_amount.checked_add(remaining_withdraw_amount)? == amount,
         ContractError::new("Amount mismatch after trasnfer calculations")
     );
-    let burn_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Burn(ExecuteBurn {
-        amount: transfer_amount,
-        balance_key: BalanceKey {
-            cross_chain_user: sender.clone(),
-            token_id: token.to_string(),
-        },
-    });
 
-    let burn_vcoin_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: vcoin_address,
-        msg: to_json_binary(&burn_vcoin_msg)?,
-        funds: vec![],
-    });
-
-    Ok(Response::new()
+    let mut response = Response::new()
         .add_event(tx_event(
             &tx_id,
             sender.address.as_str(),
             TxType::EscrowRelease,
         ))
-        .add_attribute("tx_id", tx_id)
-        .add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID))
+        .add_attribute("tx_id", tx_id);
+    if !transfer_amount.is_zero() {
+        let burn_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Burn(ExecuteBurn {
+            amount: transfer_amount,
+            balance_key: BalanceKey {
+                cross_chain_user: sender.clone(),
+                token_id: token.to_string(),
+            },
+        });
+
+        let burn_vcoin_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: vcoin_address,
+            msg: to_json_binary(&burn_vcoin_msg)?,
+            funds: vec![],
+        });
+        response =
+            response.add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID));
+    }
+
+    Ok(response
         .add_attribute("method", "release_escrow")
         .add_attribute("release_expected", amount)
         .add_attribute("actual_released", transfer_amount)

@@ -244,7 +244,7 @@ impl HubIbcExecuteMsg {
                 };
                 Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
             }
-            euclid::chain::ChainType::Native => {
+            euclid::chain::ChainType::Native {} => {
                 let factory_msg = factory::ExecuteMsg::NativeReceiveCallback {
                     msg: to_json_binary(self)?,
                 };

@@ -107,6 +107,7 @@ pub fn on_reply_native_ibc_wrapper_call(
     msg: Reply,
 ) -> Result<Response, ContractError> {
     let original_msg = CHAIN_IBC_EXECUTE_MSG_QUEUE.load(deps.storage, msg.id)?;
+    CHAIN_IBC_EXECUTE_MSG_QUEUE.remove(deps.storage, msg.id);
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
             let ack = make_ack_fail(err)?;

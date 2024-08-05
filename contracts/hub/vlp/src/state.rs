@@ -1,6 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
-use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
+use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
     fee::Fee,
@@ -28,10 +28,4 @@ pub const STATE: Item<State> = Item::new("state");
 
 pub const CHAIN_LP_TOKENS: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
 
-// Stores a snapshotMap in order to keep track of prices for blocks for charts and other purposes
-pub const BALANCES: SnapshotMap<Token, Uint128> = SnapshotMap::new(
-    "balances",
-    "balances_check",
-    "balances_change",
-    Strategy::EveryBlock,
-);
+pub const BALANCES: Map<Token, Uint128> = Map::new("balances");

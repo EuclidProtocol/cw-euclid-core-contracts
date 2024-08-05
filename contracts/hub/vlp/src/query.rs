@@ -70,24 +70,16 @@ pub fn query_simulate_swap(
 }
 
 // Function to query the total liquidity
-pub fn query_liquidity(deps: Deps, env: Env, height: Option<u64>) -> Result<Binary, ContractError> {
+pub fn query_liquidity(deps: Deps, env: Env) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     let pair = state.pair.clone();
     Ok(to_json_binary(&GetLiquidityResponse {
         pair,
         token_1_reserve: BALANCES
-            .may_load_at_height(
-                deps.storage,
-                state.pair.token_1,
-                height.unwrap_or(env.block.height),
-            )?
+            .may_load(deps.storage, state.pair.token_1)?
             .unwrap_or_default(),
         token_2_reserve: BALANCES
-            .may_load_at_height(
-                deps.storage,
-                state.pair.token_2,
-                height.unwrap_or(env.block.height),
-            )?
+            .may_load(deps.storage, state.pair.token_2)?
             .unwrap_or_default(),
         total_lp_tokens: state.total_lp_tokens,
     })?)

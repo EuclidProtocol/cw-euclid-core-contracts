@@ -66,6 +66,4 @@ pub struct PoolCreationResponse {
 }
 
 #[cw_serde]
-pub struct EscrowCreationResponse {
-    pub vlp_contract: String,
-}
+pub struct EscrowCreationResponse {}

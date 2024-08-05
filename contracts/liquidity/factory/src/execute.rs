@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg,
-    IbcTimeout, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout,
+    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
@@ -388,7 +388,7 @@ pub fn remove_liquidity_request(
     pair: Pair,
     lp_allocation: Uint128,
     timeout: Option<u64>,
-    mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
@@ -404,11 +404,6 @@ pub fn remove_liquidity_request(
     let cw20 = VLP_TO_CW20.load(deps.storage, vlp)?;
 
     ensure!(cw20 == info.sender, ContractError::Unauthorized {});
-
-    cross_chain_addresses.push(CrossChainUserWithLimit {
-        user: sender.clone(),
-        limit: None,
-    });
 
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
@@ -477,18 +472,13 @@ pub fn execute_swap_request(
     min_amount_out: Uint128,
     swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
-    mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
-
-    cross_chain_addresses.push(CrossChainUserWithLimit {
-        user: sender.clone(),
-        limit: None,
-    });
 
     let partner_fee_bps = partner_fee
         .clone()
