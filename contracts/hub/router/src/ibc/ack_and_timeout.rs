@@ -153,7 +153,7 @@ pub fn ibc_ack_register_factory(
 
         AcknowledgementMsg::Error(err) => {
             // If its a native then reject via error
-            if matches!(chain_type, ChainType::Native{}) {
+            if matches!(chain_type, ChainType::Native {}) {
                 return Err(ContractError::new(&err));
             }
             Ok(response

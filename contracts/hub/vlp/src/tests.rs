@@ -2,22 +2,17 @@
 mod tests {
 
     use crate::contract::{execute, instantiate};
-    use crate::execute::register_pool;
-    use crate::query::{
-        calculate_swap, query_all_pools, query_fee, query_pool, query_simulate_swap,
-    };
+
     use crate::state::{State, BALANCES, STATE};
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_json, DepsMut, Response, Uint128};
+    use cosmwasm_std::{coins, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
-    use euclid::error::ContractError;
+
     use euclid::fee::Fee;
-    use euclid::msgs::vlp::{
-        AllPoolsResponse, ExecuteMsg, FeeResponse, GetSwapResponse, InstantiateMsg, PoolResponse,
-    };
-    use euclid::pool::Pool;
-    use euclid::token::{Pair, Token, TokenType};
+    use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
+
+    use euclid::token::{Pair, Token};
 
     fn init(deps: DepsMut) -> Response {
         let msg = InstantiateMsg {

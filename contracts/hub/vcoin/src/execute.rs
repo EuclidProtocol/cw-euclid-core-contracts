@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{ensure, DepsMut, MessageInfo, Response, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,

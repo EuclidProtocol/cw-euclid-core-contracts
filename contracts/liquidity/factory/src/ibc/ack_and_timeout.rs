@@ -274,7 +274,7 @@ fn ack_escrow_creation(
 
     // Check whether res is an error or not
     match res {
-        AcknowledgementMsg::Ok(data) => {
+        AcknowledgementMsg::Ok(_data) => {
             let escrow_code_id = STATE.load(deps.storage)?.escrow_code_id;
             let token = existing_req.token;
 

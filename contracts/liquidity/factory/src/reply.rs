@@ -5,10 +5,7 @@ use crate::{
 use cosmwasm_std::{from_json, DepsMut, Env, Reply, Response, SubMsgResult};
 use cw0::{parse_execute_response_data, parse_reply_instantiate_data};
 use euclid::error::ContractError;
-use euclid_ibc::{
-    ack::make_ack_fail,
-    msg::{ChainIbcExecuteMsg, CHAIN_IBC_EXECUTE_MSG_QUEUE},
-};
+use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
 
 pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;

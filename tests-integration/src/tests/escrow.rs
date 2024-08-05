@@ -48,6 +48,7 @@ fn test_proper_instantiation() {
         chain_uid,
         escrow_code_id,
         cw20_code_id,
+        true,
     );
 
     let mock_escrow = MockEscrow::instantiate(

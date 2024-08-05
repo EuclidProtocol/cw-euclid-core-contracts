@@ -1,5 +1,3 @@
-use std::borrow::BorrowMut;
-
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
@@ -8,16 +6,13 @@ use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{factory::ReleaseEscrowResponse, router::RegisterFactoryChainType, vcoin::ExecuteBurn},
+    msgs::{router::RegisterFactoryChainType, vcoin::ExecuteBurn},
     timeout::get_timeout,
     token::Token,
     utils::generate_tx,
     vcoin::BalanceKey,
 };
-use euclid_ibc::{
-    ack::AcknowledgementMsg,
-    msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg},
-};
+use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
     ibc::receive,
