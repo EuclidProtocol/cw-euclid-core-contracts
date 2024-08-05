@@ -1,9 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement, IbcBasicResponse,
-    IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
-    WasmMsg,
+    from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement,
+    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, StdResult,
+    SubMsg, Uint128, WasmMsg,
 };
 
 use euclid::{
@@ -60,45 +60,57 @@ pub fn ibc_ack_packet_internal_call(
     env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<Response, ContractError> {
-    // Parse the ack based on request
     let msg: ChainIbcExecuteMsg = from_json(&ack.original_packet.data)?;
+    reusable_internal_ack_call(deps, env, msg, ack.acknowledgement.data, false)
+}
+pub fn reusable_internal_ack_call(
+    deps: DepsMut,
+    env: Env,
+    msg: ChainIbcExecuteMsg,
+    ack: Binary,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    // Parse the ack based on request
     match msg {
         ChainIbcExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationResponse> =
-                from_json(ack.acknowledgement.data)?;
+            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
 
-            ack_pool_creation(deps, env, sender.address, res, tx_id)
+            ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
         }
 
         ChainIbcExecuteMsg::RequestEscrowCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<EscrowCreationResponse> =
-                from_json(ack.acknowledgement.data)?;
+            let res: AcknowledgementMsg<EscrowCreationResponse> = from_json(ack)?;
 
-            ack_escrow_creation(deps, env, sender.address, res, tx_id)
+            ack_escrow_creation(deps, env, sender.address, res, tx_id, is_native)
         }
 
         ChainIbcExecuteMsg::AddLiquidity { tx_id, sender, .. } => {
             // Process acknowledgment for add liquidity
-            let res: AcknowledgementMsg<AddLiquidityResponse> =
-                from_json(ack.acknowledgement.data)?;
-            ack_add_liquidity(deps, res, sender.address, tx_id)
+            let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
+            ack_add_liquidity(deps, res, sender.address, tx_id, is_native)
         }
         ChainIbcExecuteMsg::RemoveLiquidity(msg) => {
             // Process acknowledgment for add liquidity
-            let res: AcknowledgementMsg<RemoveLiquidityResponse> =
-                from_json(ack.acknowledgement.data)?;
-            ack_remove_liquidity(deps, res, msg.sender.address, msg.tx_id)
+            let res: AcknowledgementMsg<RemoveLiquidityResponse> = from_json(ack)?;
+            ack_remove_liquidity(deps, res, msg.sender.address, msg.tx_id, is_native)
         }
         ChainIbcExecuteMsg::Swap(swap) => {
             // Process acknowledgment for swap
-            let res: AcknowledgementMsg<SwapResponse> = from_json(ack.acknowledgement.data)?;
-            ack_swap_request(deps, res, swap.sender.address, swap.tx_id)
+            let res: AcknowledgementMsg<SwapResponse> = from_json(ack)?;
+            ack_swap_request(deps, res, swap.sender.address, swap.tx_id, is_native)
         }
         ChainIbcExecuteMsg::Withdraw(msg) => {
-            let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack.acknowledgement.data)?;
-            ack_withdraw_request(deps, res, msg.sender.address, msg.token, msg.tx_id)
+            let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack)?;
+            ack_withdraw_request(
+                deps,
+                res,
+                msg.sender.address,
+                msg.token,
+                msg.tx_id,
+                is_native,
+            )
         } // ChainIbcExecuteMsg::RequestWithdraw {
           //     token_id, tx_id, ..
           // } => {
@@ -147,6 +159,7 @@ fn ack_pool_creation(
     sender: String,
     res: AcknowledgementMsg<PoolCreationResponse>,
     tx_id: String,
+    is_native: bool,
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
@@ -230,10 +243,15 @@ fn ack_pool_creation(
             }))
         }
 
-        AcknowledgementMsg::Error(err) => Ok(Response::new()
-            .add_attribute("tx_id", tx_id)
-            .add_attribute("method", "reject_pool_request")
-            .add_attribute("error", err.clone())),
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("method", "reject_pool_request")
+                .add_attribute("error", err.clone()))
+        }
     }
 }
 
@@ -243,6 +261,7 @@ fn ack_escrow_creation(
     sender: String,
     res: AcknowledgementMsg<EscrowCreationResponse>,
     tx_id: String,
+    is_native: bool,
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
@@ -283,10 +302,15 @@ fn ack_escrow_creation(
                 .add_attribute("vlp", data.vlp_contract.clone()))
         }
 
-        AcknowledgementMsg::Error(err) => Ok(Response::new()
-            .add_attribute("tx_id", tx_id)
-            .add_attribute("method", "reject_pool_request")
-            .add_attribute("error", err.clone())),
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("method", "reject_pool_request")
+                .add_attribute("error", err.clone()))
+        }
     }
 }
 
@@ -296,6 +320,7 @@ fn ack_add_liquidity(
     res: AcknowledgementMsg<AddLiquidityResponse>,
     sender: String,
     tx_id: String,
+    is_native: bool,
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
@@ -352,6 +377,10 @@ fn ack_add_liquidity(
         }
 
         AcknowledgementMsg::Error(err) => {
+            // Its a native call so you can return error to reject complete execution call
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
             // Prepare messages to refund tokens back to user
             let mut msgs: Vec<CosmosMsg> = Vec::new();
             let msg = liquidity_info.pair_info.token_1.create_transfer_msg(
@@ -382,6 +411,7 @@ fn ack_remove_liquidity(
     res: AcknowledgementMsg<RemoveLiquidityResponse>,
     sender: String,
     tx_id: String,
+    is_native: bool,
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
@@ -423,6 +453,10 @@ fn ack_remove_liquidity(
 
         // Todo:: Return LP Tokens back to sender
         AcknowledgementMsg::Error(err) => {
+            // Its a native call so you can return error to reject complete execution call
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
             // Send back cw20 to original sender
             let cw20_send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: liquidity_info.cw20.to_string(),
@@ -449,6 +483,7 @@ fn ack_swap_request(
     res: AcknowledgementMsg<SwapResponse>,
     sender: String,
     tx_id: String,
+    is_native: bool,
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     // Validate that the pending swap exists for the sender
@@ -495,6 +530,10 @@ fn ack_swap_request(
         }
 
         AcknowledgementMsg::Error(err) => {
+            // Its a native call so you can return error to reject complete execution call
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
             // Prepare messages to refund tokens back to user
             // Send back both amount in and fee amount
             let msg = swap_info.asset_in.create_transfer_msg(
@@ -522,6 +561,7 @@ fn ack_withdraw_request(
     _sender: String,
     token_id: Token,
     _tx_id: String,
+    is_native: bool,
 ) -> Result<Response, ContractError> {
     match res {
         AcknowledgementMsg::Ok(_data) => {
@@ -532,9 +572,15 @@ fn ack_withdraw_request(
                 .add_attribute("method", "request_withdraw_submitted")
                 .add_attribute("token", token_id.to_string()))
         }
-        AcknowledgementMsg::Error(err) => Ok(Response::new()
-            .add_attribute("method", "request_withdraw_error")
-            .add_attribute("error", err.clone())),
+        AcknowledgementMsg::Error(err) => {
+            // Its a native call so you can return error to reject complete execution call
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("method", "request_withdraw_error")
+                .add_attribute("error", err.clone()))
+        }
     }
 }
 

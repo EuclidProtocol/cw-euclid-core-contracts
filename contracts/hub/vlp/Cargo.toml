@@ -48,8 +48,6 @@ schemars = "0.8.15"
 serde = { version = "1.0.189", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.49" }
 euclid = { workspace = true }
-euclid-ibc = { workspace = true }
-
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 cw-multi-test = { workspace = true }

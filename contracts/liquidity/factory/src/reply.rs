@@ -1,8 +1,14 @@
-use crate::state::{TOKEN_TO_ESCROW, VLP_TO_CW20};
-use cosmwasm_std::{from_json, DepsMut, Reply, Response, SubMsgResult};
+use crate::{
+    ibc,
+    state::{TOKEN_TO_ESCROW, VLP_TO_CW20},
+};
+use cosmwasm_std::{from_json, DepsMut, Env, Reply, Response, SubMsgResult};
 use cw0::{parse_execute_response_data, parse_reply_instantiate_data};
 use euclid::error::ContractError;
-use euclid_ibc::ack::make_ack_fail;
+use euclid_ibc::{
+    ack::make_ack_fail,
+    msg::{ChainIbcExecuteMsg, CHAIN_IBC_EXECUTE_MSG_QUEUE},
+};
 
 pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
@@ -91,6 +97,31 @@ pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
             Ok(Response::new()
                 .add_attribute("reply_on_ibc_receive_processing", "success")
                 .set_data(data))
+        }
+    }
+}
+
+pub fn on_reply_native_ibc_wrapper_call(
+    deps: DepsMut,
+    env: Env,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    let original_msg = CHAIN_IBC_EXECUTE_MSG_QUEUE.load(deps.storage, msg.id)?;
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => {
+            let ack = make_ack_fail(err)?;
+            ibc::ack_and_timeout::reusable_internal_ack_call(deps, env, original_msg, ack, true)
+        }
+        SubMsgResult::Ok(res) => {
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            ibc::ack_and_timeout::reusable_internal_ack_call(deps, env, original_msg, data, true)
         }
     }
 }

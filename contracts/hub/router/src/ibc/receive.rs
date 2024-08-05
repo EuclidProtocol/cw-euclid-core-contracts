@@ -5,7 +5,7 @@ use cosmwasm_std::{
     IbcReceiveResponse, MessageInfo, Order, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
+    chain::{Chain, ChainUid, CrossChainUser},
     error::ContractError,
     events::{tx_event, TxType},
     fee::Fee,
@@ -60,7 +60,7 @@ pub fn ibc_packet_receive(
 }
 
 pub fn ibc_receive_internal_call(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     msg: IbcPacketReceiveMsg,
@@ -68,13 +68,23 @@ pub fn ibc_receive_internal_call(
     // Get the chain data from current channel received
     let channel = msg.packet.dest.channel_id;
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
+    let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
+    reusable_internal_call(deps, env, info, msg, chain_uid)
+}
+
+pub fn reusable_internal_call(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ChainIbcExecuteMsg,
+    chain_uid: ChainUid,
+) -> Result<Response, ContractError> {
+    let _chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     let deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
     ensure!(
         !deregistered_chains.contains(&chain_uid),
         ContractError::DeregisteredChain {}
     );
-    let _chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
     let locked = STATE.load(deps.storage)?.locked;
     ensure!(!locked, ContractError::ContractLocked {});
     match msg {
@@ -87,7 +97,7 @@ pub fn ibc_receive_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_pool_creation(deps, env, sender, pair, tx_id)
+            execute_request_pool_creation(deps.branch(), env, sender, pair, tx_id)
         }
         ChainIbcExecuteMsg::RequestEscrowCreation {
             token,
@@ -98,7 +108,7 @@ pub fn ibc_receive_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_escrow_creation(deps, env, sender, token, tx_id)
+            execute_request_escrow_creation(deps.branch(), env, sender, token, tx_id)
         }
         ChainIbcExecuteMsg::AddLiquidity {
             token_1_liquidity,
@@ -114,7 +124,7 @@ pub fn ibc_receive_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
             ibc_execute_add_liquidity(
-                deps,
+                deps.branch(),
                 env,
                 sender,
                 token_1_liquidity,
@@ -129,14 +139,14 @@ pub fn ibc_receive_internal_call(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_remove_liquidity(deps, env, msg)
+            ibc_execute_remove_liquidity(deps.branch(), env, msg)
         }
         ChainIbcExecuteMsg::Swap(msg) => {
             ensure!(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_swap(deps, env, msg)
+            ibc_execute_swap(deps.branch(), env, msg)
         }
         ChainIbcExecuteMsg::Withdraw(msg) => {
             ensure!(

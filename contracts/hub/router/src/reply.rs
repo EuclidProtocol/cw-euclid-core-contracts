@@ -14,9 +14,15 @@ use euclid::{
     pool::PoolCreationResponse,
     swap::SwapResponse,
 };
-use euclid_ibc::ack::{make_ack_fail, AcknowledgementMsg};
+use euclid_ibc::{
+    ack::{make_ack_fail, AcknowledgementMsg},
+    msg::HUB_IBC_EXECUTE_MSG_QUEUE,
+};
 
-use crate::state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS};
+use crate::{
+    ibc,
+    state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS},
+};
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
@@ -341,6 +347,44 @@ pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
             Ok(Response::new()
                 .add_attribute("reply_on_ibc_receive_processing", "success")
                 .set_data(data))
+        }
+    }
+}
+
+pub fn on_reply_native_ibc_wrapper_call(
+    deps: DepsMut,
+    env: Env,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    let chain_type = euclid::chain::ChainType::Native;
+    let original_msg = HUB_IBC_EXECUTE_MSG_QUEUE.load(deps.storage, msg.id)?;
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => {
+            let ack = make_ack_fail(err)?;
+            ibc::ack_and_timeout::reusable_internal_ack_call(
+                deps,
+                env,
+                original_msg,
+                ack,
+                chain_type,
+            )
+        }
+        SubMsgResult::Ok(res) => {
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            ibc::ack_and_timeout::reusable_internal_ack_call(
+                deps,
+                env,
+                original_msg,
+                data,
+                chain_type,
+            )
         }
     }
 }

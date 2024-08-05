@@ -7,10 +7,12 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
+use euclid_ibc::msg::HUB_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
-    execute_deregister_chain, execute_register_factory, execute_release_escrow,
-    execute_reregister_chain, execute_update_lock, execute_update_vlp_code_id,
+    execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
+    execute_release_escrow, execute_reregister_chain, execute_update_lock,
+    execute_update_vlp_code_id,
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
@@ -97,10 +99,9 @@ pub fn execute(
                 execute_update_vlp_code_id(deps, info, new_vlp_code_id)
             }
             ExecuteMsg::RegisterFactory {
-                channel,
-                timeout,
                 chain_uid,
-            } => execute_register_factory(&mut deps, env, info, chain_uid, channel, timeout),
+                chain_info,
+            } => execute_register_factory(&mut deps, env, info, chain_uid, chain_info),
             ExecuteMsg::ReleaseEscrowInternal {
                 sender,
                 token,
@@ -109,7 +110,7 @@ pub fn execute(
                 timeout,
                 tx_id,
             } => execute_release_escrow(
-                deps,
+                &mut deps,
                 env,
                 info,
                 sender,
@@ -120,12 +121,15 @@ pub fn execute(
                 tx_id,
             ),
             ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-                ibc_receive_internal_call(deps, env, info, receive_msg)
+                ibc_receive_internal_call(&mut deps, env, info, receive_msg)
             }
             ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
                 ibc_ack_packet_internal_call(deps, env, ack)
             }
             ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
+            ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
+                execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
+            }
         }
     }
 }
@@ -161,6 +165,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+    // If reply id if for native ibc wrapper callbacks
+    if msg.id.ge(&HUB_IBC_EXECUTE_MSG_QUEUE_RANGE.0)
+        && msg.id.le(&HUB_IBC_EXECUTE_MSG_QUEUE_RANGE.1)
+    {
+        return reply::on_reply_native_ibc_wrapper_call(deps, env, msg);
+    }
     match msg.id {
         VLP_INSTANTIATE_REPLY_ID => reply::on_vlp_instantiate_reply(deps, msg),
         VLP_POOL_REGISTER_REPLY_ID => reply::on_pool_register_reply(deps, msg),

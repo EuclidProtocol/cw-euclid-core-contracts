@@ -1,15 +1,15 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg,
-    Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
+    from_json, Binary, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcPacketAckMsg,
+    IbcPacketTimeoutMsg, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
 };
 use cosmwasm_std::{to_json_binary, IbcAcknowledgement};
-use euclid::chain::{ChainUid, CrossChainUser};
+use euclid::chain::{Chain, ChainType, ChainUid, CrossChainUser};
 use euclid::error::ContractError;
 use euclid::events::{tx_event, TxType};
 use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
-use euclid::msgs::router::{Chain, ExecuteMsg};
+use euclid::msgs::router::ExecuteMsg;
 use euclid::msgs::vcoin::{ExecuteMint, ExecuteMsg as VcoinExecuteMsg};
 use euclid::token::Token;
 use euclid::vcoin::BalanceKey;
@@ -53,31 +53,38 @@ pub fn ibc_ack_packet_internal_call(
 ) -> Result<Response, ContractError> {
     // Parse the ack based on request
     let msg: HubIbcExecuteMsg = from_json(ack.original_packet.data)?;
+
+    let chain_type = euclid::chain::ChainType::Ibc(euclid::chain::IbcChain {
+        from_hub_channel: ack.original_packet.src.channel_id,
+        from_factory_channel: ack.original_packet.dest.channel_id,
+    });
+
+    reusable_internal_ack_call(deps, env, msg, ack.acknowledgement.data, chain_type)
+}
+
+pub fn reusable_internal_ack_call(
+    deps: DepsMut,
+    env: Env,
+    msg: HubIbcExecuteMsg,
+    ack: Binary,
+    chain_type: euclid::chain::ChainType,
+) -> Result<Response, ContractError> {
     match msg {
         HubIbcExecuteMsg::RegisterFactory {
             chain_uid, tx_id, ..
         } => {
-            let res = from_json(ack.acknowledgement.data)?;
-            ibc_ack_register_factory(
-                deps,
-                env,
-                chain_uid,
-                ack.original_packet.src.channel_id,
-                ack.original_packet.dest.channel_id,
-                res,
-                tx_id,
-            )
+            let res = from_json(ack)?;
+            ibc_ack_register_factory(deps, env, chain_uid, chain_type, res, tx_id)
         }
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
             token,
             tx_id,
             sender,
+            chain_uid,
             ..
         } => {
-            let chain_uid =
-                CHANNEL_TO_CHAIN_UID.load(deps.storage, ack.original_packet.src.channel_id)?;
-            let res = from_json(ack.acknowledgement.data)?;
+            let res = from_json(ack)?;
             ibc_ack_release_escrow(deps, env, chain_uid, sender, amount, token, res, tx_id)
         }
     }
@@ -114,8 +121,7 @@ pub fn ibc_ack_register_factory(
     deps: DepsMut,
     env: Env,
     chain_uid: ChainUid,
-    from_hub_channel: String,
-    from_factory_channel: String,
+    chain_type: euclid::chain::ChainType,
     res: AcknowledgementMsg<RegisterFactoryResponse>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
@@ -126,23 +132,34 @@ pub fn ibc_ack_register_factory(
     ));
     match res {
         AcknowledgementMsg::Ok(data) => {
-            CHANNEL_TO_CHAIN_UID.save(deps.storage, from_hub_channel.clone(), &chain_uid)?;
             let chain_data = Chain {
                 factory_chain_id: data.chain_id.clone(),
                 factory: data.factory_address.clone(),
-                from_hub_channel,
-                from_factory_channel,
+                chain_type,
             };
             CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid.clone(), &chain_data)?;
+            if let ChainType::Ibc(ibc_info) = chain_data.chain_type {
+                CHANNEL_TO_CHAIN_UID.save(
+                    deps.storage,
+                    ibc_info.from_hub_channel.clone(),
+                    &chain_uid,
+                )?;
+            }
             Ok(response
                 .add_attribute("method", "register_factory_ack_success")
                 .add_attribute("factory_chain", data.chain_id)
                 .add_attribute("factory_address", data.factory_address))
         }
 
-        AcknowledgementMsg::Error(err) => Ok(response
-            .add_attribute("method", "register_factory_ack_error")
-            .add_attribute("error", err.clone())),
+        AcknowledgementMsg::Error(err) => {
+            // If its a native then reject via error
+            if matches!(chain_type, ChainType::Native) {
+                return Err(ContractError::new(&err));
+            }
+            Ok(response
+                .add_attribute("method", "register_factory_ack_error")
+                .add_attribute("error", err.clone()))
+        }
     }
 }
 
@@ -195,6 +212,7 @@ pub fn ibc_ack_release_escrow(
             let new_balance = escrow_key.load(deps.storage)?.checked_add(amount)?;
             escrow_key.save(deps.storage, &new_balance)?;
 
+            // Even if its a native chain, we can't reject via Err because other escrow release will also be rejected
             Ok(response
                 .add_message(msg)
                 .add_attribute("method", "escrow_release_ack")
