@@ -71,6 +71,12 @@ pub enum QueryMsg {
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
 
+    #[returns(SimulateEscrowReleaseResponse)]
+    SimulateReleaseEscrow {
+        token: Token,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    },
+
     #[returns(TokenEscrowsResponse)]
     QueryTokenEscrows {
         token: Token,
@@ -143,6 +149,11 @@ pub struct AllChainResponse {
 pub struct SimulateSwapResponse {
     pub amount_out: Uint128,
     pub asset_out: Token,
+}
+
+#[cw_serde]
+pub struct SimulateEscrowReleaseResponse {
+    pub escrow_balances: Vec<(Chain, Uint128)>,
 }
 
 #[cw_serde]

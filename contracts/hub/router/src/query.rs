@@ -1,11 +1,12 @@
 use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order};
 use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
-    chain::ChainUid,
+    chain::{ChainUid, CrossChainUserWithLimit},
     error::ContractError,
     msgs::router::{
         AllChainResponse, AllTokensResponse, AllVlpResponse, ChainResponse, QuerySimulateSwap,
-        SimulateSwapResponse, StateResponse, TokenEscrowsResponse, TokenResponse, VlpResponse,
+        SimulateEscrowReleaseResponse, SimulateSwapResponse, StateResponse, TokenEscrowsResponse,
+        TokenResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -131,6 +132,29 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
     Ok(to_json_binary(&SimulateSwapResponse {
         amount_out: simulate_res.amount_out,
         asset_out: simulate_res.asset_out,
+    })?)
+}
+
+pub fn query_simulate_escrow_release(
+    deps: Deps,
+    token: Token,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+) -> Result<Binary, ContractError> {
+    let mut escrow_balances = Vec::new();
+
+    for cross_chain_address in cross_chain_addresses.into_iter() {
+        let chain =
+            CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
+
+        let escrow_key =
+            ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
+
+        let escrow_balance = escrow_key.may_load(deps.storage)?.unwrap_or_default();
+
+        escrow_balances.push((chain, escrow_balance));
+    }
+    Ok(to_json_binary(&SimulateEscrowReleaseResponse {
+        escrow_balances,
     })?)
 }
 
