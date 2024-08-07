@@ -197,7 +197,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
-    // If reply id if for native ibc wrapper callbacks
+    // If reply id is in CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE range of IDS, process it for native ibc wrapper ack call
+    // Pros - This way we can reuse existing ack_and _timeout calls instead of managing two flow for native and ibc
+    // Cons - Error messages are lost in reply which makes it hard to debug why there was an error. This is fixed from cosmwasm 2.0 probably
     if msg.id.ge(&CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.0)
         && msg.id.le(&CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.1)
     {

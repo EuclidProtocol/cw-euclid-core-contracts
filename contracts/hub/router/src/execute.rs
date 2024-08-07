@@ -100,7 +100,6 @@ pub fn execute_reregister_chain(
         .add_attribute("chain", chain.to_string()))
 }
 
-// Function to update the pool code ID
 pub fn execute_register_factory(
     deps: &mut DepsMut,
     env: Env,
@@ -165,7 +164,6 @@ pub fn execute_register_factory(
     }
 }
 
-// Function to update the pool code ID
 pub fn execute_release_escrow(
     deps: &mut DepsMut,
     env: Env,

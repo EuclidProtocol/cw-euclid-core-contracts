@@ -582,38 +582,3 @@ fn ack_withdraw_request(
         }
     }
 }
-
-// fn ack_request_instantiate_escrow(
-//     deps: DepsMut,
-//     env: Env,
-//     res: AcknowledgementMsg<InstantiateEscrowResponse>,
-//     token_id: Token,
-// ) -> Result<Response, ContractError> {
-//     match res {
-//         AcknowledgementMsg::Ok(data) => {
-//             let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token_id.clone())?;
-//             match escrow_address {
-//                 Some(_) => Err(ContractError::EscrowAlreadyExists {}),
-//                 None => {
-//                     let msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-//                         admin: Some(env.contract.address.into_string()),
-//                         code_id: data.escrow_code_id,
-//                         msg: to_json_binary(&euclid::msgs::escrow::InstantiateMsg {
-//                             token_id: token_id.clone(),
-//                             allowed_denom: None,
-//                         })?,
-//                         funds: vec![],
-//                         label: "escrow".to_string(),
-//                     });
-//                     Ok(Response::new()
-//                         .add_submessage(SubMsg::reply_always(msg, ESCROW_INSTANTIATE_REPLY_ID))
-//                         .add_attribute("method", "instantiate_escrow")
-//                         .add_attribute("token", token_id.to_string()))
-//                 }
-//             }
-//         }
-//         AcknowledgementMsg::Error(err) => Ok(Response::new()
-//             .add_attribute("method", "instantiate_escrow")
-//             .add_attribute("error", err.clone())),
-//     }
-// }
