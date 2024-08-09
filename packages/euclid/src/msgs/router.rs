@@ -74,6 +74,7 @@ pub enum QueryMsg {
     #[returns(SimulateEscrowReleaseResponse)]
     SimulateReleaseEscrow {
         token: Token,
+        amount: Uint128,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     },
 

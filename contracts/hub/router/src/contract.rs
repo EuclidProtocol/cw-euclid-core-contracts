@@ -149,8 +149,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
         QueryMsg::SimulateReleaseEscrow {
             token,
+            amount,
             cross_chain_addresses,
-        } => query_simulate_escrow_release(deps, token, cross_chain_addresses),
+        } => query_simulate_escrow_release(deps, token, amount, cross_chain_addresses),
         QueryMsg::QueryTokenEscrows {
             token,
             start,
