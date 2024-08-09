@@ -153,7 +153,8 @@ pub struct SimulateSwapResponse {
 
 #[cw_serde]
 pub struct SimulateEscrowReleaseResponse {
-    pub escrow_balances: Vec<(Chain, Uint128)>,
+    pub remaining_amount: Uint128,
+    pub release_amounts: Vec<(Uint128, CrossChainUserWithLimit)>,
 }
 
 #[cw_serde]
