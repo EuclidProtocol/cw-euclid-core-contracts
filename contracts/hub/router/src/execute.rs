@@ -109,6 +109,11 @@ pub fn execute_register_factory(
 ) -> Result<Response, ContractError> {
     let chain_uid = chain_uid.validate()?.to_owned();
 
+    ensure!(
+        !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
+        ContractError::new("Factory already exists")
+    );
+
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
     let sender = CrossChainUser {
         chain_uid: vsl_chain_uid.clone(),
@@ -158,7 +163,6 @@ pub fn execute_register_factory(
                 factory_chain_id: env.block.chain_id.clone(),
                 chain_type: euclid::chain::ChainType::Native {},
             };
-            CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid, &chain)?;
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
         }
     }

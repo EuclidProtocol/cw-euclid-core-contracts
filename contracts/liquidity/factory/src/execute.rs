@@ -40,13 +40,14 @@ pub fn execute_update_hub_channel(
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     let old_channel = HUB_CHANNEL.may_load(deps.storage)?;
     HUB_CHANNEL.save(deps.storage, &new_channel)?;
-    Ok(Response::new()
-        .add_attribute("method", "execute_update_hub_channel")
-        .add_attribute("new_channel", new_channel)
-        .add_attribute(
-            "old_channel",
-            old_channel.unwrap_or("no_old_channel".to_string()),
-        ))
+    let mut response = Response::new().add_attribute("method", "execute_update_hub_channel");
+    if !new_channel.is_empty() {
+        response = response.add_attribute("new_channel", new_channel);
+    }
+    Ok(response.add_attribute(
+        "old_channel",
+        old_channel.unwrap_or("no_old_channel".to_string()),
+    ))
 }
 
 // Function to send IBC request to Router in VLS to create a new pool

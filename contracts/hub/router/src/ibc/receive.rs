@@ -70,6 +70,12 @@ pub fn ibc_receive_internal_call(
     // Get the chain data from current channel received
     let channel = msg.packet.dest.channel_id;
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
+    let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+    // Ensure source port is the registered factory
+    ensure!(
+        msg.packet.src.port_id == format!("wasm.{address}", address = chain.factory),
+        ContractError::Unauthorized {}
+    );
     let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
     reusable_internal_call(deps, env, info, msg, chain_uid)
 }
@@ -81,7 +87,6 @@ pub fn reusable_internal_call(
     msg: ChainIbcExecuteMsg,
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
-    let _chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     let deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
     ensure!(
         !deregistered_chains.contains(&chain_uid),
