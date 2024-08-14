@@ -1,11 +1,12 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order, Uint128};
 use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
-    chain::ChainUid,
+    chain::{ChainUid, CrossChainUserWithLimit},
     error::ContractError,
     msgs::router::{
         AllChainResponse, AllTokensResponse, AllVlpResponse, ChainResponse, QuerySimulateSwap,
-        SimulateSwapResponse, StateResponse, TokenEscrowsResponse, TokenResponse, VlpResponse,
+        SimulateEscrowReleaseResponse, SimulateSwapResponse, StateResponse, TokenEscrowsResponse,
+        TokenResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -131,6 +132,41 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
     Ok(to_json_binary(&SimulateSwapResponse {
         amount_out: simulate_res.amount_out,
         asset_out: simulate_res.asset_out,
+    })?)
+}
+
+pub fn query_simulate_escrow_release(
+    deps: Deps,
+    token: Token,
+    amount: Uint128,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+) -> Result<Binary, ContractError> {
+    let mut release_amounts = Vec::new();
+    let mut remaining_withdraw_amount = amount;
+
+    for cross_chain_address in cross_chain_addresses.into_iter() {
+        let escrow_key =
+            ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
+
+        let escrow_balance = escrow_key.may_load(deps.storage)?.unwrap_or_default();
+
+        let release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
+            escrow_balance
+        } else {
+            remaining_withdraw_amount
+        };
+
+        let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
+
+        if release_amount.is_zero() {
+            continue;
+        }
+        remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(release_amount)?;
+        release_amounts.push((release_amount, cross_chain_address));
+    }
+    Ok(to_json_binary(&SimulateEscrowReleaseResponse {
+        remaining_amount: remaining_withdraw_amount,
+        release_amounts,
     })?)
 }
 

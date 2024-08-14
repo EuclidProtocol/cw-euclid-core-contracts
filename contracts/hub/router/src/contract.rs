@@ -16,7 +16,10 @@ use crate::execute::{
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
-use crate::query;
+use crate::query::{
+    self, query_all_chains, query_all_tokens, query_all_vlps, query_chain,
+    query_simulate_escrow_release, query_state, query_token_escrows, query_vlp,
+};
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
     REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_BURN_REPLY_ID, VCOIN_INSTANTIATE_REPLY_ID,
@@ -137,30 +140,35 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::GetState {} => query::query_state(deps),
-        QueryMsg::GetChain { chain_uid } => query::query_chain(deps, chain_uid),
-        QueryMsg::GetAllChains {} => query::query_all_chains(deps),
-        QueryMsg::GetVlp { pair } => query::query_vlp(deps, pair),
+        QueryMsg::GetState {} => query_state(deps),
+        QueryMsg::GetChain { chain_uid } => query_chain(deps, chain_uid),
+        QueryMsg::GetAllChains {} => query_all_chains(deps),
+        QueryMsg::GetVlp { pair } => query_vlp(deps, pair),
         QueryMsg::GetAllVlps {
             start,
             end,
             skip,
             limit,
-        } => query::query_all_vlps(deps, start, end, skip, limit),
+        } => query_all_vlps(deps, start, end, skip, limit),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
+        QueryMsg::SimulateReleaseEscrow {
+            token,
+            amount,
+            cross_chain_addresses,
+        } => query_simulate_escrow_release(deps, token, amount, cross_chain_addresses),
         QueryMsg::QueryTokenEscrows {
             token,
             start,
             end,
             skip,
             limit,
-        } => query::query_token_escrows(deps, token, start, end, skip, limit),
+        } => query_token_escrows(deps, token, start, end, skip, limit),
         QueryMsg::QueryAllTokens {
             start,
             end,
             skip,
             limit,
-        } => query::query_all_tokens(deps, start, end, skip, limit),
+        } => query_all_tokens(deps, start, end, skip, limit),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
