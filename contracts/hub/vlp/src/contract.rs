@@ -39,18 +39,8 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
 
-    BALANCES.save(
-        deps.storage,
-        state.pair.token_1,
-        &Uint128::zero(),
-        env.block.height,
-    )?;
-    BALANCES.save(
-        deps.storage,
-        state.pair.token_2,
-        &Uint128::zero(),
-        env.block.height,
-    )?;
+    BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
 
     let response =
         msg.execute
@@ -139,7 +129,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
             asset_amount,
             swaps,
         } => query_simulate_swap(deps, asset, asset_amount, swaps),
-        QueryMsg::Liquidity { height } => query_liquidity(deps, env, height),
+        QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
 

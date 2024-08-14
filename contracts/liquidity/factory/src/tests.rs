@@ -1,23 +1,14 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate};
-    use crate::execute::{
-        add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
-        execute_swap_request,
-    };
-    use crate::query::{pending_liquidity, pending_swaps, query_all_pools, query_state};
-    use crate::state::{State, HUB_CHANNEL, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW};
+
+    use crate::state::{State, HUB_CHANNEL, STATE};
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{
-        attr, from_json, to_json_binary, Addr, Coin, CosmosMsg, DepsMut, IbcMsg, IbcTimeout,
-        IbcTimeoutBlock, Response, SubMsg, Uint128, WasmMsg,
-    };
+    use cosmwasm_std::{DepsMut, Response};
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
-    use euclid::msgs::factory::{AllPoolsResponse, ExecuteMsg, InstantiateMsg, StateResponse};
-    use euclid::token::{Token, TokenType};
-    use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcSwapExecuteMsg};
+    use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg};
 
     fn initialize_state(deps: &mut DepsMut) {
         let state = State {
@@ -26,6 +17,7 @@ mod tests {
             admin: "admin".to_string(),
             escrow_code_id: 1,
             cw20_code_id: 2,
+            is_native: true,
         };
         STATE.save(deps.storage, &state).unwrap();
     }
@@ -36,6 +28,7 @@ mod tests {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             escrow_code_id: 1,
             cw20_code_id: 2,
+            is_native: true,
         };
         let info = mock_info("owner", &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -52,6 +45,7 @@ mod tests {
             escrow_code_id: 1,
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             cw20_code_id: 2,
+            is_native: true,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

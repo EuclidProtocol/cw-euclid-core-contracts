@@ -1,20 +1,21 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
-    SubMsg, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
+    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::vcoin::ExecuteBurn,
+    msgs::{router::RegisterFactoryChainType, vcoin::ExecuteBurn},
     timeout::get_timeout,
     token::Token,
     utils::generate_tx,
     vcoin::BalanceKey,
 };
-use euclid_ibc::msg::HubIbcExecuteMsg;
+use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
+    ibc::receive,
     reply::VCOIN_BURN_REPLY_ID,
     state::{CHAIN_UID_TO_CHAIN, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE},
 };
@@ -99,16 +100,19 @@ pub fn execute_reregister_chain(
         .add_attribute("chain", chain.to_string()))
 }
 
-// Function to update the pool code ID
 pub fn execute_register_factory(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     chain_uid: ChainUid,
-    channel: String,
-    timeout: Option<u64>,
+    chain_info: RegisterFactoryChainType,
 ) -> Result<Response, ContractError> {
     let chain_uid = chain_uid.validate()?.to_owned();
+
+    ensure!(
+        !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
+        ContractError::new("Factory already exists")
+    );
 
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
     let sender = CrossChainUser {
@@ -127,34 +131,45 @@ pub fn execute_register_factory(
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
-    let msg = HubIbcExecuteMsg::RegisterFactory {
-        chain_uid,
-        tx_id: tx_id.clone(),
-    };
-
-    let timeout = get_timeout(timeout)?;
-
-    let packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&msg)?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-    };
-
-    Ok(Response::new()
+    let response = Response::new()
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
             TxType::RegisterFactory,
         ))
-        .add_attribute("method", "register_factory")
-        .add_attribute("channel", channel)
-        .add_attribute("timeout", timeout.to_string())
-        .add_message(CosmosMsg::Ibc(packet)))
+        .add_attribute("method", "register_factory");
+    let msg = HubIbcExecuteMsg::RegisterFactory {
+        chain_uid: chain_uid.clone(),
+        tx_id: tx_id.clone(),
+    };
+    match chain_info {
+        RegisterFactoryChainType::Ibc(ibc_info) => {
+            let timeout = get_timeout(ibc_info.timeout)?;
+            let packet = IbcMsg::SendPacket {
+                channel_id: ibc_info.channel.clone(),
+                data: to_json_binary(&msg)?,
+                timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+            };
+
+            Ok(response
+                .add_attribute("channel", ibc_info.channel)
+                .add_attribute("timeout", timeout.to_string())
+                .add_message(CosmosMsg::Ibc(packet)))
+        }
+        RegisterFactoryChainType::Native(native_info) => {
+            // Save chain info because this call will fail if the tx is not sucessful
+            let chain = Chain {
+                factory: native_info.factory_address,
+                factory_chain_id: env.block.chain_id.clone(),
+                chain_type: euclid::chain::ChainType::Native {},
+            };
+            Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
+        }
+    }
 }
 
-// Function to update the pool code ID
 pub fn execute_release_escrow(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     sender: CrossChainUser,
@@ -192,7 +207,7 @@ pub fn execute_release_escrow(
     );
 
     let timeout = get_timeout(timeout)?;
-    let mut ibc_messages: Vec<CosmosMsg> = vec![];
+    let mut release_msgs: Vec<SubMsg> = vec![];
 
     let mut cross_chain_addresses_iterator = cross_chain_addresses.into_iter().peekable();
     let mut remaining_withdraw_amount = amount;
@@ -234,46 +249,67 @@ pub fn execute_release_escrow(
             amount: release_amount,
             token: token.clone(),
             to_address: cross_chain_address.user.address.clone(),
-            tx_id: tx_id.clone(),
-        };
-        let packet = IbcMsg::SendPacket {
-            channel_id: chain.from_hub_channel,
-            data: to_json_binary(&send_msg)?,
-            timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-        };
+            // We can't use same tx id because it might conflict with pending requests on receiving chain
+            tx_id: generate_tx(deps.branch(), &env, &sender)?,
+            chain_uid: cross_chain_address.user.chain_uid.clone(),
+        }
+        .to_msg(deps, &env, chain, timeout)?;
 
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(release_amount)?;
-        ibc_messages.push(CosmosMsg::Ibc(packet));
+        release_msgs.push(send_msg);
     }
 
     ensure!(
         transfer_amount.checked_add(remaining_withdraw_amount)? == amount,
         ContractError::new("Amount mismatch after trasnfer calculations")
     );
-    let burn_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Burn(ExecuteBurn {
-        amount: transfer_amount,
-        balance_key: BalanceKey {
-            cross_chain_user: sender.clone(),
-            token_id: token.to_string(),
-        },
-    });
 
-    let burn_vcoin_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: vcoin_address,
-        msg: to_json_binary(&burn_vcoin_msg)?,
-        funds: vec![],
-    });
-
-    Ok(Response::new()
+    let mut response = Response::new()
         .add_event(tx_event(
             &tx_id,
             sender.address.as_str(),
             TxType::EscrowRelease,
         ))
-        .add_attribute("tx_id", tx_id)
-        .add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID))
+        .add_attribute("tx_id", tx_id);
+    if !transfer_amount.is_zero() {
+        let burn_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Burn(ExecuteBurn {
+            amount: transfer_amount,
+            balance_key: BalanceKey {
+                cross_chain_user: sender.clone(),
+                token_id: token.to_string(),
+            },
+        });
+
+        let burn_vcoin_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: vcoin_address,
+            msg: to_json_binary(&burn_vcoin_msg)?,
+            funds: vec![],
+        });
+        response =
+            response.add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID));
+    }
+
+    Ok(response
         .add_attribute("method", "release_escrow")
         .add_attribute("release_expected", amount)
         .add_attribute("actual_released", transfer_amount)
-        .add_messages(ibc_messages))
+        .add_submessages(release_msgs))
+}
+
+pub fn execute_native_receive_callback(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    chain_uid: ChainUid,
+    msg: Binary,
+) -> Result<Response, ContractError> {
+    let chain_uid = chain_uid.validate()?.clone();
+    let msg: ChainIbcExecuteMsg = from_json(msg)?;
+    let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+    // Only native chains can directly use this messages
+    ensure!(chain.is_native(), ContractError::Unauthorized {});
+
+    // Only registered factory contract can execute this message
+    ensure!(chain.factory == info.sender, ContractError::Unauthorized {});
+    receive::reusable_internal_call(deps, env, info, msg, chain_uid)
 }

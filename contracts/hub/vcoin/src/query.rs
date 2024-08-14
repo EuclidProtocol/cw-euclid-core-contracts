@@ -8,7 +8,7 @@ use euclid::{
     vcoin::BalanceKey,
 };
 
-use crate::state::{SNAPSHOT_BALANCES, STATE};
+use crate::state::{BALANCES, STATE};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -16,7 +16,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
 }
 
 pub fn query_balance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, ContractError> {
-    let balance = SNAPSHOT_BALANCES.may_load(
+    let balance = BALANCES.may_load(
         deps.storage,
         balance_key.clone().to_serialized_balance_key(),
     )?;
@@ -30,7 +30,7 @@ pub fn query_user_balances(
     chain_uid: ChainUid,
     address: String,
 ) -> Result<Binary, ContractError> {
-    let balances: Result<_, ContractError> = SNAPSHOT_BALANCES
+    let balances: Result<_, ContractError> = BALANCES
         .prefix((chain_uid.clone(), address.clone()))
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .map(|res| {

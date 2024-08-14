@@ -59,6 +59,12 @@ pub fn ibc_receive_internal_call(
 ) -> Result<Response, ContractError> {
     let router = msg.packet.src.port_id.replace("wasm.", "");
 
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        state.router_contract == router,
+        ContractError::Unauthorized {}
+    );
+
     // Ensure that channel is same as registered in the state
     let channel = msg.packet.dest.channel_id;
     ensure!(
@@ -67,9 +73,17 @@ pub fn ibc_receive_internal_call(
     );
 
     let msg: HubIbcExecuteMsg = from_json(msg.packet.data)?;
+    reusable_internal_call(deps, env, msg)
+}
+
+pub fn reusable_internal_call(
+    deps: DepsMut,
+    env: Env,
+    msg: HubIbcExecuteMsg,
+) -> Result<Response, ContractError> {
     match msg {
         HubIbcExecuteMsg::RegisterFactory { chain_uid, tx_id } => {
-            execute_register_router(deps, env, router, channel, chain_uid, tx_id)
+            execute_register_router(deps, env, chain_uid, tx_id)
         }
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
@@ -84,8 +98,6 @@ pub fn ibc_receive_internal_call(
 fn execute_register_router(
     deps: DepsMut,
     env: Env,
-    router: String,
-    channel: String,
     chain_uid: ChainUid,
     tx_id: String,
 ) -> Result<Response, ContractError> {
@@ -104,11 +116,14 @@ fn execute_register_router(
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
     Ok(Response::new()
-        .add_event(tx_event(&tx_id, &router, TxType::RegisterFactory))
+        .add_event(tx_event(
+            &tx_id,
+            &state.router_contract,
+            TxType::RegisterFactory,
+        ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "register_router")
-        .add_attribute("router", router)
-        .add_attribute("channel", channel)
+        .add_attribute("router", state.router_contract)
         .set_data(ack))
 }
 

@@ -411,7 +411,7 @@ fn test_query_token_allowed() {
         },
     };
     let res: AllowedTokenResponse =
-        from_json(&query(deps.as_ref(), env.clone(), query_msg).unwrap()).unwrap();
+        from_json(query(deps.as_ref(), env.clone(), query_msg).unwrap()).unwrap();
     assert!(res.allowed);
 
     // Try an unallowed denom
@@ -421,6 +421,6 @@ fn test_query_token_allowed() {
         },
     };
     let res: AllowedTokenResponse =
-        from_json(&query(deps.as_ref(), env, query_msg).unwrap()).unwrap();
+        from_json(query(deps.as_ref(), env, query_msg).unwrap()).unwrap();
     assert!(!res.allowed);
 }

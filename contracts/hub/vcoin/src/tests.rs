@@ -2,7 +2,7 @@
 mod tests {
 
     use crate::contract::{execute, instantiate};
-    use crate::state::{SNAPSHOT_BALANCES, STATE};
+    use crate::state::{BALANCES, STATE};
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
@@ -68,7 +68,7 @@ mod tests {
         let expected_snapshot_balance = Uint128::new(10_u128);
 
         let key = balance_key.clone().to_serialized_balance_key();
-        let snapshot_balance = SNAPSHOT_BALANCES.load(&deps.storage, key).unwrap();
+        let snapshot_balance = BALANCES.load(&deps.storage, key).unwrap();
 
         assert_eq!(expected_snapshot_balance, snapshot_balance);
 
@@ -99,7 +99,7 @@ mod tests {
         let expected_snapshot_balance = Uint128::new(5_u128);
 
         let key = balance_key.clone().to_serialized_balance_key();
-        let snapshot_balance = SNAPSHOT_BALANCES.load(&deps.storage, key).unwrap();
+        let snapshot_balance = BALANCES.load(&deps.storage, key).unwrap();
 
         assert_eq!(expected_snapshot_balance, snapshot_balance);
 
@@ -138,8 +138,8 @@ mod tests {
         let key = balance_key.clone().to_serialized_balance_key();
         let key_2 = balance_key_2.clone().to_serialized_balance_key();
 
-        let snapshot_balance = SNAPSHOT_BALANCES.load(&deps.storage, key).unwrap();
-        let snapshot_balance_2 = SNAPSHOT_BALANCES.load(&deps.storage, key_2).unwrap();
+        let snapshot_balance = BALANCES.load(&deps.storage, key).unwrap();
+        let snapshot_balance_2 = BALANCES.load(&deps.storage, key_2).unwrap();
 
         assert_eq!(expected_snapshot_balance_user_1, snapshot_balance);
         assert_eq!(expected_snapshot_balance_user_2, snapshot_balance_2);

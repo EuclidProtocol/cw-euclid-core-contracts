@@ -3,7 +3,7 @@
 use crate::contract::{execute, instantiate, query};
 use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
-use euclid::msgs::vcoin::{ExecuteMsg, GetStateResponse, InstantiateMsg, QueryMsg};
+use euclid::msgs::vcoin::{GetStateResponse, InstantiateMsg, QueryMsg};
 use mock::mock::MockApp;
 
 pub struct MockVcoin(Addr);

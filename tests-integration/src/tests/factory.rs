@@ -39,6 +39,7 @@ fn test_proper_instantiation() {
         chain_uid.clone(),
         escrow_code_id,
         cw20_code_id,
+        true,
     );
 
     let state_response = MockFactory::query_state(&mock_factory, &mut factory);

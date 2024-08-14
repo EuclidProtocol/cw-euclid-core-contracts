@@ -10,11 +10,13 @@ use euclid::{
     events::{tx_event, TxType},
     fee::Fee,
     msgs::{self, router::ExecuteMsg, vcoin::ExecuteMint},
+    pool::EscrowCreationResponse,
+    swap::WithdrawResponse,
     token::{Pair, Token},
     vcoin::BalanceKey,
 };
 use euclid_ibc::{
-    ack::make_ack_fail,
+    ack::{make_ack_fail, AcknowledgementMsg},
     msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg},
 };
 
@@ -60,7 +62,7 @@ pub fn ibc_packet_receive(
 }
 
 pub fn ibc_receive_internal_call(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     msg: IbcPacketReceiveMsg,
@@ -68,13 +70,28 @@ pub fn ibc_receive_internal_call(
     // Get the chain data from current channel received
     let channel = msg.packet.dest.channel_id;
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
+    let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+    // Ensure source port is the registered factory
+    ensure!(
+        msg.packet.src.port_id == format!("wasm.{address}", address = chain.factory),
+        ContractError::Unauthorized {}
+    );
+    let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
+    reusable_internal_call(deps, env, info, msg, chain_uid)
+}
+
+pub fn reusable_internal_call(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ChainIbcExecuteMsg,
+    chain_uid: ChainUid,
+) -> Result<Response, ContractError> {
     let deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
     ensure!(
         !deregistered_chains.contains(&chain_uid),
         ContractError::DeregisteredChain {}
     );
-    let _chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
     let locked = STATE.load(deps.storage)?.locked;
     ensure!(!locked, ContractError::ContractLocked {});
     match msg {
@@ -87,7 +104,7 @@ pub fn ibc_receive_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_pool_creation(deps, env, sender, pair, tx_id)
+            execute_request_pool_creation(deps.branch(), env, sender, pair, tx_id)
         }
         ChainIbcExecuteMsg::RequestEscrowCreation {
             token,
@@ -98,7 +115,7 @@ pub fn ibc_receive_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_escrow_creation(deps, env, sender, token, tx_id)
+            execute_request_escrow_creation(deps.branch(), env, sender, token, tx_id)
         }
         ChainIbcExecuteMsg::AddLiquidity {
             token_1_liquidity,
@@ -114,7 +131,7 @@ pub fn ibc_receive_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
             ibc_execute_add_liquidity(
-                deps,
+                deps.branch(),
                 env,
                 sender,
                 token_1_liquidity,
@@ -129,30 +146,36 @@ pub fn ibc_receive_internal_call(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_remove_liquidity(deps, env, msg)
+            ibc_execute_remove_liquidity(deps.branch(), env, msg)
         }
         ChainIbcExecuteMsg::Swap(msg) => {
             ensure!(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_swap(deps, env, msg)
+            ibc_execute_swap(deps.branch(), env, msg)
         }
         ChainIbcExecuteMsg::Withdraw(msg) => {
             ensure!(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_release_escrow(
+            let res = execute_release_escrow(
                 deps,
                 env,
                 info,
                 msg.sender,
-                msg.token,
+                msg.token.clone(),
                 msg.amount,
                 msg.cross_chain_addresses,
                 msg.timeout,
-                msg.tx_id,
+                msg.tx_id.clone(),
+            );
+            Ok(
+                res?.set_data(to_json_binary(&AcknowledgementMsg::Ok(WithdrawResponse {
+                    token: msg.token,
+                    tx_id: msg.tx_id,
+                }))?),
             )
         }
     }
@@ -259,6 +282,7 @@ fn execute_request_escrow_creation(
         &Uint128::zero(),
     )?;
 
+    let ack = AcknowledgementMsg::Ok(EscrowCreationResponse {});
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
@@ -266,7 +290,8 @@ fn execute_request_escrow_creation(
             TxType::EscrowCreation,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "request_escrow_creation"))
+        .add_attribute("method", "request_escrow_creation")
+        .set_data(to_json_binary(&ack)?))
 }
 
 fn ibc_execute_add_liquidity(
@@ -282,7 +307,7 @@ fn ibc_execute_add_liquidity(
     let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
     let pool_liquidity: euclid::msgs::vlp::GetLiquidityResponse = deps.querier.query_wasm_smart(
         vlp_address.clone(),
-        &euclid::msgs::vlp::QueryMsg::Liquidity { height: None },
+        &euclid::msgs::vlp::QueryMsg::Liquidity {},
     )?;
 
     let mut response = Response::new().add_event(

@@ -1,8 +1,8 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
 use crate::{
-    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
     token::{Pair, Token},
 };
@@ -28,8 +28,7 @@ pub enum ExecuteMsg {
     },
     RegisterFactory {
         chain_uid: ChainUid,
-        channel: String,
-        timeout: Option<u64>,
+        chain_info: RegisterFactoryChainType,
     },
     ReleaseEscrowInternal {
         sender: CrossChainUser,
@@ -47,6 +46,11 @@ pub enum ExecuteMsg {
     // IBC Callbacks
     IbcCallbackReceive {
         receive_msg: IbcPacketReceiveMsg,
+    },
+
+    NativeReceiveCallback {
+        msg: Binary,
+        chain_uid: ChainUid,
     },
 }
 
@@ -102,13 +106,6 @@ pub struct QuerySimulateSwap {
 }
 
 #[cw_serde]
-pub struct Chain {
-    pub factory_chain_id: String,
-    pub factory: String,
-    pub from_hub_channel: String,
-    pub from_factory_channel: String,
-}
-#[cw_serde]
 pub struct StateResponse {
     pub admin: String,
     pub vlp_code_id: u64,
@@ -159,4 +156,20 @@ pub struct TokenResponse {
 #[cw_serde]
 pub struct AllTokensResponse {
     pub tokens: Vec<TokenResponse>,
+}
+
+#[cw_serde]
+pub enum RegisterFactoryChainType {
+    Native(RegisterFactoryChainNative),
+    Ibc(RegisterFactoryChainIbc),
+}
+
+#[cw_serde]
+pub struct RegisterFactoryChainNative {
+    pub factory_address: String,
+}
+#[cw_serde]
+pub struct RegisterFactoryChainIbc {
+    pub channel: String,
+    pub timeout: Option<u64>,
 }

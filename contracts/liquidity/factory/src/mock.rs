@@ -26,9 +26,15 @@ impl MockFactory {
         chain_uid: ChainUid,
         escrow_code_id: u64,
         cw20_code_id: u64,
+        is_native: bool,
     ) -> Self {
-        let msg =
-            mock_factory_instantiate_msg(router_contract, chain_uid, escrow_code_id, cw20_code_id);
+        let msg = mock_factory_instantiate_msg(
+            router_contract,
+            chain_uid,
+            escrow_code_id,
+            cw20_code_id,
+            is_native,
+        );
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid factory", None);
 
         Self(res.unwrap())
@@ -69,12 +75,14 @@ pub fn mock_factory_instantiate_msg(
     chain_uid: ChainUid,
     escrow_code_id: u64,
     cw20_code_id: u64,
+    is_native: bool,
 ) -> InstantiateMsg {
     InstantiateMsg {
         router_contract,
         chain_uid,
         escrow_code_id,
         cw20_code_id,
+        is_native,
     }
 }
 

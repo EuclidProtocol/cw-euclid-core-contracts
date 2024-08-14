@@ -1,26 +1,21 @@
 #[cfg(test)]
 mod tests {
-    use std::borrow::Borrow;
 
     use crate::contract::{execute, instantiate};
-    use crate::query::{self, query_all_chains, query_all_vlps, query_chain, query_vlp};
+
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{
-        ensure, from_json, to_json_binary, Binary, ContractResult, CosmosMsg, IbcMsg, SystemError,
-        SystemResult, Uint128,
-    };
+    use cosmwasm_std::{from_json, CosmosMsg, IbcMsg};
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
     use euclid::msgs::router::{
-        AllChainResponse, AllVlpResponse, Chain, ChainResponse, ExecuteMsg, InstantiateMsg,
-        QuerySimulateSwap, SimulateSwapResponse, VlpResponse,
+        AllChainResponse, AllVlpResponse, ChainResponse, ExecuteMsg, InstantiateMsg,
+        QuerySimulateSwap, RegisterFactoryChainNative, SimulateSwapResponse, VlpResponse,
     };
-    use euclid::msgs::vlp::GetSwapResponse;
-    use euclid::swap::NextSwapPair;
+
     use euclid::token::Token;
     use euclid_ibc::msg::HubIbcExecuteMsg;
     // use euclid_ibc::msg::{InstantiateMsg, ExecuteMsg, QueryMsg};
-    use crate::state::{State, ESCROW_BALANCES, STATE, VLPS};
+    use crate::state::{State, STATE};
 
     struct TestToken {
         name: &'static str,
@@ -174,17 +169,23 @@ mod tests {
             TestExecuteMsg {
                 name: "Register factory by admin",
                 msg: ExecuteMsg::RegisterFactory {
-                    channel: "channel-1".to_string(),
-                    timeout: Some(60),
                     chain_uid: ChainUid::create("1".to_string()).unwrap(),
+                    chain_info: euclid::msgs::router::RegisterFactoryChainType::Native(
+                        RegisterFactoryChainNative {
+                            factory_address: "factory".to_string(),
+                        },
+                    ),
                 },
                 expected_error: None,
             },
             TestExecuteMsg {
                 name: "Register factory by non-admin",
                 msg: ExecuteMsg::RegisterFactory {
-                    channel: "channel-1".to_string(),
-                    timeout: Some(60),
+                    chain_info: euclid::msgs::router::RegisterFactoryChainType::Native(
+                        RegisterFactoryChainNative {
+                            factory_address: "factory".to_string(),
+                        },
+                    ),
                     chain_uid: ChainUid::create("1".to_string()).unwrap(),
                 },
                 expected_error: Some(ContractError::Unauthorized {}),
@@ -209,13 +210,8 @@ mod tests {
 
                     // Verify the response
                     let res = res.unwrap();
-                    assert_eq!(res.attributes.len(), 3);
                     assert_eq!(res.attributes[0].key, "method");
                     assert_eq!(res.attributes[0].value, "register_factory");
-                    assert_eq!(res.attributes[1].key, "channel");
-                    assert_eq!(res.attributes[1].value, "channel-1");
-                    assert_eq!(res.attributes[2].key, "timeout");
-                    assert_eq!(res.attributes[2].value, "60");
 
                     // Verify the IBC packet message
                     let messages = res.messages;
@@ -237,7 +233,7 @@ mod tests {
                             }
                         );
                     } else {
-                        panic!("Expected IbcMsg::SendPacket");
+                        //    Its a native chain call
                     }
                 }
             }

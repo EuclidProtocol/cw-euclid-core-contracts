@@ -23,11 +23,12 @@ pub struct State {
     // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
     // IN THE EUCLID ECOSYSTEM
     pub chain_uid: ChainUid,
+    pub is_native: bool,
 }
 
 pub const STATE: Item<State> = Item::new("state");
 
-// Channel that connects factory to hub chain. This is set after factory registration call from router
+// Channel that connects factory to hub chain
 pub const HUB_CHANNEL: Item<String> = Item::new("hub_channel");
 
 // Map Pair to vlp address

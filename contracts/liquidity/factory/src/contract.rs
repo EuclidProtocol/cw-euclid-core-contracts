@@ -4,13 +4,13 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Std
 use cw2::set_contract_version;
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
+use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
-    add_liquidity_request, execute_request_deregister_denom, execute_request_pool_creation,
-    execute_request_register_denom, execute_request_register_escrow, execute_swap_request,
-    execute_update_hub_channel, execute_withdraw_vcoin, receive_cw20,
+    add_liquidity_request, execute_native_receive_callback, execute_request_deregister_denom,
+    execute_request_pool_creation, execute_request_register_denom, execute_request_register_escrow,
+    execute_swap_request, execute_update_hub_channel, execute_withdraw_vcoin, receive_cw20,
 };
-use crate::ibc;
 use crate::query::{
     get_escrow, get_lp_token_address, get_vlp, pending_liquidity, pending_remove_liquidity,
     pending_swaps, query_all_pools, query_all_tokens, query_state,
@@ -21,6 +21,7 @@ use crate::reply::{
     IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
 };
 use crate::state::{State, STATE};
+use crate::{ibc, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -41,6 +42,7 @@ pub fn instantiate(
         escrow_code_id: msg.escrow_code_id,
         cw20_code_id: msg.cw20_code_id,
         chain_uid,
+        is_native: msg.is_native,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -144,7 +146,7 @@ pub fn execute(
             cross_chain_addresses,
             timeout,
         } => execute_withdraw_vcoin(
-            deps,
+            &mut deps,
             env,
             info,
             token,
@@ -159,6 +161,9 @@ pub fn execute(
         }
         ExecuteMsg::IbcCallbackReceive { receive_msg } => {
             ibc::receive::ibc_receive_internal_call(deps, env, receive_msg)
+        }
+        ExecuteMsg::NativeReceiveCallback { msg } => {
+            execute_native_receive_callback(deps, env, info, msg)
         }
     }
 }
@@ -191,7 +196,15 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+    // If reply id is in CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE range of IDS, process it for native ibc wrapper ack call
+    // Pros - This way we can reuse existing ack_and _timeout calls instead of managing two flow for native and ibc
+    // Cons - Error messages are lost in reply which makes it hard to debug why there was an error. This is fixed from cosmwasm 2.0 probably
+    if msg.id.ge(&CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.0)
+        && msg.id.le(&CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.1)
+    {
+        return reply::on_reply_native_ibc_wrapper_call(deps, env, msg);
+    }
     match msg.id {
         ESCROW_INSTANTIATE_REPLY_ID => on_escrow_instantiate_reply(deps, msg),
         CW20_INSTANTIATE_REPLY_ID => on_cw20_instantiate_reply(deps, msg),

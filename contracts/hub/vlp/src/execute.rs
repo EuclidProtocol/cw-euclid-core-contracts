@@ -163,22 +163,11 @@ pub fn add_liquidity(
     state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
     STATE.save(deps.storage, &state)?;
 
-    BALANCES.save(
-        deps.storage,
-        pair.token_1.clone(),
-        &total_reserve_1,
-        env.block.height,
-    )?;
+    BALANCES.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
 
-    BALANCES.save(
-        deps.storage,
-        pair.token_2.clone(),
-        &total_reserve_2,
-        env.block.height,
-    )?;
+    BALANCES.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
 
     // Add current balance to SNAPSHOT MAP
-    // [TODO] BALANCES snapshotMap Token variable does not inherit all needed values
 
     // Prepare Liquidity Response
     let liquidity_response = AddLiquidityResponse {
@@ -260,19 +249,9 @@ pub fn remove_liquidity(
     total_reserve_1 = total_reserve_1.checked_sub(token_1_liquidity)?;
     total_reserve_2 = total_reserve_2.checked_sub(token_2_liquidity)?;
 
-    BALANCES.save(
-        deps.storage,
-        pair.token_1.clone(),
-        &total_reserve_1,
-        env.block.height,
-    )?;
+    BALANCES.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
 
-    BALANCES.save(
-        deps.storage,
-        pair.token_2.clone(),
-        &total_reserve_2,
-        env.block.height,
-    )?;
+    BALANCES.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
 
     state.total_lp_tokens = state.total_lp_tokens.checked_sub(lp_allocation)?;
     STATE.save(deps.storage, &state)?;
@@ -415,18 +394,8 @@ pub fn execute_swap(
         .checked_add(lp_fee)?;
     token_out_reserve = token_out_reserve.checked_sub(receive_amount)?;
 
-    BALANCES.save(
-        deps.storage,
-        asset_in.clone(),
-        &token_in_reserve,
-        env.block.height,
-    )?;
-    BALANCES.save(
-        deps.storage,
-        asset_out.clone(),
-        &token_out_reserve,
-        env.block.height,
-    )?;
+    BALANCES.save(deps.storage, asset_in.clone(), &token_in_reserve)?;
+    BALANCES.save(deps.storage, asset_out.clone(), &token_out_reserve)?;
 
     let pool = Pool {
         pair: state.pair.clone(),

@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg, IbcTimeout,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
@@ -19,12 +19,16 @@ use euclid::{
 };
 use euclid_ibc::msg::{
     ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcWithdrawExecuteMsg,
+    HubIbcExecuteMsg,
 };
 
-use crate::state::{
-    HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
-    PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
-    VLP_TO_CW20,
+use crate::{
+    ibc::receive,
+    state::{
+        HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
+        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_CW20,
+    },
 };
 
 pub fn execute_update_hub_channel(
@@ -36,13 +40,14 @@ pub fn execute_update_hub_channel(
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     let old_channel = HUB_CHANNEL.may_load(deps.storage)?;
     HUB_CHANNEL.save(deps.storage, &new_channel)?;
-    Ok(Response::new()
-        .add_attribute("method", "execute_update_hub_channel")
-        .add_attribute("new_channel", new_channel)
-        .add_attribute(
-            "old_channel",
-            old_channel.unwrap_or("no_old_channel".to_string()),
-        ))
+    let mut response = Response::new().add_attribute("method", "execute_update_hub_channel");
+    if !new_channel.is_empty() {
+        response = response.add_attribute("new_channel", new_channel);
+    }
+    Ok(response.add_attribute(
+        "old_channel",
+        old_channel.unwrap_or("no_old_channel".to_string()),
+    ))
 }
 
 // Function to send IBC request to Router in VLS to create a new pool
@@ -60,7 +65,7 @@ pub fn execute_request_pool_creation(
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
+        chain_uid: state.chain_uid.clone(),
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
@@ -115,16 +120,20 @@ pub fn execute_request_pool_creation(
 
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::RequestPoolCreation {
-            pair: pair.get_pair()?,
-            sender,
-            tx_id: tx_id.clone(),
-        })?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-    };
+    let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
+        pair: pair.get_pair()?,
+        sender,
+        tx_id: tx_id.clone(),
+    }
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel.clone(),
+        timeout,
+    )?;
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -134,7 +143,7 @@ pub fn execute_request_pool_creation(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation")
-        .add_message(ibc_packet))
+        .add_submessage(pool_create_msg))
 }
 
 pub fn execute_request_register_escrow(
@@ -147,7 +156,7 @@ pub fn execute_request_register_escrow(
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
+        chain_uid: state.chain_uid.clone(),
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
@@ -162,16 +171,20 @@ pub fn execute_request_register_escrow(
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
 
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::RequestEscrowCreation {
-            token: token.clone().token,
-            sender,
-            tx_id: tx_id.clone(),
-        })?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-    };
+    let register_escrow_msg = ChainIbcExecuteMsg::RequestEscrowCreation {
+        token: token.clone().token,
+        sender,
+        tx_id: tx_id.clone(),
+    }
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel,
+        timeout,
+    )?;
 
     let req = EscrowCreateRequest {
         tx_id: tx_id.clone(),
@@ -189,7 +202,7 @@ pub fn execute_request_register_escrow(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_escrow_creation")
-        .add_message(ibc_packet))
+        .add_submessage(register_escrow_msg))
 }
 
 // Add liquidity to the pool
@@ -210,7 +223,7 @@ pub fn add_liquidity_request(
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
+        chain_uid: state.chain_uid.clone(),
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
@@ -322,8 +335,6 @@ pub fn add_liquidity_request(
         );
     }
 
-    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
-
     let liquidity_tx_info = AddLiquidityRequest {
         sender: info.sender.to_string(),
         token_1_liquidity,
@@ -338,21 +349,23 @@ pub fn add_liquidity_request(
         &liquidity_tx_info,
     )?;
 
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::AddLiquidity {
-            sender,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
-            pair,
-            tx_id: tx_id.clone(),
-        })?,
+    let add_liq_msg = ChainIbcExecuteMsg::AddLiquidity {
+        sender,
+        token_1_liquidity,
+        token_2_liquidity,
+        slippage_tolerance,
+        pair,
+        tx_id: tx_id.clone(),
+    }
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel,
         timeout,
-    };
-
-    msgs.push(CosmosMsg::Ibc(ibc_packet));
+    )?;
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -362,7 +375,8 @@ pub fn add_liquidity_request(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "add_liquidity_request")
-        .add_messages(msgs))
+        .add_messages(msgs)
+        .add_submessage(add_liq_msg))
 }
 
 // Add liquidity to the pool
@@ -375,8 +389,9 @@ pub fn remove_liquidity_request(
     pair: Pair,
     lp_allocation: Uint128,
     timeout: Option<u64>,
-    mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 ) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
@@ -391,11 +406,6 @@ pub fn remove_liquidity_request(
 
     ensure!(cw20 == info.sender, ContractError::Unauthorized {});
 
-    cross_chain_addresses.push(CrossChainUserWithLimit {
-        user: sender.clone(),
-        limit: None,
-    });
-
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
         ContractError::PoolDoesNotExists {}
@@ -407,8 +417,6 @@ pub fn remove_liquidity_request(
 
     // Check that the liquidity is greater than 0
     ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
-
-    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
     let liquidity_tx_info = RemoveLiquidityRequest {
         sender: sender_addr.to_string(),
@@ -424,22 +432,22 @@ pub fn remove_liquidity_request(
         &liquidity_tx_info,
     )?;
 
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::RemoveLiquidity(
-            ChainIbcRemoveLiquidityExecuteMsg {
-                sender,
-                lp_allocation,
-                pair,
-                cross_chain_addresses,
-                tx_id: tx_id.clone(),
-            },
-        ))?,
+    let remove_liq_msg = ChainIbcExecuteMsg::RemoveLiquidity(ChainIbcRemoveLiquidityExecuteMsg {
+        sender,
+        lp_allocation,
+        pair,
+        cross_chain_addresses,
+        tx_id: tx_id.clone(),
+    })
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel,
         timeout,
-    };
-
-    let msg = CosmosMsg::Ibc(ibc_packet);
+    )?;
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -449,7 +457,7 @@ pub fn remove_liquidity_request(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "remove_liquidity_request")
-        .add_message(msg))
+        .add_submessage(remove_liq_msg))
 }
 
 // TODO make execute_swap an internal function OR merge execute_swap_request and execute_swap into one function
@@ -465,17 +473,13 @@ pub fn execute_swap_request(
     min_amount_out: Uint128,
     swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
-    mut cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
-
-    cross_chain_addresses.push(CrossChainUserWithLimit {
-        user: sender.clone(),
-        limit: None,
-    });
 
     let partner_fee_bps = partner_fee
         .clone()
@@ -521,7 +525,6 @@ pub fn execute_swap_request(
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
-    let timeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout));
 
     // Verify that this asset is allowed
     let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
@@ -572,7 +575,7 @@ pub fn execute_swap_request(
         amount_in,
         min_amount_out,
         swaps: swaps.clone(),
-        timeout: timeout.clone(),
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
         tx_id: tx_id.clone(),
         cross_chain_addresses: cross_chain_addresses.clone(),
         partner_fee_amount,
@@ -586,25 +589,25 @@ pub fn execute_swap_request(
         &swap_info,
     )?;
 
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::Swap(
-            euclid_ibc::msg::ChainIbcSwapExecuteMsg {
-                sender,
-                asset_in: asset_in.token,
-                amount_in,
-                asset_out,
-                min_amount_out,
-                swaps,
-                tx_id: tx_id.clone(),
-                cross_chain_addresses,
-            },
-        ))?,
+    let swap_msg = ChainIbcExecuteMsg::Swap(euclid_ibc::msg::ChainIbcSwapExecuteMsg {
+        sender,
+        asset_in: asset_in.token,
+        amount_in,
+        asset_out,
+        min_amount_out,
+        swaps,
+        tx_id: tx_id.clone(),
+        cross_chain_addresses,
+    })
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel,
         timeout,
-    };
-
-    let msg = CosmosMsg::Ibc(ibc_packet);
+    )?;
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -615,7 +618,7 @@ pub fn execute_swap_request(
         .add_event(swap_event(&tx_id, &swap_info))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
-        .add_message(msg))
+        .add_submessage(swap_msg))
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
@@ -751,7 +754,7 @@ pub fn execute_request_deregister_denom(
 }
 
 pub fn execute_withdraw_vcoin(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     token: Token,
@@ -764,24 +767,29 @@ pub fn execute_withdraw_vcoin(
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
-        chain_uid: state.chain_uid,
+        chain_uid: state.chain_uid.clone(),
     };
-    let tx_id = generate_tx(deps, &env, &sender)?;
-    let final_timeout = get_timeout(timeout)?;
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+    let timeout = get_timeout(timeout)?;
 
-    // Create IBC packet to send to Router
-    let ibc_packet = IbcMsg::SendPacket {
-        channel_id: channel.clone(),
-        data: to_json_binary(&ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
-            sender,
-            token,
-            amount,
-            cross_chain_addresses,
-            tx_id: tx_id.clone(),
-            timeout,
-        }))?,
-        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(final_timeout)),
-    };
+    let withdraw_msg = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
+        sender,
+        token,
+        amount,
+        cross_chain_addresses,
+        tx_id: tx_id.clone(),
+        timeout: Some(timeout),
+    })
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel,
+        timeout,
+    )?;
+
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
@@ -790,5 +798,25 @@ pub fn execute_withdraw_vcoin(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "withdraw_vcoin")
-        .add_message(ibc_packet))
+        .add_submessage(withdraw_msg))
+}
+
+pub fn execute_native_receive_callback(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: Binary,
+) -> Result<Response, ContractError> {
+    let msg: HubIbcExecuteMsg = from_json(msg)?;
+    let state = STATE.load(deps.storage)?;
+
+    // Only native chains can directly use this messages
+    ensure!(state.is_native, ContractError::Unauthorized {});
+
+    // Only router contract can execute this message
+    ensure!(
+        state.router_contract == info.sender,
+        ContractError::Unauthorized {}
+    );
+    receive::reusable_internal_call(deps, env, msg)
 }

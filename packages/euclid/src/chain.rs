@@ -98,3 +98,35 @@ pub struct CrossChainUserWithLimit {
     pub user: CrossChainUser,
     pub limit: Option<Uint128>,
 }
+
+#[cw_serde]
+pub struct Chain {
+    pub factory_chain_id: String,
+    pub factory: String,
+    pub chain_type: ChainType,
+}
+
+#[cw_serde]
+pub struct IbcChain {
+    pub from_hub_channel: String,
+    pub from_factory_channel: String,
+}
+
+#[cw_serde]
+pub enum ChainType {
+    Ibc(IbcChain),
+    Native {},
+}
+
+impl Chain {
+    pub fn is_native(&self) -> bool {
+        matches!(self.chain_type, ChainType::Native {})
+    }
+
+    pub fn ibc_info(&self) -> Result<IbcChain, ContractError> {
+        match self.chain_type.clone() {
+            ChainType::Ibc(data) => Ok(data),
+            _ => Err(ContractError::new("Not an ibc chain")),
+        }
+    }
+}

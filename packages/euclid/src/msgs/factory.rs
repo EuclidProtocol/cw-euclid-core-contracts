@@ -6,7 +6,7 @@ use crate::{
     token::{Pair, PairWithDenom, Token, TokenType, TokenWithDenom},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -16,6 +16,7 @@ pub struct InstantiateMsg {
     pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
     pub cw20_code_id: u64,
+    pub is_native: bool,
 }
 
 #[cw_serde]
@@ -77,6 +78,9 @@ pub enum ExecuteMsg {
     // IBC Callbacks
     IbcCallbackReceive {
         receive_msg: IbcPacketReceiveMsg,
+    },
+    NativeReceiveCallback {
+        msg: Binary,
     },
 }
 
