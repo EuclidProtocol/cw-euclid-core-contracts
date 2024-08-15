@@ -9,7 +9,7 @@ mod tests {
     use cosmwasm_std::{coins, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
 
-    use euclid::fee::Fee;
+    use euclid::fee::{Fee, TotalFees};
     use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
 
     use euclid::token::{Pair, Token};
@@ -56,6 +56,10 @@ mod tests {
                     chain_uid: ChainUid::create("1".to_string()).unwrap(),
                     address: "addr".to_string(),
                 },
+            },
+            total_fees_collected: TotalFees {
+                lp_fees: Uint128::zero(),
+                euclid_fees: Uint128::zero(),
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),

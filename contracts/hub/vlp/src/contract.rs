@@ -2,6 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
 use cw2::set_contract_version;
+use euclid::fee::TotalFees;
 
 use crate::reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID};
 use crate::state::{State, BALANCES, STATE};
@@ -31,6 +32,10 @@ pub fn instantiate(
         vcoin: msg.vcoin,
         router: info.sender.to_string(),
         fee: msg.fee,
+        total_fees_collected: TotalFees {
+            lp_fees: Uint128::zero(),
+            euclid_fees: Uint128::zero(),
+        },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
         admin: msg.admin,

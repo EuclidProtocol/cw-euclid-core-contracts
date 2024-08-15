@@ -1,4 +1,5 @@
 use cosmwasm_schema::cw_serde;
+use cosmwasm_std::Uint128;
 
 use crate::chain::CrossChainUser;
 
@@ -13,6 +14,14 @@ pub struct Fee {
     pub euclid_fee_bps: u64,
     // Recipient for the fee
     pub recipient: CrossChainUser,
+}
+
+#[cw_serde]
+pub struct TotalFees {
+    // Fee for lp providers
+    pub lp_fees: Uint128,
+    // Fee for euclid treasury, distributed among stakers and other euclid related rewards
+    pub euclid_fees: Uint128,
 }
 
 // Set maximum fee as 0.3%
