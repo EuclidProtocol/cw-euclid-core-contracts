@@ -476,7 +476,7 @@ pub fn execute_swap_request(
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
@@ -602,12 +602,22 @@ pub fn execute_swap_request(
     .to_msg(
         deps,
         &env,
-        state.router_contract,
-        state.chain_uid,
+        state.clone().router_contract,
+        state.clone().chain_uid,
         state.is_native,
         channel,
         timeout,
     )?;
+
+    if !partner_fee_amount.is_zero() {
+        // Add partner fee collected to the total
+        state.partner_fees_collected = state
+            .partner_fees_collected
+            .checked_add(partner_fee_amount)?;
+
+        // Save new total partner fees collected to state
+        STATE.save(deps.storage, &state)?;
+    }
 
     Ok(Response::new()
         .add_event(tx_event(

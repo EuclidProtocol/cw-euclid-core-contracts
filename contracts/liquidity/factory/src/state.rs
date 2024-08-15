@@ -24,6 +24,8 @@ pub struct State {
     // IN THE EUCLID ECOSYSTEM
     pub chain_uid: ChainUid,
     pub is_native: bool,
+    // Total partner fees collected
+    pub partner_fees_collected: Uint128,
 }
 
 pub const STATE: Item<State> = Item::new("state");

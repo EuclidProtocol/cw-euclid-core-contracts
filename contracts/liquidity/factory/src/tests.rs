@@ -5,7 +5,7 @@ mod tests {
     use crate::state::{State, HUB_CHANNEL, STATE};
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{DepsMut, Response};
+    use cosmwasm_std::{DepsMut, Response, Uint128};
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
     use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg};
@@ -18,6 +18,7 @@ mod tests {
             escrow_code_id: 1,
             cw20_code_id: 2,
             is_native: true,
+            partner_fees_collected: Uint128::zero(),
         };
         STATE.save(deps.storage, &state).unwrap();
     }
@@ -46,6 +47,7 @@ mod tests {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             cw20_code_id: 2,
             is_native: true,
+            partner_fees_collected: Uint128::zero(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

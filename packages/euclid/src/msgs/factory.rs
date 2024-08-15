@@ -95,6 +95,10 @@ pub enum QueryMsg {
 
     #[returns(StateResponse)]
     GetState {},
+
+    #[returns(PartnerFeesCollectedResponse)]
+    GetPartnerFeesCollected {},
+
     // Query to get all pools in the factory
     #[returns(AllPoolsResponse)]
     GetAllPools {},
@@ -150,6 +154,11 @@ pub struct StateResponse {
     pub hub_channel: Option<String>,
     pub admin: String,
     // pub pool_code_id: u64,
+}
+
+#[cw_serde]
+pub struct PartnerFeesCollectedResponse {
+    pub total: Uint128,
 }
 
 #[cw_serde]
