@@ -12,6 +12,7 @@ use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
+    query_total_fees_collected,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
@@ -136,6 +137,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         } => query_simulate_swap(deps, asset, asset_amount, swaps),
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
+        QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
         QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
 
         QueryMsg::GetAllPools {} => query_all_pools(deps),

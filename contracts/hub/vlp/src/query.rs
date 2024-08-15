@@ -9,7 +9,7 @@ use euclid::token::Token;
 
 use euclid::msgs::vlp::{
     AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
-    PoolInfo, PoolResponse,
+    PoolInfo, PoolResponse, TotalFeesResponse,
 };
 
 use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
@@ -89,6 +89,14 @@ pub fn query_liquidity(deps: Deps, _env: Env) -> Result<Binary, ContractError> {
 pub fn query_fee(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&FeeResponse { fee: state.fee })?)
+}
+
+// Function to query total fees collected of the contract
+pub fn query_total_fees_collected(deps: Deps) -> Result<Binary, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    Ok(to_json_binary(&TotalFeesResponse {
+        total_fees: state.total_fees_collected,
+    })?)
 }
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
