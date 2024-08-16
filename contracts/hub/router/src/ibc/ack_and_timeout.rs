@@ -87,6 +87,10 @@ pub fn reusable_internal_ack_call(
             let res = from_json(ack)?;
             ibc_ack_release_escrow(deps, env, chain_uid, sender, amount, token, res, tx_id)
         }
+        HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
+            let res = from_json(ack)?;
+            ibc_ack_update_factory_channel(deps, env, chain_uid, chain_type, res, tx_id)
+        }
     }
 }
 
@@ -121,10 +125,57 @@ pub fn ibc_ack_register_factory(
     deps: DepsMut,
     env: Env,
     chain_uid: ChainUid,
-    chain_type: euclid::chain::ChainType,
+    chain_type: ChainType,
     res: AcknowledgementMsg<RegisterFactoryResponse>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
+    let response = Response::new().add_event(tx_event(
+        &tx_id,
+        env.contract.address.as_str(),
+        TxType::RegisterFactory,
+    ));
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            let chain_data = Chain {
+                factory_chain_id: data.chain_id.clone(),
+                factory: data.factory_address.clone(),
+                chain_type,
+            };
+            CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid.clone(), &chain_data)?;
+            if let ChainType::Ibc(ibc_info) = chain_data.chain_type {
+                CHANNEL_TO_CHAIN_UID.save(
+                    deps.storage,
+                    ibc_info.from_hub_channel.clone(),
+                    &chain_uid,
+                )?;
+            }
+            Ok(response
+                .add_attribute("method", "register_factory_ack_success")
+                .add_attribute("factory_chain", data.chain_id)
+                .add_attribute("factory_address", data.factory_address))
+        }
+
+        AcknowledgementMsg::Error(err) => {
+            // If its a native then reject via error
+            if matches!(chain_type, ChainType::Native {}) {
+                return Err(ContractError::new(&err));
+            }
+            Ok(response
+                .add_attribute("method", "register_factory_ack_error")
+                .add_attribute("error", err.clone()))
+        }
+    }
+}
+
+pub fn ibc_ack_update_factory_channel(
+    deps: DepsMut,
+    env: Env,
+    chain_uid: ChainUid,
+    chain_type: ChainType,
+    res: AcknowledgementMsg<RegisterFactoryResponse>,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    todo!();
     let response = Response::new().add_event(tx_event(
         &tx_id,
         env.contract.address.as_str(),

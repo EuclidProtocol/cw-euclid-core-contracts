@@ -168,6 +168,75 @@ pub fn execute_register_factory(
     }
 }
 
+pub fn execute_update_factory_channel(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    chain_uid: ChainUid,
+    channel: String,
+    chain_info: RegisterFactoryChainType,
+) -> Result<Response, ContractError> {
+    let chain_uid = chain_uid.validate()?.to_owned();
+
+    ensure!(
+        !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
+        ContractError::new("Factory already exists")
+    );
+
+    let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+    let sender = CrossChainUser {
+        chain_uid: vsl_chain_uid.clone(),
+        address: info.sender.to_string(),
+    };
+
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        chain_uid != vsl_chain_uid,
+        ContractError::new("Cannot use VSL chain uid")
+    );
+
+    // TODO: Add check for existing chain ids
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let response = Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            TxType::RegisterFactory,
+        ))
+        .add_attribute("method", "register_factory");
+    let msg = HubIbcExecuteMsg::UpdateFactoryChannel {
+        chain_uid: chain_uid.clone(),
+        tx_id: tx_id.clone(),
+    };
+    match chain_info {
+        RegisterFactoryChainType::Ibc(ibc_info) => {
+            let timeout = get_timeout(ibc_info.timeout)?;
+            let packet = IbcMsg::SendPacket {
+                channel_id: ibc_info.channel.clone(),
+                data: to_json_binary(&msg)?,
+                timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+            };
+
+            Ok(response
+                .add_attribute("channel", ibc_info.channel)
+                .add_attribute("timeout", timeout.to_string())
+                .add_message(CosmosMsg::Ibc(packet)))
+        }
+        RegisterFactoryChainType::Native(native_info) => {
+            // Save chain info because this call will fail if the tx is not sucessful
+            let chain = Chain {
+                factory: native_info.factory_address,
+                factory_chain_id: env.block.chain_id.clone(),
+                chain_type: euclid::chain::ChainType::Native {},
+            };
+            Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
+        }
+    }
+}
+
 pub fn execute_release_escrow(
     deps: &mut DepsMut,
     env: Env,
