@@ -92,9 +92,11 @@ pub fn reusable_internal_call(
             tx_id,
             ..
         } => execute_release_escrow(deps, env, amount, token, to_address, tx_id),
-        HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
-            execute_update_factory_channel(deps, env, chain_uid, tx_id)
-        }
+        HubIbcExecuteMsg::UpdateFactoryChannel {
+            chain_uid,
+            channel,
+            tx_id,
+        } => execute_update_factory_channel(deps, env, chain_uid, tx_id),
     }
 }
 
@@ -136,7 +138,6 @@ fn execute_update_factory_channel(
     chain_uid: ChainUid,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    todo!();
     let chain_uid = chain_uid.validate()?.to_owned();
     let ack_msg = RegisterFactoryResponse {
         factory_address: env.contract.address.to_string(),

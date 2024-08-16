@@ -87,9 +87,13 @@ pub fn reusable_internal_ack_call(
             let res = from_json(ack)?;
             ibc_ack_release_escrow(deps, env, chain_uid, sender, amount, token, res, tx_id)
         }
-        HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
+        HubIbcExecuteMsg::UpdateFactoryChannel {
+            chain_uid,
+            channel,
+            tx_id,
+        } => {
             let res = from_json(ack)?;
-            ibc_ack_update_factory_channel(deps, env, chain_uid, chain_type, res, tx_id)
+            ibc_ack_update_factory_channel(deps, env, chain_uid, channel, chain_type, res, tx_id)
         }
     }
 }
@@ -171,11 +175,11 @@ pub fn ibc_ack_update_factory_channel(
     deps: DepsMut,
     env: Env,
     chain_uid: ChainUid,
+    channel: String,
     chain_type: ChainType,
     res: AcknowledgementMsg<RegisterFactoryResponse>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    todo!();
     let response = Response::new().add_event(tx_event(
         &tx_id,
         env.contract.address.as_str(),
@@ -195,6 +199,8 @@ pub fn ibc_ack_update_factory_channel(
                     ibc_info.from_hub_channel.clone(),
                     &chain_uid,
                 )?;
+                // Remove old channel
+                CHANNEL_TO_CHAIN_UID.remove(deps.storage, channel);
             }
             Ok(response
                 .add_attribute("method", "register_factory_ack_success")

@@ -17,7 +17,9 @@ use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 use crate::{
     ibc::receive,
     reply::VCOIN_BURN_REPLY_ID,
-    state::{CHAIN_UID_TO_CHAIN, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE},
+    state::{
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+    },
 };
 
 // Function to update the pool code ID
@@ -172,16 +174,20 @@ pub fn execute_update_factory_channel(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
-    chain_uid: ChainUid,
     channel: String,
     chain_info: RegisterFactoryChainType,
 ) -> Result<Response, ContractError> {
-    let chain_uid = chain_uid.validate()?.to_owned();
+    // let chain_uid = chain_uid.validate()?.to_owned();
 
-    ensure!(
-        !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
-        ContractError::new("Factory already exists")
-    );
+    // ensure!(
+    //     !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
+    //     ContractError::new("Factory already exists")
+    // );
+
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel.clone())?;
 
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
     let sender = CrossChainUser {
@@ -196,19 +202,16 @@ pub fn execute_update_factory_channel(
         ContractError::new("Cannot use VSL chain uid")
     );
 
-    // TODO: Add check for existing chain ids
-    let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-
     let response = Response::new()
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            TxType::RegisterFactory,
+            TxType::UpdateFactoryChannel,
         ))
         .add_attribute("method", "register_factory");
     let msg = HubIbcExecuteMsg::UpdateFactoryChannel {
         chain_uid: chain_uid.clone(),
+        channel,
         tx_id: tx_id.clone(),
     };
     match chain_info {
