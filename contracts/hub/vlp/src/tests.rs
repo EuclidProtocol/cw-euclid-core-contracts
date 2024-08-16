@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
     use crate::contract::{execute, instantiate};
 
     use crate::state::{State, BALANCES, STATE};
@@ -9,7 +11,7 @@ mod tests {
     use cosmwasm_std::{coins, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
 
-    use euclid::fee::{Fee, TotalFees};
+    use euclid::fee::{DenomFees, Fee, TotalFees};
     use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
 
     use euclid::token::{Pair, Token};
@@ -58,8 +60,12 @@ mod tests {
                 },
             },
             total_fees_collected: TotalFees {
-                lp_fees: Uint128::zero(),
-                euclid_fees: Uint128::zero(),
+                lp_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),

@@ -348,7 +348,10 @@ pub fn execute_swap(
     let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
 
     // Add the lp fee to total fees
-    state.total_fees_collected.lp_fees = state.total_fees_collected.lp_fees.checked_add(lp_fee)?;
+    state
+        .total_fees_collected
+        .lp_fees
+        .add_fee(asset_in.to_string(), lp_fee);
 
     // Calcuate the sum of fees
     let total_fee = lp_fee.checked_add(euclid_fee)?;
@@ -429,10 +432,10 @@ pub fn execute_swap(
 
     if !euclid_fee.is_zero() {
         // Add the euclid fee to total fees
-        state.total_fees_collected.euclid_fees = state
+        state
             .total_fees_collected
             .euclid_fees
-            .checked_add(euclid_fee)?;
+            .add_fee(asset_in.to_string(), euclid_fee);
 
         let euclid_fee_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
             amount: euclid_fee,
