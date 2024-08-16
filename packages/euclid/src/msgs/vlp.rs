@@ -90,7 +90,7 @@ pub enum QueryMsg {
     TotalFeesCollected {},
 
     #[returns(TotalFeesPerDenomResponse)]
-    TotalFeesPerDenom {},
+    TotalFeesPerDenom { denom: String },
 
     // Queries the pool information for a chain id
     #[returns(PoolResponse)]
