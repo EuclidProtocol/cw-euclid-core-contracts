@@ -89,6 +89,9 @@ pub enum QueryMsg {
     #[returns(TotalFeesResponse)]
     TotalFeesCollected {},
 
+    #[returns(TotalFeesPerDenomResponse)]
+    TotalFeesPerDenom {},
+
     // Queries the pool information for a chain id
     #[returns(PoolResponse)]
     Pool { chain_uid: ChainUid },
@@ -131,6 +134,12 @@ pub struct FeeResponse {
 #[cw_serde]
 pub struct TotalFeesResponse {
     pub total_fees: TotalFees,
+}
+
+#[cw_serde]
+pub struct TotalFeesPerDenomResponse {
+    pub lp_fees: Uint128,
+    pub euclid_fees: Uint128,
 }
 
 #[cw_serde]

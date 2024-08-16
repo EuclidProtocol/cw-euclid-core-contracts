@@ -144,6 +144,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
+        QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps),
         QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
 
         QueryMsg::GetAllPools {} => query_all_pools(deps),
