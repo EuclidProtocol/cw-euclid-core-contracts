@@ -21,7 +21,6 @@ use euclid_ibc::{
 };
 
 use crate::{
-    execute::execute_release_escrow,
     query::validate_swap_pairs,
     reply::{
         ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
@@ -83,7 +82,7 @@ pub fn ibc_receive_internal_call(
 pub fn reusable_internal_call(
     deps: &mut DepsMut,
     env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
     msg: ChainIbcExecuteMsg,
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
@@ -160,23 +159,26 @@ pub fn reusable_internal_call(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            let res = execute_release_escrow(
-                deps,
-                env,
-                info,
-                msg.sender,
-                msg.token.clone(),
-                msg.amount,
-                msg.cross_chain_addresses,
-                msg.timeout,
-                msg.tx_id.clone(),
-            );
-            Ok(
-                res?.set_data(to_json_binary(&AcknowledgementMsg::Ok(WithdrawResponse {
+
+            let release_msg = ExecuteMsg::ReleaseEscrowInternal {
+                sender: msg.sender,
+                token: msg.token.clone(),
+                amount: msg.amount,
+                cross_chain_addresses: msg.cross_chain_addresses,
+                timeout: msg.timeout,
+                tx_id: msg.tx_id.clone(),
+            };
+
+            Ok(Response::new()
+                .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&release_msg)?,
+                    funds: vec![],
+                }))
+                .set_data(to_json_binary(&AcknowledgementMsg::Ok(WithdrawResponse {
                     token: msg.token,
                     tx_id: msg.tx_id,
-                }))?),
-            )
+                }))?))
         }
     }
 }
