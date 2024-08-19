@@ -44,6 +44,9 @@ pub enum ContractError {
     #[error("Chain already exist")]
     ChainAlreadyExist {},
 
+    #[error("Invalid Asset: {asset}")]
+    InvalidAsset { asset: String },
+
     #[error("ZeroWithdrawalAmount")]
     ZeroWithdrawalAmount {},
 
