@@ -69,6 +69,9 @@ pub fn execute_request_pool_creation(
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
+    // Validate token pair
+    pair.validate(deps.as_ref())?;
+
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}

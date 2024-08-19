@@ -3,8 +3,8 @@ use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, StdError,
-    StdResult, Uint128, WasmMsg,
+    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, Deps,
+    StdError, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
@@ -358,6 +358,26 @@ pub struct PairWithDenom {
 }
 
 impl PairWithDenom {
+    pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
+        // Check for duplicates
+        ensure!(
+            self.token_1.token != self.token_2.token,
+            ContractError::DuplicateTokens {}
+        );
+        // Validate smart contract addresses
+        if self.token_1.token_type.is_smart() {
+            let address = self.token_1.token_type.get_denom();
+            deps.api.addr_validate(address.as_str())?;
+        }
+
+        if self.token_2.token_type.is_smart() {
+            let address = self.token_2.token_type.get_denom();
+            deps.api.addr_validate(address.as_str())?;
+        }
+
+        Ok(())
+    }
+
     pub fn get_pair(&self) -> Result<Pair, ContractError> {
         Pair::new(self.token_1.token.clone(), self.token_2.token.clone())
     }
