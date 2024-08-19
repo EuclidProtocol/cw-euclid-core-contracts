@@ -485,6 +485,9 @@ pub fn execute_swap_request(
     let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
 
+    // Validate asset in
+    asset_in.validate(deps.as_ref())?;
+
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     let partner_fee_bps = partner_fee
