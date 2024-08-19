@@ -1,6 +1,6 @@
 use crate::{
     chain::{ChainUid, CrossChainUserWithLimit},
-    fee::PartnerFee,
+    fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenom, Token, TokenType, TokenWithDenom},
@@ -158,6 +158,11 @@ pub struct StateResponse {
 
 #[cw_serde]
 pub struct PartnerFeesCollectedResponse {
+    pub total: DenomFees,
+}
+
+#[cw_serde]
+pub struct PartnerFeesCollectedPerDenomResponse {
     pub total: Uint128,
 }
 

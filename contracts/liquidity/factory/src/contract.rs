@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
+use euclid::fee::DenomFees;
 use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
@@ -43,7 +46,9 @@ pub fn instantiate(
         cw20_code_id: msg.cw20_code_id,
         chain_uid,
         is_native: msg.is_native,
-        partner_fees_collected: Uint128::zero(),
+        partner_fees_collected: DenomFees {
+            totals: HashMap::default(),
+        },
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
