@@ -377,7 +377,7 @@ impl PairWithDenom {
         }
 
         if self.token_2.token_type.is_smart() {
-            let denom = self.token_1.token_type.get_denom();
+            let denom = self.token_2.token_type.get_denom();
             let potential_supply = deps.querier.query_supply(denom.clone())?;
             let non_empty_denom = !denom.is_empty();
             let non_zero_supply = !potential_supply.amount.is_zero();
