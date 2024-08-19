@@ -220,6 +220,9 @@ pub fn add_liquidity_request(
     slippage_tolerance: u64,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
+    // Validate pair
+    pair_info.validate(deps.as_ref())?;
+
     let pair = pair_info.get_pair()?;
 
     // Check that slippage tolerance is between 1 and 100
