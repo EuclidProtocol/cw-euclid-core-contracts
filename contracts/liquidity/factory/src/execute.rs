@@ -50,7 +50,7 @@ pub fn execute_update_hub_channel(
     ))
 }
 
-// Function to send IBC request to Router in VLS to create a new pool
+// Function to send IBC request to Router in VSL to create a new pool
 pub fn execute_request_pool_creation(
     deps: &mut DepsMut,
     env: Env,
