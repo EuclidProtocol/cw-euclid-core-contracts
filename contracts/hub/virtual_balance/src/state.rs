@@ -1,6 +1,6 @@
 use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map};
-use euclid::{msgs::vcoin::State, vcoin::SerializedBalanceKey};
+use euclid::{msgs::virtual_balance::State, virtual_balance::SerializedBalanceKey};
 
 pub const STATE: Item<State> = Item::new("state");
 

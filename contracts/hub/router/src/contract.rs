@@ -22,8 +22,8 @@ use crate::query::{
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
-    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VCOIN_BURN_REPLY_ID, VCOIN_INSTANTIATE_REPLY_ID,
-    VCOIN_MINT_REPLY_ID, VCOIN_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
+    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, virtual_balance_BURN_REPLY_ID, virtual_balance_INSTANTIATE_REPLY_ID,
+    virtual_balance_MINT_REPLY_ID, virtual_balance_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
     VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, DEREGISTERED_CHAINS, STATE};
@@ -43,27 +43,27 @@ pub fn instantiate(
     let state = State {
         vlp_code_id: msg.vlp_code_id,
         admin: info.sender.to_string(),
-        vcoin_address: None,
+        virtual_balance_address: None,
         locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
 
-    let vcoin_instantiate_msg = euclid::msgs::vcoin::InstantiateMsg {
+    let virtual_balance_instantiate_msg = euclid::msgs::virtual_balance::InstantiateMsg {
         router: env.contract.address.clone(),
         admin: Some(info.sender.clone()),
     };
-    let vcoin_instantiate_msg = WasmMsg::Instantiate {
+    let virtual_balance_instantiate_msg = WasmMsg::Instantiate {
         admin: Some(info.sender.to_string()),
-        code_id: msg.vcoin_code_id,
-        msg: to_json_binary(&vcoin_instantiate_msg)?,
+        code_id: msg.virtual_balance_code_id,
+        msg: to_json_binary(&virtual_balance_instantiate_msg)?,
         funds: vec![],
-        label: "Instantiate VCoin Contract".to_string(),
+        label: "Instantiate virtual_balance Contract".to_string(),
     };
 
-    let vcoin_instantiate_msg =
-        SubMsg::reply_always(vcoin_instantiate_msg, VCOIN_INSTANTIATE_REPLY_ID);
+    let virtual_balance_instantiate_msg =
+        SubMsg::reply_always(virtual_balance_instantiate_msg, virtual_balance_INSTANTIATE_REPLY_ID);
 
     let empty_chains: Vec<ChainUid> = vec![];
     DEREGISTERED_CHAINS.save(deps.storage, &empty_chains)?;
@@ -71,7 +71,7 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", env.contract.address)
-        .add_submessage(vcoin_instantiate_msg))
+        .add_submessage(virtual_balance_instantiate_msg))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -188,11 +188,11 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, env, msg),
         SWAP_REPLY_ID => reply::on_swap_reply(deps, env, msg),
 
-        VCOIN_INSTANTIATE_REPLY_ID => reply::on_vcoin_instantiate_reply(deps, msg),
+        virtual_balance_INSTANTIATE_REPLY_ID => reply::on_virtual_balance_instantiate_reply(deps, msg),
 
-        VCOIN_MINT_REPLY_ID => reply::on_vcoin_mint_reply(deps, msg),
-        VCOIN_BURN_REPLY_ID => reply::on_vcoin_burn_reply(deps, msg),
-        VCOIN_TRANSFER_REPLY_ID => reply::on_vcoin_transfer_reply(deps, msg),
+        virtual_balance_MINT_REPLY_ID => reply::on_virtual_balance_mint_reply(deps, msg),
+        virtual_balance_BURN_REPLY_ID => reply::on_virtual_balance_burn_reply(deps, msg),
+        virtual_balance_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
 
         IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),

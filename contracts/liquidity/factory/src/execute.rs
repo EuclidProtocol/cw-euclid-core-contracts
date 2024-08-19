@@ -753,7 +753,7 @@ pub fn execute_request_deregister_denom(
         .add_attribute("denom", token.token_type.get_key()))
 }
 
-pub fn execute_withdraw_vcoin(
+pub fn execute_withdraw_virtual_balance(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
@@ -794,10 +794,10 @@ pub fn execute_withdraw_vcoin(
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            TxType::WithdrawVcoin,
+            TxType::Withdrawvirtual_balance,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "withdraw_vcoin")
+        .add_attribute("method", "withdraw_virtual_balance")
         .add_submessage(withdraw_msg))
 }
 

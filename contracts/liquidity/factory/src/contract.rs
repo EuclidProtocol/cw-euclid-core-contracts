@@ -9,7 +9,8 @@ use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 use crate::execute::{
     add_liquidity_request, execute_native_receive_callback, execute_request_deregister_denom,
     execute_request_pool_creation, execute_request_register_denom, execute_request_register_escrow,
-    execute_swap_request, execute_update_hub_channel, execute_withdraw_vcoin, receive_cw20,
+    execute_swap_request, execute_update_hub_channel, execute_withdraw_virtual_balance,
+    receive_cw20,
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_vlp, pending_liquidity, pending_remove_liquidity,
@@ -140,12 +141,12 @@ pub fn execute(
         ExecuteMsg::RequestRegisterEscrow { token, timeout } => {
             execute_request_register_escrow(&mut deps, env, info, token, timeout)
         }
-        ExecuteMsg::WithdrawVcoin {
+        ExecuteMsg::Withdrawvirtual_balance {
             token,
             amount,
             cross_chain_addresses,
             timeout,
-        } => execute_withdraw_vcoin(
+        } => execute_withdraw_virtual_balance(
             &mut deps,
             env,
             info,

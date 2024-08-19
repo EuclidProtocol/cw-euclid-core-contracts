@@ -2,8 +2,8 @@ use cosmwasm_std::{ensure, DepsMut, MessageInfo, Response, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
-    msgs::vcoin::{ExecuteBurn, ExecuteMint, ExecuteTransfer},
-    vcoin::BalanceKey,
+    msgs::virtual_balance::{ExecuteBurn, ExecuteMint, ExecuteTransfer},
+    virtual_balance::BalanceKey,
 };
 
 use crate::state::{BALANCES, STATE};

@@ -96,7 +96,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&GetStateResponse {
         pair: state.pair,
         router: state.router,
-        vcoin: state.vcoin,
+        virtual_balance: state.virtual_balance,
         fee: state.fee,
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,

@@ -10,7 +10,7 @@ use cosmwasm_std::Uint128;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
-    pub vcoin: String,
+    pub virtual_balance: String,
     pub pair: Pair,
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
@@ -105,7 +105,7 @@ pub struct GetSwapResponse {
 pub struct GetStateResponse {
     pub pair: Pair,
     pub router: String,
-    pub vcoin: String,
+    pub virtual_balance: String,
     pub fee: Fee,
     pub last_updated: u64,
     pub total_lp_tokens: Uint128,

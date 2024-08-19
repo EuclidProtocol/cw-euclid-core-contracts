@@ -19,13 +19,13 @@ impl MockVlp {
         code_id: u64,
         sender: Addr,
         router: String,
-        vcoin: String,
+        virtual_balance: String,
         pair: Pair,
         fee: Fee,
         execute: Option<ExecuteMsg>,
         admin: String,
     ) -> Self {
-        let msg = mock_vlp_instantiate_msg(router, vcoin, pair, fee, execute, admin);
+        let msg = mock_vlp_instantiate_msg(router, virtual_balance, pair, fee, execute, admin);
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid vlp", None);
 
         Self(res.unwrap())
@@ -54,7 +54,7 @@ pub fn mock_vlp() -> Box<dyn Contract<Empty>> {
 
 pub fn mock_vlp_instantiate_msg(
     router: String,
-    vcoin: String,
+    virtual_balance: String,
     pair: Pair,
     fee: Fee,
     execute: Option<ExecuteMsg>,
@@ -62,7 +62,7 @@ pub fn mock_vlp_instantiate_msg(
 ) -> InstantiateMsg {
     InstantiateMsg {
         router,
-        vcoin,
+        virtual_balance,
         pair,
         fee,
         execute,

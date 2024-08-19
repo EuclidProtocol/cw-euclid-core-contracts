@@ -52,7 +52,7 @@ pub enum TxType {
     EscrowRelease,
     EscrowWithdraw,
     RegisterFactory,
-    WithdrawVcoin,
+    Withdrawvirtual_balance,
 }
 
 impl fmt::Display for TxType {
@@ -66,7 +66,7 @@ impl fmt::Display for TxType {
             TxType::EscrowRelease => "escrow_release",
             TxType::EscrowWithdraw => "escrow_withdraw",
             TxType::RegisterFactory => "register_factory",
-            TxType::WithdrawVcoin => "withdraw_vcoin",
+            TxType::Withdrawvirtual_balance => "withdraw_virtual_balance",
         };
         write!(f, "{}", s)
     }

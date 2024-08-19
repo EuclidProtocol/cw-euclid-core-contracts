@@ -20,9 +20,9 @@ impl MockRouter {
         code_id: u64,
         sender: Addr,
         vlp_code_id: u64,
-        vcoin_code_id: u64,
+        virtual_balance_code_id: u64,
     ) -> Self {
-        let msg = mock_router_instantiate_msg(vlp_code_id, vcoin_code_id);
+        let msg = mock_router_instantiate_msg(vlp_code_id, virtual_balance_code_id);
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid router", None);
 
         Self(res.unwrap())
@@ -55,10 +55,10 @@ pub fn mock_router() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
-pub fn mock_router_instantiate_msg(vlp_code_id: u64, vcoin_code_id: u64) -> InstantiateMsg {
+pub fn mock_router_instantiate_msg(vlp_code_id: u64, virtual_balance_code_id: u64) -> InstantiateMsg {
     InstantiateMsg {
         vlp_code_id,
-        vcoin_code_id,
+        virtual_balance_code_id,
     }
 }
 

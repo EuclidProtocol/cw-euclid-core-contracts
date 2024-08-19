@@ -17,7 +17,7 @@ mod tests {
     fn init(deps: DepsMut) -> Response {
         let msg = InstantiateMsg {
             router: "router".to_string(),
-            vcoin: "vcoin".to_string(),
+            virtual_balance: "virtual_balance".to_string(),
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
                 token_2: Token::create("token2".to_string()).unwrap(),
@@ -48,7 +48,7 @@ mod tests {
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
             router: "router".to_string(),
-            vcoin: "vcoin".to_string(),
+            virtual_balance: "virtual_balance".to_string(),
             fee: Fee {
                 lp_fee_bps: 1,
                 euclid_fee_bps: 1,
@@ -112,7 +112,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -198,7 +198,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -271,7 +271,7 @@ mod tests {
     // //     // Instantiate the contract first
     // //     let msg = InstantiateMsg {
     // //         router: "router".to_string(),
-    // //         vcoin: "vcoin".to_string(),
+    // //         virtual_balance: "virtual_balance".to_string(),
     // //         pair: Pair {
     // //             token_1: Token {
     // //                 id: "token_1".to_string(),
@@ -357,7 +357,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -436,7 +436,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -547,7 +547,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -642,7 +642,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -661,7 +661,7 @@ mod tests {
     //     let _res = instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
     //     let state = State {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         last_updated: 0,
     //         pair: Pair {
     //             token_1: Token {
@@ -715,7 +715,7 @@ mod tests {
     //     let mut deps = mock_dependencies();
     //     let state = State {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         last_updated: 0,
     //         pair: Pair {
     //             token_1: Token {

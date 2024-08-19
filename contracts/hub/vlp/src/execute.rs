@@ -9,18 +9,18 @@ use euclid::{
     fee::MAX_FEE_BPS,
     liquidity::AddLiquidityResponse,
     msgs::{
-        vcoin::ExecuteTransfer,
+        virtual_balance::ExecuteTransfer,
         vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
     pool::{Pool, PoolCreationResponse},
     swap::NextSwapVlp,
     token::{Pair, Token},
-    vcoin::BalanceKey,
+    virtual_balance::BalanceKey,
 };
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
-    reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID},
+    reply::{NEXT_SWAP_REPLY_ID, virtual_balance_TRANSFER_REPLY_ID},
     state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
@@ -280,15 +280,15 @@ pub fn remove_liquidity(
         chain_uid: ChainUid::vsl_chain_uid()?,
     };
 
-    let token_1_transfer_msg = pair.token_1.create_vcoin_transfer_msg(
-        state.vcoin.clone(),
+    let token_1_transfer_msg = pair.token_1.create_virtual_balance_transfer_msg(
+        state.virtual_balance.clone(),
         token_1_liquidity,
         vlp_cross_chain_struct.clone(),
         sender.clone(),
     )?;
 
-    let token_2_transfer_msg = pair.token_2.create_vcoin_transfer_msg(
-        state.vcoin,
+    let token_2_transfer_msg = pair.token_2.create_virtual_balance_transfer_msg(
+        state.virtual_balance,
         token_2_liquidity,
         vlp_cross_chain_struct,
         sender.clone(),
@@ -302,11 +302,11 @@ pub fn remove_liquidity(
         ))
         .add_submessage(SubMsg::reply_always(
             token_1_transfer_msg,
-            VCOIN_TRANSFER_REPLY_ID,
+            virtual_balance_TRANSFER_REPLY_ID,
         ))
         .add_submessage(SubMsg::reply_always(
             token_2_transfer_msg,
-            VCOIN_TRANSFER_REPLY_ID,
+            virtual_balance_TRANSFER_REPLY_ID,
         ))
         .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "remove_liquidity")
@@ -358,11 +358,11 @@ pub fn execute_swap(
     let mut token_in_reserve = BALANCES.load(deps.storage, asset_in.clone())?;
     let mut token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
 
-    // Router mints new tokens or this vlp gets new balance from token transfer by previous, so vcoin_balance = amount_in + pool_current_liquidity
-    let vlp_vcoin_balance: euclid::msgs::vcoin::GetBalanceResponse =
+    // Router mints new tokens or this vlp gets new balance from token transfer by previous, so virtual_balance_balance = amount_in + pool_current_liquidity
+    let vlp_virtual_balance_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
         deps.querier.query_wasm_smart(
-            state.vcoin.clone(),
-            &euclid::msgs::vcoin::QueryMsg::GetBalance {
+            state.virtual_balance.clone(),
+            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
                 balance_key: BalanceKey {
                     cross_chain_user: CrossChainUser {
                         address: env.contract.address.to_string(),
@@ -374,7 +374,7 @@ pub fn execute_swap(
         )?;
 
     ensure!(
-        vlp_vcoin_balance.amount == token_in_reserve.checked_add(amount_in)?,
+        vlp_virtual_balance_balance.amount == token_in_reserve.checked_add(amount_in)?,
         ContractError::new("Swap didn't receive any funds!")
     );
 
@@ -425,7 +425,7 @@ pub fn execute_swap(
     let mut response = Response::new();
 
     if !euclid_fee.is_zero() {
-        let euclid_fee_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+        let euclid_fee_transfer_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount: euclid_fee,
             token_id: asset_in.to_string(),
 
@@ -440,13 +440,13 @@ pub fn execute_swap(
         });
 
         let euclid_fee_transfer_msg = WasmMsg::Execute {
-            contract_addr: state.vcoin.clone(),
+            contract_addr: state.virtual_balance.clone(),
             msg: to_json_binary(&euclid_fee_transfer_msg)?,
             funds: vec![],
         };
 
         let euclid_fee_transfer_msg =
-            SubMsg::reply_on_error(euclid_fee_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
+            SubMsg::reply_on_error(euclid_fee_transfer_msg, virtual_balance_TRANSFER_REPLY_ID);
 
         response = response.add_submessage(euclid_fee_transfer_msg);
     }
@@ -454,7 +454,7 @@ pub fn execute_swap(
     match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             // There are more swaps
-            let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+            let virtual_balance_transfer_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.to_string(),
 
@@ -469,14 +469,14 @@ pub fn execute_swap(
                 },
             });
 
-            let vcoin_transfer_msg = WasmMsg::Execute {
-                contract_addr: state.vcoin.clone(),
-                msg: to_json_binary(&vcoin_transfer_msg)?,
+            let virtual_balance_transfer_msg = WasmMsg::Execute {
+                contract_addr: state.virtual_balance.clone(),
+                msg: to_json_binary(&virtual_balance_transfer_msg)?,
                 funds: vec![],
             };
 
-            let vcoin_transfer_msg =
-                SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
+            let virtual_balance_transfer_msg =
+                SubMsg::reply_on_error(virtual_balance_transfer_msg, virtual_balance_TRANSFER_REPLY_ID);
 
             let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
                 sender: sender.clone(),
@@ -501,7 +501,7 @@ pub fn execute_swap(
             response = response
                 .add_attribute("swap_type", "forward_swap")
                 .add_attribute("forward_to", next_swap.vlp_address.clone())
-                .add_submessage(vcoin_transfer_msg)
+                .add_submessage(virtual_balance_transfer_msg)
                 .add_submessage(next_swap_msg);
         }
         None => {
@@ -516,7 +516,7 @@ pub fn execute_swap(
                 }
             );
 
-            let vcoin_transfer_msg = euclid::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+            let virtual_balance_transfer_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: swap_response.amount_out,
                 token_id: swap_response.asset_out.to_string(),
 
@@ -530,20 +530,20 @@ pub fn execute_swap(
                 to: sender.clone(),
             });
 
-            let vcoin_transfer_msg = WasmMsg::Execute {
-                contract_addr: state.vcoin.clone(),
-                msg: to_json_binary(&vcoin_transfer_msg)?,
+            let virtual_balance_transfer_msg = WasmMsg::Execute {
+                contract_addr: state.virtual_balance.clone(),
+                msg: to_json_binary(&virtual_balance_transfer_msg)?,
                 funds: vec![],
             };
 
-            let vcoin_transfer_msg =
-                SubMsg::reply_on_error(vcoin_transfer_msg, VCOIN_TRANSFER_REPLY_ID);
+            let virtual_balance_transfer_msg =
+                SubMsg::reply_on_error(virtual_balance_transfer_msg, virtual_balance_TRANSFER_REPLY_ID);
 
             response = response
                 .add_attribute("swap_type", "final_swap")
                 .add_attribute("receiver_address", sender.address.clone())
                 .add_attribute("receiver_chain_id", sender.chain_uid.to_string())
-                .add_submessage(vcoin_transfer_msg);
+                .add_submessage(virtual_balance_transfer_msg);
         }
     };
 

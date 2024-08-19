@@ -10,7 +10,7 @@ use crate::{
 pub struct InstantiateMsg {
     // Pool Code ID
     pub vlp_code_id: u64,
-    pub vcoin_code_id: u64,
+    pub virtual_balance_code_id: u64,
 }
 
 #[cw_serde]
@@ -116,7 +116,7 @@ pub struct QuerySimulateSwap {
 pub struct StateResponse {
     pub admin: String,
     pub vlp_code_id: u64,
-    pub vcoin_address: Option<Addr>,
+    pub virtual_balance_address: Option<Addr>,
     pub locked: bool,
 }
 

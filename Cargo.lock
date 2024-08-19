@@ -1195,7 +1195,7 @@ dependencies = [
  "mock",
  "router",
  "rstest",
- "vcoin",
+ "virtual_balance",
  "vlp",
 ]
 
@@ -1232,7 +1232,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 
 [[package]]
-name = "vcoin"
+name = "version_check"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "virtual_balance"
 version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
@@ -1246,12 +1252,6 @@ dependencies = [
  "serde",
  "thiserror",
 ]
-
-[[package]]
-name = "version_check"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "vlp"

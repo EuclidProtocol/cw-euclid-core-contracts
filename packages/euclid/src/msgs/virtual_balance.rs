@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 
-use crate::{chain::CrossChainUser, vcoin::BalanceKey};
+use crate::{chain::CrossChainUser, virtual_balance::BalanceKey};
 
 #[cw_serde]
 pub struct State {
