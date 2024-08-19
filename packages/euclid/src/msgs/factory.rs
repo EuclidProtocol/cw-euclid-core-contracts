@@ -107,14 +107,14 @@ pub enum QueryMsg {
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
         user: Addr,
-        lower_limit: Option<u128>,
-        upper_limit: Option<u128>,
+        min: Option<Uint128>,
+        max: Option<Uint128>,
     },
     #[returns(GetPendingLiquidityResponse)]
     PendingLiquidity {
         user: Addr,
-        lower_limit: Option<u128>,
-        upper_limit: Option<u128>,
+        min: Option<Uint128>,
+        max: Option<Uint128>,
     },
     #[returns(GetPendingRemoveLiquidityResponse)]
     PendingRemoveLiquidity {
