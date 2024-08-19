@@ -190,15 +190,16 @@ pub fn execute_release_escrow(
         .ok_or(ContractError::new("virtual_balance doesn't exist"))?
         .into_string();
 
-    let user_balance: euclid::msgs::virtual_balance::GetBalanceResponse = deps.querier.query_wasm_smart(
-        virtual_balance_address.clone(),
-        &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
+    let user_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
+        deps.querier.query_wasm_smart(
+            virtual_balance_address.clone(),
+            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+                balance_key: BalanceKey {
+                    cross_chain_user: sender.clone(),
+                    token_id: token.to_string(),
+                },
             },
-        },
-    )?;
+        )?;
 
     // Ensure that user has enough virtual_balance balance to actually trigger escrow release
     ensure!(
@@ -272,21 +273,24 @@ pub fn execute_release_escrow(
         ))
         .add_attribute("tx_id", tx_id);
     if !transfer_amount.is_zero() {
-        let burn_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Burn(ExecuteBurn {
-            amount: transfer_amount,
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
-            },
-        });
+        let burn_virtual_balance_msg =
+            euclid::msgs::virtual_balance::ExecuteMsg::Burn(ExecuteBurn {
+                amount: transfer_amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: sender.clone(),
+                    token_id: token.to_string(),
+                },
+            });
 
         let burn_virtual_balance_msg = CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: virtual_balance_address,
             msg: to_json_binary(&burn_virtual_balance_msg)?,
             funds: vec![],
         });
-        response =
-            response.add_submessage(SubMsg::reply_always(burn_virtual_balance_msg, virtual_balance_BURN_REPLY_ID));
+        response = response.add_submessage(SubMsg::reply_always(
+            burn_virtual_balance_msg,
+            virtual_balance_BURN_REPLY_ID,
+        ));
     }
 
     Ok(response

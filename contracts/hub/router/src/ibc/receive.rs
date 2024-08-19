@@ -23,8 +23,9 @@ use euclid_ibc::{
 use crate::{
     query::validate_swap_pairs,
     reply::{
-        ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
-        virtual_balance_MINT_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+        virtual_balance_MINT_REPLY_ID, ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID,
+        REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
+        VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
@@ -345,12 +346,13 @@ fn ibc_execute_add_liquidity(
         &token_2_escrow_balance.checked_add(token_2_liquidity)?,
     )?;
 
-    let virtual_balance_address = STATE
-        .load(deps.storage)?
-        .virtual_balance_address
-        .ok_or(ContractError::Generic {
-            err: "virtual_balance address doesn't exist".to_string(),
-        })?;
+    let virtual_balance_address =
+        STATE
+            .load(deps.storage)?
+            .virtual_balance_address
+            .ok_or(ContractError::Generic {
+                err: "virtual_balance address doesn't exist".to_string(),
+            })?;
 
     let mint_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
         amount: token_1_liquidity,
@@ -369,7 +371,10 @@ fn ibc_execute_add_liquidity(
         funds: vec![],
     };
 
-    response = response.add_submessage(SubMsg::reply_on_error(mint_virtual_balance_msg, virtual_balance_MINT_REPLY_ID));
+    response = response.add_submessage(SubMsg::reply_on_error(
+        mint_virtual_balance_msg,
+        virtual_balance_MINT_REPLY_ID,
+    ));
 
     let mint_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
         amount: token_2_liquidity,
@@ -388,7 +393,10 @@ fn ibc_execute_add_liquidity(
         funds: vec![],
     };
 
-    response = response.add_submessage(SubMsg::reply_on_error(mint_virtual_balance_msg, virtual_balance_MINT_REPLY_ID));
+    response = response.add_submessage(SubMsg::reply_on_error(
+        mint_virtual_balance_msg,
+        virtual_balance_MINT_REPLY_ID,
+    ));
 
     let add_liquidity_msg = msgs::vlp::ExecuteMsg::AddLiquidity {
         token_1_liquidity,
@@ -490,12 +498,13 @@ fn ibc_execute_swap(
 
     let sender = msg.sender;
 
-    let virtual_balance_address = STATE
-        .load(deps.storage)?
-        .virtual_balance_address
-        .ok_or(ContractError::Generic {
-            err: "virtual_balance address doesn't exist".to_string(),
-        })?;
+    let virtual_balance_address =
+        STATE
+            .load(deps.storage)?
+            .virtual_balance_address
+            .ok_or(ContractError::Generic {
+                err: "virtual_balance address doesn't exist".to_string(),
+            })?;
 
     let swap_vlps = validate_swap_pairs(deps.as_ref(), &msg.swaps);
     ensure!(
@@ -540,7 +549,10 @@ fn ibc_execute_swap(
         funds: vec![],
     };
 
-    response = response.add_submessage(SubMsg::reply_always(mint_virtual_balance_msg, virtual_balance_MINT_REPLY_ID));
+    response = response.add_submessage(SubMsg::reply_always(
+        mint_virtual_balance_msg,
+        virtual_balance_MINT_REPLY_ID,
+    ));
 
     let swap_msg = msgs::vlp::ExecuteMsg::Swap {
         sender: sender.clone(),

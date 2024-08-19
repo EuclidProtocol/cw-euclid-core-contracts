@@ -3,7 +3,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
 use cw2::set_contract_version;
 
-use crate::reply::{NEXT_SWAP_REPLY_ID, virtual_balance_TRANSFER_REPLY_ID};
+use crate::reply::{virtual_balance_TRANSFER_REPLY_ID, NEXT_SWAP_REPLY_ID};
 use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;

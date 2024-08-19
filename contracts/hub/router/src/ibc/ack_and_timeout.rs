@@ -185,13 +185,11 @@ pub fn ibc_ack_release_escrow(
             .add_attribute("factory_address", data.factory_address)),
         // Re-mint tokens
         AcknowledgementMsg::Error(err) => {
-            let virtual_balance_address =
-                STATE
-                    .load(deps.storage)?
-                    .virtual_balance_address
-                    .ok_or(ContractError::Generic {
-                        err: "virtual_balance not available".to_string(),
-                    })?;
+            let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(
+                ContractError::Generic {
+                    err: "virtual_balance not available".to_string(),
+                },
+            )?;
 
             // Escrow release failed, mint tokens again for the original cross chain sender
             let mint_msg = virtual_balanceExecuteMsg::Mint(ExecuteMint {

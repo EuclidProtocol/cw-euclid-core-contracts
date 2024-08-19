@@ -55,7 +55,10 @@ pub fn mock_router() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
-pub fn mock_router_instantiate_msg(vlp_code_id: u64, virtual_balance_code_id: u64) -> InstantiateMsg {
+pub fn mock_router_instantiate_msg(
+    vlp_code_id: u64,
+    virtual_balance_code_id: u64,
+) -> InstantiateMsg {
     InstantiateMsg {
         vlp_code_id,
         virtual_balance_code_id,

@@ -260,7 +260,10 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
     }
 }
 
-pub fn on_virtual_balance_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_virtual_balance_instantiate_reply(
+    deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -270,7 +273,8 @@ pub fn on_virtual_balance_instantiate_reply(deps: DepsMut, msg: Reply) -> Result
                 })?;
 
             let mut state = STATE.load(deps.storage)?;
-            state.virtual_balance_address = Some(deps.api.addr_validate(&instantiate_data.contract_address)?);
+            state.virtual_balance_address =
+                Some(deps.api.addr_validate(&instantiate_data.contract_address)?);
             STATE.save(deps.storage, &state)?;
 
             Ok(Response::new()
@@ -280,7 +284,10 @@ pub fn on_virtual_balance_instantiate_reply(deps: DepsMut, msg: Reply) -> Result
     }
 }
 
-pub fn on_virtual_balance_mint_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_virtual_balance_mint_reply(
+    _deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => Ok(Response::new()
@@ -289,7 +296,10 @@ pub fn on_virtual_balance_mint_reply(_deps: DepsMut, msg: Reply) -> Result<Respo
     }
 }
 
-pub fn on_virtual_balance_burn_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_virtual_balance_burn_reply(
+    _deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => Ok(Response::new()
@@ -298,7 +308,10 @@ pub fn on_virtual_balance_burn_reply(_deps: DepsMut, msg: Reply) -> Result<Respo
     }
 }
 
-pub fn on_virtual_balance_transfer_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_virtual_balance_transfer_reply(
+    _deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => Ok(Response::new()

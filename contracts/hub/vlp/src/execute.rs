@@ -20,7 +20,7 @@ use euclid::{
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
-    reply::{NEXT_SWAP_REPLY_ID, virtual_balance_TRANSFER_REPLY_ID},
+    reply::{virtual_balance_TRANSFER_REPLY_ID, NEXT_SWAP_REPLY_ID},
     state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
@@ -425,19 +425,20 @@ pub fn execute_swap(
     let mut response = Response::new();
 
     if !euclid_fee.is_zero() {
-        let euclid_fee_transfer_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
-            amount: euclid_fee,
-            token_id: asset_in.to_string(),
+        let euclid_fee_transfer_msg =
+            euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+                amount: euclid_fee,
+                token_id: asset_in.to_string(),
 
-            // Source Address
-            from: CrossChainUser {
-                address: env.contract.address.to_string(),
-                chain_uid: ChainUid::vsl_chain_uid()?,
-            },
+                // Source Address
+                from: CrossChainUser {
+                    address: env.contract.address.to_string(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
 
-            // Destination Address
-            to: fee.recipient,
-        });
+                // Destination Address
+                to: fee.recipient,
+            });
 
         let euclid_fee_transfer_msg = WasmMsg::Execute {
             contract_addr: state.virtual_balance.clone(),
@@ -454,20 +455,21 @@ pub fn execute_swap(
     match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             // There are more swaps
-            let virtual_balance_transfer_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
-                amount: swap_response.amount_out,
-                token_id: swap_response.asset_out.to_string(),
+            let virtual_balance_transfer_msg =
+                euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+                    amount: swap_response.amount_out,
+                    token_id: swap_response.asset_out.to_string(),
 
-                from: CrossChainUser {
-                    address: env.contract.address.to_string(),
-                    chain_uid: ChainUid::vsl_chain_uid()?,
-                },
+                    from: CrossChainUser {
+                        address: env.contract.address.to_string(),
+                        chain_uid: ChainUid::vsl_chain_uid()?,
+                    },
 
-                to: CrossChainUser {
-                    address: next_swap.vlp_address.clone(),
-                    chain_uid: ChainUid::vsl_chain_uid()?,
-                },
-            });
+                    to: CrossChainUser {
+                        address: next_swap.vlp_address.clone(),
+                        chain_uid: ChainUid::vsl_chain_uid()?,
+                    },
+                });
 
             let virtual_balance_transfer_msg = WasmMsg::Execute {
                 contract_addr: state.virtual_balance.clone(),
@@ -475,8 +477,10 @@ pub fn execute_swap(
                 funds: vec![],
             };
 
-            let virtual_balance_transfer_msg =
-                SubMsg::reply_on_error(virtual_balance_transfer_msg, virtual_balance_TRANSFER_REPLY_ID);
+            let virtual_balance_transfer_msg = SubMsg::reply_on_error(
+                virtual_balance_transfer_msg,
+                virtual_balance_TRANSFER_REPLY_ID,
+            );
 
             let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
                 sender: sender.clone(),
@@ -516,19 +520,20 @@ pub fn execute_swap(
                 }
             );
 
-            let virtual_balance_transfer_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
-                amount: swap_response.amount_out,
-                token_id: swap_response.asset_out.to_string(),
+            let virtual_balance_transfer_msg =
+                euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+                    amount: swap_response.amount_out,
+                    token_id: swap_response.asset_out.to_string(),
 
-                // Source Address
-                from: CrossChainUser {
-                    address: env.contract.address.to_string(),
-                    chain_uid: ChainUid::vsl_chain_uid()?,
-                },
+                    // Source Address
+                    from: CrossChainUser {
+                        address: env.contract.address.to_string(),
+                        chain_uid: ChainUid::vsl_chain_uid()?,
+                    },
 
-                // Destination Address
-                to: sender.clone(),
-            });
+                    // Destination Address
+                    to: sender.clone(),
+                });
 
             let virtual_balance_transfer_msg = WasmMsg::Execute {
                 contract_addr: state.virtual_balance.clone(),
@@ -536,8 +541,10 @@ pub fn execute_swap(
                 funds: vec![],
             };
 
-            let virtual_balance_transfer_msg =
-                SubMsg::reply_on_error(virtual_balance_transfer_msg, virtual_balance_TRANSFER_REPLY_ID);
+            let virtual_balance_transfer_msg = SubMsg::reply_on_error(
+                virtual_balance_transfer_msg,
+                virtual_balance_TRANSFER_REPLY_ID,
+            );
 
             response = response
                 .add_attribute("swap_type", "final_swap")

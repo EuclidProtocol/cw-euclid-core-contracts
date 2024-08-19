@@ -22,7 +22,8 @@ impl Mockvirtual_balance {
         admin: Option<Addr>,
     ) -> Self {
         let msg = mock_virtual_balance_instantiate_msg(router, admin);
-        let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid virtual_balance", None);
+        let res =
+            app.instantiate_contract(code_id, sender, &msg, &[], "Euclid virtual_balance", None);
 
         Self(res.unwrap())
     }

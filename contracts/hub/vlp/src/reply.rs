@@ -24,9 +24,14 @@ pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Contra
     }
 }
 
-pub fn on_virtual_balance_transfer_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_virtual_balance_transfer_reply(
+    _deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
-        SubMsgResult::Ok(..) => Ok(Response::new().add_attribute("action", "virtual_balance_transfer")),
+        SubMsgResult::Ok(..) => {
+            Ok(Response::new().add_attribute("action", "virtual_balance_transfer"))
+        }
     }
 }
