@@ -330,16 +330,21 @@ pub struct TokenWithDenom {
 impl TokenWithDenom {
     /// Validates smart contract addresses, checks against empty denom and zero supply
     pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
+        let denom = self.token_type.get_denom();
+        ensure!(
+            !denom.is_empty(),
+            ContractError::InvalidAsset { asset: denom }
+        );
+
         if self.token_type.is_smart() {
-            let denom = self.token_type.get_denom();
             let potential_supply = deps.querier.query_supply(denom.clone())?;
-            let non_empty_denom = !denom.is_empty();
             let non_zero_supply = !potential_supply.amount.is_zero();
             ensure!(
-                non_empty_denom && non_zero_supply,
+                non_zero_supply,
                 ContractError::InvalidAsset { asset: denom }
             );
         }
+
         Ok(())
     }
 
