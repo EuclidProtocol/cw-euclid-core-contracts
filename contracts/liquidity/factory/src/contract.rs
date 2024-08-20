@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
+use euclid::fee::DenomFees;
 use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
@@ -12,8 +15,8 @@ use crate::execute::{
     execute_swap_request, execute_update_hub_channel, execute_withdraw_vcoin, receive_cw20,
 };
 use crate::query::{
-    get_escrow, get_lp_token_address, get_vlp, pending_liquidity, pending_remove_liquidity,
-    pending_swaps, query_all_pools, query_all_tokens, query_state,
+    get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
+    pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
 use crate::reply::{
     on_cw20_instantiate_reply, on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply,
@@ -43,6 +46,9 @@ pub fn instantiate(
         cw20_code_id: msg.cw20_code_id,
         chain_uid,
         is_native: msg.is_native,
+        partner_fees_collected: DenomFees {
+            totals: HashMap::default(),
+        },
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -185,6 +191,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             pending_remove_liquidity(deps, user, pagination)
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
+        QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

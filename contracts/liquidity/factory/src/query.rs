@@ -5,7 +5,8 @@ use euclid::{
     msgs::factory::{
         AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
         GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
-        GetVlpResponse, PoolVlpResponse, StateResponse,
+        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
+        PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
     utils::Pagination,
@@ -20,6 +21,25 @@ use crate::state::{
 pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let vlp_address = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
     Ok(to_json_binary(&GetVlpResponse { vlp_address })?)
+}
+
+// Returns the total partner fees collected
+pub fn get_partner_fees_collected(deps: Deps) -> Result<Binary, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    Ok(to_json_binary(&PartnerFeesCollectedResponse {
+        total: state.partner_fees_collected,
+    })?)
+}
+
+pub fn get_partner_fees_collected_per_denom(
+    deps: Deps,
+    denom: String,
+) -> Result<Binary, ContractError> {
+    let partner_fees_collected = STATE.load(deps.storage)?.partner_fees_collected;
+
+    Ok(to_json_binary(&PartnerFeesCollectedPerDenomResponse {
+        total: partner_fees_collected.get_fee(denom.as_str()),
+    })?)
 }
 
 // Returns the LP token address
