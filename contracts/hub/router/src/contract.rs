@@ -98,10 +98,9 @@ pub fn execute(
         match msg {
             ExecuteMsg::ReregisterChain { chain } => execute_reregister_chain(deps, info, chain),
             ExecuteMsg::DeregisterChain { chain } => execute_deregister_chain(deps, info, chain),
-            ExecuteMsg::UpdateFactoryChannel {
-                channel,
-                chain_info,
-            } => execute_update_factory_channel(&mut deps, env, info, channel, chain_info),
+            ExecuteMsg::UpdateFactoryChannel { channel, chain_uid } => {
+                execute_update_factory_channel(&mut deps, env, info, channel, chain_uid)
+            }
             ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
                 execute_update_vlp_code_id(deps, info, new_vlp_code_id)
             }

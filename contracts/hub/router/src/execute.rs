@@ -3,7 +3,7 @@ use cosmwasm_std::{
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{router::RegisterFactoryChainType, vcoin::ExecuteBurn},
@@ -174,20 +174,18 @@ pub fn execute_update_factory_channel(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
-    channel: String,
-    chain_info: RegisterFactoryChainType,
+    new_channel: String,
+    chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
-    // let chain_uid = chain_uid.validate()?.to_owned();
-
-    // ensure!(
-    //     !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
-    //     ContractError::new("Factory already exists")
-    // );
-
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
-    let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel.clone())?;
+    let chain_uid = chain_uid.validate()?.to_owned();
+    let chain_info = CHAIN_UID_TO_CHAIN
+        .load(deps.storage, chain_uid)
+        .map_err(|_err| ContractError::new("Factory doesn't exist"))?;
+
+    let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, new_channel.clone())?;
 
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
     let sender = CrossChainUser {
@@ -208,35 +206,33 @@ pub fn execute_update_factory_channel(
             info.sender.as_str(),
             TxType::UpdateFactoryChannel,
         ))
-        .add_attribute("method", "register_factory");
+        .add_attribute("method", "update_factory_channel");
     let msg = HubIbcExecuteMsg::UpdateFactoryChannel {
         chain_uid: chain_uid.clone(),
-        channel,
+        channel: new_channel.clone(),
         tx_id: tx_id.clone(),
     };
-    match chain_info {
-        RegisterFactoryChainType::Ibc(ibc_info) => {
-            let timeout = get_timeout(ibc_info.timeout)?;
-            let packet = IbcMsg::SendPacket {
-                channel_id: ibc_info.channel.clone(),
-                data: to_json_binary(&msg)?,
-                timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-            };
 
-            Ok(response
-                .add_attribute("channel", ibc_info.channel)
-                .add_attribute("timeout", timeout.to_string())
-                .add_message(CosmosMsg::Ibc(packet)))
-        }
-        RegisterFactoryChainType::Native(native_info) => {
-            // Save chain info because this call will fail if the tx is not sucessful
-            let chain = Chain {
-                factory: native_info.factory_address,
-                factory_chain_id: env.block.chain_id.clone(),
-                chain_type: euclid::chain::ChainType::Native {},
-            };
-            Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
-        }
+    if !chain_info.is_native() {
+        let timeout = get_timeout(None)?;
+        let packet = IbcMsg::SendPacket {
+            channel_id: new_channel.clone(),
+            data: to_json_binary(&msg)?,
+            timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+        };
+
+        Ok(response
+            .add_attribute("channel", new_channel)
+            .add_attribute("timeout", timeout.to_string())
+            .add_message(CosmosMsg::Ibc(packet)))
+    } else {
+        // Save chain info because this call will fail if the tx is not sucessful
+        let chain = Chain {
+            factory: chain_info.factory,
+            factory_chain_id: env.block.chain_id.clone(),
+            chain_type: ChainType::Native {},
+        };
+        Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
     }
 }
 

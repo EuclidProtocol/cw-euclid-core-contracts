@@ -22,8 +22,8 @@ pub enum ExecuteMsg {
         chain: ChainUid,
     },
     UpdateFactoryChannel {
+        chain_uid: ChainUid,
         channel: String,
-        chain_info: RegisterFactoryChainType,
     },
     UpdateLock {},
     // Update Pool Code ID
