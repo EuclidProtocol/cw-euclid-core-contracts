@@ -74,6 +74,9 @@ pub enum ContractError {
     #[error("ChainNotFound")]
     ChainNotFound {},
 
+    #[error("InvalidPartnerFee")]
+    InvalidPartnerFee {},
+
     #[error("Instantiate Error - {err}")]
     InstantiateError { err: String },
 

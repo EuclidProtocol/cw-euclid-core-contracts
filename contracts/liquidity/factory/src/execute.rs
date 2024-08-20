@@ -488,7 +488,7 @@ pub fn execute_swap_request(
 
     ensure!(
         partner_fee_bps <= MAX_PARTNER_FEE_BPS,
-        ContractError::new("Invalid partner fee")
+        ContractError::InvalidPartnerFee {}
     );
 
     let partner_fee_amount = amount_in.checked_mul_ceil(Decimal::bps(partner_fee_bps))?;

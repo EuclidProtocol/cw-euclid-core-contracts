@@ -47,7 +47,7 @@ impl DenomFees {
     }
 }
 // Set maximum fee as 0.3%
-pub const MAX_PARTNER_FEE_BPS: u64 = 100;
+pub const MAX_PARTNER_FEE_BPS: u64 = 30;
 
 // Fee Config for a VLP contract
 #[cw_serde]
