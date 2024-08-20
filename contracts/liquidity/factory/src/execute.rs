@@ -602,8 +602,8 @@ pub fn execute_swap_request(
     .to_msg(
         deps,
         &env,
-        state.router_contract,
-        state.chain_uid,
+        state.clone().router_contract,
+        state.clone().chain_uid,
         state.is_native,
         channel,
         timeout,

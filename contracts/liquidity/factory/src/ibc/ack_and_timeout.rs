@@ -508,6 +508,16 @@ fn ack_swap_request(
                 .add_attribute("swap_response", format!("{data:?}"));
 
             if !swap_info.partner_fee_amount.is_zero() {
+                let mut state = STATE.load(deps.storage)?;
+
+                // Add partner fee collected to the total
+                state
+                    .partner_fees_collected
+                    .add_fee(asset_in.get_denom(), swap_info.partner_fee_amount);
+
+                // Save new total partner fees collected to state
+                STATE.save(deps.storage, &state)?;
+
                 // Send the partner fee amount to recipient of the fee, if no recipient was provided, send the
                 // funds back to the user
                 let partner_fee_recipient = swap_info

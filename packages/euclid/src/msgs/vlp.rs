@@ -1,6 +1,6 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
-    fee::Fee,
+    fee::{Fee, TotalFees},
     swap::NextSwapVlp,
     token::{Pair, Token},
 };
@@ -86,6 +86,12 @@ pub enum QueryMsg {
     #[returns(FeeResponse)]
     Fee {},
 
+    #[returns(TotalFeesResponse)]
+    TotalFeesCollected {},
+
+    #[returns(TotalFeesPerDenomResponse)]
+    TotalFeesPerDenom { denom: String },
+
     // Queries the pool information for a chain id
     #[returns(PoolResponse)]
     Pool { chain_uid: ChainUid },
@@ -123,6 +129,17 @@ pub struct GetLiquidityResponse {
 #[cw_serde]
 pub struct FeeResponse {
     pub fee: Fee,
+}
+
+#[cw_serde]
+pub struct TotalFeesResponse {
+    pub total_fees: TotalFees,
+}
+
+#[cw_serde]
+pub struct TotalFeesPerDenomResponse {
+    pub lp_fees: Uint128,
+    pub euclid_fees: Uint128,
 }
 
 #[cw_serde]
