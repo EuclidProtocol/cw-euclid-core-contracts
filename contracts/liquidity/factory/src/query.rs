@@ -92,6 +92,8 @@ pub fn pending_swaps(
     let pending_swaps = PENDING_SWAPS
         .prefix(user)
         .range(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .map(|k| k.unwrap().1)
         .collect();
 
@@ -110,6 +112,8 @@ pub fn pending_liquidity(
     let pending_add_liquidity = PENDING_ADD_LIQUIDITY
         .prefix(user)
         .range(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .flat_map(|k| -> Result<_, ContractError> { Ok(k?.1) })
         .collect();
 
@@ -130,6 +134,8 @@ pub fn pending_remove_liquidity(
     let pending_remove_liquidity = PENDING_REMOVE_LIQUIDITY
         .prefix(user)
         .range(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .flat_map(|k| -> Result<_, ContractError> { Ok(k?.1) })
         .collect();
 
