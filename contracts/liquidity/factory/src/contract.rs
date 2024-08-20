@@ -177,13 +177,13 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
         // Pool Queries //
-        QueryMsg::PendingSwapsUser { user, min, max } => pending_swaps(deps, user, min, max),
-        QueryMsg::PendingLiquidity { user, min, max } => pending_liquidity(deps, user, min, max),
-        QueryMsg::PendingRemoveLiquidity {
-            user,
-            lower_limit,
-            upper_limit,
-        } => pending_remove_liquidity(deps, user, lower_limit, upper_limit),
+        QueryMsg::PendingSwapsUser { user, pagination } => pending_swaps(deps, user, pagination),
+        QueryMsg::PendingLiquidity { user, pagination } => {
+            pending_liquidity(deps, user, pagination)
+        }
+        QueryMsg::PendingRemoveLiquidity { user, pagination } => {
+            pending_remove_liquidity(deps, user, pagination)
+        }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
     }
 }

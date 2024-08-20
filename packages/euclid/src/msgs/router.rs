@@ -5,6 +5,7 @@ use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
     token::{Pair, Token},
+    utils::Pagination,
 };
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -67,10 +68,7 @@ pub enum QueryMsg {
     GetVlp { pair: Pair },
     #[returns(AllVlpResponse)]
     GetAllVlps {
-        start: Option<(Token, Token)>,
-        end: Option<(Token, Token)>,
-        skip: Option<usize>,
-        limit: Option<usize>,
+        pagination: Pagination<(Token, Token)>,
     },
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
@@ -85,19 +83,11 @@ pub enum QueryMsg {
     #[returns(TokenEscrowsResponse)]
     QueryTokenEscrows {
         token: Token,
-        start: Option<ChainUid>,
-        end: Option<ChainUid>,
-        skip: Option<usize>,
-        limit: Option<usize>,
+        pagination: Pagination<ChainUid>,
     },
 
     #[returns(AllTokensResponse)]
-    QueryAllTokens {
-        start: Option<Token>,
-        end: Option<Token>,
-        skip: Option<usize>,
-        limit: Option<usize>,
-    },
+    QueryAllTokens { pagination: Pagination<Token> },
 }
 // We define a custom struct for each query response
 #[cw_serde]

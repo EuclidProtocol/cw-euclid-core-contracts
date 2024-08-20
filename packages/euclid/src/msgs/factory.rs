@@ -4,6 +4,7 @@ use crate::{
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenom, Token, TokenType, TokenWithDenom},
+    utils::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
@@ -107,20 +108,17 @@ pub enum QueryMsg {
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
         user: Addr,
-        min: Option<Uint128>,
-        max: Option<Uint128>,
+        pagination: Pagination<Uint128>,
     },
     #[returns(GetPendingLiquidityResponse)]
     PendingLiquidity {
         user: Addr,
-        min: Option<Uint128>,
-        max: Option<Uint128>,
+        pagination: Pagination<Uint128>,
     },
     #[returns(GetPendingRemoveLiquidityResponse)]
     PendingRemoveLiquidity {
         user: Addr,
-        lower_limit: Option<u128>,
-        upper_limit: Option<u128>,
+        pagination: Pagination<Uint128>,
     },
 
     #[returns(GetEscrowResponse)]
