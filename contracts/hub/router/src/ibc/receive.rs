@@ -23,7 +23,7 @@ use euclid_ibc::{
 use crate::{
     query::validate_swap_pairs,
     reply::{
-        virtual_balance_MINT_REPLY_ID, ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID,
+        VIRTUAL_BALANCE_MINT_REPLY_ID, ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID,
         REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
         VLP_POOL_REGISTER_REPLY_ID,
     },
@@ -373,7 +373,7 @@ fn ibc_execute_add_liquidity(
 
     response = response.add_submessage(SubMsg::reply_on_error(
         mint_virtual_balance_msg,
-        virtual_balance_MINT_REPLY_ID,
+        VIRTUAL_BALANCE_MINT_REPLY_ID,
     ));
 
     let mint_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
@@ -395,7 +395,7 @@ fn ibc_execute_add_liquidity(
 
     response = response.add_submessage(SubMsg::reply_on_error(
         mint_virtual_balance_msg,
-        virtual_balance_MINT_REPLY_ID,
+        VIRTUAL_BALANCE_MINT_REPLY_ID,
     ));
 
     let add_liquidity_msg = msgs::vlp::ExecuteMsg::AddLiquidity {
@@ -551,7 +551,7 @@ fn ibc_execute_swap(
 
     response = response.add_submessage(SubMsg::reply_always(
         mint_virtual_balance_msg,
-        virtual_balance_MINT_REPLY_ID,
+        VIRTUAL_BALANCE_MINT_REPLY_ID,
     ));
 
     let swap_msg = msgs::vlp::ExecuteMsg::Swap {

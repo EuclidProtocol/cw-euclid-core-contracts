@@ -2,7 +2,7 @@ use cosmwasm_std::{from_json, to_json_binary, DepsMut, Reply, Response, SubMsgRe
 use cw0::parse_reply_execute_data;
 use euclid::{error::ContractError, msgs::vlp::VlpSwapResponse};
 
-pub const virtual_balance_TRANSFER_REPLY_ID: u64 = 1;
+pub const VIRTUAL_BALANCE_TRANSFER_REPLY_ID: u64 = 1;
 pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 
 pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {

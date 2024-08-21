@@ -3,7 +3,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
 use cw2::set_contract_version;
 
-use crate::reply::{virtual_balance_TRANSFER_REPLY_ID, NEXT_SWAP_REPLY_ID};
+use crate::reply::{VIRTUAL_BALANCE_TRANSFER_REPLY_ID, NEXT_SWAP_REPLY_ID};
 use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
@@ -140,7 +140,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        virtual_balance_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
+        VIRTUAL_BALANCE_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
         NEXT_SWAP_REPLY_ID => reply::on_next_swap_reply(deps, msg),
 
         id => Err(ContractError::Generic {

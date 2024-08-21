@@ -21,10 +21,10 @@ use crate::query::{
     query_simulate_escrow_release, query_state, query_token_escrows, query_vlp,
 };
 use crate::reply::{
-    self, virtual_balance_BURN_REPLY_ID, virtual_balance_INSTANTIATE_REPLY_ID,
-    virtual_balance_MINT_REPLY_ID, virtual_balance_TRANSFER_REPLY_ID, ADD_LIQUIDITY_REPLY_ID,
-    IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
-    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
+    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_BURN_REPLY_ID,
+    VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VIRTUAL_BALANCE_MINT_REPLY_ID,
+    VIRTUAL_BALANCE_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, DEREGISTERED_CHAINS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -64,7 +64,7 @@ pub fn instantiate(
 
     let virtual_balance_instantiate_msg = SubMsg::reply_always(
         virtual_balance_instantiate_msg,
-        virtual_balance_INSTANTIATE_REPLY_ID,
+        VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
     );
 
     let empty_chains: Vec<ChainUid> = vec![];
@@ -190,13 +190,13 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, env, msg),
         SWAP_REPLY_ID => reply::on_swap_reply(deps, env, msg),
 
-        virtual_balance_INSTANTIATE_REPLY_ID => {
+        VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID => {
             reply::on_virtual_balance_instantiate_reply(deps, msg)
         }
 
-        virtual_balance_MINT_REPLY_ID => reply::on_virtual_balance_mint_reply(deps, msg),
-        virtual_balance_BURN_REPLY_ID => reply::on_virtual_balance_burn_reply(deps, msg),
-        virtual_balance_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
+        VIRTUAL_BALANCE_MINT_REPLY_ID => reply::on_virtual_balance_mint_reply(deps, msg),
+        VIRTUAL_BALANCE_BURN_REPLY_ID => reply::on_virtual_balance_burn_reply(deps, msg),
+        VIRTUAL_BALANCE_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
 
         IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),

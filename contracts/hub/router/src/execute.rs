@@ -16,7 +16,7 @@ use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
     ibc::receive,
-    reply::virtual_balance_BURN_REPLY_ID,
+    reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
     state::{CHAIN_UID_TO_CHAIN, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE},
 };
 
@@ -289,7 +289,7 @@ pub fn execute_release_escrow(
         });
         response = response.add_submessage(SubMsg::reply_always(
             burn_virtual_balance_msg,
-            virtual_balance_BURN_REPLY_ID,
+            VIRTUAL_BALANCE_BURN_REPLY_ID,
         ));
     }
 

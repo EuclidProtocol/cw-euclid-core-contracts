@@ -30,12 +30,12 @@ pub const ADD_LIQUIDITY_REPLY_ID: u64 = 3;
 pub const REMOVE_LIQUIDITY_REPLY_ID: u64 = 4;
 pub const SWAP_REPLY_ID: u64 = 5;
 
-pub const virtual_balance_INSTANTIATE_REPLY_ID: u64 = 6;
+pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 
-pub const virtual_balance_MINT_REPLY_ID: u64 = 8;
-pub const virtual_balance_BURN_REPLY_ID: u64 = 9;
-pub const virtual_balance_TRANSFER_REPLY_ID: u64 = 10;
+pub const VIRTUAL_BALANCE_MINT_REPLY_ID: u64 = 8;
+pub const VIRTUAL_BALANCE_BURN_REPLY_ID: u64 = 9;
+pub const VIRTUAL_BALANCE_TRANSFER_REPLY_ID: u64 = 10;
 
 pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;

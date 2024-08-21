@@ -20,7 +20,7 @@ use euclid::{
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
-    reply::{virtual_balance_TRANSFER_REPLY_ID, NEXT_SWAP_REPLY_ID},
+    reply::{VIRTUAL_BALANCE_TRANSFER_REPLY_ID, NEXT_SWAP_REPLY_ID},
     state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
@@ -302,11 +302,11 @@ pub fn remove_liquidity(
         ))
         .add_submessage(SubMsg::reply_always(
             token_1_transfer_msg,
-            virtual_balance_TRANSFER_REPLY_ID,
+            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
         ))
         .add_submessage(SubMsg::reply_always(
             token_2_transfer_msg,
-            virtual_balance_TRANSFER_REPLY_ID,
+            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
         ))
         .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "remove_liquidity")
@@ -447,7 +447,7 @@ pub fn execute_swap(
         };
 
         let euclid_fee_transfer_msg =
-            SubMsg::reply_on_error(euclid_fee_transfer_msg, virtual_balance_TRANSFER_REPLY_ID);
+            SubMsg::reply_on_error(euclid_fee_transfer_msg, VIRTUAL_BALANCE_TRANSFER_REPLY_ID);
 
         response = response.add_submessage(euclid_fee_transfer_msg);
     }
@@ -479,7 +479,7 @@ pub fn execute_swap(
 
             let virtual_balance_transfer_msg = SubMsg::reply_on_error(
                 virtual_balance_transfer_msg,
-                virtual_balance_TRANSFER_REPLY_ID,
+                VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
             );
 
             let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
@@ -543,7 +543,7 @@ pub fn execute_swap(
 
             let virtual_balance_transfer_msg = SubMsg::reply_on_error(
                 virtual_balance_transfer_msg,
-                virtual_balance_TRANSFER_REPLY_ID,
+                VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
             );
 
             response = response
