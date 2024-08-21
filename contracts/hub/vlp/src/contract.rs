@@ -6,7 +6,7 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::reply::{VIRTUAL_BALANCE_TRANSFER_REPLY_ID, NEXT_SWAP_REPLY_ID};
+use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
 use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
