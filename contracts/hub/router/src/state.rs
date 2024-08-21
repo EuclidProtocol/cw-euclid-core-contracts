@@ -1,8 +1,9 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Deps, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
+    error::ContractError,
     token::Token,
 };
 use euclid_ibc::msg::{ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg};
@@ -38,3 +39,24 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<
     (ChainUid, String, String),
     ChainIbcRemoveLiquidityExecuteMsg,
 > = Map::new("pending_remove_liquidity");
+
+pub fn get_channel_for_chain_uid(deps: Deps, chain_uid: ChainUid) -> Result<String, ContractError> {
+    // Iterate over the CHANNEL_TO_CHAIN_UID map
+    let channel = CHANNEL_TO_CHAIN_UID
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .filter_map(|item| {
+            let (channel, uid) = item.ok()?;
+            if uid == chain_uid {
+                Some(channel)
+            } else {
+                None
+            }
+        })
+        .next(); // Return the first matching channel, if any
+
+    // Return the channel or an error if not found
+    match channel {
+        Some(ch) => Ok(ch),
+        None => Err(ContractError::ChannelNotFound {}),
+    }
+}

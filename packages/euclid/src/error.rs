@@ -98,6 +98,9 @@ pub enum ContractError {
     #[error("Invalid Token ID")]
     InvalidTokenID {},
 
+    #[error("ChannelNotFound")]
+    ChannelNotFound {},
+
     #[error("Asset does not exist in VLP")]
     AssetDoesNotExist {},
 

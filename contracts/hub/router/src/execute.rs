@@ -18,7 +18,7 @@ use crate::{
     ibc::receive,
     reply::VCOIN_BURN_REPLY_ID,
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+        get_channel_for_chain_uid, CHAIN_UID_TO_CHAIN, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
     },
 };
 
@@ -182,10 +182,8 @@ pub fn execute_update_factory_channel(
 
     let chain_uid = chain_uid.validate()?.to_owned();
     let chain_info = CHAIN_UID_TO_CHAIN
-        .load(deps.storage, chain_uid)
+        .load(deps.storage, chain_uid.clone())
         .map_err(|_err| ContractError::new("Factory doesn't exist"))?;
-
-    let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, new_channel.clone())?;
 
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
     let sender = CrossChainUser {
@@ -207,9 +205,13 @@ pub fn execute_update_factory_channel(
             TxType::UpdateFactoryChannel,
         ))
         .add_attribute("method", "update_factory_channel");
+
+    // Get old channel
+    let old_channel = get_channel_for_chain_uid(deps.as_ref(), chain_uid.clone())?;
+
     let msg = HubIbcExecuteMsg::UpdateFactoryChannel {
         chain_uid: chain_uid.clone(),
-        channel: new_channel.clone(),
+        channel: old_channel.clone(),
         tx_id: tx_id.clone(),
     };
 
