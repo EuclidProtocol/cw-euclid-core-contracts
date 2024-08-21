@@ -182,21 +182,14 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetEscrow { token_id } => get_escrow(deps, token_id),
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
-        QueryMsg::PendingSwapsUser {
-            user,
-            upper_limit,
-            lower_limit,
-        } => pending_swaps(deps, user, lower_limit, upper_limit),
-        QueryMsg::PendingLiquidity {
-            user,
-            lower_limit,
-            upper_limit,
-        } => pending_liquidity(deps, user, lower_limit, upper_limit),
-        QueryMsg::PendingRemoveLiquidity {
-            user,
-            lower_limit,
-            upper_limit,
-        } => pending_remove_liquidity(deps, user, lower_limit, upper_limit),
+        // Pool Queries //
+        QueryMsg::PendingSwapsUser { user, pagination } => pending_swaps(deps, user, pagination),
+        QueryMsg::PendingLiquidity { user, pagination } => {
+            pending_liquidity(deps, user, pagination)
+        }
+        QueryMsg::PendingRemoveLiquidity { user, pagination } => {
+            pending_remove_liquidity(deps, user, pagination)
+        }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
     }

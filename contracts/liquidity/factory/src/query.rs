@@ -1,4 +1,5 @@
-use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Order};
+use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Order, Uint128};
+use cw_storage_plus::Bound;
 use euclid::{
     error::ContractError,
     msgs::factory::{
@@ -8,6 +9,7 @@ use euclid::{
         PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
+    utils::Pagination,
 };
 
 use crate::state::{
@@ -101,13 +103,17 @@ pub fn query_all_tokens(deps: Deps) -> Result<Binary, ContractError> {
 pub fn pending_swaps(
     deps: Deps,
     user: Addr,
-    _lower_limit: Option<u128>,
-    _upper_limit: Option<u128>,
+    pagination: Pagination<Uint128>,
 ) -> Result<Binary, ContractError> {
+    let min = pagination.min.map(Bound::inclusive);
+    let max = pagination.max.map(Bound::inclusive);
+
     // Fetch pending swaps for user
     let pending_swaps = PENDING_SWAPS
         .prefix(user)
-        .range(deps.storage, None, None, Order::Ascending)
+        .range(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .map(|k| k.unwrap().1)
         .collect();
 
@@ -118,12 +124,16 @@ pub fn pending_swaps(
 pub fn pending_liquidity(
     deps: Deps,
     user: Addr,
-    _lower_limit: Option<u128>,
-    _upper_limit: Option<u128>,
+    pagination: Pagination<Uint128>,
 ) -> Result<Binary, ContractError> {
+    let min = pagination.min.map(Bound::inclusive);
+    let max = pagination.max.map(Bound::inclusive);
+
     let pending_add_liquidity = PENDING_ADD_LIQUIDITY
         .prefix(user)
-        .range(deps.storage, None, None, Order::Ascending)
+        .range(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .flat_map(|k| -> Result<_, ContractError> { Ok(k?.1) })
         .collect();
 
@@ -136,12 +146,16 @@ pub fn pending_liquidity(
 pub fn pending_remove_liquidity(
     deps: Deps,
     user: Addr,
-    _lower_limit: Option<u128>,
-    _upper_limit: Option<u128>,
+    pagination: Pagination<Uint128>,
 ) -> Result<Binary, ContractError> {
+    let min = pagination.min.map(Bound::inclusive);
+    let max = pagination.max.map(Bound::inclusive);
+
     let pending_remove_liquidity = PENDING_REMOVE_LIQUIDITY
         .prefix(user)
-        .range(deps.storage, None, None, Order::Ascending)
+        .range(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .flat_map(|k| -> Result<_, ContractError> { Ok(k?.1) })
         .collect();
 

@@ -10,6 +10,7 @@ use euclid::{
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
+    utils::Pagination,
 };
 
 use crate::state::{CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, STATE, VLPS};
@@ -26,18 +27,22 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
 
 pub fn query_all_vlps(
     deps: Deps,
-    start: Option<(Token, Token)>,
-    end: Option<(Token, Token)>,
-    skip: Option<usize>,
-    limit: Option<usize>,
+    pagination: Pagination<(Token, Token)>,
 ) -> Result<Binary, ContractError> {
+    let Pagination {
+        min: start,
+        max: end,
+        skip,
+        limit,
+    } = pagination;
+
     let start = start.map(Bound::inclusive);
-    let end: Option<Bound<(Token, Token)>> = end.map(Bound::exclusive);
+    let end = end.map(Bound::exclusive);
 
     let vlps: Result<_, ContractError> = VLPS
         .range(deps.storage, start, end, Order::Ascending)
-        .skip(skip.unwrap_or(0))
-        .take(limit.unwrap_or(10))
+        .skip(skip.unwrap_or(0) as usize)
+        .take(limit.unwrap_or(10) as usize)
         .map(|v| {
             let v = v?;
             Ok(VlpResponse {
@@ -191,19 +196,23 @@ pub fn validate_swap_pairs(
 pub fn query_token_escrows(
     deps: Deps,
     token: Token,
-    start: Option<ChainUid>,
-    end: Option<ChainUid>,
-    skip: Option<usize>,
-    limit: Option<usize>,
+    pagination: Pagination<ChainUid>,
 ) -> Result<Binary, ContractError> {
+    let Pagination {
+        min: start,
+        max: end,
+        skip,
+        limit,
+    } = pagination;
+
     let start = start.map(Bound::inclusive);
     let end = end.map(Bound::exclusive);
 
     let chains: Result<_, ContractError> = ESCROW_BALANCES
         .prefix(token)
         .range(deps.storage, start, end, Order::Ascending)
-        .skip(skip.unwrap_or(0))
-        .take(limit.unwrap_or(10))
+        .skip(skip.unwrap_or(0) as usize)
+        .take(limit.unwrap_or(10) as usize)
         .map(|v| {
             let v = v?;
             Ok(v.0)
@@ -215,18 +224,21 @@ pub fn query_token_escrows(
 
 pub fn query_all_tokens(
     deps: Deps,
-    start: Option<Token>,
-    end: Option<Token>,
-    skip: Option<usize>,
-    limit: Option<usize>,
+    pagination: Pagination<Token>,
 ) -> Result<Binary, ContractError> {
+    let Pagination {
+        min: start,
+        max: end,
+        skip,
+        limit,
+    } = pagination;
     let start = start.map(PrefixBound::inclusive);
     let end = end.map(PrefixBound::exclusive);
 
     let tokens: Result<_, ContractError> = ESCROW_BALANCES
         .prefix_range(deps.storage, start, end, Order::Ascending)
-        .skip(skip.unwrap_or(0))
-        .take(limit.unwrap_or(10))
+        .skip(skip.unwrap_or(0) as usize)
+        .take(limit.unwrap_or(10) as usize)
         .map(|v| {
             let v = v?;
             Ok(TokenResponse {

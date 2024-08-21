@@ -1,3 +1,4 @@
+use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{DepsMut, Env};
 use cw_storage_plus::Item;
 
@@ -22,4 +23,24 @@ pub fn generate_tx(
     nonce = nonce.wrapping_add(1);
     TX_NONCE.save(deps.storage, &nonce)?;
     Ok(format!("{sender}:{chain_id}:{height}:{index}:{nonce}"))
+}
+
+#[cw_serde]
+pub struct Pagination<T> {
+    pub min: Option<T>,
+    pub max: Option<T>,
+    pub skip: Option<u64>,
+    pub limit: Option<u64>,
+}
+
+impl<T: ToString> Pagination<T> {
+    // Creates a new instance of Pagination
+    pub fn new(min: Option<T>, max: Option<T>, skip: Option<u64>, limit: Option<u64>) -> Self {
+        Pagination {
+            min,
+            max,
+            skip,
+            limit,
+        }
+    }
 }
