@@ -146,31 +146,17 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetChain { chain_uid } => query_chain(deps, chain_uid),
         QueryMsg::GetAllChains {} => query_all_chains(deps),
         QueryMsg::GetVlp { pair } => query_vlp(deps, pair),
-        QueryMsg::GetAllVlps {
-            start,
-            end,
-            skip,
-            limit,
-        } => query_all_vlps(deps, start, end, skip, limit),
+        QueryMsg::GetAllVlps { pagination } => query_all_vlps(deps, pagination),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
         QueryMsg::SimulateReleaseEscrow {
             token,
             amount,
             cross_chain_addresses,
         } => query_simulate_escrow_release(deps, token, amount, cross_chain_addresses),
-        QueryMsg::QueryTokenEscrows {
-            token,
-            start,
-            end,
-            skip,
-            limit,
-        } => query_token_escrows(deps, token, start, end, skip, limit),
-        QueryMsg::QueryAllTokens {
-            start,
-            end,
-            skip,
-            limit,
-        } => query_all_tokens(deps, start, end, skip, limit),
+        QueryMsg::QueryTokenEscrows { token, pagination } => {
+            query_token_escrows(deps, token, pagination)
+        }
+        QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

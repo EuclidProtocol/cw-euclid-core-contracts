@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
+    fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     pool::{EscrowCreateRequest, PoolCreateRequest},
     swap::SwapRequest,
@@ -24,6 +25,8 @@ pub struct State {
     // IN THE EUCLID ECOSYSTEM
     pub chain_uid: ChainUid,
     pub is_native: bool,
+    // Total partner fees collected
+    pub partner_fees_collected: DenomFees,
 }
 
 pub const STATE: Item<State> = Item::new("state");

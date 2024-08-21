@@ -20,7 +20,7 @@ use euclid::{
 
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
-    reply::{VIRTUAL_BALANCE_TRANSFER_REPLY_ID, NEXT_SWAP_REPLY_ID},
+    reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
     state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
@@ -335,7 +335,7 @@ pub fn execute_swap(
     // Verify that the asset amount is non-zero
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
-    let state = state::STATE.load(deps.storage)?;
+    let mut state = state::STATE.load(deps.storage)?;
 
     let pair = state.pair.clone();
 
@@ -346,6 +346,12 @@ pub fn execute_swap(
 
     let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
     let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
+
+    // Add the lp fee to total fees
+    state
+        .total_fees_collected
+        .lp_fees
+        .add_fee(asset_in.to_string(), lp_fee);
 
     // Calcuate the sum of fees
     let total_fee = lp_fee.checked_add(euclid_fee)?;
@@ -425,6 +431,12 @@ pub fn execute_swap(
     let mut response = Response::new();
 
     if !euclid_fee.is_zero() {
+        // Add the euclid fee to total fees
+        state
+            .total_fees_collected
+            .euclid_fees
+            .add_fee(asset_in.to_string(), euclid_fee);
+
         let euclid_fee_transfer_msg =
             euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: euclid_fee,
@@ -553,6 +565,9 @@ pub fn execute_swap(
                 .add_submessage(virtual_balance_transfer_msg);
         }
     };
+
+    // Save changes to total fees in state
+    STATE.save(deps.storage, &state)?;
 
     Ok(response
         .add_event(tx_event(&tx_id, &sender.to_sender_string(), TxType::Swap))
