@@ -187,7 +187,12 @@ pub fn ibc_ack_update_factory_channel(
                 factory: data.factory_address.clone(),
                 chain_type: chain_type.clone(),
             };
-            let old_channel = match chain_type {
+
+            let old_chain_type = CHAIN_UID_TO_CHAIN
+                .load(deps.storage, chain_uid.clone())?
+                .chain_type;
+
+            let old_channel = match old_chain_type {
                 ChainType::Ibc(ibc_chain) => ibc_chain.from_hub_channel,
                 ChainType::Native {} => return Err(ContractError::NoChannelForLocalChain {}),
             };
