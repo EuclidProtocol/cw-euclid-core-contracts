@@ -3,7 +3,7 @@ use cosmwasm_std::{
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{router::RegisterFactoryChainType, vcoin::ExecuteBurn},
@@ -18,7 +18,7 @@ use crate::{
     ibc::receive,
     reply::VCOIN_BURN_REPLY_ID,
     state::{
-        get_channel_for_chain_uid, CHAIN_UID_TO_CHAIN, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
     },
 };
 
@@ -185,6 +185,12 @@ pub fn execute_update_factory_channel(
         .load(deps.storage, chain_uid.clone())
         .map_err(|_err| ContractError::new("Factory doesn't exist"))?;
 
+    // Make sure that the new channel doesn't already exist
+    ensure!(
+        !CHANNEL_TO_CHAIN_UID.has(deps.storage, new_channel.clone()),
+        ContractError::ChannelAlreadyExists {}
+    );
+
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
     let sender = CrossChainUser {
         chain_uid: vsl_chain_uid.clone(),
@@ -206,12 +212,8 @@ pub fn execute_update_factory_channel(
         ))
         .add_attribute("method", "update_factory_channel");
 
-    // Get old channel
-    let old_channel = get_channel_for_chain_uid(deps.as_ref(), chain_uid.clone())?;
-
     let msg = HubIbcExecuteMsg::UpdateFactoryChannel {
         chain_uid: chain_uid.clone(),
-        channel: old_channel.clone(),
         tx_id: tx_id.clone(),
     };
 
@@ -228,13 +230,8 @@ pub fn execute_update_factory_channel(
             .add_attribute("timeout", timeout.to_string())
             .add_message(CosmosMsg::Ibc(packet)))
     } else {
-        // Save chain info because this call will fail if the tx is not sucessful
-        let chain = Chain {
-            factory: chain_info.factory,
-            factory_chain_id: env.block.chain_id.clone(),
-            chain_type: ChainType::Native {},
-        };
-        Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
+        // Can't update channel for a local chain
+        Err(ContractError::NoChannelForLocalChain {})
     }
 }
 

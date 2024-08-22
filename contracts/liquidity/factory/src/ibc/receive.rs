@@ -92,11 +92,9 @@ pub fn reusable_internal_call(
             tx_id,
             ..
         } => execute_release_escrow(deps, env, amount, token, to_address, tx_id),
-        HubIbcExecuteMsg::UpdateFactoryChannel {
-            chain_uid,
-            channel,
-            tx_id,
-        } => execute_update_factory_channel(deps, env, chain_uid, tx_id),
+        HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
+            execute_update_factory_channel(deps, env, chain_uid, tx_id)
+        }
     }
 }
 

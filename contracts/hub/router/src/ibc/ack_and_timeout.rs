@@ -87,13 +87,9 @@ pub fn reusable_internal_ack_call(
             let res = from_json(ack)?;
             ibc_ack_release_escrow(deps, env, chain_uid, sender, amount, token, res, tx_id)
         }
-        HubIbcExecuteMsg::UpdateFactoryChannel {
-            chain_uid,
-            channel,
-            tx_id,
-        } => {
+        HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             let res = from_json(ack)?;
-            ibc_ack_update_factory_channel(deps, env, chain_uid, channel, chain_type, res, tx_id)
+            ibc_ack_update_factory_channel(deps, env, chain_uid, chain_type, res, tx_id)
         }
     }
 }
@@ -175,7 +171,6 @@ pub fn ibc_ack_update_factory_channel(
     deps: DepsMut,
     env: Env,
     chain_uid: ChainUid,
-    channel: String,
     chain_type: ChainType,
     res: AcknowledgementMsg<RegisterFactoryResponse>,
     tx_id: String,
@@ -190,7 +185,11 @@ pub fn ibc_ack_update_factory_channel(
             let chain_data = Chain {
                 factory_chain_id: data.chain_id.clone(),
                 factory: data.factory_address.clone(),
-                chain_type,
+                chain_type: chain_type.clone(),
+            };
+            let old_channel = match chain_type {
+                ChainType::Ibc(ibc_chain) => ibc_chain.from_hub_channel,
+                ChainType::Native {} => return Err(ContractError::NoChannelForLocalChain {}),
             };
             CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid.clone(), &chain_data)?;
             if let ChainType::Ibc(ibc_info) = chain_data.chain_type {
@@ -200,7 +199,7 @@ pub fn ibc_ack_update_factory_channel(
                     &chain_uid,
                 )?;
                 // Remove old channel
-                CHANNEL_TO_CHAIN_UID.remove(deps.storage, channel);
+                CHANNEL_TO_CHAIN_UID.remove(deps.storage, old_channel);
             }
             Ok(response
                 .add_attribute("method", "register_factory_ack_success")

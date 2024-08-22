@@ -210,7 +210,6 @@ pub enum HubIbcExecuteMsg {
 
     UpdateFactoryChannel {
         chain_uid: ChainUid,
-        channel: String,
         // Unique per tx
         tx_id: String,
     },
