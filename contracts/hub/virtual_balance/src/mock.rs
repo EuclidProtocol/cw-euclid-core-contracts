@@ -6,14 +6,14 @@ use cw_multi_test::{Contract, ContractWrapper, Executor};
 use euclid::msgs::virtual_balance::{GetStateResponse, InstantiateMsg, QueryMsg};
 use mock::mock::MockApp;
 
-pub struct Mockvirtual_balance(Addr);
-impl Mockvirtual_balance {
+pub struct MockVirtualBalance(Addr);
+impl MockVirtualBalance {
     pub fn addr(&self) -> &Addr {
         &self.0
     }
 }
 
-impl Mockvirtual_balance {
+impl MockVirtualBalance {
     pub fn instantiate(
         app: &mut MockApp,
         code_id: u64,

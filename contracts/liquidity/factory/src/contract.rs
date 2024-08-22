@@ -147,7 +147,7 @@ pub fn execute(
         ExecuteMsg::RequestRegisterEscrow { token, timeout } => {
             execute_request_register_escrow(&mut deps, env, info, token, timeout)
         }
-        ExecuteMsg::Withdrawvirtual_balance {
+        ExecuteMsg::WithdrawVirtualBalance {
             token,
             amount,
             cross_chain_addresses,

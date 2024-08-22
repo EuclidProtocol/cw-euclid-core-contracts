@@ -4,7 +4,7 @@ use euclid::msgs::virtual_balance::{GetStateResponse, State};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::mock::mock_router;
 use router::mock::MockRouter;
-use virtual_balance::mock::{mock_virtual_balance, Mockvirtual_balance};
+use virtual_balance::mock::{mock_virtual_balance, MockVirtualBalance};
 
 #[test]
 fn test_proper_instantiation() {
@@ -34,7 +34,7 @@ fn test_proper_instantiation() {
         virtual_balance_code_id,
     );
 
-    let mock_virtual_balance = Mockvirtual_balance::instantiate(
+    let mock_virtual_balance = MockVirtualBalance::instantiate(
         &mut virtual_balance,
         virtual_balance_code_id,
         mock_router.addr().clone(),
@@ -43,7 +43,7 @@ fn test_proper_instantiation() {
     );
 
     let token_id_response =
-        Mockvirtual_balance::query_state(&mock_virtual_balance, &mut virtual_balance);
+        MockVirtualBalance::query_state(&mock_virtual_balance, &mut virtual_balance);
     let expected_token_id = GetStateResponse {
         state: State {
             router: mock_router.addr().clone().into_string(),

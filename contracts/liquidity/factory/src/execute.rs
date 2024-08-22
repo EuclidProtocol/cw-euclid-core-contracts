@@ -794,7 +794,7 @@ pub fn execute_withdraw_virtual_balance(
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            TxType::Withdrawvirtual_balance,
+            TxType::WithdrawVirtualBalance,
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "withdraw_virtual_balance")

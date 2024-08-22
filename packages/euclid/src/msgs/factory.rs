@@ -62,7 +62,7 @@ pub enum ExecuteMsg {
     UpdateHubChannel {
         new_channel: String,
     },
-    Withdrawvirtual_balance {
+    WithdrawVirtualBalance {
         token: Token,
         amount: Uint128,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,

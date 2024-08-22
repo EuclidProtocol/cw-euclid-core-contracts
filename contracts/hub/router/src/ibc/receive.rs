@@ -240,7 +240,7 @@ fn execute_request_pool_creation(
             virtual_balance: state
                 .virtual_balance_address
                 .ok_or(ContractError::Generic {
-                    err: "virtual_balance not instantiated".to_string(),
+                    err: "virtual balance not instantiated".to_string(),
                 })?
                 .to_string(),
             pair,

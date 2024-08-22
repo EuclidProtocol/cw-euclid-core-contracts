@@ -10,7 +10,7 @@ use euclid::error::ContractError;
 use euclid::events::{tx_event, TxType};
 use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
 use euclid::msgs::router::ExecuteMsg;
-use euclid::msgs::virtual_balance::{ExecuteMint, ExecuteMsg as virtual_balanceExecuteMsg};
+use euclid::msgs::virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg};
 use euclid::token::Token;
 use euclid::virtual_balance::BalanceKey;
 use euclid_ibc::ack::AcknowledgementMsg;
@@ -192,7 +192,7 @@ pub fn ibc_ack_release_escrow(
             )?;
 
             // Escrow release failed, mint tokens again for the original cross chain sender
-            let mint_msg = virtual_balanceExecuteMsg::Mint(ExecuteMint {
+            let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
                 amount,
                 balance_key: BalanceKey {
                     cross_chain_user: sender,

@@ -11,7 +11,7 @@ use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::mock::mock_router;
 use router::mock::MockRouter;
 use virtual_balance::mock::mock_virtual_balance;
-use virtual_balance::mock::Mockvirtual_balance;
+use virtual_balance::mock::MockVirtualBalance;
 use vlp::mock::{mock_vlp, MockVlp};
 
 const _USER: &str = "user";
@@ -49,7 +49,7 @@ fn test_proper_instantiation() {
         virtual_balance_code_id,
     );
 
-    let mock_virtual_balance = Mockvirtual_balance::instantiate(
+    let mock_virtual_balance = MockVirtualBalance::instantiate(
         &mut vlp,
         virtual_balance_code_id,
         mock_router.addr().clone(),
