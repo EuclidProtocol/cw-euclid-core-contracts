@@ -364,7 +364,7 @@ pub fn execute_swap(
     let mut token_in_reserve = BALANCES.load(deps.storage, asset_in.clone())?;
     let mut token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
 
-    // Router mints new tokens or this vlp gets new balance from token transfer by previous, so virtual_balance_balance = amount_in + pool_current_liquidity
+    // Router mints new tokens or this vlp gets new balance from token transfer by previous, so virtual_balance = amount_in + pool_current_liquidity
     let vlp_virtual_balance_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
         deps.querier.query_wasm_smart(
             state.virtual_balance.clone(),

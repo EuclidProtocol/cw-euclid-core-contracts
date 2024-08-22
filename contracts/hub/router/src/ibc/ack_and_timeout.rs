@@ -187,7 +187,7 @@ pub fn ibc_ack_release_escrow(
         AcknowledgementMsg::Error(err) => {
             let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(
                 ContractError::Generic {
-                    err: "virtual_balance not available".to_string(),
+                    err: "virtual balance not available".to_string(),
                 },
             )?;
 

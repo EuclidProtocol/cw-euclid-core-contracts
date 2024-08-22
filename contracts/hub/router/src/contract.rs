@@ -59,7 +59,7 @@ pub fn instantiate(
         code_id: msg.virtual_balance_code_id,
         msg: to_json_binary(&virtual_balance_instantiate_msg)?,
         funds: vec![],
-        label: "Instantiate virtual_balance Contract".to_string(),
+        label: "Instantiate Virtual Balance Contract".to_string(),
     };
 
     let virtual_balance_instantiate_msg = SubMsg::reply_always(

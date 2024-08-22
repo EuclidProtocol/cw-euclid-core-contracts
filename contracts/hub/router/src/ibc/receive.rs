@@ -350,7 +350,7 @@ fn ibc_execute_add_liquidity(
             .load(deps.storage)?
             .virtual_balance_address
             .ok_or(ContractError::Generic {
-                err: "virtual_balance address doesn't exist".to_string(),
+                err: "virtual balance address doesn't exist".to_string(),
             })?;
 
     let mint_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
@@ -502,7 +502,7 @@ fn ibc_execute_swap(
             .load(deps.storage)?
             .virtual_balance_address
             .ok_or(ContractError::Generic {
-                err: "virtual_balance address doesn't exist".to_string(),
+                err: "virtual balance address doesn't exist".to_string(),
             })?;
 
     let swap_vlps = validate_swap_pairs(deps.as_ref(), &msg.swaps);
@@ -530,7 +530,7 @@ fn ibc_execute_swap(
         &token_1_escrow_balance.checked_add(msg.amount_in)?,
     )?;
 
-    // Mint virtual_balance for the first swap vlp so it can start processing tx
+    // Mint virtual balance for the first swap vlp so it can start processing tx
     let mint_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
         amount: msg.amount_in,
         balance_key: BalanceKey {

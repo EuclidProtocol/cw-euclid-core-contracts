@@ -187,7 +187,7 @@ pub fn execute_release_escrow(
 
     let virtual_balance_address = state
         .virtual_balance_address
-        .ok_or(ContractError::new("virtual_balance doesn't exist"))?
+        .ok_or(ContractError::new("virtual balance doesn't exist"))?
         .into_string();
 
     let user_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
@@ -201,7 +201,7 @@ pub fn execute_release_escrow(
             },
         )?;
 
-    // Ensure that user has enough virtual_balance balance to actually trigger escrow release
+    // Ensure that user has enough virtual balance balance to actually trigger escrow release
     ensure!(
         user_balance.amount.ge(&amount),
         ContractError::InsufficientFunds {}
