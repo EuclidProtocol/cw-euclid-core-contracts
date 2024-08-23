@@ -151,7 +151,13 @@ pub struct SimulateEscrowReleaseResponse {
 
 #[cw_serde]
 pub struct TokenEscrowsResponse {
-    pub chains: Vec<ChainUid>,
+    pub chains: Vec<TokenEscrowChainResponse>,
+}
+
+#[cw_serde]
+pub struct TokenEscrowChainResponse {
+    pub chain_uid: ChainUid,
+    pub balance: Uint128,
 }
 
 #[cw_serde]

@@ -74,9 +74,10 @@ export RUSTFLAGS="-C link-arg=-s"
 
 #Clear current builds
 rm -rf ./target
-rm -rf ./artifacts
-mkdir -p artifacts/wasm
-mkdir -p artifacts/schema
+rm -rf ./artifacts/wasm
+mkdir -p ./artifacts/wasm
+rm -rf ./artifacts/schema
+mkdir -p ./artifacts/schema
 
 for target in "$@"; do
     if [[ "$target" = "all" ]]; then

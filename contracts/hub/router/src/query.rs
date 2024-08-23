@@ -5,8 +5,8 @@ use euclid::{
     error::ContractError,
     msgs::router::{
         AllChainResponse, AllTokensResponse, AllVlpResponse, ChainResponse, QuerySimulateSwap,
-        SimulateEscrowReleaseResponse, SimulateSwapResponse, StateResponse, TokenEscrowsResponse,
-        TokenResponse, VlpResponse,
+        SimulateEscrowReleaseResponse, SimulateSwapResponse, StateResponse,
+        TokenEscrowChainResponse, TokenEscrowsResponse, TokenResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -215,7 +215,10 @@ pub fn query_token_escrows(
         .take(limit.unwrap_or(10) as usize)
         .map(|v| {
             let v = v?;
-            Ok(v.0)
+            Ok(TokenEscrowChainResponse {
+                balance: v.1,
+                chain_uid: v.0,
+            })
         })
         .collect();
 
