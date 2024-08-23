@@ -45,7 +45,7 @@ cw-storage-plus = { workspace = true }
 cw2 = { workspace = true }
 cw0 = { workspace = true }
 schemars = { workspace = true }
-serde = { version = "1.0.189", default-features = false, features = ["derive"] }
+serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
 
