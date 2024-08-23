@@ -11,8 +11,8 @@ use euclid_ibc::msg::HUB_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
-    execute_release_escrow, execute_reregister_chain, execute_update_lock,
-    execute_update_vlp_code_id,
+    execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
+    execute_update_lock, execute_update_vlp_code_id,
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
@@ -98,6 +98,9 @@ pub fn execute(
         match msg {
             ExecuteMsg::ReregisterChain { chain } => execute_reregister_chain(deps, info, chain),
             ExecuteMsg::DeregisterChain { chain } => execute_deregister_chain(deps, info, chain),
+            ExecuteMsg::UpdateFactoryChannel { channel, chain_uid } => {
+                execute_update_factory_channel(&mut deps, env, info, channel, chain_uid)
+            }
             ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
                 execute_update_vlp_code_id(deps, info, new_vlp_code_id)
             }

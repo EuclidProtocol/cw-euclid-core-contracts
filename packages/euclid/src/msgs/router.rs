@@ -22,6 +22,10 @@ pub enum ExecuteMsg {
     DeregisterChain {
         chain: ChainUid,
     },
+    UpdateFactoryChannel {
+        chain_uid: ChainUid,
+        channel: String,
+    },
     UpdateLock {},
     // Update Pool Code ID
     UpdateVLPCodeId {

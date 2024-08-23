@@ -17,7 +17,9 @@ use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 use crate::{
     ibc::receive,
     reply::VCOIN_BURN_REPLY_ID,
-    state::{CHAIN_UID_TO_CHAIN, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE},
+    state::{
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+    },
 };
 
 // Function to update the pool code ID
@@ -165,6 +167,71 @@ pub fn execute_register_factory(
             };
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
         }
+    }
+}
+
+pub fn execute_update_factory_channel(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    new_channel: String,
+    chain_uid: ChainUid,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let chain_uid = chain_uid.validate()?.to_owned();
+    let chain_info = CHAIN_UID_TO_CHAIN
+        .load(deps.storage, chain_uid.clone())
+        .map_err(|_err| ContractError::new("Factory doesn't exist"))?;
+
+    // Make sure that the new channel doesn't already exist
+    ensure!(
+        !CHANNEL_TO_CHAIN_UID.has(deps.storage, new_channel.clone()),
+        ContractError::ChannelAlreadyExists {}
+    );
+
+    let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+    let sender = CrossChainUser {
+        chain_uid: vsl_chain_uid.clone(),
+        address: info.sender.to_string(),
+    };
+
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        chain_uid != vsl_chain_uid,
+        ContractError::new("Cannot use VSL chain uid")
+    );
+
+    let response = Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            TxType::UpdateFactoryChannel,
+        ))
+        .add_attribute("method", "update_factory_channel");
+
+    let msg = HubIbcExecuteMsg::UpdateFactoryChannel {
+        chain_uid: chain_uid.clone(),
+        tx_id: tx_id.clone(),
+    };
+
+    if !chain_info.is_native() {
+        let timeout = get_timeout(None)?;
+        let packet = IbcMsg::SendPacket {
+            channel_id: new_channel.clone(),
+            data: to_json_binary(&msg)?,
+            timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+        };
+
+        Ok(response
+            .add_attribute("channel", new_channel)
+            .add_attribute("timeout", timeout.to_string())
+            .add_message(CosmosMsg::Ibc(packet)))
+    } else {
+        // Can't update channel for a local chain
+        Err(ContractError::NoChannelForLocalChain {})
     }
 }
 

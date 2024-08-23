@@ -101,11 +101,17 @@ pub enum ContractError {
     #[error("Invalid Token ID")]
     InvalidTokenID {},
 
+    #[error("ChannelNotFound")]
+    ChannelNotFound {},
+
     #[error("Asset does not exist in VLP")]
     AssetDoesNotExist {},
 
     #[error("Cannot Swap 0 tokens")]
     ZeroAssetAmount {},
+
+    #[error("No Channel for Local Chain")]
+    NoChannelForLocalChain {},
 
     #[error("DuplicateTokens")]
     DuplicateTokens {},
@@ -130,6 +136,9 @@ pub enum ContractError {
 
     #[error("The Channel specified does not currently exist")]
     ChannelDoesNotExist {},
+
+    #[error("The specified channel already exists")]
+    ChannelAlreadyExists {},
 
     #[error("EscrowDoesNotExist")]
     EscrowDoesNotExist {},
