@@ -2,7 +2,9 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Reply, Response, SubMsgResult,
     WasmMsg,
 };
-use cw0::{parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data};
+use cw_utils::{
+    parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data,
+};
 use euclid::{
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},

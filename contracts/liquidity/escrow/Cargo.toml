@@ -42,7 +42,6 @@ cosmwasm-std = { workspace = true, features = [
     "ibc3",
 ] }
 cw-storage-plus = { workspace = true }
-cw0 = "0.10.3"
 cw2 = { workspace = true }
 cw20 = { workspace = true }
 schemars = { workspace = true }

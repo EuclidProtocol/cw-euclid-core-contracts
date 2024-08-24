@@ -1,5 +1,5 @@
 use cosmwasm_std::{from_json, to_json_binary, DepsMut, Reply, Response, SubMsgResult};
-use cw0::parse_reply_execute_data;
+use cw_utils::parse_reply_execute_data;
 use euclid::{error::ContractError, msgs::vlp::VlpSwapResponse};
 
 pub const VCOIN_TRANSFER_REPLY_ID: u64 = 1;
