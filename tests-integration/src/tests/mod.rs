@@ -3,5 +3,5 @@
 mod escrow;
 mod factory;
 mod router;
-mod vcoin;
+mod virtual_balance;
 mod vlp;

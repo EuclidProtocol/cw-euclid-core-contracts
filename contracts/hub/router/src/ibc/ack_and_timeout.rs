@@ -10,9 +10,9 @@ use euclid::error::ContractError;
 use euclid::events::{tx_event, TxType};
 use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
 use euclid::msgs::router::ExecuteMsg;
-use euclid::msgs::vcoin::{ExecuteMint, ExecuteMsg as VcoinExecuteMsg};
+use euclid::msgs::virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg};
 use euclid::token::Token;
-use euclid::vcoin::BalanceKey;
+use euclid::virtual_balance::BalanceKey;
 use euclid_ibc::ack::AcknowledgementMsg;
 use euclid_ibc::msg::HubIbcExecuteMsg;
 
@@ -246,16 +246,14 @@ pub fn ibc_ack_release_escrow(
             .add_attribute("factory_address", data.factory_address)),
         // Re-mint tokens
         AcknowledgementMsg::Error(err) => {
-            let vcoin_address =
-                STATE
-                    .load(deps.storage)?
-                    .vcoin_address
-                    .ok_or(ContractError::Generic {
-                        err: "Vcoin not available".to_string(),
-                    })?;
+            let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(
+                ContractError::Generic {
+                    err: "virtual balance not available".to_string(),
+                },
+            )?;
 
             // Escrow release failed, mint tokens again for the original cross chain sender
-            let mint_msg = VcoinExecuteMsg::Mint(ExecuteMint {
+            let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
                 amount,
                 balance_key: BalanceKey {
                     cross_chain_user: sender,
@@ -263,7 +261,7 @@ pub fn ibc_ack_release_escrow(
                 },
             });
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: vcoin_address.into_string(),
+                contract_addr: virtual_balance_address.into_string(),
                 msg: to_json_binary(&mint_msg)?,
                 funds: vec![],
             });

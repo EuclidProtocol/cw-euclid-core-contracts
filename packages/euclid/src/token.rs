@@ -10,7 +10,7 @@ use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::chain::CrossChainUser;
 use crate::cw20::Cw20HookMsg;
-use crate::msgs::vcoin::ExecuteTransfer;
+use crate::msgs::virtual_balance::ExecuteTransfer;
 use crate::{error::ContractError, pool::Pool};
 
 // Token asset that represents an identifier for a token
@@ -54,14 +54,14 @@ impl Token {
         Ok(self)
     }
 
-    pub fn create_vcoin_transfer_msg(
+    pub fn create_virtual_balance_transfer_msg(
         &self,
-        vcoin_address: String,
+        virtual_balance_address: String,
         amount: Uint128,
         from: CrossChainUser,
         to: CrossChainUser,
     ) -> Result<WasmMsg, ContractError> {
-        let transfer_msg = crate::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+        let transfer_msg = crate::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount,
             token_id: self.0.clone(),
             from,
@@ -69,7 +69,7 @@ impl Token {
         });
 
         let transfer_msg = WasmMsg::Execute {
-            contract_addr: vcoin_address,
+            contract_addr: virtual_balance_address,
             msg: to_json_binary(&transfer_msg)?,
             funds: vec![],
         };

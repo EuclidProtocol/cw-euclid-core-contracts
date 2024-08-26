@@ -10,8 +10,8 @@ use euclid::token::Token;
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::mock::mock_router;
 use router::mock::MockRouter;
-use vcoin::mock::mock_vcoin;
-use vcoin::mock::MockVcoin;
+use virtual_balance::mock::mock_virtual_balance;
+use virtual_balance::mock::MockVirtualBalance;
 use vlp::mock::{mock_vlp, MockVlp};
 
 const _USER: &str = "user";
@@ -32,26 +32,26 @@ fn test_proper_instantiation() {
         .with_contracts(vec![
             ("vlp", mock_vlp()),
             ("router", mock_router()),
-            ("vcoin", mock_vcoin()),
+            ("virtual_balance", mock_virtual_balance()),
         ])
         .build(&mut vlp);
     let owner = andr.get_wallet("owner");
 
     let vlp_code_id = 1;
     let router_code_id = 2;
-    let vcoin_code_id = 3;
+    let virtual_balance_code_id = 3;
 
     let mock_router = MockRouter::instantiate(
         &mut vlp,
         router_code_id,
         owner.clone(),
         vlp_code_id,
-        vcoin_code_id,
+        virtual_balance_code_id,
     );
 
-    let mock_vcoin = MockVcoin::instantiate(
+    let mock_virtual_balance = MockVirtualBalance::instantiate(
         &mut vlp,
-        vcoin_code_id,
+        virtual_balance_code_id,
         mock_router.addr().clone(),
         mock_router.addr().clone(),
         None,
@@ -79,7 +79,7 @@ fn test_proper_instantiation() {
         vlp_code_id,
         mock_router.addr().clone(),
         mock_router.addr().clone().into_string(),
-        mock_vcoin.addr().clone().into_string(),
+        mock_virtual_balance.addr().clone().into_string(),
         pair.clone(),
         fee.clone(),
         None,
@@ -90,7 +90,7 @@ fn test_proper_instantiation() {
     let expected_token_id = GetStateResponse {
         pair,
         router: mock_router.addr().clone().into_string(),
-        vcoin: mock_vcoin.addr().clone().into_string(),
+        virtual_balance: mock_virtual_balance.addr().clone().into_string(),
         fee,
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),

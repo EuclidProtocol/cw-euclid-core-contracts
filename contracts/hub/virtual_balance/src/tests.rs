@@ -8,10 +8,10 @@ mod tests {
     use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
-    use euclid::msgs::vcoin::{
+    use euclid::msgs::virtual_balance::{
         ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer, InstantiateMsg, State,
     };
-    use euclid::vcoin::BalanceKey;
+    use euclid::virtual_balance::BalanceKey;
 
     fn init(deps: DepsMut) -> Response {
         let msg = InstantiateMsg {

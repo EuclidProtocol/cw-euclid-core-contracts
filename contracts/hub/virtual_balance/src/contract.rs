@@ -6,10 +6,10 @@ use cw2::set_contract_version;
 use crate::state::STATE;
 use crate::{execute, query};
 use euclid::error::ContractError;
-use euclid::msgs::vcoin::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
+use euclid::msgs::virtual_balance::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:vcoin";
+const CONTRACT_NAME: &str = "crates.io:virtual_balance";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]

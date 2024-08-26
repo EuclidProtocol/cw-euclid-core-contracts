@@ -6,17 +6,17 @@ use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{router::RegisterFactoryChainType, vcoin::ExecuteBurn},
+    msgs::{router::RegisterFactoryChainType, virtual_balance::ExecuteBurn},
     timeout::get_timeout,
     token::Token,
     utils::generate_tx,
-    vcoin::BalanceKey,
+    virtual_balance::BalanceKey,
 };
 use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
     ibc::receive,
-    reply::VCOIN_BURN_REPLY_ID,
+    reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
     },
@@ -252,22 +252,23 @@ pub fn execute_release_escrow(
         ContractError::Unauthorized {}
     );
 
-    let vcoin_address = state
-        .vcoin_address
-        .ok_or(ContractError::new("vcoin doesn't exist"))?
+    let virtual_balance_address = state
+        .virtual_balance_address
+        .ok_or(ContractError::new("virtual balance doesn't exist"))?
         .into_string();
 
-    let user_balance: euclid::msgs::vcoin::GetBalanceResponse = deps.querier.query_wasm_smart(
-        vcoin_address.clone(),
-        &euclid::msgs::vcoin::QueryMsg::GetBalance {
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
+    let user_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
+        deps.querier.query_wasm_smart(
+            virtual_balance_address.clone(),
+            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+                balance_key: BalanceKey {
+                    cross_chain_user: sender.clone(),
+                    token_id: token.to_string(),
+                },
             },
-        },
-    )?;
+        )?;
 
-    // Ensure that user has enough vcoin balance to actually trigger escrow release
+    // Ensure that user has enough virtual balance balance to actually trigger escrow release
     ensure!(
         user_balance.amount.ge(&amount),
         ContractError::InsufficientFunds {}
@@ -339,21 +340,24 @@ pub fn execute_release_escrow(
         ))
         .add_attribute("tx_id", tx_id);
     if !transfer_amount.is_zero() {
-        let burn_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Burn(ExecuteBurn {
-            amount: transfer_amount,
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
-            },
-        });
+        let burn_virtual_balance_msg =
+            euclid::msgs::virtual_balance::ExecuteMsg::Burn(ExecuteBurn {
+                amount: transfer_amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: sender.clone(),
+                    token_id: token.to_string(),
+                },
+            });
 
-        let burn_vcoin_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: vcoin_address,
-            msg: to_json_binary(&burn_vcoin_msg)?,
+        let burn_virtual_balance_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: virtual_balance_address,
+            msg: to_json_binary(&burn_virtual_balance_msg)?,
             funds: vec![],
         });
-        response =
-            response.add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID));
+        response = response.add_submessage(SubMsg::reply_always(
+            burn_virtual_balance_msg,
+            VIRTUAL_BALANCE_BURN_REPLY_ID,
+        ));
     }
 
     Ok(response

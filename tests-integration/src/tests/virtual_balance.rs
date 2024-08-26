@@ -1,45 +1,49 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cosmwasm_std::coin;
-use euclid::msgs::vcoin::{GetStateResponse, State};
+use euclid::msgs::virtual_balance::{GetStateResponse, State};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::mock::mock_router;
 use router::mock::MockRouter;
-use vcoin::mock::{mock_vcoin, MockVcoin};
+use virtual_balance::mock::{mock_virtual_balance, MockVirtualBalance};
 
 #[test]
 fn test_proper_instantiation() {
-    let mut vcoin = mock_app(None);
-    let andr = MockEuclidBuilder::new(&mut vcoin, "admin")
+    let mut virtual_balance = mock_app(None);
+    let andr = MockEuclidBuilder::new(&mut virtual_balance, "admin")
         .with_wallets(vec![
             ("owner", vec![coin(1000, "eucl")]),
             ("recipient1", vec![]),
             ("recipient2", vec![]),
         ])
-        .with_contracts(vec![("vcoin", mock_vcoin()), ("router", mock_router())])
-        .build(&mut vcoin);
+        .with_contracts(vec![
+            ("virtual_balance", mock_virtual_balance()),
+            ("router", mock_router()),
+        ])
+        .build(&mut virtual_balance);
     let owner = andr.get_wallet("owner");
 
-    let vcoin_code_id = 1;
+    let virtual_balance_code_id = 1;
     let router_code_id = 2;
     let vlp_code_id = 3;
 
     let mock_router = MockRouter::instantiate(
-        &mut vcoin,
+        &mut virtual_balance,
         router_code_id,
         owner.clone(),
         vlp_code_id,
-        vcoin_code_id,
+        virtual_balance_code_id,
     );
 
-    let mock_vcoin = MockVcoin::instantiate(
-        &mut vcoin,
-        vcoin_code_id,
+    let mock_virtual_balance = MockVirtualBalance::instantiate(
+        &mut virtual_balance,
+        virtual_balance_code_id,
         mock_router.addr().clone(),
         mock_router.addr().clone(),
         None,
     );
 
-    let token_id_response = MockVcoin::query_state(&mock_vcoin, &mut vcoin);
+    let token_id_response =
+        MockVirtualBalance::query_state(&mock_virtual_balance, &mut virtual_balance);
     let expected_token_id = GetStateResponse {
         state: State {
             router: mock_router.addr().clone().into_string(),
