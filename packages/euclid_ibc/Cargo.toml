@@ -12,7 +12,7 @@ library = []
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cosmwasm-std = { workspace = true }
+cosmwasm-std = { workspace = true, features = ["stargate"] }
 cw-storage-plus = { workspace = true }
 itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }

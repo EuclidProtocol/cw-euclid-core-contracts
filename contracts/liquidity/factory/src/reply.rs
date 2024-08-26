@@ -2,8 +2,10 @@ use crate::{
     ibc,
     state::{TOKEN_TO_ESCROW, VLP_TO_CW20},
 };
-use cosmwasm_std::{from_json, DepsMut, Env, Reply, Response, SubMsgResult};
-use cw_utils::{parse_execute_response_data, parse_reply_instantiate_data};
+use cosmwasm_std::{from_json, to_json_vec, DepsMut, Env, Reply, Response, SubMsgResult};
+use cw_utils::{
+    parse_execute_response_data, parse_instantiate_response_data, MsgInstantiateContractResponse,
+};
 use euclid::error::ContractError;
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
 
@@ -15,10 +17,12 @@ pub const CW20_INSTANTIATE_REPLY_ID: u64 = 4;
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
-        SubMsgResult::Ok(..) => {
-            let instantiate_data: cw_utils::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
+        SubMsgResult::Ok(res) => {
+            let instantiate_data: MsgInstantiateContractResponse =
+                parse_instantiate_response_data(res.data.unwrap().as_slice()).map_err(|res| {
+                    ContractError::Generic {
+                        err: res.to_string(),
+                    }
                 })?;
 
             let escrow_address = deps.api.addr_validate(&instantiate_data.contract_address)?;
@@ -37,10 +41,12 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
 pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
-        SubMsgResult::Ok(..) => {
-            let instantiate_data: cw_utils::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
+        SubMsgResult::Ok(res) => {
+            let instantiate_data: MsgInstantiateContractResponse =
+                parse_instantiate_response_data(res.data.unwrap().as_slice()).map_err(|res| {
+                    ContractError::Generic {
+                        err: res.to_string(),
+                    }
                 })?;
 
             let cw20_address = deps.api.addr_validate(&instantiate_data.contract_address)?;

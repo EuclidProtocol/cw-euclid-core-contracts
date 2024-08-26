@@ -2,14 +2,13 @@
 mod tests {
     use crate::contract::{execute, instantiate};
     use crate::state::{State, HUB_CHANNEL, STATE};
-    use std::collections::HashMap;
-
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{DepsMut, Response};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
+    use cosmwasm_std::{Addr, DepsMut, Response};
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
     use euclid::fee::DenomFees;
     use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg};
+    use std::collections::HashMap;
 
     fn _initialize_state(deps: &mut DepsMut) {
         let state = State {
@@ -34,7 +33,7 @@ mod tests {
             cw20_code_id: 2,
             is_native: true,
         };
-        let info = mock_info("owner", &[]);
+        let info = message_info(&Addr::unchecked("owner"), &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()
     }
 
@@ -61,7 +60,7 @@ mod tests {
     fn test_update_hub_channel() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("not_owner", &[]);
+        let info = message_info(&deps.api.addr_make("not_owner"), &[]);
         init(deps.as_mut());
 
         HUB_CHANNEL
@@ -74,7 +73,7 @@ mod tests {
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
-        let info = mock_info("owner", &[]);
+        let info = message_info(&Addr::unchecked("owner"), &[]);
         let _res = execute(deps.as_mut(), env, info, msg).unwrap();
 
         assert_eq!(HUB_CHANNEL.load(&deps.storage).unwrap(), "2".to_string());

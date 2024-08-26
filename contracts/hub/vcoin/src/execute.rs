@@ -14,7 +14,10 @@ pub fn execute_mint(
     msg: ExecuteMint,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.into_string() == state.router,
+        ContractError::Unauthorized {}
+    );
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -49,7 +52,10 @@ pub fn execute_burn(
     msg: ExecuteBurn,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.into_string() == state.router,
+        ContractError::Unauthorized {}
+    );
 
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -88,8 +94,8 @@ pub fn execute_transfer(
 
     // Router can send on behalf of anyone, or any user can transfer his own funds
     ensure!(
-        state.router == info.sender
-            || (msg.from.address == info.sender
+        state.router == info.sender.clone().into_string()
+            || (msg.from.address == info.sender.into_string()
                 && msg.from.chain_uid == ChainUid::vsl_chain_uid()?),
         ContractError::Unauthorized {}
     );

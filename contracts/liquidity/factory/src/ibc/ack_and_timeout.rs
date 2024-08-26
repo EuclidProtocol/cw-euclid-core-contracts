@@ -212,6 +212,7 @@ fn ack_pool_creation(
                         msg: init_msg,
                         gas_limit: None,
                         reply_on: ReplyOn::Always,
+                        payload: Binary::default(),
                     });
                 }
             }
@@ -240,6 +241,7 @@ fn ack_pool_creation(
                 msg: init_cw20_msg,
                 gas_limit: None,
                 reply_on: ReplyOn::Always,
+                payload: Binary::default(),
             }))
         }
 
@@ -296,6 +298,7 @@ fn ack_escrow_creation(
                     msg: init_msg,
                     gas_limit: None,
                     reply_on: ReplyOn::Always,
+                    payload: Binary::default(),
                 })
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "escrow_creation"))

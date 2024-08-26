@@ -37,7 +37,10 @@ pub fn execute_update_hub_channel(
     new_channel: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.into_string() == state.admin,
+        ContractError::Unauthorized {}
+    );
     let old_channel = HUB_CHANNEL.may_load(deps.storage)?;
     HUB_CHANNEL.save(deps.storage, &new_channel)?;
     let mut response = Response::new().add_attribute("method", "execute_update_hub_channel");
@@ -564,7 +567,7 @@ pub fn execute_swap_request(
     } else {
         // Verify that the contract address is the same as the asset contract address
         ensure!(
-            info.sender == asset_in.token_type.get_denom(),
+            info.sender == deps.api.addr_validate(&asset_in.token_type.get_denom())?,
             ContractError::Unauthorized {}
         );
     }
@@ -652,7 +655,7 @@ pub fn receive_cw20(
 
             // ensure that contract address is same as asset being swapped
             ensure!(
-                contract_adr == asset_in.get_denom(),
+                contract_adr == deps.api.addr_validate(&asset_in.get_denom())?,
                 ContractError::AssetDoesNotExist {}
             );
 
@@ -815,7 +818,7 @@ pub fn execute_native_receive_callback(
 
     // Only router contract can execute this message
     ensure!(
-        state.router_contract == info.sender,
+        deps.api.addr_validate(&state.router_contract)? == info.sender,
         ContractError::Unauthorized {}
     );
     receive::reusable_internal_call(deps, env, msg)

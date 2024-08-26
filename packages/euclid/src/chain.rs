@@ -67,6 +67,8 @@ impl<'a> Prefixer<'a> for ChainUid {
 
 impl KeyDeserialize for ChainUid {
     type Output = Self;
+    //TODO is this correct?
+    const KEY_ELEMS: u16 = 1;
 
     #[inline(always)]
     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {

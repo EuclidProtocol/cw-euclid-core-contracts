@@ -3,8 +3,8 @@ use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, StdError,
-    StdResult, Uint128, WasmMsg,
+    coin, ensure, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, StdError, StdResult, Uint128,
+    WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
@@ -16,7 +16,7 @@ use crate::{error::ContractError, pool::Pool};
 // Token asset that represents an identifier for a token
 #[cw_serde]
 pub struct Token(String);
-forward_ref_partial_eq!(Token, Token);
+// forward_ref_partial_eq!(Token, Token);
 
 // Implement Deref to allow easy access to the inner type
 impl Deref for Token {
@@ -39,7 +39,7 @@ impl Token {
     }
 
     pub fn exists(&self, pair: Pair) -> bool {
-        self == pair.token_1 || self == pair.token_2
+        self == &pair.token_1 || self == &pair.token_2
     }
     pub fn validate(&self) -> Result<&Self, ContractError> {
         ensure!(!self.is_empty(), ContractError::InvalidTokenID {});
@@ -104,6 +104,9 @@ impl KeyDeserialize for Token {
             .map(Token)
             .map_err(|e| StdError::generic_err(format!("Invalid UTF-8 sequence: {}", e)))
     }
+
+    //TODO is this correct?
+    const KEY_ELEMS: u16 = 1;
 }
 
 impl fmt::Display for Token {
@@ -117,7 +120,7 @@ pub struct Pair {
     pub token_1: Token,
     pub token_2: Token,
 }
-forward_ref_partial_eq!(Pair, Pair);
+// forward_ref_partial_eq!(Pair, Pair);
 
 impl Pair {
     pub fn new(token_1: Token, token_2: Token) -> Result<Self, ContractError> {
@@ -209,6 +212,8 @@ fn parse_length(value: &[u8]) -> StdResult<usize> {
 
 impl KeyDeserialize for Pair {
     type Output = Pair;
+    //TODO is this correct?
+    const KEY_ELEMS: u16 = 1;
 
     #[inline(always)]
     fn from_vec(mut value: Vec<u8>) -> StdResult<Self::Output> {

@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use cosmwasm_std::{coin, BlockInfo, Decimal, Timestamp, Validator};
-use cw_multi_test::{App, AppBuilder, BankKeeper, MockAddressGenerator, MockApiBech32, WasmKeeper};
+use cw_multi_test::{
+    AddressGenerator, App, AppBuilder, BankKeeper, MockApiBech32, SimpleAddressGenerator,
+    WasmKeeper,
+};
 pub const ADMIN_USERNAME: &str = "am";
 
 pub type MockApp = App<BankKeeper, MockApiBech32>;
@@ -17,7 +20,7 @@ pub fn mock_app(denoms: Option<Vec<&str>>) -> MockApp {
     let denoms = denoms.unwrap_or(vec!["eucl", "uusd"]);
     AppBuilder::new()
         .with_api(MockApiBech32::new("eucl"))
-        .with_wasm(WasmKeeper::new().with_address_generator(MockAddressGenerator))
+        .with_wasm(WasmKeeper::new().with_address_generator(SimpleAddressGenerator))
         .build(|router, api, storage| {
             router
                 .bank
@@ -31,47 +34,45 @@ pub fn mock_app(denoms: Option<Vec<&str>>) -> MockApp {
                 )
                 .unwrap();
 
-            router
-                .staking
-                .add_validator(
-                    api,
-                    storage,
-                    &BlockInfo {
-                        height: 0,
-                        time: Timestamp::default(),
-                        chain_id: "euclid".to_string(),
-                    },
-                    Validator {
-                        address: MockApiBech32::new("eucl")
-                            .addr_make("validator1")
-                            .to_string(),
-                        commission: Decimal::zero(),
-                        max_commission: Decimal::percent(20),
-                        max_change_rate: Decimal::percent(1),
-                    },
-                )
-                .unwrap();
+            // router.staking;
+            // .add_validator(
+            //     api,
+            //     storage,
+            //     &BlockInfo {
+            //         height: 0,
+            //         time: Timestamp::default(),
+            //         chain_id: "euclid".to_string(),
+            //     },
+            //     Validator {
+            //         address: MockApiBech32::new("eucl")
+            //             .addr_make("validator1")
+            //             .to_string(),
+            //         commission: Decimal::zero(),
+            //         max_commission: Decimal::percent(20),
+            //         max_change_rate: Decimal::percent(1),
+            //     },
+            // )
+            // .unwrap();
 
-            router
-                .staking
-                .add_validator(
-                    api,
-                    storage,
-                    &BlockInfo {
-                        height: 0,
-                        time: Timestamp::default(),
-                        chain_id: "euclid-1".to_string(),
-                    },
-                    Validator {
-                        address: MockApiBech32::new("eucl")
-                            .addr_make("validator2")
-                            .to_string(),
-                        commission: Decimal::zero(),
-                        max_commission: Decimal::percent(20),
-                        max_change_rate: Decimal::percent(1),
-                    },
-                )
-                .unwrap();
+            // router.staking
+            // .add_validator(
+            //     api,
+            //     storage,
+            //     &BlockInfo {
+            //         height: 0,
+            //         time: Timestamp::default(),
+            //         chain_id: "euclid-1".to_string(),
+            //     },
+            //     Validator {
+            //         address: MockApiBech32::new("eucl")
+            //             .addr_make("validator2")
+            //             .to_string(),
+            //         commission: Decimal::zero(),
+            //         max_commission: Decimal::percent(20),
+            //         max_change_rate: Decimal::percent(1),
+            //     },
+            // )
+            // .unwrap();
         })
 }
 

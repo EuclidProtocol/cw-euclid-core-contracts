@@ -1,10 +1,9 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Reply, Response, SubMsgResult,
-    WasmMsg,
+    ensure, from_json, to_json_binary, to_json_vec, CosmosMsg, DepsMut, Env, Reply, Response,
+    SubMsgResult, WasmMsg,
 };
-use cw_utils::{
-    parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data,
-};
+use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
+
 use euclid::{
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
@@ -45,9 +44,9 @@ pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::InstantiateError { err }),
-        SubMsgResult::Ok(..) => {
-            let instantiate_data =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+        SubMsgResult::Ok(res) => {
+            let instantiate_data = parse_instantiate_response_data(res.data.unwrap().as_slice())
+                .map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
@@ -89,8 +88,10 @@ pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
+                parse_execute_response_data(to_json_vec(&msg)?.as_slice()).map_err(|res| {
+                    ContractError::Generic {
+                        err: res.to_string(),
+                    }
                 })?;
             let pool_creation_response: PoolCreationResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
@@ -112,8 +113,10 @@ pub fn on_add_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
+                parse_execute_response_data(to_json_vec(&msg)?.as_slice()).map_err(|res| {
+                    ContractError::Generic {
+                        err: res.to_string(),
+                    }
                 })?;
             let liquidity_response: AddLiquidityResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
@@ -137,8 +140,10 @@ pub fn on_remove_liquidity_reply(
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
+                parse_execute_response_data(to_json_vec(&msg)?.as_slice()).map_err(|res| {
+                    ContractError::Generic {
+                        err: res.to_string(),
+                    }
                 })?;
             let vlp_liquidity_response: VlpRemoveLiquidityResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
@@ -206,8 +211,10 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
+                parse_execute_response_data(to_json_vec(&msg)?.as_slice()).map_err(|res| {
+                    ContractError::Generic {
+                        err: res.to_string(),
+                    }
                 })?;
             let vlp_swap_response: VlpSwapResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
@@ -265,9 +272,9 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
 pub fn on_vcoin_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
-        SubMsgResult::Ok(..) => {
-            let instantiate_data =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+        SubMsgResult::Ok(res) => {
+            let instantiate_data = parse_instantiate_response_data(res.data.unwrap().as_slice())
+                .map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 

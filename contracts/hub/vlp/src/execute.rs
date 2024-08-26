@@ -49,7 +49,10 @@ pub fn register_pool(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.into_string() == state.router,
+        ContractError::Unauthorized {}
+    );
 
     // Verify that chain pool does not already exist
     ensure!(
@@ -108,7 +111,10 @@ pub fn add_liquidity(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.into_string() == state.router,
+        ContractError::Unauthorized {}
+    );
 
     let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
 
@@ -225,7 +231,10 @@ pub fn remove_liquidity(
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
     let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.into_string() == state.router,
+        ContractError::Unauthorized {}
+    );
     let pair = state.pair.clone();
 
     let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
@@ -582,7 +591,10 @@ pub fn update_fee(
     recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender == deps.api.addr_validate(&state.admin)?,
+        ContractError::Unauthorized {}
+    );
 
     state.fee.lp_fee_bps = lp_fee_bps.unwrap_or(state.fee.lp_fee_bps);
     ensure!(

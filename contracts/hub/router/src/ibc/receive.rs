@@ -53,11 +53,12 @@ pub fn ibc_packet_receive(
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
 
-    Ok(IbcReceiveResponse::new()
-        .add_attribute("method", "ibc_packet_receive")
-        .add_attribute("tx_id", tx_id)
-        .set_ack(make_ack_fail("deafult_fail".to_string())?)
-        .add_submessage(sub_msg))
+    Ok(
+        IbcReceiveResponse::new(make_ack_fail("deafult_fail".to_string())?)
+            .add_attribute("method", "ibc_packet_receive")
+            .add_attribute("tx_id", tx_id)
+            .add_submessage(sub_msg),
+    )
 }
 
 pub fn ibc_receive_internal_call(
