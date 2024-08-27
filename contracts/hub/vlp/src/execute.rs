@@ -421,7 +421,7 @@ pub fn execute_swap(
     let swap_response = VlpSwapResponse {
         sender: sender.clone(),
         tx_id: tx_id.clone(),
-        asset_out,
+        asset_out: asset_out.clone(),
         amount_out: receive_amount,
     };
 
@@ -574,6 +574,8 @@ pub fn execute_swap(
         .add_event(liquidity_event(&pool, &tx_id))
         .add_attribute("action", "swap")
         .add_attribute("amount_in", amount_in)
+        .add_attribute("asset_in", asset_in.to_string())
+        .add_attribute("asset_out", asset_out.to_string())
         .add_attribute("total_fee", total_fee)
         .add_attribute("euclid_fee", euclid_fee)
         .add_attribute("lp_fee", lp_fee)

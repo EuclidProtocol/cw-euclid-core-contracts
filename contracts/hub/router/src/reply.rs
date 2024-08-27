@@ -240,7 +240,7 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
             // Prepare burn msg
             let release_msg = ExecuteMsg::ReleaseEscrowInternal {
                 sender: swap_msg.sender,
-                token: swap_msg.asset_out,
+                token: swap_msg.asset_out.clone(),
                 amount: swap_response.amount_out,
                 cross_chain_addresses: swap_msg.cross_chain_addresses,
                 timeout: None,
@@ -255,6 +255,10 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 }))
                 .add_attribute("action", "reply_swap")
                 .add_attribute("swap", format!("{swap_response:?}"))
+                .add_attribute("amount_out", swap_response.amount_out)
+                .add_attribute("asset_out", swap_msg.asset_out.to_string())
+                .add_attribute("asset_in", swap_msg.asset_in.to_string())
+                .add_attribute("amount_in", swap_msg.amount_in)
                 .set_data(to_json_binary(&ack)?))
         }
     }
