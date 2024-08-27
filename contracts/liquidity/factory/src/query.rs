@@ -73,6 +73,10 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         router_contract: state.router_contract,
         admin: state.admin,
         hub_channel: hub,
+        escrow_code_id: state.escrow_code_id,
+        cw20_code_id: state.cw20_code_id,
+        is_native: state.is_native,
+        partner_fees_collected: state.partner_fees_collected,
     })?)
 }
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {

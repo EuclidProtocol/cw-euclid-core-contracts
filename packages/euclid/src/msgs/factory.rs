@@ -151,7 +151,12 @@ pub struct StateResponse {
     pub router_contract: String,
     pub hub_channel: Option<String>,
     pub admin: String,
-    // pub pool_code_id: u64,
+    // Escrow Code ID
+    pub escrow_code_id: u64,
+    // CW20 Code ID
+    pub cw20_code_id: u64,
+    pub is_native: bool,
+    pub partner_fees_collected: DenomFees,
 }
 
 #[cw_serde]
