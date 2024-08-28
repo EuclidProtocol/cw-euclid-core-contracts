@@ -154,6 +154,8 @@ pub fn execute_request_register_escrow(
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+    
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid.clone(),
