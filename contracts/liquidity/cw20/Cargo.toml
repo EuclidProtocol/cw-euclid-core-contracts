@@ -38,7 +38,7 @@ cosmwasm-schema = "1.5.0"
 cosmwasm-std = { version = "1.5.3", features = [
   "cosmwasm_1_2",
   # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
-  # "cosmwasm_1_2",
+  # "cosmwasm_1_4",
   "ibc3",
 ] }
 cw-storage-plus = "1.1.0"
