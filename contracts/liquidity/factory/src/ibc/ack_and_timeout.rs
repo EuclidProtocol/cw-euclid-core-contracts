@@ -5,8 +5,6 @@ use cosmwasm_std::{
     IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, StdResult,
     SubMsg, Uint128, WasmMsg,
 };
-
-use cw20_base::state;
 use euclid::{
     error::ContractError,
     events::swap_event,
@@ -258,7 +256,7 @@ fn ack_pool_creation(
 
 fn ack_escrow_creation(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     sender: String,
     res: AcknowledgementMsg<EscrowCreationResponse>,
     tx_id: String,
@@ -515,7 +513,7 @@ fn ack_swap_request(
                 // Add partner fee collected to the total
                 state
                     .partner_fees_collected
-                    .add_fee(asset_in.get_denom(), swap_info.partner_fee_amount);
+                    .add_fee_token_with_denom(asset_in.clone(), swap_info.partner_fee_amount);
 
                 // Save new total partner fees collected to state
                 STATE.save(deps.storage, &state)?;
