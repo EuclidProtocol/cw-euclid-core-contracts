@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
+    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -18,7 +18,8 @@ use crate::{
     ibc::receive,
     reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+        State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
+        STATE,
     },
 };
 
@@ -383,4 +384,37 @@ pub fn execute_native_receive_callback(
     // Only registered factory contract can execute this message
     ensure!(chain.factory == info.sender, ContractError::Unauthorized {});
     receive::reusable_internal_call(deps, env, info, msg, chain_uid)
+}
+
+pub fn execute_update_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    admin: String,
+    vlp_code_id: u64,
+    virtual_balance_address: Option<Addr>,
+    locked: bool,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let state = State {
+        admin: admin.clone(),
+        vlp_code_id,
+        virtual_balance_address: virtual_balance_address.clone(),
+        locked,
+    };
+
+    STATE.save(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_state")
+        .add_attribute("admin", admin)
+        .add_attribute("vlp_code_id", vlp_code_id.to_string())
+        .add_attribute(
+            "virtual_balance_address",
+            virtual_balance_address
+                .unwrap_or(Addr::unchecked(""))
+                .to_string(),
+        )
+        .add_attribute("locked", locked.to_string()))
 }
