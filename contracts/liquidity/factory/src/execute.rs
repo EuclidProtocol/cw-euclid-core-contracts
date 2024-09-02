@@ -4,11 +4,11 @@ use cosmwasm_std::{
 };
 use cw20::Cw20ReceiveMsg;
 use euclid::{
-    chain::{CrossChainUser, CrossChainUserWithLimit},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     cw20::Cw20HookMsg,
     error::ContractError,
     events::{swap_event, tx_event, TxType},
-    fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
+    fee::{DenomFees, PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
     pool::{EscrowCreateRequest, PoolCreateRequest},
@@ -25,7 +25,7 @@ use euclid_ibc::msg::{
 use crate::{
     ibc::receive,
     state::{
-        HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
+        State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
         PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
         VLP_TO_CW20,
     },
@@ -801,6 +801,45 @@ pub fn execute_withdraw_virtual_balance(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "withdraw_virtual_balance")
         .add_submessage(withdraw_msg))
+}
+
+pub fn execute_update_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    router_contract: String,
+    admin: String,
+    escrow_code_id: u64,
+    cw20_code_id: u64,
+    chain_uid: ChainUid,
+    is_native: bool,
+    partner_fees_collected: DenomFees,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        state.admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
+
+    let new_state = State {
+        router_contract: router_contract.clone(),
+        admin: admin.clone(),
+        escrow_code_id: escrow_code_id.clone(),
+        cw20_code_id: cw20_code_id.clone(),
+        chain_uid: chain_uid.clone(),
+        is_native: is_native.clone(),
+        partner_fees_collected,
+    };
+
+    STATE.save(deps.storage, &new_state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_state")
+        .add_attribute("admin", admin)
+        .add_attribute("router_contract", router_contract)
+        .add_attribute("escrow_code_id", escrow_code_id.to_string())
+        .add_attribute("cw20_code_id", cw20_code_id.to_string())
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("is_native", is_native.to_string()))
 }
 
 pub fn execute_native_receive_callback(

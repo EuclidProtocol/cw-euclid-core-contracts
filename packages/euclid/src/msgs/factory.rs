@@ -68,6 +68,23 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
+    UpdateState {
+        // The Router Contract Address on the Virtual Settlement Layer
+        router_contract: String,
+        // Contract admin
+        admin: String,
+        // Escrow Code ID
+        escrow_code_id: u64,
+        // CW20 Code ID
+        cw20_code_id: u64,
+        // The Unique Chain Identifier
+        // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
+        // IN THE EUCLID ECOSYSTEM
+        chain_uid: ChainUid,
+        is_native: bool,
+        // Total partner fees collected
+        partner_fees_collected: DenomFees,
+    },
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
