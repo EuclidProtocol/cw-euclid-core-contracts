@@ -6,7 +6,10 @@ use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{router::RegisterFactoryChainType, virtual_balance::ExecuteBurn},
+    msgs::{
+        router::RegisterFactoryChainType, virtual_balance::ExecuteBurn,
+        virtual_balance::ExecuteMsg as VirtualBalanceExecuteMsg,
+    },
     timeout::get_timeout,
     token::Token,
     utils::generate_tx,
@@ -386,7 +389,7 @@ pub fn execute_native_receive_callback(
     receive::reusable_internal_call(deps, env, info, msg, chain_uid)
 }
 
-pub fn execute_update_state(
+pub fn execute_update_router_state(
     deps: DepsMut,
     info: MessageInfo,
     admin: String,
@@ -417,4 +420,34 @@ pub fn execute_update_state(
                 .to_string(),
         )
         .add_attribute("locked", locked.to_string()))
+}
+
+pub fn execute_update_virtual_balance_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    router: String,
+    admin: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        state.virtual_balance_address.is_some(),
+        ContractError::new("Virtual Balance Contract Not Set")
+    );
+    let admin = deps.api.addr_validate(&admin)?;
+
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: state.virtual_balance_address.unwrap().to_string(),
+        msg: to_json_binary(&VirtualBalanceExecuteMsg::UpdateState {
+            router: router.clone(),
+            admin: admin.clone(),
+        })?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_message(msg)
+        .add_attribute("method", "update_state")
+        .add_attribute("admin", admin)
+        .add_attribute("router", router))
 }
