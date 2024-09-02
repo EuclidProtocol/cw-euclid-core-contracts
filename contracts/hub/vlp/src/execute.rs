@@ -6,7 +6,7 @@ use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::MAX_FEE_BPS,
+    fee::{Fee, TotalFees, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
     msgs::{
         virtual_balance::ExecuteTransfer,
@@ -21,7 +21,7 @@ use euclid::{
 use crate::{
     query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
     reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
-    state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
+    state::{self, State, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -610,4 +610,37 @@ pub fn update_fee(
     Ok(Response::new()
         .add_event(simple_event())
         .add_attribute("action", "update_fee"))
+}
+
+pub fn update_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    pair: Pair,
+    router: String,
+    virtual_balance: String,
+    fee: Fee,
+    total_fees_collected: TotalFees,
+    last_updated: u64,
+    total_lp_tokens: Uint128,
+    admin: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let new_state = State {
+        pair,
+        router,
+        virtual_balance,
+        fee,
+        total_fees_collected,
+        last_updated,
+        total_lp_tokens,
+        admin,
+    };
+
+    STATE.save(deps.storage, &new_state)?;
+
+    Ok(Response::new()
+        .add_event(simple_event())
+        .add_attribute("action", "update_state"))
 }
