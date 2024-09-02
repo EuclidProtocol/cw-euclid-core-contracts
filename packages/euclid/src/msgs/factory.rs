@@ -68,7 +68,7 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
-    UpdateState {
+    UpdateFactoryState {
         // The Router Contract Address on the Virtual Settlement Layer
         router_contract: String,
         // Contract admin
@@ -84,6 +84,11 @@ pub enum ExecuteMsg {
         is_native: bool,
         // Total partner fees collected
         partner_fees_collected: DenomFees,
+    },
+    UpdateEscrowState {
+        token_id: Token,
+        factory_address: String,
+        total_amount: Uint128,
     },
 
     // Recieve CW20 TOKENS structure

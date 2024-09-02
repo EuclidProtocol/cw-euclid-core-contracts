@@ -11,7 +11,7 @@ use euclid::error::ContractError;
 
 use crate::execute::{
     self, execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom,
-    execute_withdraw, receive_cw20,
+    execute_update_state, execute_withdraw, receive_cw20,
 };
 use crate::query::{self, query_token_id};
 use crate::state::{State, STATE};
@@ -70,6 +70,11 @@ pub fn execute(
         ExecuteMsg::Withdraw { recipient, amount } => {
             execute_withdraw(deps, env, info, recipient, amount)
         }
+        ExecuteMsg::UpdateState {
+            token_id,
+            factory_address,
+            total_amount,
+        } => execute_update_state(deps, env, info, token_id, factory_address, total_amount),
     }
 }
 

@@ -3,9 +3,13 @@ use cosmwasm_std::{
 };
 
 use cw20::Cw20ReceiveMsg;
-use euclid::{cw20::Cw20HookMsg, error::ContractError, token::TokenType};
+use euclid::{
+    cw20::Cw20HookMsg,
+    error::ContractError,
+    token::{Token, TokenType},
+};
 
-use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
+use crate::state::{State, ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
 
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
@@ -73,6 +77,36 @@ pub fn execute_disallow_denom(
     Ok(Response::new()
         .add_attribute("method", "disallow_denom")
         .add_attribute("deregistered_denom", denom.get_key()))
+}
+
+pub fn execute_update_state(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    token_id: Token,
+    factory_address: Addr,
+    total_amount: Uint128,
+) -> Result<Response, ContractError> {
+    // Only the factory can call this function
+    let old_factory_address = STATE.load(deps.storage)?.factory_address;
+    ensure!(
+        info.sender == old_factory_address,
+        ContractError::Unauthorized {}
+    );
+
+    let state = State {
+        token_id: token_id.clone(),
+        factory_address: factory_address.clone(),
+        total_amount,
+    };
+
+    STATE.save(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_state")
+        .add_attribute("token_id", token_id.as_str())
+        .add_attribute("factory_address", factory_address)
+        .add_attribute("total_amount", total_amount))
 }
 
 pub fn execute_deposit_native(
