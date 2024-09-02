@@ -12,8 +12,9 @@ use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 use crate::execute::{
     add_liquidity_request, execute_native_receive_callback, execute_request_deregister_denom,
     execute_request_pool_creation, execute_request_register_denom, execute_request_register_escrow,
-    execute_swap_request, execute_update_escrow_state, execute_update_hub_channel,
-    execute_update_state, execute_withdraw_virtual_balance, receive_cw20,
+    execute_swap_request, execute_update_cw20_state, execute_update_escrow_state,
+    execute_update_hub_channel, execute_update_state, execute_withdraw_virtual_balance,
+    receive_cw20,
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
@@ -185,6 +186,13 @@ pub fn execute(
             factory_address,
             total_amount,
         } => execute_update_escrow_state(deps, info, token_id, factory_address, total_amount),
+
+        ExecuteMsg::UpdateCw20State {
+            cw20_address,
+            token_pair,
+            factory_address,
+            vlp,
+        } => execute_update_cw20_state(deps, info, cw20_address, token_pair, factory_address, vlp),
 
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {

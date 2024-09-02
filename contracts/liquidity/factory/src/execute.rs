@@ -875,6 +875,39 @@ pub fn execute_update_escrow_state(
         .add_attribute("total_amount", total_amount.to_string()))
 }
 
+pub fn execute_update_cw20_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    cw20_address: String,
+    token_pair: Pair,
+    factory_address: String,
+    vlp: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        state.admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
+
+    let cw20_address = deps.api.addr_validate(&cw20_address)?;
+    let factory_address = deps.api.addr_validate(&factory_address)?;
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: cw20_address.clone().into_string(),
+        msg: to_json_binary(&euclid::msgs::cw20::ExecuteMsg::UpdateState {
+            token_pair,
+            factory_address: factory_address.clone(),
+            vlp: vlp.clone(),
+        })?,
+        funds: vec![],
+    });
+    Ok(Response::new()
+        .add_submessage(SubMsg::new(msg))
+        .add_attribute("method", "update_cw20_state")
+        .add_attribute("cw20_address", cw20_address.to_string())
+        .add_attribute("factory_address", factory_address.to_string())
+        .add_attribute("vlp", vlp.to_string()))
+}
+
 pub fn execute_native_receive_callback(
     deps: DepsMut,
     env: Env,

@@ -4,6 +4,7 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Resp
 use cw2::set_contract_version;
 use euclid::msgs::escrow::Cw20InstantiateResponse;
 
+use crate::execute::execute_update_state;
 use crate::state::{State, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::cw20::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -49,7 +50,15 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    Ok(execute_cw20(deps, env, info, msg.into())?)
+    match msg {
+        ExecuteMsg::UpdateState {
+            token_pair,
+            factory_address,
+            vlp,
+        } => execute_update_state(deps, env, info, token_pair, factory_address, vlp),
+        _ => Ok(execute_cw20(deps, env, info, msg.into())?),
+    }
+
     // match msg {
     //     ExecuteMsg::Transfer { recipient, amount } => Ok(execute_cw20(
     //         deps,

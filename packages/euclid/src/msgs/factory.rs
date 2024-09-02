@@ -90,6 +90,12 @@ pub enum ExecuteMsg {
         factory_address: String,
         total_amount: Uint128,
     },
+    UpdateCw20State {
+        cw20_address: String,
+        token_pair: Pair,
+        factory_address: String,
+        vlp: String,
+    },
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
