@@ -1,14 +1,18 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
-    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    MessageInfo, QueryRequest, Response, SubMsg, Uint128, WasmMsg,
 };
+
 use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{router::RegisterFactoryChainType, virtual_balance::ExecuteBurn},
+    msgs::{
+        router::RegisterFactoryChainType, virtual_balance::ExecuteBurn,
+        vlp::GetStateResponse as VlpGetStateResponse, vlp::QueryMsg as VlpQueryMsg,
+    },
     timeout::get_timeout,
-    token::Token,
+    token::{Pair, Token},
     utils::generate_tx,
     virtual_balance::BalanceKey,
 };
@@ -18,7 +22,7 @@ use crate::{
     ibc::receive,
     reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE, VLPS,
     },
 };
 
@@ -170,6 +174,53 @@ pub fn execute_register_factory(
     }
 }
 
+pub fn execute_withdraw_voucher(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    pair: Pair,
+    token: Token,
+    amount: Option<Uint128>,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    // Only VLP admin can call this
+    let vlp_address = VLPS.load(deps.storage, (pair.token_1, pair.token_2))?;
+    let vlp_state: VlpGetStateResponse =
+        deps.querier
+            .query(&QueryRequest::Wasm(cosmwasm_std::WasmQuery::Smart {
+                contract_addr: vlp_address,
+                msg: to_json_binary(&VlpQueryMsg::State {})?,
+            }))?;
+
+    ensure!(
+        vlp_state.admin == info.sender,
+        ContractError::Unauthorized {}
+    );
+    let cross_chain_user = CrossChainUser {
+        chain_uid: ChainUid::create(env.clone().block.chain_id)?,
+        address: info.sender.to_string(),
+    };
+    let cross_chain_addresses = vec![CrossChainUserWithLimit {
+        user: cross_chain_user.clone(),
+        limit: None,
+    }];
+    let tx_id = generate_tx(deps.branch(), &env, &cross_chain_user)?;
+
+    let res = execute_release_escrow(
+        deps,
+        env,
+        info,
+        cross_chain_user,
+        token,
+        amount,
+        cross_chain_addresses,
+        timeout,
+        tx_id,
+    )?;
+
+    Ok(res.add_attribute("method", "withdraw_voucher"))
+}
+
 pub fn execute_update_factory_channel(
     deps: &mut DepsMut,
     env: Env,
@@ -241,7 +292,8 @@ pub fn execute_release_escrow(
     info: MessageInfo,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    // Leaving this empty means that we will release the entire balance
+    amount: Option<Uint128>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
     tx_id: String,
@@ -269,6 +321,7 @@ pub fn execute_release_escrow(
         )?;
 
     // Ensure that user has enough virtual balance balance to actually trigger escrow release
+    let amount = amount.unwrap_or(user_balance.amount);
     ensure!(
         user_balance.amount.ge(&amount),
         ContractError::InsufficientFunds {}

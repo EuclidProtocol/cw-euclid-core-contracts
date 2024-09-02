@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Deps, Uint128};
 
-use crate::{chain::CrossChainUser, token::{TokenType, TokenWithDenom}};
+use crate::{
+    chain::CrossChainUser,
+    token::{TokenType, TokenWithDenom},
+};
 
 // Set maximum fee as 10%
 pub const MAX_FEE_BPS: u64 = 1000;
@@ -44,12 +47,12 @@ impl DenomFees {
     }
 
     pub fn add_fee_token_with_denom(&mut self, token_with_denom: TokenWithDenom, amount: Uint128) {
-       let key =  match token_with_denom.token_type {
+        let key = match token_with_denom.token_type {
             TokenType::Native { denom } => {
-                format!("native{}", denom ) 
+                format!("native{}", denom)
             }
             TokenType::Smart { contract_address } => {
-                format!("smart{}", contract_address ) 
+                format!("smart{}", contract_address)
             }
         };
         self.totals
@@ -57,8 +60,6 @@ impl DenomFees {
             .and_modify(|total| *total += amount)
             .or_insert(amount);
     }
-
-
 
     // Get the total for a given denomination
     pub fn get_fee(&self, denom: &str) -> Uint128 {
@@ -69,9 +70,9 @@ impl DenomFees {
         let denom_type = deps.api.addr_validate(denom);
         match denom_type {
             // If it's a valid address, it's a smart contract
-            Ok(_) => format!("smart{}", denom ),
+            Ok(_) => format!("smart{}", denom),
             // If it's not a valid address, it's a native token
-            Err(_) => format!("native{}", denom ),
+            Err(_) => format!("native{}", denom),
         }
     }
 }

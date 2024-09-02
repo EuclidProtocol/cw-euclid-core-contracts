@@ -113,6 +113,7 @@ pub struct GetStateResponse {
     pub router: String,
     pub virtual_balance: String,
     pub fee: Fee,
+    pub total_fees_collected: TotalFees,
     pub last_updated: u64,
     pub total_lp_tokens: Uint128,
     pub admin: String,

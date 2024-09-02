@@ -163,7 +163,7 @@ pub fn reusable_internal_call(
             let release_msg = ExecuteMsg::ReleaseEscrowInternal {
                 sender: msg.sender,
                 token: msg.token.clone(),
-                amount: msg.amount,
+                amount: Some(msg.amount),
                 cross_chain_addresses: msg.cross_chain_addresses,
                 timeout: msg.timeout,
                 tx_id: msg.tx_id.clone(),
