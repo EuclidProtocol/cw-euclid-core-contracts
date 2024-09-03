@@ -258,7 +258,7 @@ fn ack_pool_creation(
 
 fn ack_escrow_creation(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     sender: String,
     res: AcknowledgementMsg<EscrowCreationResponse>,
     tx_id: String,

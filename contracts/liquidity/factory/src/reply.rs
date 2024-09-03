@@ -107,8 +107,17 @@ pub fn on_reply_native_ibc_wrapper_call(
     CHAIN_IBC_EXECUTE_MSG_QUEUE.remove(deps.storage, msg.id);
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
-            let ack = make_ack_fail(err)?;
-            ibc::ack_and_timeout::reusable_internal_ack_call(deps, env, original_msg, ack, true)
+            let ack = make_ack_fail(err.clone())?;
+            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
+                deps,
+                env,
+                original_msg,
+                ack,
+                true,
+            )?;
+            Ok(response
+                .add_attribute("reply_on_ibc_receive_processing", "err")
+                .add_attribute("err", err))
         }
         SubMsgResult::Ok(res) => {
             let data = res
@@ -119,7 +128,14 @@ pub fn on_reply_native_ibc_wrapper_call(
                         .unwrap_or_default()
                 })
                 .unwrap_or_default();
-            ibc::ack_and_timeout::reusable_internal_ack_call(deps, env, original_msg, data, true)
+            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
+                deps,
+                env,
+                original_msg,
+                data,
+                true,
+            )?;
+            Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
         }
     }
 }
