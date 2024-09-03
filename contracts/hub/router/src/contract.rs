@@ -129,11 +129,19 @@ pub fn execute(
                 tx_id,
             ),
             ExecuteMsg::WithdrawVoucher {
-                pair,
                 token,
                 amount,
+                cross_chain_addresses,
                 timeout,
-            } => execute_withdraw_voucher(&mut deps, env, info, pair, token, amount, timeout),
+            } => execute_withdraw_voucher(
+                &mut deps,
+                env,
+                info,
+                token,
+                amount,
+                cross_chain_addresses,
+                timeout,
+            ),
             ExecuteMsg::IbcCallbackReceive { receive_msg } => {
                 ibc_receive_internal_call(&mut deps, env, info, receive_msg)
             }
