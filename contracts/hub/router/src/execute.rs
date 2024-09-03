@@ -7,7 +7,10 @@ use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{router::{ExecuteMsg, RegisterFactoryChainType}, virtual_balance::ExecuteBurn},
+    msgs::{
+        router::{ExecuteMsg, RegisterFactoryChainType},
+        virtual_balance::ExecuteBurn,
+    },
     timeout::get_timeout,
     token::Token,
     utils::generate_tx,
