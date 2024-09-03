@@ -243,7 +243,14 @@ pub fn ibc_ack_release_escrow(
         AcknowledgementMsg::Ok(data) => Ok(response
             .add_attribute("method", "release_escrow_success")
             .add_attribute("factory_chain", data.chain_id)
-            .add_attribute("factory_address", data.factory_address)),
+            .add_attribute("factory_address", data.factory_address)
+            .add_attribute(
+                format!(
+                    "release_escrow_actual_{sender}",
+                    sender = sender.to_sender_string()
+                ),
+                amount,
+            )),
         // Re-mint tokens
         AcknowledgementMsg::Error(err) => {
             let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(

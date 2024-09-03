@@ -274,6 +274,14 @@ pub fn execute_release_escrow(
         ContractError::InsufficientFunds {}
     );
 
+    let mut response = Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            sender.address.as_str(),
+            TxType::EscrowRelease,
+        ))
+        .add_attribute("tx_id", tx_id);
+
     let timeout = get_timeout(timeout)?;
     let mut release_msgs: Vec<SubMsg> = vec![];
 
@@ -323,6 +331,14 @@ pub fn execute_release_escrow(
         }
         .to_msg(deps, &env, chain, timeout)?;
 
+        response = response.add_attribute(
+            format!(
+                "release_escrow_expected_{sender}",
+                sender = cross_chain_address.user.to_sender_string()
+            ),
+            release_amount,
+        );
+
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(release_amount)?;
         release_msgs.push(send_msg);
     }
@@ -332,13 +348,6 @@ pub fn execute_release_escrow(
         ContractError::new("Amount mismatch after trasnfer calculations")
     );
 
-    let mut response = Response::new()
-        .add_event(tx_event(
-            &tx_id,
-            sender.address.as_str(),
-            TxType::EscrowRelease,
-        ))
-        .add_attribute("tx_id", tx_id);
     if !transfer_amount.is_zero() {
         let burn_virtual_balance_msg =
             euclid::msgs::virtual_balance::ExecuteMsg::Burn(ExecuteBurn {
