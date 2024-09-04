@@ -59,7 +59,7 @@ pub enum ChainIbcExecuteMsg {
     // Swap tokens on VLP
     Swap(ChainIbcSwapExecuteMsg),
 
-    // Withdraw Vcoin message sent from factory
+    // Withdraw virtual balance message sent from factory
     Withdraw(ChainIbcWithdrawExecuteMsg),
     // RequestWithdraw {
     //     token_id: Token,

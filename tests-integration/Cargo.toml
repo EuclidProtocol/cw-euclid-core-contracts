@@ -10,7 +10,7 @@ modules = []
 
 [dev-dependencies]
 router = { path = "../contracts/hub/router" }
-vcoin = { path = "../contracts/hub/vcoin" }
+virtual_balance = { path = "../contracts/hub/virtual_balance" }
 vlp = { path = "../contracts/hub/vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }

@@ -9,11 +9,11 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     fee::Fee,
-    msgs::{self, router::ExecuteMsg, vcoin::ExecuteMint},
+    msgs::{self, router::ExecuteMsg, virtual_balance::ExecuteMint},
     pool::EscrowCreationResponse,
     swap::WithdrawResponse,
     token::{Pair, Token},
-    vcoin::BalanceKey,
+    virtual_balance::BalanceKey,
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
@@ -24,7 +24,7 @@ use crate::{
     query::validate_swap_pairs,
     reply::{
         ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
-        VCOIN_MINT_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+        VIRTUAL_BALANCE_MINT_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
@@ -237,10 +237,10 @@ fn execute_request_pool_creation(
     } else {
         let instantiate_msg = msgs::vlp::InstantiateMsg {
             router: env.contract.address.to_string(),
-            vcoin: state
-                .vcoin_address
+            virtual_balance: state
+                .virtual_balance_address
                 .ok_or(ContractError::Generic {
-                    err: "vcoin not instantiated".to_string(),
+                    err: "virtual balance not instantiated".to_string(),
                 })?
                 .to_string(),
             pair,
@@ -345,14 +345,15 @@ fn ibc_execute_add_liquidity(
         &token_2_escrow_balance.checked_add(token_2_liquidity)?,
     )?;
 
-    let vcoin_address = STATE
-        .load(deps.storage)?
-        .vcoin_address
-        .ok_or(ContractError::Generic {
-            err: "vcoin address doesn't exist".to_string(),
-        })?;
+    let virtual_balance_address =
+        STATE
+            .load(deps.storage)?
+            .virtual_balance_address
+            .ok_or(ContractError::Generic {
+                err: "virtual balance address doesn't exist".to_string(),
+            })?;
 
-    let mint_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Mint(ExecuteMint {
+    let mint_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
         amount: token_1_liquidity,
         balance_key: BalanceKey {
             cross_chain_user: CrossChainUser {
@@ -363,15 +364,18 @@ fn ibc_execute_add_liquidity(
         },
     });
 
-    let mint_vcoin_msg = WasmMsg::Execute {
-        contract_addr: vcoin_address.to_string(),
-        msg: to_json_binary(&mint_vcoin_msg)?,
+    let mint_virtual_balance_msg = WasmMsg::Execute {
+        contract_addr: virtual_balance_address.to_string(),
+        msg: to_json_binary(&mint_virtual_balance_msg)?,
         funds: vec![],
     };
 
-    response = response.add_submessage(SubMsg::reply_on_error(mint_vcoin_msg, VCOIN_MINT_REPLY_ID));
+    response = response.add_submessage(SubMsg::reply_on_error(
+        mint_virtual_balance_msg,
+        VIRTUAL_BALANCE_MINT_REPLY_ID,
+    ));
 
-    let mint_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Mint(ExecuteMint {
+    let mint_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
         amount: token_2_liquidity,
         balance_key: BalanceKey {
             cross_chain_user: CrossChainUser {
@@ -382,13 +386,16 @@ fn ibc_execute_add_liquidity(
         },
     });
 
-    let mint_vcoin_msg = WasmMsg::Execute {
-        contract_addr: vcoin_address.to_string(),
-        msg: to_json_binary(&mint_vcoin_msg)?,
+    let mint_virtual_balance_msg = WasmMsg::Execute {
+        contract_addr: virtual_balance_address.to_string(),
+        msg: to_json_binary(&mint_virtual_balance_msg)?,
         funds: vec![],
     };
 
-    response = response.add_submessage(SubMsg::reply_on_error(mint_vcoin_msg, VCOIN_MINT_REPLY_ID));
+    response = response.add_submessage(SubMsg::reply_on_error(
+        mint_virtual_balance_msg,
+        VIRTUAL_BALANCE_MINT_REPLY_ID,
+    ));
 
     let add_liquidity_msg = msgs::vlp::ExecuteMsg::AddLiquidity {
         token_1_liquidity,
@@ -490,12 +497,13 @@ fn ibc_execute_swap(
 
     let sender = msg.sender;
 
-    let vcoin_address = STATE
-        .load(deps.storage)?
-        .vcoin_address
-        .ok_or(ContractError::Generic {
-            err: "vcoin address doesn't exist".to_string(),
-        })?;
+    let virtual_balance_address =
+        STATE
+            .load(deps.storage)?
+            .virtual_balance_address
+            .ok_or(ContractError::Generic {
+                err: "virtual balance address doesn't exist".to_string(),
+            })?;
 
     let swap_vlps = validate_swap_pairs(deps.as_ref(), &msg.swaps);
     ensure!(
@@ -522,8 +530,8 @@ fn ibc_execute_swap(
         &token_1_escrow_balance.checked_add(msg.amount_in)?,
     )?;
 
-    // Mint vcoin for the first swap vlp so it can start processing tx
-    let mint_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Mint(ExecuteMint {
+    // Mint virtual balance for the first swap vlp so it can start processing tx
+    let mint_virtual_balance_msg = euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
         amount: msg.amount_in,
         balance_key: BalanceKey {
             cross_chain_user: CrossChainUser {
@@ -534,13 +542,16 @@ fn ibc_execute_swap(
         },
     });
 
-    let mint_vcoin_msg = WasmMsg::Execute {
-        contract_addr: vcoin_address.to_string(),
-        msg: to_json_binary(&mint_vcoin_msg)?,
+    let mint_virtual_balance_msg = WasmMsg::Execute {
+        contract_addr: virtual_balance_address.to_string(),
+        msg: to_json_binary(&mint_virtual_balance_msg)?,
         funds: vec![],
     };
 
-    response = response.add_submessage(SubMsg::reply_always(mint_vcoin_msg, VCOIN_MINT_REPLY_ID));
+    response = response.add_submessage(SubMsg::reply_always(
+        mint_virtual_balance_msg,
+        VIRTUAL_BALANCE_MINT_REPLY_ID,
+    ));
 
     let swap_msg = msgs::vlp::ExecuteMsg::Swap {
         sender: sender.clone(),

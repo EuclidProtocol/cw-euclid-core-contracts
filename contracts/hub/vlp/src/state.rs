@@ -14,7 +14,7 @@ pub struct State {
     // Router Contract
     pub router: String,
     // Virtual Coin Contract
-    pub vcoin: String,
+    pub virtual_balance: String,
     // Fee per swap for each transaction
     pub fee: Fee,
     // Total lp and euclid fees collected

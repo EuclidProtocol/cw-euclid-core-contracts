@@ -116,7 +116,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&GetStateResponse {
         pair: state.pair,
         router: state.router,
-        vcoin: state.vcoin,
+        virtual_balance: state.virtual_balance,
         fee: state.fee,
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,
@@ -166,8 +166,12 @@ fn get_pool(
     reserve_2: Uint128,
 ) -> Result<PoolResponse, ContractError> {
     Ok(PoolResponse {
-        reserve_1: reserve_1.checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)?,
-        reserve_2: reserve_2.checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)?,
+        reserve_1: reserve_1
+            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+            .unwrap_or(Uint128::zero()),
+        reserve_2: reserve_2
+            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+            .unwrap_or(Uint128::zero()),
         lp_shares: chain_lp_tokens,
     })
 }

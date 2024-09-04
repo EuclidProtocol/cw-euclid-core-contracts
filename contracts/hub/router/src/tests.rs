@@ -38,7 +38,7 @@ mod tests {
         name: &'static str,
         expected_admin: String,
         expected_vlp_code_id: u64,
-        expected_vcoin_address: Option<String>,
+        expected_virtual_balance_address: Option<String>,
         expected_error: Option<ContractError>,
     }
 
@@ -87,7 +87,7 @@ mod tests {
             name: "Valid instantiate message",
             msg: InstantiateMsg {
                 vlp_code_id: 1,
-                vcoin_code_id: 2,
+                virtual_balance_code_id: 2,
             },
             expected_error: None,
         }];
@@ -109,7 +109,7 @@ mod tests {
         // Instantiate the contract first
         let msg = InstantiateMsg {
             vlp_code_id: 1,
-            vcoin_code_id: 2,
+            virtual_balance_code_id: 2,
         };
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
@@ -161,7 +161,7 @@ mod tests {
         // Instantiate the contract first
         let msg = InstantiateMsg {
             vlp_code_id: 1,
-            vcoin_code_id: 2,
+            virtual_balance_code_id: 2,
         };
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
