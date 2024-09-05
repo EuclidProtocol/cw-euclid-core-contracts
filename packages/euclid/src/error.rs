@@ -101,6 +101,9 @@ pub enum ContractError {
     #[error("Invalid Token ID")]
     InvalidTokenID {},
 
+    #[error("Virtual Balance Address Cannot Be Empty")]
+    EmptyVirtualBalanceAddress {},
+
     #[error("ChannelNotFound")]
     ChannelNotFound {},
 

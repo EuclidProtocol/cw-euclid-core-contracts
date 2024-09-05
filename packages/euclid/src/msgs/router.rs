@@ -59,11 +59,11 @@ pub enum ExecuteMsg {
     },
     UpdateRouterState {
         // Contract admin
-        admin: String,
+        admin: Option<String>,
         // Pool Code ID
-        vlp_code_id: u64,
+        vlp_code_id: Option<u64>,
         virtual_balance_address: Option<Addr>,
-        locked: bool,
+        locked: Option<bool>,
     },
     UpdateVirtualBalanceState {
         router: String,

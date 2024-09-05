@@ -392,34 +392,59 @@ pub fn execute_native_receive_callback(
 pub fn execute_update_router_state(
     deps: DepsMut,
     info: MessageInfo,
-    admin: String,
-    vlp_code_id: u64,
+    admin: Option<String>,
+    vlp_code_id: Option<u64>,
     virtual_balance_address: Option<Addr>,
-    locked: bool,
+    locked: Option<bool>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
+    // Validate Virtual Balance Address if provided
+    let verified_virtual_balance_address =
+        if let Some(ref virtual_balance_address) = virtual_balance_address {
+            deps.api.addr_validate(&virtual_balance_address.as_str())?;
+            Some(virtual_balance_address.clone())
+        } else {
+            state.virtual_balance_address
+        };
+
+    // Validate Admin Address if provided
+    let verified_admin = if let Some(ref admin) = admin {
+        deps.api.addr_validate(&admin.as_str())?;
+        admin.clone()
+    } else {
+        state.admin
+    };
+
     let state = State {
-        admin: admin.clone(),
-        vlp_code_id,
-        virtual_balance_address: virtual_balance_address.clone(),
-        locked,
+        admin: verified_admin,
+        vlp_code_id: vlp_code_id.unwrap_or(state.vlp_code_id),
+        virtual_balance_address: verified_virtual_balance_address,
+        locked: locked.unwrap_or(state.locked),
     };
 
     STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_attribute("method", "update_state")
-        .add_attribute("admin", admin)
-        .add_attribute("vlp_code_id", vlp_code_id.to_string())
+        .add_attribute("admin", admin.unwrap_or_else(|| "unchanged".to_string()))
+        .add_attribute(
+            "vlp_code_id",
+            vlp_code_id.map_or_else(|| "unchanged".to_string(), |code_id| code_id.to_string()),
+        )
         .add_attribute(
             "virtual_balance_address",
             virtual_balance_address
-                .unwrap_or(Addr::unchecked(""))
-                .to_string(),
+                .map_or_else(|| "unchanged".to_string(), |addr| addr.to_string()),
         )
-        .add_attribute("locked", locked.to_string()))
+        .add_attribute(
+            "locked",
+            locked.map_or_else(
+                || "unchanged".to_string(),
+                |locked_val| locked_val.to_string(),
+            ),
+        ))
 }
 
 pub fn execute_update_virtual_balance_state(
