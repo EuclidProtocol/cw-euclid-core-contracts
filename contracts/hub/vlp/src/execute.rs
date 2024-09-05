@@ -615,27 +615,50 @@ pub fn update_fee(
 pub fn update_state(
     deps: DepsMut,
     info: MessageInfo,
-    pair: Pair,
-    router: String,
-    virtual_balance: String,
-    fee: Fee,
-    total_fees_collected: TotalFees,
-    last_updated: u64,
-    total_lp_tokens: Uint128,
-    admin: String,
+    pair: Option<Pair>,
+    router: Option<String>,
+    virtual_balance: Option<String>,
+    fee: Option<Fee>,
+    total_fees_collected: Option<TotalFees>,
+    last_updated: Option<u64>,
+    total_lp_tokens: Option<Uint128>,
+    admin: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    // Verify that the router is a valid address
+    let verified_router = if let Some(router) = router {
+        deps.api.addr_validate(&router)?;
+        router
+    } else {
+        state.router
+    };
+
+    // Verify that the virtual balance is a valid address
+    let verified_virtual_balance = if let Some(virtual_balance) = virtual_balance {
+        deps.api.addr_validate(&virtual_balance)?;
+        virtual_balance
+    } else {
+        state.virtual_balance
+    };
+
+    // Verify that the admin is a valid address
+    let verified_admin = if let Some(admin) = admin {
+        deps.api.addr_validate(&admin)?;
+        admin
+    } else {
+        state.admin
+    };
 
     let new_state = State {
-        pair,
-        router,
-        virtual_balance,
-        fee,
-        total_fees_collected,
-        last_updated,
-        total_lp_tokens,
-        admin,
+        pair: pair.unwrap_or(state.pair),
+        router: verified_router,
+        virtual_balance: verified_virtual_balance,
+        fee: fee.unwrap_or(state.fee),
+        total_fees_collected: total_fees_collected.unwrap_or(state.total_fees_collected),
+        last_updated: last_updated.unwrap_or(state.last_updated),
+        total_lp_tokens: total_lp_tokens.unwrap_or(state.total_lp_tokens),
+        admin: verified_admin,
     };
 
     STATE.save(deps.storage, &new_state)?;

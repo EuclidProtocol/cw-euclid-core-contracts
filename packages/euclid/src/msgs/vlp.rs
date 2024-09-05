@@ -56,20 +56,20 @@ pub enum ExecuteMsg {
     },
     UpdateState {
         // Token Pair Info
-        pair: Pair,
+        pair: Option<Pair>,
         // Router Contract
-        router: String,
+        router: Option<String>,
         // Virtual Coin Contract
-        virtual_balance: String,
+        virtual_balance: Option<String>,
         // Fee per swap for each transaction
-        fee: Fee,
+        fee: Option<Fee>,
         // Total lp and euclid fees collected
-        total_fees_collected: TotalFees,
+        total_fees_collected: Option<TotalFees>,
         // The last timestamp where the balances for each token have been updated
-        last_updated: u64,
+        last_updated: Option<u64>,
         // total number of LP tokens issued
-        total_lp_tokens: Uint128,
-        admin: String,
+        total_lp_tokens: Option<Uint128>,
+        admin: Option<String>,
     },
 }
 
