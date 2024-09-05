@@ -8,7 +8,7 @@ use euclid::{
     cw20::Cw20HookMsg,
     error::ContractError,
     events::{swap_event, tx_event, TxType},
-    fee::{DenomFees, PartnerFee, MAX_PARTNER_FEE_BPS},
+    fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
     pool::{EscrowCreateRequest, PoolCreateRequest},
@@ -806,40 +806,55 @@ pub fn execute_withdraw_virtual_balance(
 pub fn execute_update_state(
     deps: DepsMut,
     info: MessageInfo,
-    router_contract: String,
-    admin: String,
-    escrow_code_id: u64,
-    cw20_code_id: u64,
-    chain_uid: ChainUid,
-    is_native: bool,
-    partner_fees_collected: DenomFees,
+    router_contract: Option<String>,
+    admin: Option<String>,
+    escrow_code_id: Option<u64>,
+    cw20_code_id: Option<u64>,
+    chain_uid: Option<ChainUid>,
+    is_native: Option<bool>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+
     ensure!(
         state.admin == info.sender.into_string(),
         ContractError::Unauthorized {}
     );
 
     let new_state = State {
-        router_contract: router_contract.clone(),
-        admin: admin.clone(),
-        escrow_code_id: escrow_code_id.clone(),
-        cw20_code_id: cw20_code_id.clone(),
-        chain_uid: chain_uid.clone(),
-        is_native: is_native.clone(),
-        partner_fees_collected,
+        router_contract: router_contract.clone().unwrap_or(state.router_contract),
+        admin: admin.clone().unwrap_or(state.admin),
+        escrow_code_id: escrow_code_id.unwrap_or(state.escrow_code_id),
+        cw20_code_id: cw20_code_id.clone().unwrap_or(state.cw20_code_id),
+        chain_uid: chain_uid.clone().unwrap_or(state.chain_uid),
+        is_native: is_native.clone().unwrap_or(state.is_native),
+        partner_fees_collected: state.partner_fees_collected,
     };
 
     STATE.save(deps.storage, &new_state)?;
 
     Ok(Response::new()
         .add_attribute("method", "update_state")
-        .add_attribute("admin", admin)
-        .add_attribute("router_contract", router_contract)
-        .add_attribute("escrow_code_id", escrow_code_id.to_string())
-        .add_attribute("cw20_code_id", cw20_code_id.to_string())
-        .add_attribute("chain_uid", chain_uid.to_string())
-        .add_attribute("is_native", is_native.to_string()))
+        .add_attribute("admin", admin.unwrap_or("unchanged".to_string()))
+        .add_attribute(
+            "router_contract",
+            router_contract.unwrap_or("unchanged".to_string()),
+        )
+        .add_attribute(
+            "escrow_code_id",
+            escrow_code_id.unwrap_or(state.escrow_code_id).to_string(),
+        )
+        .add_attribute(
+            "cw20_code_id",
+            cw20_code_id.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
+        )
+        .add_attribute(
+            "chain_uid",
+            chain_uid.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
+        )
+        .add_attribute(
+            "is_native",
+            is_native.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
+        ))
 }
 
 pub fn execute_update_escrow_state(

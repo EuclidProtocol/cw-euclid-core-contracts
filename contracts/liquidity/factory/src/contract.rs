@@ -169,7 +169,6 @@ pub fn execute(
             cw20_code_id,
             chain_uid,
             is_native,
-            partner_fees_collected,
         } => execute_update_state(
             deps,
             info,
@@ -179,7 +178,6 @@ pub fn execute(
             cw20_code_id,
             chain_uid,
             is_native,
-            partner_fees_collected,
         ),
         ExecuteMsg::UpdateEscrowState {
             token_id,

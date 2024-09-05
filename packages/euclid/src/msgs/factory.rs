@@ -70,20 +70,18 @@ pub enum ExecuteMsg {
     },
     UpdateFactoryState {
         // The Router Contract Address on the Virtual Settlement Layer
-        router_contract: String,
+        router_contract: Option<String>,
         // Contract admin
-        admin: String,
+        admin: Option<String>,
         // Escrow Code ID
-        escrow_code_id: u64,
+        escrow_code_id: Option<u64>,
         // CW20 Code ID
-        cw20_code_id: u64,
+        cw20_code_id: Option<u64>,
         // The Unique Chain Identifier
         // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
         // IN THE EUCLID ECOSYSTEM
-        chain_uid: ChainUid,
-        is_native: bool,
-        // Total partner fees collected
-        partner_fees_collected: DenomFees,
+        chain_uid: Option<ChainUid>,
+        is_native: Option<bool>,
     },
     UpdateEscrowState {
         token_id: Token,
