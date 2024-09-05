@@ -84,9 +84,10 @@ pub enum ExecuteMsg {
         is_native: Option<bool>,
     },
     UpdateEscrowState {
-        token_id: Token,
-        factory_address: String,
-        total_amount: Uint128,
+        current_token_id: Token,
+        new_token_id: Option<Token>,
+        factory_address: Option<String>,
+        total_amount: Option<Uint128>,
     },
     UpdateCw20State {
         cw20_address: String,

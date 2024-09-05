@@ -860,9 +860,10 @@ pub fn execute_update_state(
 pub fn execute_update_escrow_state(
     deps: DepsMut,
     info: MessageInfo,
-    token_id: Token,
-    factory_address: String,
-    total_amount: Uint128,
+    current_token_id: Token,
+    new_token_id: Option<Token>,
+    factory_address: Option<String>,
+    total_amount: Option<Uint128>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
@@ -870,24 +871,38 @@ pub fn execute_update_escrow_state(
         ContractError::Unauthorized {}
     );
 
-    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token_id.clone())?;
+    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, current_token_id.clone())?;
 
-    let factory_address = deps.api.addr_validate(&factory_address)?;
+    let verified_factory_address = if let Some(ref factory_address) = factory_address {
+        Some(deps.api.addr_validate(&factory_address.as_str())?)
+    } else {
+        None
+    };
+
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: escrow_address.into_string(),
         msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::UpdateState {
-            token_id: token_id.clone(),
-            factory_address: factory_address.clone(),
-            total_amount: total_amount.clone(),
+            token_id: new_token_id.clone(),
+            factory_address: verified_factory_address,
+            total_amount,
         })?,
         funds: vec![],
     });
     Ok(Response::new()
         .add_submessage(SubMsg::new(msg))
         .add_attribute("method", "update_escrow_state")
-        .add_attribute("token_id", token_id.to_string())
-        .add_attribute("factory_address", factory_address.to_string())
-        .add_attribute("total_amount", total_amount.to_string()))
+        .add_attribute(
+            "token_id",
+            new_token_id.map_or("unchanged".to_string(), |x| x.to_string()),
+        )
+        .add_attribute(
+            "factory_address",
+            factory_address.map_or("unchanged".to_string(), |x| x.to_string()),
+        )
+        .add_attribute(
+            "total_amount",
+            total_amount.map_or("unchanged".to_string(), |x| x.to_string()),
+        ))
 }
 
 pub fn execute_update_cw20_state(

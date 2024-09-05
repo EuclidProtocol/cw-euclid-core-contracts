@@ -23,9 +23,9 @@ pub enum ExecuteMsg {
     },
     DepositNative {},
     UpdateState {
-        token_id: Token,
-        factory_address: Addr,
-        total_amount: Uint128,
+        token_id: Option<Token>,
+        factory_address: Option<Addr>,
+        total_amount: Option<Uint128>,
     },
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
