@@ -143,20 +143,41 @@ pub fn execute_transfer(
 pub fn execute_update_state(
     deps: DepsMut,
     info: MessageInfo,
-    router: String,
-    admin: Addr,
+    router: Option<String>,
+    admin: Option<Addr>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
-    let new_state = State {
-        router: router.clone(),
-        admin: admin.clone(),
+    let verified_router = if let Some(ref router) = router {
+        deps.api.addr_validate(&router.as_str())?;
+        router.clone()
+    } else {
+        state.router
     };
+
+    let verified_admin = if let Some(ref admin) = admin {
+        deps.api.addr_validate(&admin.as_str())?;
+        admin.clone()
+    } else {
+        state.admin
+    };
+
+    let new_state = State {
+        router: verified_router,
+        admin: verified_admin,
+    };
+
     STATE.save(deps.storage, &new_state)?;
 
     Ok(Response::new()
         .add_attribute("action", "execute_update_state")
-        .add_attribute("router", router)
-        .add_attribute("admin", admin.to_string()))
+        .add_attribute(
+            "router",
+            router.map_or_else(|| "unchanged".to_string(), |router| router.to_string()),
+        )
+        .add_attribute(
+            "admin",
+            admin.map_or_else(|| "unchanged".to_string(), |admin| admin.to_string()),
+        ))
 }

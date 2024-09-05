@@ -450,8 +450,8 @@ pub fn execute_update_router_state(
 pub fn execute_update_virtual_balance_state(
     deps: DepsMut,
     info: MessageInfo,
-    router: String,
-    admin: String,
+    router: Option<String>,
+    admin: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
@@ -459,13 +459,24 @@ pub fn execute_update_virtual_balance_state(
         state.virtual_balance_address.is_some(),
         ContractError::new("Virtual Balance Contract Not Set")
     );
-    let admin = deps.api.addr_validate(&admin)?;
+    let verified_router = if let Some(ref router) = router {
+        deps.api.addr_validate(&router.as_str())?;
+        Some(router.clone())
+    } else {
+        None
+    };
+
+    let verified_admin = if let Some(ref admin) = admin {
+        Some(deps.api.addr_validate(&admin.as_str())?)
+    } else {
+        None
+    };
 
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: state.virtual_balance_address.unwrap().to_string(),
         msg: to_json_binary(&VirtualBalanceExecuteMsg::UpdateState {
-            router: router.clone(),
-            admin: admin.clone(),
+            router: verified_router,
+            admin: verified_admin,
         })?,
         funds: vec![],
     });
@@ -473,6 +484,6 @@ pub fn execute_update_virtual_balance_state(
     Ok(Response::new()
         .add_message(msg)
         .add_attribute("method", "update_state")
-        .add_attribute("admin", admin)
-        .add_attribute("router", router))
+        .add_attribute("admin", admin.unwrap_or_else(|| "unchanged".to_string()))
+        .add_attribute("router", router.unwrap_or_else(|| "unchanged".to_string())))
 }

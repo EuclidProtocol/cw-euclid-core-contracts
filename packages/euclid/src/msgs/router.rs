@@ -66,8 +66,8 @@ pub enum ExecuteMsg {
         locked: Option<bool>,
     },
     UpdateVirtualBalanceState {
-        router: String,
-        admin: String,
+        router: Option<String>,
+        admin: Option<String>,
     },
 }
 

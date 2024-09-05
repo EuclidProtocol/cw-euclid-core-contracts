@@ -20,7 +20,10 @@ pub enum ExecuteMsg {
     Mint(ExecuteMint),
     Transfer(ExecuteTransfer),
     Burn(ExecuteBurn),
-    UpdateState { router: String, admin: Addr },
+    UpdateState {
+        router: Option<String>,
+        admin: Option<Addr>,
+    },
 }
 
 #[cw_serde]
