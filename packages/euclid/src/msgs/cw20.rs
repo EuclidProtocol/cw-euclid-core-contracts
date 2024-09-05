@@ -39,9 +39,9 @@ impl From<InstantiateMsg> for Cw20InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     UpdateState {
-        token_pair: Pair,
-        factory_address: Addr,
-        vlp: String,
+        token_pair: Option<Pair>,
+        factory_address: Option<Addr>,
+        vlp: Option<String>,
     },
     /// Transfer is a base message to move tokens to another account without triggering actions
     Transfer { recipient: String, amount: Uint128 },

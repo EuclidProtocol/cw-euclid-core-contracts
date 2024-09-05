@@ -909,9 +909,9 @@ pub fn execute_update_cw20_state(
     deps: DepsMut,
     info: MessageInfo,
     cw20_address: String,
-    token_pair: Pair,
-    factory_address: String,
-    vlp: String,
+    token_pair: Option<Pair>,
+    factory_address: Option<String>,
+    vlp: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
@@ -920,13 +920,25 @@ pub fn execute_update_cw20_state(
     );
 
     let cw20_address = deps.api.addr_validate(&cw20_address)?;
-    let factory_address = deps.api.addr_validate(&factory_address)?;
+
+    let verified_factory_address = if let Some(ref factory_address) = factory_address {
+        Some(deps.api.addr_validate(&factory_address.as_str())?)
+    } else {
+        None
+    };
+
+    let verified_vlp = if let Some(ref vlp) = vlp {
+        Some(deps.api.addr_validate(&vlp.as_str())?.into_string())
+    } else {
+        None
+    };
+
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: cw20_address.clone().into_string(),
         msg: to_json_binary(&euclid::msgs::cw20::ExecuteMsg::UpdateState {
             token_pair,
-            factory_address: factory_address.clone(),
-            vlp: vlp.clone(),
+            factory_address: verified_factory_address,
+            vlp: verified_vlp,
         })?,
         funds: vec![],
     });
@@ -934,8 +946,14 @@ pub fn execute_update_cw20_state(
         .add_submessage(SubMsg::new(msg))
         .add_attribute("method", "update_cw20_state")
         .add_attribute("cw20_address", cw20_address.to_string())
-        .add_attribute("factory_address", factory_address.to_string())
-        .add_attribute("vlp", vlp.to_string()))
+        .add_attribute(
+            "factory_address",
+            factory_address.map_or("unchanged".to_string(), |x| x.to_string()),
+        )
+        .add_attribute(
+            "vlp",
+            vlp.map_or("unchanged".to_string(), |x| x.to_string()),
+        ))
 }
 
 pub fn execute_native_receive_callback(

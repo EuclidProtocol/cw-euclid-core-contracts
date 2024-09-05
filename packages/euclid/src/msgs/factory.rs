@@ -91,9 +91,9 @@ pub enum ExecuteMsg {
     },
     UpdateCw20State {
         cw20_address: String,
-        token_pair: Pair,
-        factory_address: String,
-        vlp: String,
+        token_pair: Option<Pair>,
+        factory_address: Option<String>,
+        vlp: Option<String>,
     },
 
     // Recieve CW20 TOKENS structure
