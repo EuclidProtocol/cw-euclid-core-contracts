@@ -4,9 +4,8 @@ use std::ops::Deref;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, Deps,
-    QueryRequest, StdError, StdResult, Uint128, WasmMsg, WasmQuery,
+    StdError, StdResult, Uint128, WasmMsg,
 };
-use cw20::{Cw20QueryMsg, TokenInfoResponse};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::chain::CrossChainUser;
@@ -342,19 +341,20 @@ impl TokenWithDenom {
             let non_zero_supply = !potential_supply.amount.is_zero();
             ensure!(
                 non_zero_supply,
-                ContractError::InvalidAsset { asset: denom }
-            );
-        } else {
-            let token_info_query: TokenInfoResponse =
-                deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-                    contract_addr: denom,
-                    msg: to_json_binary(&Cw20QueryMsg::TokenInfo {})?,
-                }))?;
-            ensure!(
-                !token_info_query.total_supply.is_zero(),
-                ContractError::InvalidZeroAmount {}
+                ContractError::ZeroAssetSupply { asset: denom }
             );
         }
+        // else {
+        //     let token_info_query: TokenInfoResponse =
+        //         deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+        //             contract_addr: denom,
+        //             msg: to_json_binary(&Cw20QueryMsg::TokenInfo {})?,
+        //         }))?;
+        //     ensure!(
+        //         !token_info_query.total_supply.is_zero(),
+        //         ContractError::InvalidZeroAmount {}
+        //     );
+        // }
 
         Ok(())
     }

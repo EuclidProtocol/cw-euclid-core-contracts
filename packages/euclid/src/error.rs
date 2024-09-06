@@ -47,6 +47,9 @@ pub enum ContractError {
     #[error("Invalid Asset: {asset}")]
     InvalidAsset { asset: String },
 
+    #[error("Zero Asset Supply: {asset}")]
+    ZeroAssetSupply { asset: String },
+
     #[error("ZeroWithdrawalAmount")]
     ZeroWithdrawalAmount {},
 
