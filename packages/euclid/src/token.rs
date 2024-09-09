@@ -366,6 +366,20 @@ impl PairWithDenom {
         let tokens: Vec<TokenWithDenom> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
     }
+
+    pub fn validate(&self) -> Result<bool, ContractError> {
+        let pair = self.get_pair()?;
+        ensure!(
+            pair.token_1 == self.token_1.token,
+            ContractError::new("Pair should be sorted")
+        );
+        ensure!(
+            pair.token_2 == self.token_2.token,
+            ContractError::new("Pair should be sorted")
+        );
+
+        Ok(true)
+    }
 }
 
 #[cfg(test)]

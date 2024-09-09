@@ -3,7 +3,7 @@ use crate::{
     state::{TOKEN_TO_ESCROW, VLP_TO_CW20},
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Reply, Response, SubMsgResult};
-use cw0::{parse_execute_response_data, parse_reply_instantiate_data};
+use cw_utils::{parse_execute_response_data, parse_reply_instantiate_data};
 use euclid::error::ContractError;
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
 
@@ -16,7 +16,7 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
-            let instantiate_data: cw0::MsgInstantiateContractResponse =
+            let instantiate_data: cw_utils::MsgInstantiateContractResponse =
                 parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
@@ -38,7 +38,7 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
-            let instantiate_data: cw0::MsgInstantiateContractResponse =
+            let instantiate_data: cw_utils::MsgInstantiateContractResponse =
                 parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
@@ -107,8 +107,17 @@ pub fn on_reply_native_ibc_wrapper_call(
     CHAIN_IBC_EXECUTE_MSG_QUEUE.remove(deps.storage, msg.id);
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
-            let ack = make_ack_fail(err)?;
-            ibc::ack_and_timeout::reusable_internal_ack_call(deps, env, original_msg, ack, true)
+            let ack = make_ack_fail(err.clone())?;
+            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
+                deps,
+                env,
+                original_msg,
+                ack,
+                true,
+            )?;
+            Ok(response
+                .add_attribute("reply_on_ibc_receive_processing", "err")
+                .add_attribute("err", err))
         }
         SubMsgResult::Ok(res) => {
             let data = res
@@ -119,7 +128,14 @@ pub fn on_reply_native_ibc_wrapper_call(
                         .unwrap_or_default()
                 })
                 .unwrap_or_default();
-            ibc::ack_and_timeout::reusable_internal_ack_call(deps, env, original_msg, data, true)
+            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
+                deps,
+                env,
+                original_msg,
+                data,
+                true,
+            )?;
+            Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
         }
     }
 }

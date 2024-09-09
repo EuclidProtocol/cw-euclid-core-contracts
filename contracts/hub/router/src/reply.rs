@@ -2,7 +2,9 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Reply, Response, SubMsgResult,
     WasmMsg,
 };
-use cw0::{parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data};
+use cw_utils::{
+    parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data,
+};
 use euclid::{
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
@@ -377,14 +379,17 @@ pub fn on_reply_native_ibc_wrapper_call(
     HUB_IBC_EXECUTE_MSG_QUEUE.remove(deps.storage, msg.id);
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
-            let ack = make_ack_fail(err)?;
-            ibc::ack_and_timeout::reusable_internal_ack_call(
+            let ack = make_ack_fail(err.clone())?;
+            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
                 deps,
                 env,
                 original_msg,
                 ack,
                 chain_type,
-            )
+            )?;
+            Ok(response
+                .add_attribute("reply_on_ibc_receive_processing", "err")
+                .add_attribute("err", err))
         }
         SubMsgResult::Ok(res) => {
             let data = res
@@ -395,13 +400,14 @@ pub fn on_reply_native_ibc_wrapper_call(
                         .unwrap_or_default()
                 })
                 .unwrap_or_default();
-            ibc::ack_and_timeout::reusable_internal_ack_call(
+            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
                 deps,
                 env,
                 original_msg,
                 data,
                 chain_type,
-            )
+            )?;
+            Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
         }
     }
 }
