@@ -1,21 +1,15 @@
 #[cfg(test)]
 mod tests {
-
-    use std::collections::HashMap;
-
     use crate::contract::{execute, instantiate};
-
     use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
-
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
-
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
     use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
-
     use euclid::token::{Pair, Token};
+    use std::collections::HashMap;
 
     fn init(deps: DepsMut) -> Response {
         let msg = InstantiateMsg {
@@ -114,7 +108,9 @@ mod tests {
         let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         assert_eq!(res.messages.len(), 0); // Ensure no extra messages are sent
 
-        let state = CHAIN_LP_TOKENS.load(&deps.storage, ChainUid::create("1".to_string()).unwrap()).unwrap();
+        let state = CHAIN_LP_TOKENS
+            .load(&deps.storage, ChainUid::create("1".to_string()).unwrap())
+            .unwrap();
         assert_eq!(state, Uint128::zero())
     }
 
@@ -124,39 +120,64 @@ mod tests {
         let env = mock_env();
         init(deps.as_mut());
 
-        let msg = ExecuteMsg::UpdateFee { lp_fee_bps: Some(5), euclid_fee_bps: Some(4), recipient: Some(CrossChainUser {
-            chain_uid: ChainUid::create("2".to_string()).unwrap(),
-            address: "addr_2".to_string(),
-        }) };
+        let msg = ExecuteMsg::UpdateFee {
+            lp_fee_bps: Some(5),
+            euclid_fee_bps: Some(4),
+            recipient: Some(CrossChainUser {
+                chain_uid: ChainUid::create("2".to_string()).unwrap(),
+                address: "addr_2".to_string(),
+            }),
+        };
         let info = mock_info("not_admin", &[]);
 
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
-        assert_eq!(err, ContractError::Unauthorized {  });
+        assert_eq!(err, ContractError::Unauthorized {});
 
         let info = mock_info("admin", &[]);
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         let fee = STATE.load(&deps.storage).unwrap().fee;
-        assert_eq!(fee, Fee { lp_fee_bps: 5, euclid_fee_bps: 4, recipient: CrossChainUser {
-            chain_uid: ChainUid::create("2".to_string()).unwrap(),
-            address: "addr_2".to_string(),
-        } });
+        assert_eq!(
+            fee,
+            Fee {
+                lp_fee_bps: 5,
+                euclid_fee_bps: 4,
+                recipient: CrossChainUser {
+                    chain_uid: ChainUid::create("2".to_string()).unwrap(),
+                    address: "addr_2".to_string(),
+                }
+            }
+        );
 
         // Exceed max bps
-        let msg = ExecuteMsg::UpdateFee { lp_fee_bps: Some(5000), euclid_fee_bps: Some(4), recipient: Some(CrossChainUser {
-            chain_uid: ChainUid::create("2".to_string()).unwrap(),
-            address: "addr_2".to_string(),
-        }) };
+        let msg = ExecuteMsg::UpdateFee {
+            lp_fee_bps: Some(5000),
+            euclid_fee_bps: Some(4),
+            recipient: Some(CrossChainUser {
+                chain_uid: ChainUid::create("2".to_string()).unwrap(),
+                address: "addr_2".to_string(),
+            }),
+        };
 
         let err = execute(deps.as_mut(), env.clone(), info.clone(), msg.clone()).unwrap_err();
-        assert_eq!(err,  ContractError::new("LP Fee cannot exceed maximum limit"));
+        assert_eq!(
+            err,
+            ContractError::new("LP Fee cannot exceed maximum limit")
+        );
 
-        let msg = ExecuteMsg::UpdateFee { lp_fee_bps: Some(50), euclid_fee_bps: Some(4000), recipient: Some(CrossChainUser {
-            chain_uid: ChainUid::create("2".to_string()).unwrap(),
-            address: "addr_2".to_string(),
-        }) };
+        let msg = ExecuteMsg::UpdateFee {
+            lp_fee_bps: Some(50),
+            euclid_fee_bps: Some(4000),
+            recipient: Some(CrossChainUser {
+                chain_uid: ChainUid::create("2".to_string()).unwrap(),
+                address: "addr_2".to_string(),
+            }),
+        };
 
         let err = execute(deps.as_mut(), env.clone(), info.clone(), msg.clone()).unwrap_err();
-        assert_eq!(err,  ContractError::new("Euclid Fee cannot exceed maximum limit"));
+        assert_eq!(
+            err,
+            ContractError::new("Euclid Fee cannot exceed maximum limit")
+        );
     }
 }
