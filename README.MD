@@ -1,4 +1,4 @@
-# Euclid Smart Contracts Repo
+# Euclid Cosmwasm Smart Contracts Repo
 
 ## Table of Contents
 
