@@ -351,7 +351,7 @@ pub fn execute_swap(
     state
         .total_fees_collected
         .lp_fees
-        .add_fee(&deps.as_ref(), asset_in.to_string(), lp_fee);
+        .add_fee(asset_in.to_string(), lp_fee);
 
     // Calcuate the sum of fees
     let total_fee = lp_fee.checked_add(euclid_fee)?;
@@ -432,11 +432,10 @@ pub fn execute_swap(
 
     if !euclid_fee.is_zero() {
         // Add the euclid fee to total fees
-        state.total_fees_collected.euclid_fees.add_fee(
-            &deps.as_ref(),
-            asset_in.to_string(),
-            euclid_fee,
-        );
+        state
+            .total_fees_collected
+            .euclid_fees
+            .add_fee(asset_in.to_string(), euclid_fee);
 
         let euclid_fee_transfer_msg =
             euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {

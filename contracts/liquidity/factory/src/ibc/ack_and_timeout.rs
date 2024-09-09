@@ -511,11 +511,9 @@ fn ack_swap_request(
                 let mut state = STATE.load(deps.storage)?;
 
                 // Add partner fee collected to the total
-                state.partner_fees_collected.add_fee(
-                    &deps.as_ref(),
-                    asset_in.token.to_string(),
-                    swap_info.partner_fee_amount,
-                );
+                state
+                    .partner_fees_collected
+                    .add_fee(asset_in.token.to_string(), swap_info.partner_fee_amount);
 
                 // Save new total partner fees collected to state
                 STATE.save(deps.storage, &state)?;
