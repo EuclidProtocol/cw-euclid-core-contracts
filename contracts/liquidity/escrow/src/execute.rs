@@ -84,8 +84,6 @@ pub fn execute_update_state(
     _env: Env,
     info: MessageInfo,
     token_id: Option<Token>,
-    factory_address: Option<Addr>,
-    total_amount: Option<Uint128>,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
     let state = STATE.load(deps.storage)?;
@@ -94,17 +92,10 @@ pub fn execute_update_state(
         ContractError::Unauthorized {}
     );
 
-    let verified_factory_address = if let Some(ref factory_address) = factory_address {
-        deps.api.addr_validate(&factory_address.as_str())?;
-        factory_address.clone()
-    } else {
-        state.factory_address
-    };
-
     let state = State {
         token_id: token_id.clone().unwrap_or(state.token_id),
-        factory_address: verified_factory_address,
-        total_amount: total_amount.unwrap_or(state.total_amount),
+        factory_address: state.factory_address,
+        total_amount: state.total_amount,
     };
 
     STATE.save(deps.storage, &state)?;
@@ -114,14 +105,6 @@ pub fn execute_update_state(
         .add_attribute(
             "token_id",
             token_id.as_ref().map_or("unchanged", |x| x.as_str()),
-        )
-        .add_attribute(
-            "factory_address",
-            factory_address.map_or("unchanged".to_string(), |x| x.to_string()),
-        )
-        .add_attribute(
-            "total_amount",
-            total_amount.map_or("unchanged".to_string(), |x| x.to_string()),
         ))
 }
 

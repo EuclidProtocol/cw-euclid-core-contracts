@@ -862,29 +862,17 @@ pub fn execute_update_escrow_state(
     info: MessageInfo,
     current_token_id: Token,
     new_token_id: Option<Token>,
-    factory_address: Option<String>,
-    total_amount: Option<Uint128>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
         state.admin == info.sender.into_string(),
         ContractError::Unauthorized {}
     );
-
     let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, current_token_id.clone())?;
-
-    let verified_factory_address = if let Some(ref factory_address) = factory_address {
-        Some(deps.api.addr_validate(&factory_address.as_str())?)
-    } else {
-        None
-    };
-
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: escrow_address.into_string(),
         msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::UpdateState {
             token_id: new_token_id.clone(),
-            factory_address: verified_factory_address,
-            total_amount,
         })?,
         funds: vec![],
     });
@@ -894,14 +882,6 @@ pub fn execute_update_escrow_state(
         .add_attribute(
             "token_id",
             new_token_id.map_or("unchanged".to_string(), |x| x.to_string()),
-        )
-        .add_attribute(
-            "factory_address",
-            factory_address.map_or("unchanged".to_string(), |x| x.to_string()),
-        )
-        .add_attribute(
-            "total_amount",
-            total_amount.map_or("unchanged".to_string(), |x| x.to_string()),
         ))
 }
 

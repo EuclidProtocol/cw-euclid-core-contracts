@@ -86,8 +86,6 @@ pub enum ExecuteMsg {
     UpdateEscrowState {
         current_token_id: Token,
         new_token_id: Option<Token>,
-        factory_address: Option<String>,
-        total_amount: Option<Uint128>,
     },
     UpdateCw20State {
         cw20_address: String,

@@ -14,27 +14,16 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     // Updates allowed denoms
-    AddAllowedDenom {
-        denom: TokenType,
-    },
+    AddAllowedDenom { denom: TokenType },
     // Removes a denom from allowed denoms
-    DisallowDenom {
-        denom: TokenType,
-    },
+    DisallowDenom { denom: TokenType },
     DepositNative {},
-    UpdateState {
-        token_id: Option<Token>,
-        factory_address: Option<Addr>,
-        total_amount: Option<Uint128>,
-    },
+    UpdateState { token_id: Option<Token> },
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
 
     // Have a separate Msg for cw20 tokens? flow should be better if the message is unified
-    Withdraw {
-        recipient: Addr,
-        amount: Uint128,
-    },
+    Withdraw { recipient: Addr, amount: Uint128 },
 }
 
 #[cw_serde]

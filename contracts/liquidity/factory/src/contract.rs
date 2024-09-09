@@ -182,16 +182,7 @@ pub fn execute(
         ExecuteMsg::UpdateEscrowState {
             current_token_id,
             new_token_id,
-            factory_address,
-            total_amount,
-        } => execute_update_escrow_state(
-            deps,
-            info,
-            current_token_id,
-            new_token_id,
-            factory_address,
-            total_amount,
-        ),
+        } => execute_update_escrow_state(deps, info, current_token_id, new_token_id),
 
         ExecuteMsg::UpdateCw20State {
             cw20_address,

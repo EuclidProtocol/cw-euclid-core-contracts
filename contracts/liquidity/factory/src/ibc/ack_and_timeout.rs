@@ -5,8 +5,6 @@ use cosmwasm_std::{
     IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, StdResult,
     SubMsg, Uint128, WasmMsg,
 };
-
-use cw20_base::state;
 use euclid::{
     error::ContractError,
     events::swap_event,
@@ -258,7 +256,7 @@ fn ack_pool_creation(
 
 fn ack_escrow_creation(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     sender: String,
     res: AcknowledgementMsg<EscrowCreationResponse>,
     tx_id: String,

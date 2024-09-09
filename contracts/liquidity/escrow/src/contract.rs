@@ -70,11 +70,7 @@ pub fn execute(
         ExecuteMsg::Withdraw { recipient, amount } => {
             execute_withdraw(deps, env, info, recipient, amount)
         }
-        ExecuteMsg::UpdateState {
-            token_id,
-            factory_address,
-            total_amount,
-        } => execute_update_state(deps, env, info, token_id, factory_address, total_amount),
+        ExecuteMsg::UpdateState { token_id } => execute_update_state(deps, env, info, token_id),
     }
 }
 
