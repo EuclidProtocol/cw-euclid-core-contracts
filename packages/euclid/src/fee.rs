@@ -34,17 +34,15 @@ pub struct DenomFees {
 
 impl DenomFees {
     // Add or update the total for a given denomination
-    pub fn add_fee(&mut self, deps: &Deps, token: String, amount: Uint128) {
-        let key = self.get_key(deps, &token);
-
+    pub fn add_fee(&mut self, token: String, amount: Uint128) {
         self.totals
-            .entry(key)
+            .entry(token)
             .and_modify(|total| *total += amount)
             .or_insert(amount);
     }
     // Get the total for a given denomination
-    pub fn get_fee(&self, denom: &str) -> Uint128 {
-        self.totals.get(denom).cloned().unwrap_or_default()
+    pub fn get_fee(&self, token: &str) -> Uint128 {
+        self.totals.get(token).cloned().unwrap_or_default()
     }
 
     pub fn get_key(&self, deps: &Deps, denom: &str) -> String {
