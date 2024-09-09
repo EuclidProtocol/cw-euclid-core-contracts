@@ -1,8 +1,4 @@
-<div align="center">
-
-<h1>Euclid Protocol</h1>
-
-</div>
+# Euclid Smart Contracts Repo
 
 ## Table of Contents
 
