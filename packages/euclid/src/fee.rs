@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
-use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Deps, Uint128};
-
 use crate::chain::CrossChainUser;
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::Uint128;
+use std::collections::HashMap;
 
 // Set maximum fee as 10%
 pub const MAX_FEE_BPS: u64 = 1000;
@@ -43,16 +41,6 @@ impl DenomFees {
     // Get the total for a given denomination
     pub fn get_fee(&self, token: &str) -> Uint128 {
         self.totals.get(token).cloned().unwrap_or_default()
-    }
-
-    pub fn get_key(&self, deps: &Deps, denom: &str) -> String {
-        let denom_type = deps.api.addr_validate(denom);
-        match denom_type {
-            // If it's a valid address, it's a smart contract
-            Ok(_) => format!("smart{}", denom),
-            // If it's not a valid address, it's a native token
-            Err(_) => format!("native{}", denom),
-        }
     }
 }
 // Set maximum fee as 0.3%
