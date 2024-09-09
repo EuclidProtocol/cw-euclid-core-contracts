@@ -4,11 +4,6 @@
 
 </div>
 
-<p>&nbsp;</p>
-<p align="center">
-<img src="./assets/Euclid Readme.png" width=1000>
-</p>
-
 ## Table of Contents
 
 1. [Overview](#overview)
