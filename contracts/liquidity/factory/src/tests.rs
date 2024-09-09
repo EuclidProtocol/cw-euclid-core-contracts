@@ -1,16 +1,17 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate};
-
     use crate::state::{State, HUB_CHANNEL, STATE};
+    use std::collections::HashMap;
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{DepsMut, Response};
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
+    use euclid::fee::DenomFees;
     use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg};
 
-    fn initialize_state(deps: &mut DepsMut) {
+    fn _initialize_state(deps: &mut DepsMut) {
         let state = State {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             router_contract: "router_contract".to_string(),
@@ -18,6 +19,9 @@ mod tests {
             escrow_code_id: 1,
             cw20_code_id: 2,
             is_native: true,
+            partner_fees_collected: DenomFees {
+                totals: HashMap::default(),
+            },
         };
         STATE.save(deps.storage, &state).unwrap();
     }
@@ -46,6 +50,9 @@ mod tests {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             cw20_code_id: 2,
             is_native: true,
+            partner_fees_collected: DenomFees {
+                totals: HashMap::default(),
+            },
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

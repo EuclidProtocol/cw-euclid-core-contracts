@@ -1,19 +1,23 @@
+use std::collections::HashMap;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
+use euclid::fee::DenomFees;
 use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
     add_liquidity_request, execute_native_receive_callback, execute_request_deregister_denom,
     execute_request_pool_creation, execute_request_register_denom, execute_request_register_escrow,
-    execute_swap_request, execute_update_hub_channel, execute_withdraw_vcoin, receive_cw20,
+    execute_swap_request, execute_update_hub_channel, execute_withdraw_virtual_balance,
+    receive_cw20,
 };
 use crate::query::{
-    get_escrow, get_lp_token_address, get_vlp, pending_liquidity, pending_remove_liquidity,
-    pending_swaps, query_all_pools, query_all_tokens, query_state,
+    get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
+    pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
 use crate::reply::{
     on_cw20_instantiate_reply, on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply,
@@ -43,6 +47,9 @@ pub fn instantiate(
         cw20_code_id: msg.cw20_code_id,
         chain_uid,
         is_native: msg.is_native,
+        partner_fees_collected: DenomFees {
+            totals: HashMap::default(),
+        },
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -140,12 +147,12 @@ pub fn execute(
         ExecuteMsg::RequestRegisterEscrow { token, timeout } => {
             execute_request_register_escrow(&mut deps, env, info, token, timeout)
         }
-        ExecuteMsg::WithdrawVcoin {
+        ExecuteMsg::WithdrawVirtualBalance {
             token,
             amount,
             cross_chain_addresses,
             timeout,
-        } => execute_withdraw_vcoin(
+        } => execute_withdraw_virtual_balance(
             &mut deps,
             env,
             info,
@@ -177,22 +184,15 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
         // Pool Queries //
-        QueryMsg::PendingSwapsUser {
-            user,
-            upper_limit,
-            lower_limit,
-        } => pending_swaps(deps, user, lower_limit, upper_limit),
-        QueryMsg::PendingLiquidity {
-            user,
-            lower_limit,
-            upper_limit,
-        } => pending_liquidity(deps, user, lower_limit, upper_limit),
-        QueryMsg::PendingRemoveLiquidity {
-            user,
-            lower_limit,
-            upper_limit,
-        } => pending_remove_liquidity(deps, user, lower_limit, upper_limit),
+        QueryMsg::PendingSwapsUser { user, pagination } => pending_swaps(deps, user, pagination),
+        QueryMsg::PendingLiquidity { user, pagination } => {
+            pending_liquidity(deps, user, pagination)
+        }
+        QueryMsg::PendingRemoveLiquidity { user, pagination } => {
+            pending_remove_liquidity(deps, user, pagination)
+        }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
+        QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

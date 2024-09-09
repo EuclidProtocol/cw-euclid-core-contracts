@@ -1,6 +1,6 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
-    fee::Fee,
+    fee::{Fee, TotalFees},
     swap::NextSwapVlp,
     token::{Pair, Token},
 };
@@ -10,7 +10,7 @@ use cosmwasm_std::Uint128;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
-    pub vcoin: String,
+    pub virtual_balance: String,
     pub pair: Pair,
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
@@ -86,6 +86,12 @@ pub enum QueryMsg {
     #[returns(FeeResponse)]
     Fee {},
 
+    #[returns(TotalFeesResponse)]
+    TotalFeesCollected {},
+
+    #[returns(TotalFeesPerDenomResponse)]
+    TotalFeesPerDenom { denom: String },
+
     // Queries the pool information for a chain id
     #[returns(PoolResponse)]
     Pool { chain_uid: ChainUid },
@@ -105,7 +111,7 @@ pub struct GetSwapResponse {
 pub struct GetStateResponse {
     pub pair: Pair,
     pub router: String,
-    pub vcoin: String,
+    pub virtual_balance: String,
     pub fee: Fee,
     pub last_updated: u64,
     pub total_lp_tokens: Uint128,
@@ -123,6 +129,17 @@ pub struct GetLiquidityResponse {
 #[cw_serde]
 pub struct FeeResponse {
     pub fee: Fee,
+}
+
+#[cw_serde]
+pub struct TotalFeesResponse {
+    pub total_fees: TotalFees,
+}
+
+#[cw_serde]
+pub struct TotalFeesPerDenomResponse {
+    pub lp_fees: Uint128,
+    pub euclid_fees: Uint128,
 }
 
 #[cw_serde]

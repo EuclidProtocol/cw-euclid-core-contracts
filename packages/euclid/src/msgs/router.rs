@@ -5,12 +5,13 @@ use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
     token::{Pair, Token},
+    utils::Pagination,
 };
 #[cw_serde]
 pub struct InstantiateMsg {
     // Pool Code ID
     pub vlp_code_id: u64,
-    pub vcoin_code_id: u64,
+    pub virtual_balance_code_id: u64,
 }
 
 #[cw_serde]
@@ -20,6 +21,10 @@ pub enum ExecuteMsg {
     },
     DeregisterChain {
         chain: ChainUid,
+    },
+    UpdateFactoryChannel {
+        chain_uid: ChainUid,
+        channel: String,
     },
     UpdateLock {},
     // Update Pool Code ID
@@ -67,10 +72,7 @@ pub enum QueryMsg {
     GetVlp { pair: Pair },
     #[returns(AllVlpResponse)]
     GetAllVlps {
-        start: Option<(Token, Token)>,
-        end: Option<(Token, Token)>,
-        skip: Option<usize>,
-        limit: Option<usize>,
+        pagination: Pagination<(Token, Token)>,
     },
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
@@ -85,19 +87,11 @@ pub enum QueryMsg {
     #[returns(TokenEscrowsResponse)]
     QueryTokenEscrows {
         token: Token,
-        start: Option<ChainUid>,
-        end: Option<ChainUid>,
-        skip: Option<usize>,
-        limit: Option<usize>,
+        pagination: Pagination<ChainUid>,
     },
 
     #[returns(AllTokensResponse)]
-    QueryAllTokens {
-        start: Option<Token>,
-        end: Option<Token>,
-        skip: Option<usize>,
-        limit: Option<usize>,
-    },
+    QueryAllTokens { pagination: Pagination<Token> },
 }
 // We define a custom struct for each query response
 #[cw_serde]
@@ -116,7 +110,7 @@ pub struct QuerySimulateSwap {
 pub struct StateResponse {
     pub admin: String,
     pub vlp_code_id: u64,
-    pub vcoin_address: Option<Addr>,
+    pub virtual_balance_address: Option<Addr>,
     pub locked: bool,
 }
 
@@ -157,7 +151,13 @@ pub struct SimulateEscrowReleaseResponse {
 
 #[cw_serde]
 pub struct TokenEscrowsResponse {
-    pub chains: Vec<ChainUid>,
+    pub chains: Vec<TokenEscrowChainResponse>,
+}
+
+#[cw_serde]
+pub struct TokenEscrowChainResponse {
+    pub chain_uid: ChainUid,
+    pub balance: Uint128,
 }
 
 #[cw_serde]

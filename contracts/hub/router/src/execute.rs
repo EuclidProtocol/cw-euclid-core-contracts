@@ -6,18 +6,20 @@ use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{router::RegisterFactoryChainType, vcoin::ExecuteBurn},
+    msgs::{router::RegisterFactoryChainType, virtual_balance::ExecuteBurn},
     timeout::get_timeout,
     token::Token,
     utils::generate_tx,
-    vcoin::BalanceKey,
+    virtual_balance::BalanceKey,
 };
 use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
     ibc::receive,
-    reply::VCOIN_BURN_REPLY_ID,
-    state::{CHAIN_UID_TO_CHAIN, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE},
+    reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
+    state::{
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+    },
 };
 
 // Function to update the pool code ID
@@ -168,6 +170,71 @@ pub fn execute_register_factory(
     }
 }
 
+pub fn execute_update_factory_channel(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    new_channel: String,
+    chain_uid: ChainUid,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let chain_uid = chain_uid.validate()?.to_owned();
+    let chain_info = CHAIN_UID_TO_CHAIN
+        .load(deps.storage, chain_uid.clone())
+        .map_err(|_err| ContractError::new("Factory doesn't exist"))?;
+
+    // Make sure that the new channel doesn't already exist
+    ensure!(
+        !CHANNEL_TO_CHAIN_UID.has(deps.storage, new_channel.clone()),
+        ContractError::ChannelAlreadyExists {}
+    );
+
+    let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+    let sender = CrossChainUser {
+        chain_uid: vsl_chain_uid.clone(),
+        address: info.sender.to_string(),
+    };
+
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        chain_uid != vsl_chain_uid,
+        ContractError::new("Cannot use VSL chain uid")
+    );
+
+    let response = Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            TxType::UpdateFactoryChannel,
+        ))
+        .add_attribute("method", "update_factory_channel");
+
+    let msg = HubIbcExecuteMsg::UpdateFactoryChannel {
+        chain_uid: chain_uid.clone(),
+        tx_id: tx_id.clone(),
+    };
+
+    if !chain_info.is_native() {
+        let timeout = get_timeout(None)?;
+        let packet = IbcMsg::SendPacket {
+            channel_id: new_channel.clone(),
+            data: to_json_binary(&msg)?,
+            timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+        };
+
+        Ok(response
+            .add_attribute("channel", new_channel)
+            .add_attribute("timeout", timeout.to_string())
+            .add_message(CosmosMsg::Ibc(packet)))
+    } else {
+        // Can't update channel for a local chain
+        Err(ContractError::NoChannelForLocalChain {})
+    }
+}
+
 pub fn execute_release_escrow(
     deps: &mut DepsMut,
     env: Env,
@@ -185,26 +252,35 @@ pub fn execute_release_escrow(
         ContractError::Unauthorized {}
     );
 
-    let vcoin_address = state
-        .vcoin_address
-        .ok_or(ContractError::new("vcoin doesn't exist"))?
+    let virtual_balance_address = state
+        .virtual_balance_address
+        .ok_or(ContractError::new("virtual balance doesn't exist"))?
         .into_string();
 
-    let user_balance: euclid::msgs::vcoin::GetBalanceResponse = deps.querier.query_wasm_smart(
-        vcoin_address.clone(),
-        &euclid::msgs::vcoin::QueryMsg::GetBalance {
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
+    let user_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
+        deps.querier.query_wasm_smart(
+            virtual_balance_address.clone(),
+            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+                balance_key: BalanceKey {
+                    cross_chain_user: sender.clone(),
+                    token_id: token.to_string(),
+                },
             },
-        },
-    )?;
+        )?;
 
-    // Ensure that user has enough vcoin balance to actually trigger escrow release
+    // Ensure that user has enough virtual balance balance to actually trigger escrow release
     ensure!(
         user_balance.amount.ge(&amount),
         ContractError::InsufficientFunds {}
     );
+
+    let mut response = Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            sender.address.as_str(),
+            TxType::EscrowRelease,
+        ))
+        .add_attribute("tx_id", tx_id);
 
     let timeout = get_timeout(timeout)?;
     let mut release_msgs: Vec<SubMsg> = vec![];
@@ -255,6 +331,14 @@ pub fn execute_release_escrow(
         }
         .to_msg(deps, &env, chain, timeout)?;
 
+        response = response.add_attribute(
+            format!(
+                "release_escrow_expected_{sender}",
+                sender = cross_chain_address.user.to_sender_string()
+            ),
+            release_amount,
+        );
+
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(release_amount)?;
         release_msgs.push(send_msg);
     }
@@ -264,29 +348,25 @@ pub fn execute_release_escrow(
         ContractError::new("Amount mismatch after trasnfer calculations")
     );
 
-    let mut response = Response::new()
-        .add_event(tx_event(
-            &tx_id,
-            sender.address.as_str(),
-            TxType::EscrowRelease,
-        ))
-        .add_attribute("tx_id", tx_id);
     if !transfer_amount.is_zero() {
-        let burn_vcoin_msg = euclid::msgs::vcoin::ExecuteMsg::Burn(ExecuteBurn {
-            amount: transfer_amount,
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
-            },
-        });
+        let burn_virtual_balance_msg =
+            euclid::msgs::virtual_balance::ExecuteMsg::Burn(ExecuteBurn {
+                amount: transfer_amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: sender.clone(),
+                    token_id: token.to_string(),
+                },
+            });
 
-        let burn_vcoin_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: vcoin_address,
-            msg: to_json_binary(&burn_vcoin_msg)?,
+        let burn_virtual_balance_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: virtual_balance_address,
+            msg: to_json_binary(&burn_virtual_balance_msg)?,
             funds: vec![],
         });
-        response =
-            response.add_submessage(SubMsg::reply_always(burn_vcoin_msg, VCOIN_BURN_REPLY_ID));
+        response = response.add_submessage(SubMsg::reply_always(
+            burn_virtual_balance_msg,
+            VIRTUAL_BALANCE_BURN_REPLY_ID,
+        ));
     }
 
     Ok(response

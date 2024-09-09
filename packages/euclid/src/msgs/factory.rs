@@ -1,9 +1,10 @@
 use crate::{
     chain::{ChainUid, CrossChainUserWithLimit},
-    fee::PartnerFee,
+    fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenom, Token, TokenType, TokenWithDenom},
+    utils::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
@@ -61,7 +62,7 @@ pub enum ExecuteMsg {
     UpdateHubChannel {
         new_channel: String,
     },
-    WithdrawVcoin {
+    WithdrawVirtualBalance {
         token: Token,
         amount: Uint128,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
@@ -95,6 +96,10 @@ pub enum QueryMsg {
 
     #[returns(StateResponse)]
     GetState {},
+
+    #[returns(PartnerFeesCollectedResponse)]
+    GetPartnerFeesCollected {},
+
     // Query to get all pools in the factory
     #[returns(AllPoolsResponse)]
     GetAllPools {},
@@ -107,20 +112,17 @@ pub enum QueryMsg {
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
         user: Addr,
-        lower_limit: Option<u128>,
-        upper_limit: Option<u128>,
+        pagination: Pagination<Uint128>,
     },
     #[returns(GetPendingLiquidityResponse)]
     PendingLiquidity {
         user: Addr,
-        lower_limit: Option<u128>,
-        upper_limit: Option<u128>,
+        pagination: Pagination<Uint128>,
     },
     #[returns(GetPendingRemoveLiquidityResponse)]
     PendingRemoveLiquidity {
         user: Addr,
-        lower_limit: Option<u128>,
-        upper_limit: Option<u128>,
+        pagination: Pagination<Uint128>,
     },
 
     #[returns(GetEscrowResponse)]
@@ -149,7 +151,22 @@ pub struct StateResponse {
     pub router_contract: String,
     pub hub_channel: Option<String>,
     pub admin: String,
-    // pub pool_code_id: u64,
+    // Escrow Code ID
+    pub escrow_code_id: u64,
+    // CW20 Code ID
+    pub cw20_code_id: u64,
+    pub is_native: bool,
+    pub partner_fees_collected: DenomFees,
+}
+
+#[cw_serde]
+pub struct PartnerFeesCollectedResponse {
+    pub total: DenomFees,
+}
+
+#[cw_serde]
+pub struct PartnerFeesCollectedPerDenomResponse {
+    pub total: Uint128,
 }
 
 #[cw_serde]

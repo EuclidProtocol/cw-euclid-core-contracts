@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
 use cw2::set_contract_version;
+use euclid::fee::{DenomFees, TotalFees};
 
-use crate::reply::{NEXT_SWAP_REPLY_ID, VCOIN_TRANSFER_REPLY_ID};
+use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
 use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
@@ -11,6 +14,7 @@ use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
+    query_total_fees_collected, query_total_fees_per_denom,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
@@ -28,9 +32,17 @@ pub fn instantiate(
 
     let state = State {
         pair: msg.pair,
-        vcoin: msg.vcoin,
+        virtual_balance: msg.virtual_balance,
         router: info.sender.to_string(),
         fee: msg.fee,
+        total_fees_collected: TotalFees {
+            lp_fees: DenomFees {
+                totals: HashMap::default(),
+            },
+            euclid_fees: DenomFees {
+                totals: HashMap::default(),
+            },
+        },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
         admin: msg.admin,
@@ -131,6 +143,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         } => query_simulate_swap(deps, asset, asset_amount, swaps),
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
+        QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
+        QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps, denom),
         QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
 
         QueryMsg::GetAllPools {} => query_all_pools(deps),
@@ -140,7 +154,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        VCOIN_TRANSFER_REPLY_ID => reply::on_vcoin_transfer_reply(deps, msg),
+        VIRTUAL_BALANCE_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
         NEXT_SWAP_REPLY_ID => reply::on_next_swap_reply(deps, msg),
 
         id => Err(ContractError::Generic {

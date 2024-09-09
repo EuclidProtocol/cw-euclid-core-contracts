@@ -9,7 +9,7 @@ use euclid::token::Token;
 
 use euclid::msgs::vlp::{
     AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
-    PoolInfo, PoolResponse,
+    PoolInfo, PoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
 };
 
 use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
@@ -91,12 +91,32 @@ pub fn query_fee(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&FeeResponse { fee: state.fee })?)
 }
 
+// Function to query total fees collected of the contract
+pub fn query_total_fees_collected(deps: Deps) -> Result<Binary, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    Ok(to_json_binary(&TotalFeesResponse {
+        total_fees: state.total_fees_collected,
+    })?)
+}
+
+pub fn query_total_fees_per_denom(deps: Deps, denom: String) -> Result<Binary, ContractError> {
+    let total_fees_collected = STATE.load(deps.storage)?.total_fees_collected;
+
+    let lp_fees = total_fees_collected.lp_fees.get_fee(denom.as_str());
+    let euclid_fees = total_fees_collected.euclid_fees.get_fee(denom.as_str());
+
+    Ok(to_json_binary(&TotalFeesPerDenomResponse {
+        lp_fees,
+        euclid_fees,
+    })?)
+}
+
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&GetStateResponse {
         pair: state.pair,
         router: state.router,
-        vcoin: state.vcoin,
+        virtual_balance: state.virtual_balance,
         fee: state.fee,
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,
@@ -146,8 +166,12 @@ fn get_pool(
     reserve_2: Uint128,
 ) -> Result<PoolResponse, ContractError> {
     Ok(PoolResponse {
-        reserve_1: reserve_1.checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)?,
-        reserve_2: reserve_2.checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)?,
+        reserve_1: reserve_1
+            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+            .unwrap_or(Uint128::zero()),
+        reserve_2: reserve_2
+            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+            .unwrap_or(Uint128::zero()),
         lp_shares: chain_lp_tokens,
     })
 }

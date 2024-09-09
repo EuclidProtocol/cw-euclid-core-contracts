@@ -10,7 +10,7 @@ use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::chain::CrossChainUser;
 use crate::cw20::Cw20HookMsg;
-use crate::msgs::vcoin::ExecuteTransfer;
+use crate::msgs::virtual_balance::ExecuteTransfer;
 use crate::{error::ContractError, pool::Pool};
 
 // Token asset that represents an identifier for a token
@@ -54,14 +54,14 @@ impl Token {
         Ok(self)
     }
 
-    pub fn create_vcoin_transfer_msg(
+    pub fn create_virtual_balance_transfer_msg(
         &self,
-        vcoin_address: String,
+        virtual_balance_address: String,
         amount: Uint128,
         from: CrossChainUser,
         to: CrossChainUser,
     ) -> Result<WasmMsg, ContractError> {
-        let transfer_msg = crate::msgs::vcoin::ExecuteMsg::Transfer(ExecuteTransfer {
+        let transfer_msg = crate::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount,
             token_id: self.0.clone(),
             from,
@@ -69,7 +69,7 @@ impl Token {
         });
 
         let transfer_msg = WasmMsg::Execute {
-            contract_addr: vcoin_address,
+            contract_addr: virtual_balance_address,
             msg: to_json_binary(&transfer_msg)?,
             funds: vec![],
         };
@@ -389,26 +389,26 @@ pub struct PairWithDenom {
 }
 
 impl PairWithDenom {
-    pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
-        // Check for duplicates
-        ensure!(
-            self.token_1.token != self.token_2.token,
-            ContractError::DuplicateTokens {}
-        );
-        // Validate each token
-        self.token_1.validate(deps)?;
-        self.token_2.validate(deps)?;
-
-        Ok(())
-    }
-
     pub fn get_pair(&self) -> Result<Pair, ContractError> {
         Pair::new(self.token_1.token.clone(), self.token_2.token.clone())
     }
-
     pub fn get_vec_token_info(&self) -> Vec<TokenWithDenom> {
         let tokens: Vec<TokenWithDenom> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
+    }
+
+    pub fn validate(&self) -> Result<bool, ContractError> {
+        let pair = self.get_pair()?;
+        ensure!(
+            pair.token_1 == self.token_1.token,
+            ContractError::new("Pair should be sorted")
+        );
+        ensure!(
+            pair.token_2 == self.token_2.token,
+            ContractError::new("Pair should be sorted")
+        );
+
+        Ok(true)
     }
 }
 

@@ -2,10 +2,10 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
-    msgs::vcoin::{
+    msgs::virtual_balance::{
         GetBalanceResponse, GetStateResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
     },
-    vcoin::BalanceKey,
+    virtual_balance::BalanceKey,
 };
 
 use crate::state::{BALANCES, STATE};

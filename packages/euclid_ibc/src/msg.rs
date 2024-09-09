@@ -59,7 +59,7 @@ pub enum ChainIbcExecuteMsg {
     // Swap tokens on VLP
     Swap(ChainIbcSwapExecuteMsg),
 
-    // Withdraw Vcoin message sent from factory
+    // Withdraw virtual balance message sent from factory
     Withdraw(ChainIbcWithdrawExecuteMsg),
     // RequestWithdraw {
     //     token_id: Token,
@@ -208,6 +208,12 @@ pub enum HubIbcExecuteMsg {
         tx_id: String,
     },
 
+    UpdateFactoryChannel {
+        chain_uid: ChainUid,
+        // Unique per tx
+        tx_id: String,
+    },
+
     ReleaseEscrow {
         chain_uid: ChainUid,
         sender: CrossChainUser,
@@ -225,6 +231,7 @@ impl HubIbcExecuteMsg {
         match self {
             Self::RegisterFactory { tx_id, .. } => tx_id.clone(),
             Self::ReleaseEscrow { tx_id, .. } => tx_id.clone(),
+            Self::UpdateFactoryChannel { tx_id, .. } => tx_id.clone(),
         }
     }
 

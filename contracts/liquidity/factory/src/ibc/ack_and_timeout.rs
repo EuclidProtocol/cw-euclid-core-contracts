@@ -5,7 +5,6 @@ use cosmwasm_std::{
     IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, StdResult,
     SubMsg, Uint128, WasmMsg,
 };
-
 use euclid::{
     error::ContractError,
     events::swap_event,
@@ -197,7 +196,7 @@ fn ack_pool_creation(
                 // Instantiate escrow if one doesn't exist
                 if escrow_contract.is_none() {
                     let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                        admin: Some(env.contract.address.clone().into_string()),
+                        admin: Some(state.admin.clone()),
                         code_id: escrow_code_id,
                         msg: to_json_binary(&EscrowInstantiateMsg {
                             token_id: token.token,
@@ -257,7 +256,7 @@ fn ack_pool_creation(
 
 fn ack_escrow_creation(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     sender: String,
     res: AcknowledgementMsg<EscrowCreationResponse>,
     tx_id: String,
@@ -275,12 +274,13 @@ fn ack_escrow_creation(
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(_data) => {
-            let escrow_code_id = STATE.load(deps.storage)?.escrow_code_id;
+            let state = STATE.load(deps.storage)?;
+            let escrow_code_id = state.escrow_code_id;
             let token = existing_req.token;
 
             // Instantiate escrow
             let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                admin: Some(env.contract.address.clone().into_string()),
+                admin: Some(state.admin.clone()),
                 code_id: escrow_code_id,
                 msg: to_json_binary(&EscrowInstantiateMsg {
                     token_id: token.token,
@@ -508,6 +508,16 @@ fn ack_swap_request(
                 .add_attribute("swap_response", format!("{data:?}"));
 
             if !swap_info.partner_fee_amount.is_zero() {
+                let mut state = STATE.load(deps.storage)?;
+
+                // Add partner fee collected to the total
+                state
+                    .partner_fees_collected
+                    .add_fee(asset_in.get_denom(), swap_info.partner_fee_amount);
+
+                // Save new total partner fees collected to state
+                STATE.save(deps.storage, &state)?;
+
                 // Send the partner fee amount to recipient of the fee, if no recipient was provided, send the
                 // funds back to the user
                 let partner_fee_recipient = swap_info

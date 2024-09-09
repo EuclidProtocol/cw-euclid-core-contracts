@@ -1,6 +1,9 @@
 #![cfg(not(target_arch = "wasm32"))]
+use std::collections::HashMap;
+
 use cosmwasm_std::coin;
 use escrow::mock::mock_escrow;
+use euclid::fee::DenomFees;
 use euclid::{chain::ChainUid, msgs::factory::StateResponse};
 use factory::mock::mock_factory;
 use factory::mock::MockFactory;
@@ -48,6 +51,12 @@ fn test_proper_instantiation() {
         router_contract,
         hub_channel: None,
         admin: owner.clone().into_string(),
+        is_native: true,
+        cw20_code_id,
+        escrow_code_id,
+        partner_fees_collected: DenomFees {
+            totals: HashMap::new(),
+        },
     };
     assert_eq!(state_response, expected_state_id);
 }

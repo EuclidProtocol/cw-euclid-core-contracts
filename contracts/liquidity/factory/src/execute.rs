@@ -69,9 +69,6 @@ pub fn execute_request_pool_creation(
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
-    // Validate token pair
-    pair.validate(deps.as_ref())?;
-
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
@@ -157,6 +154,8 @@ pub fn execute_request_register_escrow(
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid.clone(),
@@ -220,9 +219,7 @@ pub fn add_liquidity_request(
     slippage_tolerance: u64,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    // Validate pair
-    pair_info.validate(deps.as_ref())?;
-
+    pair_info.validate()?;
     let pair = pair_info.get_pair()?;
 
     // Check that slippage tolerance is between 1 and 100
@@ -497,7 +494,7 @@ pub fn execute_swap_request(
 
     ensure!(
         partner_fee_bps <= MAX_PARTNER_FEE_BPS,
-        ContractError::new("Invalid partner fee")
+        ContractError::InvalidPartnerFee {}
     );
 
     let partner_fee_amount = amount_in.checked_mul_ceil(Decimal::bps(partner_fee_bps))?;
@@ -611,8 +608,8 @@ pub fn execute_swap_request(
     .to_msg(
         deps,
         &env,
-        state.router_contract,
-        state.chain_uid,
+        state.clone().router_contract,
+        state.clone().chain_uid,
         state.is_native,
         channel,
         timeout,
@@ -762,7 +759,7 @@ pub fn execute_request_deregister_denom(
         .add_attribute("denom", token.token_type.get_key()))
 }
 
-pub fn execute_withdraw_vcoin(
+pub fn execute_withdraw_virtual_balance(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
@@ -803,10 +800,10 @@ pub fn execute_withdraw_vcoin(
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            TxType::WithdrawVcoin,
+            TxType::WithdrawVirtualBalance,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "withdraw_vcoin")
+        .add_attribute("method", "withdraw_virtual_balance")
         .add_submessage(withdraw_msg))
 }
 

@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
     use crate::contract::{execute, instantiate};
 
     use crate::state::{State, BALANCES, STATE};
@@ -9,7 +11,7 @@ mod tests {
     use cosmwasm_std::{coins, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
 
-    use euclid::fee::Fee;
+    use euclid::fee::{DenomFees, Fee, TotalFees};
     use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
 
     use euclid::token::{Pair, Token};
@@ -17,7 +19,7 @@ mod tests {
     fn init(deps: DepsMut) -> Response {
         let msg = InstantiateMsg {
             router: "router".to_string(),
-            vcoin: "vcoin".to_string(),
+            virtual_balance: "virtual_balance".to_string(),
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
                 token_2: Token::create("token2".to_string()).unwrap(),
@@ -48,13 +50,21 @@ mod tests {
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
             router: "router".to_string(),
-            vcoin: "vcoin".to_string(),
+            virtual_balance: "virtual_balance".to_string(),
             fee: Fee {
                 lp_fee_bps: 1,
                 euclid_fee_bps: 1,
                 recipient: CrossChainUser {
                     chain_uid: ChainUid::create("1".to_string()).unwrap(),
                     address: "addr".to_string(),
+                },
+            },
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::default(),
                 },
             },
             last_updated: 0,
@@ -112,7 +122,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -198,7 +208,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -271,7 +281,7 @@ mod tests {
     // //     // Instantiate the contract first
     // //     let msg = InstantiateMsg {
     // //         router: "router".to_string(),
-    // //         vcoin: "vcoin".to_string(),
+    // //         virtual_balance: "virtual_balance".to_string(),
     // //         pair: Pair {
     // //             token_1: Token {
     // //                 id: "token_1".to_string(),
@@ -357,7 +367,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -436,7 +446,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -547,7 +557,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -642,7 +652,7 @@ mod tests {
     //     // Instantiate the contract first
     //     let msg = InstantiateMsg {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         pair: Pair {
     //             token_1: Token {
     //                 id: "token_1".to_string(),
@@ -661,7 +671,7 @@ mod tests {
     //     let _res = instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
     //     let state = State {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         last_updated: 0,
     //         pair: Pair {
     //             token_1: Token {
@@ -715,7 +725,7 @@ mod tests {
     //     let mut deps = mock_dependencies();
     //     let state = State {
     //         router: "router".to_string(),
-    //         vcoin: "vcoin".to_string(),
+    //         virtual_balance: "virtual_balance".to_string(),
     //         last_updated: 0,
     //         pair: Pair {
     //             token_1: Token {
