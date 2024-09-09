@@ -31,7 +31,7 @@ cd euclid-core-contracts
 To build the contracts, you can run the provided build script:
 
 ```bash
-./build.sh
+./build.sh all
 ```
 
 ## Running Tests
