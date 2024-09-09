@@ -50,7 +50,7 @@ pub fn execute_update_hub_channel(
     ))
 }
 
-// Function to send IBC request to Router in VLS to create a new pool
+// Function to send IBC request to Router in VSL to create a new pool
 pub fn execute_request_pool_creation(
     deps: &mut DepsMut,
     env: Env,
@@ -481,6 +481,9 @@ pub fn execute_swap_request(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
+
+    // Validate asset in
+    asset_in.validate(deps.as_ref())?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
