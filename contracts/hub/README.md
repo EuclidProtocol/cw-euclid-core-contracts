@@ -1,1 +1,2 @@
 # Hub Smart Contracts
+The set of smart contracts that are deployed on the hub chain. You can read more about the architecture of these contracts in our [docs](https://docs.euclidprotocol.io/docs/Architecture%20Overview/Architecture/Virtual%20Settlement%20Layer/virtual-settlement-layer).
