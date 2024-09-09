@@ -1,3 +1,9 @@
+<div align="center">
+
+# Euclid Protocol
+
+</div>
+
 <p>&nbsp;</p>
 <p align="center">
 <img src="./assets/Euclid Readme.png" width=1000>
