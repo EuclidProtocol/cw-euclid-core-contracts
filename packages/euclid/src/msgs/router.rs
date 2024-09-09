@@ -35,10 +35,16 @@ pub enum ExecuteMsg {
         chain_uid: ChainUid,
         chain_info: RegisterFactoryChainType,
     },
+    WithdrawVoucher {
+        token: Token,
+        amount: Option<Uint128>,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        timeout: Option<u64>,
+    },
     ReleaseEscrowInternal {
         sender: CrossChainUser,
         token: Token,
-        amount: Uint128,
+        amount: Option<Uint128>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
         tx_id: String,

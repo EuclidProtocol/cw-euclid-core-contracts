@@ -118,6 +118,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         router: state.router,
         virtual_balance: state.virtual_balance,
         fee: state.fee,
+        total_fees_collected: state.total_fees_collected,
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,
         admin: state.admin,

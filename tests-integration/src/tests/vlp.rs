@@ -1,9 +1,13 @@
 #![cfg(not(target_arch = "wasm32"))]
+use std::collections::HashMap;
+
 use cosmwasm_std::coin;
 use cosmwasm_std::Uint128;
 use euclid::chain::ChainUid;
 use euclid::chain::CrossChainUser;
+use euclid::fee::DenomFees;
 use euclid::fee::Fee;
+use euclid::fee::TotalFees;
 use euclid::msgs::vlp::GetStateResponse;
 use euclid::token::Pair;
 use euclid::token::Token;
@@ -92,6 +96,14 @@ fn test_proper_instantiation() {
         router: mock_router.addr().clone().into_string(),
         virtual_balance: mock_virtual_balance.addr().clone().into_string(),
         fee,
+        total_fees_collected: TotalFees {
+            lp_fees: DenomFees {
+                totals: HashMap::new(),
+            },
+            euclid_fees: DenomFees {
+                totals: HashMap::new(),
+            },
+        },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
         admin: "admin".to_string(),

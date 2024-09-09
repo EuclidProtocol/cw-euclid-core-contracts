@@ -2,11 +2,15 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
+
 use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{router::RegisterFactoryChainType, virtual_balance::ExecuteBurn},
+    msgs::{
+        router::{ExecuteMsg, RegisterFactoryChainType},
+        virtual_balance::ExecuteBurn,
+    },
     timeout::get_timeout,
     token::Token,
     utils::generate_tx,
@@ -235,13 +239,46 @@ pub fn execute_update_factory_channel(
     }
 }
 
+pub fn execute_withdraw_voucher(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token: Token,
+    amount: Option<Uint128>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let cross_chain_user = CrossChainUser {
+        chain_uid: ChainUid::vsl_chain_uid()?,
+        address: info.sender.to_string(),
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &cross_chain_user)?;
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: env.contract.address.to_string(),
+        msg: to_json_binary(&ExecuteMsg::ReleaseEscrowInternal {
+            sender: cross_chain_user,
+            token,
+            amount,
+            cross_chain_addresses,
+            timeout,
+            tx_id: tx_id.clone(),
+        })?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_message(msg)
+        .add_attribute("method", "withdraw_voucher"))
+}
+
 pub fn execute_release_escrow(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    // Leaving this empty means that we will release the entire balance
+    amount: Option<Uint128>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
     tx_id: String,
@@ -269,6 +306,7 @@ pub fn execute_release_escrow(
         )?;
 
     // Ensure that user has enough virtual balance balance to actually trigger escrow release
+    let amount = amount.unwrap_or(user_balance.amount);
     ensure!(
         user_balance.amount.ge(&amount),
         ContractError::InsufficientFunds {}
