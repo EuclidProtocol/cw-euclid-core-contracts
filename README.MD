@@ -43,7 +43,7 @@ cargo test
 Note: Make sure all necessary dependencies are installed before running the tests.
 
 ## Docs
-Documenation for each Euclid smart contract can be found in our [docs website](https://docs.euclidprotocol.io/docs/Euclid%20Smart%20Contracts/CosmWasm/overview).
+Documentation for each Euclid smart contract can be found in our [docs website](https://docs.euclidprotocol.io/docs/Euclid%20Smart%20Contracts/CosmWasm/overview).
 
 ## Contributing
 
