@@ -1,6 +1,6 @@
 <div align="center">
 
-# Euclid Protocol
+<h1>Euclid Protocol</h1>
 
 </div>
 
