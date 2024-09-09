@@ -63,8 +63,6 @@ pub enum ExecuteMsg {
         virtual_balance: Option<String>,
         // Fee per swap for each transaction
         fee: Option<Fee>,
-        // Total lp and euclid fees collected
-        total_fees_collected: Option<TotalFees>,
         // The last timestamp where the balances for each token have been updated
         last_updated: Option<u64>,
         // total number of LP tokens issued
