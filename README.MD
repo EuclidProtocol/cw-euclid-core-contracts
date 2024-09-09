@@ -6,8 +6,9 @@
 2. [Installation](#installation)
 3. [Building the Project](#building-the-project)
 4. [Running Tests](#running-tests)
-5. [Contributing](#contributing)
-6. [License](#license)
+5. [Documentation](#Docs)
+6. [Contributing](#contributing)
+7. [License](#license)
 
 ## Overview
 Euclid is an open-source decentralized unified liquidity layer designed to allow any application to integrate into a unified source of truth. By creating a unified liquidity layer that connects blockchains, Euclid fosters a collaborative ecosystem where everyone benefits from increased liquidity, reduced slippage, and a seamless trading experience.
@@ -40,6 +41,9 @@ To run the integration tests for the contracts, use:
 cargo test
 ```
 Note: Make sure all necessary dependencies are installed before running the tests.
+
+## Docs
+Documenation for each Euclid smart contract can be found in our [docs website](https://docs.euclidprotocol.io/docs/Euclid%20Smart%20Contracts/CosmWasm/overview).
 
 ## Contributing
 
