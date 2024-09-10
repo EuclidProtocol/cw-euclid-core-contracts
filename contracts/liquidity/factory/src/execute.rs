@@ -50,7 +50,7 @@ pub fn execute_update_hub_channel(
     ))
 }
 
-// Function to send IBC request to Router in VLS to create a new pool
+// Function to send IBC request to Router in VSL to create a new pool
 pub fn execute_request_pool_creation(
     deps: &mut DepsMut,
     env: Env,
@@ -219,6 +219,7 @@ pub fn add_liquidity_request(
     slippage_tolerance: u64,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
+    pair_info.validate()?;
     let pair = pair_info.get_pair()?;
 
     // Check that slippage tolerance is between 1 and 100
@@ -480,6 +481,9 @@ pub fn execute_swap_request(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
+
+    // Validate asset in
+    asset_in.validate(deps.as_ref())?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 

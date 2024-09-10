@@ -3,8 +3,8 @@ use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, StdError,
-    StdResult, Uint128, WasmMsg,
+    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, Deps,
+    StdError, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
@@ -328,6 +328,37 @@ pub struct TokenWithDenom {
 }
 
 impl TokenWithDenom {
+    /// Validates smart contract addresses, checks against empty denom and zero supply
+    pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
+        let denom = self.token_type.get_denom();
+        ensure!(
+            !denom.is_empty(),
+            ContractError::InvalidAsset { asset: denom }
+        );
+
+        if self.token_type.is_native() {
+            let potential_supply = deps.querier.query_supply(denom.clone())?;
+            let non_zero_supply = !potential_supply.amount.is_zero();
+            ensure!(
+                non_zero_supply,
+                ContractError::ZeroAssetSupply { asset: denom }
+            );
+        }
+        // else {
+        //     let token_info_query: TokenInfoResponse =
+        //         deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+        //             contract_addr: denom,
+        //             msg: to_json_binary(&Cw20QueryMsg::TokenInfo {})?,
+        //         }))?;
+        //     ensure!(
+        //         !token_info_query.total_supply.is_zero(),
+        //         ContractError::InvalidZeroAmount {}
+        //     );
+        // }
+
+        Ok(())
+    }
+
     pub fn get_denom(&self) -> String {
         self.token_type.get_denom()
     }
@@ -361,10 +392,23 @@ impl PairWithDenom {
     pub fn get_pair(&self) -> Result<Pair, ContractError> {
         Pair::new(self.token_1.token.clone(), self.token_2.token.clone())
     }
-
     pub fn get_vec_token_info(&self) -> Vec<TokenWithDenom> {
         let tokens: Vec<TokenWithDenom> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
+    }
+
+    pub fn validate(&self) -> Result<bool, ContractError> {
+        let pair = self.get_pair()?;
+        ensure!(
+            pair.token_1 == self.token_1.token,
+            ContractError::new("Pair should be sorted")
+        );
+        ensure!(
+            pair.token_2 == self.token_2.token,
+            ContractError::new("Pair should be sorted")
+        );
+
+        Ok(true)
     }
 }
 

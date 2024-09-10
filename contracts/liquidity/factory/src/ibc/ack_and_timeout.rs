@@ -513,7 +513,7 @@ fn ack_swap_request(
                 // Add partner fee collected to the total
                 state
                     .partner_fees_collected
-                    .add_fee(asset_in.get_denom(), swap_info.partner_fee_amount);
+                    .add_fee(asset_in.token.to_string(), swap_info.partner_fee_amount);
 
                 // Save new total partner fees collected to state
                 STATE.save(deps.storage, &state)?;

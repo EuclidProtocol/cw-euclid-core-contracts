@@ -13,7 +13,7 @@ use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
     execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
     execute_update_lock, execute_update_router_state, execute_update_virtual_balance_state,
-    execute_update_vlp_code_id,
+    execute_update_vlp_code_id, execute_withdraw_voucher,
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
@@ -128,6 +128,20 @@ pub fn execute(
                 cross_chain_addresses,
                 timeout,
                 tx_id,
+            ),
+            ExecuteMsg::WithdrawVoucher {
+                token,
+                amount,
+                cross_chain_addresses,
+                timeout,
+            } => execute_withdraw_voucher(
+                &mut deps,
+                env,
+                info,
+                token,
+                amount,
+                cross_chain_addresses,
+                timeout,
             ),
             ExecuteMsg::IbcCallbackReceive { receive_msg } => {
                 ibc_receive_internal_call(&mut deps, env, info, receive_msg)
