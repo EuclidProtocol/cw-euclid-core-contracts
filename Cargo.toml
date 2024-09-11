@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "contracts/hub/*",
     "contracts/liquidity/*",
+    "contracts/common/*",
     "packages/*",
     "tests-integration",
 ]
@@ -23,6 +24,7 @@ strip = true
 [workspace.dependencies]
 euclid = { path = "./packages/euclid" }
 euclid-ibc = { path = "./packages/euclid_ibc" }
+euclid-utils = { path = "./packages/euclid_utils" }
 
 cosmwasm-std = "1.5.3"
 cosmwasm-schema = "1.5.0"

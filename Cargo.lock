@@ -246,6 +246,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cw-multicall"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus",
+ "cw2",
+ "euclid",
+ "euclid-utils",
+ "mock",
+ "schemars",
+ "serde",
+]
+
+[[package]]
 name = "cw-storage-plus"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -483,6 +499,18 @@ dependencies = [
  "euclid",
  "itertools 0.10.5",
  "thiserror",
+]
+
+[[package]]
+name = "euclid-utils"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "euclid",
+ "schemars",
+ "serde",
 ]
 
 [[package]]
