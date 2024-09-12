@@ -10,7 +10,7 @@ use cw2::set_contract_version;
 use euclid_utils::msgs::multicall::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:escrow";
+const CONTRACT_NAME: &str = "crates.io:cw-multicall";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
