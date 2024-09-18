@@ -344,12 +344,12 @@ pub fn ibc_ack_transfer_escrow(
 
             Ok(response
                 .add_message(msg)
-                .add_attribute("method", "release_escrow_success")
+                .add_attribute("method", "transfer_escrow_success")
                 .add_attribute("factory_chain", data.chain_id)
                 .add_attribute("factory_address", data.factory_address)
                 .add_attribute(
                     format!(
-                        "release_escrow_actual_{sender}",
+                        "transfer_escrow_actual_{sender}",
                         sender = sender.to_sender_string()
                     ),
                     amount,
@@ -385,7 +385,7 @@ pub fn ibc_ack_transfer_escrow(
             // Even if its a native chain, we can't reject via Err because other escrow release will also be rejected
             Ok(response
                 .add_message(msg)
-                .add_attribute("method", "escrow_release_ack")
+                .add_attribute("method", "escrow_transfer_ack")
                 .add_attribute("error", err)
                 .add_attribute("mint_amount", "value")
                 .add_attribute("balance_key", "balance_key"))
