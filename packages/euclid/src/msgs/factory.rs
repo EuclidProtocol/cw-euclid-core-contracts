@@ -68,6 +68,12 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
+    TransferVirtualBalance {
+        token: Token,
+        amount: Uint128,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        timeout: Option<u64>,
+    },
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),

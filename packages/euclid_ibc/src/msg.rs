@@ -61,6 +61,9 @@ pub enum ChainIbcExecuteMsg {
 
     // Withdraw virtual balance message sent from factory
     Withdraw(ChainIbcWithdrawExecuteMsg),
+
+    // Transfer virtual balance message sent from factory
+    Transfer(ChainIbcTransferExecuteMsg),
     // RequestWithdraw {
     //     token_id: Token,
     //     amount: Uint128,
@@ -93,6 +96,7 @@ impl ChainIbcExecuteMsg {
             Self::Swap(msg) => msg.tx_id.clone(),
             Self::Withdraw(msg) => msg.tx_id.clone(),
             Self::RequestEscrowCreation { tx_id, .. } => tx_id.clone(),
+            Self::Transfer(msg) => msg.tx_id.clone(),
         }
     }
 
@@ -194,6 +198,20 @@ pub struct ChainIbcWithdrawExecuteMsg {
     pub timeout: Option<u64>,
 }
 
+#[cw_serde]
+pub struct ChainIbcTransferExecuteMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+    // User will provide this
+    pub token: Token,
+    pub amount: Uint128,
+    // First element in array has highest priority
+    pub recipient_addresses: Vec<CrossChainUserWithLimit>,
+    // Unique per tx
+    pub tx_id: String,
+    pub timeout: Option<u64>,
+}
+
 pub const HUB_IBC_EXECUTE_MSG_QUEUE: Map<u64, HubIbcExecuteMsg> =
     Map::new("hub_ibc_execute_msg_queue");
 pub const HUB_IBC_EXECUTE_MSG_QUEUE_COUNT: Item<u64> = Item::new("hub_ibc_execute_msg_queue_count");
@@ -224,6 +242,17 @@ pub enum HubIbcExecuteMsg {
         // Unique per tx
         tx_id: String,
     },
+
+    TransferEscrow {
+        chain_uid: ChainUid,
+        sender: CrossChainUser,
+        amount: Uint128,
+        token: Token,
+        to_address: CrossChainUser,
+
+        // Unique per tx
+        tx_id: String,
+    },
 }
 
 impl HubIbcExecuteMsg {
@@ -231,6 +260,7 @@ impl HubIbcExecuteMsg {
         match self {
             Self::RegisterFactory { tx_id, .. } => tx_id.clone(),
             Self::ReleaseEscrow { tx_id, .. } => tx_id.clone(),
+            Self::TransferEscrow { tx_id, .. } => tx_id.clone(),
             Self::UpdateFactoryChannel { tx_id, .. } => tx_id.clone(),
         }
     }

@@ -10,7 +10,9 @@ use euclid::error::ContractError;
 use euclid::events::{tx_event, TxType};
 use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
 use euclid::msgs::router::ExecuteMsg;
-use euclid::msgs::virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg};
+use euclid::msgs::virtual_balance::{
+    ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg, ExecuteTransfer,
+};
 use euclid::token::Token;
 use euclid::virtual_balance::BalanceKey;
 use euclid_ibc::ack::AcknowledgementMsg;
@@ -90,6 +92,19 @@ pub fn reusable_internal_ack_call(
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             let res = from_json(ack)?;
             ibc_ack_update_factory_channel(deps, env, chain_uid, chain_type, res, tx_id)
+        }
+        HubIbcExecuteMsg::TransferEscrow {
+            chain_uid,
+            sender,
+            amount,
+            token,
+            to_address,
+            tx_id,
+        } => {
+            let res = from_json(ack)?;
+            ibc_ack_transfer_escrow(
+                deps, env, chain_uid, sender, to_address, amount, token, res, tx_id,
+            )
         }
     }
 }
@@ -251,6 +266,95 @@ pub fn ibc_ack_release_escrow(
                 ),
                 amount,
             )),
+        // Re-mint tokens
+        AcknowledgementMsg::Error(err) => {
+            let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(
+                ContractError::Generic {
+                    err: "virtual balance not available".to_string(),
+                },
+            )?;
+
+            // Escrow release failed, mint tokens again for the original cross chain sender
+            let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
+                amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: sender,
+                    token_id: token.to_string(),
+                },
+            });
+            let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: virtual_balance_address.into_string(),
+                msg: to_json_binary(&mint_msg)?,
+                funds: vec![],
+            });
+
+            // Escrow release is failed, add the old escrow balance again
+            let escrow_key = ESCROW_BALANCES.key((token, chain_uid));
+            let new_balance = escrow_key.load(deps.storage)?.checked_add(amount)?;
+            escrow_key.save(deps.storage, &new_balance)?;
+
+            // Even if its a native chain, we can't reject via Err because other escrow release will also be rejected
+            Ok(response
+                .add_message(msg)
+                .add_attribute("method", "escrow_release_ack")
+                .add_attribute("error", err)
+                .add_attribute("mint_amount", "value")
+                .add_attribute("balance_key", "balance_key"))
+        }
+    }
+}
+
+pub fn ibc_ack_transfer_escrow(
+    deps: DepsMut,
+    _env: Env,
+    chain_uid: ChainUid,
+    sender: CrossChainUser,
+    to_address: CrossChainUser,
+    amount: Uint128,
+    token: Token,
+    res: AcknowledgementMsg<ReleaseEscrowResponse>,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let response = Response::new().add_event(tx_event(
+        &tx_id,
+        sender.address.as_str(),
+        TxType::EscrowRelease,
+    ));
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(
+                ContractError::Generic {
+                    err: "virtual balance not available".to_string(),
+                },
+            )?;
+
+            // Escrow release failed, mint tokens again for the original cross chain sender
+            let transfer_msg = VirtualBalanceExecuteMsg::Transfer(ExecuteTransfer {
+                amount,
+                from: sender.clone(),
+                token_id: token.to_string(),
+                to: to_address,
+            });
+
+            let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: virtual_balance_address.into_string(),
+                msg: to_json_binary(&transfer_msg)?,
+                funds: vec![],
+            });
+
+            Ok(response
+                .add_message(msg)
+                .add_attribute("method", "release_escrow_success")
+                .add_attribute("factory_chain", data.chain_id)
+                .add_attribute("factory_address", data.factory_address)
+                .add_attribute(
+                    format!(
+                        "release_escrow_actual_{sender}",
+                        sender = sender.to_sender_string()
+                    ),
+                    amount,
+                ))
+        }
         // Re-mint tokens
         AcknowledgementMsg::Error(err) => {
             let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(

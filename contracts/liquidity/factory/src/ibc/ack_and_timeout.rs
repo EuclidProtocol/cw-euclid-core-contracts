@@ -14,7 +14,7 @@ use euclid::{
         factory::ExecuteMsg,
     },
     pool::{EscrowCreationResponse, PoolCreationResponse},
-    swap::{SwapResponse, WithdrawResponse},
+    swap::{SwapResponse, TransferResponse, WithdrawResponse},
     token::Token,
 };
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
@@ -103,6 +103,17 @@ pub fn reusable_internal_ack_call(
         ChainIbcExecuteMsg::Withdraw(msg) => {
             let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack)?;
             ack_withdraw_request(
+                deps,
+                res,
+                msg.sender.address,
+                msg.token,
+                msg.tx_id,
+                is_native,
+            )
+        }
+        ChainIbcExecuteMsg::Transfer(msg) => {
+            let res: AcknowledgementMsg<TransferResponse> = from_json(ack)?;
+            ack_transfer_request(
                 deps,
                 res,
                 msg.sender.address,
@@ -567,6 +578,35 @@ fn ack_swap_request(
 fn ack_withdraw_request(
     _deps: DepsMut,
     res: AcknowledgementMsg<WithdrawResponse>,
+    _sender: String,
+    token_id: Token,
+    _tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    match res {
+        AcknowledgementMsg::Ok(_data) => {
+            // Use it for logging, Router will send packets instead of ack to release tokens from escrow
+            // Here you will get a response of escrows that router is going to release so it can be used in frontend
+
+            Ok(Response::new()
+                .add_attribute("method", "request_withdraw_submitted")
+                .add_attribute("token", token_id.to_string()))
+        }
+        AcknowledgementMsg::Error(err) => {
+            // Its a native call so you can return error to reject complete execution call
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("method", "request_withdraw_error")
+                .add_attribute("error", err.clone()))
+        }
+    }
+}
+
+fn ack_transfer_request(
+    _deps: DepsMut,
+    res: AcknowledgementMsg<TransferResponse>,
     _sender: String,
     token_id: Token,
     _tx_id: String,

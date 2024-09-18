@@ -11,7 +11,7 @@ use euclid::{
     fee::Fee,
     msgs::{self, router::ExecuteMsg, virtual_balance::ExecuteMint},
     pool::EscrowCreationResponse,
-    swap::WithdrawResponse,
+    swap::{TransferResponse, WithdrawResponse},
     token::{Pair, Token},
     virtual_balance::BalanceKey,
 };
@@ -176,6 +176,32 @@ pub fn reusable_internal_call(
                     funds: vec![],
                 }))
                 .set_data(to_json_binary(&AcknowledgementMsg::Ok(WithdrawResponse {
+                    token: msg.token,
+                    tx_id: msg.tx_id,
+                }))?))
+        }
+        ChainIbcExecuteMsg::Transfer(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+
+            let release_msg = ExecuteMsg::ReleaseEscrowInternal {
+                sender: msg.sender,
+                token: msg.token.clone(),
+                amount: Some(msg.amount),
+                cross_chain_addresses: msg.recipient_addresses,
+                timeout: msg.timeout,
+                tx_id: msg.tx_id.clone(),
+            };
+
+            Ok(Response::new()
+                .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&release_msg)?,
+                    funds: vec![],
+                }))
+                .set_data(to_json_binary(&AcknowledgementMsg::Ok(TransferResponse {
                     token: msg.token,
                     tx_id: msg.tx_id,
                 }))?))
