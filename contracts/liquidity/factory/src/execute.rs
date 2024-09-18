@@ -3,11 +3,13 @@ use cosmwasm_std::{
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
+use cw_utils::one_coin;
 use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     cw20::Cw20HookMsg,
+    deposit::DepositTokenRequest,
     error::ContractError,
-    events::{swap_event, tx_event, TxType},
+    events::{deposit_token_event, swap_event, tx_event, TxType},
     fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
@@ -467,8 +469,8 @@ pub fn remove_liquidity_request(
 
 pub fn execute_swap_request(
     deps: &mut DepsMut,
-    info: MessageInfo,
     env: Env,
+    info: MessageInfo,
     sender: CrossChainUser,
     asset_in: TokenWithDenom,
     asset_out: Token,
@@ -627,6 +629,113 @@ pub fn execute_swap_request(
         .add_submessage(swap_msg))
 }
 
+pub fn execute_deposit_token(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: CrossChainUser,
+    asset_in: TokenWithDenom,
+    amount_in: Uint128,
+    timeout: Option<u64>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    let sender_addr = deps.api.addr_validate(&sender.address)?;
+
+    // Validate asset in
+    asset_in.validate(deps.as_ref())?;
+
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    let coin = &info.funds[0];
+    let token = Token::create(coin.denom.clone())?;
+
+    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let timeout = get_timeout(timeout)?;
+
+    // Verify that this asset is allowed
+    let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+
+    let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps.querier.query_wasm_smart(
+        escrow,
+        &euclid::msgs::escrow::QueryMsg::TokenAllowed {
+            denom: asset_in.token_type.clone(),
+        },
+    )?;
+
+    ensure!(
+        token_allowed.allowed,
+        ContractError::UnsupportedDenomination {}
+    );
+
+    // Verify if the token is native
+    if asset_in.token_type.is_native() {
+        // Get the denom of native token
+        let denom = asset_in.token_type.get_denom();
+
+        // Verify thatthe amount of funds passed is greater than the asset amount
+        if info
+            .funds
+            .iter()
+            .find(|x| x.denom == denom)
+            .ok_or(ContractError::Generic {
+                err: "Denom not found".to_string(),
+            })?
+            .amount
+            < amount_in
+        {
+            return Err(ContractError::Generic {
+                err: "Funds attached are less than funds needed".to_string(),
+            });
+        }
+    } else {
+        // Verify that the contract address is the same as the asset contract address
+        ensure!(
+            info.sender == asset_in.token_type.get_denom(),
+            ContractError::Unauthorized {}
+        );
+    }
+
+    let deposit_token_info = DepositTokenRequest {
+        sender: sender_addr.to_string(),
+        asset_in: asset_in.clone(),
+        amount_in,
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+        tx_id: tx_id.clone(),
+        cross_chain_addresses: cross_chain_addresses.clone(),
+    };
+
+    let deposit_token_msg =
+        ChainIbcExecuteMsg::DepositToken(euclid_ibc::msg::ChainIbcDepositTokenExecuteMsg {
+            sender,
+            asset_in: asset_in.token,
+            amount_in,
+            tx_id: tx_id.clone(),
+            cross_chain_addresses,
+        })
+        .to_msg(
+            deps,
+            &env,
+            state.clone().router_contract,
+            state.clone().chain_uid,
+            state.is_native,
+            channel,
+            timeout,
+        )?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            sender_addr.as_str(),
+            euclid::events::TxType::DepositToken,
+        ))
+        .add_event(deposit_token_event(&tx_id, &deposit_token_info))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "execute_deposit_token")
+        .add_submessage(deposit_token_msg))
+}
+
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
 ///
 /// * **cw20_msg** is the CW20 message that has to be processed.
@@ -667,8 +776,8 @@ pub fn receive_cw20(
             // ensure that the contract address is the same as the asset contract address
             execute_swap_request(
                 &mut deps,
-                info,
                 env,
+                info,
                 sender,
                 asset_in,
                 asset_out,

@@ -110,6 +110,12 @@ pub fn reusable_internal_ack_call(
                 msg.tx_id,
                 is_native,
             )
+        }
+        ChainIbcExecuteMsg::DepositToken(deposit) => {
+            todo!()
+            // Process acknowledgment for deposit
+            // let res: AcknowledgementMsg<SwapResponse> = from_json(ack)?;
+            // ack_swap_request(deps, res, swap.sender.address, swap.tx_id, is_native)
         } // ChainIbcExecuteMsg::RequestWithdraw {
           //     token_id, tx_id, ..
           // } => {

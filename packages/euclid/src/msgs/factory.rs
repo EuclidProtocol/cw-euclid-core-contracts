@@ -68,6 +68,12 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
+    DepositToken {
+        asset_in: TokenWithDenom,
+        amount_in: Uint128,
+        timeout: Option<u64>,
+        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    },
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
