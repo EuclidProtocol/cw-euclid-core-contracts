@@ -3,7 +3,6 @@ use cosmwasm_std::{
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ReceiveMsg;
-use cw_utils::one_coin;
 use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     cw20::Cw20HookMsg,
@@ -28,8 +27,8 @@ use crate::{
     ibc::receive,
     state::{
         HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
-        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
-        VLP_TO_CW20,
+        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT,
+        STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
     },
 };
 
@@ -648,11 +647,13 @@ pub fn execute_deposit_token(
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
-    let coin = &info.funds[0];
-    let token = Token::create(coin.denom.clone())?;
-
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
+
+    ensure!(
+        !PENDING_TOKEN_DEPOSIT.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
 
     // Verify that this asset is allowed
     let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
@@ -705,6 +706,11 @@ pub fn execute_deposit_token(
         tx_id: tx_id.clone(),
         cross_chain_addresses: cross_chain_addresses.clone(),
     };
+    PENDING_TOKEN_DEPOSIT.save(
+        deps.storage,
+        (sender_addr.clone(), tx_id.clone()),
+        &deposit_token_info,
+    )?;
 
     let deposit_token_msg =
         ChainIbcExecuteMsg::DepositToken(euclid_ibc::msg::ChainIbcDepositTokenExecuteMsg {
