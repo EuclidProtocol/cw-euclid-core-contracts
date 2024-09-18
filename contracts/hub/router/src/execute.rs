@@ -444,19 +444,17 @@ pub fn execute_update_router_state(
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
-    // Validate Virtual Balance Address if provided
-    let verified_virtual_balance_address =
-        if let Some(ref virtual_balance_address) = virtual_balance_address {
-            deps.api.addr_validate(&virtual_balance_address.as_str())?;
-            Some(virtual_balance_address.clone())
-        } else {
-            state.virtual_balance_address
-        };
+    let verified_virtual_balance_address: Result<Option<Addr>, ContractError> =
+        virtual_balance_address
+            .as_ref()
+            .map_or(Ok(state.virtual_balance_address), |address| {
+                let validated_addr = Some(deps.api.addr_validate(address.as_str())?);
+                Ok(validated_addr)
+            });
 
     // Validate Admin Address if provided
     let verified_admin = if let Some(ref admin) = admin {
-        deps.api.addr_validate(&admin.as_str())?;
-        admin.clone()
+        deps.api.addr_validate(&admin.as_str())?.into_string()
     } else {
         state.admin
     };
@@ -464,7 +462,7 @@ pub fn execute_update_router_state(
     let state = State {
         admin: verified_admin,
         vlp_code_id: vlp_code_id.unwrap_or(state.vlp_code_id),
-        virtual_balance_address: verified_virtual_balance_address,
+        virtual_balance_address: verified_virtual_balance_address?,
         locked: locked.unwrap_or(state.locked),
     };
 
@@ -472,22 +470,18 @@ pub fn execute_update_router_state(
 
     Ok(Response::new()
         .add_attribute("method", "update_state")
-        .add_attribute("admin", admin.unwrap_or_else(|| "unchanged".to_string()))
+        .add_attribute("admin", admin.unwrap_or("unchanged".to_string()))
         .add_attribute(
             "vlp_code_id",
-            vlp_code_id.map_or_else(|| "unchanged".to_string(), |code_id| code_id.to_string()),
+            vlp_code_id.map_or("unchanged".to_string(), |code_id| code_id.to_string()),
         )
         .add_attribute(
             "virtual_balance_address",
-            virtual_balance_address
-                .map_or_else(|| "unchanged".to_string(), |addr| addr.to_string()),
+            virtual_balance_address.map_or("unchanged".to_string(), |addr| addr.to_string()),
         )
         .add_attribute(
             "locked",
-            locked.map_or_else(
-                || "unchanged".to_string(),
-                |locked_val| locked_val.to_string(),
-            ),
+            locked.map_or("unchanged".to_string(), |locked_val| locked_val.to_string()),
         ))
 }
 
