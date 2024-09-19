@@ -6,6 +6,9 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
+use crate::execute::{
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
+};
 use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
 use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
@@ -83,19 +86,19 @@ pub fn execute(
             sender,
             pair,
             tx_id,
-        } => execute::register_pool(deps, env, info, sender, pair, tx_id),
+        } => register_pool(deps, env, info, sender, pair, tx_id),
         ExecuteMsg::UpdateFee {
             lp_fee_bps,
             euclid_fee_bps,
             recipient,
-        } => execute::update_fee(deps, info, lp_fee_bps, euclid_fee_bps, recipient),
+        } => update_fee(deps, info, lp_fee_bps, euclid_fee_bps, recipient),
         ExecuteMsg::AddLiquidity {
             sender,
             token_1_liquidity,
             token_2_liquidity,
             slippage_tolerance,
             tx_id,
-        } => execute::add_liquidity(
+        } => add_liquidity(
             deps,
             env,
             info,
@@ -109,7 +112,7 @@ pub fn execute(
             sender,
             lp_allocation,
             tx_id,
-        } => execute::remove_liquidity(deps, env, info, sender, lp_allocation, tx_id),
+        } => remove_liquidity(deps, env, info, sender, lp_allocation, tx_id),
         ExecuteMsg::Swap {
             sender,
             asset_in,
@@ -118,7 +121,7 @@ pub fn execute(
             tx_id,
             next_swaps,
             test_fail,
-        } => execute::execute_swap(
+        } => execute_swap(
             deps,
             env,
             sender,
@@ -128,6 +131,21 @@ pub fn execute(
             tx_id,
             next_swaps,
             test_fail,
+        ),
+        ExecuteMsg::UpdateState {
+            router,
+            virtual_balance,
+            fee,
+            last_updated,
+            admin,
+        } => update_state(
+            deps,
+            info,
+            router,
+            virtual_balance,
+            fee,
+            last_updated,
+            admin,
         ),
     }
 }

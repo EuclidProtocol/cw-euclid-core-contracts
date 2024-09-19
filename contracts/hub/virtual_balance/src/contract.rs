@@ -45,6 +45,9 @@ pub fn execute(
         ExecuteMsg::Mint(msg) => execute::execute_mint(deps, info, msg),
         ExecuteMsg::Burn(msg) => execute::execute_burn(deps, info, msg),
         ExecuteMsg::Transfer(msg) => execute::execute_transfer(deps, info, msg),
+        ExecuteMsg::UpdateState { router, admin } => {
+            execute::execute_update_state(deps, info, router, admin)
+        }
     }
 }
 

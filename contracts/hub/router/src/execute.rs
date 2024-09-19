@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
+    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 
@@ -9,7 +9,7 @@ use euclid::{
     events::{tx_event, TxType},
     msgs::{
         router::{ExecuteMsg, RegisterFactoryChainType},
-        virtual_balance::ExecuteBurn,
+        virtual_balance::{ExecuteBurn, ExecuteMsg as VirtualBalanceExecuteMsg},
     },
     timeout::get_timeout,
     token::Token,
@@ -22,7 +22,8 @@ use crate::{
     ibc::receive,
     reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+        State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
+        STATE,
     },
 };
 
@@ -430,4 +431,100 @@ pub fn execute_native_receive_callback(
     // Only registered factory contract can execute this message
     ensure!(chain.factory == info.sender, ContractError::Unauthorized {});
     receive::reusable_internal_call(deps, env, info, msg, chain_uid)
+}
+
+pub fn execute_update_router_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    admin: Option<String>,
+    vlp_code_id: Option<u64>,
+    virtual_balance_address: Option<Addr>,
+    locked: Option<bool>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let verified_virtual_balance_address: Result<Option<Addr>, ContractError> =
+        virtual_balance_address
+            .as_ref()
+            .map_or(Ok(state.virtual_balance_address), |address| {
+                let validated_addr = Some(deps.api.addr_validate(address.as_str())?);
+                Ok(validated_addr)
+            });
+
+    // Validate Admin Address if provided
+    let verified_admin = if let Some(ref admin) = admin {
+        deps.api.addr_validate(&admin.as_str())?.into_string()
+    } else {
+        state.admin
+    };
+
+    let state = State {
+        admin: verified_admin,
+        vlp_code_id: vlp_code_id.unwrap_or(state.vlp_code_id),
+        virtual_balance_address: verified_virtual_balance_address?,
+        locked: locked.unwrap_or(state.locked),
+    };
+
+    STATE.save(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_state")
+        .add_attribute("admin", admin.unwrap_or("unchanged".to_string()))
+        .add_attribute(
+            "vlp_code_id",
+            vlp_code_id.map_or("unchanged".to_string(), |code_id| code_id.to_string()),
+        )
+        .add_attribute(
+            "virtual_balance_address",
+            virtual_balance_address.map_or("unchanged".to_string(), |addr| addr.to_string()),
+        )
+        .add_attribute(
+            "locked",
+            locked.map_or("unchanged".to_string(), |locked_val| locked_val.to_string()),
+        ))
+}
+
+pub fn execute_update_virtual_balance_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    router: Option<String>,
+    admin: Option<String>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let virtual_balance_address = state
+        .clone()
+        .virtual_balance_address
+        .ok_or_else(|| ContractError::new("Virtual Balance Contract Not Set"))?
+        .into_string();
+
+    let verified_router = if let Some(ref router) = router {
+        deps.api.addr_validate(&router.as_str())?;
+        Some(router.clone())
+    } else {
+        None
+    };
+
+    let verified_admin = if let Some(ref admin) = admin {
+        Some(deps.api.addr_validate(&admin.as_str())?)
+    } else {
+        None
+    };
+
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: virtual_balance_address,
+        msg: to_json_binary(&VirtualBalanceExecuteMsg::UpdateState {
+            router: verified_router,
+            admin: verified_admin,
+        })?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_message(msg)
+        .add_attribute("method", "update_state")
+        .add_attribute("admin", admin.unwrap_or_else(|| "unchanged".to_string()))
+        .add_attribute("router", router.unwrap_or_else(|| "unchanged".to_string())))
 }

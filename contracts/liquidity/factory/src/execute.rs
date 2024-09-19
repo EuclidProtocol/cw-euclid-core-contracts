@@ -25,7 +25,7 @@ use euclid_ibc::msg::{
 use crate::{
     ibc::receive,
     state::{
-        HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
+        State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
         PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
         VLP_TO_CW20,
     },
@@ -805,6 +805,134 @@ pub fn execute_withdraw_virtual_balance(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "withdraw_virtual_balance")
         .add_submessage(withdraw_msg))
+}
+
+pub fn execute_update_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    router_contract: Option<String>,
+    admin: Option<String>,
+    escrow_code_id: Option<u64>,
+    cw20_code_id: Option<u64>,
+    is_native: Option<bool>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    ensure!(
+        state.admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
+
+    let new_state = State {
+        router_contract: router_contract.clone().unwrap_or(state.router_contract),
+        admin: admin.clone().unwrap_or(state.admin),
+        escrow_code_id: escrow_code_id.unwrap_or(state.escrow_code_id),
+        cw20_code_id: cw20_code_id.clone().unwrap_or(state.cw20_code_id),
+        chain_uid: state.chain_uid,
+        is_native: is_native.clone().unwrap_or(state.is_native),
+        partner_fees_collected: state.partner_fees_collected,
+    };
+
+    STATE.save(deps.storage, &new_state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_state")
+        .add_attribute("admin", admin.unwrap_or("unchanged".to_string()))
+        .add_attribute(
+            "router_contract",
+            router_contract.unwrap_or("unchanged".to_string()),
+        )
+        .add_attribute(
+            "escrow_code_id",
+            escrow_code_id.unwrap_or(state.escrow_code_id).to_string(),
+        )
+        .add_attribute(
+            "cw20_code_id",
+            cw20_code_id.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
+        )
+        .add_attribute(
+            "is_native",
+            is_native.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
+        ))
+}
+
+pub fn execute_update_escrow_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    current_token_id: Token,
+    new_token_id: Option<Token>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        state.admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
+    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, current_token_id.clone())?;
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: escrow_address.into_string(),
+        msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::UpdateState {
+            token_id: new_token_id.clone(),
+        })?,
+        funds: vec![],
+    });
+    Ok(Response::new()
+        .add_submessage(SubMsg::new(msg))
+        .add_attribute("method", "update_escrow_state")
+        .add_attribute(
+            "token_id",
+            new_token_id.map_or("unchanged".to_string(), |x| x.to_string()),
+        ))
+}
+
+pub fn execute_update_cw20_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    cw20_address: String,
+    token_pair: Option<Pair>,
+    factory_address: Option<String>,
+    vlp: Option<String>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        state.admin == info.sender.into_string(),
+        ContractError::Unauthorized {}
+    );
+
+    let cw20_address = deps.api.addr_validate(&cw20_address)?;
+
+    let verified_factory_address = if let Some(ref factory_address) = factory_address {
+        Some(deps.api.addr_validate(&factory_address.as_str())?)
+    } else {
+        None
+    };
+
+    let verified_vlp = if let Some(ref vlp) = vlp {
+        Some(deps.api.addr_validate(&vlp.as_str())?.into_string())
+    } else {
+        None
+    };
+
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: cw20_address.clone().into_string(),
+        msg: to_json_binary(&euclid::msgs::cw20::ExecuteMsg::UpdateState {
+            token_pair,
+            factory_address: verified_factory_address,
+            vlp: verified_vlp,
+        })?,
+        funds: vec![],
+    });
+    Ok(Response::new()
+        .add_submessage(SubMsg::new(msg))
+        .add_attribute("method", "update_cw20_state")
+        .add_attribute("cw20_address", cw20_address.to_string())
+        .add_attribute(
+            "factory_address",
+            factory_address.map_or("unchanged".to_string(), |x| x.to_string()),
+        )
+        .add_attribute(
+            "vlp",
+            vlp.map_or("unchanged".to_string(), |x| x.to_string()),
+        ))
 }
 
 pub fn execute_native_receive_callback(

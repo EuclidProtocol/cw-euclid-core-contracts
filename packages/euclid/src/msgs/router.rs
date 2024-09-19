@@ -63,6 +63,18 @@ pub enum ExecuteMsg {
         msg: Binary,
         chain_uid: ChainUid,
     },
+    UpdateRouterState {
+        // Contract admin
+        admin: Option<String>,
+        // Pool Code ID
+        vlp_code_id: Option<u64>,
+        virtual_balance_address: Option<Addr>,
+        locked: Option<bool>,
+    },
+    UpdateVirtualBalanceState {
+        router: Option<String>,
+        admin: Option<String>,
+    },
 }
 
 #[cw_serde]
