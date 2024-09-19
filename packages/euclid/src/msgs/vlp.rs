@@ -55,8 +55,6 @@ pub enum ExecuteMsg {
         lp_allocation: Uint128,
     },
     UpdateState {
-        // Token Pair Info
-        pair: Option<Pair>,
         // Router Contract
         router: Option<String>,
         // Virtual Coin Contract
@@ -65,8 +63,6 @@ pub enum ExecuteMsg {
         fee: Option<Fee>,
         // The last timestamp where the balances for each token have been updated
         last_updated: Option<u64>,
-        // total number of LP tokens issued
-        total_lp_tokens: Option<Uint128>,
         admin: Option<String>,
     },
 }

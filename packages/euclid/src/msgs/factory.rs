@@ -77,10 +77,6 @@ pub enum ExecuteMsg {
         escrow_code_id: Option<u64>,
         // CW20 Code ID
         cw20_code_id: Option<u64>,
-        // The Unique Chain Identifier
-        // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
-        // IN THE EUCLID ECOSYSTEM
-        chain_uid: Option<ChainUid>,
         is_native: Option<bool>,
     },
     UpdateEscrowState {

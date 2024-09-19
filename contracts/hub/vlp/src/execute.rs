@@ -615,12 +615,10 @@ pub fn update_fee(
 pub fn update_state(
     deps: DepsMut,
     info: MessageInfo,
-    pair: Option<Pair>,
     router: Option<String>,
     virtual_balance: Option<String>,
     fee: Option<Fee>,
     last_updated: Option<u64>,
-    total_lp_tokens: Option<Uint128>,
     admin: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -650,13 +648,13 @@ pub fn update_state(
     };
 
     let new_state = State {
-        pair: pair.unwrap_or(state.pair),
+        pair: state.pair,
         router: verified_router,
         virtual_balance: verified_virtual_balance,
         fee: fee.unwrap_or(state.fee),
         total_fees_collected: state.total_fees_collected,
         last_updated: last_updated.unwrap_or(state.last_updated),
-        total_lp_tokens: total_lp_tokens.unwrap_or(state.total_lp_tokens),
+        total_lp_tokens: state.total_lp_tokens,
         admin: verified_admin,
     };
 

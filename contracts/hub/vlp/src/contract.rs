@@ -133,22 +133,18 @@ pub fn execute(
             test_fail,
         ),
         ExecuteMsg::UpdateState {
-            pair,
             router,
             virtual_balance,
             fee,
             last_updated,
-            total_lp_tokens,
             admin,
         } => update_state(
             deps,
             info,
-            pair,
             router,
             virtual_balance,
             fee,
             last_updated,
-            total_lp_tokens,
             admin,
         ),
     }

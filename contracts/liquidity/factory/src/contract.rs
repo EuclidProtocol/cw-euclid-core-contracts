@@ -167,7 +167,6 @@ pub fn execute(
             admin,
             escrow_code_id,
             cw20_code_id,
-            chain_uid,
             is_native,
         } => execute_update_state(
             deps,
@@ -176,7 +175,6 @@ pub fn execute(
             admin,
             escrow_code_id,
             cw20_code_id,
-            chain_uid,
             is_native,
         ),
         ExecuteMsg::UpdateEscrowState {
