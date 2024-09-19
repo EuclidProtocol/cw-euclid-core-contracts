@@ -493,10 +493,13 @@ pub fn execute_update_virtual_balance_state(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-    ensure!(
-        state.virtual_balance_address.is_some(),
-        ContractError::new("Virtual Balance Contract Not Set")
-    );
+
+    let virtual_balance_address = state
+        .clone()
+        .virtual_balance_address
+        .ok_or_else(|| ContractError::new("Virtual Balance Contract Not Set"))?
+        .into_string();
+
     let verified_router = if let Some(ref router) = router {
         deps.api.addr_validate(&router.as_str())?;
         Some(router.clone())
@@ -511,7 +514,7 @@ pub fn execute_update_virtual_balance_state(
     };
 
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: state.virtual_balance_address.unwrap().to_string(),
+        contract_addr: virtual_balance_address,
         msg: to_json_binary(&VirtualBalanceExecuteMsg::UpdateState {
             router: verified_router,
             admin: verified_admin,
