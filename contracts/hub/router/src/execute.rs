@@ -414,6 +414,40 @@ pub fn execute_release_escrow(
         .add_submessages(release_msgs))
 }
 
+pub fn execute_transfer_voucher(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token: Token,
+    recipient: CrossChainUser,
+    amount: Option<Uint128>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let cross_chain_user = CrossChainUser {
+        chain_uid: ChainUid::vsl_chain_uid()?,
+        address: info.sender.to_string(),
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &cross_chain_user)?;
+    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: env.contract.address.to_string(),
+        msg: to_json_binary(&ExecuteMsg::TransferEscrowInternal {
+            sender: cross_chain_user,
+            recipient,
+            token,
+            amount,
+            cross_chain_addresses,
+            timeout,
+            tx_id: tx_id.clone(),
+        })?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_message(msg)
+        .add_attribute("method", "transfer_voucher"))
+}
+
 pub fn execute_transfer_escrow(
     deps: &mut DepsMut,
     env: Env,
