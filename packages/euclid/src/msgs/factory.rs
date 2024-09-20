@@ -74,6 +74,27 @@ pub enum ExecuteMsg {
         timeout: Option<u64>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     },
+    UpdateFactoryState {
+        // The Router Contract Address on the Virtual Settlement Layer
+        router_contract: Option<String>,
+        // Contract admin
+        admin: Option<String>,
+        // Escrow Code ID
+        escrow_code_id: Option<u64>,
+        // CW20 Code ID
+        cw20_code_id: Option<u64>,
+        is_native: Option<bool>,
+    },
+    UpdateEscrowState {
+        current_token_id: Token,
+        new_token_id: Option<Token>,
+    },
+    UpdateCw20State {
+        cw20_address: String,
+        token_pair: Option<Pair>,
+        factory_address: Option<String>,
+        vlp: Option<String>,
+    },
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),

@@ -13,7 +13,8 @@ use crate::execute::{
     add_liquidity_request, execute_deposit_token, execute_native_receive_callback,
     execute_request_deregister_denom, execute_request_pool_creation,
     execute_request_register_denom, execute_request_register_escrow, execute_swap_request,
-    execute_update_hub_channel, execute_withdraw_virtual_balance, receive_cw20,
+    execute_update_cw20_state, execute_update_escrow_state, execute_update_hub_channel,
+    execute_update_state, execute_withdraw_virtual_balance, receive_cw20,
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
@@ -184,6 +185,33 @@ pub fn execute(
             cross_chain_addresses,
             timeout,
         ),
+        ExecuteMsg::UpdateFactoryState {
+            router_contract,
+            admin,
+            escrow_code_id,
+            cw20_code_id,
+            is_native,
+        } => execute_update_state(
+            deps,
+            info,
+            router_contract,
+            admin,
+            escrow_code_id,
+            cw20_code_id,
+            is_native,
+        ),
+        ExecuteMsg::UpdateEscrowState {
+            current_token_id,
+            new_token_id,
+        } => execute_update_escrow_state(deps, info, current_token_id, new_token_id),
+
+        ExecuteMsg::UpdateCw20State {
+            cw20_address,
+            token_pair,
+            factory_address,
+            vlp,
+        } => execute_update_cw20_state(deps, info, cw20_address, token_pair, factory_address, vlp),
+
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
             ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)

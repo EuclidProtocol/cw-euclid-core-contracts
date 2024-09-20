@@ -54,15 +54,17 @@ pub enum ExecuteMsg {
         tx_id: String,
         lp_allocation: Uint128,
     },
-    /*
-
-    // Update the fee for the VLP
-    UpdateFee {
-        lp_fee: u64,
-        treasury_fee: u64,
-        staker_fee: u64,
+    UpdateState {
+        // Router Contract
+        router: Option<String>,
+        // Virtual Coin Contract
+        virtual_balance: Option<String>,
+        // Fee per swap for each transaction
+        fee: Option<Fee>,
+        // The last timestamp where the balances for each token have been updated
+        last_updated: Option<u64>,
+        admin: Option<String>,
     },
-    */
 }
 
 #[cw_serde]
