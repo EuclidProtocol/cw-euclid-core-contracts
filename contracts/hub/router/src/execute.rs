@@ -9,7 +9,7 @@ use euclid::{
     events::{tx_event, TxType},
     msgs::{
         router::{ExecuteMsg, RegisterFactoryChainType},
-        virtual_balance::ExecuteBurn,
+        virtual_balance::{ExecuteBurn, ExecuteTransfer},
     },
     timeout::get_timeout,
     token::Token,
@@ -20,7 +20,7 @@ use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
     ibc::receive,
-    reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
+    reply::{VIRTUAL_BALANCE_BURN_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
     },
@@ -420,6 +420,7 @@ pub fn execute_transfer_escrow(
     info: MessageInfo,
     sender: CrossChainUser,
     token: Token,
+    recipient: CrossChainUser,
     // Leaving this empty means that we will transfer the entire balance
     amount: Option<Uint128>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
@@ -530,23 +531,22 @@ pub fn execute_transfer_escrow(
     );
 
     if !transfer_amount.is_zero() {
-        let burn_virtual_balance_msg =
-            euclid::msgs::virtual_balance::ExecuteMsg::Burn(ExecuteBurn {
-                amount: transfer_amount,
-                balance_key: BalanceKey {
-                    cross_chain_user: sender.clone(),
-                    token_id: token.to_string(),
-                },
+        let transfer_virtual_balance_msg =
+            euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+                amount,
+                token_id: token.to_string(),
+                from: sender,
+                to: recipient,
             });
 
-        let burn_virtual_balance_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        let transfer_virtual_balance_msg = CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: virtual_balance_address,
-            msg: to_json_binary(&burn_virtual_balance_msg)?,
+            msg: to_json_binary(&transfer_virtual_balance_msg)?,
             funds: vec![],
         });
         response = response.add_submessage(SubMsg::reply_always(
-            burn_virtual_balance_msg,
-            VIRTUAL_BALANCE_BURN_REPLY_ID,
+            transfer_virtual_balance_msg,
+            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
         ));
     }
 
