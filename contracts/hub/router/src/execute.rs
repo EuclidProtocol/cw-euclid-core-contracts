@@ -331,7 +331,7 @@ pub fn execute_release_escrow(
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
             .next()
-            .ok_or(ContractError::new("Cross Chain Address Iter Faiiled"))?;
+            .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
 
@@ -475,7 +475,7 @@ pub fn execute_transfer_escrow(
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
             .next()
-            .ok_or(ContractError::new("Cross Chain Address Iter Faiiled"))?;
+            .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
 
@@ -501,7 +501,7 @@ pub fn execute_transfer_escrow(
 
         transfer_amount = transfer_amount.checked_add(release_amount)?;
 
-        // Prepare IBC Release Message
+        // Prepare IBC Transfer Message
         let send_msg = HubIbcExecuteMsg::TransferEscrow {
             sender: sender.clone(),
             amount: release_amount,
