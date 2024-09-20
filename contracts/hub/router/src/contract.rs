@@ -13,7 +13,8 @@ use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
     execute_release_escrow, execute_reregister_chain, execute_transfer_escrow,
     execute_transfer_voucher, execute_update_factory_channel, execute_update_lock,
-    execute_update_vlp_code_id, execute_withdraw_voucher,
+    execute_update_router_state, execute_update_virtual_balance_state, execute_update_vlp_code_id,
+    execute_withdraw_voucher,
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
@@ -188,6 +189,22 @@ pub fn execute(
             ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
             ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
                 execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
+            }
+            ExecuteMsg::UpdateRouterState {
+                admin,
+                vlp_code_id,
+                virtual_balance_address,
+                locked,
+            } => execute_update_router_state(
+                deps,
+                info,
+                admin,
+                vlp_code_id,
+                virtual_balance_address,
+                locked,
+            ),
+            ExecuteMsg::UpdateVirtualBalanceState { router, admin } => {
+                execute_update_virtual_balance_state(deps, info, router, admin)
             }
         }
     }
