@@ -621,7 +621,7 @@ fn ibc_execute_deposit_token(
         msg: to_json_binary(&VirtualBalanceMsg::Mint(ExecuteMint {
             amount: msg.amount_in,
             balance_key: BalanceKey {
-                cross_chain_user: msg.recipient.clone().user,
+                cross_chain_user: msg.recipient.map_or(sender, |recipient| recipient.user),
                 token_id: msg.asset_in.to_string(),
             },
         }))?,

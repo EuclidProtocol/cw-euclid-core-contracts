@@ -204,7 +204,7 @@ pub struct ChainIbcDepositTokenExecuteMsg {
     // User will provide this
     pub asset_in: Token,
     pub amount_in: Uint128,
-    pub recipient: CrossChainUserWithLimit,
+    pub recipient: Option<CrossChainUserWithLimit>,
     // Unique per tx
     pub tx_id: String,
 }
