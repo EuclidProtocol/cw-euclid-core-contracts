@@ -636,7 +636,7 @@ pub fn execute_deposit_token(
     asset_in: TokenWithDenom,
     amount_in: Uint128,
     timeout: Option<u64>,
-    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    recipient: CrossChainUserWithLimit,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -704,7 +704,7 @@ pub fn execute_deposit_token(
         amount_in,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
         tx_id: tx_id.clone(),
-        cross_chain_addresses: cross_chain_addresses.clone(),
+        recipient: recipient.clone(),
     };
     PENDING_TOKEN_DEPOSIT.save(
         deps.storage,
@@ -718,7 +718,7 @@ pub fn execute_deposit_token(
             asset_in: asset_in.token,
             amount_in,
             tx_id: tx_id.clone(),
-            cross_chain_addresses,
+            recipient,
         })
         .to_msg(
             deps,

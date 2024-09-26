@@ -10,6 +10,7 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     fee::Fee,
+    msgs::virtual_balance::ExecuteMsg as VirtualBalanceMsg,
     msgs::{self, router::ExecuteMsg, virtual_balance::ExecuteMint},
     pool::EscrowCreationResponse,
     swap::WithdrawResponse,
@@ -608,7 +609,27 @@ fn ibc_execute_deposit_token(
     };
     let ack = AcknowledgementMsg::Ok(deposit_token_response.clone());
 
+    // Load state to get virtual balance address
+    let virtual_balance_address = STATE
+        .load(deps.storage)?
+        .virtual_balance_address
+        .map_or_else(|| Err(ContractError::EmptyVirtualBalanceAddress {}), Ok)?;
+
+    // Send mint msg to virtual balance
+    let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: virtual_balance_address.into_string(),
+        msg: to_json_binary(&VirtualBalanceMsg::Mint(ExecuteMint {
+            amount: msg.amount_in,
+            balance_key: BalanceKey {
+                cross_chain_user: msg.recipient.clone().user,
+                token_id: msg.asset_in.to_string(),
+            },
+        }))?,
+        funds: vec![],
+    });
+
     Ok(Response::new()
+        .add_submessage(SubMsg::new(mint_msg))
         .add_attribute("action", "reply_deposit_token")
         .add_attribute(
             "deposit_token_response",

@@ -72,7 +72,7 @@ pub enum ExecuteMsg {
         asset_in: TokenWithDenom,
         amount_in: Uint128,
         timeout: Option<u64>,
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        recipient: CrossChainUserWithLimit,
     },
     UpdateFactoryState {
         // The Router Contract Address on the Virtual Settlement Layer

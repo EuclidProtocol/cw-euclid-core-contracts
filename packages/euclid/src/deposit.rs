@@ -15,8 +15,7 @@ pub struct DepositTokenRequest {
     pub amount_in: Uint128,
     // The timeout specified for the swap
     pub timeout: IbcTimeout,
-
-    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    pub recipient: CrossChainUserWithLimit,
 }
 
 // Struct to handle Acknowledgement Response for a Deposit Token Request

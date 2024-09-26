@@ -121,7 +121,7 @@ pub fn execute(
         ExecuteMsg::DepositToken {
             amount_in,
             asset_in,
-            cross_chain_addresses,
+            recipient,
             timeout,
         } => {
             let state = STATE.load(deps.storage)?;
@@ -131,14 +131,7 @@ pub fn execute(
             };
 
             execute_deposit_token(
-                &mut deps,
-                env,
-                info,
-                sender,
-                asset_in,
-                amount_in,
-                timeout,
-                cross_chain_addresses,
+                &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
             )
         }
         ExecuteMsg::UpdateHubChannel { new_channel } => {
