@@ -99,6 +99,7 @@ impl ChainIbcExecuteMsg {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn to_msg(
         &self,
         deps: &mut DepsMut,
@@ -204,7 +205,7 @@ pub struct ChainIbcDepositTokenExecuteMsg {
     // User will provide this
     pub asset_in: Token,
     pub amount_in: Uint128,
-    pub recipient: Option<CrossChainUserWithLimit>,
+    pub recipient: CrossChainUser,
     // Unique per tx
     pub tx_id: String,
 }

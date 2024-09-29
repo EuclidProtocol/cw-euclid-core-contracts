@@ -1,5 +1,5 @@
 use crate::{
-    chain::{CrossChainUser, CrossChainUserWithLimit},
+    chain::CrossChainUser,
     token::{Token, TokenWithDenom},
 };
 use cosmwasm_schema::cw_serde;
@@ -15,7 +15,7 @@ pub struct DepositTokenRequest {
     pub amount_in: Uint128,
     // The timeout specified for the swap
     pub timeout: IbcTimeout,
-    pub recipient: Option<CrossChainUserWithLimit>,
+    pub recipient: CrossChainUser,
 }
 
 // Struct to handle Acknowledgement Response for a Deposit Token Request
@@ -24,4 +24,5 @@ pub struct DepositTokenResponse {
     pub amount: Uint128,
     pub token: Token,
     pub sender: CrossChainUser,
+    pub recipient: CrossChainUser,
 }

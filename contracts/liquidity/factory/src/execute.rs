@@ -636,11 +636,12 @@ pub fn execute_deposit_token(
     asset_in: TokenWithDenom,
     amount_in: Uint128,
     timeout: Option<u64>,
-    recipient: Option<CrossChainUserWithLimit>,
+    recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     let sender_addr = deps.api.addr_validate(&sender.address)?;
+    let recipient = recipient.unwrap_or(sender.clone());
 
     // Validate asset in
     asset_in.validate(deps.as_ref())?;

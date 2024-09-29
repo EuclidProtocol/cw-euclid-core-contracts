@@ -603,9 +603,10 @@ fn ibc_execute_deposit_token(
     )?;
 
     let deposit_token_response = DepositTokenResponse {
-        amount: msg.clone().amount_in,
-        token: msg.clone().asset_in,
-        sender: msg.clone().sender,
+        amount: msg.amount_in,
+        token: msg.asset_in.clone(),
+        sender: msg.sender.clone(),
+        recipient: msg.recipient.clone(),
     };
     let ack = AcknowledgementMsg::Ok(deposit_token_response.clone());
 
@@ -621,7 +622,7 @@ fn ibc_execute_deposit_token(
         msg: to_json_binary(&VirtualBalanceMsg::Mint(ExecuteMint {
             amount: msg.amount_in,
             balance_key: BalanceKey {
-                cross_chain_user: msg.recipient.map_or(sender, |recipient| recipient.user),
+                cross_chain_user: msg.recipient,
                 token_id: msg.asset_in.to_string(),
             },
         }))?,
@@ -635,7 +636,6 @@ fn ibc_execute_deposit_token(
             "deposit_token_response",
             format!("{deposit_token_response:?}"),
         )
-        .set_data(to_json_binary(&ack)?)
         .add_event(
             tx_event(
                 &msg.tx_id,
@@ -643,5 +643,6 @@ fn ibc_execute_deposit_token(
                 TxType::DepositToken,
             )
             .add_attribute("tx_id", msg.tx_id.clone()),
-        ))
+        )
+        .set_data(to_json_binary(&ack)?))
 }
