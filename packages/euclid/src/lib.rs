@@ -1,5 +1,6 @@
 pub mod chain;
 pub mod cw20;
+pub mod deposit;
 pub mod error;
 pub mod escrow;
 pub mod events;

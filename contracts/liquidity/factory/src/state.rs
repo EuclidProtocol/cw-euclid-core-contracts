@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
+    deposit::DepositTokenRequest,
     fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     pool::{EscrowCreateRequest, PoolCreateRequest},
@@ -55,6 +56,10 @@ pub const PENDING_ESCROW_REQUESTS: Map<(Addr, String), EscrowCreateRequest> =
 
 // Map for pending swaps for user
 pub const PENDING_SWAPS: Map<(Addr, String), SwapRequest> = Map::new("pending_swaps");
+
+// Map for pending token deposits for user
+pub const PENDING_TOKEN_DEPOSIT: Map<(Addr, String), DepositTokenRequest> =
+    Map::new("pending_token_deposit");
 
 // Map for PENDING liquidity transactions
 pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
