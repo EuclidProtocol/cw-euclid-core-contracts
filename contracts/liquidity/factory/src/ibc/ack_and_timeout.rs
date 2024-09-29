@@ -594,7 +594,7 @@ fn ack_deposit_token_request(
             let send_msg = asset_in.create_escrow_msg(data.amount, escrow_address)?;
             let response = Response::new()
                 .add_event(deposit_token_event(&tx_id, &deposit_info))
-                .add_attribute("method", "process_successfull_swap")
+                .add_attribute("method", "process_successfull_deposit_token")
                 .add_message(send_msg)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("deposit_token_response", format!("{data:?}"));
@@ -616,7 +616,7 @@ fn ack_deposit_token_request(
             )?;
 
             Ok(Response::new()
-                .add_attribute("method", "process_failed_swap")
+                .add_attribute("method", "process_failed_deposit_token")
                 .add_attribute("refund_to", sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("refund_amount", deposit_info.amount_in)
