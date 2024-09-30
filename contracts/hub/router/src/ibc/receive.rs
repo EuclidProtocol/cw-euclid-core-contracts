@@ -209,8 +209,6 @@ fn execute_request_pool_creation(
     let pair = pair_with_denom.get_pair()?;
     pair.validate()?;
 
-    let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
-
     let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
         sender: sender.clone(),
         pair: pair.clone(),
@@ -273,6 +271,7 @@ fn execute_request_pool_creation(
         ContractError::new("Cannot create pool with two new tokens")
     );
 
+    let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
     if vlp.is_some() {
         let msg = WasmMsg::Execute {
