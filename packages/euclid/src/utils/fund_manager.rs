@@ -21,8 +21,8 @@ impl FundManager {
     }
 
     /// Get the amount of funds in the manager for a given denom
-    pub fn get(&self, denom: &str) -> Option<&Uint128> {
-        self.funds.get(denom)
+    pub fn get(&self, denom: &str) -> Uint128 {
+        self.funds.get(denom).cloned().unwrap_or(Uint128::zero())
     }
 
     /// Add funds to the manager
@@ -36,7 +36,11 @@ impl FundManager {
     //   Use funds from the manager
     pub fn use_fund(&mut self, amount: Uint128, denom: &str) -> Result<(), ContractError> {
         ensure!(
-            self.funds.get(denom).unwrap() >= &amount,
+            !amount.is_zero(),
+            ContractError::new("Amount cannot be zero")
+        );
+        ensure!(
+            self.get(denom).ge(&amount),
             ContractError::InsufficientFunds {}
         );
         *self.funds.get_mut(denom).unwrap() -= amount;
@@ -73,20 +77,20 @@ mod tests {
     #[test]
     fn test_new() {
         let fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
-        assert_eq!(fund_manager.funds.get("atom"), Some(&Uint128::new(100)));
+        assert_eq!(fund_manager.get("atom"), Uint128::new(100));
     }
 
     #[test]
     fn test_duplicate_funds() {
         let fund_manager = FundManager::new(&[Coin::new(100, "atom"), Coin::new(200, "atom")]);
-        assert_eq!(fund_manager.get("atom"), Some(&Uint128::new(300)));
+        assert_eq!(fund_manager.get("atom"), Uint128::new(300));
     }
 
     #[test]
     fn test_use_fund() {
         let mut fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
         assert_eq!(fund_manager.use_fund(Uint128::new(50), "atom"), Ok(()));
-        assert_eq!(fund_manager.get("atom"), Some(&Uint128::new(50)));
+        assert_eq!(fund_manager.get("atom"), Uint128::new(50));
     }
 
     #[test]

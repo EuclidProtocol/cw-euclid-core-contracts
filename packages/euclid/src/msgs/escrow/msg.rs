@@ -28,6 +28,9 @@ pub enum ExecuteMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
+    #[returns(StateResponse)]
+    State {},
+
     // New escrow queries
     #[returns(TokenIdResponse)]
     TokenId {},
@@ -42,6 +45,13 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct MigrateMsg {}
+
+#[cw_serde]
+pub struct StateResponse {
+    pub token_id: Token,
+    pub factory_address: Addr,
+    pub total_amount: Uint128,
+}
 
 #[cw_serde]
 pub struct TokenIdResponse {

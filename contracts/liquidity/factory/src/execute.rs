@@ -12,7 +12,7 @@ use euclid::{
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
-        factory::cw20::Cw20HookMsg,
+        factory::cw20::FactoryCw20HookMsg,
     },
     pool::{EscrowCreateRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
@@ -760,7 +760,7 @@ pub fn receive_cw20(
 
     match from_json(&cw20_msg.msg)? {
         // Allow to swap using a CW20 hook message
-        Cw20HookMsg::Swap {
+        FactoryCw20HookMsg::Swap {
             asset_in,
             asset_out,
             min_amount_out,
@@ -795,7 +795,7 @@ pub fn receive_cw20(
                 partner_fee,
             )
         }
-        Cw20HookMsg::RemoveLiquidity {
+        FactoryCw20HookMsg::RemoveLiquidity {
             pair,
             lp_allocation,
             timeout,
@@ -810,8 +810,23 @@ pub fn receive_cw20(
             timeout,
             cross_chain_addresses,
         ),
+        FactoryCw20HookMsg::Deposit {
+            token,
+            recipient,
+            timeout,
+        } => {
+            let contract_adr = info.sender.clone();
 
-        _ => Err(ContractError::NotImplemented {}),
+            let asset_in = token.with_type(TokenType::Smart {
+                contract_address: contract_adr.to_string(),
+            });
+            let amount_in = cw20_msg.amount;
+
+            // ensure that the contract address is the same as the asset contract address
+            execute_deposit_token(
+                &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
+            )
+        }
     }
 }
 

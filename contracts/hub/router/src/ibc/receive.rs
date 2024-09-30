@@ -32,8 +32,7 @@ use crate::{
     query::validate_swap_pairs,
     reply::{
         ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
-        VIRTUAL_BALANCE_MINT_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
-        VLP_POOL_REGISTER_REPLY_ID,
+        VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
@@ -388,10 +387,8 @@ fn ibc_execute_add_liquidity(
                 funds: vec![],
             };
 
-            response = response.add_submessage(SubMsg::reply_on_error(
-                transfer_voucher_msg,
-                VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
-            ));
+            // Should reject full execution if failed
+            response = response.add_message(transfer_voucher_msg);
         } else {
             // Increase Escrow balance
             let token_escrow_key = (token.token.clone(), sender.chain_uid.clone());
@@ -424,10 +421,8 @@ fn ibc_execute_add_liquidity(
                 funds: vec![],
             };
 
-            response = response.add_submessage(SubMsg::reply_on_error(
-                mint_virtual_balance_msg,
-                VIRTUAL_BALANCE_MINT_REPLY_ID,
-            ));
+            // Should reject full execution if failed
+            response = response.add_message(mint_virtual_balance_msg);
         }
     }
 
@@ -570,10 +565,8 @@ fn ibc_execute_swap(
             funds: vec![],
         };
 
-        response = response.add_submessage(SubMsg::reply_always(
-            transfer_voucher_msg,
-            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
-        ));
+        // Should reject full execution if failed
+        response = response.add_message(transfer_voucher_msg);
     } else {
         let token_escrow_key = (msg.asset_in.token.clone(), sender.chain_uid.clone());
         let token_escrow_balance = ESCROW_BALANCES
@@ -605,10 +598,8 @@ fn ibc_execute_swap(
             funds: vec![],
         };
 
-        response = response.add_submessage(SubMsg::reply_always(
-            mint_virtual_balance_msg,
-            VIRTUAL_BALANCE_MINT_REPLY_ID,
-        ));
+        // Should reject full execution if failed
+        response = response.add_message(mint_virtual_balance_msg);
     }
 
     if msg.asset_in.token_type.is_voucher()
@@ -629,11 +620,9 @@ fn ibc_execute_swap(
             funds: vec![],
         };
 
+        // Should reject full execution if failed
         response = response
-            .add_submessage(SubMsg::reply_always(
-                transfer_voucher_msg,
-                VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
-            ))
+            .add_message(transfer_voucher_msg)
             .add_attribute("partner_fee_transfer", "true")
             .add_attribute(
                 "partner_fee_recipient",
@@ -669,14 +658,14 @@ fn ibc_execute_deposit_token(
 
     // Add token 1 in escrow balance
     let token_escrow_key = (msg.asset_in.clone(), sender.chain_uid.clone());
-    let token_1_escrow_balance = ESCROW_BALANCES
+    let token_escrow_balance = ESCROW_BALANCES
         .may_load(deps.storage, token_escrow_key.clone())?
         .unwrap_or(Uint128::zero());
 
     ESCROW_BALANCES.save(
         deps.storage,
         token_escrow_key,
-        &token_1_escrow_balance.checked_add(msg.amount_in)?,
+        &token_escrow_balance.checked_add(msg.amount_in)?,
     )?;
 
     let deposit_token_response = DepositTokenResponse {

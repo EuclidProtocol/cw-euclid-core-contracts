@@ -3,7 +3,7 @@ use cosmwasm_std::{
 };
 
 use cw20::Cw20ReceiveMsg;
-use euclid::{error::ContractError, msgs::factory::cw20::Cw20HookMsg, token::TokenType};
+use euclid::{error::ContractError, msgs::escrow::cw20::EscrowCw20HookMsg, token::TokenType};
 
 use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
 
@@ -144,7 +144,7 @@ pub fn receive_cw20(
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     match from_json(&cw20_msg.msg)? {
-        Cw20HookMsg::Deposit {} => {
+        EscrowCw20HookMsg::Deposit {} => {
             let factory_address = STATE.load(deps.storage)?.factory_address;
             // Only the factory can call this function
             let sender = cw20_msg.sender;
@@ -163,7 +163,6 @@ pub fn receive_cw20(
 
             execute_deposit_cw20(deps, env, info, amount_sent, asset_sent)
         }
-        _ => Err(ContractError::UnsupportedMessage {}),
     }
 }
 

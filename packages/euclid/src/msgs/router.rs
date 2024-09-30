@@ -176,6 +176,7 @@ pub struct TokenEscrowChainResponse {
 pub struct EscrowResponse {
     pub token: Token,
     pub chain_uid: ChainUid,
+    pub balance: Uint128,
 }
 
 #[cw_serde]

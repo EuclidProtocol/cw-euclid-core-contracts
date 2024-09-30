@@ -348,7 +348,7 @@ impl TokenType {
                 msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
                     contract: escrow_contract.to_string(),
                     amount,
-                    msg: to_json_binary(&crate::msgs::factory::cw20::Cw20HookMsg::Deposit {})?,
+                    msg: to_json_binary(&crate::msgs::escrow::cw20::EscrowCw20HookMsg::Deposit {})?,
                 })?,
                 funds: vec![],
             }),

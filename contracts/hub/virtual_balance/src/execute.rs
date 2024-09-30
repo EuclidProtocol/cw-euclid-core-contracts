@@ -115,9 +115,10 @@ pub fn execute_transfer(
     // Added here just for additional safety
     ensure!(
         sender_old_balance.ge(&msg.amount),
-        ContractError::Generic {
-            err: "Not Enough Funds".to_string()
-        }
+        ContractError::new(&format!(
+            "Not Enough Funds: {} < {}",
+            sender_old_balance, msg.amount
+        ))
     );
 
     let sender_new_balance = sender_old_balance.checked_sub(msg.amount)?;

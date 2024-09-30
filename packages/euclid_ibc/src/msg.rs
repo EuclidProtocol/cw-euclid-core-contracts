@@ -59,27 +59,6 @@ pub enum ChainIbcExecuteMsg {
     Withdraw(ChainIbcWithdrawExecuteMsg),
 
     DepositToken(ChainIbcDepositTokenExecuteMsg),
-    // RequestWithdraw {
-    //     token_id: Token,
-    //     amount: Uint128,
-
-    //     // Factory will set this using info.sender
-    //     sender: String,
-
-    //     // First element in array has highest priority
-    //     cross_chain_addresses: Vec<CrossChainUser>,
-
-    //     // Unique per tx
-    //     tx_id: String,
-    // },
-    // RequestEscrowCreation {
-    //     token: Token,
-    //     // Factory will set this using info.sender
-    //     sender: String,
-    //     // Unique per tx
-    //     tx_id: String,
-    //     //TODO Add allowed denoms?
-    // },
 }
 
 impl ChainIbcExecuteMsg {

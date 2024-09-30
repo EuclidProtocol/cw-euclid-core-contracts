@@ -35,10 +35,6 @@ pub const SWAP_REPLY_ID: u64 = 5;
 pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 
-pub const VIRTUAL_BALANCE_MINT_REPLY_ID: u64 = 8;
-pub const VIRTUAL_BALANCE_BURN_REPLY_ID: u64 = 9;
-pub const VIRTUAL_BALANCE_TRANSFER_REPLY_ID: u64 = 10;
-
 pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
 
@@ -287,42 +283,6 @@ pub fn on_virtual_balance_instantiate_reply(
                 .add_attribute("action", "reply_virtual_balance_instantiate")
                 .add_attribute("virtual_balance_address", instantiate_data.contract_address))
         }
-    }
-}
-
-pub fn on_virtual_balance_mint_reply(
-    _deps: DepsMut,
-    msg: Reply,
-) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
-        SubMsgResult::Ok(..) => Ok(Response::new()
-            .add_attribute("action", "reply_mint_virtual_balance")
-            .add_attribute("mint_success", "true")),
-    }
-}
-
-pub fn on_virtual_balance_burn_reply(
-    _deps: DepsMut,
-    msg: Reply,
-) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
-        SubMsgResult::Ok(..) => Ok(Response::new()
-            .add_attribute("action", "reply_burn_virtual_balance")
-            .add_attribute("burn_success", "true")),
-    }
-}
-
-pub fn on_virtual_balance_transfer_reply(
-    _deps: DepsMut,
-    msg: Reply,
-) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
-        SubMsgResult::Ok(..) => Ok(Response::new()
-            .add_attribute("action", "reply_transfer_virtual_balance")
-            .add_attribute("transfer_success", "true")),
     }
 }
 

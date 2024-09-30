@@ -247,6 +247,7 @@ pub fn query_all_escrows(
             Ok(EscrowResponse {
                 token: v.0 .0,
                 chain_uid: v.0 .1,
+                balance: v.1,
             })
         })
         .collect();

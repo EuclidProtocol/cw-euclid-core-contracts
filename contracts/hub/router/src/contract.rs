@@ -21,9 +21,8 @@ use crate::query::{
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
-    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_BURN_REPLY_ID,
-    VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VIRTUAL_BALANCE_MINT_REPLY_ID,
-    VIRTUAL_BALANCE_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
+    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, DEREGISTERED_CHAINS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -202,10 +201,6 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID => {
             reply::on_virtual_balance_instantiate_reply(deps, msg)
         }
-
-        VIRTUAL_BALANCE_MINT_REPLY_ID => reply::on_virtual_balance_mint_reply(deps, msg),
-        VIRTUAL_BALANCE_BURN_REPLY_ID => reply::on_virtual_balance_burn_reply(deps, msg),
-        VIRTUAL_BALANCE_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
 
         IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),

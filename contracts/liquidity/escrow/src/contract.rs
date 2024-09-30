@@ -76,7 +76,7 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        // New escrow queries
+        QueryMsg::State {} => query::query_state(deps),
         QueryMsg::TokenId {} => query_token_id(deps),
         QueryMsg::TokenAllowed { denom } => query::query_token_allowed(deps, denom),
         QueryMsg::AllowedDenoms {} => query::query_allowed_denoms(deps),

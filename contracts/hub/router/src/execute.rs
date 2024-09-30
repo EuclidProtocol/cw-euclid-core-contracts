@@ -21,7 +21,6 @@ use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 use crate::{
     ibc::receive,
     query::verify_cross_chain_addresses,
-    reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
         STATE,
@@ -394,10 +393,7 @@ pub fn execute_release_escrow(
             msg: to_json_binary(&burn_virtual_balance_msg)?,
             funds: vec![],
         });
-        response = response.add_submessage(SubMsg::reply_always(
-            burn_virtual_balance_msg,
-            VIRTUAL_BALANCE_BURN_REPLY_ID,
-        ));
+        response = response.add_message(burn_virtual_balance_msg);
     }
 
     Ok(response
