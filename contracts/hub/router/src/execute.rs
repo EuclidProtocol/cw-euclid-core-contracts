@@ -115,7 +115,6 @@ pub fn execute_register_factory(
         ContractError::new("Cannot use VSL chain uid")
     );
 
-    // TODO: Add check for existing chain ids
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 

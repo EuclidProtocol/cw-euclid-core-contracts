@@ -459,7 +459,6 @@ fn ack_remove_liquidity(
                 .add_attribute("tx_id", tx_id))
         }
 
-        // Todo:: Return LP Tokens back to sender
         AcknowledgementMsg::Error(err) => {
             // Its a native call so you can return error to reject complete execution call
             if is_native {
@@ -501,7 +500,6 @@ fn ack_swap_request(
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
-            // TODO:: Add msg to send asset_in to escrow
             let asset_in = swap_info.asset_in.clone();
 
             let mut response = Response::new()
@@ -588,7 +586,6 @@ fn ack_deposit_token_request(
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
-            // TODO:: Add msg to send asset_in to escrow
             let asset_in = deposit_info.asset_in.clone();
 
             // Get corresponding escrow
