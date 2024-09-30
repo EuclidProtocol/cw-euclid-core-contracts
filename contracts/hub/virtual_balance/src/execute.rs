@@ -150,14 +150,14 @@ pub fn execute_update_state(
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
     let verified_router = if let Some(ref router) = router {
-        deps.api.addr_validate(&router.as_str())?;
+        deps.api.addr_validate(router.as_str())?;
         router.clone()
     } else {
         state.router
     };
 
     let verified_admin = if let Some(ref admin) = admin {
-        deps.api.addr_validate(&admin.as_str())?;
+        deps.api.addr_validate(admin.as_str())?;
         admin.clone()
     } else {
         state.admin

@@ -2,8 +2,7 @@ use std::env::current_dir;
 
 use cosmwasm_schema::{export_schema_with_title, schema_for, write_api};
 
-use euclid::cw20::Cw20HookMsg;
-use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::factory::{cw20::Cw20HookMsg, ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

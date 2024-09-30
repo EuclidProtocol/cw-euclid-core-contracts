@@ -94,18 +94,16 @@ pub fn execute(
         } => update_fee(deps, info, lp_fee_bps, euclid_fee_bps, recipient),
         ExecuteMsg::AddLiquidity {
             sender,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
             tx_id,
+            slippage_tolerance_bps,
+            liquidity,
         } => add_liquidity(
             deps,
             env,
             info,
             sender,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
+            liquidity,
+            slippage_tolerance_bps,
             tx_id,
         ),
         ExecuteMsg::RemoveLiquidity {

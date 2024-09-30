@@ -18,7 +18,6 @@ pub enum ExecuteMsg {
     // Removes a denom from allowed denoms
     DisallowDenom { denom: TokenType },
     DepositNative {},
-    UpdateState { token_id: Option<Token> },
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
 

@@ -1,14 +1,13 @@
-use crate::{fee::PartnerFee, token::Pair};
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 
 use crate::{
     chain::CrossChainUserWithLimit,
+    fee::PartnerFee,
     swap::NextSwapPair,
-    token::{Token, TokenWithDenom},
+    token::{Pair, Token, TokenWithDenom},
 };
 
-// CW20 Hook Msg
 #[cw_serde]
 pub enum Cw20HookMsg {
     Deposit {},

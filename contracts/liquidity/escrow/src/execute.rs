@@ -3,13 +3,9 @@ use cosmwasm_std::{
 };
 
 use cw20::Cw20ReceiveMsg;
-use euclid::{
-    cw20::Cw20HookMsg,
-    error::ContractError,
-    token::{Token, TokenType},
-};
+use euclid::{error::ContractError, msgs::factory::cw20::Cw20HookMsg, token::TokenType};
 
-use crate::state::{State, ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
+use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
 
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
@@ -17,6 +13,12 @@ pub fn execute_add_allowed_denom(
     info: MessageInfo,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
+    // Vouchers are not escrowed
+    ensure!(
+        !denom.is_voucher(),
+        ContractError::UnsupportedDenomination {}
+    );
+
     // TODO nonpayable to this function? would be better to limit depositing funds through the deposit functions
     // Only the factory can call this function
     let factory_address = STATE.load(deps.storage)?.factory_address;
@@ -77,35 +79,6 @@ pub fn execute_disallow_denom(
     Ok(Response::new()
         .add_attribute("method", "disallow_denom")
         .add_attribute("deregistered_denom", denom.get_key()))
-}
-
-pub fn execute_update_state(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    token_id: Option<Token>,
-) -> Result<Response, ContractError> {
-    // Only the factory can call this function
-    let state = STATE.load(deps.storage)?;
-    ensure!(
-        info.sender == state.factory_address,
-        ContractError::Unauthorized {}
-    );
-
-    let state = State {
-        token_id: token_id.clone().unwrap_or(state.token_id),
-        factory_address: state.factory_address,
-        total_amount: state.total_amount,
-    };
-
-    STATE.save(deps.storage, &state)?;
-
-    Ok(Response::new()
-        .add_attribute("method", "update_state")
-        .add_attribute(
-            "token_id",
-            token_id.as_ref().map_or("unchanged", |x| x.as_str()),
-        ))
 }
 
 pub fn execute_deposit_native(
@@ -201,6 +174,8 @@ pub fn execute_deposit_cw20(
     amount: Uint128,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
+    ensure!(denom.is_smart(), ContractError::UnsupportedDenomination {});
+
     // Non-zero and unauthorized checks were made in receive_cw20
 
     let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;

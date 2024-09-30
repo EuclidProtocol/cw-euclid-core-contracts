@@ -9,9 +9,8 @@ use cosmwasm_std::{
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::chain::CrossChainUser;
-use crate::cw20::Cw20HookMsg;
+use crate::error::ContractError;
 use crate::msgs::virtual_balance::ExecuteTransfer;
-use crate::{error::ContractError, pool::Pool};
 
 // Token asset that represents an identifier for a token
 #[cw_serde]
@@ -74,6 +73,20 @@ impl Token {
             funds: vec![],
         };
         Ok(transfer_msg)
+    }
+
+    pub fn with_amount(&self, amount: Uint128) -> TokenWithAmount {
+        TokenWithAmount {
+            token: self.clone(),
+            amount,
+        }
+    }
+
+    pub fn with_type(&self, token_type: TokenType) -> TokenWithDenom {
+        TokenWithDenom {
+            token: self.clone(),
+            token_type,
+        }
     }
 }
 
@@ -163,17 +176,20 @@ impl Pair {
         }
     }
 
-    pub fn get_pool(&self, reserve_1: Uint128, reserve_2: Uint128) -> Pool {
-        Pool {
-            pair: self.clone(),
-            reserve_1,
-            reserve_2,
-        }
-    }
-
     pub fn get_vec_token(&self) -> Vec<Token> {
         let tokens: Vec<Token> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
+    }
+
+    pub fn get_pair_with_amount(
+        &self,
+        reserve_1: Uint128,
+        reserve_2: Uint128,
+    ) -> Result<PairWithAmount, ContractError> {
+        PairWithAmount::new(
+            self.token_1.with_amount(reserve_1),
+            self.token_2.with_amount(reserve_2),
+        )
     }
 }
 
@@ -233,33 +249,50 @@ impl KeyDeserialize for Pair {
 pub enum TokenType {
     Native { denom: String },
     Smart { contract_address: String },
+    Voucher {},
 }
 
 // Helper to Check if Token is Native or Smart
 impl TokenType {
     pub fn is_native(&self) -> bool {
-        match self {
-            TokenType::Native { .. } => true,
-            TokenType::Smart { .. } => false,
-        }
+        matches!(self, TokenType::Native { .. })
     }
 
     pub fn is_smart(&self) -> bool {
-        !self.is_native()
+        matches!(self, TokenType::Smart { .. })
     }
 
-    // Helper to get the denom of a native or CW20 token
-    pub fn get_denom(&self) -> String {
-        match self.clone() {
-            TokenType::Native { denom } => denom.to_string(),
-            TokenType::Smart { contract_address } => contract_address.to_string(),
+    pub fn get_smart_contract_address(&self) -> Result<String, ContractError> {
+        match self {
+            TokenType::Smart { contract_address } => Ok(contract_address.clone()),
+            _ => Err(ContractError::new("Token is not smart")),
         }
+    }
+
+    pub fn is_voucher(&self) -> bool {
+        matches!(self, TokenType::Voucher { .. })
+    }
+
+    /// Validates smart contract addresses, checks against empty denom and zero supply
+    pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
+        if let Self::Native { denom } = &self {
+            let potential_supply = deps.querier.query_supply(denom.clone())?;
+            let non_zero_supply = !potential_supply.amount.is_zero();
+            ensure!(
+                non_zero_supply,
+                ContractError::ZeroAssetSupply {
+                    asset: denom.clone()
+                }
+            );
+        }
+        Ok(())
     }
 
     pub fn get_key(&self) -> String {
         match self.clone() {
             TokenType::Native { denom } => format!("native:{denom}"),
             TokenType::Smart { contract_address } => format!("smart:{contract_address}"),
+            TokenType::Voucher { .. } => "voucher".to_string(),
         }
     }
 
@@ -292,6 +325,9 @@ impl TokenType {
                 },
                 funds: vec![],
             }),
+            TokenType::Voucher { .. } => {
+                return Err(ContractError::new("Voucher can only be transferred in vsl"));
+            }
         };
         Ok(msg)
     }
@@ -312,12 +348,44 @@ impl TokenType {
                 msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
                     contract: escrow_contract.to_string(),
                     amount,
-                    msg: to_json_binary(&Cw20HookMsg::Deposit {})?,
+                    msg: to_json_binary(&crate::msgs::factory::cw20::Cw20HookMsg::Deposit {})?,
                 })?,
                 funds: vec![],
             }),
+            TokenType::Voucher { .. } => {
+                return Err(ContractError::new("Voucher is already in escrow"));
+            }
         };
         Ok(msg)
+    }
+}
+
+#[cw_serde]
+pub struct TokenWithAmount {
+    pub token: Token,
+    pub amount: Uint128,
+}
+
+#[cw_serde]
+pub struct TokenWithDenomAndAmount {
+    pub token: Token,
+    pub amount: Uint128,
+    pub token_type: TokenType,
+}
+
+impl TokenWithDenomAndAmount {
+    pub fn to_token_with_amount(&self) -> TokenWithAmount {
+        TokenWithAmount {
+            token: self.token.clone(),
+            amount: self.amount,
+        }
+    }
+
+    pub fn to_token_with_denom(&self) -> TokenWithDenom {
+        TokenWithDenom {
+            token: self.token.clone(),
+            token_type: self.token_type.clone(),
+        }
     }
 }
 
@@ -328,39 +396,10 @@ pub struct TokenWithDenom {
 }
 
 impl TokenWithDenom {
-    /// Validates smart contract addresses, checks against empty denom and zero supply
     pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
-        let denom = self.token_type.get_denom();
-        ensure!(
-            !denom.is_empty(),
-            ContractError::InvalidAsset { asset: denom }
-        );
-
-        if self.token_type.is_native() {
-            let potential_supply = deps.querier.query_supply(denom.clone())?;
-            let non_zero_supply = !potential_supply.amount.is_zero();
-            ensure!(
-                non_zero_supply,
-                ContractError::ZeroAssetSupply { asset: denom }
-            );
-        }
-        // else {
-        //     let token_info_query: TokenInfoResponse =
-        //         deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-        //             contract_addr: denom,
-        //             msg: to_json_binary(&Cw20QueryMsg::TokenInfo {})?,
-        //         }))?;
-        //     ensure!(
-        //         !token_info_query.total_supply.is_zero(),
-        //         ContractError::InvalidZeroAmount {}
-        //     );
-        // }
-
+        self.token_type.validate(deps)?;
+        self.token.validate()?;
         Ok(())
-    }
-
-    pub fn get_denom(&self) -> String {
-        self.token_type.get_denom()
     }
 
     pub fn create_transfer_msg(
@@ -380,6 +419,44 @@ impl TokenWithDenom {
     ) -> Result<CosmosMsg, ContractError> {
         self.token_type.create_escrow_msg(amount, escrow_contract)
     }
+
+    pub fn with_amount(&self, amount: Uint128) -> TokenWithDenomAndAmount {
+        TokenWithDenomAndAmount {
+            token: self.token.clone(),
+            amount,
+            token_type: self.token_type.clone(),
+        }
+    }
+}
+
+#[cw_serde]
+pub struct PairWithAmount {
+    pub token_1: TokenWithAmount,
+    pub token_2: TokenWithAmount,
+}
+
+impl PairWithAmount {
+    pub fn new(token_1: TokenWithAmount, token_2: TokenWithAmount) -> Result<Self, ContractError> {
+        let pair_with_amount = if token_1.token.le(&token_2.token) {
+            Self { token_1, token_2 }
+        } else {
+            Self {
+                token_1: token_2,
+                token_2: token_1,
+            }
+        };
+        pair_with_amount.get_pair()?.validate()?;
+        Ok(pair_with_amount)
+    }
+
+    pub fn get_pair(&self) -> Result<Pair, ContractError> {
+        Pair::new(self.token_1.token.clone(), self.token_2.token.clone())
+    }
+
+    pub fn get_vec_token(&self) -> Vec<TokenWithAmount> {
+        let tokens: Vec<TokenWithAmount> = vec![self.token_1.clone(), self.token_2.clone()];
+        tokens
+    }
 }
 
 #[cw_serde]
@@ -392,8 +469,31 @@ impl PairWithDenom {
     pub fn get_pair(&self) -> Result<Pair, ContractError> {
         Pair::new(self.token_1.token.clone(), self.token_2.token.clone())
     }
+
+    pub fn get_pair_with_amount(
+        &self,
+        token_1_amount: Uint128,
+        token_2_amount: Uint128,
+    ) -> Result<PairWithAmount, ContractError> {
+        PairWithAmount::new(
+            self.token_1.token.with_amount(token_1_amount),
+            self.token_2.token.with_amount(token_2_amount),
+        )
+    }
+
+    pub fn with_amount(
+        &self,
+        token_1_amount: Uint128,
+        token_2_amount: Uint128,
+    ) -> Result<PairWithDenomAndAmount, ContractError> {
+        Ok(PairWithDenomAndAmount {
+            token_1: self.token_1.with_amount(token_1_amount),
+            token_2: self.token_2.with_amount(token_2_amount),
+        })
+    }
+
     pub fn get_vec_token_info(&self) -> Vec<TokenWithDenom> {
-        let tokens: Vec<TokenWithDenom> = vec![self.token_1.clone(), self.token_2.clone()];
+        let tokens = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
     }
 
@@ -407,6 +507,44 @@ impl PairWithDenom {
             pair.token_2 == self.token_2.token,
             ContractError::new("Pair should be sorted")
         );
+
+        Ok(true)
+    }
+}
+
+#[cw_serde]
+pub struct PairWithDenomAndAmount {
+    pub token_1: TokenWithDenomAndAmount,
+    pub token_2: TokenWithDenomAndAmount,
+}
+
+impl PairWithDenomAndAmount {
+    pub fn get_pair(&self) -> Result<Pair, ContractError> {
+        Pair::new(self.token_1.token.clone(), self.token_2.token.clone())
+    }
+
+    pub fn get_pair_with_denom(&self) -> Result<PairWithDenom, ContractError> {
+        Ok(PairWithDenom {
+            token_1: self.token_1.to_token_with_denom(),
+            token_2: self.token_2.to_token_with_denom(),
+        })
+    }
+
+    pub fn get_pair_with_amount(&self) -> Result<PairWithAmount, ContractError> {
+        PairWithAmount::new(
+            self.token_1.to_token_with_amount(),
+            self.token_2.to_token_with_amount(),
+        )
+    }
+
+    pub fn get_vec_token_info(&self) -> Vec<TokenWithDenomAndAmount> {
+        let tokens: Vec<TokenWithDenomAndAmount> = vec![self.token_1.clone(), self.token_2.clone()];
+        tokens
+    }
+
+    pub fn validate(&self) -> Result<bool, ContractError> {
+        // Validate pair with denom
+        self.get_pair_with_denom()?.validate()?;
 
         Ok(true)
     }
@@ -428,6 +566,12 @@ mod tests {
     struct TestTokenPair {
         name: &'static str,
         pair: Pair,
+        expected_error: Option<ContractError>,
+    }
+
+    struct TestPairWithDenom {
+        name: &'static str,
+        pair_with_denom: PairWithDenomAndAmount, // Ensure PairWithDenom is also defined
         expected_error: Option<ContractError>,
     }
 
@@ -519,6 +663,103 @@ mod tests {
 
         for test in test_cases {
             let res = test.pair.validate();
+
+            if let Some(err) = test.expected_error {
+                assert_eq!(res.unwrap_err(), err, "{}", test.name);
+                continue;
+            } else {
+                assert!(res.is_ok())
+            }
+        }
+    }
+
+    #[test]
+    fn test_pair_with_denom_validation() {
+        let test_cases = vec![
+            TestPairWithDenom {
+                name: "Duplicate tokens with denom",
+                pair_with_denom: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token("ABC".to_string()),
+                        amount: Uint128::from(100u128),
+                        token_type: TokenType::Native {
+                            denom: "denom1".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token("ABC".to_string()),
+                        amount: Uint128::from(100u128),
+                        token_type: TokenType::Native {
+                            denom: "denom2".to_string(),
+                        },
+                    },
+                },
+                expected_error: Some(ContractError::DuplicateTokens {}),
+            },
+            TestPairWithDenom {
+                name: "Different tokens with different denoms",
+                pair_with_denom: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token("ABC".to_string()),
+                        amount: Uint128::from(100u128),
+                        token_type: TokenType::Native {
+                            denom: "denom1".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token("DEF".to_string()),
+                        amount: Uint128::from(100u128),
+                        token_type: TokenType::Native {
+                            denom: "denom2".to_string(),
+                        },
+                    },
+                },
+                expected_error: None,
+            },
+            TestPairWithDenom {
+                name: "Same letters but with different case and different denoms",
+                pair_with_denom: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token("ABC".to_string()),
+                        amount: Uint128::from(100u128),
+                        token_type: TokenType::Native {
+                            denom: "denom1".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token("AbC".to_string()),
+                        amount: Uint128::from(100u128),
+                        token_type: TokenType::Native {
+                            denom: "denom2".to_string(),
+                        },
+                    },
+                },
+                expected_error: None,
+            },
+            TestPairWithDenom {
+                name: "One invalid token with denom",
+                pair_with_denom: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token("ABC".to_string()),
+                        amount: Uint128::from(100u128),
+                        token_type: TokenType::Native {
+                            denom: "denom1".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token("".to_string()),
+                        amount: Uint128::from(100u128),
+                        token_type: TokenType::Native {
+                            denom: "denom2".to_string(),
+                        },
+                    },
+                },
+                expected_error: Some(ContractError::InvalidTokenID {}),
+            },
+        ];
+
+        for test in test_cases {
+            let res = test.pair_with_denom.validate();
 
             if let Some(err) = test.expected_error {
                 assert_eq!(res.unwrap_err(), err, "{}", test.name);
