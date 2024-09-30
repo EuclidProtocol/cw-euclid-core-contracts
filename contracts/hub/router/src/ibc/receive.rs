@@ -6,9 +6,11 @@ use cosmwasm_std::{
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
+    deposit::DepositTokenResponse,
     error::ContractError,
     events::{tx_event, TxType},
     fee::Fee,
+    msgs::virtual_balance::ExecuteMsg as VirtualBalanceMsg,
     msgs::{self, router::ExecuteMsg, virtual_balance::ExecuteMint},
     pool::EscrowCreationResponse,
     swap::{TransferResponse, WithdrawResponse},
@@ -17,7 +19,10 @@ use euclid::{
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
-    msg::{ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg},
+    msg::{
+        ChainIbcDepositTokenExecuteMsg, ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg,
+        ChainIbcSwapExecuteMsg,
+    },
 };
 
 use crate::{
@@ -181,11 +186,6 @@ pub fn reusable_internal_call(
                 }))?))
         }
         ChainIbcExecuteMsg::Transfer(msg) => {
-            ensure!(
-                msg.sender.chain_uid == chain_uid,
-                ContractError::new("Chain UID mismatch")
-            );
-
             let release_msg = ExecuteMsg::ReleaseEscrowInternal {
                 sender: msg.sender,
                 token: msg.token.clone(),
@@ -205,6 +205,14 @@ pub fn reusable_internal_call(
                     token: msg.token,
                     tx_id: msg.tx_id,
                 }))?))
+        }
+        ChainIbcExecuteMsg::DepositToken(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+
+            ibc_execute_deposit_token(deps.branch(), env, msg)
         }
     }
 }
@@ -595,4 +603,68 @@ fn ibc_execute_swap(
         funds: vec![],
     };
     Ok(response.add_submessage(SubMsg::reply_always(msg, SWAP_REPLY_ID)))
+}
+
+fn ibc_execute_deposit_token(
+    deps: DepsMut,
+    _env: Env,
+    msg: ChainIbcDepositTokenExecuteMsg,
+) -> Result<Response, ContractError> {
+    let sender = msg.clone().sender;
+
+    // Add token 1 in escrow balance
+    let token_escrow_key = (msg.asset_in.clone(), sender.chain_uid.clone());
+    let token_1_escrow_balance = ESCROW_BALANCES
+        .may_load(deps.storage, token_escrow_key.clone())?
+        .unwrap_or(Uint128::zero());
+
+    ESCROW_BALANCES.save(
+        deps.storage,
+        token_escrow_key,
+        &token_1_escrow_balance.checked_add(msg.amount_in)?,
+    )?;
+
+    let deposit_token_response = DepositTokenResponse {
+        amount: msg.amount_in,
+        token: msg.asset_in.clone(),
+        sender: msg.sender.clone(),
+        recipient: msg.recipient.clone(),
+    };
+    let ack = AcknowledgementMsg::Ok(deposit_token_response.clone());
+
+    // Load state to get virtual balance address
+    let virtual_balance_address = STATE
+        .load(deps.storage)?
+        .virtual_balance_address
+        .map_or_else(|| Err(ContractError::EmptyVirtualBalanceAddress {}), Ok)?;
+
+    // Send mint msg to virtual balance
+    let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: virtual_balance_address.into_string(),
+        msg: to_json_binary(&VirtualBalanceMsg::Mint(ExecuteMint {
+            amount: msg.amount_in,
+            balance_key: BalanceKey {
+                cross_chain_user: msg.recipient,
+                token_id: msg.asset_in.to_string(),
+            },
+        }))?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_submessage(SubMsg::new(mint_msg))
+        .add_attribute("action", "reply_deposit_token")
+        .add_attribute(
+            "deposit_token_response",
+            format!("{deposit_token_response:?}"),
+        )
+        .add_event(
+            tx_event(
+                &msg.tx_id,
+                &msg.sender.to_sender_string(),
+                TxType::DepositToken,
+            )
+            .add_attribute("tx_id", msg.tx_id.clone()),
+        )
+        .set_data(to_json_binary(&ack)?))
 }

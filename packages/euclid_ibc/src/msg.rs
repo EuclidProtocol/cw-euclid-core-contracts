@@ -64,6 +64,8 @@ pub enum ChainIbcExecuteMsg {
 
     // Transfer virtual balance message sent from factory
     Transfer(ChainIbcTransferExecuteMsg),
+
+    DepositToken(ChainIbcDepositTokenExecuteMsg),
     // RequestWithdraw {
     //     token_id: Token,
     //     amount: Uint128,
@@ -95,11 +97,13 @@ impl ChainIbcExecuteMsg {
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
             Self::Withdraw(msg) => msg.tx_id.clone(),
+            Self::DepositToken(msg) => msg.tx_id.clone(),
             Self::RequestEscrowCreation { tx_id, .. } => tx_id.clone(),
             Self::Transfer(msg) => msg.tx_id.clone(),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn to_msg(
         &self,
         deps: &mut DepsMut,
@@ -210,6 +214,18 @@ pub struct ChainIbcTransferExecuteMsg {
     // Unique per tx
     pub tx_id: String,
     pub timeout: Option<u64>,
+}
+
+#[cw_serde]
+pub struct ChainIbcDepositTokenExecuteMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+    // User will provide this
+    pub asset_in: Token,
+    pub amount_in: Uint128,
+    pub recipient: CrossChainUser,
+    // Unique per tx
+    pub tx_id: String,
 }
 
 pub const HUB_IBC_EXECUTE_MSG_QUEUE: Map<u64, HubIbcExecuteMsg> =

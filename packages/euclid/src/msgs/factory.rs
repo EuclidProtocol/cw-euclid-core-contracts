@@ -1,5 +1,5 @@
 use crate::{
-    chain::{ChainUid, CrossChainUserWithLimit},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
@@ -73,6 +73,12 @@ pub enum ExecuteMsg {
         amount: Uint128,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
+    },
+    DepositToken {
+        asset_in: TokenWithDenom,
+        amount_in: Uint128,
+        timeout: Option<u64>,
+        recipient: Option<CrossChainUser>,
     },
     UpdateFactoryState {
         // The Router Contract Address on the Virtual Settlement Layer

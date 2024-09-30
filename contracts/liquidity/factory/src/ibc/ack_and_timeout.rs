@@ -6,8 +6,9 @@ use cosmwasm_std::{
     SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
+    deposit::DepositTokenResponse,
     error::ContractError,
-    events::swap_event,
+    events::{deposit_token_event, swap_event},
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
         cw20::ExecuteMsg as Cw20ExecuteMsg, escrow::InstantiateMsg as EscrowInstantiateMsg,
@@ -23,8 +24,8 @@ use crate::{
     reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
     state::{
         PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
-        VLP_TO_LP_SHARES,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_CW20, VLP_TO_LP_SHARES,
     },
 };
 
@@ -121,6 +122,11 @@ pub fn reusable_internal_ack_call(
                 msg.tx_id,
                 is_native,
             )
+        }
+        ChainIbcExecuteMsg::DepositToken(deposit) => {
+            // Process acknowledgment for deposit
+            let res: AcknowledgementMsg<DepositTokenResponse> = from_json(ack)?;
+            ack_deposit_token_request(deps, res, deposit.sender.address, deposit.tx_id, is_native)
         } // ChainIbcExecuteMsg::RequestWithdraw {
           //     token_id, tx_id, ..
           // } => {
@@ -569,6 +575,62 @@ fn ack_swap_request(
                 .add_attribute("refund_to", sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("refund_amount", swap_info.amount_in)
+                .add_attribute("error", err)
+                .add_message(msg))
+        }
+    }
+}
+
+fn ack_deposit_token_request(
+    deps: DepsMut,
+    res: AcknowledgementMsg<DepositTokenResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    // Validate that the pending swap exists for the sender
+    let deposit_info = PENDING_TOKEN_DEPOSIT.load(deps.storage, (sender.clone(), tx_id.clone()))?;
+    // Remove this from pending swaps
+    PENDING_TOKEN_DEPOSIT.remove(deps.storage, (sender.clone(), tx_id.clone()));
+    // Check whether res is an error or not
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            // TODO:: Add msg to send asset_in to escrow
+            let asset_in = deposit_info.asset_in.clone();
+
+            // Get corresponding escrow
+            let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+
+            let send_msg = asset_in.create_escrow_msg(data.amount, escrow_address)?;
+            let response = Response::new()
+                .add_event(deposit_token_event(&tx_id, &deposit_info))
+                .add_attribute("method", "process_successfull_deposit_token")
+                .add_message(send_msg)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("deposit_token_response", format!("{data:?}"));
+
+            Ok(response)
+        }
+
+        AcknowledgementMsg::Error(err) => {
+            // Its a native call so you can return error to reject complete execution call
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            // Prepare messages to refund tokens back to user
+            // Send back both amount in and fee amount
+            let msg = deposit_info.asset_in.create_transfer_msg(
+                deposit_info.amount_in,
+                sender.to_string(),
+                None,
+            )?;
+
+            Ok(Response::new()
+                .add_attribute("method", "process_failed_deposit_token")
+                .add_attribute("refund_to", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("refund_amount", deposit_info.amount_in)
                 .add_attribute("error", err)
                 .add_message(msg))
         }

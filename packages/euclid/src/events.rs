@@ -3,7 +3,7 @@ use core::fmt;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Event;
 
-use crate::{pool::Pool, swap::SwapRequest};
+use crate::{deposit::DepositTokenRequest, pool::Pool, swap::SwapRequest};
 
 pub fn liquidity_event(pool: &Pool, tx_id: &str) -> Event {
     simple_event()
@@ -28,6 +28,16 @@ pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
         .add_attribute("timeout", format!("{timeout:?}", timeout = swap.timeout))
 }
 
+pub fn deposit_token_event(tx_id: &str, deposit: &DepositTokenRequest) -> Event {
+    simple_event()
+        .add_attribute("action", "deposit_token")
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("asset_in", deposit.asset_in.token.to_string())
+        .add_attribute("asset_in_denom", deposit.asset_in.token_type.get_key())
+        .add_attribute("amount_in", deposit.amount_in)
+        .add_attribute("timeout", format!("{timeout:?}", timeout = deposit.timeout))
+}
+
 pub fn register_factory_event(
     tx_id: &str,
     factory_address: &str,
@@ -45,6 +55,7 @@ pub fn register_factory_event(
 #[cw_serde]
 pub enum TxType {
     Swap,
+    DepositToken,
     AddLiquidity,
     RemoveLiquidity,
     PoolCreation,
@@ -61,6 +72,7 @@ pub enum TxType {
 impl fmt::Display for TxType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
+            TxType::DepositToken => "deposit_token",
             TxType::Swap => "swap",
             TxType::AddLiquidity => "add_liquidity",
             TxType::RemoveLiquidity => "remove_liquidity",
