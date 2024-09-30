@@ -23,7 +23,7 @@ use euclid_ibc::{
 
 use crate::{
     ibc,
-    state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS},
+    state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
 };
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
@@ -56,6 +56,13 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
             let liquidity: msgs::vlp::GetLiquidityResponse = deps
                 .querier
                 .query_wasm_smart(vlp_address.clone(), &msgs::vlp::QueryMsg::Liquidity {})?;
+
+            for token in &liquidity.pair.get_vec_token() {
+                let key = TOKEN_VLPS.key(token.clone());
+                let mut existing_vlps = key.may_load(deps.storage)?.unwrap_or_default();
+                existing_vlps.push(vlp_address.clone());
+                key.save(deps.storage, &existing_vlps)?;
+            }
 
             VLPS.save(
                 deps.storage,
