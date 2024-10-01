@@ -39,7 +39,7 @@ pub fn query_allowed_denoms(deps: Deps) -> Result<Binary, ContractError> {
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     let response = StateResponse {
-        token_id: state.token_id,
+        token: state.token_id,
         factory_address: state.factory_address,
         total_amount: state.total_amount,
     };

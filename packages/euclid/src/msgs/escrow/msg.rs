@@ -48,7 +48,7 @@ pub struct MigrateMsg {}
 
 #[cw_serde]
 pub struct StateResponse {
-    pub token_id: Token,
+    pub token: Token,
     pub factory_address: Addr,
     pub total_amount: Uint128,
 }

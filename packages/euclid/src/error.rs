@@ -68,6 +68,9 @@ pub enum ContractError {
     #[error("UnsupportedDenomination")]
     UnsupportedDenomination {},
 
+    #[error("CannotEscrowVoucher")]
+    CannotEscrowVoucher {},
+
     #[error("UnsupportedMessage")]
     UnsupportedMessage {},
 

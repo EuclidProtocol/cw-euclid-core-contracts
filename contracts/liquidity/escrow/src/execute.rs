@@ -14,10 +14,7 @@ pub fn execute_add_allowed_denom(
     denom: TokenType,
 ) -> Result<Response, ContractError> {
     // Vouchers are not escrowed
-    ensure!(
-        !denom.is_voucher(),
-        ContractError::UnsupportedDenomination {}
-    );
+    ensure!(!denom.is_voucher(), ContractError::CannotEscrowVoucher {});
 
     // TODO nonpayable to this function? would be better to limit depositing funds through the deposit functions
     // Only the factory can call this function
