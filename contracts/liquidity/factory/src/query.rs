@@ -9,7 +9,7 @@ use euclid::{
         PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
-    utils::Pagination,
+    utils::pagination::Pagination,
 };
 
 use crate::state::{

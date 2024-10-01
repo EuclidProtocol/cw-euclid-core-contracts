@@ -10,7 +10,7 @@ use euclid::{
     error::ContractError,
     msgs::{factory, router},
     swap::NextSwapPair,
-    token::{Pair, Token},
+    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -28,7 +28,7 @@ pub enum ChainIbcExecuteMsg {
         // Factory will set this using info.sender
         sender: CrossChainUser,
         tx_id: String,
-        pair: Pair,
+        pair: PairWithDenom,
     },
     // Request Pool Creation
     RequestEscrowCreation {
@@ -40,14 +40,10 @@ pub enum ChainIbcExecuteMsg {
         // Factory will set this using info.sender
         sender: CrossChainUser,
 
-        // User will provide this data and factory will verify using info funds
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-
         // User will provide this data
-        slippage_tolerance: u64,
+        slippage_tolerance_bps: u64,
 
-        pair: Pair,
+        pair: PairWithDenomAndAmount,
 
         // Unique per tx
         tx_id: String,
@@ -63,27 +59,6 @@ pub enum ChainIbcExecuteMsg {
     Withdraw(ChainIbcWithdrawExecuteMsg),
 
     DepositToken(ChainIbcDepositTokenExecuteMsg),
-    // RequestWithdraw {
-    //     token_id: Token,
-    //     amount: Uint128,
-
-    //     // Factory will set this using info.sender
-    //     sender: String,
-
-    //     // First element in array has highest priority
-    //     cross_chain_addresses: Vec<CrossChainUser>,
-
-    //     // Unique per tx
-    //     tx_id: String,
-    // },
-    // RequestEscrowCreation {
-    //     token: Token,
-    //     // Factory will set this using info.sender
-    //     sender: String,
-    //     // Unique per tx
-    //     tx_id: String,
-    //     //TODO Add allowed denoms?
-    // },
 }
 
 impl ChainIbcExecuteMsg {
@@ -171,7 +146,7 @@ pub struct ChainIbcSwapExecuteMsg {
     pub sender: CrossChainUser,
 
     // User will provide this
-    pub asset_in: Token,
+    pub asset_in: TokenWithDenom,
     pub amount_in: Uint128,
     pub asset_out: Token,
     pub min_amount_out: Uint128,
@@ -179,6 +154,9 @@ pub struct ChainIbcSwapExecuteMsg {
 
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+
+    pub partner_fee_amount: Uint128,
+    pub partner_fee_recipient: CrossChainUser,
 
     // Unique per tx
     pub tx_id: String,

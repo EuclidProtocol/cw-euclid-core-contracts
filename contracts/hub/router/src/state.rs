@@ -22,6 +22,9 @@ pub const STATE: Item<State> = Item::new("state");
 // Convert it to multi index map?
 pub const VLPS: Map<(Token, Token), String> = Map::new("vlps");
 
+// Store all tokens in a map for easy access
+pub const TOKEN_VLPS: Map<Token, Vec<String>> = Map::new("token_vlps");
+
 // Token escrow balance on each chain
 pub const ESCROW_BALANCES: Map<(Token, ChainUid), Uint128> = Map::new("escrow_balances");
 

@@ -11,7 +11,7 @@ use euclid::error::ContractError;
 
 use crate::execute::{
     self, execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom,
-    execute_update_state, execute_withdraw, receive_cw20,
+    execute_withdraw, receive_cw20,
 };
 use crate::query::{self, query_token_id};
 use crate::state::{State, STATE};
@@ -70,14 +70,13 @@ pub fn execute(
         ExecuteMsg::Withdraw { recipient, amount } => {
             execute_withdraw(deps, env, info, recipient, amount)
         }
-        ExecuteMsg::UpdateState { token_id } => execute_update_state(deps, env, info, token_id),
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        // New escrow queries
+        QueryMsg::State {} => query::query_state(deps),
         QueryMsg::TokenId {} => query_token_id(deps),
         QueryMsg::TokenAllowed { denom } => query::query_token_allowed(deps, denom),
         QueryMsg::AllowedDenoms {} => query::query_allowed_denoms(deps),

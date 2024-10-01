@@ -224,6 +224,7 @@ pub fn ibc_ack_update_factory_channel(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,

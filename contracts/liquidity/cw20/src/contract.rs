@@ -58,63 +58,9 @@ pub fn execute(
         } => execute_update_state(deps, env, info, token_pair, factory_address, vlp),
         _ => Ok(execute_cw20(deps, env, info, msg.into())?),
     }
-
-    // match msg {
-    //     ExecuteMsg::Transfer { recipient, amount } => Ok(execute_cw20(
-    //         deps,
-    //         env,
-    //         info,
-    //         Cw20ExecuteMsg::Transfer { recipient, amount },
-    //     )?),
-    //     ExecuteMsg::Burn { amount } => todo!(),
-    //     ExecuteMsg::Send {
-    //         contract,
-    //         amount,
-    //         msg,
-    //     } => todo!(),
-    //     ExecuteMsg::IncreaseAllowance {
-    //         spender,
-    //         amount,
-    //         expires,
-    //     } => todo!(),
-    //     ExecuteMsg::DecreaseAllowance {
-    //         spender,
-    //         amount,
-    //         expires,
-    //     } => todo!(),
-    //     ExecuteMsg::TransferFrom {
-    //         owner,
-    //         recipient,
-    //         amount,
-    //     } => todo!(),
-    //     ExecuteMsg::SendFrom {
-    //         owner,
-    //         contract,
-    //         amount,
-    //         msg,
-    //     } => todo!(),
-    //     ExecuteMsg::BurnFrom { owner, amount } => todo!(),
-    //     ExecuteMsg::Mint { recipient, amount } => todo!(),
-    //     ExecuteMsg::UpdateMarketing {
-    //         project,
-    //         description,
-    //         marketing,
-    //     } => todo!(),
-    //     ExecuteMsg::UploadLogo(_) => todo!(),
-    // }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     Ok(cw20_query(deps, env, msg.into())?)
-    // match msg {
-    // QueryMsg::TokenInfo {  } => todo!(),
-    // QueryMsg::Minter {  } => todo!(),
-    // QueryMsg::Allowance { owner, spender } => todo!(),
-    // QueryMsg::AllAllowances { owner, start_after, limit } => todo!(),
-    // QueryMsg::AllAccounts { start_after, limit } => todo!(),
-    // QueryMsg::MarketingInfo {  } => todo!(),
-    // QueryMsg::DownloadLogo {  } => todo!(),
-    // QueryMsg::Balance { address } => todo!(),
-    // }
 }

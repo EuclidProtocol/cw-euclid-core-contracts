@@ -3,16 +3,30 @@ use core::fmt;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Event;
 
-use crate::{deposit::DepositTokenRequest, pool::Pool, swap::SwapRequest};
+use crate::{deposit::DepositTokenRequest, swap::SwapRequest, token::TokenWithAmount};
 
-pub fn liquidity_event(pool: &Pool, tx_id: &str) -> Event {
-    simple_event()
+pub fn liquidity_event(
+    pool: &[TokenWithAmount],
+    liquidity_change: &[TokenWithAmount],
+    tx_id: &str,
+) -> Event {
+    let mut event = simple_event()
         .add_attribute("action", "liquidity_change")
-        .add_attribute("token_1_id", pool.pair.token_1.to_string())
-        .add_attribute("token_1_liquidity", pool.reserve_1)
-        .add_attribute("token_2_id", pool.pair.token_2.to_string())
-        .add_attribute("token_2_liquidity", pool.reserve_2)
-        .add_attribute("tx_id", tx_id)
+        .add_attribute("tx_id", tx_id);
+
+    for token in pool {
+        event = event.add_attribute("token_id", token.token.to_string());
+        event = event.add_attribute(format!("token_liquidity_{}", token.token), token.amount);
+    }
+
+    for token in liquidity_change {
+        event = event.add_attribute(
+            format!("token_liquidity_change_{}", token.token),
+            token.amount,
+        );
+    }
+
+    event
 }
 
 pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
@@ -89,10 +103,7 @@ impl fmt::Display for TxType {
 }
 
 pub fn tx_event(tx_id: &str, sender: &str, tx_type: TxType) -> Event {
-    let tx_type = match tx_type {
-        TxType::AddLiquidity => "add_liquidity".to_string(),
-        t => format!("{t:?}"),
-    };
+    let tx_type = tx_type.to_string();
     simple_event()
         .add_attribute("action", "transaction")
         .add_attribute("tx_id", tx_id)

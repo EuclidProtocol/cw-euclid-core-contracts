@@ -1,6 +1,10 @@
 [package]
 name = "euclid"
-version = "0.1.0"
+version = "0.2.0"
+authors = [
+    "gachouchani1999 <georgeschouchani1@gmail.com>",
+    "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
+]
 edition = "2021"
 
 
@@ -13,7 +17,7 @@ library = []
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cosmwasm-std = { workspace = true }
+cosmwasm-std = { workspace = true, features = ["cosmwasm_1_1"] }
 cw-storage-plus = { workspace = true }
 itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
