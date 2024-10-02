@@ -26,6 +26,7 @@ cw-storage-plus = { workspace = true }
 itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
 cw-utils = { workspace = true }
+cw-orch = {version = "0.21.2" }
 
 
 anyhow = "1.0.79"
