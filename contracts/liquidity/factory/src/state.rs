@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Int256};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
@@ -39,7 +39,7 @@ pub const HUB_CHANNEL: Item<String> = Item::new("hub_channel");
 pub const PAIR_TO_VLP: Map<(Token, Token), String> = Map::new("pair_to_vlp");
 
 // Map vlp to LP Allocations
-pub const VLP_TO_LP_SHARES: Map<String, Uint128> = Map::new("vlp_to_lp_shares");
+pub const VLP_TO_LP_SHARES: Map<String, Int256> = Map::new("vlp_to_lp_shares");
 
 // New Factory states
 pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");

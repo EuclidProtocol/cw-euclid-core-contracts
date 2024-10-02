@@ -1,19 +1,19 @@
 use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order, Uint128};
 use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
-    chain::{ChainUid, CrossChainUserWithLimit},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     msgs::router::{
-        AllChainResponse, AllTokensResponse, AllVlpResponse, ChainResponse, QuerySimulateSwap,
-        SimulateEscrowReleaseResponse, SimulateSwapResponse, StateResponse,
-        TokenEscrowChainResponse, TokenEscrowsResponse, TokenResponse, VlpResponse,
+        AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
+        EscrowResponse, QuerySimulateSwap, SimulateEscrowReleaseResponse, SimulateSwapResponse,
+        StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
-    utils::Pagination,
+    utils::pagination::{Pagination, DEFAULT_PAGINATION_LIMIT, DEFAULT_PAGINATION_SKIP},
 };
 
-use crate::state::{CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, STATE, VLPS};
+use crate::state::{CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, STATE, TOKEN_VLPS, VLPS};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -225,7 +225,7 @@ pub fn query_token_escrows(
     Ok(to_json_binary(&TokenEscrowsResponse { chains: chains? })?)
 }
 
-pub fn query_all_tokens(
+pub fn query_all_escrows(
     deps: Deps,
     pagination: Pagination<Token>,
 ) -> Result<Binary, ContractError> {
@@ -238,18 +238,64 @@ pub fn query_all_tokens(
     let start = start.map(PrefixBound::inclusive);
     let end = end.map(PrefixBound::exclusive);
 
-    let tokens: Result<_, ContractError> = ESCROW_BALANCES
+    let escrows: Result<_, ContractError> = ESCROW_BALANCES
         .prefix_range(deps.storage, start, end, Order::Ascending)
-        .skip(skip.unwrap_or(0) as usize)
-        .take(limit.unwrap_or(10) as usize)
+        .skip(skip.unwrap_or(DEFAULT_PAGINATION_SKIP) as usize)
+        .take(limit.unwrap_or(DEFAULT_PAGINATION_LIMIT) as usize)
         .map(|v| {
             let v = v?;
-            Ok(TokenResponse {
+            Ok(EscrowResponse {
                 token: v.0 .0,
                 chain_uid: v.0 .1,
+                balance: v.1,
             })
         })
         .collect();
 
-    Ok(to_json_binary(&AllTokensResponse { tokens: tokens? })?)
+    Ok(to_json_binary(&AllEscrowsResponse { escrows: escrows? })?)
+}
+
+pub fn query_all_tokens(
+    deps: Deps,
+    pagination: Pagination<Token>,
+) -> Result<Binary, ContractError> {
+    let Pagination {
+        min: start,
+        max: end,
+        skip,
+        limit,
+    } = pagination;
+
+    let start = start.map(Bound::inclusive);
+    let end = end.map(Bound::exclusive);
+    let tokens = TOKEN_VLPS
+        .keys(deps.storage, start, end, Order::Ascending)
+        .skip(skip.unwrap_or(DEFAULT_PAGINATION_SKIP) as usize)
+        .take(limit.unwrap_or(DEFAULT_PAGINATION_LIMIT) as usize)
+        .flatten()
+        .collect();
+
+    Ok(to_json_binary(&AllTokensResponse { tokens })?)
+}
+
+pub fn verify_cross_chain_addresses(
+    deps: Deps,
+    users: Vec<CrossChainUser>,
+) -> Result<(), ContractError> {
+    for user in users.iter() {
+        ensure!(
+            !user.address.is_empty(),
+            ContractError::Generic {
+                err: "Address cannot be empty".to_string()
+            }
+        );
+        let chain_uid = user.chain_uid.clone();
+        ensure!(
+            CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
+            ContractError::Generic {
+                err: "Chain UID not registered".to_string()
+            }
+        );
+    }
+    Ok(())
 }

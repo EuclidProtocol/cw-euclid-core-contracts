@@ -1,7 +1,11 @@
 [package]
 name = "factory"
-version = "0.1.0"
-authors = ["gachouchani1999 <georgeschouchani1@gmail.com>"]
+version = "0.2.0"
+authors = [
+  "gachouchani1999 <georgeschouchani1@gmail.com>",
+  "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
+  "Joe Monem <jmonem@icloud.com>",
+]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

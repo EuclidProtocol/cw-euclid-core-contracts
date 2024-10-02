@@ -115,9 +115,10 @@ pub fn execute_transfer(
     // Added here just for additional safety
     ensure!(
         sender_old_balance.ge(&msg.amount),
-        ContractError::Generic {
-            err: "Not Enough Funds".to_string()
-        }
+        ContractError::new(&format!(
+            "Not Enough Funds: {} < {}",
+            sender_old_balance, msg.amount
+        ))
     );
 
     let sender_new_balance = sender_old_balance.checked_sub(msg.amount)?;
@@ -150,14 +151,14 @@ pub fn execute_update_state(
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
     let verified_router = if let Some(ref router) = router {
-        deps.api.addr_validate(&router.as_str())?;
+        deps.api.addr_validate(router.as_str())?;
         router.clone()
     } else {
         state.router
     };
 
     let verified_admin = if let Some(ref admin) = admin {
-        deps.api.addr_validate(&admin.as_str())?;
+        deps.api.addr_validate(admin.as_str())?;
         admin.clone()
     } else {
         state.admin

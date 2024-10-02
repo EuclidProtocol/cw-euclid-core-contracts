@@ -2,21 +2,23 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
-use cw20::Cw20ReceiveMsg;
+use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
-    cw20::Cw20HookMsg,
     deposit::DepositTokenRequest,
     error::ContractError,
     events::{deposit_token_event, swap_event, tx_event, TxType},
-    fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
+    fee::{PartnerFee, BPS_100_PERCENT, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    msgs::escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
+    msgs::{
+        escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
+        factory::cw20::FactoryCw20HookMsg,
+    },
     pool::{EscrowCreateRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
-    token::{Pair, PairWithDenom, Token, TokenWithDenom},
-    utils::generate_tx,
+    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::msg::{
     ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcTransferExecuteMsg,
@@ -56,13 +58,14 @@ pub fn execute_request_pool_creation(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
-    pair: PairWithDenom,
+    pair_with_denom: PairWithDenom,
     lp_token_name: String,
     lp_token_symbol: String,
     lp_token_decimal: u8,
     lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
+    let pair = pair_with_denom.get_pair()?;
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
@@ -75,12 +78,20 @@ pub fn execute_request_pool_creation(
         ContractError::TxAlreadyExist {}
     );
     ensure!(
-        !PAIR_TO_VLP.has(deps.storage, pair.get_pair()?.get_tupple()),
+        !PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
         ContractError::PoolAlreadyExists {}
     );
-
-    let tokens = pair.get_vec_token_info();
+    let mut one_token_already_exists = false;
+    let tokens = pair_with_denom.get_vec_token_info();
     for token in tokens {
+        // Vouchers are not escrowed
+        if token.token_type.is_voucher() {
+            // If its a voucher token, then we can assume that one token already exists
+            one_token_already_exists = true;
+            continue;
+        }
+
+        // Ensure valid denom if token already exists
         let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
         if let Some(escrow_address) = escrow_address {
             let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
@@ -94,11 +105,33 @@ pub fn execute_request_pool_creation(
                 token_allowed.allowed,
                 ContractError::UnsupportedDenomination {}
             );
+            one_token_already_exists = true;
         }
     }
 
+    ensure!(
+        one_token_already_exists,
+        ContractError::new(
+            "Cannot create pool two new tokens. Atleast one token must already be registered."
+        )
+    );
+
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
+
+    // We might get errors in ack if marketing is not valid
+    if let Some(marketing) = &lp_token_marketing {
+        if let Some(logo) = &marketing.logo {
+            ensure!(
+                matches!(logo, Logo::Url(_)),
+                ContractError::new("Only URL logos are supported")
+            );
+        }
+
+        if let Some(marketing_address) = &marketing.marketing {
+            deps.api.addr_validate(marketing_address)?;
+        }
+    }
 
     let lp_token_instantiate_msg = cw20_base::msg::InstantiateMsg {
         name: lp_token_name,
@@ -112,17 +145,18 @@ pub fn execute_request_pool_creation(
         marketing: lp_token_marketing,
     };
     lp_token_instantiate_msg.validate()?;
+
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
-        pair_info: pair.clone(),
+        pair_info: pair_with_denom.clone(),
         lp_token_instantiate_msg,
     };
 
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
-        pair: pair.get_pair()?,
+        pair: pair_with_denom,
         sender,
         tx_id: tx_id.clone(),
     }
@@ -154,6 +188,12 @@ pub fn execute_request_register_escrow(
     token: TokenWithDenom,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
+    // Vouchers are not escrowed
+    ensure!(
+        !token.token_type.is_voucher(),
+        ContractError::UnsupportedDenomination {}
+    );
+
     let state = STATE.load(deps.storage)?;
     ensure!(state.admin == info.sender, ContractError::Unauthorized {});
 
@@ -214,10 +254,8 @@ pub fn add_liquidity_request(
     deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
-    pair_info: PairWithDenom,
-    token_1_liquidity: Uint128,
-    token_2_liquidity: Uint128,
-    slippage_tolerance: u64,
+    pair_info: PairWithDenomAndAmount,
+    slippage_tolerance_bps: u64,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     pair_info.validate()?;
@@ -232,7 +270,7 @@ pub fn add_liquidity_request(
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
-        (1..=100).contains(&slippage_tolerance),
+        (1..=BPS_100_PERCENT).contains(&slippage_tolerance_bps),
         ContractError::InvalidSlippageTolerance {}
     );
 
@@ -248,102 +286,64 @@ pub fn add_liquidity_request(
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
 
-    // Check that the liquidity is greater than 0
-    ensure!(
-        !(token_1_liquidity.is_zero() || token_2_liquidity.is_zero()),
-        ContractError::ZeroAssetAmount {}
-    );
-
-    // Do an early check for tokens escrow so that if it exists, it should allow the denom that we are sending
-    let tokens = pair_info.get_vec_token_info();
-    for token in tokens {
-        let escrow_address = TOKEN_TO_ESCROW
-            .load(deps.storage, token.token)
-            .or(Err(ContractError::EscrowDoesNotExist {}))?;
-        let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
-            denom: token.token_type,
-        };
-        let token_allowed: AllowedTokenResponse = deps
-            .querier
-            .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
-
-        ensure!(
-            token_allowed.allowed,
-            ContractError::UnsupportedDenomination {}
-        );
-    }
-
-    // Get the token 1 and token 2 from the pair info
-    let token_1 = pair_info.token_1.clone();
-    let token_2 = pair_info.token_2.clone();
-
     // Prepare msg vector
     let mut msgs: Vec<CosmosMsg> = Vec::new();
 
-    // IF TOKEN IS A SMART CONTRACT IT REQUIRES APPROVAL FOR TRANSFER
-    if token_1.token_type.is_smart() {
-        let msg = token_1.token_type.create_transfer_msg(
-            token_1_liquidity,
-            env.contract.address.clone().to_string(),
-            Some(sender.address.clone()),
-        )?;
-        msgs.push(msg);
-    } else {
-        // If funds empty return error
-        ensure!(
-            !info.funds.is_empty(),
-            ContractError::InsufficientDeposit {}
-        );
+    let mut fund_manager = FundManager::new(&info.funds);
+    // Do an early check for tokens escrow so that if it exists, it should allow the denom that we are sending
+    let tokens = pair_info.get_vec_token_info();
+    for token in tokens {
+        // Ensure liquidity is not zero
+        ensure!(!token.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
-        // Check for funds sent with the message
-        let amt = info
-            .funds
-            .iter()
-            .find(|x| x.denom == token_1.token_type.get_denom())
-            .ok_or(ContractError::Generic {
-                err: "Denom not found".to_string(),
-            })?;
+        // Vouchers are not escrowed
+        if !token.token_type.is_voucher() {
+            let escrow_address = TOKEN_TO_ESCROW
+                .load(deps.storage, token.token)
+                .or(Err(ContractError::EscrowDoesNotExist {}))?;
+            let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
+                denom: token.token_type.clone(),
+            };
+            let token_allowed: AllowedTokenResponse = deps
+                .querier
+                .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
 
-        ensure!(
-            amt.amount.ge(&token_1_liquidity),
-            ContractError::InsufficientDeposit {}
-        );
+            ensure!(
+                token_allowed.allowed,
+                ContractError::UnsupportedDenomination {}
+            );
+
+            match token.token_type {
+                TokenType::Native { denom } => {
+                    ensure!(
+                        !info.funds.is_empty(),
+                        ContractError::InsufficientDeposit {}
+                    );
+                    // Use funds, if its not present this will throw error.
+                    // This will make sure enough funds are provided with the message
+                    fund_manager.use_fund(token.amount, &denom)?;
+                }
+                TokenType::Smart { .. } => {
+                    let msg = token.token_type.create_transfer_msg(
+                        token.amount,
+                        env.contract.address.clone().to_string(),
+                        Some(sender.address.clone()),
+                    )?;
+                    msgs.push(msg);
+                }
+                TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
+            }
+        }
     }
 
-    // Same for token 2
-    if token_2.token_type.is_smart() {
-        let msg = token_2.token_type.create_transfer_msg(
-            token_2_liquidity,
-            env.contract.address.clone().to_string(),
-            Some(sender.address.clone()),
-        )?;
-        msgs.push(msg);
-    } else {
-        // If funds empty return error
-        ensure!(
-            !info.funds.is_empty(),
-            ContractError::InsufficientDeposit {}
-        );
-
-        let amt = info
-            .funds
-            .iter()
-            .find(|x| x.denom == token_2.token_type.get_denom())
-            .ok_or(ContractError::Generic {
-                err: "Denom not found".to_string(),
-            })?;
-
-        ensure!(
-            amt.amount.ge(&token_2_liquidity),
-            ContractError::InsufficientDeposit {}
-        );
-    }
+    ensure!(
+        fund_manager.validate_funds_are_empty().is_ok(),
+        ContractError::new("Extra funds are not allowed")
+    );
 
     let liquidity_tx_info = AddLiquidityRequest {
         sender: info.sender.to_string(),
-        token_1_liquidity,
-        token_2_liquidity,
-        pair_info,
+        pair_info: pair_info.clone(),
         tx_id: tx_id.clone(),
     };
 
@@ -355,10 +355,8 @@ pub fn add_liquidity_request(
 
     let add_liq_msg = ChainIbcExecuteMsg::AddLiquidity {
         sender,
-        token_1_liquidity,
-        token_2_liquidity,
-        slippage_tolerance,
-        pair,
+        slippage_tolerance_bps,
+        pair: pair_info,
         tx_id: tx_id.clone(),
     }
     .to_msg(
@@ -472,19 +470,19 @@ pub fn execute_swap_request(
     info: MessageInfo,
     sender: CrossChainUser,
     asset_in: TokenWithDenom,
-    asset_out: Token,
     amount_in: Uint128,
+    asset_out: Token,
     min_amount_out: Uint128,
     swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    let sender_addr = deps.api.addr_validate(&sender.address)?;
-
     // Validate asset in
     asset_in.validate(deps.as_ref())?;
+
+    let state = STATE.load(deps.storage)?;
+    let sender_addr = deps.api.addr_validate(&sender.address)?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
@@ -496,6 +494,42 @@ pub fn execute_swap_request(
     ensure!(
         partner_fee_bps <= MAX_PARTNER_FEE_BPS,
         ContractError::InvalidPartnerFee {}
+    );
+
+    if !asset_in.token_type.is_voucher() {
+        // Verify that this asset is allowed
+        let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+
+        let token_allowed: euclid::msgs::escrow::AllowedTokenResponse =
+            deps.querier.query_wasm_smart(
+                escrow,
+                &euclid::msgs::escrow::QueryMsg::TokenAllowed {
+                    denom: asset_in.token_type.clone(),
+                },
+            )?;
+        ensure!(
+            token_allowed.allowed,
+            ContractError::UnsupportedDenomination {}
+        );
+    }
+
+    let mut fund_manager = FundManager::new(&info.funds);
+    match &asset_in.token_type {
+        TokenType::Native { denom } => {
+            // Verify thatthe amount of funds passed is greater than the asset amount
+            fund_manager.use_fund(amount_in, denom)?;
+        }
+        TokenType::Smart { contract_address } => {
+            ensure!(
+                info.sender == *contract_address,
+                ContractError::Unauthorized {}
+            );
+        }
+        TokenType::Voucher { .. } => {}
+    }
+    ensure!(
+        fund_manager.validate_funds_are_empty().is_ok(),
+        ContractError::new("Extra funds sent with message")
     );
 
     let partner_fee_amount = amount_in.checked_mul_ceil(Decimal::bps(partner_fee_bps))?;
@@ -533,62 +567,24 @@ pub fn execute_swap_request(
     let channel = HUB_CHANNEL.load(deps.storage)?;
     let timeout = get_timeout(timeout)?;
 
-    // Verify that this asset is allowed
-    let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+    let partner_fee_recipient = partner_fee
+        .clone()
+        .map(|partner_fee| deps.api.addr_validate(&partner_fee.recipient))
+        .transpose()?
+        .unwrap_or(sender_addr.clone());
 
-    let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps.querier.query_wasm_smart(
-        escrow,
-        &euclid::msgs::escrow::QueryMsg::TokenAllowed {
-            denom: asset_in.token_type.clone(),
-        },
-    )?;
-
-    ensure!(
-        token_allowed.allowed,
-        ContractError::UnsupportedDenomination {}
-    );
-
-    // Verify if the token is native
-    if asset_in.token_type.is_native() {
-        // Get the denom of native token
-        let denom = asset_in.token_type.get_denom();
-
-        // Verify thatthe amount of funds passed is greater than the asset amount
-        if info
-            .funds
-            .iter()
-            .find(|x| x.denom == denom)
-            .ok_or(ContractError::Generic {
-                err: "Denom not found".to_string(),
-            })?
-            .amount
-            < amount_in
-        {
-            return Err(ContractError::Generic {
-                err: "Funds attached are less than funds needed".to_string(),
-            });
-        }
-    } else {
-        // Verify that the contract address is the same as the asset contract address
-        ensure!(
-            info.sender == asset_in.token_type.get_denom(),
-            ContractError::Unauthorized {}
-        );
-    }
     let swap_info = SwapRequest {
         sender: sender_addr.to_string(),
         asset_in: asset_in.clone(),
-        asset_out: asset_out.clone(),
         amount_in,
+        asset_out: asset_out.clone(),
         min_amount_out,
         swaps: swaps.clone(),
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
         tx_id: tx_id.clone(),
         cross_chain_addresses: cross_chain_addresses.clone(),
         partner_fee_amount,
-        partner_fee_recipient: partner_fee
-            .map(|partner_fee| deps.api.addr_validate(&partner_fee.recipient))
-            .transpose()?,
+        partner_fee_recipient: partner_fee_recipient.clone(),
     };
     PENDING_SWAPS.save(
         deps.storage,
@@ -598,19 +594,24 @@ pub fn execute_swap_request(
 
     let swap_msg = ChainIbcExecuteMsg::Swap(euclid_ibc::msg::ChainIbcSwapExecuteMsg {
         sender,
-        asset_in: asset_in.token,
+        asset_in,
         amount_in,
         asset_out,
         min_amount_out,
         swaps,
         tx_id: tx_id.clone(),
         cross_chain_addresses,
+        partner_fee_recipient: CrossChainUser {
+            address: partner_fee_recipient.to_string(),
+            chain_uid: state.chain_uid.clone(),
+        },
+        partner_fee_amount,
     })
     .to_msg(
         deps,
         &env,
-        state.clone().router_contract,
-        state.clone().chain_uid,
+        state.router_contract.clone(),
+        state.chain_uid.clone(),
         state.is_native,
         channel,
         timeout,
@@ -638,6 +639,11 @@ pub fn execute_deposit_token(
     timeout: Option<u64>,
     recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
+    ensure!(
+        !asset_in.token_type.is_voucher(),
+        ContractError::UnsupportedDenomination {}
+    );
+
     let state = STATE.load(deps.storage)?;
 
     let sender_addr = deps.api.addr_validate(&sender.address)?;
@@ -671,33 +677,25 @@ pub fn execute_deposit_token(
         ContractError::UnsupportedDenomination {}
     );
 
-    // Verify if the token is native
-    if asset_in.token_type.is_native() {
-        // Get the denom of native token
-        let denom = asset_in.token_type.get_denom();
+    let mut fund_manager = FundManager::new(&info.funds);
 
-        // Verify thatthe amount of funds passed is greater than the asset amount
-        if info
-            .funds
-            .iter()
-            .find(|x| x.denom == denom)
-            .ok_or(ContractError::Generic {
-                err: "Denom not found".to_string(),
-            })?
-            .amount
-            < amount_in
-        {
-            return Err(ContractError::Generic {
-                err: "Funds attached are less than funds needed".to_string(),
-            });
+    match &asset_in.token_type {
+        TokenType::Native { denom } => {
+            fund_manager.use_fund(amount_in, denom)?;
         }
-    } else {
-        // Verify that the contract address is the same as the asset contract address
-        ensure!(
-            info.sender == asset_in.token_type.get_denom(),
-            ContractError::Unauthorized {}
-        );
+        TokenType::Smart { contract_address } => {
+            ensure!(
+                info.sender == *contract_address,
+                ContractError::Unauthorized {}
+            );
+        }
+        TokenType::Voucher { .. } => {}
     }
+
+    ensure!(
+        fund_manager.validate_funds_are_empty().is_ok(),
+        ContractError::new("Extra funds sent with message")
+    );
 
     let deposit_token_info = DepositTokenRequest {
         sender: sender_addr.to_string(),
@@ -707,6 +705,7 @@ pub fn execute_deposit_token(
         tx_id: tx_id.clone(),
         recipient: recipient.clone(),
     };
+
     PENDING_TOKEN_DEPOSIT.save(
         deps.storage,
         (sender_addr.clone(), tx_id.clone()),
@@ -761,7 +760,7 @@ pub fn receive_cw20(
 
     match from_json(&cw20_msg.msg)? {
         // Allow to swap using a CW20 hook message
-        Cw20HookMsg::Swap {
+        FactoryCw20HookMsg::Swap {
             asset_in,
             asset_out,
             min_amount_out,
@@ -774,7 +773,7 @@ pub fn receive_cw20(
 
             // ensure that contract address is same as asset being swapped
             ensure!(
-                contract_adr == asset_in.get_denom(),
+                contract_adr == asset_in.token_type.get_smart_contract_address()?,
                 ContractError::AssetDoesNotExist {}
             );
 
@@ -787,8 +786,8 @@ pub fn receive_cw20(
                 info,
                 sender,
                 asset_in,
-                asset_out,
                 amount_in,
+                asset_out,
                 min_amount_out,
                 swaps,
                 timeout,
@@ -796,7 +795,7 @@ pub fn receive_cw20(
                 partner_fee,
             )
         }
-        Cw20HookMsg::RemoveLiquidity {
+        FactoryCw20HookMsg::RemoveLiquidity {
             pair,
             lp_allocation,
             timeout,
@@ -811,8 +810,23 @@ pub fn receive_cw20(
             timeout,
             cross_chain_addresses,
         ),
+        FactoryCw20HookMsg::Deposit {
+            token,
+            recipient,
+            timeout,
+        } => {
+            let contract_adr = info.sender.clone();
 
-        _ => Err(ContractError::NotImplemented {}),
+            let asset_in = token.with_type(TokenType::Smart {
+                contract_address: contract_adr.to_string(),
+            });
+            let amount_in = cw20_msg.amount;
+
+            // ensure that the contract address is the same as the asset contract address
+            execute_deposit_token(
+                &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
+            )
+        }
     }
 }
 
@@ -990,9 +1004,9 @@ pub fn execute_update_state(
         router_contract: router_contract.clone().unwrap_or(state.router_contract),
         admin: admin.clone().unwrap_or(state.admin),
         escrow_code_id: escrow_code_id.unwrap_or(state.escrow_code_id),
-        cw20_code_id: cw20_code_id.clone().unwrap_or(state.cw20_code_id),
+        cw20_code_id: cw20_code_id.unwrap_or(state.cw20_code_id),
         chain_uid: state.chain_uid,
-        is_native: is_native.clone().unwrap_or(state.is_native),
+        is_native: is_native.unwrap_or(state.is_native),
         partner_fees_collected: state.partner_fees_collected,
     };
 
@@ -1016,85 +1030,6 @@ pub fn execute_update_state(
         .add_attribute(
             "is_native",
             is_native.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
-        ))
-}
-
-pub fn execute_update_escrow_state(
-    deps: DepsMut,
-    info: MessageInfo,
-    current_token_id: Token,
-    new_token_id: Option<Token>,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(
-        state.admin == info.sender.into_string(),
-        ContractError::Unauthorized {}
-    );
-    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, current_token_id.clone())?;
-    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: escrow_address.into_string(),
-        msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::UpdateState {
-            token_id: new_token_id.clone(),
-        })?,
-        funds: vec![],
-    });
-    Ok(Response::new()
-        .add_submessage(SubMsg::new(msg))
-        .add_attribute("method", "update_escrow_state")
-        .add_attribute(
-            "token_id",
-            new_token_id.map_or("unchanged".to_string(), |x| x.to_string()),
-        ))
-}
-
-pub fn execute_update_cw20_state(
-    deps: DepsMut,
-    info: MessageInfo,
-    cw20_address: String,
-    token_pair: Option<Pair>,
-    factory_address: Option<String>,
-    vlp: Option<String>,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(
-        state.admin == info.sender.into_string(),
-        ContractError::Unauthorized {}
-    );
-
-    let cw20_address = deps.api.addr_validate(&cw20_address)?;
-
-    let verified_factory_address = if let Some(ref factory_address) = factory_address {
-        Some(deps.api.addr_validate(&factory_address.as_str())?)
-    } else {
-        None
-    };
-
-    let verified_vlp = if let Some(ref vlp) = vlp {
-        Some(deps.api.addr_validate(&vlp.as_str())?.into_string())
-    } else {
-        None
-    };
-
-    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: cw20_address.clone().into_string(),
-        msg: to_json_binary(&euclid::msgs::cw20::ExecuteMsg::UpdateState {
-            token_pair,
-            factory_address: verified_factory_address,
-            vlp: verified_vlp,
-        })?,
-        funds: vec![],
-    });
-    Ok(Response::new()
-        .add_submessage(SubMsg::new(msg))
-        .add_attribute("method", "update_cw20_state")
-        .add_attribute("cw20_address", cw20_address.to_string())
-        .add_attribute(
-            "factory_address",
-            factory_address.map_or("unchanged".to_string(), |x| x.to_string()),
-        )
-        .add_attribute(
-            "vlp",
-            vlp.map_or("unchanged".to_string(), |x| x.to_string()),
         ))
 }
 

@@ -9,42 +9,23 @@ use euclid::{
     events::{tx_event, TxType},
     msgs::{
         router::{ExecuteMsg, RegisterFactoryChainType},
-        virtual_balance::{ExecuteBurn, ExecuteMsg as VirtualBalanceExecuteMsg, ExecuteTransfer},
+        virtual_balance::{ExecuteBurn, ExecuteTransfer},
     },
     timeout::get_timeout,
     token::Token,
-    utils::generate_tx,
+    utils::tx::generate_tx,
     virtual_balance::BalanceKey,
 };
 use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
     ibc::receive,
-    reply::{VIRTUAL_BALANCE_BURN_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
+    query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
         STATE,
     },
 };
-
-// Function to update the pool code ID
-pub fn execute_update_vlp_code_id(
-    deps: DepsMut,
-    info: MessageInfo,
-    new_vlp_code_id: u64,
-) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
-
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-
-    state.vlp_code_id = new_vlp_code_id;
-
-    STATE.save(deps.storage, &state)?;
-
-    Ok(Response::new()
-        .add_attribute("method", "update_pool_code_id")
-        .add_attribute("new_vlp_code_id", new_vlp_code_id.to_string()))
-}
 
 pub fn execute_update_lock(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
@@ -134,7 +115,6 @@ pub fn execute_register_factory(
         ContractError::new("Cannot use VSL chain uid")
     );
 
-    // TODO: Add check for existing chain ids
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
@@ -249,6 +229,14 @@ pub fn execute_withdraw_voucher(
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
+    verify_cross_chain_addresses(
+        deps.as_ref(),
+        cross_chain_addresses
+            .clone()
+            .into_iter()
+            .map(|x| x.user)
+            .collect(),
+    )?;
     let cross_chain_user = CrossChainUser {
         chain_uid: ChainUid::vsl_chain_uid()?,
         address: info.sender.to_string(),
@@ -272,6 +260,7 @@ pub fn execute_withdraw_voucher(
         .add_attribute("method", "withdraw_voucher"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn execute_release_escrow(
     deps: &mut DepsMut,
     env: Env,
@@ -284,11 +273,12 @@ pub fn execute_release_escrow(
     timeout: Option<u64>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
     );
+
+    let state = STATE.load(deps.storage)?;
 
     let virtual_balance_address = state
         .virtual_balance_address
@@ -402,10 +392,7 @@ pub fn execute_release_escrow(
             msg: to_json_binary(&burn_virtual_balance_msg)?,
             funds: vec![],
         });
-        response = response.add_submessage(SubMsg::reply_always(
-            burn_virtual_balance_msg,
-            VIRTUAL_BALANCE_BURN_REPLY_ID,
-        ));
+        response = response.add_message(burn_virtual_balance_msg);
     }
 
     Ok(response
@@ -579,10 +566,7 @@ pub fn execute_transfer_escrow(
             msg: to_json_binary(&transfer_virtual_balance_msg)?,
             funds: vec![],
         });
-        response = response.add_submessage(SubMsg::reply_always(
-            transfer_virtual_balance_msg,
-            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
-        ));
+        response = response.add_submessage(SubMsg::new(transfer_virtual_balance_msg));
     }
 
     Ok(response
@@ -631,7 +615,7 @@ pub fn execute_update_router_state(
 
     // Validate Admin Address if provided
     let verified_admin = if let Some(ref admin) = admin {
-        deps.api.addr_validate(&admin.as_str())?.into_string()
+        deps.api.addr_validate(admin.as_str())?.to_string()
     } else {
         state.admin
     };
@@ -660,48 +644,4 @@ pub fn execute_update_router_state(
             "locked",
             locked.map_or("unchanged".to_string(), |locked_val| locked_val.to_string()),
         ))
-}
-
-pub fn execute_update_virtual_balance_state(
-    deps: DepsMut,
-    info: MessageInfo,
-    router: Option<String>,
-    admin: Option<String>,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-
-    let virtual_balance_address = state
-        .clone()
-        .virtual_balance_address
-        .ok_or_else(|| ContractError::new("Virtual Balance Contract Not Set"))?
-        .into_string();
-
-    let verified_router = if let Some(ref router) = router {
-        deps.api.addr_validate(&router.as_str())?;
-        Some(router.clone())
-    } else {
-        None
-    };
-
-    let verified_admin = if let Some(ref admin) = admin {
-        Some(deps.api.addr_validate(&admin.as_str())?)
-    } else {
-        None
-    };
-
-    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: virtual_balance_address,
-        msg: to_json_binary(&VirtualBalanceExecuteMsg::UpdateState {
-            router: verified_router,
-            admin: verified_admin,
-        })?,
-        funds: vec![],
-    });
-
-    Ok(Response::new()
-        .add_message(msg)
-        .add_attribute("method", "update_state")
-        .add_attribute("admin", admin.unwrap_or_else(|| "unchanged".to_string()))
-        .add_attribute("router", router.unwrap_or_else(|| "unchanged".to_string())))
 }

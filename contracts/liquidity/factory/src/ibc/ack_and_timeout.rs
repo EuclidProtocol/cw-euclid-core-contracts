@@ -2,8 +2,8 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement,
-    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, StdResult,
-    SubMsg, Uint128, WasmMsg,
+    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, ReplyOn, Response, StdError,
+    StdResult, SubMsg, WasmMsg,
 };
 use euclid::{
     deposit::DepositTokenResponse,
@@ -207,6 +207,9 @@ fn ack_pool_creation(
             // Collects PairInfo into a vector of Token Info for easy iteration
             let tokens = existing_req.pair_info.get_vec_token_info();
             for token in tokens {
+                if token.token_type.is_voucher() {
+                    continue;
+                }
                 let escrow_contract =
                     TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
 
@@ -350,27 +353,28 @@ fn ack_add_liquidity(
             // Remove liquidity shares
             let shares = VLP_TO_LP_SHARES
                 .may_load(deps.storage, data.vlp_address.clone())?
-                .unwrap_or(Uint128::zero());
-            let shares = shares.checked_add(data.mint_lp_tokens)?;
+                .unwrap_or(Int256::zero());
+            let shares = shares.checked_add(data.mint_lp_tokens.into())?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
             let mut res = Response::new().add_attribute("method", "ack_add_liquidity");
 
-            // Token 1
-            let token_info = liquidity_info.pair_info.token_1.clone();
-            let liquidity = liquidity_info.token_1_liquidity;
-            let escrow_contract = TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
+            // Send tokens back to escrow
+            for token_info in liquidity_info.pair_info.get_vec_token_info() {
+                // Vouchers are not escrowed
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
 
-            let send_msg = token_info.create_escrow_msg(liquidity, escrow_contract)?;
-            res = res.add_message(send_msg);
-
-            // Token 2
-            let token_info = liquidity_info.pair_info.token_2;
-            let liquidity = liquidity_info.token_2_liquidity;
-            let escrow_contract = TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
-            let send_msg = token_info.create_escrow_msg(liquidity, escrow_contract)?;
-            res = res.add_message(send_msg);
+                let liquidity = token_info.amount;
+                let escrow_contract =
+                    TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
+                let send_msg = token_info
+                    .token_type
+                    .create_escrow_msg(liquidity, escrow_contract)?;
+                res = res.add_message(send_msg);
+            }
 
             // Mint cw20 tokens for sender //
             // Get cw20 contract address
@@ -399,18 +403,17 @@ fn ack_add_liquidity(
             }
             // Prepare messages to refund tokens back to user
             let mut msgs: Vec<CosmosMsg> = Vec::new();
-            let msg = liquidity_info.pair_info.token_1.create_transfer_msg(
-                liquidity_info.token_1_liquidity,
-                sender.to_string(),
-                None,
-            )?;
-            msgs.push(msg);
-            let msg = liquidity_info.pair_info.token_2.create_transfer_msg(
-                liquidity_info.token_2_liquidity,
-                sender.to_string(),
-                None,
-            )?;
-            msgs.push(msg);
+            for token_info in liquidity_info.pair_info.get_vec_token_info() {
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
+                let msg = token_info.token_type.create_transfer_msg(
+                    token_info.amount,
+                    sender.to_string(),
+                    None,
+                )?;
+                msgs.push(msg);
+            }
 
             Ok(Response::new()
                 .add_attribute("method", "liquidity_tx_err_refund")
@@ -441,8 +444,8 @@ fn ack_remove_liquidity(
             // Remove liquidity shares
             let shares = VLP_TO_LP_SHARES
                 .may_load(deps.storage, data.vlp_address.clone())?
-                .unwrap_or(Uint128::zero());
-            let shares = shares.checked_sub(data.burn_lp_tokens)?;
+                .unwrap_or(Int256::zero());
+            let shares = shares.checked_sub(data.burn_lp_tokens.into())?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
@@ -467,7 +470,6 @@ fn ack_remove_liquidity(
                 .add_attribute("tx_id", tx_id))
         }
 
-        // Todo:: Return LP Tokens back to sender
         AcknowledgementMsg::Error(err) => {
             // Its a native call so you can return error to reject complete execution call
             if is_native {
@@ -509,20 +511,16 @@ fn ack_swap_request(
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
-            // TODO:: Add msg to send asset_in to escrow
             let asset_in = swap_info.asset_in.clone();
 
-            // Get corresponding escrow
-            let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
-
-            let send_msg = asset_in.create_escrow_msg(swap_info.amount_in, escrow_address)?;
             let mut response = Response::new()
                 .add_event(swap_event(&tx_id, &swap_info))
                 .add_attribute("method", "process_successfull_swap")
-                .add_message(send_msg)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("amount_out", data.amount_out)
-                .add_attribute("swap_response", format!("{data:?}"));
+                .add_attribute("swap_response", format!("{data:?}"))
+                .add_attribute("partner_fee_amount", swap_info.partner_fee_amount)
+                .add_attribute("partner_fee_recipient", &swap_info.partner_fee_recipient);
 
             if !swap_info.partner_fee_amount.is_zero() {
                 let mut state = STATE.load(deps.storage)?;
@@ -534,22 +532,21 @@ fn ack_swap_request(
 
                 // Save new total partner fees collected to state
                 STATE.save(deps.storage, &state)?;
+            }
+            if !asset_in.token_type.is_voucher() {
+                let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+                let send_msg = asset_in.create_escrow_msg(swap_info.amount_in, escrow_address)?;
+                response = response.add_message(send_msg);
 
-                // Send the partner fee amount to recipient of the fee, if no recipient was provided, send the
-                // funds back to the user
-                let partner_fee_recipient = swap_info
-                    .partner_fee_recipient
-                    .unwrap_or(sender)
-                    .to_string();
-                let partner_send_msg = asset_in.create_transfer_msg(
-                    swap_info.partner_fee_amount,
-                    partner_fee_recipient.clone(),
-                    None,
-                )?;
-                response = response
-                    .add_message(partner_send_msg)
-                    .add_attribute("partner_fee_amount", swap_info.partner_fee_amount)
-                    .add_attribute("partner_fee_recipient", partner_fee_recipient)
+                // if partner fee is not zero, send it to the partner fee recipient
+                if !swap_info.partner_fee_amount.is_zero() {
+                    let partner_send_msg = asset_in.create_transfer_msg(
+                        swap_info.partner_fee_amount,
+                        swap_info.partner_fee_recipient.to_string(),
+                        None,
+                    )?;
+                    response = response.add_message(partner_send_msg)
+                }
             }
 
             Ok(response)
@@ -560,23 +557,27 @@ fn ack_swap_request(
             if is_native {
                 return Err(ContractError::new(&err));
             }
-            // Prepare messages to refund tokens back to user
-            // Send back both amount in and fee amount
-            let msg = swap_info.asset_in.create_transfer_msg(
-                swap_info
-                    .amount_in
-                    .checked_add(swap_info.partner_fee_amount)?,
-                sender.to_string(),
-                None,
-            )?;
-
-            Ok(Response::new()
+            let mut response = Response::new()
                 .add_attribute("method", "process_failed_swap")
-                .add_attribute("refund_to", sender)
+                .add_attribute("refund_to", &sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("refund_amount", swap_info.amount_in)
-                .add_attribute("error", err)
-                .add_message(msg))
+                .add_attribute("error", err);
+            // Prepare messages to refund tokens back to user
+            // Send back both amount in and fee amount
+            // NOTE - Only return the amount in if the token is not a voucher
+            if !swap_info.asset_in.token_type.is_voucher() {
+                let msg = swap_info.asset_in.create_transfer_msg(
+                    swap_info
+                        .amount_in
+                        .checked_add(swap_info.partner_fee_amount)?,
+                    sender.to_string(),
+                    None,
+                )?;
+                response = response.add_message(msg);
+            }
+
+            Ok(response)
         }
     }
 }
@@ -596,7 +597,6 @@ fn ack_deposit_token_request(
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
-            // TODO:: Add msg to send asset_in to escrow
             let asset_in = deposit_info.asset_in.clone();
 
             // Get corresponding escrow

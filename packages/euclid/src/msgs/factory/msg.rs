@@ -3,8 +3,8 @@ use crate::{
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
-    token::{Pair, PairWithDenom, Token, TokenType, TokenWithDenom},
-    utils::Pagination,
+    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
@@ -23,16 +23,14 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     AddLiquidityRequest {
-        pair_info: PairWithDenom,
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-        slippage_tolerance: u64,
+        pair_info: PairWithDenomAndAmount,
+        slippage_tolerance_bps: u64,
         timeout: Option<u64>,
     },
     ExecuteSwapRequest {
         asset_in: TokenWithDenom,
-        asset_out: Token,
         amount_in: Uint128,
+        asset_out: Token,
         min_amount_out: Uint128,
         timeout: Option<u64>,
         swaps: Vec<NextSwapPair>,
@@ -91,17 +89,6 @@ pub enum ExecuteMsg {
         cw20_code_id: Option<u64>,
         is_native: Option<bool>,
     },
-    UpdateEscrowState {
-        current_token_id: Token,
-        new_token_id: Option<Token>,
-    },
-    UpdateCw20State {
-        cw20_address: String,
-        token_pair: Option<Pair>,
-        factory_address: Option<String>,
-        vlp: Option<String>,
-    },
-
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
 

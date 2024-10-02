@@ -1,7 +1,10 @@
 [package]
 name = "router"
-version = "0.1.0"
-authors = ["anshudhar <anshudhar2001@gmail.com>"]
+version = "0.2.0"
+authors = [
+  "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
+  "Joe Monem <jmonem@icloud.com>",
+]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -5,7 +5,7 @@ use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
     token::{Pair, Token},
-    utils::Pagination,
+    utils::pagination::Pagination,
 };
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -27,10 +27,6 @@ pub enum ExecuteMsg {
         channel: String,
     },
     UpdateLock {},
-    // Update Pool Code ID
-    UpdateVLPCodeId {
-        new_vlp_code_id: u64,
-    },
     RegisterFactory {
         chain_uid: ChainUid,
         chain_info: RegisterFactoryChainType,
@@ -87,10 +83,6 @@ pub enum ExecuteMsg {
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
     },
-    UpdateVirtualBalanceState {
-        router: Option<String>,
-        admin: Option<String>,
-    },
 }
 
 #[cw_serde]
@@ -123,6 +115,8 @@ pub enum QueryMsg {
         token: Token,
         pagination: Pagination<ChainUid>,
     },
+    #[returns(AllEscrowsResponse)]
+    QueryAllEscrows { pagination: Pagination<Token> },
 
     #[returns(AllTokensResponse)]
     QueryAllTokens { pagination: Pagination<Token> },
@@ -195,14 +189,20 @@ pub struct TokenEscrowChainResponse {
 }
 
 #[cw_serde]
-pub struct TokenResponse {
+pub struct EscrowResponse {
     pub token: Token,
     pub chain_uid: ChainUid,
+    pub balance: Uint128,
+}
+
+#[cw_serde]
+pub struct AllEscrowsResponse {
+    pub escrows: Vec<EscrowResponse>,
 }
 
 #[cw_serde]
 pub struct AllTokensResponse {
-    pub tokens: Vec<TokenResponse>,
+    pub tokens: Vec<Token>,
 }
 
 #[cw_serde]

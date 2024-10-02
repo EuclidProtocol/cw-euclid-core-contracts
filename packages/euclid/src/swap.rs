@@ -14,10 +14,10 @@ pub struct SwapRequest {
 
     // The asset being swapped
     pub asset_in: TokenWithDenom,
+    // The amount of asset_in being swapped
+    pub amount_in: Uint128,
     // The asset being received
     pub asset_out: Token,
-    // The amount of asset being swapped
-    pub amount_in: Uint128,
     // The min amount of asset being received
     pub min_amount_out: Uint128,
     // All the swaps needed for assent_in <> asset_out
@@ -28,7 +28,7 @@ pub struct SwapRequest {
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 
     pub partner_fee_amount: Uint128,
-    pub partner_fee_recipient: Option<Addr>,
+    pub partner_fee_recipient: Addr,
 }
 
 #[cw_serde]

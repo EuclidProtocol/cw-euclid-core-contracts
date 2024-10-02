@@ -1,7 +1,11 @@
 [package]
 name = "escrow"
-version = "0.1.0"
-authors = ["gachouchani1999 <georgeschouchani1@gmail.com>"]
+version = "0.2.0"
+authors = [
+  "gachouchani1999 <georgeschouchani1@gmail.com>",
+  "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
+  "Joe Monem <jmonem@icloud.com>",
+]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -36,10 +40,10 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 [dependencies]
 cosmwasm-schema = { workspace = true }
 cosmwasm-std = { workspace = true, features = [
-    "cosmwasm_1_2",
-    # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
-    # "cosmwasm_1_4",
-    "ibc3",
+  "cosmwasm_1_2",
+  # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
+  # "cosmwasm_1_4",
+  "ibc3",
 ] }
 cw-storage-plus = { workspace = true }
 cw2 = { workspace = true }

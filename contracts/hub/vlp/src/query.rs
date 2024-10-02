@@ -218,11 +218,10 @@ pub fn calculate_lp_allocation(
 pub fn assert_slippage_tolerance(
     ratio: Decimal256,
     pool_ratio: Decimal256,
-    slippage_tolerance: u64,
+    slippage_tolerance_bps: u64,
 ) -> Result<bool, ContractError> {
     let slippage = pool_ratio.abs_diff(ratio);
-    let slippage_tolerance =
-        Decimal256::from_ratio(Uint128::from(slippage_tolerance), Uint128::from(100u128));
+    let slippage_tolerance = Decimal256::bps(slippage_tolerance_bps);
     ensure!(
         slippage.le(&slippage_tolerance),
         ContractError::LiquiditySlippageExceeded {}

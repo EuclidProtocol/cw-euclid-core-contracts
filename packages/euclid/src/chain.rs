@@ -91,6 +91,21 @@ impl CrossChainUser {
             address = self.address.as_str()
         )
     }
+
+    pub fn validate(&self) -> Result<&Self, ContractError> {
+        ensure!(
+            !self.address.is_empty(),
+            ContractError::Generic {
+                err: "Address cannot be empty".to_string()
+            }
+        );
+        self.chain_uid.validate()?;
+        Ok(self)
+    }
+
+    pub fn with_limit(self, limit: Option<Uint128>) -> CrossChainUserWithLimit {
+        CrossChainUserWithLimit { user: self, limit }
+    }
 }
 
 #[cw_serde]

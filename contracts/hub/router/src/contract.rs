@@ -1,32 +1,29 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, SubMsg,
-    WasmMsg,
+    ensure, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
+    SubMsg, WasmMsg,
 };
 use cw2::set_contract_version;
-use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid_ibc::msg::HUB_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
-    execute_release_escrow, execute_reregister_chain, execute_transfer_escrow,
-    execute_transfer_voucher, execute_update_factory_channel, execute_update_lock,
-    execute_update_router_state, execute_update_virtual_balance_state, execute_update_vlp_code_id,
+    execute_release_escrow, execute_reregister_chain, execute_transfer_voucher,
+    execute_update_factory_channel, execute_update_lock, execute_update_router_state,
     execute_withdraw_voucher,
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
-    self, query_all_chains, query_all_tokens, query_all_vlps, query_chain,
+    self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
     query_simulate_escrow_release, query_state, query_token_escrows, query_vlp,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
-    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_BURN_REPLY_ID,
-    VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VIRTUAL_BALANCE_MINT_REPLY_ID,
-    VIRTUAL_BALANCE_TRANSFER_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
+    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, DEREGISTERED_CHAINS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -69,8 +66,7 @@ pub fn instantiate(
         VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
     );
 
-    let empty_chains: Vec<ChainUid> = vec![];
-    DEREGISTERED_CHAINS.save(deps.storage, &empty_chains)?;
+    DEREGISTERED_CHAINS.save(deps.storage, &vec![])?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -86,125 +82,96 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     // If the contract is locked and the message isn't UpdateLock, return error
-    let locked = STATE.load(deps.storage)?.locked;
 
-    if locked {
-        if let ExecuteMsg::UpdateLock {} = msg {
-            execute_update_lock(deps, info)
-        } else if let ExecuteMsg::ReregisterChain { chain } = msg {
-            execute_reregister_chain(deps, info, chain)
-        } else if let ExecuteMsg::DeregisterChain { chain } = msg {
-            execute_deregister_chain(deps, info, chain)
-        } else {
-            Err(ContractError::ContractLocked {})
-        }
-    } else {
-        match msg {
-            ExecuteMsg::ReregisterChain { chain } => execute_reregister_chain(deps, info, chain),
-            ExecuteMsg::DeregisterChain { chain } => execute_deregister_chain(deps, info, chain),
-            ExecuteMsg::UpdateFactoryChannel { channel, chain_uid } => {
-                execute_update_factory_channel(&mut deps, env, info, channel, chain_uid)
-            }
-            ExecuteMsg::UpdateVLPCodeId { new_vlp_code_id } => {
-                execute_update_vlp_code_id(deps, info, new_vlp_code_id)
-            }
-            ExecuteMsg::RegisterFactory {
-                chain_uid,
-                chain_info,
-            } => execute_register_factory(&mut deps, env, info, chain_uid, chain_info),
-            ExecuteMsg::ReleaseEscrowInternal {
-                sender,
-                token,
-                amount,
-                cross_chain_addresses,
-                timeout,
-                tx_id,
-            } => execute_release_escrow(
-                &mut deps,
-                env,
-                info,
-                sender,
-                token,
-                amount,
-                cross_chain_addresses,
-                timeout,
-                tx_id,
-            ),
-            ExecuteMsg::TransferEscrowInternal {
-                sender,
-                recipient,
-                token,
-                amount,
-                cross_chain_addresses,
-                timeout,
-                tx_id,
-            } => execute_transfer_escrow(
-                &mut deps,
-                env,
-                info,
-                sender,
-                token,
-                recipient,
-                amount,
-                cross_chain_addresses,
-                timeout,
-                tx_id,
-            ),
-            ExecuteMsg::WithdrawVoucher {
-                token,
-                amount,
-                cross_chain_addresses,
-                timeout,
-            } => execute_withdraw_voucher(
-                &mut deps,
-                env,
-                info,
-                token,
-                amount,
-                cross_chain_addresses,
-                timeout,
-            ),
-            ExecuteMsg::TransferVoucher {
-                token,
-                recipient,
-                amount,
-                cross_chain_addresses,
-                timeout,
-            } => execute_transfer_voucher(
-                &mut deps,
-                env,
-                info,
-                token,
-                recipient,
-                amount,
-                cross_chain_addresses,
-                timeout,
-            ),
-            ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-                ibc_receive_internal_call(&mut deps, env, info, receive_msg)
-            }
-            ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
-                ibc_ack_packet_internal_call(deps, env, ack)
-            }
-            ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
-            ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
-                execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
-            }
-            ExecuteMsg::UpdateRouterState {
-                admin,
-                vlp_code_id,
-                virtual_balance_address,
-                locked,
-            } => execute_update_router_state(
-                deps,
-                info,
-                admin,
-                vlp_code_id,
-                virtual_balance_address,
-                locked,
-            ),
-            ExecuteMsg::UpdateVirtualBalanceState { router, admin } => {
-                execute_update_virtual_balance_state(deps, info, router, admin)
+    match msg {
+        ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
+        ExecuteMsg::ReregisterChain { chain } => execute_reregister_chain(deps, info, chain),
+        ExecuteMsg::DeregisterChain { chain } => execute_deregister_chain(deps, info, chain),
+        _ => {
+            ensure!(
+                !STATE.load(deps.storage)?.locked,
+                ContractError::ContractLocked {}
+            );
+            match msg {
+                ExecuteMsg::UpdateFactoryChannel { channel, chain_uid } => {
+                    execute_update_factory_channel(&mut deps, env, info, channel, chain_uid)
+                }
+                ExecuteMsg::RegisterFactory {
+                    chain_uid,
+                    chain_info,
+                } => execute_register_factory(&mut deps, env, info, chain_uid, chain_info),
+                ExecuteMsg::ReleaseEscrowInternal {
+                    sender,
+                    token,
+                    amount,
+                    cross_chain_addresses,
+                    timeout,
+                    tx_id,
+                } => execute_release_escrow(
+                    &mut deps,
+                    env,
+                    info,
+                    sender,
+                    token,
+                    amount,
+                    cross_chain_addresses,
+                    timeout,
+                    tx_id,
+                ),
+                ExecuteMsg::WithdrawVoucher {
+                    token,
+                    amount,
+                    cross_chain_addresses,
+                    timeout,
+                } => execute_withdraw_voucher(
+                    &mut deps,
+                    env,
+                    info,
+                    token,
+                    amount,
+                    cross_chain_addresses,
+                    timeout,
+                ),
+                ExecuteMsg::TransferVoucher {
+                    token,
+                    recipient,
+                    amount,
+                    cross_chain_addresses,
+                    timeout,
+                } => execute_transfer_voucher(
+                    &mut deps,
+                    env,
+                    info,
+                    token,
+                    recipient,
+                    amount,
+                    cross_chain_addresses,
+                    timeout,
+                ),
+                ExecuteMsg::IbcCallbackReceive { receive_msg } => {
+                    ibc_receive_internal_call(&mut deps, env, info, receive_msg)
+                }
+                ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
+                    ibc_ack_packet_internal_call(deps, env, ack)
+                }
+                ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
+                ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
+                    execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
+                }
+                ExecuteMsg::UpdateRouterState {
+                    admin,
+                    vlp_code_id,
+                    virtual_balance_address,
+                    locked,
+                } => execute_update_router_state(
+                    deps,
+                    info,
+                    admin,
+                    vlp_code_id,
+                    virtual_balance_address,
+                    locked,
+                ),
+                _ => Err(ContractError::UnreachableCode {}),
             }
         }
     }
@@ -227,6 +194,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::QueryTokenEscrows { token, pagination } => {
             query_token_escrows(deps, token, pagination)
         }
+        QueryMsg::QueryAllEscrows { pagination } => query_all_escrows(deps, pagination),
         QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
     }
 }
@@ -250,10 +218,6 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID => {
             reply::on_virtual_balance_instantiate_reply(deps, msg)
         }
-
-        VIRTUAL_BALANCE_MINT_REPLY_ID => reply::on_virtual_balance_mint_reply(deps, msg),
-        VIRTUAL_BALANCE_BURN_REPLY_ID => reply::on_virtual_balance_burn_reply(deps, msg),
-        VIRTUAL_BALANCE_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
 
         IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
