@@ -946,6 +946,14 @@ pub fn execute_transfer_virtual_balance(
     recipient_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
+    // The transfer amount should be greater than zero
+    ensure!(!amount.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Validate recipient addresses
+    for recipient_address in recipient_addresses.iter() {
+        recipient_address.user.validate()?;
+    }
+
     let state = STATE.load(deps.storage)?;
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
