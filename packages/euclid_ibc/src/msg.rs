@@ -187,8 +187,7 @@ pub struct ChainIbcTransferExecuteMsg {
     // User will provide this
     pub token: Token,
     pub amount: Uint128,
-    // First element in array has highest priority
-    pub recipient_addresses: Vec<CrossChainUserWithLimit>,
+    pub recipient_address: CrossChainUserWithLimit,
     // Unique per tx
     pub tx_id: String,
     pub timeout: Option<u64>,

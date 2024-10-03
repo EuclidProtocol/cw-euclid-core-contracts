@@ -177,7 +177,7 @@ pub fn execute(
         ExecuteMsg::TransferVirtualBalance {
             token,
             amount,
-            cross_chain_addresses,
+            recipient_address,
             timeout,
         } => execute_transfer_virtual_balance(
             &mut deps,
@@ -185,7 +185,7 @@ pub fn execute(
             info,
             token,
             amount,
-            cross_chain_addresses,
+            recipient_address,
             timeout,
         ),
         ExecuteMsg::UpdateFactoryState {

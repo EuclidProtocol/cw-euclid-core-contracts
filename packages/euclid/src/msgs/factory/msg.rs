@@ -69,7 +69,7 @@ pub enum ExecuteMsg {
     TransferVirtualBalance {
         token: Token,
         amount: Uint128,
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        recipient_address: CrossChainUserWithLimit,
         timeout: Option<u64>,
     },
     DepositToken {

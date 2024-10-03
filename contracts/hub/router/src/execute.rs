@@ -482,7 +482,7 @@ pub fn execute_transfer_escrow(
         .add_event(tx_event(
             &tx_id,
             sender.address.as_str(),
-            TxType::EscrowTransfer,
+            TxType::TransferVirtualBalance,
         ))
         .add_attribute("tx_id", tx_id);
 
