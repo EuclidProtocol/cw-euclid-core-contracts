@@ -402,7 +402,7 @@ pub fn execute_release_escrow(
         .add_submessages(release_msgs))
 }
 
-pub fn execute_transfer_voucher(
+pub fn execute_transfer_voucher_internal(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
@@ -419,7 +419,7 @@ pub fn execute_transfer_voucher(
     let tx_id = generate_tx(deps.branch(), &env, &cross_chain_user)?;
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
-        msg: to_json_binary(&ExecuteMsg::TransferEscrowInternal {
+        msg: to_json_binary(&ExecuteMsg::TransferVirtualBalanceInternal {
             sender: cross_chain_user,
             recipient,
             token,
@@ -436,7 +436,7 @@ pub fn execute_transfer_voucher(
         .add_attribute("method", "transfer_voucher"))
 }
 
-pub fn execute_transfer_escrow(
+pub fn execute_transfer_virtual_balance(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,

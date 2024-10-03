@@ -52,7 +52,7 @@ pub enum ExecuteMsg {
         timeout: Option<u64>,
         tx_id: String,
     },
-    TransferEscrowInternal {
+    TransferVirtualBalanceInternal {
         sender: CrossChainUser,
         recipient: CrossChainUser,
         token: Token,

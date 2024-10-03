@@ -10,9 +10,9 @@ use euclid_ibc::msg::HUB_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
-    execute_release_escrow, execute_reregister_chain, execute_transfer_voucher,
-    execute_update_factory_channel, execute_update_lock, execute_update_router_state,
-    execute_withdraw_voucher,
+    execute_release_escrow, execute_reregister_chain, execute_transfer_virtual_balance,
+    execute_transfer_voucher_internal, execute_update_factory_channel, execute_update_lock,
+    execute_update_router_state, execute_withdraw_voucher,
 };
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
@@ -138,7 +138,7 @@ pub fn execute(
                     amount,
                     cross_chain_addresses,
                     timeout,
-                } => execute_transfer_voucher(
+                } => execute_transfer_voucher_internal(
                     &mut deps,
                     env,
                     info,
@@ -147,6 +147,26 @@ pub fn execute(
                     amount,
                     cross_chain_addresses,
                     timeout,
+                ),
+                ExecuteMsg::TransferVirtualBalanceInternal {
+                    sender,
+                    recipient,
+                    token,
+                    amount,
+                    cross_chain_addresses,
+                    timeout,
+                    tx_id,
+                } => execute_transfer_virtual_balance(
+                    &mut deps,
+                    env,
+                    info,
+                    sender,
+                    token,
+                    recipient,
+                    amount,
+                    cross_chain_addresses,
+                    timeout,
+                    tx_id,
                 ),
                 ExecuteMsg::IbcCallbackReceive { receive_msg } => {
                     ibc_receive_internal_call(&mut deps, env, info, receive_msg)
