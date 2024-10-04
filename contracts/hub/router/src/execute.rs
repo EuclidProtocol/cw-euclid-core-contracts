@@ -9,7 +9,7 @@ use euclid::{
     events::{tx_event, TxType},
     msgs::{
         router::{ExecuteMsg, RegisterFactoryChainType},
-        virtual_balance::{ExecuteBurn, ExecuteTransfer},
+        virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
     token::Token,

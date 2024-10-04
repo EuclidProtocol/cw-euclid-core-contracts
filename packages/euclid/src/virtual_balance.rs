@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_json_binary, DepsMut, Env, Response, Uint128, WasmMsg};
+use cosmwasm_std::{to_json_binary, Response, Uint128, WasmMsg};
 
 use crate::{
     chain::{ChainUid, CrossChainUser},
