@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
-    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{CrossChainUser, CrossChainUserWithLimit},
     deposit::DepositTokenRequest,
     error::ContractError,
     events::{deposit_token_event, swap_event, tx_event, TxType},
@@ -13,7 +13,6 @@ use euclid::{
     msgs::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
         factory::cw20::FactoryCw20HookMsg,
-        virtual_balance::ExecuteTransfer,
     },
     pool::{EscrowCreateRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
@@ -1058,35 +1057,4 @@ pub fn execute_native_receive_callback(
         ContractError::Unauthorized {}
     );
     receive::reusable_internal_call(deps, env, msg)
-}
-
-pub fn transfer_virtual_balance(
-    deps: &mut DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: CrossChainUser,
-    token: Token,
-    amount: Uint128,
-    recipient_address: CrossChainUser,
-    timeout: Option<u64>,
-) -> Result<Response, ContractError> {
-    let transfer_voucher_msg =
-        euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
-            amount,
-            token_id: token.to_string(),
-            from: sender,
-            to: CrossChainUser {
-                address: first_swap.vlp_address.clone(),
-                chain_uid: ChainUid::vsl_chain_uid()?,
-            },
-        });
-
-    let transfer_voucher_msg = WasmMsg::Execute {
-        contract_addr: virtual_balance_address.to_string(),
-        msg: to_json_binary(&transfer_voucher_msg)?,
-        funds: vec![],
-    };
-
-    // Should reject full execution if failed
-    response = response.add_message(transfer_voucher_msg);
 }

@@ -18,7 +18,7 @@ use euclid::{
     pool::EscrowCreationResponse,
     swap::{TransferResponse, WithdrawResponse},
     token::{PairWithDenom, PairWithDenomAndAmount, Token},
-    virtual_balance::BalanceKey,
+    virtual_balance::{transfer_virtual_balance, BalanceKey},
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
@@ -740,27 +740,21 @@ fn ibc_execute_transfer_virtual_balance(
     _env: Env,
     msg: ChainIbcTransferExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let sender = msg.clone().sender;
     let virtual_balance_address = STATE
         .load(deps.storage)?
         .virtual_balance_address
         .map_or(Err(ContractError::EmptyVirtualBalanceAddress {}), Ok)?
         .into_string();
 
-    let virtual_balance_msg = VirtualBalanceMsg::Transfer(ExecuteTransfer {
-        amount: msg.amount,
-        token_id: msg.token.to_string(),
-        from: sender,
-        to: msg.recipient_address,
-    });
+    let res = transfer_virtual_balance(
+        msg.sender.clone(),
+        msg.token.clone(),
+        msg.amount,
+        msg.recipient_address,
+        virtual_balance_address,
+    )?;
 
-    Ok(Response::new()
-        .add_submessage(SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: virtual_balance_address,
-            msg: to_json_binary(&virtual_balance_msg)?,
-            funds: vec![],
-        })))
-        .add_attribute("action", "reply_deposit_token")
+    Ok(res
         .add_event(
             tx_event(
                 &msg.tx_id,

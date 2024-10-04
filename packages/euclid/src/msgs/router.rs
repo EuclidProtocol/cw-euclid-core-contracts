@@ -41,7 +41,6 @@ pub enum ExecuteMsg {
         token: Token,
         recipient: CrossChainUser,
         amount: Option<Uint128>,
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
     ReleaseEscrowInternal {

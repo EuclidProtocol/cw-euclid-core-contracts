@@ -136,17 +136,9 @@ pub fn execute(
                     token,
                     recipient,
                     amount,
-                    cross_chain_addresses,
                     timeout,
                 } => execute_transfer_voucher_internal(
-                    &mut deps,
-                    env,
-                    info,
-                    token,
-                    recipient,
-                    amount,
-                    cross_chain_addresses,
-                    timeout,
+                    &mut deps, env, info, token, recipient, amount, timeout,
                 ),
                 ExecuteMsg::IbcCallbackReceive { receive_msg } => {
                     ibc_receive_internal_call(&mut deps, env, info, receive_msg)

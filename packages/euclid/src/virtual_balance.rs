@@ -1,8 +1,11 @@
 use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{to_json_binary, DepsMut, Env, Response, Uint128, WasmMsg};
 
 use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
+    msgs::virtual_balance::ExecuteTransfer,
+    token::Token,
 };
 
 type AnyChainAddress = String;
@@ -36,4 +39,33 @@ impl BalanceKey {
             token_id: balance_key.2,
         })
     }
+}
+
+pub fn transfer_virtual_balance(
+    sender: CrossChainUser,
+    token: Token,
+    amount: Uint128,
+    recipient_address: CrossChainUser,
+    virtual_balance_address: String,
+) -> Result<Response, ContractError> {
+    let transfer_voucher_msg =
+        crate::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+            amount,
+            token_id: token.to_string(),
+            from: sender,
+            to: CrossChainUser {
+                address: recipient_address.address.clone(),
+                chain_uid: recipient_address.chain_uid,
+            },
+        });
+
+    let transfer_voucher_msg = WasmMsg::Execute {
+        contract_addr: virtual_balance_address,
+        msg: to_json_binary(&transfer_voucher_msg)?,
+        funds: vec![],
+    };
+
+    Ok(Response::new()
+        .add_message(transfer_voucher_msg)
+        .add_attribute("action", "transfer_virtual_balance"))
 }

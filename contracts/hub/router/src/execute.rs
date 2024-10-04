@@ -403,26 +403,20 @@ pub fn execute_release_escrow(
 }
 
 pub fn execute_transfer_voucher_internal(
-    deps: &mut DepsMut,
+    _deps: &mut DepsMut,
     env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
     token: Token,
     recipient: CrossChainUser,
     amount: Option<Uint128>,
-    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let cross_chain_user = CrossChainUser {
-        chain_uid: ChainUid::vsl_chain_uid()?,
-        address: info.sender.to_string(),
-    };
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
         msg: to_json_binary(&ExecuteMsg::TransferVirtualBalance {
             recipient,
             token,
             amount,
-            cross_chain_addresses,
             timeout,
         })?,
         funds: vec![],
