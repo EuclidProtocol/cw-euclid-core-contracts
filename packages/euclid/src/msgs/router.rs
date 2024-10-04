@@ -37,7 +37,7 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
-    TransferVoucher {
+    TransferVirtualBalance {
         token: Token,
         recipient: CrossChainUser,
         amount: Option<Uint128>,
@@ -52,16 +52,6 @@ pub enum ExecuteMsg {
         timeout: Option<u64>,
         tx_id: String,
     },
-    TransferVirtualBalanceInternal {
-        sender: CrossChainUser,
-        recipient: CrossChainUser,
-        token: Token,
-        amount: Option<Uint128>,
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-        timeout: Option<u64>,
-        tx_id: String,
-    },
-
     // IBC Callbacks
     IbcCallbackAckAndTimeout {
         ack: IbcPacketAckMsg,

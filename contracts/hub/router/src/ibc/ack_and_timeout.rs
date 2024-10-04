@@ -93,19 +93,6 @@ pub fn reusable_internal_ack_call(
             let res = from_json(ack)?;
             ibc_ack_update_factory_channel(deps, env, chain_uid, chain_type, res, tx_id)
         }
-        HubIbcExecuteMsg::TransferEscrow {
-            chain_uid,
-            sender,
-            amount,
-            token,
-            to_address,
-            tx_id,
-        } => {
-            let res = from_json(ack)?;
-            ibc_ack_transfer_escrow(
-                deps, env, chain_uid, sender, to_address, amount, token, res, tx_id,
-            )
-        }
     }
 }
 

@@ -751,7 +751,7 @@ fn ibc_execute_transfer_virtual_balance(
         amount: msg.amount,
         token_id: msg.token.to_string(),
         from: sender,
-        to: msg.recipient_address.user,
+        to: msg.recipient_address,
     });
 
     Ok(Response::new()

@@ -187,7 +187,7 @@ pub struct ChainIbcTransferExecuteMsg {
     // User will provide this
     pub token: Token,
     pub amount: Uint128,
-    pub recipient_address: CrossChainUserWithLimit,
+    pub recipient_address: CrossChainUser,
     // Unique per tx
     pub tx_id: String,
     pub timeout: Option<u64>,
@@ -235,17 +235,6 @@ pub enum HubIbcExecuteMsg {
         // Unique per tx
         tx_id: String,
     },
-
-    TransferEscrow {
-        chain_uid: ChainUid,
-        sender: CrossChainUser,
-        amount: Uint128,
-        token: Token,
-        to_address: CrossChainUser,
-
-        // Unique per tx
-        tx_id: String,
-    },
 }
 
 impl HubIbcExecuteMsg {
@@ -253,7 +242,6 @@ impl HubIbcExecuteMsg {
         match self {
             Self::RegisterFactory { tx_id, .. } => tx_id.clone(),
             Self::ReleaseEscrow { tx_id, .. } => tx_id.clone(),
-            Self::TransferEscrow { tx_id, .. } => tx_id.clone(),
             Self::UpdateFactoryChannel { tx_id, .. } => tx_id.clone(),
         }
     }

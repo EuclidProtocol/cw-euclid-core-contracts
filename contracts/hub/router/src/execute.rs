@@ -416,17 +416,14 @@ pub fn execute_transfer_voucher_internal(
         chain_uid: ChainUid::vsl_chain_uid()?,
         address: info.sender.to_string(),
     };
-    let tx_id = generate_tx(deps.branch(), &env, &cross_chain_user)?;
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
-        msg: to_json_binary(&ExecuteMsg::TransferVirtualBalanceInternal {
-            sender: cross_chain_user,
+        msg: to_json_binary(&ExecuteMsg::TransferVirtualBalance {
             recipient,
             token,
             amount,
             cross_chain_addresses,
             timeout,
-            tx_id: tx_id.clone(),
         })?,
         funds: vec![],
     });
@@ -434,146 +431,6 @@ pub fn execute_transfer_voucher_internal(
     Ok(Response::new()
         .add_message(msg)
         .add_attribute("method", "transfer_voucher"))
-}
-
-pub fn execute_transfer_virtual_balance(
-    deps: &mut DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: CrossChainUser,
-    token: Token,
-    recipient: CrossChainUser,
-    // Leaving this empty means that we will transfer the entire balance
-    amount: Option<Uint128>,
-    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-    timeout: Option<u64>,
-    tx_id: String,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(
-        info.sender == env.contract.address,
-        ContractError::Unauthorized {}
-    );
-
-    let virtual_balance_address = state
-        .virtual_balance_address
-        .ok_or(ContractError::new("virtual balance doesn't exist"))?
-        .into_string();
-
-    let user_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
-        deps.querier.query_wasm_smart(
-            virtual_balance_address.clone(),
-            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-                balance_key: BalanceKey {
-                    cross_chain_user: sender.clone(),
-                    token_id: token.to_string(),
-                },
-            },
-        )?;
-
-    // Ensure that user has enough virtual balance balance to actually trigger escrow release
-    let amount = amount.unwrap_or(user_balance.amount);
-    ensure!(
-        user_balance.amount.ge(&amount),
-        ContractError::InsufficientFunds {}
-    );
-
-    let mut response = Response::new()
-        .add_event(tx_event(
-            &tx_id,
-            sender.address.as_str(),
-            TxType::TransferVirtualBalance,
-        ))
-        .add_attribute("tx_id", tx_id);
-
-    let timeout = get_timeout(timeout)?;
-    let mut transfer_msgs: Vec<SubMsg> = vec![];
-
-    let mut cross_chain_addresses_iterator = cross_chain_addresses.into_iter().peekable();
-    let mut remaining_withdraw_amount = amount;
-
-    let mut transfer_amount = Uint128::zero();
-    // Ensure that the amount desired doesn't exceed the current balance
-    while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
-        let cross_chain_address = cross_chain_addresses_iterator
-            .next()
-            .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
-        let chain =
-            CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
-
-        let escrow_key =
-            ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
-        let escrow_balance = escrow_key
-            .may_load(deps.storage)?
-            .unwrap_or(Uint128::zero());
-
-        let release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
-            escrow_balance
-        } else {
-            remaining_withdraw_amount
-        };
-
-        let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
-
-        if release_amount.is_zero() {
-            continue;
-        }
-
-        escrow_key.save(deps.storage, &escrow_balance.checked_sub(release_amount)?)?;
-
-        transfer_amount = transfer_amount.checked_add(release_amount)?;
-
-        // Prepare IBC Transfer Message
-        let send_msg = HubIbcExecuteMsg::TransferEscrow {
-            sender: sender.clone(),
-            amount: release_amount,
-            token: token.clone(),
-            to_address: cross_chain_address.user.clone(),
-            // We can't use same tx id because it might conflict with pending requests on receiving chain
-            tx_id: generate_tx(deps.branch(), &env, &sender)?,
-            chain_uid: cross_chain_address.user.chain_uid.clone(),
-        }
-        .to_msg(deps, &env, chain, timeout)?;
-
-        response = response.add_attribute(
-            format!(
-                "transfer_escrow_expected_{sender}",
-                sender = cross_chain_address.user.to_sender_string()
-            ),
-            release_amount,
-        );
-
-        remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(release_amount)?;
-        transfer_msgs.push(send_msg);
-    }
-
-    ensure!(
-        transfer_amount.checked_add(remaining_withdraw_amount)? == amount,
-        ContractError::new("Amount mismatch after trasnfer calculations")
-    );
-
-    if !transfer_amount.is_zero() {
-        let transfer_virtual_balance_msg =
-            euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
-                amount,
-                token_id: token.to_string(),
-                from: sender,
-                to: recipient,
-            });
-
-        let transfer_virtual_balance_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: virtual_balance_address,
-            msg: to_json_binary(&transfer_virtual_balance_msg)?,
-            funds: vec![],
-        });
-        response = response.add_submessage(SubMsg::new(transfer_virtual_balance_msg));
-    }
-
-    Ok(response
-        .add_attribute("method", "transfer_escrow")
-        .add_attribute("transfer_expected", amount)
-        .add_attribute("transfer_released", transfer_amount)
-        .add_submessages(transfer_msgs))
 }
 
 pub fn execute_native_receive_callback(

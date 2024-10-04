@@ -5,7 +5,7 @@ use cosmwasm_std::{
     IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
+    chain::ChainUid,
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
@@ -95,14 +95,6 @@ pub fn reusable_internal_call(
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             execute_update_factory_channel(deps, env, chain_uid, tx_id)
         }
-        HubIbcExecuteMsg::TransferEscrow {
-            chain_uid,
-            sender,
-            amount,
-            token,
-            to_address,
-            tx_id,
-        } => execute_transfer_escrow(deps, env, amount, token, to_address, tx_id),
     }
 }
 
@@ -169,6 +161,7 @@ fn execute_update_factory_channel(
         .add_attribute("router", state.router_contract)
         .set_data(ack))
 }
+
 fn execute_release_escrow(
     deps: DepsMut,
     env: Env,
@@ -206,46 +199,5 @@ fn execute_release_escrow(
         .add_attribute("method", "release escrow")
         .add_attribute("tx_id", tx_id)
         .add_attribute("to_address", to_address)
-        .set_data(ack))
-}
-
-fn execute_transfer_escrow(
-    deps: DepsMut,
-    env: Env,
-    amount: Uint128,
-    token: Token,
-    to_address: CrossChainUser,
-    tx_id: String,
-) -> Result<Response, ContractError> {
-    todo!();
-    let withdraw_msg = EscrowExecuteMsg::Withdraw {
-        recipient: deps.api.addr_validate(&to_address.address)?,
-        amount,
-    };
-
-    let ack_msg = ReleaseEscrowResponse {
-        factory_address: env.contract.address.to_string(),
-        chain_id: env.block.chain_id,
-        amount,
-        token: token.clone(),
-        to_address: to_address.address.clone(),
-    };
-
-    let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
-
-    // Get escrow address
-    let escrow_address = TOKEN_TO_ESCROW
-        .load(deps.storage, token.validate()?.to_owned())?
-        .into_string();
-
-    Ok(Response::new()
-        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: escrow_address,
-            msg: to_json_binary(&withdraw_msg)?,
-            funds: vec![],
-        }))
-        .add_attribute("method", "release escrow")
-        .add_attribute("tx_id", tx_id)
-        .add_attribute("to_address", to_address.address)
         .set_data(ack))
 }
