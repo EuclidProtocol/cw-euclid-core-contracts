@@ -30,6 +30,7 @@ pub fn ibc_packet_receive(
     env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    println!("ibc_packet_receive on factory");
     let internal_msg = ExecuteMsg::IbcCallbackReceive {
         receive_msg: msg.clone(),
     };
@@ -44,7 +45,7 @@ pub fn ibc_packet_receive(
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
-
+    println!("ibc_packet_receive on factory2");
     Ok(IbcReceiveResponse::new()
         .add_attribute("method", "ibc_packet_receive")
         .add_attribute("tx_id", tx_id)
@@ -58,19 +59,25 @@ pub fn ibc_receive_internal_call(
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
     let router = msg.packet.src.port_id.replace("wasm.", "");
-
+    println!("ibc_receive_internal_call on factory");
     let state = STATE.load(deps.storage)?;
+    println!("ibc_receive_internal_call on factory2");
+    println!("router is {}", router);
+    println!("authorized router {}", state.router_contract);
     ensure!(
         state.router_contract == router,
         ContractError::Unauthorized {}
     );
+    println!("ibc_receive_internal_call on factory3");
 
     // Ensure that channel is same as registered in the state
     let channel = msg.packet.dest.channel_id;
+    println!("the channel is: {:?}", channel);
     ensure!(
         HUB_CHANNEL.load(deps.storage)? == channel,
         ContractError::Unauthorized {}
     );
+    println!("ibc_receive_internal_call on factory4");
 
     let msg: HubIbcExecuteMsg = from_json(msg.packet.data)?;
     reusable_internal_call(deps, env, msg)
@@ -104,17 +111,20 @@ fn execute_register_router(
     chain_uid: ChainUid,
     tx_id: String,
 ) -> Result<Response, ContractError> {
+    println!("execute_register_router on factory contract");
     let chain_uid = chain_uid.validate()?.to_owned();
     let ack_msg = RegisterFactoryResponse {
         factory_address: env.contract.address.to_string(),
         chain_id: env.block.chain_id,
     };
     let state = STATE.load(deps.storage)?;
+    println!("execute_register_router on factory contract2");
 
     ensure!(
         state.chain_uid == chain_uid,
         ContractError::new("Chain UID mismatch")
     );
+    println!("execute_register_router on factory contract3");
 
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 

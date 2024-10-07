@@ -70,7 +70,7 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-#[derive(QueryResponses)]
+#[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     #[returns(StateResponse)]
     GetState {},
