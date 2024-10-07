@@ -639,6 +639,7 @@ pub fn execute_deposit_token(
     timeout: Option<u64>,
     recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
+    println!("reaching here 4");
     ensure!(
         !asset_in.token_type.is_voucher(),
         ContractError::UnsupportedDenomination {}
@@ -651,19 +652,34 @@ pub fn execute_deposit_token(
 
     // Validate asset in
     asset_in.validate(deps.as_ref())?;
+    println!("reaching here 5");
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
-
+    println!("reaching here 6");
     let channel = HUB_CHANNEL.load(deps.storage)?;
+    println!("reaching here 7, hub channel: {:?}", channel);
+
     let timeout = get_timeout(timeout)?;
 
     ensure!(
         !PENDING_TOKEN_DEPOSIT.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
+    println!("reaching here");
+    println!("token is: {:?}", asset_in.token);
+    let keys: Vec<Token> = TOKEN_TO_ESCROW
+        .keys(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .flatten()
+        .collect();
+    println!("keys: {:?}", keys);
 
+    let pending_escrow_requests = PENDING_ESCROW_REQUESTS
+        .keys(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .count();
+    println!("pending escrow requests: {:?}", pending_escrow_requests);
     // Verify that this asset is allowed
     let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+    println!("reaching here");
 
     let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps.querier.query_wasm_smart(
         escrow,
@@ -671,12 +687,12 @@ pub fn execute_deposit_token(
             denom: asset_in.token_type.clone(),
         },
     )?;
-
+    println!("reaching here 2");
     ensure!(
         token_allowed.allowed,
         ContractError::UnsupportedDenomination {}
     );
-
+    println!("reaching here 3");
     let mut fund_manager = FundManager::new(&info.funds);
 
     match &asset_in.token_type {

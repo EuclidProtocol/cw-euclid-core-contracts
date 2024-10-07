@@ -2059,6 +2059,7 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-multi-test",
+ "cw-orch",
  "cw-storage-plus",
  "cw-utils",
  "cw2",

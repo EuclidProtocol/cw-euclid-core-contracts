@@ -271,6 +271,7 @@ fn ack_escrow_creation(
     tx_id: String,
     is_native: bool,
 ) -> Result<Response, ContractError> {
+    println!("ack reaching here");
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
     let existing_req = PENDING_ESCROW_REQUESTS
@@ -298,6 +299,7 @@ fn ack_escrow_creation(
                 funds: vec![],
                 label: "escrow".to_string(),
             });
+            println!("ack reaching here 2, escrow code id {:?}", escrow_code_id);
 
             Ok(Response::new()
                 .add_submessage(SubMsg {
@@ -314,6 +316,7 @@ fn ack_escrow_creation(
             if is_native {
                 return Err(ContractError::new(&err));
             }
+            println!("ack reaching here 3");
             Ok(Response::new()
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "reject_pool_request")
