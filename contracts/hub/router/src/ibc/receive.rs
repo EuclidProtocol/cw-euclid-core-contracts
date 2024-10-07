@@ -46,8 +46,6 @@ pub fn ibc_packet_receive(
     env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    println!("receive.rs, ibc_packet_receive,  in router reaching here");
-
     let internal_msg = ExecuteMsg::IbcCallbackReceive {
         receive_msg: msg.clone(),
     };
@@ -62,7 +60,6 @@ pub fn ibc_packet_receive(
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
-    println!("receive.rs, ibc_packet_receive,  in router reaching here2");
 
     Ok(IbcReceiveResponse::new()
         .add_attribute("method", "ibc_packet_receive")
@@ -78,15 +75,10 @@ pub fn ibc_receive_internal_call(
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
     // Get the chain data from current channel received
-    println!("receive.rs, ibc_receive_internal_call,  in router reaching here");
-
     let channel = msg.packet.dest.channel_id;
-    println!("the channel is, {:?}", channel);
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
-    println!("receive.rs, ibc_receive_internal_call,  in router reaching here2");
 
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    println!("receive.rs, ibc_receive_internal_call,  in router reaching here3");
 
     // Ensure source port is the registered factory
     ensure!(
@@ -131,7 +123,6 @@ pub fn reusable_internal_call(
             sender,
             tx_id,
         } => {
-            println!("receive.rs in router reaching here");
             ensure!(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")

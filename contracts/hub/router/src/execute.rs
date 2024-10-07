@@ -132,13 +132,11 @@ pub fn execute_register_factory(
     match chain_info {
         RegisterFactoryChainType::Ibc(ibc_info) => {
             let timeout = get_timeout(ibc_info.timeout)?;
-            println!("channel_id {:?}", ibc_info.channel);
             let packet = IbcMsg::SendPacket {
                 channel_id: ibc_info.channel.clone(),
                 data: to_json_binary(&msg)?,
                 timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
             };
-            println!("execute_register_factory reaching here");
             Ok(response
                 .add_attribute("channel", ibc_info.channel)
                 .add_attribute("timeout", timeout.to_string())
