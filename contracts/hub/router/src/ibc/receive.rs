@@ -228,13 +228,15 @@ fn execute_request_pool_creation(
 
     for token in pair_with_denom.get_vec_token_info() {
         // Check if token is already validated. Its validated if it has an escrow on sender chain
-        let mut validated_token = ESCROW_BALANCES.has(
+        let sender_chain_escrow_exists = ESCROW_BALANCES.has(
             deps.storage,
             (token.token.clone(), sender.clone().chain_uid),
         );
 
+        let mut validated_token = sender_chain_escrow_exists;
+
         // Check if token is already present on any chain
-        let range = ESCROW_BALANCES.prefix(token.token).keys_raw(
+        let range = ESCROW_BALANCES.prefix(token.token.clone()).keys_raw(
             deps.storage,
             None,
             None,
@@ -255,6 +257,13 @@ fn execute_request_pool_creation(
             );
             // Voucher token is valid if it exists on any chain
             validated_token = true;
+        } else if !sender_chain_escrow_exists {
+            // If escrow doesn't exist, create it
+            ESCROW_BALANCES.save(
+                deps.storage,
+                (token.token, sender.chain_uid.clone()),
+                &Uint128::zero(),
+            )?;
         }
 
         // There are two cases

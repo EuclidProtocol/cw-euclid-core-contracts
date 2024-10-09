@@ -66,6 +66,8 @@ pub fn execute_request_pool_creation(
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let pair = pair_with_denom.get_pair()?;
+    pair.validate()?;
+
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
@@ -84,6 +86,9 @@ pub fn execute_request_pool_creation(
     let mut one_token_already_exists = false;
     let tokens = pair_with_denom.get_vec_token_info();
     for token in tokens {
+        // Validate token id
+        token.token.validate()?;
+
         // Vouchers are not escrowed
         if token.token_type.is_voucher() {
             // If its a voucher token, then we can assume that one token already exists
@@ -106,7 +111,18 @@ pub fn execute_request_pool_creation(
                 ContractError::UnsupportedDenomination {}
             );
             one_token_already_exists = true;
+        } else {
+            // Else verify that the provided token denom is valid
+            token.token_type.validate(deps.as_ref())?;
         }
+
+        let balance = token
+            .token_type
+            .get_balance(deps.as_ref(), sender.address)?;
+        ensure!(
+            !balance.is_zero(),
+            ContractError::new("You don't have enough balance")
+        );
     }
 
     ensure!(

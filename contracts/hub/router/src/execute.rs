@@ -362,8 +362,9 @@ pub fn execute_release_escrow(
 
         response = response.add_attribute(
             format!(
-                "release_escrow_expected_{sender}",
-                sender = cross_chain_address.user.to_sender_string()
+                "release_escrow_expected_{token}_{sender}",
+                sender = cross_chain_address.user.to_sender_string(),
+                token = token
             ),
             release_amount,
         );
@@ -396,9 +397,10 @@ pub fn execute_release_escrow(
     }
 
     Ok(response
-        .add_attribute("method", "release_escrow")
+        .add_attribute("method", "release_escrow_initiate")
+        .add_attribute("token", token.to_string())
         .add_attribute("release_expected", amount)
-        .add_attribute("actual_released", transfer_amount)
+        .add_attribute("release_initiated", transfer_amount)
         .add_submessages(release_msgs))
 }
 

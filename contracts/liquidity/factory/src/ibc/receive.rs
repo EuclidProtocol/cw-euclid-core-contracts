@@ -195,7 +195,9 @@ fn execute_release_escrow(
             msg: to_json_binary(&withdraw_msg)?,
             funds: vec![],
         }))
-        .add_attribute("method", "release escrow")
+        .add_attribute("method", "release escrow_execute")
+        .add_attribute("token", token.to_string())
+        .add_attribute("amount", amount.to_string())
         .add_attribute("tx_id", tx_id)
         .add_attribute("to_address", to_address)
         .set_data(ack))
