@@ -284,8 +284,41 @@ impl TokenType {
                     asset: denom.clone()
                 }
             );
+        } else if let Self::Smart { contract_address } = &self {
+            let contract = deps
+                .querier
+                .query_wasm_contract_info(contract_address.clone());
+            ensure!(
+                contract.is_ok(),
+                ContractError::InvalidAsset {
+                    asset: contract_address.clone()
+                }
+            );
         }
+
+        // Vouchers will be validated in VSL
         Ok(())
+    }
+
+    pub fn get_balance(&self, deps: Deps, address: String) -> Result<Uint128, ContractError> {
+        match self.clone() {
+            TokenType::Native { denom } => {
+                let balance = deps.querier.query_balance(address, denom)?;
+                Ok(balance.amount)
+            }
+            TokenType::Smart { contract_address } => {
+                let balance_msg = cw20::Cw20QueryMsg::Balance {
+                    address: address.clone(),
+                };
+                let balance: cw20::BalanceResponse = deps
+                    .querier
+                    .query_wasm_smart(contract_address, &balance_msg)?;
+                Ok(balance.balance)
+            }
+            TokenType::Voucher { .. } => Err(ContractError::new(
+                "Cannot get balance of voucher using this function",
+            )),
+        }
     }
 
     pub fn get_key(&self) -> String {
@@ -396,12 +429,6 @@ pub struct TokenWithDenom {
 }
 
 impl TokenWithDenom {
-    pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
-        self.token_type.validate(deps)?;
-        self.token.validate()?;
-        Ok(())
-    }
-
     pub fn create_transfer_msg(
         &self,
         amount: Uint128,
@@ -496,20 +523,6 @@ impl PairWithDenom {
         let tokens = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
     }
-
-    pub fn validate(&self) -> Result<bool, ContractError> {
-        let pair = self.get_pair()?;
-        ensure!(
-            pair.token_1 == self.token_1.token,
-            ContractError::new("Pair should be sorted")
-        );
-        ensure!(
-            pair.token_2 == self.token_2.token,
-            ContractError::new("Pair should be sorted")
-        );
-
-        Ok(true)
-    }
 }
 
 #[cw_serde]
@@ -540,13 +553,6 @@ impl PairWithDenomAndAmount {
     pub fn get_vec_token_info(&self) -> Vec<TokenWithDenomAndAmount> {
         let tokens: Vec<TokenWithDenomAndAmount> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
-    }
-
-    pub fn validate(&self) -> Result<bool, ContractError> {
-        // Validate pair with denom
-        self.get_pair_with_denom()?.validate()?;
-
-        Ok(true)
     }
 }
 
@@ -759,8 +765,7 @@ mod tests {
         ];
 
         for test in test_cases {
-            let res = test.pair_with_denom.validate();
-
+            let res = test.pair_with_denom.get_pair().unwrap().validate();
             if let Some(err) = test.expected_error {
                 assert_eq!(res.unwrap_err(), err, "{}", test.name);
                 continue;

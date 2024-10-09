@@ -260,7 +260,8 @@ pub fn execute_withdraw(
 
     Ok(Response::new()
         .add_messages(messages)
-        .add_attribute("method", "withdraw")
+        .add_attribute("method", "escrow_withdra")
         .add_attribute("amount", amount)
+        .add_attribute("token", state.token_id.to_string())
         .add_attribute("recipient", recipient))
 }
