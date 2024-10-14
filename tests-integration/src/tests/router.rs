@@ -76,9 +76,9 @@ fn test_register_factory() {
         .unwrap();
 
     // Set up channel from juno to osmosis
-    let channel_receipt = interchain
-        .create_contract_channel(&factory_juno, &router_osmo, "counter-1", None)
-        .unwrap();
+    // let channel_receipt = interchain
+    //     .create_contract_channel(&factory_juno, &router_osmo, "counter-1", None)
+    //     .unwrap();
 
     // Set up channel from osmosis to juno
     let channel_receipt_osmosis = interchain
@@ -86,12 +86,12 @@ fn test_register_factory() {
         .unwrap();
 
     // After channel creation is complete, we get the channel id, which is necessary for ICA remote execution
-    let juno_channel = channel_receipt
-        .interchain_channel
-        .get_chain("juno")
-        .unwrap()
-        .channel
-        .unwrap();
+    // let juno_channel = channel_receipt
+    //     .interchain_channel
+    //     .get_chain("juno")
+    //     .unwrap()
+    //     .channel
+    //     .unwrap();
 
     // Register factory should be the first execute msg from router
     let osmosis_channel = channel_receipt_osmosis
