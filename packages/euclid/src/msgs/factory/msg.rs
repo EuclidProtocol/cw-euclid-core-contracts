@@ -67,6 +67,12 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
+    TransferVirtualBalance {
+        token: Token,
+        amount: Uint128,
+        recipient_address: CrossChainUser,
+        timeout: Option<u64>,
+    },
     DepositToken {
         asset_in: TokenWithDenom,
         amount_in: Uint128,

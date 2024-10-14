@@ -45,7 +45,6 @@ pub enum ExecuteMsg {
         timeout: Option<u64>,
         tx_id: String,
     },
-
     // IBC Callbacks
     IbcCallbackAckAndTimeout {
         ack: IbcPacketAckMsg,

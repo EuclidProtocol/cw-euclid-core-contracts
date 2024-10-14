@@ -1,10 +1,8 @@
-use cosmwasm_schema::cw_serde;
-
 use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
 };
-
+use cosmwasm_schema::cw_serde;
 type AnyChainAddress = String;
 type TokenId = String;
 // Balance is stored again Chain Id, Address of the user on any chain, and for a specific Token Id
