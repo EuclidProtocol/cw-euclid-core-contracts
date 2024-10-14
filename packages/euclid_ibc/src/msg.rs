@@ -58,6 +58,9 @@ pub enum ChainIbcExecuteMsg {
     // Withdraw virtual balance message sent from factory
     Withdraw(ChainIbcWithdrawExecuteMsg),
 
+    // Transfer virtual balance message sent from factory
+    Transfer(ChainIbcTransferExecuteMsg),
+
     DepositToken(ChainIbcDepositTokenExecuteMsg),
 }
 
@@ -71,6 +74,7 @@ impl ChainIbcExecuteMsg {
             Self::Withdraw(msg) => msg.tx_id.clone(),
             Self::DepositToken(msg) => msg.tx_id.clone(),
             Self::RequestEscrowCreation { tx_id, .. } => tx_id.clone(),
+            Self::Transfer(msg) => msg.tx_id.clone(),
         }
     }
 
@@ -171,6 +175,19 @@ pub struct ChainIbcWithdrawExecuteMsg {
     pub amount: Uint128,
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    // Unique per tx
+    pub tx_id: String,
+    pub timeout: Option<u64>,
+}
+
+#[cw_serde]
+pub struct ChainIbcTransferExecuteMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+    // User will provide this
+    pub token: Token,
+    pub amount: Uint128,
+    pub recipient_address: CrossChainUser,
     // Unique per tx
     pub tx_id: String,
     pub timeout: Option<u64>,

@@ -322,7 +322,7 @@ pub fn execute_release_escrow(
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
             .next()
-            .ok_or(ContractError::new("Cross Chain Address Iter Faiiled"))?;
+            .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
 

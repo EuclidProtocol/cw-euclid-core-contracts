@@ -21,8 +21,8 @@ use euclid::{
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::msg::{
-    ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcWithdrawExecuteMsg,
-    HubIbcExecuteMsg,
+    ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcTransferExecuteMsg,
+    ChainIbcWithdrawExecuteMsg, HubIbcExecuteMsg,
 };
 
 use crate::{
@@ -937,6 +937,59 @@ pub fn execute_withdraw_virtual_balance(
         .add_submessage(withdraw_msg))
 }
 
+pub fn execute_transfer_virtual_balance(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    token: Token,
+    amount: Uint128,
+    recipient_address: CrossChainUser,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    // The transfer amount should be greater than zero
+    ensure!(!amount.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Validate recipient address
+    recipient_address.validate()?;
+
+    let state = STATE.load(deps.storage)?;
+
+    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid.clone(),
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+    let timeout = get_timeout(timeout)?;
+
+    let withdraw_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
+        sender,
+        token,
+        amount,
+        recipient_address,
+        tx_id: tx_id.clone(),
+        timeout: Some(timeout),
+    })
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel,
+        timeout,
+    )?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            TxType::TransferVirtualBalance,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "withdraw_virtual_balance")
+        .add_submessage(withdraw_msg))
+}
 pub fn execute_update_state(
     deps: DepsMut,
     info: MessageInfo,

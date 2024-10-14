@@ -161,6 +161,7 @@ fn execute_update_factory_channel(
         .add_attribute("router", state.router_contract)
         .set_data(ack))
 }
+
 fn execute_release_escrow(
     deps: DepsMut,
     env: Env,
