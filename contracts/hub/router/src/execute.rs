@@ -402,31 +402,6 @@ pub fn execute_release_escrow(
         .add_submessages(release_msgs))
 }
 
-pub fn execute_transfer_voucher_internal(
-    _deps: &mut DepsMut,
-    env: Env,
-    _info: MessageInfo,
-    token: Token,
-    recipient: CrossChainUser,
-    amount: Option<Uint128>,
-    timeout: Option<u64>,
-) -> Result<Response, ContractError> {
-    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: env.contract.address.to_string(),
-        msg: to_json_binary(&ExecuteMsg::TransferVirtualBalance {
-            recipient,
-            token,
-            amount,
-            timeout,
-        })?,
-        funds: vec![],
-    });
-
-    Ok(Response::new()
-        .add_message(msg)
-        .add_attribute("method", "transfer_voucher"))
-}
-
 pub fn execute_native_receive_callback(
     deps: &mut DepsMut,
     env: Env,

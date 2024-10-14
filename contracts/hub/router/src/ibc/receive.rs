@@ -18,7 +18,7 @@ use euclid::{
     pool::EscrowCreationResponse,
     swap::{TransferResponse, WithdrawResponse},
     token::{PairWithDenom, PairWithDenomAndAmount, Token},
-    virtual_balance::{transfer_virtual_balance, BalanceKey},
+    virtual_balance::BalanceKey,
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
@@ -188,7 +188,13 @@ pub fn reusable_internal_call(
                 }))?))
         }
         ChainIbcExecuteMsg::Transfer(msg) => {
-            ibc_execute_transfer_virtual_balance(deps.branch(), env, msg)
+            {
+                ensure!(
+                    msg.sender.chain_uid == chain_uid,
+                    ContractError::new("Chain UID mismatch")
+                );
+                ibc_execute_transfer_virtual_balance(deps.branch(), env, msg)
+            }
             // let release_msg = ExecuteMsg::ReleaseEscrowInternal {
             //     sender: msg.sender,
             //     token: msg.token.clone(),
@@ -746,15 +752,23 @@ fn ibc_execute_transfer_virtual_balance(
         .map_or(Err(ContractError::EmptyVirtualBalanceAddress {}), Ok)?
         .into_string();
 
-    let res = transfer_virtual_balance(
-        msg.sender.clone(),
-        msg.token.clone(),
-        msg.amount,
-        msg.recipient_address,
-        virtual_balance_address,
-    )?;
+    let transfer_voucher_msg =
+        euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+            amount: msg.amount,
+            token_id: msg.token.to_string(),
+            from: msg.clone().sender,
+            to: msg.recipient_address,
+        });
 
-    Ok(res
+    let transfer_voucher_msg = WasmMsg::Execute {
+        contract_addr: virtual_balance_address,
+        msg: to_json_binary(&transfer_voucher_msg)?,
+        funds: vec![],
+    };
+
+    Ok(Response::default()
+        .add_message(transfer_voucher_msg)
+        .add_attribute("action", "transfer_virtual_balance")
         .add_event(
             tx_event(
                 &msg.tx_id,
