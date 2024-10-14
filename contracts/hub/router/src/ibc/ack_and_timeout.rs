@@ -10,9 +10,7 @@ use euclid::error::ContractError;
 use euclid::events::{tx_event, TxType};
 use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
 use euclid::msgs::router::ExecuteMsg;
-use euclid::msgs::virtual_balance::{
-    ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg, ExecuteTransfer,
-};
+use euclid::msgs::virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg};
 use euclid::token::Token;
 use euclid::virtual_balance::BalanceKey;
 use euclid_ibc::ack::AcknowledgementMsg;
