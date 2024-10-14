@@ -680,7 +680,7 @@ fn ack_transfer_request(
             // Here you will get a response of escrows that router is going to release so it can be used in frontend
 
             Ok(Response::new()
-                .add_attribute("method", "request_withdraw_submitted")
+                .add_attribute("method", "transfer")
                 .add_attribute("token", token_id.to_string()))
         }
         AcknowledgementMsg::Error(err) => {
@@ -689,7 +689,7 @@ fn ack_transfer_request(
                 return Err(ContractError::new(&err));
             }
             Ok(Response::new()
-                .add_attribute("method", "request_withdraw_error")
+                .add_attribute("method", "transfer_error")
                 .add_attribute("error", err.clone()))
         }
     }
