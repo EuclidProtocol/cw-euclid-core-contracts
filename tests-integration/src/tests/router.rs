@@ -151,8 +151,8 @@ fn test_register_factory() {
                 factory_chain_id: "juno".to_string(),
                 factory: "contract0".to_string(),
                 chain_type: euclid::chain::ChainType::Ibc(IbcChain {
-                    from_hub_channel: "channel-1".to_string(),
-                    from_factory_channel: "channel-1".to_string(),
+                    from_hub_channel: "channel-0".to_string(),
+                    from_factory_channel: "channel-0".to_string(),
                 })
             },
             chain_uid: juno_uid
