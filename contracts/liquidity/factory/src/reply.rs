@@ -11,6 +11,7 @@ pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
 pub const IBC_RECEIVE_REPLY_ID: u64 = 3;
 pub const CW20_INSTANTIATE_REPLY_ID: u64 = 4;
+pub const CW20_INSTANTIATE_WITH_FUNDS_REPLY_ID: u64 = 5;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {

@@ -14,14 +14,17 @@ use euclid::{
         cw20::ExecuteMsg as Cw20ExecuteMsg, escrow::InstantiateMsg as EscrowInstantiateMsg,
         factory::ExecuteMsg,
     },
-    pool::{EscrowCreationResponse, PoolCreationResponse},
+    pool::{EscrowCreationResponse, PoolCreationResponse, PoolCreationWithFundsResponse},
     swap::{SwapResponse, TransferResponse, WithdrawResponse},
     token::Token,
 };
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 
 use crate::{
-    reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
+    reply::{
+        CW20_INSTANTIATE_REPLY_ID, CW20_INSTANTIATE_WITH_FUNDS_REPLY_ID,
+        ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
+    },
     state::{
         PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS, PENDING_POOL_REQUESTS,
         PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
@@ -82,9 +85,9 @@ pub fn reusable_internal_ack_call(
         ChainIbcExecuteMsg::RequestPoolCreationWithFunds { tx_id, sender, .. } => {
             todo!();
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<PoolCreationWithFundsResponse> = from_json(ack)?;
 
-            ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
+            ack_pool_creation_with_funds(deps, env, sender.address, res, tx_id, is_native)
         }
 
         ChainIbcExecuteMsg::RequestEscrowCreation { tx_id, sender, .. } => {
@@ -264,6 +267,112 @@ fn ack_pool_creation(
 
             Ok(res.add_submessage(SubMsg {
                 id: CW20_INSTANTIATE_REPLY_ID,
+                msg: init_cw20_msg,
+                gas_limit: None,
+                reply_on: ReplyOn::Always,
+            }))
+        }
+
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("method", "reject_pool_request")
+                .add_attribute("error", err.clone()))
+        }
+    }
+}
+
+// Function to create pool
+fn ack_pool_creation_with_funds(
+    deps: DepsMut,
+    env: Env,
+    sender: String,
+    res: AcknowledgementMsg<PoolCreationWithFundsResponse>,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender, tx_id.clone());
+    let existing_req = PENDING_POOL_REQUESTS
+        .may_load(deps.storage, req_key.clone())?
+        .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
+
+    // Remove pool request from MAP
+    PENDING_POOL_REQUESTS.remove(deps.storage, req_key);
+
+    // Check whether res is an error or not
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            // Load state to get escrow code id in case we need to instantiate
+            let state = STATE.load(deps.storage)?;
+            let escrow_code_id = state.escrow_code_id;
+            let cw20_code_id = state.cw20_code_id;
+
+            PAIR_TO_VLP.save(
+                deps.storage,
+                existing_req.pair_info.get_pair()?.get_tupple(),
+                &data.vlp_contract.clone(),
+            )?;
+            // Prepare response
+            let mut res = Response::new()
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("method", "pool_creation")
+                .add_attribute("vlp", data.vlp_contract.clone());
+            // Collects PairInfo into a vector of Token Info for easy iteration
+            let tokens = existing_req.pair_info.get_vec_token_info();
+            for token in tokens {
+                if token.token_type.is_voucher() {
+                    continue;
+                }
+                let escrow_contract =
+                    TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
+
+                // Instantiate escrow if one doesn't exist
+                if escrow_contract.is_none() {
+                    let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                        admin: Some(state.admin.clone()),
+                        code_id: escrow_code_id,
+                        msg: to_json_binary(&EscrowInstantiateMsg {
+                            token_id: token.token,
+                            allowed_denom: Some(token.token_type),
+                        })?,
+                        funds: vec![],
+                        label: "escrow".to_string(),
+                    });
+
+                    res = res.add_submessage(SubMsg {
+                        id: ESCROW_INSTANTIATE_REPLY_ID,
+                        msg: init_msg,
+                        gas_limit: None,
+                        reply_on: ReplyOn::Always,
+                    });
+                }
+            }
+            let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
+            // Instantiate cw20
+            let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                admin: Some(state.admin.clone()),
+                code_id: cw20_code_id,
+                msg: to_json_binary(&euclid::msgs::cw20::InstantiateMsg {
+                    name: lp_token_instantiate_data.name,
+                    symbol: lp_token_instantiate_data.symbol,
+                    decimals: lp_token_instantiate_data.decimals,
+                    initial_balances: vec![],
+                    mint: lp_token_instantiate_data.mint,
+                    marketing: lp_token_instantiate_data.marketing,
+                    vlp: data.vlp_contract,
+                    factory: env.contract.address,
+                    token_pair: existing_req.pair_info.get_pair()?,
+                })?,
+                funds: vec![],
+                label: "cw20".to_string(),
+            });
+
+            Ok(res.add_submessage(SubMsg {
+                id: CW20_INSTANTIATE_WITH_FUNDS_REPLY_ID,
                 msg: init_cw20_msg,
                 gas_limit: None,
                 reply_on: ReplyOn::Always,
