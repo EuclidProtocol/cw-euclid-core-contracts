@@ -7,7 +7,8 @@ use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
 use crate::execute::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
+    add_liquidity, execute_swap, register_pool, register_pool_with_funds, remove_liquidity,
+    update_fee, update_state,
 };
 use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
 use crate::state::{State, BALANCES, STATE};
@@ -87,6 +88,12 @@ pub fn execute(
             pair,
             tx_id,
         } => register_pool(deps, env, info, sender, pair, tx_id),
+        ExecuteMsg::RegisterPoolWithFunds {
+            sender,
+            pair,
+            slippage_tolerance_bps,
+            tx_id,
+        } => register_pool_with_funds(deps, env, info, sender, pair, slippage_tolerance_bps, tx_id),
         ExecuteMsg::UpdateFee {
             lp_fee_bps,
             euclid_fee_bps,

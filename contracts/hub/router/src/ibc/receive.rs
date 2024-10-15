@@ -33,6 +33,7 @@ use crate::{
     reply::{
         ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
         VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+        VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID,
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
@@ -375,9 +376,10 @@ fn execute_request_pool_creation_with_funds(
     let pair = pair_with_denom_and_amount.get_pair()?;
     pair.validate()?;
 
-    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
+    let register_msg = msgs::vlp::ExecuteMsg::RegisterPoolWithFunds {
         sender: sender.clone(),
-        pair: pair.clone(),
+        pair: pair_with_denom_and_amount.get_pair_with_amount()?.clone(),
+        slippage_tolerance_bps,
         tx_id: tx_id.clone(),
     };
 
@@ -385,7 +387,7 @@ fn execute_request_pool_creation_with_funds(
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
-            TxType::PoolCreation,
+            TxType::PoolCreationWithFunds,
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation_with_funds");
@@ -445,7 +447,10 @@ fn execute_request_pool_creation_with_funds(
             msg: to_json_binary(&register_msg)?,
             funds: vec![],
         };
-        Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
+        Ok(response.add_submessage(SubMsg::reply_always(
+            msg,
+            VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID,
+        )))
     } else {
         let instantiate_msg = msgs::vlp::InstantiateMsg {
             router: env.contract.address.to_string(),

@@ -13,7 +13,7 @@ use euclid::{
         router::ExecuteMsg,
         vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
-    pool::PoolCreationResponse,
+    pool::{PoolCreationResponse, PoolCreationWithFundsResponse},
     swap::SwapResponse,
 };
 use euclid_ibc::{
@@ -34,6 +34,7 @@ pub const SWAP_REPLY_ID: u64 = 5;
 
 pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
+pub const VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID: u64 = 8;
 
 pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
@@ -96,6 +97,32 @@ pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
                     err: res.to_string(),
                 })?;
             let pool_creation_response: PoolCreationResponse =
+                from_json(execute_data.data.unwrap_or_default())?;
+
+            let vlp_address = pool_creation_response.vlp_contract.clone();
+
+            let ack = AcknowledgementMsg::Ok(pool_creation_response);
+
+            Ok(Response::new()
+                .add_attribute("action", "reply_pool_register")
+                .add_attribute("vlp", vlp_address)
+                .set_data(to_json_binary(&ack)?))
+        }
+    }
+}
+
+pub fn on_pool_register_with_funds_reply(
+    _deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(..) => {
+            let execute_data =
+                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+            let pool_creation_response: PoolCreationWithFundsResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
 
             let vlp_address = pool_creation_response.vlp_contract.clone();

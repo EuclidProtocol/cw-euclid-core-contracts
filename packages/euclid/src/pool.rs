@@ -1,4 +1,5 @@
 use cosmwasm_schema::cw_serde;
+use cosmwasm_std::Uint128;
 
 use crate::token::{PairWithDenom, TokenWithDenom};
 
@@ -29,6 +30,12 @@ pub struct EscrowCreateRequest {
 // Struct to handle Acknowledgement Response for a Pool Creation Request
 #[cw_serde]
 pub struct PoolCreationResponse {
+    pub vlp_contract: String,
+}
+
+#[cw_serde]
+pub struct PoolCreationWithFundsResponse {
+    pub mint_lp_tokens: Uint128,
     pub vlp_contract: String,
 }
 
