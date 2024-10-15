@@ -137,7 +137,6 @@ pub fn execute_register_factory(
                 data: to_json_binary(&msg)?,
                 timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
             };
-
             Ok(response
                 .add_attribute("channel", ibc_info.channel)
                 .add_attribute("timeout", timeout.to_string())
