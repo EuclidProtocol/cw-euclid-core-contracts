@@ -280,7 +280,7 @@ pub fn add_liquidity_request(
     );
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolDoesNotExists {}
+        ContractError::PoolDoesNotExist {}
     );
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
@@ -410,7 +410,7 @@ pub fn remove_liquidity_request(
 
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolDoesNotExists {}
+        ContractError::PoolDoesNotExist {}
     );
     // TODO: Do we want to add check for lp shares for early fail?
 

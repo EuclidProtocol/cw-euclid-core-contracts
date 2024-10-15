@@ -101,8 +101,8 @@ pub enum ContractError {
     #[error("Pool already created for this chain")]
     PoolAlreadyExists {},
 
-    #[error("Pool doesn't for this chain")]
-    PoolDoesNotExists {},
+    #[error("Pool doesn't exist for this chain")]
+    PoolDoesNotExist {},
 
     #[error("only unordered channels are supported")]
     OrderedChannel {},
