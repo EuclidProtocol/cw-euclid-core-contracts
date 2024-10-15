@@ -79,6 +79,14 @@ pub fn reusable_internal_ack_call(
             ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
         }
 
+        ChainIbcExecuteMsg::RequestPoolCreationWithFunds { tx_id, sender, .. } => {
+            todo!();
+            // Process acknowledgment for pool creation
+            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
+
+            ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
+        }
+
         ChainIbcExecuteMsg::RequestEscrowCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<EscrowCreationResponse> = from_json(ack)?;

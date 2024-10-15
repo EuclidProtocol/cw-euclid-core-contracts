@@ -2,7 +2,8 @@ use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
+    ensure, to_json_binary, Coin, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128,
+    WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use euclid::{
@@ -29,6 +30,16 @@ pub enum ChainIbcExecuteMsg {
         sender: CrossChainUser,
         tx_id: String,
         pair: PairWithDenom,
+    },
+    // Request Pool Creation with funds
+    RequestPoolCreationWithFunds {
+        // Factory will set this using info.sender
+        sender: CrossChainUser,
+        tx_id: String,
+        pair: PairWithDenomAndAmount,
+        funds: Vec<Coin>,
+        // User will provide this data
+        slippage_tolerance_bps: u64,
     },
     // Request Pool Creation
     RequestEscrowCreation {
@@ -69,6 +80,7 @@ impl ChainIbcExecuteMsg {
         match self {
             Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
             Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
+            Self::RequestPoolCreationWithFunds { tx_id, .. } => tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
             Self::Withdraw(msg) => msg.tx_id.clone(),
