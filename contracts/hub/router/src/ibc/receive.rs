@@ -124,7 +124,6 @@ pub fn reusable_internal_call(
             funds,
             slippage_tolerance_bps,
         } => {
-            todo!();
             ensure!(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
