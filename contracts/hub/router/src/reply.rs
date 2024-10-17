@@ -1,20 +1,23 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Reply, Response, SubMsgResult,
-    WasmMsg,
+    Uint128, WasmMsg,
 };
 use cw_utils::{
     parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data,
 };
 use euclid::{
+    chain::{ChainUid, CrossChainUser},
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
         self,
         router::ExecuteMsg,
+        virtual_balance::{ExecuteMint, ExecuteTransfer},
         vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
-    pool::PoolCreationResponse,
+    pool::{PoolCreationResponse, PoolCreationWithFundsResponse},
     swap::SwapResponse,
+    virtual_balance::BalanceKey,
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
@@ -23,7 +26,7 @@ use euclid_ibc::{
 
 use crate::{
     ibc,
-    state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
+    state::{ESCROW_BALANCES, PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
 };
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
@@ -34,6 +37,7 @@ pub const SWAP_REPLY_ID: u64 = 5;
 
 pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
+pub const VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID: u64 = 8;
 
 pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
@@ -104,6 +108,107 @@ pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
 
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_register")
+                .add_attribute("vlp", vlp_address)
+                .set_data(to_json_binary(&ack)?))
+        }
+    }
+}
+
+pub fn on_pool_register_with_funds_reply(
+    deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Ok(data) => {
+            let execute_data =
+                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+            let pool_creation_response: PoolCreationWithFundsResponse =
+                from_json(execute_data.data.unwrap_or_default())?;
+
+            let vlp_address = pool_creation_response.vlp_contract.clone();
+
+            let ack = AcknowledgementMsg::Ok(pool_creation_response);
+
+            // Add liquidity //
+            // let mut response = Response::new().add_event(
+            //     tx_event(&tx_id, &sender.to_sender_string(), TxType::AddLiquidity)
+            //         .add_attribute("tx_id", tx_id.clone()),
+            // );
+
+            // let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(
+            //     ContractError::Generic {
+            //         err: "virtual balance address doesn't exist".to_string(),
+            //     },
+            // )?;
+
+            // for token in pair.get_vec_token_info() {
+            //     // If its a voucher token, then transfer it to the vlp contract
+            //     if token.token_type.is_voucher() {
+            //         // Transfer voucher token to the vlp contract
+            //         let transfer_voucher_msg =
+            //             euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+            //                 amount: token.amount,
+            //                 token_id: token.token.to_string(),
+            //                 from: sender.clone(),
+            //                 to: CrossChainUser {
+            //                     address: vlp_address.to_string(),
+            //                     chain_uid: ChainUid::vsl_chain_uid()?,
+            //                 },
+            //             });
+
+            //         let transfer_voucher_msg = WasmMsg::Execute {
+            //             contract_addr: virtual_balance_address.to_string(),
+            //             msg: to_json_binary(&transfer_voucher_msg)?,
+            //             funds: vec![],
+            //         };
+
+            //         // Should reject full execution if failed
+            //         response = response.add_message(transfer_voucher_msg);
+            //     } else {
+            //         // Increase Escrow balance
+            //         let token_escrow_key = (token.token.clone(), sender.chain_uid.clone());
+            //         let token_escrow_balance = ESCROW_BALANCES
+            //             .may_load(deps.storage, token_escrow_key.clone())?
+            //             .unwrap_or(Uint128::zero());
+
+            //         ESCROW_BALANCES.save(
+            //             deps.storage,
+            //             token_escrow_key,
+            //             &token_escrow_balance.checked_add(token.amount)?,
+            //         )?;
+
+            //         // Mint virtual balance for the token
+            //         let mint_virtual_balance_msg =
+            //             euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
+            //                 amount: token.amount,
+            //                 balance_key: BalanceKey {
+            //                     cross_chain_user: CrossChainUser {
+            //                         address: vlp_address.to_string(),
+            //                         chain_uid: ChainUid::vsl_chain_uid()?,
+            //                     },
+            //                     token_id: token.token.to_string(),
+            //                 },
+            //             });
+
+            //         let mint_virtual_balance_msg = WasmMsg::Execute {
+            //             contract_addr: virtual_balance_address.to_string(),
+            //             msg: to_json_binary(&mint_virtual_balance_msg)?,
+            //             funds: vec![],
+            //         };
+
+            //         // Should reject full execution if failed
+            //         response = response.add_message(mint_virtual_balance_msg);
+            //     }
+            // }
+
+            // Ok(response.add_submessage(SubMsg::reply_always(msg, ADD_LIQUIDITY_REPLY_ID)))
+            //              //
+
+            Ok(Response::new()
+                .add_attribute("action", "reply_pool_register_with_funds")
                 .add_attribute("vlp", vlp_address)
                 .set_data(to_json_binary(&ack)?))
         }

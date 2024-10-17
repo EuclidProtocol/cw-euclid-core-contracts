@@ -29,8 +29,8 @@ use crate::{
     ibc::receive,
     state::{
         State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
-        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT,
-        STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+        PENDING_POOL_REQUESTS, PENDING_POOL_WITH_LIQUIDITY_REQUESTS, PENDING_REMOVE_LIQUIDITY,
+        PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
     },
 };
 
@@ -178,6 +178,225 @@ pub fn execute_request_pool_creation(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation")
+        .add_submessage(pool_create_msg))
+}
+
+// Function to send IBC request to Router in VSL to create a new pool
+pub fn execute_request_pool_creation_with_funds(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    pair_with_denom_and_amount: PairWithDenomAndAmount,
+    slippage_tolerance_bps: u64,
+    lp_token_name: String,
+    lp_token_symbol: String,
+    lp_token_decimal: u8,
+    lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    // Ensure exactly two funds are provided
+    ensure!(info.funds.len() == 2, ContractError::InsufficientDeposit {});
+
+    let (fund1, fund2) = (&info.funds[0], &info.funds[1]);
+    let (token1, token2) = (
+        &pair_with_denom_and_amount.token_1,
+        &pair_with_denom_and_amount.token_2,
+    );
+
+    // Check if funds match the pair tokens
+    let (matched_fund1, matched_fund2) = if fund1.denom == token1.token.to_string() {
+        (fund1, fund2)
+    } else if fund1.denom == token2.token.to_string() {
+        (fund2, fund1)
+    } else {
+        return Err(ContractError::InvalidAsset {
+            asset: fund1.denom.clone(),
+        });
+    };
+
+    // Validate amounts for both tokens
+    ensure!(
+        matched_fund1.amount == token1.amount && !matched_fund1.amount.is_zero(),
+        ContractError::InsufficientDeposit {}
+    );
+    ensure!(
+        matched_fund2.denom == token2.token.to_string(),
+        ContractError::InvalidAsset {
+            asset: matched_fund2.denom.clone(),
+        }
+    );
+    ensure!(
+        matched_fund2.amount == token2.amount && !matched_fund2.amount.is_zero(),
+        ContractError::InsufficientDeposit {}
+    );
+    ensure!(
+        (1..=BPS_100_PERCENT).contains(&slippage_tolerance_bps),
+        ContractError::InvalidSlippageTolerance {}
+    );
+    let pair = pair_with_denom_and_amount.get_pair()?;
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid.clone(),
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    ensure!(
+        !PENDING_POOL_WITH_LIQUIDITY_REQUESTS
+            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    ensure!(
+        !PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
+        ContractError::PoolAlreadyExists {}
+    );
+    let mut one_token_already_exists = false;
+    let tokens = pair_with_denom_and_amount.get_vec_token_info();
+    for token in tokens {
+        // Vouchers are not escrowed
+        if token.token_type.is_voucher() {
+            // If its a voucher token, then we can assume that one token already exists
+            one_token_already_exists = true;
+            continue;
+        }
+
+        // Ensure valid denom if token already exists
+        let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
+        if let Some(escrow_address) = escrow_address {
+            let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
+                denom: token.clone().token_type,
+            };
+            let token_allowed: AllowedTokenResponse = deps
+                .querier
+                .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+
+            ensure!(
+                token_allowed.allowed,
+                ContractError::UnsupportedDenomination {}
+            );
+            one_token_already_exists = true;
+        }
+    }
+
+    ensure!(
+        one_token_already_exists,
+        ContractError::new(
+            "Cannot create pool two new tokens. Atleast one token must already be registered."
+        )
+    );
+    // Add liquidity Section //
+    // Prepare msg vector
+    let mut msgs: Vec<CosmosMsg> = Vec::new();
+
+    let mut fund_manager = FundManager::new(&info.funds);
+    // Do an early check for tokens escrow so that if it exists, it should allow the denom that we are sending
+    let tokens = pair_with_denom_and_amount.get_vec_token_info();
+    for token in tokens {
+        // Vouchers are not escrowed
+        if !token.token_type.is_voucher() {
+            match token.token_type {
+                TokenType::Native { denom } => {
+                    // Use funds, if its not present this will throw error.
+                    // This will make sure enough funds are provided with the message
+                    fund_manager.use_fund(token.amount, &denom)?;
+                }
+                TokenType::Smart { .. } => {
+                    let msg = token.token_type.create_transfer_msg(
+                        token.amount,
+                        env.contract.address.clone().to_string(),
+                        Some(sender.address.clone()),
+                    )?;
+                    msgs.push(msg);
+                }
+                TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
+            }
+        }
+    }
+
+    ensure!(
+        fund_manager.validate_funds_are_empty().is_ok(),
+        ContractError::new("Extra funds are not allowed")
+    );
+    // //
+    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let timeout = get_timeout(timeout)?;
+
+    // We might get errors in ack if marketing is not valid
+    if let Some(marketing) = &lp_token_marketing {
+        if let Some(logo) = &marketing.logo {
+            ensure!(
+                matches!(logo, Logo::Url(_)),
+                ContractError::new("Only URL logos are supported")
+            );
+        }
+
+        if let Some(marketing_address) = &marketing.marketing {
+            deps.api.addr_validate(marketing_address)?;
+        }
+    }
+
+    let lp_token_instantiate_msg = cw20_base::msg::InstantiateMsg {
+        name: lp_token_name,
+        symbol: lp_token_symbol,
+        decimals: lp_token_decimal,
+        initial_balances: vec![],
+        mint: Some(cw20::MinterResponse {
+            minter: env.contract.address.clone().into_string(),
+            cap: None,
+        }),
+        marketing: lp_token_marketing,
+    };
+    lp_token_instantiate_msg.validate()?;
+
+    let req = PoolCreateRequest {
+        tx_id: tx_id.clone(),
+        sender: info.sender.to_string(),
+        pair_info: pair_with_denom_and_amount.clone().get_pair_with_denom()?,
+        lp_token_instantiate_msg: lp_token_instantiate_msg.clone(),
+    };
+
+    PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
+    let req = euclid::pool::PoolWithLiquidityCreateRequest {
+        tx_id: tx_id.clone(),
+        sender: info.sender.to_string(),
+        pair_info: pair_with_denom_and_amount.clone(),
+        lp_token_instantiate_msg,
+    };
+
+    PENDING_POOL_WITH_LIQUIDITY_REQUESTS.save(
+        deps.storage,
+        (info.sender.clone(), tx_id.clone()),
+        &req,
+    )?;
+
+    let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreationWithFunds {
+        pair: pair_with_denom_and_amount,
+        sender,
+        tx_id: tx_id.clone(),
+        slippage_tolerance_bps,
+    }
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel.clone(),
+        timeout,
+    )?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::PoolCreationWithFunds,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "request_pool_creation_with_funds")
         .add_submessage(pool_create_msg))
 }
 
