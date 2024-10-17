@@ -121,7 +121,6 @@ pub fn reusable_internal_call(
             pair,
             sender,
             tx_id,
-            funds,
             slippage_tolerance_bps,
         } => {
             ensure!(

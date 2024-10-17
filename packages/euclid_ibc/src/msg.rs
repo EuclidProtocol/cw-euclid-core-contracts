@@ -2,8 +2,7 @@ use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, Coin, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128,
-    WasmMsg,
+    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use euclid::{
@@ -37,7 +36,6 @@ pub enum ChainIbcExecuteMsg {
         sender: CrossChainUser,
         tx_id: String,
         pair: PairWithDenomAndAmount,
-        funds: Vec<Coin>,
         // User will provide this data
         slippage_tolerance_bps: u64,
     },

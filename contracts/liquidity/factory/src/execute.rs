@@ -360,7 +360,6 @@ pub fn execute_request_pool_creation_with_funds(
         pair: pair_with_denom_and_amount,
         sender,
         tx_id: tx_id.clone(),
-        funds: info.funds,
         slippage_tolerance_bps,
     }
     .to_msg(
