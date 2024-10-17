@@ -53,6 +53,15 @@ pub enum ExecuteMsg {
         lp_token_decimal: u8,
         lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     },
+    RequestPoolCreationWithFunds {
+        pair: PairWithDenomAndAmount,
+        slippage_tolerance_bps: u64,
+        timeout: Option<u64>,
+        lp_token_name: String,
+        lp_token_symbol: String,
+        lp_token_decimal: u8,
+        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+    },
     RequestRegisterEscrow {
         token: TokenWithDenom,
         timeout: Option<u64>,
