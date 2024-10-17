@@ -317,7 +317,7 @@ fn ack_pool_creation_with_funds(
             // Prepare response
             let mut res = Response::new()
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "pool_creation")
+                .add_attribute("method", "pool_with_funds_creation")
                 .add_attribute("vlp", data.vlp_contract.clone());
             // Collects PairInfo into a vector of Token Info for easy iteration
             let tokens = existing_req.pair_info.get_vec_token_info();
