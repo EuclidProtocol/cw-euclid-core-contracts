@@ -298,7 +298,8 @@ fn ack_pool_creation_with_funds(
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
 
     // Remove pool request from MAP
-    PENDING_POOL_REQUESTS.remove(deps.storage, req_key);
+    PENDING_POOL_REQUESTS.remove(deps.storage, req_key.clone());
+    PENDING_POOL_WITH_LIQUIDITY_REQUESTS.remove(deps.storage, req_key);
 
     // Check whether res is an error or not
     match res {
