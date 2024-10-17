@@ -29,8 +29,8 @@ use crate::{
     ibc::receive,
     state::{
         State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
-        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT,
-        STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+        PENDING_POOL_REQUESTS, PENDING_POOL_WITH_LIQUIDITY_REQUESTS, PENDING_REMOVE_LIQUIDITY,
+        PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
     },
 };
 
@@ -246,6 +246,11 @@ pub fn execute_request_pool_creation_with_funds(
         ContractError::TxAlreadyExist {}
     );
     ensure!(
+        !PENDING_POOL_WITH_LIQUIDITY_REQUESTS
+            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    ensure!(
         !PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
         ContractError::PoolAlreadyExists {}
     );
@@ -351,10 +356,22 @@ pub fn execute_request_pool_creation_with_funds(
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
         pair_info: pair_with_denom_and_amount.clone().get_pair_with_denom()?,
-        lp_token_instantiate_msg,
+        lp_token_instantiate_msg: lp_token_instantiate_msg.clone(),
     };
 
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
+    let req = euclid::pool::PoolWithLiquidityCreateRequest {
+        tx_id: tx_id.clone(),
+        sender: info.sender.to_string(),
+        pair_info: pair_with_denom_and_amount.clone(),
+        lp_token_instantiate_msg,
+    };
+
+    PENDING_POOL_WITH_LIQUIDITY_REQUESTS.save(
+        deps.storage,
+        (info.sender.clone(), tx_id.clone()),
+        &req,
+    )?;
 
     let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreationWithFunds {
         pair: pair_with_denom_and_amount,

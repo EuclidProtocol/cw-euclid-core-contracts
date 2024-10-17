@@ -25,8 +25,8 @@ use crate::{
     reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
     state::{
         PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
-        VLP_TO_CW20, VLP_TO_LP_SHARES,
+        PENDING_POOL_WITH_LIQUIDITY_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
+        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20, VLP_TO_LP_SHARES,
     },
 };
 
@@ -289,11 +289,11 @@ fn ack_pool_creation_with_funds(
     sender: String,
     res: AcknowledgementMsg<PoolCreationWithFundsResponse>,
     tx_id: String,
-    is_native: bool,
+    _is_native: bool,
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
-    let existing_req = PENDING_POOL_REQUESTS
+    let existing_req = PENDING_POOL_WITH_LIQUIDITY_REQUESTS
         .may_load(deps.storage, req_key.clone())?
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
 
@@ -380,12 +380,20 @@ fn ack_pool_creation_with_funds(
         }
 
         AcknowledgementMsg::Error(err) => {
-            if is_native {
-                return Err(ContractError::new(&err));
+            // Refund user
+            let mut refund_msgs = Vec::new();
+            for token in existing_req.pair_info.get_vec_token_info() {
+                let refund_msg = token.to_token_with_denom().create_transfer_msg(
+                    token.amount,
+                    existing_req.clone().sender,
+                    None,
+                )?;
+                refund_msgs.push(refund_msg);
             }
             Ok(Response::new()
+                .add_messages(refund_msgs)
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "reject_pool_request")
+                .add_attribute("method", "reject_pool_with_liquidity_request")
                 .add_attribute("error", err.clone()))
         }
     }
