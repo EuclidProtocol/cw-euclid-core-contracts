@@ -8,7 +8,7 @@ use euclid::{
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     pool::{EscrowCreateRequest, PoolCreateRequest, PoolWithLiquidityCreateRequest},
     swap::SwapRequest,
-    token::Token,
+    token::{Token, TokenWithDenomAndAmount},
 };
 
 #[cw_serde]
@@ -72,3 +72,6 @@ pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
 // Map for PENDING liquidity transactions
 pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> =
     Map::new("pending_remove_liquidity");
+
+pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
+    Map::new("pending_deposit_token");

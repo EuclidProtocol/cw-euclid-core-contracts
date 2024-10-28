@@ -1,23 +1,20 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Reply, Response, SubMsgResult,
-    Uint128, WasmMsg,
+    WasmMsg,
 };
 use cw_utils::{
     parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data,
 };
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
     error::ContractError,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
         self,
         router::ExecuteMsg,
-        virtual_balance::{ExecuteMint, ExecuteTransfer},
         vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
     pool::{PoolCreationResponse, PoolCreationWithFundsResponse},
     swap::SwapResponse,
-    virtual_balance::BalanceKey,
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
@@ -26,7 +23,7 @@ use euclid_ibc::{
 
 use crate::{
     ibc,
-    state::{ESCROW_BALANCES, PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
+    state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
 };
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
@@ -115,12 +112,12 @@ pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
 }
 
 pub fn on_pool_register_with_funds_reply(
-    deps: DepsMut,
+    _deps: DepsMut,
     msg: Reply,
 ) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
-        SubMsgResult::Ok(data) => {
+        SubMsgResult::Ok(_) => {
             let execute_data =
                 parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
                     err: res.to_string(),

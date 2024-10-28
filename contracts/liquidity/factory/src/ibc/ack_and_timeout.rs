@@ -24,9 +24,10 @@ use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 use crate::{
     reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
     state::{
-        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS, PENDING_POOL_REQUESTS,
-        PENDING_POOL_WITH_LIQUIDITY_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20, VLP_TO_LP_SHARES,
+        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DEPOSIT_TOKEN, PENDING_ESCROW_REQUESTS,
+        PENDING_POOL_REQUESTS, PENDING_POOL_WITH_LIQUIDITY_REQUESTS, PENDING_REMOVE_LIQUIDITY,
+        PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+        VLP_TO_LP_SHARES,
     },
 };
 
@@ -328,25 +329,31 @@ fn ack_pool_creation_with_funds(
                 let escrow_contract =
                     TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
 
-                // Instantiate escrow if one doesn't exist
-                if escrow_contract.is_none() {
-                    let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                        admin: Some(state.admin.clone()),
-                        code_id: escrow_code_id,
-                        msg: to_json_binary(&EscrowInstantiateMsg {
-                            token_id: token.token,
-                            allowed_denom: Some(token.token_type),
-                        })?,
-                        funds: vec![],
-                        label: "escrow".to_string(),
-                    });
-
-                    res = res.add_submessage(SubMsg {
-                        id: ESCROW_INSTANTIATE_REPLY_ID,
-                        msg: init_msg,
-                        gas_limit: None,
-                        reply_on: ReplyOn::Always,
-                    });
+                match escrow_contract {
+                    Some(address) => {
+                        let send_msg = token.token_type.create_escrow_msg(token.amount, address)?;
+                        res = res.add_message(send_msg);
+                    }
+                    // Instantiate escrow if one doesn't exist
+                    None => {
+                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                            admin: Some(state.admin.clone()),
+                            code_id: escrow_code_id,
+                            msg: to_json_binary(&EscrowInstantiateMsg {
+                                token_id: token.clone().token,
+                                allowed_denom: Some(token.clone().token_type),
+                            })?,
+                            funds: vec![],
+                            label: "escrow".to_string(),
+                        });
+                        PENDING_DEPOSIT_TOKEN.save(deps.storage, token.clone().token, &token)?;
+                        res = res.add_submessage(SubMsg {
+                            id: ESCROW_INSTANTIATE_REPLY_ID,
+                            msg: init_msg,
+                            gas_limit: None,
+                            reply_on: ReplyOn::Always,
+                        });
+                    }
                 }
             }
             let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
