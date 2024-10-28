@@ -370,6 +370,13 @@ fn execute_request_pool_creation_with_funds(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let virtual_balance_address = state
+        .clone()
+        .virtual_balance_address
+        .ok_or(ContractError::Generic {
+            err: "virtual balance not instantiated".to_string(),
+        })?
+        .to_string();
 
     let pair = pair_with_denom_and_amount.get_pair()?;
     pair.validate()?;
@@ -421,33 +428,6 @@ fn execute_request_pool_creation_with_funds(
             );
             // Voucher token is valid if it exists on any chain
             validated_token = true;
-        } else {
-            // Mint virtual balance for the token
-            let virtual_balance_address = state
-                .clone()
-                .virtual_balance_address
-                .ok_or(ContractError::Generic {
-                    err: "virtual balance not instantiated".to_string(),
-                })?
-                .to_string();
-            let mint_virtual_balance_msg =
-                euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
-                    amount: token.amount,
-                    balance_key: BalanceKey {
-                        cross_chain_user: CrossChainUser {
-                            address: virtual_balance_address.clone(),
-                            chain_uid: ChainUid::vsl_chain_uid()?,
-                        },
-                        token_id: token.token.to_string(),
-                    },
-                });
-
-            let mint_virtual_balance_msg = WasmMsg::Execute {
-                contract_addr: virtual_balance_address.to_string(),
-                msg: to_json_binary(&mint_virtual_balance_msg)?,
-                funds: vec![],
-            };
-            response = response.add_message(mint_virtual_balance_msg);
         }
 
         // There are two cases
@@ -456,7 +436,25 @@ fn execute_request_pool_creation_with_funds(
         ensure!(
             validated_token || !token_exists_on_any_chain,
             ContractError::new("Cannot use already existing token without registering it first")
-        )
+        );
+        let mint_virtual_balance_msg =
+            euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
+                amount: token.amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: CrossChainUser {
+                        address: virtual_balance_address.clone(),
+                        chain_uid: ChainUid::vsl_chain_uid()?,
+                    },
+                    token_id: token.token.to_string(),
+                },
+            });
+
+        let mint_virtual_balance_msg = WasmMsg::Execute {
+            contract_addr: virtual_balance_address.clone(),
+            msg: to_json_binary(&mint_virtual_balance_msg)?,
+            funds: vec![],
+        };
+        response = response.add_message(mint_virtual_balance_msg);
     }
 
     ensure!(
