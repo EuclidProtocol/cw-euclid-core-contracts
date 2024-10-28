@@ -381,7 +381,7 @@ fn execute_request_pool_creation_with_funds(
         tx_id: tx_id.clone(),
     };
 
-    let response = Response::new()
+    let mut response = Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
@@ -400,7 +400,7 @@ fn execute_request_pool_creation_with_funds(
         );
 
         // Check if token is already present on any chain
-        let range = ESCROW_BALANCES.prefix(token.token).keys_raw(
+        let range = ESCROW_BALANCES.prefix(token.token.clone()).keys_raw(
             deps.storage,
             None,
             None,
@@ -421,6 +421,33 @@ fn execute_request_pool_creation_with_funds(
             );
             // Voucher token is valid if it exists on any chain
             validated_token = true;
+        } else {
+            // Mint virtual balance for the token
+            let virtual_balance_address = state
+                .clone()
+                .virtual_balance_address
+                .ok_or(ContractError::Generic {
+                    err: "virtual balance not instantiated".to_string(),
+                })?
+                .to_string();
+            let mint_virtual_balance_msg =
+                euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
+                    amount: token.amount,
+                    balance_key: BalanceKey {
+                        cross_chain_user: CrossChainUser {
+                            address: virtual_balance_address.clone(),
+                            chain_uid: ChainUid::vsl_chain_uid()?,
+                        },
+                        token_id: token.token.to_string(),
+                    },
+                });
+
+            let mint_virtual_balance_msg = WasmMsg::Execute {
+                contract_addr: virtual_balance_address.to_string(),
+                msg: to_json_binary(&mint_virtual_balance_msg)?,
+                funds: vec![],
+            };
+            response = response.add_message(mint_virtual_balance_msg);
         }
 
         // There are two cases
