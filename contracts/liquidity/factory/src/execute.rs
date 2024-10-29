@@ -66,6 +66,13 @@ pub fn execute_request_pool_creation(
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let pair = pair_with_denom.get_pair()?;
+
+    // Ensure tokens in pair are different
+    ensure!(
+        pair.token_1 != pair.token_2,
+        ContractError::new("Cannot create pool with same token")
+    );
+
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
@@ -201,6 +208,12 @@ pub fn execute_request_pool_creation_with_funds(
     let (token1, token2) = (
         &pair_with_denom_and_amount.token_1,
         &pair_with_denom_and_amount.token_2,
+    );
+
+    // Ensure tokens in pair are different
+    ensure!(
+        token1 != token2,
+        ContractError::new("Cannot create pool with same token")
     );
 
     // Check if funds match the pair tokens
