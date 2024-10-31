@@ -21,8 +21,8 @@ use crate::query::{
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
-    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
-    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    RELEASE_ESCROW_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
+    VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, DEREGISTERED_CHAINS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -197,7 +197,7 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         ADD_LIQUIDITY_REPLY_ID => reply::on_add_liquidity_reply(deps, msg),
         REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, env, msg),
         SWAP_REPLY_ID => reply::on_swap_reply(deps, env, msg),
-
+        RELEASE_ESCROW_REPLY_ID => reply::on_release_escrow_reply(deps, env, msg),
         VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID => {
             reply::on_virtual_balance_instantiate_reply(deps, msg)
         }

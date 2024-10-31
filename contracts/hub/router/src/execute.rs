@@ -6,6 +6,7 @@ use cosmwasm_std::{
 use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
+    escrow::ReleaseEscrowInternalResponse,
     events::{tx_event, TxType},
     msgs::{
         router::{ExecuteMsg, RegisterFactoryChainType},
@@ -308,7 +309,7 @@ pub fn execute_release_escrow(
             sender.address.as_str(),
             TxType::EscrowRelease,
         ))
-        .add_attribute("tx_id", tx_id);
+        .add_attribute("tx_id", tx_id.clone());
 
     let timeout = get_timeout(timeout)?;
     let mut release_msgs: Vec<SubMsg> = vec![];
@@ -398,7 +399,11 @@ pub fn execute_release_escrow(
         .add_attribute("method", "release_escrow")
         .add_attribute("release_expected", amount)
         .add_attribute("actual_released", transfer_amount)
-        .add_submessages(release_msgs))
+        .add_submessages(release_msgs)
+        .set_data(to_json_binary(&ReleaseEscrowInternalResponse {
+            amount_out: transfer_amount,
+            tx_id,
+        })?))
 }
 
 pub fn execute_native_receive_callback(

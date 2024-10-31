@@ -17,3 +17,9 @@ pub struct EscrowReleaseRequest {
 pub struct EscrowReleaseResponse {
     pub success: bool,
 }
+
+#[cw_serde]
+pub struct ReleaseEscrowInternalResponse {
+    pub amount_out: Uint128,
+    pub tx_id: String,
+}
