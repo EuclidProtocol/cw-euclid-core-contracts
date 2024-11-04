@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, MessageInfo, Order, Response, StdError, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
@@ -12,7 +12,7 @@ use euclid::{
     fee::Fee,
     msgs::{
         self,
-        router::ExecuteMsg,
+        router::{ExecuteMsg, TokenDenom},
         virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceMsg, ExecuteTransfer},
     },
     pool::EscrowCreationResponse,
@@ -36,7 +36,7 @@ use crate::{
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS,
+        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS, VLPS,
     },
 };
 
@@ -258,54 +258,40 @@ fn execute_request_pool_creation(
     let mut one_token_already_exists = false;
 
     for token in pair_with_denom.get_vec_token_info() {
-        // Check if token is already validated. Its validated if it has an escrow on sender chain
-        let sender_chain_escrow_exists = ESCROW_BALANCES.has(
-            deps.storage,
-            (token.token.clone(), sender.clone().chain_uid),
-        );
+        let mut registered_denoms = TOKEN_DENOMS
+            .may_load(deps.storage, token.token.clone())?
+            .unwrap_or_default();
 
-        let mut validated_token = sender_chain_escrow_exists;
-
-        // Check if token is already present on any chain
-        let range = ESCROW_BALANCES.prefix(token.token.clone()).keys_raw(
-            deps.storage,
-            None,
-            None,
-            Order::Ascending,
-        );
-
-        let token_exists_on_any_chain = range.take(1).count() > 0;
-        if token_exists_on_any_chain {
-            one_token_already_exists = true;
-        }
-
+        // If its a voucher, then we need to check if this token atleast exist on one of the chains
         if token.token_type.is_voucher() {
             ensure!(
-                token_exists_on_any_chain,
+                !registered_denoms.is_empty(),
                 ContractError::new(
                     "Cannot create pool with voucher token that doesn't exist on any chain"
                 )
             );
-            // Voucher token is valid if it exists on any chain
-            validated_token = true;
-        } else if !sender_chain_escrow_exists {
-            // If escrow doesn't exist, create it
-            ESCROW_BALANCES.save(
-                deps.storage,
-                (token.token, sender.chain_uid.clone()),
-                &Uint128::zero(),
-            )?;
+        } else {
+            let token_registered_on_sender_chain = registered_denoms.iter().any(|denom| {
+                denom.chain_uid == sender.chain_uid && denom.token_type == token.token_type
+            });
+            // If its not a voucher, then this token must be present on sender chain with sent denom or its completely new token
+            ensure!(
+                registered_denoms.is_empty() || !token_registered_on_sender_chain,
+                ContractError::new("Cannot use already existing denom without register first")
+            );
+            // If its not a registered denom, lets register it now
+            if !token_registered_on_sender_chain {
+                registered_denoms.push(TokenDenom {
+                    chain_uid: sender.chain_uid.clone(),
+                    token_type: token.token_type,
+                });
+                TOKEN_DENOMS.save(deps.storage, token.token, &registered_denoms)?;
+            }
         }
-
-        // There are two cases
-        // token already exists on the sender chain - We can safely assume that this was validated already by factory so allow pool creation
-        // token not present in sender chain -  This token should not have escrow on any other chain, i.e. This should be completely new token
-        ensure!(
-            validated_token || !token_exists_on_any_chain,
-            ContractError::new("Cannot use already existing token without registering it first")
-        )
+        one_token_already_exists = one_token_already_exists || !registered_denoms.is_empty();
     }
 
+    // Cannot create pool if both tokens are new
     ensure!(
         one_token_already_exists,
         ContractError::new("Cannot create pool with two new tokens")

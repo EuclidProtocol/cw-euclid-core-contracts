@@ -4,7 +4,7 @@ use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
-    token::{Pair, Token},
+    token::{Pair, Token, TokenType},
     utils::pagination::Pagination,
 };
 #[cw_serde]
@@ -186,6 +186,17 @@ pub struct AllEscrowsResponse {
 #[cw_serde]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>,
+}
+
+#[cw_serde]
+pub struct TokenDenom {
+    pub chain_uid: ChainUid,
+    pub token_type: TokenType,
+}
+
+#[cw_serde]
+pub struct TokenDenomsResponse {
+    pub denoms: Vec<TokenDenom>,
 }
 
 #[cw_serde]

@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
+    msgs::router::TokenDenom,
     token::Token,
 };
 use euclid_ibc::msg::{ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg};
@@ -24,6 +25,9 @@ pub const VLPS: Map<(Token, Token), String> = Map::new("vlps");
 
 // Store all tokens in a map for easy access
 pub const TOKEN_VLPS: Map<Token, Vec<String>> = Map::new("token_vlps");
+
+// Store all tokens in a map for easy access
+pub const TOKEN_DENOMS: Map<Token, Vec<TokenDenom>> = Map::new("token_denoms");
 
 // Token escrow balance on each chain
 pub const ESCROW_BALANCES: Map<(Token, ChainUid), Uint128> = Map::new("escrow_balances");
