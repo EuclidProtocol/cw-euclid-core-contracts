@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
     error::ContractError,
     escrow::ReleaseEscrowInternalResponse,
     events::{tx_event, TxType},
@@ -338,7 +338,36 @@ pub fn execute_release_escrow(
             remaining_withdraw_amount
         };
 
-        let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
+        match cross_chain_address.limit {
+            Some(Limit::LessThanOrEqual(limit)) => {
+                ensure!(
+                    release_amount.le(&limit),
+                    ContractError::LimitExceeded {
+                        limit,
+                        amount: release_amount
+                    }
+                );
+            }
+            Some(Limit::Equal(limit)) => {
+                ensure!(
+                    release_amount.eq(&limit),
+                    ContractError::AmountMismatch {
+                        expected: limit,
+                        received: release_amount
+                    }
+                );
+            }
+            Some(Limit::GreaterThanOrEqual(limit)) => {
+                ensure!(
+                    release_amount.ge(&limit),
+                    ContractError::InsufficientAmount {
+                        min_amount: limit,
+                        amount: release_amount
+                    }
+                );
+            }
+            _ => {}
+        }
 
         if release_amount.is_zero() {
             continue;

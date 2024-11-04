@@ -103,15 +103,22 @@ impl CrossChainUser {
         Ok(self)
     }
 
-    pub fn with_limit(self, limit: Option<Uint128>) -> CrossChainUserWithLimit {
+    pub fn with_limit(self, limit: Option<Limit>) -> CrossChainUserWithLimit {
         CrossChainUserWithLimit { user: self, limit }
     }
 }
 
 #[cw_serde]
+pub enum Limit {
+    LessThanOrEqual(Uint128),
+    Equal(Uint128),
+    GreaterThanOrEqual(Uint128),
+}
+
+#[cw_serde]
 pub struct CrossChainUserWithLimit {
     pub user: CrossChainUser,
-    pub limit: Option<Uint128>,
+    pub limit: Option<Limit>,
 }
 
 #[cw_serde]

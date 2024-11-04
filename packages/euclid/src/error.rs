@@ -68,6 +68,21 @@ pub enum ContractError {
     #[error("UnsupportedDenomination")]
     UnsupportedDenomination {},
 
+    #[error("Limit exceeded: {limit} < {amount}")]
+    LimitExceeded { limit: Uint128, amount: Uint128 },
+
+    #[error("Amount mismatch: expected {expected}, received {received}")]
+    AmountMismatch {
+        expected: Uint128,
+        received: Uint128,
+    },
+
+    #[error("Insufficient amount: min_amount {min_amount}, amount {amount}")]
+    InsufficientAmount {
+        min_amount: Uint128,
+        amount: Uint128,
+    },
+
     #[error("CannotEscrowVoucher")]
     CannotEscrowVoucher {},
 
