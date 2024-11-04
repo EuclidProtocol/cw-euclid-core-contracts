@@ -45,7 +45,7 @@ fn test_proper_instantiation() {
         true,
     );
 
-    let state_response = MockFactory::query_state(&mock_factory, &mut factory);
+    let state_response = MockFactory::query_state(&mock_factory, &factory);
     let expected_state_id = StateResponse {
         chain_uid,
         router_contract,

@@ -765,7 +765,7 @@ mod tests {
         ];
 
         for test in test_cases {
-            let res = test.pair_with_denom.get_pair().unwrap().validate();
+            let res = test.pair_with_denom.get_pair();
             if let Some(err) = test.expected_error {
                 assert_eq!(res.unwrap_err(), err, "{}", test.name);
                 continue;
