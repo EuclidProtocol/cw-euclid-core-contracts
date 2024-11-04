@@ -17,7 +17,7 @@ pub struct PoolCreateRequest {
 }
 
 #[cw_serde]
-pub struct EscrowCreateRequest {
+pub struct DenomRegisterDeregisterRequest {
     // Request sender
     pub sender: String,
     // Escrow request id
@@ -33,4 +33,7 @@ pub struct PoolCreationResponse {
 }
 
 #[cw_serde]
-pub struct EscrowCreationResponse {}
+pub struct RegisterDenomResponse {}
+
+#[cw_serde]
+pub struct DeRegisterDenomResponse {}
