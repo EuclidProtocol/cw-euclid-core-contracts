@@ -132,7 +132,7 @@ fn test_register_factory() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { ack, .. } = &packet_lifetime.packets[0].outcome {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
