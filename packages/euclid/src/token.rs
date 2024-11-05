@@ -134,7 +134,7 @@ forward_ref_partial_eq!(Pair, Pair);
 
 impl Pair {
     pub fn new(token_1: Token, token_2: Token) -> Result<Self, ContractError> {
-        let pair = if token_1.le(&token_2) {
+        let pair = if token_1.le(&token_2.to_string()) {
             Self { token_1, token_2 }
         } else {
             Self {
@@ -155,7 +155,7 @@ impl Pair {
         self.token_2.validate()?;
 
         ensure!(
-            self.token_1.le(&self.token_2),
+            self.token_1.le(&self.token_2.to_string()),
             ContractError::new("Token order is wrong")
         );
         Ok(())
@@ -169,7 +169,7 @@ impl Pair {
     }
 
     pub fn get_tupple(&self) -> (Token, Token) {
-        if self.token_1.le(&self.token_2) {
+        if self.token_1.le(&self.token_2.to_string()) {
             (self.token_1.clone(), self.token_2.clone())
         } else {
             (self.token_2.clone(), self.token_1.clone())
@@ -437,7 +437,7 @@ pub struct PairWithAmount {
 
 impl PairWithAmount {
     pub fn new(token_1: TokenWithAmount, token_2: TokenWithAmount) -> Result<Self, ContractError> {
-        let pair_with_amount = if token_1.token.le(&token_2.token) {
+        let pair_with_amount = if token_1.token.le(&token_2.token.to_string()) {
             Self { token_1, token_2 }
         } else {
             Self {

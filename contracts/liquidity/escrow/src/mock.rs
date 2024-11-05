@@ -3,7 +3,6 @@
 use crate::contract::{execute, instantiate, query, reply};
 use cosmwasm_std::{to_json_binary, Addr, Coin, CosmosMsg, Empty, WasmMsg};
 use cw_multi_test::{AppResponse, Contract, ContractWrapper, Executor};
-
 use euclid::{
     msgs::escrow::{ExecuteMsg, InstantiateMsg, QueryMsg, TokenIdResponse},
     token::{Token, TokenType},

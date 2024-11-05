@@ -44,7 +44,6 @@ pub fn ibc_packet_receive(
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
-
     Ok(IbcReceiveResponse::new()
         .add_attribute("method", "ibc_packet_receive")
         .add_attribute("tx_id", tx_id)
@@ -58,7 +57,6 @@ pub fn ibc_receive_internal_call(
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
     let router = msg.packet.src.port_id.replace("wasm.", "");
-
     let state = STATE.load(deps.storage)?;
     ensure!(
         state.router_contract == router,

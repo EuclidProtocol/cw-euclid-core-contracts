@@ -512,7 +512,7 @@ pub fn add_liquidity_request(
     );
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolDoesNotExists {}
+        ContractError::PoolDoesNotExist {}
     );
 
     let channel = HUB_CHANNEL.load(deps.storage)?;
@@ -642,7 +642,7 @@ pub fn remove_liquidity_request(
 
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolDoesNotExists {}
+        ContractError::PoolDoesNotExist {}
     );
     // TODO: Do we want to add check for lp shares for early fail?
 
@@ -885,15 +885,14 @@ pub fn execute_deposit_token(
     asset_in.validate(deps.as_ref())?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
-
     let channel = HUB_CHANNEL.load(deps.storage)?;
+
     let timeout = get_timeout(timeout)?;
 
     ensure!(
         !PENDING_TOKEN_DEPOSIT.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-
     // Verify that this asset is allowed
     let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
 
@@ -903,12 +902,10 @@ pub fn execute_deposit_token(
             denom: asset_in.token_type.clone(),
         },
     )?;
-
     ensure!(
         token_allowed.allowed,
         ContractError::UnsupportedDenomination {}
     );
-
     let mut fund_manager = FundManager::new(&info.funds);
 
     match &asset_in.token_type {
