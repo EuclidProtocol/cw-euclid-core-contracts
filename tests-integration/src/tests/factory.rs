@@ -12,12 +12,13 @@ use euclid::{
     chain::ChainUid,
     fee::DenomFees,
     msgs::{
+        escrow::StateResponse as EscrowStateResponse,
         factory::{AllPoolsResponse, ExecuteMsgFns, StateResponse},
-        router::{AllVlpResponse, RegisterFactoryChainIbc, VlpResponse},
+        router::{RegisterFactoryChainIbc, VlpResponse},
+        virtual_balance::GetStateResponse,
         vlp::GetLiquidityResponse,
     },
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
-    utils::pagination::Pagination,
 };
 use factory::{
     mock::{mock_factory, MockFactory},
@@ -267,8 +268,24 @@ fn test_create_pool_with_funds() {
         .unwrap();
     println!("vlp query: {:?}", vlp_query);
 
+    // Got this address from the query above
+    vlp_nibiru.set_address(&Addr::unchecked("contract2"));
+
     let liquidity_query: GetLiquidityResponse = vlp_nibiru
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
         .unwrap();
     println!("liquidity query: {:?}", liquidity_query);
+
+    virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
+
+    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
+        .unwrap();
+    println!("vbalance state is: {:?}", vbalance_query);
+
+    escrow_osmosis.set_address(&Addr::unchecked("contract1"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    println!("escrow state is: {:?}", escrow_query);
 }
