@@ -15,6 +15,7 @@ use escrow::mock::mock_escrow;
 use escrow::EscrowContract;
 use euclid::fee::DenomFees;
 use euclid::msgs::factory::ExecuteMsgFns;
+use euclid::msgs::router::RegisterFactoryChainIbc;
 use euclid::token::PairWithDenomAndAmount;
 use euclid::token::Token;
 use euclid::token::TokenWithDenomAndAmount;
@@ -136,7 +137,7 @@ fn test_create_pool_with_funds() {
         )
         .unwrap();
 
-    // Set up channel from juno to osmosis
+    // Set up channel from osmosis to nibiru
     let channel_receipt = interchain
         .create_contract_channel(&factory_osmosis, &router_nibiru, "counter-1", None)
         .unwrap();
@@ -154,8 +155,38 @@ fn test_create_pool_with_funds() {
         .update_hub_channel(osmosis_channel.to_string())
         .unwrap();
 
-    // Need to set HUB CHANNEL first
-    // Register escrow
+    let register_factory_request = router_nibiru
+        .execute(
+            &euclid::msgs::router::ExecuteMsg::RegisterFactory {
+                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_info: euclid::msgs::router::RegisterFactoryChainType::Ibc(
+                    RegisterFactoryChainIbc {
+                        channel: osmosis_channel.to_string(),
+                        timeout: None,
+                    },
+                ),
+            },
+            None,
+        )
+        .unwrap();
+
+    let packet_lifetime = interchain
+        .await_packets("nibiru", register_factory_request)
+        .unwrap();
+
+    // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    } else {
+        panic!("packet timed out");
+        // There was a decode error or the packet timed out
+        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    };
+
+    // Need to register factory first from router
+
+    // // Need to set HUB CHANNEL first
+    // // Register escrow
     let register_escrow_request = factory_osmosis
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestRegisterEscrow {
@@ -184,47 +215,47 @@ fn test_create_pool_with_funds() {
         // Else the packet timed-out, you may have a relayer error or something is wrong in your application
     };
 
-    // // Need to request register escrow first
-    // let create_pool_with_funds_request = factory_osmosis
-    //     .execute(
-    //         &euclid::msgs::factory::ExecuteMsg::RequestPoolCreationWithFunds {
-    //             pair: PairWithDenomAndAmount {
-    //                 token_1: TokenWithDenomAndAmount {
-    //                     token: Token::create("osmo".to_string()).unwrap(),
-    //                     amount: Uint128::from(100u128),
-    //                     token_type: euclid::token::TokenType::Native {
-    //                         denom: "osmo".to_string(),
-    //                     },
-    //                 },
-    //                 token_2: TokenWithDenomAndAmount {
-    //                     token: Token::create("eucl".to_string()).unwrap(),
-    //                     amount: Uint128::from(10u128),
-    //                     token_type: euclid::token::TokenType::Native {
-    //                         denom: "eucl".to_string(),
-    //                     },
-    //                 },
-    //             },
-    //             slippage_tolerance_bps: 10,
-    //             timeout: None,
-    //             lp_token_name: "osmosis".to_string(),
-    //             lp_token_symbol: "osmo".to_string(),
-    //             lp_token_decimal: 6,
-    //             lp_token_marketing: None,
-    //         },
-    //         Some(&[coin(100u128, "osmo"), coin(10u128, "eucl")]),
-    //     )
-    //     .unwrap();
+    // Need to request register escrow first
+    let create_pool_with_funds_request = factory_osmosis
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreationWithFunds {
+                pair: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token::create("osmo".to_string()).unwrap(),
+                        amount: Uint128::from(100_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "osmo".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token::create("eucl".to_string()).unwrap(),
+                        amount: Uint128::from(10_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "eucl".to_string(),
+                        },
+                    },
+                },
+                slippage_tolerance_bps: 10,
+                timeout: None,
+                lp_token_name: "osmosis".to_string(),
+                lp_token_symbol: "osmo".to_string(),
+                lp_token_decimal: 6,
+                lp_token_marketing: None,
+            },
+            Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
+        )
+        .unwrap();
 
-    // let packet_lifetime = interchain
-    //     .await_packets("juno", create_pool_with_funds_request)
-    //     .unwrap();
+    let packet_lifetime = interchain
+        .await_packets("osmosis", create_pool_with_funds_request)
+        .unwrap();
 
-    // // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    // if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
-    //     // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    // } else {
-    //     panic!("packet timed out");
-    //     // There was a decode error or the packet timed out
-    //     // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    // };
+    // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    } else {
+        panic!("packet timed out");
+        // There was a decode error or the packet timed out
+        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    };
 }

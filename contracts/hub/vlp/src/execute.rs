@@ -102,35 +102,33 @@ pub fn register_pool_with_funds(
         state.pair.get_tupple() == pair_with_amount.get_pair()?.get_tupple(),
         ContractError::AssetDoesNotExist {}
     );
-
     // Store the pool in the map
     CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
 
     // Add liquidity part //
     // Ensure tokens are received by VLP
-    for token in pair_with_amount.get_vec_token() {
-        let token_reserve = BALANCES.load(deps.storage, token.token.clone())?;
+    // for token in pair_with_amount.get_vec_token() {
+    //     let token_reserve = BALANCES.load(deps.storage, token.token.clone())?;
 
-        // Router mints new tokens or this vlp gets new balance from token transfer by previous, so virtual_balance = amount_in + pool_current_liquidity
-        let vlp_virtual_balance_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
-            deps.querier.query_wasm_smart(
-                state.virtual_balance.clone(),
-                &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-                    balance_key: BalanceKey {
-                        cross_chain_user: CrossChainUser {
-                            address: env.contract.address.to_string(),
-                            chain_uid: ChainUid::vsl_chain_uid()?,
-                        },
-                        token_id: token.token.to_string(),
-                    },
-                },
-            )?;
-
-        ensure!(
-            vlp_virtual_balance_balance.amount == token_reserve.checked_add(token.amount)?,
-            ContractError::new("Liquidity didn't receive enough funds!")
-        );
-    }
+    //     // Router mints new tokens or this vlp gets new balance from token transfer by previous, so virtual_balance = amount_in + pool_current_liquidity
+    //     let vlp_virtual_balance_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
+    //         deps.querier.query_wasm_smart(
+    //             state.virtual_balance.clone(),
+    //             &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+    //                 balance_key: BalanceKey {
+    //                     cross_chain_user: CrossChainUser {
+    //                         address: env.contract.address.to_string(),
+    //                         chain_uid: ChainUid::vsl_chain_uid()?,
+    //                     },
+    //                     token_id: token.token.to_string(),
+    //                 },
+    //             },
+    //         )?;
+    //     ensure!(
+    //         vlp_virtual_balance_balance.amount == token_reserve.checked_add(token.amount)?,
+    //         ContractError::new("Liquidity didn't receive enough funds!")
+    //     );
+    // }
 
     let mut chain_lp_tokens = Uint128::zero();
     let pair = state.pair.clone();
@@ -224,7 +222,7 @@ pub fn register_pool_with_funds(
         .add_attribute("lp_allocation", lp_allocation)
         .add_attribute("liquidity_1_added", token_1_liquidity)
         .add_attribute("liquidity_2_added", token_2_liquidity)
-        .set_data(to_json_binary(&acknowledgement)?))
+        .set_data(acknowledgement))
 }
 
 /// Adds liquidity to the VLP

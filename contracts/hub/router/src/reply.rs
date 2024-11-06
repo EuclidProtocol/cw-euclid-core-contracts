@@ -67,8 +67,9 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 &vlp_address,
             )?;
 
-            let pool_creation_response =
-                from_json::<PoolCreationResponse>(instantiate_data.data.unwrap_or_default());
+            let pool_creation_response = from_json::<PoolCreationResponse>(
+                instantiate_data.data.clone().unwrap_or_default(),
+            );
 
             // This is probably IBC Message so send ok Ack as data
             if pool_creation_response.is_ok() {

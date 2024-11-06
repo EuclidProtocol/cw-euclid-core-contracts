@@ -66,6 +66,20 @@ pub fn instantiate(
                     pair,
                     tx_id,
                 } => execute::register_pool(deps, env.clone(), info.clone(), sender, pair, tx_id),
+                ExecuteMsg::RegisterPoolWithFunds {
+                    sender,
+                    pair,
+                    slippage_tolerance_bps,
+                    tx_id,
+                } => execute::register_pool_with_funds(
+                    deps,
+                    env.clone(),
+                    info.clone(),
+                    sender,
+                    pair,
+                    slippage_tolerance_bps,
+                    tx_id,
+                ),
                 _ => Err(ContractError::Unauthorized {}),
             })?;
 

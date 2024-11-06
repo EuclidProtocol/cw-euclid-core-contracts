@@ -96,7 +96,6 @@ pub fn execute_register_factory(
     chain_info: RegisterFactoryChainType,
 ) -> Result<Response, ContractError> {
     let chain_uid = chain_uid.validate()?.to_owned();
-
     ensure!(
         !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
         ContractError::new("Factory already exists")
