@@ -71,15 +71,12 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 instantiate_data.data.clone().unwrap_or_default(),
             );
 
-            // This is probably IBC Message so send ok Ack as data
+            // Ack is already being sent from create pool and create pool with funds
             if pool_creation_response.is_ok() {
-                let ack = AcknowledgementMsg::Ok(pool_creation_response?);
-
                 Ok(Response::new()
                     .add_attribute("action", "reply_vlp_instantiate")
                     .add_attribute("vlp", vlp_address)
-                    .add_attribute("action", "reply_pool_register")
-                    .set_data(to_json_binary(&ack)?))
+                    .add_attribute("action", "reply_pool_register"))
             } else {
                 Ok(Response::new()
                     .add_attribute("action", "reply_vlp_instantiate")
