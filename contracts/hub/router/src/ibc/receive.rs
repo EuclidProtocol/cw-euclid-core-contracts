@@ -358,6 +358,7 @@ fn execute_request_pool_creation(
             funds: vec![],
             label: "VLP".to_string(),
         };
+
         Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_INSTANTIATE_REPLY_ID)))
     }
 }

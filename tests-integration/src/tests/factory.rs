@@ -4,17 +4,17 @@ use std::collections::HashMap;
 use cosmwasm_std::Uint128;
 use cosmwasm_std::{coin, Addr, Coin};
 use cw20::Cw20Contract;
-use cw_orch::prelude::ContractInstance;
 use cw_orch::prelude::CwOrchExecute;
 use cw_orch::prelude::CwOrchInstantiate;
 use cw_orch::prelude::CwOrchUpload;
+use cw_orch::prelude::{ContractInstance, CwOrchQuery};
 use cw_orch_interchain::prelude::*;
 use cw_orch_interchain::types::IbcPacketOutcome;
 use cw_orch_interchain::InterchainEnv;
 use escrow::mock::mock_escrow;
 use escrow::EscrowContract;
 use euclid::fee::DenomFees;
-use euclid::msgs::factory::ExecuteMsgFns;
+use euclid::msgs::factory::{AllPoolsResponse, ExecuteMsgFns};
 use euclid::msgs::router::RegisterFactoryChainIbc;
 use euclid::token::PairWithDenomAndAmount;
 use euclid::token::Token;
@@ -258,4 +258,8 @@ fn test_create_pool_with_funds() {
         // There was a decode error or the packet timed out
         // Else the packet timed-out, you may have a relayer error or something is wrong in your application
     };
+    let all_pools_query: AllPoolsResponse = factory_osmosis
+        .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
+        .unwrap();
+    println!("all pools query: {:?}", all_pools_query);
 }
