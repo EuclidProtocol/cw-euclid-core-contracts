@@ -1,13 +1,32 @@
 #![cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 
-use cosmwasm_std::coin;
+use cosmwasm_std::Uint128;
+use cosmwasm_std::{coin, Addr, Coin};
+use cw20::Cw20Contract;
+use cw_orch::prelude::ContractInstance;
+use cw_orch::prelude::CwOrchExecute;
+use cw_orch::prelude::CwOrchInstantiate;
+use cw_orch::prelude::CwOrchUpload;
+use cw_orch_interchain::prelude::*;
+use cw_orch_interchain::types::IbcPacketOutcome;
+use cw_orch_interchain::InterchainEnv;
 use escrow::mock::mock_escrow;
+use escrow::EscrowContract;
 use euclid::fee::DenomFees;
+use euclid::msgs::factory::ExecuteMsgFns;
+use euclid::token::PairWithDenomAndAmount;
+use euclid::token::Token;
+use euclid::token::TokenWithDenomAndAmount;
+use euclid::token::{Pair, TokenWithDenom};
 use euclid::{chain::ChainUid, msgs::factory::StateResponse};
 use factory::mock::mock_factory;
 use factory::mock::MockFactory;
+use factory::FactoryContract;
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
+use router::RouterContract;
+use virtual_balance::VirtualBalanceContract;
+use vlp::VlpContract;
 
 const _USER: &str = "user";
 const _NATIVE_DENOM: &str = "native";
@@ -59,4 +78,153 @@ fn test_proper_instantiation() {
         },
     };
     assert_eq!(state_response, expected_state_id);
+}
+
+#[test]
+fn test_create_pool_with_funds() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let osmosis = interchain.get_chain("osmosis").unwrap();
+    let nibiru = interchain.get_chain("nibiru").unwrap();
+
+    osmosis
+        .set_balance(
+            sender.clone(),
+            vec![
+                Coin::new(100000000000000, "osmo"),
+                Coin::new(100000000000000, "eucl"),
+            ],
+        )
+        .unwrap();
+
+    let factory_osmosis = FactoryContract::new(osmosis.clone());
+    let escrow_osmosis = EscrowContract::new(osmosis.clone());
+    let cw20_osmosis = Cw20Contract::new(osmosis.clone());
+    let router_nibiru = RouterContract::new(nibiru.clone());
+    let virtual_balance_nibiru = VirtualBalanceContract::new(nibiru.clone());
+    let vlp_nibiru = VlpContract::new(nibiru.clone());
+
+    factory_osmosis.upload().unwrap();
+    escrow_osmosis.upload().unwrap();
+    cw20_osmosis.upload().unwrap();
+    router_nibiru.upload().unwrap();
+    virtual_balance_nibiru.upload().unwrap();
+    vlp_nibiru.upload().unwrap();
+
+    router_nibiru
+        .instantiate(
+            &euclid::msgs::router::InstantiateMsg {
+                vlp_code_id: 3,
+                virtual_balance_code_id: 2,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+
+    factory_osmosis
+        .instantiate(
+            &euclid::msgs::factory::InstantiateMsg {
+                router_contract: router_nibiru.address().unwrap().into_string(),
+                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                escrow_code_id: 2,
+                cw20_code_id: 3,
+                is_native: false,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+
+    // Set up channel from juno to osmosis
+    let channel_receipt = interchain
+        .create_contract_channel(&factory_osmosis, &router_nibiru, "counter-1", None)
+        .unwrap();
+
+    // After channel creation is complete, we get the channel id, which is necessary for ICA remote execution
+    let osmosis_channel = channel_receipt
+        .interchain_channel
+        .get_chain("osmosis")
+        .unwrap()
+        .channel
+        .unwrap();
+
+    // Update Hub Channel
+    factory_osmosis
+        .update_hub_channel(osmosis_channel.to_string())
+        .unwrap();
+
+    // Need to set HUB CHANNEL first
+    // Register escrow
+    let register_escrow_request = factory_osmosis
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RequestRegisterEscrow {
+                token: TokenWithDenom {
+                    token: Token::create("osmo".to_string()).unwrap(),
+                    token_type: euclid::token::TokenType::Native {
+                        denom: "osmo".to_string(),
+                    },
+                },
+                timeout: None,
+            },
+            None,
+        )
+        .unwrap();
+
+    let packet_lifetime = interchain
+        .await_packets("osmosis", register_escrow_request)
+        .unwrap();
+
+    // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    } else {
+        panic!("packet timed out");
+        // There was a decode error or the packet timed out
+        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    };
+
+    // // Need to request register escrow first
+    // let create_pool_with_funds_request = factory_osmosis
+    //     .execute(
+    //         &euclid::msgs::factory::ExecuteMsg::RequestPoolCreationWithFunds {
+    //             pair: PairWithDenomAndAmount {
+    //                 token_1: TokenWithDenomAndAmount {
+    //                     token: Token::create("osmo".to_string()).unwrap(),
+    //                     amount: Uint128::from(100u128),
+    //                     token_type: euclid::token::TokenType::Native {
+    //                         denom: "osmo".to_string(),
+    //                     },
+    //                 },
+    //                 token_2: TokenWithDenomAndAmount {
+    //                     token: Token::create("eucl".to_string()).unwrap(),
+    //                     amount: Uint128::from(10u128),
+    //                     token_type: euclid::token::TokenType::Native {
+    //                         denom: "eucl".to_string(),
+    //                     },
+    //                 },
+    //             },
+    //             slippage_tolerance_bps: 10,
+    //             timeout: None,
+    //             lp_token_name: "osmosis".to_string(),
+    //             lp_token_symbol: "osmo".to_string(),
+    //             lp_token_decimal: 6,
+    //             lp_token_marketing: None,
+    //         },
+    //         Some(&[coin(100u128, "osmo"), coin(10u128, "eucl")]),
+    //     )
+    //     .unwrap();
+
+    // let packet_lifetime = interchain
+    //     .await_packets("juno", create_pool_with_funds_request)
+    //     .unwrap();
+
+    // // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    // if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    //     // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    // } else {
+    //     panic!("packet timed out");
+    //     // There was a decode error or the packet timed out
+    //     // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    // };
 }
