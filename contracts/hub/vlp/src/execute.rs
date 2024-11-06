@@ -203,7 +203,7 @@ pub fn register_pool_with_funds(
     };
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&pool_creation_with_funds_response)?;
-    println!("hey2");
+
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,

@@ -39,8 +39,6 @@ pub fn ibc_packet_ack(
     env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    println!("hey3");
-    println!("the ack is: {:?}", ack);
     let internal_msg = ExecuteMsg::IbcCallbackAckAndTimeout { ack: ack.clone() };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),

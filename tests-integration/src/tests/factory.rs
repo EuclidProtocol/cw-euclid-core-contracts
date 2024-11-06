@@ -1,39 +1,32 @@
 #![cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 
-use cosmwasm_std::Uint128;
-use cosmwasm_std::{coin, Addr, Coin};
+use cosmwasm_std::{coin, Addr, Coin, Uint128};
 use cw20::Cw20Contract;
-use cw_orch::prelude::CwOrchExecute;
-use cw_orch::prelude::CwOrchInstantiate;
-use cw_orch::prelude::CwOrchUpload;
-use cw_orch::prelude::{ContractInstance, CwOrchQuery};
-use cw_orch_interchain::prelude::*;
-use cw_orch_interchain::types::IbcPacketOutcome;
-use cw_orch_interchain::InterchainEnv;
-use escrow::mock::mock_escrow;
-use escrow::EscrowContract;
-use euclid::fee::DenomFees;
-use euclid::msgs::factory::{AllPoolsResponse, ExecuteMsgFns};
-use euclid::msgs::router::RegisterFactoryChainIbc;
-use euclid::token::PairWithDenomAndAmount;
-use euclid::token::Token;
-use euclid::token::TokenWithDenomAndAmount;
-use euclid::token::{Pair, TokenWithDenom};
-use euclid::{chain::ChainUid, msgs::factory::StateResponse};
-use factory::mock::mock_factory;
-use factory::mock::MockFactory;
-use factory::FactoryContract;
+use cw_orch::prelude::{
+    ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload,
+};
+use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
+use escrow::{mock::mock_escrow, EscrowContract};
+use euclid::{
+    chain::ChainUid,
+    fee::DenomFees,
+    msgs::{
+        factory::{AllPoolsResponse, ExecuteMsgFns, StateResponse},
+        router::{AllVlpResponse, RegisterFactoryChainIbc, VlpResponse},
+        vlp::GetLiquidityResponse,
+    },
+    token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
+    utils::pagination::Pagination,
+};
+use factory::{
+    mock::{mock_factory, MockFactory},
+    FactoryContract,
+};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::RouterContract;
 use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
-
-const _USER: &str = "user";
-const _NATIVE_DENOM: &str = "native";
-const _IBC_DENOM_1: &str = "ibc/denom1";
-const _IBC_DENOM_2: &str = "ibc/denom2";
-const _SUPPLY: u128 = 1_000_000;
 
 #[test]
 fn test_proper_instantiation() {
@@ -262,4 +255,20 @@ fn test_create_pool_with_funds() {
         .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
         .unwrap();
     println!("all pools query: {:?}", all_pools_query);
+
+    let vlp_query: VlpResponse = router_nibiru
+        .query(&euclid::msgs::router::QueryMsg::GetVlp {
+            pair: Pair::new(
+                Token::create("osmo".to_string()).unwrap(),
+                Token::create("eucl".to_string()).unwrap(),
+            )
+            .unwrap(),
+        })
+        .unwrap();
+    println!("vlp query: {:?}", vlp_query);
+
+    let liquidity_query: GetLiquidityResponse = vlp_nibiru
+        .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
+        .unwrap();
+    println!("liquidity query: {:?}", liquidity_query);
 }
