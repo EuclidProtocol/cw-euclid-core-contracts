@@ -399,8 +399,9 @@ fn execute_request_pool_creation_with_funds(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation_with_funds");
 
-    let mut one_token_already_exists = false;
+    let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
 
+    let mut one_token_already_exists = false;
     for token in pair_with_denom_and_amount.get_vec_token_info() {
         // Check if token is already validated. Its validated if it has an escrow on sender chain
         let mut validated_token = ESCROW_BALANCES.has(
@@ -439,6 +440,8 @@ fn execute_request_pool_creation_with_funds(
             validated_token || !token_exists_on_any_chain,
             ContractError::new("Cannot use already existing token without registering it first")
         );
+
+        // Mint virtual balance for the token
         let mint_virtual_balance_msg =
             euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
                 amount: token.amount,
@@ -464,7 +467,6 @@ fn execute_request_pool_creation_with_funds(
         ContractError::new("Cannot create pool with two new tokens")
     );
 
-    let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
     if vlp.is_some() {
         let msg = WasmMsg::Execute {
@@ -626,6 +628,7 @@ fn ibc_execute_add_liquidity(
         sender,
         tx_id,
         slippage_tolerance_bps,
+        called_by_register_pool_with_funds: false,
     };
 
     let msg = WasmMsg::Execute {

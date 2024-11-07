@@ -1,12 +1,11 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, MessageInfo, Response, SubMsg,
-    Uint128, WasmMsg,
+    ensure, to_json_binary, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::{Fee, BPS_100_PERCENT, MAX_FEE_BPS},
+    fee::{Fee, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
     msgs::{
         virtual_balance::ExecuteTransfer,
@@ -19,7 +18,7 @@ use euclid::{
 };
 
 use crate::{
-    query::{assert_slippage_tolerance, calculate_lp_allocation, calculate_swap},
+    query::{calculate_lp_allocation_for_liquidity, calculate_swap, extract_token_amount},
     reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
     state::{self, State, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
@@ -82,7 +81,7 @@ pub fn register_pool(
 }
 
 pub fn register_pool_with_funds(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     sender: CrossChainUser,
@@ -90,7 +89,7 @@ pub fn register_pool_with_funds(
     slippage_tolerance_bps: u64,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
+    let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
     // Verify that chain pool does not already exist
     ensure!(
@@ -106,123 +105,16 @@ pub fn register_pool_with_funds(
     CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
 
     // Add liquidity part //
-    // Ensure tokens are received by VLP
-    // for token in pair_with_amount.get_vec_token() {
-    //     let token_reserve = BALANCES.load(deps.storage, token.token.clone())?;
-
-    //     // Router mints new tokens or this vlp gets new balance from token transfer by previous, so virtual_balance = amount_in + pool_current_liquidity
-    //     let vlp_virtual_balance_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
-    //         deps.querier.query_wasm_smart(
-    //             state.virtual_balance.clone(),
-    //             &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-    //                 balance_key: BalanceKey {
-    //                     cross_chain_user: CrossChainUser {
-    //                         address: env.contract.address.to_string(),
-    //                         chain_uid: ChainUid::vsl_chain_uid()?,
-    //                     },
-    //                     token_id: token.token.to_string(),
-    //                 },
-    //             },
-    //         )?;
-    //     ensure!(
-    //         vlp_virtual_balance_balance.amount == token_reserve.checked_add(token.amount)?,
-    //         ContractError::new("Liquidity didn't receive enough funds!")
-    //     );
-    // }
-
-    let mut chain_lp_tokens = Uint128::zero();
-    let pair = state.pair.clone();
-
-    let token_1_liquidity = if pair_with_amount.token_1.token == pair.token_1 {
-        pair_with_amount.token_1.amount
-    } else {
-        pair_with_amount.token_2.amount
-    };
-
-    let token_2_liquidity = if pair_with_amount.token_2.token == pair.token_2 {
-        pair_with_amount.token_2.amount
-    } else {
-        pair_with_amount.token_1.amount
-    };
-
-    // Verify that ratio of assets provided is equal to the ratio of assets in the pool
-    let ratio =
-        Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
-            ContractError::Generic {
-                err: err.to_string(),
-            }
-        })?;
-
-    let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
-    let mut total_reserve_2 = BALANCES.load(deps.storage, pair.token_2.clone())?;
-
-    // Lets get lq ratio, it will be the current ratio of token reserves or if its first time then it will be ratio of tokens provided
-    let lq_ratio =
-        Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
-
-    // Verify slippage tolerance is between 0 and 100
-    ensure!(
-        slippage_tolerance_bps.le(&BPS_100_PERCENT),
-        ContractError::InvalidSlippageTolerance {}
-    );
-
-    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
-
-    // Calculate liquidity added share for LP provider from total liquidity
-    let lp_allocation = calculate_lp_allocation(
-        token_1_liquidity,
-        token_2_liquidity,
-        total_reserve_1,
-        total_reserve_2,
-        state.total_lp_tokens,
-    )?;
-
-    ensure!(
-        !lp_allocation.is_zero(),
-        ContractError::Generic {
-            err: "LP Allocation cannot be zero".to_string()
-        }
-    );
-
-    chain_lp_tokens = chain_lp_tokens.checked_add(lp_allocation)?;
-    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
-
-    // Add to total liquidity and total lp allocation
-    total_reserve_1 = total_reserve_1.checked_add(token_1_liquidity)?;
-    total_reserve_2 = total_reserve_2.checked_add(token_2_liquidity)?;
-
-    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
-
-    STATE.save(deps.storage, &state)?;
-    BALANCES.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
-    BALANCES.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
-
-    let pool_creation_with_funds_response = PoolCreationWithFundsResponse {
-        mint_lp_tokens: lp_allocation,
-        vlp_contract: env.contract.address.to_string(),
-    };
-    // Prepare acknowledgement
-    let acknowledgement = to_json_binary(&pool_creation_with_funds_response)?;
-
-    Ok(Response::new()
-        .add_event(tx_event(
-            &tx_id,
-            &sender.to_sender_string(),
-            TxType::PoolCreationWithFunds,
-        ))
-        .add_event(liquidity_event(
-            &pair
-                .get_pair_with_amount(total_reserve_1, total_reserve_2)?
-                .get_vec_token(),
-            &pair_with_amount.get_vec_token(),
-            &tx_id,
-        ))
-        .add_attribute("action", "register_pool_with_funds")
-        .add_attribute("sender", sender.to_sender_string())
-        .add_attribute("lp_allocation", lp_allocation)
-        .add_attribute("liquidity_1_added", token_1_liquidity)
-        .add_attribute("liquidity_2_added", token_2_liquidity)
-        .set_data(acknowledgement))
+    add_liquidity(
+        deps.branch(),
+        env,
+        info,
+        sender,
+        pair_with_amount,
+        slippage_tolerance_bps,
+        tx_id,
+        true,
+    )
 }
 
 /// Adds liquidity to the VLP
@@ -249,6 +141,7 @@ pub fn add_liquidity(
     liquidity: PairWithAmount,
     slippage_tolerance_bps: u64,
     tx_id: String,
+    called_by_register_pool_with_funds: bool,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
@@ -278,60 +171,23 @@ pub fn add_liquidity(
         );
     }
 
-    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
-
     let pair = state.pair.clone();
-
-    let token_1_liquidity = if liquidity.token_1.token == pair.token_1 {
-        liquidity.token_1.amount
-    } else {
-        liquidity.token_2.amount
-    };
-
-    let token_2_liquidity = if liquidity.token_2.token == pair.token_2 {
-        liquidity.token_2.amount
-    } else {
-        liquidity.token_1.amount
-    };
-
-    // Verify that ratio of assets provided is equal to the ratio of assets in the pool
-    let ratio =
-        Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
-            ContractError::Generic {
-                err: err.to_string(),
-            }
-        })?;
 
     let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
     let mut total_reserve_2 = BALANCES.load(deps.storage, pair.token_2.clone())?;
 
-    // Lets get lq ratio, it will be the current ratio of token reserves or if its first time then it will be ratio of tokens provided
-    let lq_ratio =
-        Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
+    let (token_1_liquidity, token_2_liquidity) = extract_token_amount(&liquidity, &pair);
 
-    // Verify slippage tolerance is between 0 and 100
-    ensure!(
-        slippage_tolerance_bps.le(&BPS_100_PERCENT),
-        ContractError::InvalidSlippageTolerance {}
-    );
-
-    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
-
-    // Calculate liquidity added share for LP provider from total liquidity
-    let lp_allocation = calculate_lp_allocation(
+    let lp_allocation = calculate_lp_allocation_for_liquidity(
         token_1_liquidity,
         token_2_liquidity,
         total_reserve_1,
         total_reserve_2,
         state.total_lp_tokens,
+        Some(slippage_tolerance_bps),
     )?;
 
-    ensure!(
-        !lp_allocation.is_zero(),
-        ContractError::Generic {
-            err: "LP Allocation cannot be zero".to_string()
-        }
-    );
+    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
 
     chain_lp_tokens = chain_lp_tokens.checked_add(lp_allocation)?;
     CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
@@ -339,31 +195,13 @@ pub fn add_liquidity(
     // Add to total liquidity and total lp allocation
     total_reserve_1 = total_reserve_1.checked_add(token_1_liquidity)?;
     total_reserve_2 = total_reserve_2.checked_add(token_2_liquidity)?;
-
     state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
+
     STATE.save(deps.storage, &state)?;
-
     BALANCES.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
-
     BALANCES.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
 
-    // Add current balance to SNAPSHOT MAP
-
-    // Prepare Liquidity Response
-    let liquidity_response = AddLiquidityResponse {
-        mint_lp_tokens: lp_allocation,
-        vlp_address: env.contract.address.to_string(),
-    };
-
-    // Prepare acknowledgement
-    let acknowledgement = to_json_binary(&liquidity_response)?;
-
-    Ok(Response::new()
-        .add_event(tx_event(
-            &tx_id,
-            &sender.to_sender_string(),
-            TxType::AddLiquidity,
-        ))
+    let res = Response::new()
         .add_event(liquidity_event(
             &pair
                 .get_pair_with_amount(total_reserve_1, total_reserve_2)?
@@ -371,12 +209,43 @@ pub fn add_liquidity(
             &liquidity.get_vec_token(),
             &tx_id,
         ))
-        .add_attribute("action", "add_liquidity")
         .add_attribute("sender", sender.to_sender_string())
         .add_attribute("lp_allocation", lp_allocation)
         .add_attribute("liquidity_1_added", token_1_liquidity)
-        .add_attribute("liquidity_2_added", token_2_liquidity)
-        .set_data(acknowledgement))
+        .add_attribute("liquidity_2_added", token_2_liquidity);
+
+    if called_by_register_pool_with_funds {
+        let pool_creation_with_funds_response = PoolCreationWithFundsResponse {
+            mint_lp_tokens: lp_allocation,
+            vlp_contract: env.contract.address.to_string(),
+        };
+        // Prepare acknowledgement
+        let ack = to_json_binary(&pool_creation_with_funds_response)?;
+        Ok(res
+            .add_attribute("action", "register_pool_with_funds")
+            .add_event(tx_event(
+                &tx_id,
+                &sender.to_sender_string(),
+                TxType::PoolCreationWithFunds,
+            ))
+            .set_data(ack))
+    } else {
+        // Prepare Liquidity Response
+        let liquidity_response = AddLiquidityResponse {
+            mint_lp_tokens: lp_allocation,
+            vlp_address: env.contract.address.to_string(),
+        };
+        // Prepare acknowledgement
+        let ack = to_json_binary(&liquidity_response)?;
+        Ok(res
+            .add_attribute("action", "add_liquidity")
+            .add_event(tx_event(
+                &tx_id,
+                &sender.to_sender_string(),
+                TxType::AddLiquidity,
+            ))
+            .set_data(ack))
+    }
 }
 
 /// Removes liquidity from the VLP
