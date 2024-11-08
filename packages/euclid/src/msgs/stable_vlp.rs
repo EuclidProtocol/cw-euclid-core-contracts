@@ -5,7 +5,8 @@ use crate::{
     token::{Pair, PairWithAmount, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Decimal256, Uint128};
+use cw_asset::AssetInfo;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -179,4 +180,17 @@ pub struct VlpSwapResponse {
     pub tx_id: String,
     pub asset_out: Token,
     pub amount_out: Uint128,
+}
+
+/// Structure for internal use which represents swap result.
+pub struct SwapResult {
+    pub return_amount: Uint128,
+    pub spread_amount: Uint128,
+}
+
+/// This struct describes a Terra asset as decimal.
+#[cw_serde]
+pub struct DecimalAsset {
+    pub info: AssetInfo,
+    pub amount: Decimal256,
 }
