@@ -246,18 +246,22 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                 from_json(execute_data.data.unwrap_or_default())?;
 
             let mut res = Response::new();
-            if FUNDS_INFO.exists(deps.storage) {
-                let pool_response = PoolCreationWithFundsResponse {
-                    mint_lp_tokens: liquidity_response.mint_lp_tokens,
-                    vlp_contract: liquidity_response.vlp_address.clone(),
-                };
-                FUNDS_INFO.remove(deps.storage);
+            let funds = FUNDS_INFO.may_load(deps.storage)?;
+            match funds {
+                Some(_) => {
+                    let pool_response = PoolCreationWithFundsResponse {
+                        mint_lp_tokens: liquidity_response.mint_lp_tokens,
+                        vlp_contract: liquidity_response.vlp_address.clone(),
+                    };
+                    FUNDS_INFO.remove(deps.storage);
 
-                let ack = AcknowledgementMsg::Ok(pool_response);
-                res = res.set_data(to_json_binary(&ack)?);
-            } else {
-                let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
-                res = res.set_data(to_json_binary(&ack)?);
+                    let ack = AcknowledgementMsg::Ok(pool_response);
+                    res = res.set_data(to_json_binary(&ack)?);
+                }
+                None => {
+                    let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
+                    res = res.set_data(to_json_binary(&ack)?);
+                }
             }
 
             Ok(res
