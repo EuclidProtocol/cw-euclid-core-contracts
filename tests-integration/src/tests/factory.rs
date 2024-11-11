@@ -268,4 +268,54 @@ fn test_create_pool_with_funds() {
         .query(&euclid::msgs::escrow::QueryMsg::State {})
         .unwrap();
     println!("escrow state is: {:?}", escrow_query);
+
+    // Add Liquifidity
+
+    // Need to request register escrow first
+    let add_liquidity_request = factory_osmosis
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
+                pair_info: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token::create("eucl".to_string()).unwrap(),
+                        amount: Uint128::from(10_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "eucl".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token::create("osmo".to_string()).unwrap(),
+                        amount: Uint128::from(100_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "osmo".to_string(),
+                        },
+                    },
+                },
+                slippage_tolerance_bps: 100, // 1% slippage tolerance
+                timeout: None,               // 10 minutes in seconds
+            },
+            Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
+        )
+        .unwrap();
+
+    let packet_lifetime = interchain
+        .await_packets("osmosis", add_liquidity_request)
+        .unwrap();
+
+    // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    } else {
+        panic!("packet timed out");
+        // There was a decode error or the packet timed out
+        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    };
+    let liquidity_query: GetLiquidityResponse = vlp_nibiru
+        .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
+        .unwrap();
+    println!("AFTER ADD LIQUIDITY liquidity query: {:?}", liquidity_query);
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    println!("AFTER ADD LIQUIDITY escrow state is: {:?}", escrow_query);
 }
