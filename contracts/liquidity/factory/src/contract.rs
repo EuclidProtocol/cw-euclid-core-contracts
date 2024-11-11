@@ -142,6 +142,7 @@ pub fn execute(
         }
         ExecuteMsg::RequestPoolCreation {
             pair,
+            slippage_tolerance_bps,
             lp_token_name,
             lp_token_symbol,
             lp_token_decimal,
@@ -156,6 +157,7 @@ pub fn execute(
             lp_token_symbol,
             lp_token_decimal,
             lp_token_marketing,
+            slippage_tolerance_bps,
             timeout,
         ),
         ExecuteMsg::RequestPoolCreationWithFunds {

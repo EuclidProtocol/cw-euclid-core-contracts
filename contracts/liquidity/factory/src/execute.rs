@@ -8,7 +8,7 @@ use euclid::{
     deposit::DepositTokenRequest,
     error::ContractError,
     events::{deposit_token_event, swap_event, tx_event, TxType},
-    fee::{PartnerFee, BPS_100_PERCENT, MAX_PARTNER_FEE_BPS},
+    fee::{PartnerFee, BPS_100_PERCENT, BPS_10_PERCENT, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
@@ -17,7 +17,7 @@ use euclid::{
     pool::{EscrowCreateRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
-    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::msg::{
@@ -28,9 +28,10 @@ use euclid_ibc::msg::{
 use crate::{
     ibc::receive,
     state::{
-        State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
-        PENDING_POOL_REQUESTS, PENDING_POOL_WITH_LIQUIDITY_REQUESTS, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+        State, FUNDS_INFO, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        PENDING_ESCROW_REQUESTS, PENDING_POOL_REQUESTS, PENDING_POOL_WITH_LIQUIDITY_REQUESTS,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_CW20,
     },
 };
 
@@ -58,14 +59,15 @@ pub fn execute_request_pool_creation(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
-    pair_with_denom: PairWithDenom,
+    pair_with_denom_and_amount: PairWithDenomAndAmount,
     lp_token_name: String,
     lp_token_symbol: String,
     lp_token_decimal: u8,
     lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+    slippage_tolerance_bps: Option<u64>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let pair = pair_with_denom.get_pair()?;
+    let pair = pair_with_denom_and_amount.get_pair()?;
 
     // Ensure tokens in pair are different
     ensure!(
@@ -73,6 +75,63 @@ pub fn execute_request_pool_creation(
         ContractError::new("Cannot create pool with same token")
     );
 
+    let slippage_tolerance_bps = slippage_tolerance_bps.map_or(Ok(BPS_10_PERCENT), |slippage| {
+        if (1..=BPS_100_PERCENT).contains(&slippage) {
+            Ok(slippage)
+        } else {
+            Err(ContractError::InvalidSlippageTolerance {})
+        }
+    })?;
+
+    if info.funds.len() > 0 {
+        // Ensure exactly two funds are provided
+        ensure!(info.funds.len() == 2, ContractError::InsufficientDeposit {});
+
+        let (fund1, fund2) = (&info.funds[0], &info.funds[1]);
+        let (token1, token2) = (
+            &pair_with_denom_and_amount.token_1,
+            &pair_with_denom_and_amount.token_2,
+        );
+
+        // Check if funds match the pair tokens
+        let (matched_fund1, matched_fund2) = if fund1.denom == token1.token.to_string() {
+            (fund1, fund2)
+        } else if fund1.denom == token2.token.to_string() {
+            (fund2, fund1)
+        } else {
+            return Err(ContractError::InvalidAsset {
+                asset: fund1.denom.clone(),
+            });
+        };
+
+        // Validate amounts for both tokens
+        ensure!(
+            matched_fund1.amount == token1.amount && !matched_fund1.amount.is_zero(),
+            ContractError::InsufficientDeposit {}
+        );
+        ensure!(
+            matched_fund2.denom == token2.token.to_string(),
+            ContractError::InvalidAsset {
+                asset: matched_fund2.denom.clone(),
+            }
+        );
+        ensure!(
+            matched_fund2.amount == token2.amount && !matched_fund2.amount.is_zero(),
+            ContractError::InsufficientDeposit {}
+        );
+
+        FUNDS_INFO.save(deps.storage, &pair_with_denom_and_amount)?;
+
+        // Changes factory state without sending liquidity request to router. That will be handled in Pool creation request's reply in router
+        let _res = add_liquidity_request(
+            deps,
+            info.clone(),
+            env.clone(),
+            pair_with_denom_and_amount.clone(),
+            slippage_tolerance_bps,
+            timeout,
+        )?;
+    }
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
@@ -89,7 +148,7 @@ pub fn execute_request_pool_creation(
         ContractError::PoolAlreadyExists {}
     );
     let mut one_token_already_exists = false;
-    let tokens = pair_with_denom.get_vec_token_info();
+    let tokens = pair_with_denom_and_amount.get_vec_token_info();
     for token in tokens {
         // Vouchers are not escrowed
         if token.token_type.is_voucher() {
@@ -156,16 +215,17 @@ pub fn execute_request_pool_creation(
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
-        pair_info: pair_with_denom.clone(),
+        pair_info: pair_with_denom_and_amount.clone(),
         lp_token_instantiate_msg,
     };
 
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
-        pair: pair_with_denom,
+        pair: pair_with_denom_and_amount,
         sender,
         tx_id: tx_id.clone(),
+        slippage_tolerance_bps,
     }
     .to_msg(
         deps,
@@ -368,7 +428,7 @@ pub fn execute_request_pool_creation_with_funds(
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
-        pair_info: pair_with_denom_and_amount.clone().get_pair_with_denom()?,
+        pair_info: pair_with_denom_and_amount.clone(),
         lp_token_instantiate_msg: lp_token_instantiate_msg.clone(),
     };
 

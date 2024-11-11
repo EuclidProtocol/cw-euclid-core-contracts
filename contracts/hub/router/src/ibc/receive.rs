@@ -17,7 +17,7 @@ use euclid::{
     },
     pool::EscrowCreationResponse,
     swap::{TransferResponse, WithdrawResponse},
-    token::{PairWithDenom, PairWithDenomAndAmount, Token},
+    token::{PairWithDenomAndAmount, Token},
     virtual_balance::BalanceKey,
 };
 use euclid_ibc::{
@@ -36,7 +36,7 @@ use crate::{
         VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID,
     },
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
         PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS,
     },
 };
@@ -111,12 +111,20 @@ pub fn reusable_internal_call(
             pair,
             sender,
             tx_id,
+            slippage_tolerance_bps,
         } => {
             ensure!(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_pool_creation(deps.branch(), env, sender, pair, tx_id)
+            execute_request_pool_creation(
+                deps.branch(),
+                env,
+                sender,
+                pair,
+                tx_id,
+                slippage_tolerance_bps,
+            )
         }
         ChainIbcExecuteMsg::RequestPoolCreationWithFunds {
             pair,
@@ -159,14 +167,7 @@ pub fn reusable_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_add_liquidity(
-                deps.branch(),
-                env,
-                sender,
-                pair,
-                slippage_tolerance_bps,
-                tx_id,
-            )
+            ibc_execute_add_liquidity(deps.branch(), sender, pair, slippage_tolerance_bps, tx_id)
         }
         ChainIbcExecuteMsg::RemoveLiquidity(msg) => {
             ensure!(
@@ -251,19 +252,14 @@ fn execute_request_pool_creation(
     deps: DepsMut,
     env: Env,
     sender: CrossChainUser,
-    pair_with_denom: PairWithDenom,
+    pair_with_denom: PairWithDenomAndAmount,
     tx_id: String,
+    slippage_tolerance_bps: u64,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     let pair = pair_with_denom.get_pair()?;
     pair.validate()?;
-
-    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
-        sender: sender.clone(),
-        pair: pair.clone(),
-        tx_id: tx_id.clone(),
-    };
 
     let response = Response::new()
         .add_event(tx_event(
@@ -271,7 +267,7 @@ fn execute_request_pool_creation(
             &sender.to_sender_string(),
             TxType::PoolCreation,
         ))
-        .add_attribute("tx_id", tx_id)
+        .add_attribute("tx_id", tx_id.clone())
         .add_attribute("method", "request_pool_creation");
 
     let mut one_token_already_exists = false;
@@ -320,6 +316,18 @@ fn execute_request_pool_creation(
         one_token_already_exists,
         ContractError::new("Cannot create pool with two new tokens")
     );
+
+    // This means that funds were provided for this request
+    if !pair_with_denom.token_1.amount.is_zero() {
+        // Save funds info
+        FUNDS_INFO.save(deps.storage, &(pair_with_denom, slippage_tolerance_bps))?;
+    }
+
+    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
+        sender: sender.clone(),
+        pair: pair.clone(),
+        tx_id,
+    };
 
     let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
@@ -540,9 +548,8 @@ fn execute_request_escrow_creation(
         .set_data(to_json_binary(&ack)?))
 }
 
-fn ibc_execute_add_liquidity(
+pub fn ibc_execute_add_liquidity(
     deps: DepsMut,
-    _env: Env,
     sender: CrossChainUser,
     pair: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,

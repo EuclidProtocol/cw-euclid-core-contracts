@@ -67,6 +67,8 @@ pub fn register_pool(
 
     let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
+        sender: sender.clone(),
+        tx_id: tx_id.clone(),
     };
 
     Ok(Response::new()

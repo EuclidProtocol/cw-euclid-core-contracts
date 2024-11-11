@@ -22,8 +22,8 @@ use euclid_ibc::{
 };
 
 use crate::{
-    ibc,
-    state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
+    ibc::{self, receive::ibc_execute_add_liquidity},
+    state::{FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
 };
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
@@ -88,7 +88,7 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
     }
 }
 
-pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -101,9 +101,22 @@ pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
 
             let vlp_address = pool_creation_response.vlp_contract.clone();
 
-            let ack = AcknowledgementMsg::Ok(pool_creation_response);
+            let ack = AcknowledgementMsg::Ok(pool_creation_response.clone());
 
-            Ok(Response::new()
+            let funds_info = FUNDS_INFO.may_load(deps.storage)?;
+
+            let mut response = Response::new();
+            if let Some((funds, slippage_tolerance_bps)) = funds_info {
+                response = ibc_execute_add_liquidity(
+                    deps,
+                    pool_creation_response.sender,
+                    funds,
+                    slippage_tolerance_bps,
+                    pool_creation_response.tx_id,
+                )?;
+            }
+
+            Ok(response
                 .add_attribute("action", "reply_pool_register")
                 .add_attribute("vlp", vlp_address)
                 .set_data(to_json_binary(&ack)?))
@@ -212,7 +225,7 @@ pub fn on_pool_register_with_funds_reply(
     }
 }
 
-pub fn on_add_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -224,6 +237,10 @@ pub fn on_add_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
                 from_json(execute_data.data.unwrap_or_default())?;
 
             let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
+
+            if FUNDS_INFO.exists(deps.storage) {
+                FUNDS_INFO.remove(deps.storage);
+            }
 
             Ok(Response::new()
                 .add_attribute("action", "reply_add_liquidity")

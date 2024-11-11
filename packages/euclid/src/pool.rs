@@ -1,7 +1,10 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 
-use crate::token::{PairWithDenom, PairWithDenomAndAmount, TokenWithDenom};
+use crate::{
+    chain::CrossChainUser,
+    token::{PairWithDenomAndAmount, TokenWithDenom},
+};
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
@@ -13,7 +16,7 @@ pub struct PoolCreateRequest {
     // Pool request id
     pub tx_id: String,
     // Pool Pair
-    pub pair_info: PairWithDenom,
+    pub pair_info: PairWithDenomAndAmount,
     pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
 }
 
@@ -43,6 +46,8 @@ pub struct EscrowCreateRequest {
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
+    pub sender: CrossChainUser,
+    pub tx_id: String,
 }
 
 #[cw_serde]
