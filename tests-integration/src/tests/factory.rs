@@ -191,24 +191,24 @@ fn test_create_pool_with_funds() {
     // Need to request register escrow first
     let create_pool_with_funds_request = factory_osmosis
         .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreationWithFunds {
+            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
                 pair: PairWithDenomAndAmount {
                     token_1: TokenWithDenomAndAmount {
-                        token: Token::create("osmo".to_string()).unwrap(),
-                        amount: Uint128::from(100_000u128),
-                        token_type: euclid::token::TokenType::Native {
-                            denom: "osmo".to_string(),
-                        },
-                    },
-                    token_2: TokenWithDenomAndAmount {
                         token: Token::create("eucl".to_string()).unwrap(),
                         amount: Uint128::from(10_000u128),
                         token_type: euclid::token::TokenType::Native {
                             denom: "eucl".to_string(),
                         },
                     },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token::create("osmo".to_string()).unwrap(),
+                        amount: Uint128::from(100_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "osmo".to_string(),
+                        },
+                    },
                 },
-                slippage_tolerance_bps: 10,
+                slippage_tolerance_bps: Some(10),
                 timeout: None,
                 lp_token_name: "osmosis".to_string(),
                 lp_token_symbol: "osmo".to_string(),

@@ -66,7 +66,6 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 (liquidity.pair.token_1, liquidity.pair.token_2),
                 &vlp_address,
             )?;
-
             let pool_creation_response = from_json::<PoolCreationResponse>(
                 instantiate_data.data.clone().unwrap_or_default(),
             )?;
@@ -111,9 +110,7 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                 })?;
             let pool_creation_response: PoolCreationResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
-
             let vlp_address = pool_creation_response.vlp_contract.clone();
-
             let ack = AcknowledgementMsg::Ok(pool_creation_response.clone());
 
             let funds_info = FUNDS_INFO.may_load(deps.storage)?;

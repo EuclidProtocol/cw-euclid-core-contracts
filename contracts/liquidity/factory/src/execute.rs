@@ -67,14 +67,6 @@ pub fn execute_request_pool_creation(
     slippage_tolerance_bps: Option<u64>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let pair = pair_with_denom_and_amount.get_pair()?;
-
-    // Ensure tokens in pair are different
-    ensure!(
-        pair.token_1 != pair.token_2,
-        ContractError::new("Cannot create pool with same token")
-    );
-
     let slippage_tolerance_bps = slippage_tolerance_bps.map_or(Ok(BPS_10_PERCENT), |slippage| {
         if (1..=BPS_100_PERCENT).contains(&slippage) {
             Ok(slippage)
@@ -82,6 +74,15 @@ pub fn execute_request_pool_creation(
             Err(ContractError::InvalidSlippageTolerance {})
         }
     })?;
+
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid.clone(),
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    let mut res = Response::new();
 
     if info.funds.len() > 0 {
         // Ensure exactly two funds are provided
@@ -123,21 +124,60 @@ pub fn execute_request_pool_creation(
         FUNDS_INFO.save(deps.storage, &pair_with_denom_and_amount)?;
 
         // Changes factory state without sending liquidity request to router. That will be handled in Pool creation request's reply in router
-        let _res = add_liquidity_request(
-            deps,
-            info.clone(),
-            env.clone(),
-            pair_with_denom_and_amount.clone(),
-            slippage_tolerance_bps,
-            timeout,
+        // Add liquidity Section //
+        // Prepare msg vector
+        let mut msgs: Vec<CosmosMsg> = Vec::new();
+
+        let mut fund_manager = FundManager::new(&info.funds);
+        // Do an early check for tokens escrow so that if it exists, it should allow the denom that we are sending
+        let tokens = pair_with_denom_and_amount.get_vec_token_info();
+        for token in tokens {
+            // Vouchers are not escrowed
+            if !token.token_type.is_voucher() {
+                match token.token_type {
+                    TokenType::Native { denom } => {
+                        // Use funds, if its not present this will throw error.
+                        // This will make sure enough funds are provided with the message
+                        fund_manager.use_fund(token.amount, &denom)?;
+                    }
+                    TokenType::Smart { .. } => {
+                        let msg = token.token_type.create_transfer_msg(
+                            token.amount,
+                            env.contract.address.clone().to_string(),
+                            Some(sender.address.clone()),
+                        )?;
+                        msgs.push(msg);
+                    }
+                    TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
+                }
+            }
+        }
+
+        ensure!(
+            fund_manager.validate_funds_are_empty().is_ok(),
+            ContractError::new("Extra funds are not allowed")
+        );
+        let liquidity_tx_info = AddLiquidityRequest {
+            sender: info.sender.to_string(),
+            pair_info: pair_with_denom_and_amount.clone(),
+            tx_id: tx_id.clone(),
+        };
+
+        PENDING_ADD_LIQUIDITY.save(
+            deps.storage,
+            (info.sender.clone(), tx_id.clone()),
+            &liquidity_tx_info,
         )?;
+
+        res = res.add_messages(msgs);
     }
-    let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
-    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    let pair = pair_with_denom_and_amount.get_pair()?;
+    // Ensure tokens in pair are different
+    ensure!(
+        pair.token_1 != pair.token_2,
+        ContractError::new("Cannot create pool with same token")
+    );
 
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
@@ -237,7 +277,7 @@ pub fn execute_request_pool_creation(
         timeout,
     )?;
 
-    Ok(Response::new()
+    Ok(res
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
