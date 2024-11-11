@@ -13,7 +13,7 @@ use euclid::{
     fee::DenomFees,
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
-        factory::{AllPoolsResponse, ExecuteMsgFns, StateResponse},
+        factory::{AllPoolsResponse, ExecuteMsgFns, PoolVlpResponse, StateResponse},
         router::{RegisterFactoryChainIbc, VlpResponse},
         virtual_balance::GetStateResponse,
         vlp::GetLiquidityResponse,
@@ -235,7 +235,19 @@ fn test_create_pool_with_funds() {
     let all_pools_query: AllPoolsResponse = factory_osmosis
         .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
         .unwrap();
-    println!("all pools query: {:?}", all_pools_query);
+    assert_eq!(
+        all_pools_query,
+        AllPoolsResponse {
+            pools: vec![PoolVlpResponse {
+                pair: Pair::new(
+                    Token::create("eucl".to_string()).unwrap(),
+                    Token::create("osmo".to_string()).unwrap(),
+                )
+                .unwrap(),
+                vlp: Addr::unchecked("contract2").into_string(),
+            }],
+        }
+    );
 
     let vlp_query: VlpResponse = router_nibiru
         .query(&euclid::msgs::router::QueryMsg::GetVlp {
@@ -246,7 +258,14 @@ fn test_create_pool_with_funds() {
             .unwrap(),
         })
         .unwrap();
-    println!("vlp query: {:?}", vlp_query);
+    assert_eq!(
+        vlp_query,
+        VlpResponse {
+            vlp: Addr::unchecked("contract2").into_string(),
+            token_1: Token::create("eucl".to_string()).unwrap(),
+            token_2: Token::create("osmo".to_string()).unwrap(),
+        }
+    );
 
     // Got this address from the query above
     vlp_nibiru.set_address(&Addr::unchecked("contract2"));
@@ -254,20 +273,53 @@ fn test_create_pool_with_funds() {
     let liquidity_query: GetLiquidityResponse = vlp_nibiru
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
         .unwrap();
-    println!("liquidity query: {:?}", liquidity_query);
-
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityResponse {
+            pair: Pair {
+                token_1: Token::create("eucl".to_string()).unwrap(),
+                token_2: Token::create("osmo".to_string()).unwrap(),
+            },
+            token_1_reserve: Uint128::new(10_000),
+            token_2_reserve: Uint128::new(100_000),
+            total_lp_tokens: Uint128::new(30622),
+        }
+    );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
 
     let vbalance_query: GetStateResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
         .unwrap();
+
     println!("vbalance state is: {:?}", vbalance_query);
 
+    // Osmo escrow contract
     escrow_osmosis.set_address(&Addr::unchecked("contract1"));
     let escrow_query: EscrowStateResponse = escrow_osmosis
         .query(&euclid::msgs::escrow::QueryMsg::State {})
         .unwrap();
-    println!("escrow state is: {:?}", escrow_query);
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("osmo".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(100_000u128),
+        }
+    );
+
+    // This is the escrow for the Euclid token
+    escrow_osmosis.set_address(&Addr::unchecked("contract2"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(10_000u128),
+        }
+    );
 
     // Add Liquifidity
 
@@ -313,9 +365,41 @@ fn test_create_pool_with_funds() {
     let liquidity_query: GetLiquidityResponse = vlp_nibiru
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
         .unwrap();
-    println!("AFTER ADD LIQUIDITY liquidity query: {:?}", liquidity_query);
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityResponse {
+            pair: Pair {
+                token_1: Token::create("eucl".to_string()).unwrap(),
+                token_2: Token::create("osmo".to_string()).unwrap(),
+            },
+            token_1_reserve: Uint128::new(10_000u128 * 2),
+            token_2_reserve: Uint128::new(100_000u128 * 2),
+            total_lp_tokens: Uint128::new(30622u128 * 2),
+        }
+    );
+    // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_osmosis
         .query(&euclid::msgs::escrow::QueryMsg::State {})
         .unwrap();
-    println!("AFTER ADD LIQUIDITY escrow state is: {:?}", escrow_query);
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(10_000u128 * 2),
+        }
+    );
+    // Osmo escrow contract
+    escrow_osmosis.set_address(&Addr::unchecked("contract1"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("osmo".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(100_000u128 * 2),
+        }
+    );
 }
