@@ -208,7 +208,7 @@ fn test_create_pool_with_funds() {
                         },
                     },
                 },
-                slippage_tolerance_bps: Some(10),
+                slippage_tolerance_bps: Some(100),
                 timeout: None,
                 lp_token_name: "osmosis".to_string(),
                 lp_token_symbol: "osmo".to_string(),

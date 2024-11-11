@@ -84,13 +84,12 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
 
             // This is probably IBC Message so send ok Ack as data
             if pool_creation_response.tx_id != String::default() {
-                let ack = AcknowledgementMsg::Ok(pool_creation_response);
-
+                let ack_msg = AcknowledgementMsg::Ok(pool_creation_response);
                 Ok(response
                     .add_attribute("action", "reply_vlp_instantiate")
                     .add_attribute("vlp", vlp_address)
                     .add_attribute("action", "reply_pool_register")
-                    .set_data(to_json_binary(&ack)?))
+                    .set_data(to_json_binary(&ack_msg)?))
             } else {
                 Ok(Response::new()
                     .add_attribute("action", "reply_vlp_instantiate")
