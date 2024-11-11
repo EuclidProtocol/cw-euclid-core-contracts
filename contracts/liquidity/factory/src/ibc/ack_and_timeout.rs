@@ -15,7 +15,7 @@ use euclid::{
         cw20::ExecuteMsg as Cw20ExecuteMsg, escrow::InstantiateMsg as EscrowInstantiateMsg,
         factory::ExecuteMsg,
     },
-    pool::{EscrowCreationResponse, PoolCreationResponse, PoolCreationWithFundsResponse},
+    pool::{EscrowCreationResponse, PoolCreationWithFundsResponse},
     swap::{SwapResponse, TransferResponse, WithdrawResponse},
     token::Token,
 };
@@ -76,7 +76,7 @@ pub fn reusable_internal_ack_call(
     match msg {
         ChainIbcExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<PoolCreationWithFundsResponse> = from_json(ack)?;
 
             ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
         }
@@ -182,7 +182,7 @@ fn ack_pool_creation(
     deps: DepsMut,
     env: Env,
     sender: String,
-    res: AcknowledgementMsg<PoolCreationResponse>,
+    res: AcknowledgementMsg<PoolCreationWithFundsResponse>,
     tx_id: String,
     is_native: bool,
 ) -> Result<Response, ContractError> {

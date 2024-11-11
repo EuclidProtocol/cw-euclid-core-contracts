@@ -6,7 +6,7 @@ use cw20::Cw20Contract;
 use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload,
 };
-use cw_orch_interchain::{prelude::*, InterchainEnv};
+use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::{
     chain::ChainUid,
@@ -219,9 +219,18 @@ fn test_create_pool_with_funds() {
         )
         .unwrap();
 
-    let _ = interchain
+    let packet_lifetime = interchain
         .await_packets("osmosis", create_pool_with_funds_request)
         .unwrap();
+
+    // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    } else {
+        panic!("packet timed out");
+        // There was a decode error or the packet timed out
+        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    };
 
     let all_pools_query: AllPoolsResponse = factory_osmosis
         .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
