@@ -3,7 +3,7 @@ use crate::{
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     swap::{NextSwapPair, SwapRequest},
-    token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
@@ -45,6 +45,14 @@ pub enum ExecuteMsg {
     },
     RequestDeregisterDenom {
         token: TokenWithDenom,
+    },
+    RequestPoolCreation {
+        pair: PairWithDenom,
+        timeout: Option<u64>,
+        lp_token_name: String,
+        lp_token_symbol: String,
+        lp_token_decimal: u8,
+        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     },
     RequestPoolCreationWithFunds {
         pair: PairWithDenomAndAmount,

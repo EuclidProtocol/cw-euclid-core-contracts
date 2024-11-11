@@ -10,7 +10,7 @@ use euclid::{
     error::ContractError,
     msgs::{factory, router},
     swap::NextSwapPair,
-    token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
+    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -23,6 +23,13 @@ pub const CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE: (u64, u64) = (2001, 3000);
 
 #[cw_serde]
 pub enum ChainIbcExecuteMsg {
+    // Request Pool Creation
+    RequestPoolCreation {
+        // Factory will set this using info.sender
+        sender: CrossChainUser,
+        tx_id: String,
+        pair: PairWithDenom,
+    },
     // Request Pool Creation with funds
     RequestPoolCreationWithFunds {
         // Factory will set this using info.sender
@@ -70,6 +77,7 @@ impl ChainIbcExecuteMsg {
     pub fn get_tx_id(&self) -> String {
         match self {
             Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
+            Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
             Self::RequestPoolCreationWithFunds { tx_id, .. } => tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),

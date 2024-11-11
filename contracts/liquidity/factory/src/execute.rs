@@ -17,7 +17,7 @@ use euclid::{
     pool::{EscrowCreateRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
-    token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::msg::{
@@ -51,6 +51,141 @@ pub fn execute_update_hub_channel(
         "old_channel",
         old_channel.unwrap_or("no_old_channel".to_string()),
     ))
+}
+
+// Function to send IBC request to Router in VSL to create a new pool
+pub fn execute_request_pool_creation(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    pair_with_denom: PairWithDenom,
+    lp_token_name: String,
+    lp_token_symbol: String,
+    lp_token_decimal: u8,
+    lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let pair = pair_with_denom.get_pair()?;
+
+    // Ensure tokens in pair are different
+    ensure!(
+        pair.token_1 != pair.token_2,
+        ContractError::new("Cannot create pool with same token")
+    );
+
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid.clone(),
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    ensure!(
+        !PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
+        ContractError::PoolAlreadyExists {}
+    );
+    let mut one_token_already_exists = false;
+    let tokens = pair_with_denom.get_vec_token_info();
+    for token in tokens {
+        // Vouchers are not escrowed
+        if token.token_type.is_voucher() {
+            // If its a voucher token, then we can assume that one token already exists
+            one_token_already_exists = true;
+            continue;
+        }
+
+        // Ensure valid denom if token already exists
+        let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
+        if let Some(escrow_address) = escrow_address {
+            let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
+                denom: token.clone().token_type,
+            };
+            let token_allowed: AllowedTokenResponse = deps
+                .querier
+                .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+
+            ensure!(
+                token_allowed.allowed,
+                ContractError::UnsupportedDenomination {}
+            );
+            one_token_already_exists = true;
+        }
+    }
+
+    ensure!(
+        one_token_already_exists,
+        ContractError::new(
+            "Cannot create pool two new tokens. Atleast one token must already be registered."
+        )
+    );
+
+    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let timeout = get_timeout(timeout)?;
+
+    // We might get errors in ack if marketing is not valid
+    if let Some(marketing) = &lp_token_marketing {
+        if let Some(logo) = &marketing.logo {
+            ensure!(
+                matches!(logo, Logo::Url(_)),
+                ContractError::new("Only URL logos are supported")
+            );
+        }
+
+        if let Some(marketing_address) = &marketing.marketing {
+            deps.api.addr_validate(marketing_address)?;
+        }
+    }
+
+    let lp_token_instantiate_msg = cw20_base::msg::InstantiateMsg {
+        name: lp_token_name,
+        symbol: lp_token_symbol,
+        decimals: lp_token_decimal,
+        initial_balances: vec![],
+        mint: Some(cw20::MinterResponse {
+            minter: env.contract.address.clone().into_string(),
+            cap: None,
+        }),
+        marketing: lp_token_marketing,
+    };
+    lp_token_instantiate_msg.validate()?;
+
+    let req = PoolCreateRequest {
+        tx_id: tx_id.clone(),
+        sender: info.sender.to_string(),
+        pair_info: pair_with_denom.clone(),
+        lp_token_instantiate_msg,
+    };
+
+    PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
+
+    let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
+        pair: pair_with_denom,
+        sender,
+        tx_id: tx_id.clone(),
+    }
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel.clone(),
+        timeout,
+    )?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::PoolCreation,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "request_pool_creation")
+        .add_submessage(pool_create_msg))
 }
 
 // Function to send IBC request to Router in VSL to create a new pool
