@@ -66,15 +66,28 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 (liquidity.pair.token_1, liquidity.pair.token_2),
                 &vlp_address,
             )?;
-            //TODO make it handle both pool creation with funds and without funds
-            let pool_creation_response = from_json::<PoolCreationWithFundsResponse>(
-                instantiate_data.data.clone().unwrap_or_default(),
-            );
-            // This is probably IBC Message so send ok Ack as data
-            if pool_creation_response.is_ok() {
-                let ack = AcknowledgementMsg::Ok(pool_creation_response?);
 
-                Ok(Response::new()
+            let pool_creation_response = from_json::<PoolCreationResponse>(
+                instantiate_data.data.clone().unwrap_or_default(),
+            )?;
+            let funds_info = FUNDS_INFO.may_load(deps.storage)?;
+
+            let mut response = Response::new();
+            if let Some((funds, slippage_tolerance_bps)) = funds_info {
+                response = ibc_execute_add_liquidity(
+                    deps,
+                    pool_creation_response.clone().sender,
+                    funds,
+                    slippage_tolerance_bps,
+                    pool_creation_response.tx_id.clone(),
+                )?;
+            };
+
+            // This is probably IBC Message so send ok Ack as data
+            if pool_creation_response.tx_id != String::default() {
+                let ack = AcknowledgementMsg::Ok(pool_creation_response);
+
+                Ok(response
                     .add_attribute("action", "reply_vlp_instantiate")
                     .add_attribute("vlp", vlp_address)
                     .add_attribute("action", "reply_pool_register")
