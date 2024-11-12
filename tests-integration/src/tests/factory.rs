@@ -14,7 +14,7 @@ use euclid::{
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
         factory::{AllPoolsResponse, ExecuteMsgFns, PoolVlpResponse, StateResponse},
-        router::{RegisterFactoryChainIbc, VlpResponse},
+        router::{RegisterFactoryChainIbc, RegisterFactoryChainNative, VlpResponse},
         virtual_balance::GetStateResponse,
         vlp::GetLiquidityResponse,
     },
@@ -87,6 +87,16 @@ fn test_create_pool_with_funds() {
             sender.clone(),
             vec![
                 Coin::new(100000000000000, "osmo"),
+                Coin::new(100000000000000, "eucl"),
+            ],
+        )
+        .unwrap();
+
+    nibiru
+        .set_balance(
+            sender.clone(),
+            vec![
+                Coin::new(100000000000000, "nibi"),
                 Coin::new(100000000000000, "eucl"),
             ],
         )
@@ -321,8 +331,7 @@ fn test_create_pool_with_funds() {
         }
     );
 
-    // Add Liquifidity
-
+    // Add Liquidity
     // Need to request register escrow first
     let add_liquidity_request = factory_osmosis
         .execute(
@@ -399,6 +408,248 @@ fn test_create_pool_with_funds() {
         EscrowStateResponse {
             token: Token::create("osmo".to_string()).unwrap(),
             factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(100_000u128 * 2),
+        }
+    );
+
+    // Same chain test, need to upload liquidity contracts on Hub
+    let factory_nibiru = FactoryContract::new(nibiru.clone());
+    let escrow_nibiru = EscrowContract::new(nibiru.clone());
+    let cw20_nibiru = Cw20Contract::new(nibiru.clone());
+    //4
+    factory_nibiru.upload().unwrap();
+    //5
+    escrow_nibiru.upload().unwrap();
+    //6
+    cw20_nibiru.upload().unwrap();
+
+    factory_nibiru
+        .instantiate(
+            &euclid::msgs::factory::InstantiateMsg {
+                router_contract: router_nibiru.address().unwrap().into_string(),
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                escrow_code_id: 5,
+                cw20_code_id: 6,
+                is_native: true,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+
+    router_nibiru
+        .execute(
+            &euclid::msgs::router::ExecuteMsg::RegisterFactory {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                chain_info: euclid::msgs::router::RegisterFactoryChainType::Native(
+                    RegisterFactoryChainNative {
+                        factory_address: factory_nibiru.address().unwrap().into_string(),
+                    },
+                ),
+            },
+            None,
+        )
+        .unwrap();
+
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RequestRegisterEscrow {
+                token: TokenWithDenom {
+                    token: Token::create("eucl".to_string()).unwrap(),
+                    token_type: euclid::token::TokenType::Native {
+                        denom: "eucl".to_string(),
+                    },
+                },
+                timeout: None,
+            },
+            None,
+        )
+        .unwrap();
+
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
+                pair: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token::create("nibi".to_string()).unwrap(),
+                        amount: Uint128::from(100_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "nibi".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token::create("eucl".to_string()).unwrap(),
+                        amount: Uint128::from(10_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "eucl".to_string(),
+                        },
+                    },
+                },
+                slippage_tolerance_bps: Some(100),
+                timeout: None,
+                lp_token_name: "nibiru".to_string(),
+                lp_token_symbol: "nibi".to_string(),
+                lp_token_decimal: 6,
+                lp_token_marketing: None,
+            },
+            Some(&[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")]),
+        )
+        .unwrap();
+
+    // Validation checks //
+    let all_pools_query: AllPoolsResponse = factory_nibiru
+        .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
+        .unwrap();
+    assert_eq!(
+        all_pools_query,
+        AllPoolsResponse {
+            pools: vec![PoolVlpResponse {
+                pair: Pair::new(
+                    Token::create("eucl".to_string()).unwrap(),
+                    Token::create("nibi".to_string()).unwrap(),
+                )
+                .unwrap(),
+                vlp: Addr::unchecked("contract5").into_string(),
+            }],
+        }
+    );
+
+    let vlp_query: VlpResponse = router_nibiru
+        .query(&euclid::msgs::router::QueryMsg::GetVlp {
+            pair: Pair::new(
+                Token::create("nibi".to_string()).unwrap(),
+                Token::create("eucl".to_string()).unwrap(),
+            )
+            .unwrap(),
+        })
+        .unwrap();
+    assert_eq!(
+        vlp_query,
+        VlpResponse {
+            vlp: Addr::unchecked("contract5").into_string(),
+            token_1: Token::create("eucl".to_string()).unwrap(),
+            token_2: Token::create("nibi".to_string()).unwrap(),
+        }
+    );
+
+    // Got this address from the query above
+    vlp_nibiru.set_address(&Addr::unchecked("contract5"));
+
+    let liquidity_query: GetLiquidityResponse = vlp_nibiru
+        .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
+        .unwrap();
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityResponse {
+            pair: Pair {
+                token_1: Token::create("eucl".to_string()).unwrap(),
+                token_2: Token::create("nibi".to_string()).unwrap(),
+            },
+            token_1_reserve: Uint128::new(10_000),
+            token_2_reserve: Uint128::new(100_000),
+            total_lp_tokens: Uint128::new(30622),
+        }
+    );
+    virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
+
+    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
+        .unwrap();
+
+    println!("vbalance state is: {:?}", vbalance_query);
+
+    // Nibiru escrow contract
+    escrow_nibiru.set_address(&Addr::unchecked("contract6"));
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("nibi".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            total_amount: Uint128::from(100_000u128),
+        }
+    );
+
+    // This is the escrow for the Euclid token
+    escrow_nibiru.set_address(&Addr::unchecked("contract4"));
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            total_amount: Uint128::from(10_000u128),
+        }
+    );
+
+    // Add Liquidity
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
+                pair_info: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token::create("eucl".to_string()).unwrap(),
+                        amount: Uint128::from(10_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "eucl".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token::create("nibi".to_string()).unwrap(),
+                        amount: Uint128::from(100_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "nibi".to_string(),
+                        },
+                    },
+                },
+                slippage_tolerance_bps: 100, // 1% slippage tolerance
+                timeout: None,               // 10 minutes in seconds
+            },
+            Some(&[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")]),
+        )
+        .unwrap();
+
+    let liquidity_query: GetLiquidityResponse = vlp_nibiru
+        .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
+        .unwrap();
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityResponse {
+            pair: Pair {
+                token_1: Token::create("eucl".to_string()).unwrap(),
+                token_2: Token::create("nibi".to_string()).unwrap(),
+            },
+            token_1_reserve: Uint128::new(10_000u128 * 2),
+            token_2_reserve: Uint128::new(100_000u128 * 2),
+            total_lp_tokens: Uint128::new(30622u128 * 2),
+        }
+    );
+    // Euclid escrow contract
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            total_amount: Uint128::from(10_000u128 * 2),
+        }
+    );
+    // Osmo escrow contract
+    escrow_nibiru.set_address(&Addr::unchecked("contract6"));
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("nibi".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );

@@ -109,10 +109,12 @@ pub fn execute_register_factory(
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
-    ensure!(
-        chain_uid != vsl_chain_uid,
-        ContractError::new("Cannot use VSL chain uid")
-    );
+    if let RegisterFactoryChainType::Ibc(_) = chain_info {
+        ensure!(
+            chain_uid != vsl_chain_uid,
+            ContractError::new("Cannot use VSL chain uid")
+        );
+    }
 
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});

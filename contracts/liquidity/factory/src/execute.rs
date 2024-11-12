@@ -221,8 +221,11 @@ pub fn execute_request_pool_creation(
             "Cannot create pool two new tokens. Atleast one token must already be registered."
         )
     );
-
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let timeout = get_timeout(timeout)?;
 
     // We might get errors in ack if marketing is not valid
@@ -543,7 +546,11 @@ pub fn execute_request_register_escrow(
     let escrow_address = TOKEN_TO_ESCROW.has(deps.storage, token.clone().token);
     ensure!(!escrow_address, ContractError::TokenAlreadyExist {});
 
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let timeout = get_timeout(timeout)?;
 
     let register_escrow_msg = ChainIbcExecuteMsg::RequestEscrowCreation {
@@ -573,7 +580,7 @@ pub fn execute_request_register_escrow(
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            euclid::events::TxType::PoolCreation,
+            euclid::events::TxType::EscrowCreation,
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_escrow_creation")
@@ -615,7 +622,11 @@ pub fn add_liquidity_request(
         ContractError::PoolDoesNotExist {}
     );
 
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let timeout = get_timeout(timeout)?;
 
     // Prepare msg vector
