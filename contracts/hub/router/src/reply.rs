@@ -69,18 +69,17 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
             let pool_creation_response = from_json::<PoolCreationResponse>(
                 instantiate_data.data.clone().unwrap_or_default(),
             )?;
-            let funds_info = FUNDS_INFO.may_load(deps.storage)?;
+            let (funds, slippage_tolerance_bps) = FUNDS_INFO
+                .load(deps.storage)
+                .map_err(|_| ContractError::InsufficientFunds {})?;
 
-            let mut response = Response::new();
-            if let Some((funds, slippage_tolerance_bps)) = funds_info {
-                response = ibc_execute_add_liquidity(
-                    deps,
-                    pool_creation_response.clone().sender,
-                    funds,
-                    slippage_tolerance_bps,
-                    pool_creation_response.tx_id.clone(),
-                )?;
-            };
+            let response = ibc_execute_add_liquidity(
+                deps,
+                pool_creation_response.clone().sender,
+                funds,
+                slippage_tolerance_bps,
+                pool_creation_response.tx_id.clone(),
+            )?;
 
             // This is probably IBC Message so send ok Ack as data
             if pool_creation_response.tx_id != String::default() {
