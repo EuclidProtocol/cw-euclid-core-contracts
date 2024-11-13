@@ -6,24 +6,28 @@ use cw20::Cw20Contract;
 use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload,
 };
+
+use euclid::msgs::cw20::QueryMsgFns as Cw20QueryMsgFns;
+use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
+use euclid::msgs::router::QueryMsgFns as RouterQueryMsgFns;
+
 use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
-    fee::DenomFees,
+    fee::{DenomFees, BPS_1_PERCENT},
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
         factory::{AllPoolsResponse, ExecuteMsgFns, PoolVlpResponse, StateResponse},
         router::{
-            AllTokensResponse, RegisterFactoryChainIbc, RegisterFactoryChainNative, TokenDenom,
-            TokenDenomsResponse, VlpResponse,
+            RegisterFactoryChainIbc, RegisterFactoryChainNative, TokenDenom, TokenDenomsResponse,
+            VlpResponse,
         },
         virtual_balance::GetStateResponse,
         vlp::GetLiquidityResponse,
     },
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
-    utils::pagination::Pagination,
 };
 use factory::{
     mock::{mock_factory, MockFactory},
@@ -33,6 +37,8 @@ use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::RouterContract;
 use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
+
+use crate::helpers::factory::{add_liquidity, create_pool, register_token};
 
 #[test]
 fn test_proper_instantiation() {
@@ -713,4 +719,40 @@ fn test_create_pool_with_funds() {
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );
+}
+
+#[test]
+fn test_add_liquidity() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let factory_chain = interchain.get_chain("osmosis").unwrap();
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    add_liquidity(&interchain, &factory, pair_info, BPS_1_PERCENT);
 }
