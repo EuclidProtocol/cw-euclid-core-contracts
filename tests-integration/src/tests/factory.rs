@@ -15,7 +15,6 @@ use euclid::{
         escrow::StateResponse as EscrowStateResponse,
         factory::{AllPoolsResponse, ExecuteMsgFns, PoolVlpResponse, StateResponse},
         router::{RegisterFactoryChainIbc, RegisterFactoryChainNative, VlpResponse},
-        virtual_balance::GetStateResponse,
         vlp::GetLiquidityResponse,
     },
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
@@ -346,12 +345,6 @@ fn test_create_pool_with_funds() {
     );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
 
-    let vbalance_query: GetStateResponse = virtual_balance_nibiru
-        .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
-        .unwrap();
-
-    println!("vbalance state is: {:?}", vbalance_query);
-
     // Osmo escrow contract
     escrow_osmosis.set_address(&Addr::unchecked("contract1"));
     let escrow_query: EscrowStateResponse = escrow_osmosis
@@ -600,12 +593,6 @@ fn test_create_pool_with_funds() {
         }
     );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
-
-    let vbalance_query: GetStateResponse = virtual_balance_nibiru
-        .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
-        .unwrap();
-
-    println!("vbalance state is: {:?}", vbalance_query);
 
     // Nibiru escrow contract
     escrow_nibiru.set_address(&Addr::unchecked("contract6"));

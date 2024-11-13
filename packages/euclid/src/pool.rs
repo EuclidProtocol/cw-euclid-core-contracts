@@ -20,18 +20,6 @@ pub struct PoolCreateRequest {
     pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
 }
 
-// Request to create pool saved in state to manage during acknowledgement
-#[cw_serde]
-pub struct PoolWithLiquidityCreateRequest {
-    // Request sender
-    pub sender: String,
-    // Pool request id
-    pub tx_id: String,
-    // Pool Pair
-    pub pair_info: PairWithDenomAndAmount,
-    pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
-}
-
 #[cw_serde]
 pub struct EscrowCreateRequest {
     // Request sender

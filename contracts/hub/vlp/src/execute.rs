@@ -11,7 +11,7 @@ use euclid::{
         virtual_balance::ExecuteTransfer,
         vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
-    pool::{PoolCreationResponse, PoolCreationWithFundsResponse},
+    pool::PoolCreationResponse,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
     virtual_balance::BalanceKey,
@@ -82,43 +82,6 @@ pub fn register_pool(
         .set_data(to_json_binary(&ack)?))
 }
 
-pub fn register_pool_with_funds(
-    mut deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: CrossChainUser,
-    pair_with_amount: PairWithAmount,
-    slippage_tolerance_bps: u64,
-    tx_id: String,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
-    // Verify that chain pool does not already exist
-    ensure!(
-        !CHAIN_LP_TOKENS.has(deps.storage, sender.chain_uid.clone()),
-        ContractError::PoolAlreadyExists {}
-    );
-    // Check for token id
-    ensure!(
-        state.pair.get_tupple() == pair_with_amount.get_pair()?.get_tupple(),
-        ContractError::AssetDoesNotExist {}
-    );
-    // Store the pool in the map
-    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
-
-    // Add liquidity part //
-    add_liquidity(
-        deps.branch(),
-        env,
-        info,
-        sender,
-        pair_with_amount,
-        slippage_tolerance_bps,
-        tx_id,
-        true,
-    )
-}
-
 /// Adds liquidity to the VLP
 ///
 /// # Arguments
@@ -143,7 +106,6 @@ pub fn add_liquidity(
     liquidity: PairWithAmount,
     slippage_tolerance_bps: u64,
     tx_id: String,
-    called_by_register_pool_with_funds: bool,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
@@ -216,38 +178,21 @@ pub fn add_liquidity(
         .add_attribute("liquidity_1_added", token_1_liquidity)
         .add_attribute("liquidity_2_added", token_2_liquidity);
 
-    if called_by_register_pool_with_funds {
-        let pool_creation_with_funds_response = PoolCreationWithFundsResponse {
-            mint_lp_tokens: lp_allocation,
-            vlp_contract: env.contract.address.to_string(),
-        };
-        // Prepare acknowledgement
-        let ack = to_json_binary(&pool_creation_with_funds_response)?;
-        Ok(res
-            .add_attribute("action", "register_pool_with_funds")
-            .add_event(tx_event(
-                &tx_id,
-                &sender.to_sender_string(),
-                TxType::PoolCreationWithFunds,
-            ))
-            .set_data(ack))
-    } else {
-        // Prepare Liquidity Response
-        let liquidity_response = AddLiquidityResponse {
-            mint_lp_tokens: lp_allocation,
-            vlp_address: env.contract.address.to_string(),
-        };
-        // Prepare acknowledgement
-        let ack = to_json_binary(&liquidity_response)?;
-        Ok(res
-            .add_attribute("action", "add_liquidity")
-            .add_event(tx_event(
-                &tx_id,
-                &sender.to_sender_string(),
-                TxType::AddLiquidity,
-            ))
-            .set_data(ack))
-    }
+    // Prepare Liquidity Response
+    let liquidity_response = AddLiquidityResponse {
+        mint_lp_tokens: lp_allocation,
+        vlp_address: env.contract.address.to_string(),
+    };
+    // Prepare acknowledgement
+    let ack = to_json_binary(&liquidity_response)?;
+    Ok(res
+        .add_attribute("action", "add_liquidity")
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::AddLiquidity,
+        ))
+        .set_data(ack))
 }
 
 /// Removes liquidity from the VLP
