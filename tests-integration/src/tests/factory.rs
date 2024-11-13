@@ -10,15 +10,20 @@ use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::{
     chain::ChainUid,
+    error::ContractError,
     fee::DenomFees,
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
         factory::{AllPoolsResponse, ExecuteMsgFns, PoolVlpResponse, StateResponse},
-        router::{RegisterFactoryChainIbc, RegisterFactoryChainNative, VlpResponse},
+        router::{
+            AllTokensResponse, RegisterFactoryChainIbc, RegisterFactoryChainNative, TokenDenom,
+            TokenDenomsResponse, VlpResponse,
+        },
         virtual_balance::GetStateResponse,
         vlp::GetLiquidityResponse,
     },
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
+    utils::pagination::Pagination,
 };
 use factory::{
     mock::{mock_factory, MockFactory},
@@ -59,7 +64,7 @@ fn test_proper_instantiation() {
         true,
     );
 
-    let state_response = MockFactory::query_state(&mock_factory, &mut factory);
+    let state_response = MockFactory::query_state(&mock_factory, &factory);
     let expected_state_id = StateResponse {
         chain_uid,
         router_contract,
@@ -181,7 +186,7 @@ fn test_create_pool_with_funds() {
     // // Register escrow
     let register_escrow_request = factory_osmosis
         .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestRegisterEscrow {
+            &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
                 token: TokenWithDenom {
                     token: Token::create("osmo".to_string()).unwrap(),
                     token_type: euclid::token::TokenType::Native {
@@ -198,54 +203,59 @@ fn test_create_pool_with_funds() {
         .await_packets("osmosis", register_escrow_request)
         .unwrap();
 
+    let token_denoms_response: TokenDenomsResponse = router_nibiru
+        .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
+            token: Token::create("osmo".to_string()).unwrap(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        token_denoms_response,
+        TokenDenomsResponse {
+            denoms: vec![TokenDenom {
+                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                token_type: euclid::token::TokenType::Native {
+                    denom: "osmo".to_string(),
+                },
+            }],
+        }
+    );
+
     // Test Create pool without funds
-    let create_pool_with_funds_request = factory_osmosis
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
-                pair: PairWithDenomAndAmount {
-                    token_1: TokenWithDenomAndAmount {
-                        token: Token::create("eucl".to_string()).unwrap(),
-                        amount: Uint128::from(0u128),
-                        token_type: euclid::token::TokenType::Native {
-                            denom: "eucl".to_string(),
-                        },
-                    },
-                    token_2: TokenWithDenomAndAmount {
-                        token: Token::create("osmo".to_string()).unwrap(),
-                        amount: Uint128::from(0u128),
-                        token_type: euclid::token::TokenType::Native {
-                            denom: "osmo".to_string(),
-                        },
+    let create_pool_with_funds_request = factory_osmosis.execute(
+        &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
+            pair: PairWithDenomAndAmount {
+                token_1: TokenWithDenomAndAmount {
+                    token: Token::create("eucl".to_string()).unwrap(),
+                    amount: Uint128::from(0u128),
+                    token_type: euclid::token::TokenType::Native {
+                        denom: "eucl".to_string(),
                     },
                 },
-                slippage_tolerance_bps: Some(100),
-                timeout: None,
-                lp_token_name: "osmosis".to_string(),
-                lp_token_symbol: "osmo".to_string(),
-                lp_token_decimal: 6,
-                lp_token_marketing: None,
+                token_2: TokenWithDenomAndAmount {
+                    token: Token::create("osmo".to_string()).unwrap(),
+                    amount: Uint128::from(0u128),
+                    token_type: euclid::token::TokenType::Native {
+                        denom: "osmo".to_string(),
+                    },
+                },
             },
-            None, // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
-        )
-        .unwrap();
-
-    let packet_lifetime = interchain
-        .await_packets("osmosis", create_pool_with_funds_request)
-        .unwrap();
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
-
-    // Assert mo pools were created
-    let all_pools_query: AllPoolsResponse = factory_osmosis
-        .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
-        .unwrap();
-    assert_eq!(all_pools_query, AllPoolsResponse { pools: vec![] });
+            slippage_tolerance_bps: 100,
+            timeout: None,
+            lp_token_name: "osmosis".to_string(),
+            lp_token_symbol: "osmo".to_string(),
+            lp_token_decimal: 6,
+            lp_token_marketing: None,
+        },
+        None, // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
+    );
+    assert_eq!(
+        ContractError::new("Amount cannot be zero"),
+        create_pool_with_funds_request
+            .unwrap_err()
+            .downcast()
+            .unwrap()
+    );
 
     // Need to request register escrow first
     let create_pool_with_funds_request = factory_osmosis
@@ -267,7 +277,7 @@ fn test_create_pool_with_funds() {
                         },
                     },
                 },
-                slippage_tolerance_bps: Some(100),
+                slippage_tolerance_bps: 100,
                 timeout: None,
                 lp_token_name: "osmosis".to_string(),
                 lp_token_symbol: "osmo".to_string(),
@@ -283,7 +293,8 @@ fn test_create_pool_with_funds() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0].outcome {
+        println!("{:?}", ack_tx.tx_id.response.events);
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -502,7 +513,7 @@ fn test_create_pool_with_funds() {
 
     factory_nibiru
         .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestRegisterEscrow {
+            &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
                 token: TokenWithDenom {
                     token: Token::create("eucl".to_string()).unwrap(),
                     token_type: euclid::token::TokenType::Native {
@@ -534,7 +545,7 @@ fn test_create_pool_with_funds() {
                         },
                     },
                 },
-                slippage_tolerance_bps: Some(100),
+                slippage_tolerance_bps: 100,
                 timeout: None,
                 lp_token_name: "nibiru".to_string(),
                 lp_token_symbol: "nibi".to_string(),

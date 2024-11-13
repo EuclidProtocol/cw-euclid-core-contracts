@@ -11,7 +11,7 @@ use euclid::{
         virtual_balance::ExecuteTransfer,
         vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
-    pool::{PoolCreationResponse, PoolCreationWithFundsResponse},
+    pool::PoolCreationResponse,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
     virtual_balance::BalanceKey,
@@ -67,8 +67,9 @@ pub fn register_pool(
 
     let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
-        sender: sender.clone(),
         tx_id: tx_id.clone(),
+        mint_lp_tokens: Uint128::zero(),
+        sender: sender.clone(),
     };
 
     Ok(Response::new()
@@ -216,38 +217,23 @@ pub fn add_liquidity(
         .add_attribute("liquidity_1_added", token_1_liquidity)
         .add_attribute("liquidity_2_added", token_2_liquidity);
 
-    if called_by_register_pool_with_funds {
-        let pool_creation_with_funds_response = PoolCreationWithFundsResponse {
-            mint_lp_tokens: lp_allocation,
-            vlp_contract: env.contract.address.to_string(),
-        };
-        // Prepare acknowledgement
-        let ack = to_json_binary(&pool_creation_with_funds_response)?;
-        Ok(res
-            .add_attribute("action", "register_pool_with_funds")
-            .add_event(tx_event(
-                &tx_id,
-                &sender.to_sender_string(),
-                TxType::PoolCreationWithFunds,
-            ))
-            .set_data(ack))
-    } else {
-        // Prepare Liquidity Response
-        let liquidity_response = AddLiquidityResponse {
-            mint_lp_tokens: lp_allocation,
-            vlp_address: env.contract.address.to_string(),
-        };
-        // Prepare acknowledgement
-        let ack = to_json_binary(&liquidity_response)?;
-        Ok(res
-            .add_attribute("action", "add_liquidity")
-            .add_event(tx_event(
-                &tx_id,
-                &sender.to_sender_string(),
-                TxType::AddLiquidity,
-            ))
-            .set_data(ack))
-    }
+    // Prepare Liquidity Response
+    let liquidity_response = AddLiquidityResponse {
+        mint_lp_tokens: lp_allocation,
+        vlp_address: env.contract.address.to_string(),
+        tx_id: tx_id.clone(),
+        sender: sender.clone(),
+    };
+    // Prepare acknowledgement
+    let ack = to_json_binary(&liquidity_response)?;
+    Ok(res
+        .add_attribute("action", "add_liquidity")
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::AddLiquidity,
+        ))
+        .set_data(ack))
 }
 
 /// Removes liquidity from the VLP

@@ -17,12 +17,12 @@ use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
     self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_simulate_escrow_release, query_state, query_token_escrows, query_vlp,
+    query_simulate_escrow_release, query_state, query_token_denoms, query_token_escrows, query_vlp,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
     REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
-    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID, VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID,
+    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, DEREGISTERED_CHAINS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -179,6 +179,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::QueryAllEscrows { pagination } => query_all_escrows(deps, pagination),
         QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
+        QueryMsg::QueryTokenDenoms { token } => query_token_denoms(deps, token),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -194,9 +195,6 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
     match msg.id {
         VLP_INSTANTIATE_REPLY_ID => reply::on_vlp_instantiate_reply(deps, msg),
         VLP_POOL_REGISTER_REPLY_ID => reply::on_pool_register_reply(deps, msg),
-        VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID => {
-            reply::on_pool_register_with_funds_reply(deps, msg)
-        }
         ADD_LIQUIDITY_REPLY_ID => reply::on_add_liquidity_reply(deps, msg),
         REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, env, msg),
         SWAP_REPLY_ID => reply::on_swap_reply(deps, env, msg),
