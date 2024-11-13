@@ -422,6 +422,7 @@ pub fn execute_swap(
     // Calculate the amount of asset to be swapped
     let swap_amount = amount_in.checked_sub(total_fee)?;
 
+    // TODO replace with compute_swap
     let receive_amount = calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?;
 
     // Verify that the receive amount is greater than 0 to be eligible for any swap
