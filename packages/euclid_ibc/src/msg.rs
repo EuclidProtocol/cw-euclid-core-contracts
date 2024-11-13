@@ -10,7 +10,7 @@ use euclid::{
     error::ContractError,
     msgs::{factory, router},
     swap::NextSwapPair,
-    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenWithDenom},
+    token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -28,7 +28,18 @@ pub enum ChainIbcExecuteMsg {
         // Factory will set this using info.sender
         sender: CrossChainUser,
         tx_id: String,
-        pair: PairWithDenom,
+        pair: PairWithDenomAndAmount,
+        // User will provide this data
+        slippage_tolerance_bps: u64,
+    },
+    // Request Pool Creation with funds
+    RequestPoolCreationWithFunds {
+        // Factory will set this using info.sender
+        sender: CrossChainUser,
+        tx_id: String,
+        pair: PairWithDenomAndAmount,
+        // User will provide this data
+        slippage_tolerance_bps: u64,
     },
     // Request Pool Creation
     RequestEscrowCreation {
@@ -69,6 +80,7 @@ impl ChainIbcExecuteMsg {
         match self {
             Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
             Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
+            Self::RequestPoolCreationWithFunds { tx_id, .. } => tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
             Self::Withdraw(msg) => msg.tx_id.clone(),

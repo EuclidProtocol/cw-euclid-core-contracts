@@ -17,7 +17,7 @@ use euclid::{
     },
     pool::EscrowCreationResponse,
     swap::{TransferResponse, WithdrawResponse},
-    token::{PairWithDenom, PairWithDenomAndAmount, Token},
+    token::{PairWithDenomAndAmount, Token},
     virtual_balance::BalanceKey,
 };
 use euclid_ibc::{
@@ -33,9 +33,10 @@ use crate::{
     reply::{
         ADD_LIQUIDITY_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
         VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+        VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID,
     },
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
         PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS,
     },
 };
@@ -77,7 +78,6 @@ pub fn ibc_receive_internal_call(
     // Get the chain data from current channel received
     let channel = msg.packet.dest.channel_id;
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
-
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
 
     // Ensure source port is the registered factory
@@ -111,12 +111,39 @@ pub fn reusable_internal_call(
             pair,
             sender,
             tx_id,
+            slippage_tolerance_bps,
         } => {
             ensure!(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_pool_creation(deps.branch(), env, sender, pair, tx_id)
+            execute_request_pool_creation(
+                deps.branch(),
+                env,
+                sender,
+                pair,
+                tx_id,
+                slippage_tolerance_bps,
+            )
+        }
+        ChainIbcExecuteMsg::RequestPoolCreationWithFunds {
+            pair,
+            sender,
+            tx_id,
+            slippage_tolerance_bps,
+        } => {
+            ensure!(
+                sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            execute_request_pool_creation_with_funds(
+                deps.branch(),
+                env,
+                sender,
+                pair,
+                slippage_tolerance_bps,
+                tx_id,
+            )
         }
         ChainIbcExecuteMsg::RequestEscrowCreation {
             token,
@@ -140,14 +167,7 @@ pub fn reusable_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_add_liquidity(
-                deps.branch(),
-                env,
-                sender,
-                pair,
-                slippage_tolerance_bps,
-                tx_id,
-            )
+            ibc_execute_add_liquidity(deps.branch(), sender, pair, slippage_tolerance_bps, tx_id)
         }
         ChainIbcExecuteMsg::RemoveLiquidity(msg) => {
             ensure!(
@@ -232,19 +252,14 @@ fn execute_request_pool_creation(
     deps: DepsMut,
     env: Env,
     sender: CrossChainUser,
-    pair_with_denom: PairWithDenom,
+    pair_with_denom: PairWithDenomAndAmount,
     tx_id: String,
+    slippage_tolerance_bps: u64,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     let pair = pair_with_denom.get_pair()?;
     pair.validate()?;
-
-    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
-        sender: sender.clone(),
-        pair: pair.clone(),
-        tx_id: tx_id.clone(),
-    };
 
     let response = Response::new()
         .add_event(tx_event(
@@ -252,7 +267,7 @@ fn execute_request_pool_creation(
             &sender.to_sender_string(),
             TxType::PoolCreation,
         ))
-        .add_attribute("tx_id", tx_id)
+        .add_attribute("tx_id", tx_id.clone())
         .add_attribute("method", "request_pool_creation");
 
     let mut one_token_already_exists = false;
@@ -302,6 +317,18 @@ fn execute_request_pool_creation(
         ContractError::new("Cannot create pool with two new tokens")
     );
 
+    // This means that funds were provided for this request
+    if !pair_with_denom.token_1.amount.is_zero() {
+        // Save funds info
+        FUNDS_INFO.save(deps.storage, &(pair_with_denom, slippage_tolerance_bps))?;
+    }
+
+    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
+        sender: sender.clone(),
+        pair: pair.clone(),
+        tx_id,
+    };
+
     let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
     if vlp.is_some() {
@@ -311,6 +338,154 @@ fn execute_request_pool_creation(
             funds: vec![],
         };
         Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
+    } else {
+        let instantiate_msg = msgs::vlp::InstantiateMsg {
+            router: env.contract.address.to_string(),
+            virtual_balance: state
+                .virtual_balance_address
+                .ok_or(ContractError::Generic {
+                    err: "virtual balance not instantiated".to_string(),
+                })?
+                .to_string(),
+            pair,
+            fee: Fee {
+                lp_fee_bps: 10,
+                euclid_fee_bps: 10,
+                recipient: CrossChainUser {
+                    address: state.admin.clone(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
+            },
+            execute: Some(register_msg),
+            admin: state.admin.clone(),
+        };
+        let msg = WasmMsg::Instantiate {
+            admin: Some(state.admin),
+            code_id: state.vlp_code_id,
+            msg: to_json_binary(&instantiate_msg)?,
+            funds: vec![],
+            label: "VLP".to_string(),
+        };
+
+        Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_INSTANTIATE_REPLY_ID)))
+    }
+}
+
+fn execute_request_pool_creation_with_funds(
+    deps: DepsMut,
+    env: Env,
+    sender: CrossChainUser,
+    pair_with_denom_and_amount: PairWithDenomAndAmount,
+    slippage_tolerance_bps: u64,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    let virtual_balance_address = state
+        .clone()
+        .virtual_balance_address
+        .ok_or(ContractError::Generic {
+            err: "virtual balance not instantiated".to_string(),
+        })?
+        .to_string();
+
+    let pair = pair_with_denom_and_amount.get_pair()?;
+    pair.validate()?;
+
+    let register_msg = msgs::vlp::ExecuteMsg::RegisterPoolWithFunds {
+        sender: sender.clone(),
+        pair: pair_with_denom_and_amount.get_pair_with_amount()?.clone(),
+        slippage_tolerance_bps,
+        tx_id: tx_id.clone(),
+    };
+
+    let mut response = Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::PoolCreationWithFunds,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "request_pool_creation_with_funds");
+
+    let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
+
+    let mut one_token_already_exists = false;
+    for token in pair_with_denom_and_amount.get_vec_token_info() {
+        // Check if token is already validated. Its validated if it has an escrow on sender chain
+        let mut validated_token = ESCROW_BALANCES.has(
+            deps.storage,
+            (token.token.clone(), sender.clone().chain_uid),
+        );
+
+        // Check if token is already present on any chain
+        let range = ESCROW_BALANCES.prefix(token.token.clone()).keys_raw(
+            deps.storage,
+            None,
+            None,
+            Order::Ascending,
+        );
+
+        let token_exists_on_any_chain = range.take(1).count() > 0;
+        if token_exists_on_any_chain {
+            one_token_already_exists = true;
+        }
+
+        if token.token_type.is_voucher() {
+            ensure!(
+                token_exists_on_any_chain,
+                ContractError::new(
+                    "Cannot create pool with voucher token that doesn't exist on any chain"
+                )
+            );
+            // Voucher token is valid if it exists on any chain
+            validated_token = true;
+        }
+
+        // There are two cases
+        // token already exists on the sender chain - We can safely assume that this was validated already by factory so allow pool creation
+        // token not present in sender chain -  This token should not have escrow on any other chain, i.e. This should be completely new token
+        ensure!(
+            validated_token || !token_exists_on_any_chain,
+            ContractError::new("Cannot use already existing token without registering it first")
+        );
+
+        // Mint virtual balance for the token
+        let mint_virtual_balance_msg =
+            euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
+                amount: token.amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: CrossChainUser {
+                        address: virtual_balance_address.clone(),
+                        chain_uid: ChainUid::vsl_chain_uid()?,
+                    },
+                    token_id: token.token.to_string(),
+                },
+            });
+
+        let mint_virtual_balance_msg = WasmMsg::Execute {
+            contract_addr: virtual_balance_address.clone(),
+            msg: to_json_binary(&mint_virtual_balance_msg)?,
+            funds: vec![],
+        };
+        response = response.add_message(mint_virtual_balance_msg);
+    }
+
+    ensure!(
+        one_token_already_exists,
+        ContractError::new("Cannot create pool with two new tokens")
+    );
+
+    // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
+    if vlp.is_some() {
+        let msg = WasmMsg::Execute {
+            contract_addr: vlp.unwrap(),
+            msg: to_json_binary(&register_msg)?,
+            funds: vec![],
+        };
+        Ok(response.add_submessage(SubMsg::reply_always(
+            msg,
+            VLP_POOL_REGISTER_WITH_FUNDS_REPLY_ID,
+        )))
     } else {
         let instantiate_msg = msgs::vlp::InstantiateMsg {
             router: env.contract.address.to_string(),
@@ -361,8 +536,7 @@ fn execute_request_escrow_creation(
         &Uint128::zero(),
     )?;
 
-    let ack = AcknowledgementMsg::Ok(EscrowCreationResponse {});
-    Ok(Response::new()
+    let response = Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
@@ -370,12 +544,14 @@ fn execute_request_escrow_creation(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_escrow_creation")
-        .set_data(to_json_binary(&ack)?))
+        .set_data(to_json_binary(&AcknowledgementMsg::Ok(
+            EscrowCreationResponse {},
+        ))?);
+    Ok(response)
 }
 
-fn ibc_execute_add_liquidity(
+pub fn ibc_execute_add_liquidity(
     deps: DepsMut,
-    _env: Env,
     sender: CrossChainUser,
     pair: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
@@ -461,6 +637,7 @@ fn ibc_execute_add_liquidity(
         sender,
         tx_id,
         slippage_tolerance_bps,
+        called_by_register_pool_with_funds: false,
     };
 
     let msg = WasmMsg::Execute {
