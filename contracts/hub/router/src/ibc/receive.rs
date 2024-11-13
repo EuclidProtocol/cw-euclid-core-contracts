@@ -536,20 +536,17 @@ fn execute_request_escrow_creation(
         &Uint128::zero(),
     )?;
 
-    let mut response = Response::new()
+    let response = Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
             TxType::EscrowCreation,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "request_escrow_creation");
-
-    if !sender.chain_uid.eq(&ChainUid::vsl_chain_uid()?) {
-        response = response.set_data(to_json_binary(&AcknowledgementMsg::Ok(
+        .add_attribute("method", "request_escrow_creation")
+        .set_data(to_json_binary(&AcknowledgementMsg::Ok(
             EscrowCreationResponse {},
         ))?);
-    }
     Ok(response)
 }
 
