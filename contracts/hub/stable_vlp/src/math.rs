@@ -2,7 +2,7 @@ use cosmwasm_std::{
     ConversionOverflowError, Decimal256, Fraction, StdError, StdResult, Uint128, Uint256, Uint64,
 };
 use euclid::error::ContractError;
-use euclid::msgs::stable_vlp::{DecimalAsset, SwapResult};
+use euclid::msgs::stable_vlp::SwapResult;
 /// N = 2
 pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
 pub const AMP_PRECISION: u64 = 100;
@@ -16,23 +16,23 @@ pub(crate) fn compute_swap(
     // _env: &Env,
     // config: &Config,
     offer_asset: &Decimal256,
-    offer_pool: &DecimalAsset,
-    ask_pool: &DecimalAsset,
-    pools: &[DecimalAsset],
+    offer_pool: &Decimal256,
+    ask_pool: &Decimal256,
 ) -> Result<SwapResult, ContractError> {
     let token_precision = 2;
 
-    let xp = pools.iter().map(|p| p.amount).collect::<Vec<_>>();
+    // let xp = pools.iter().map(|p| p.amount).collect::<Vec<_>>();
+    let xp = [Decimal256::one()];
 
     let new_ask_pool = calc_y(
         // compute_current_amp(config, env)?,
         Uint64::new(10),
-        offer_pool.amount + offer_asset,
+        offer_pool + offer_asset,
         &xp,
         token_precision,
     )?;
 
-    let return_amount = ask_pool.amount.to_uint128_with_precision(token_precision)? - new_ask_pool;
+    let return_amount = ask_pool.to_uint128_with_precision(token_precision)? - new_ask_pool;
     let offer_asset_amount = offer_asset.to_uint128_with_precision(token_precision)?;
 
     // We consider swap rate 1:1 in stable swap thus any difference is considered as spread.

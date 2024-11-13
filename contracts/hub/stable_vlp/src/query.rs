@@ -47,7 +47,7 @@ pub fn query_simulate_swap(
 
     let token_in_reserve = BALANCES.load(deps.storage, asset_in)?;
     let token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
-
+    // TODO replace with compute_swap
     let receive_amount = calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?;
     let response = match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
