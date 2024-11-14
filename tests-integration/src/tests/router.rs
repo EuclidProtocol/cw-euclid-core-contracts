@@ -30,8 +30,8 @@ fn test_register_factory() {
 
     let interchain = MockInterchainEnv::new(vec![("juno", &sender), ("osmosis", &sender)]);
 
-    let juno = interchain.chain("juno").unwrap();
-    let osmosis = interchain.chain("osmosis").unwrap();
+    let juno = interchain.get_chain("juno").unwrap();
+    let osmosis = interchain.get_chain("osmosis").unwrap();
 
     juno.set_balance(sender.clone(), vec![Coin::new(100000000000000, "juno")])
         .unwrap();
@@ -128,7 +128,7 @@ fn test_register_factory() {
         .unwrap();
 
     let packet_lifetime = interchain
-        .wait_ibc("osmosis", register_factory_request)
+        .await_packets("osmosis", register_factory_request)
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:

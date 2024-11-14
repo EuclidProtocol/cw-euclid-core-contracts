@@ -3,7 +3,7 @@ use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
-    token::Token,
+    token::{PairWithDenomAndAmount, Token},
 };
 use euclid_ibc::msg::{ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg};
 
@@ -41,3 +41,5 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<
     (ChainUid, String, String),
     ChainIbcRemoveLiquidityExecuteMsg,
 > = Map::new("pending_remove_liquidity");
+
+pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
