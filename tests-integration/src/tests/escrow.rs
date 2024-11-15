@@ -26,7 +26,7 @@ fn test_escrow() {
 
     let sender = Addr::unchecked("juno16g2rahf5846rxzp3fwlswy08fz8ccuwk03k57y");
 
-    let mock = Mock::new(&sender);
+    let mock = Mock::new(sender);
     let escrow_contract = EscrowContract::new(mock);
 
     let upload_res = escrow_contract.upload();

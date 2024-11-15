@@ -33,7 +33,7 @@ pub struct PoolWithLiquidityCreateRequest {
 }
 
 #[cw_serde]
-pub struct EscrowCreateRequest {
+pub struct DenomRegisterDeregisterRequest {
     // Request sender
     pub sender: String,
     // Escrow request id
@@ -46,15 +46,13 @@ pub struct EscrowCreateRequest {
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
-    pub sender: CrossChainUser,
     pub tx_id: String,
-}
-
-#[cw_serde]
-pub struct PoolCreationWithFundsResponse {
     pub mint_lp_tokens: Uint128,
-    pub vlp_contract: String,
+    pub sender: CrossChainUser,
 }
 
 #[cw_serde]
-pub struct EscrowCreationResponse {}
+pub struct RegisterDenomResponse {}
+
+#[cw_serde]
+pub struct DeRegisterDenomResponse {}

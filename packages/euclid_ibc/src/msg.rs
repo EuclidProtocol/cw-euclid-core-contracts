@@ -32,20 +32,18 @@ pub enum ChainIbcExecuteMsg {
         // User will provide this data
         slippage_tolerance_bps: u64,
     },
-    // Request Pool Creation with funds
-    RequestPoolCreationWithFunds {
-        // Factory will set this using info.sender
+    // Register Denom for a token
+    RegisterDenom {
         sender: CrossChainUser,
         tx_id: String,
-        pair: PairWithDenomAndAmount,
-        // User will provide this data
-        slippage_tolerance_bps: u64,
+        token: TokenWithDenom,
     },
-    // Request Pool Creation
-    RequestEscrowCreation {
+
+    // Register Denom for a token
+    DeRegisterDenom {
         sender: CrossChainUser,
         tx_id: String,
-        token: Token,
+        token: TokenWithDenom,
     },
     AddLiquidity {
         // Factory will set this using info.sender
@@ -80,12 +78,12 @@ impl ChainIbcExecuteMsg {
         match self {
             Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
             Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
-            Self::RequestPoolCreationWithFunds { tx_id, .. } => tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
             Self::Withdraw(msg) => msg.tx_id.clone(),
             Self::DepositToken(msg) => msg.tx_id.clone(),
-            Self::RequestEscrowCreation { tx_id, .. } => tx_id.clone(),
+            Self::RegisterDenom { tx_id, .. } => tx_id.clone(),
+            Self::DeRegisterDenom { tx_id, .. } => tx_id.clone(),
             Self::Transfer(msg) => msg.tx_id.clone(),
         }
     }
