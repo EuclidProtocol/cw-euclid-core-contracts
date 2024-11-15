@@ -7,6 +7,8 @@ use crate::{
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
 
+use super::router::TokenDenom;
+
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
@@ -23,14 +25,6 @@ pub enum ExecuteMsg {
     RegisterPool {
         sender: CrossChainUser,
         pair: Pair,
-        tx_id: String,
-    },
-
-    // Registers a new pool from a new chain to an already existing VLP
-    RegisterPoolWithFunds {
-        sender: CrossChainUser,
-        pair: PairWithAmount,
-        slippage_tolerance_bps: u64,
         tx_id: String,
     },
 
@@ -170,7 +164,9 @@ pub struct AllPoolsResponse {
 }
 
 #[cw_serde]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub denoms: Vec<(Token, TokenDenom)>,
+}
 
 #[cw_serde]
 pub struct VlpRemoveLiquidityResponse {

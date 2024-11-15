@@ -37,6 +37,7 @@ impl From<InstantiateMsg> for Cw20InstantiateMsg {
 }
 
 #[cw_serde]
+#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     UpdateState {
         token_pair: Option<Pair>,
@@ -177,7 +178,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
 }
 
 #[cw_serde]
-#[derive(QueryResponses)]
+#[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     //NOTE: Balance is included in andr_query
     /// Returns the current balance of the given address, 0 if unset.

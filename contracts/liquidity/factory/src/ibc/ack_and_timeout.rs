@@ -5,7 +5,6 @@ use cosmwasm_std::{
     IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, ReplyOn, Response, StdError,
     StdResult, SubMsg, WasmMsg,
 };
-use cw20::Cw20Coin;
 use euclid::{
     deposit::DepositTokenResponse,
     error::ContractError,
@@ -15,7 +14,7 @@ use euclid::{
         cw20::ExecuteMsg as Cw20ExecuteMsg, escrow::InstantiateMsg as EscrowInstantiateMsg,
         factory::ExecuteMsg,
     },
-    pool::{EscrowCreationResponse, PoolCreationWithFundsResponse},
+    pool::{DeRegisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
     swap::{SwapResponse, TransferResponse, WithdrawResponse},
     token::Token,
 };
@@ -24,10 +23,9 @@ use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 use crate::{
     reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
     state::{
-        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DEPOSIT_TOKEN, PENDING_ESCROW_REQUESTS,
-        PENDING_POOL_REQUESTS, PENDING_POOL_WITH_LIQUIDITY_REQUESTS, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
-        VLP_TO_LP_SHARES,
+        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
+        PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
+        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20, VLP_TO_LP_SHARES,
     },
 };
 
@@ -76,23 +74,22 @@ pub fn reusable_internal_ack_call(
     match msg {
         ChainIbcExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationWithFundsResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
 
             ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
         }
 
-        ChainIbcExecuteMsg::RequestPoolCreationWithFunds { tx_id, sender, .. } => {
+        ChainIbcExecuteMsg::RegisterDenom { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationWithFundsResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<RegisterDenomResponse> = from_json(ack)?;
 
-            ack_pool_creation_with_funds(deps, env, sender.address, res, tx_id, is_native)
+            ack_register_denom(deps, env, sender.address, res, tx_id, is_native)
         }
-
-        ChainIbcExecuteMsg::RequestEscrowCreation { tx_id, sender, .. } => {
+        ChainIbcExecuteMsg::DeRegisterDenom { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<EscrowCreationResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<DeRegisterDenomResponse> = from_json(ack)?;
 
-            ack_escrow_creation(deps, env, sender.address, res, tx_id, is_native)
+            ack_deregister_denom(deps, env, sender.address, res, tx_id, is_native)
         }
 
         ChainIbcExecuteMsg::AddLiquidity { tx_id, sender, .. } => {
@@ -182,7 +179,7 @@ fn ack_pool_creation(
     deps: DepsMut,
     env: Env,
     sender: String,
-    res: AcknowledgementMsg<PoolCreationWithFundsResponse>,
+    res: AcknowledgementMsg<PoolCreationResponse>,
     tx_id: String,
     is_native: bool,
 ) -> Result<Response, ContractError> {
@@ -309,146 +306,22 @@ fn ack_pool_creation(
     }
 }
 
-// Function to create pool
-fn ack_pool_creation_with_funds(
-    deps: DepsMut,
-    env: Env,
-    sender: String,
-    res: AcknowledgementMsg<PoolCreationWithFundsResponse>,
-    tx_id: String,
-    _is_native: bool,
-) -> Result<Response, ContractError> {
-    let sender = deps.api.addr_validate(&sender)?;
-    let req_key = (sender.clone(), tx_id.clone());
-    let existing_req = PENDING_POOL_WITH_LIQUIDITY_REQUESTS
-        .may_load(deps.storage, req_key.clone())?
-        .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
-
-    // Remove pool request from MAP
-    PENDING_POOL_REQUESTS.remove(deps.storage, req_key.clone());
-    PENDING_POOL_WITH_LIQUIDITY_REQUESTS.remove(deps.storage, req_key);
-
-    // Check whether res is an error or not
-    match res {
-        AcknowledgementMsg::Ok(data) => {
-            // Load state to get escrow code id in case we need to instantiate
-            let state = STATE.load(deps.storage)?;
-            let escrow_code_id = state.escrow_code_id;
-            let cw20_code_id = state.cw20_code_id;
-
-            PAIR_TO_VLP.save(
-                deps.storage,
-                existing_req.pair_info.get_pair()?.get_tupple(),
-                &data.vlp_contract.clone(),
-            )?;
-            // Prepare response
-            let mut res = Response::new()
-                .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "pool_with_funds_creation")
-                .add_attribute("vlp", data.vlp_contract.clone());
-            // Collects PairInfo into a vector of Token Info for easy iteration
-            let tokens = existing_req.pair_info.get_vec_token_info();
-            for token in tokens {
-                if token.token_type.is_voucher() {
-                    continue;
-                }
-                let escrow_contract =
-                    TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
-
-                match escrow_contract {
-                    Some(address) => {
-                        let send_msg = token.token_type.create_escrow_msg(token.amount, address)?;
-                        res = res.add_message(send_msg);
-                    }
-                    // Instantiate escrow if one doesn't exist
-                    None => {
-                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                            admin: Some(state.admin.clone()),
-                            code_id: escrow_code_id,
-                            msg: to_json_binary(&EscrowInstantiateMsg {
-                                token_id: token.clone().token,
-                                allowed_denom: Some(token.clone().token_type),
-                            })?,
-                            funds: vec![],
-                            label: "escrow".to_string(),
-                        });
-                        PENDING_DEPOSIT_TOKEN.save(deps.storage, token.clone().token, &token)?;
-                        res = res.add_submessage(SubMsg {
-                            id: ESCROW_INSTANTIATE_REPLY_ID,
-                            msg: init_msg,
-                            gas_limit: None,
-                            reply_on: ReplyOn::Always,
-                        });
-                    }
-                }
-            }
-            let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
-            // Instantiate cw20
-            let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                admin: Some(state.admin.clone()),
-                code_id: cw20_code_id,
-                msg: to_json_binary(&euclid::msgs::cw20::InstantiateMsg {
-                    name: lp_token_instantiate_data.name,
-                    symbol: lp_token_instantiate_data.symbol,
-                    decimals: lp_token_instantiate_data.decimals,
-                    // Add liquidity through initial_balances
-                    initial_balances: vec![Cw20Coin {
-                        address: sender.into_string(),
-                        amount: data.mint_lp_tokens,
-                    }],
-                    mint: lp_token_instantiate_data.mint,
-                    marketing: lp_token_instantiate_data.marketing,
-                    vlp: data.vlp_contract,
-                    factory: env.contract.address,
-                    token_pair: existing_req.pair_info.get_pair()?,
-                })?,
-                funds: vec![],
-                label: "cw20".to_string(),
-            });
-            Ok(res.add_submessage(SubMsg {
-                id: CW20_INSTANTIATE_REPLY_ID,
-                msg: init_cw20_msg,
-                gas_limit: None,
-                reply_on: ReplyOn::Always,
-            }))
-        }
-
-        AcknowledgementMsg::Error(err) => {
-            // Refund user
-            let mut refund_msgs = Vec::new();
-            for token in existing_req.pair_info.get_vec_token_info() {
-                let refund_msg = token.to_token_with_denom().create_transfer_msg(
-                    token.amount,
-                    existing_req.clone().sender,
-                    None,
-                )?;
-                refund_msgs.push(refund_msg);
-            }
-            Ok(Response::new()
-                .add_messages(refund_msgs)
-                .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "reject_pool_with_liquidity_request")
-                .add_attribute("error", err.clone()))
-        }
-    }
-}
-
-fn ack_escrow_creation(
+fn ack_register_denom(
     deps: DepsMut,
     _env: Env,
     sender: String,
-    res: AcknowledgementMsg<EscrowCreationResponse>,
+    res: AcknowledgementMsg<RegisterDenomResponse>,
     tx_id: String,
     is_native: bool,
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
-    let existing_req = PENDING_ESCROW_REQUESTS
+    let existing_req = PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
         .may_load(deps.storage, req_key.clone())?
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
 
     // Remove pool request from MAP
-    PENDING_ESCROW_REQUESTS.remove(deps.storage, req_key);
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.remove(deps.storage, req_key);
 
     // Check whether res is an error or not
     match res {
@@ -457,27 +330,48 @@ fn ack_escrow_creation(
             let escrow_code_id = state.escrow_code_id;
             let token = existing_req.token;
 
-            // Instantiate escrow
-            let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                admin: Some(state.admin.clone()),
-                code_id: escrow_code_id,
-                msg: to_json_binary(&EscrowInstantiateMsg {
-                    token_id: token.token,
-                    allowed_denom: Some(token.token_type),
-                })?,
-                funds: vec![],
-                label: "escrow".to_string(),
-            });
+            let existing_escrow = TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
 
-            Ok(Response::new()
-                .add_submessage(SubMsg {
-                    id: ESCROW_INSTANTIATE_REPLY_ID,
-                    msg: init_msg,
-                    gas_limit: None,
-                    reply_on: ReplyOn::Always,
-                })
+            let mut response = Response::new()
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "escrow_creation"))
+                .add_attribute("method", "ack_register_denom")
+                .add_attribute("token", token.token.to_string())
+                .add_attribute("token_type", token.token_type.get_key());
+
+            if let Some(escrow_address) = existing_escrow {
+                let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: escrow_address.into_string(),
+                    msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom {
+                        denom: token.token_type.clone(),
+                    })?,
+                    funds: vec![],
+                });
+                response = response
+                    .add_attribute("create_escrow", "false")
+                    .add_message(msg);
+            } else {
+                // Instantiate escrow
+                let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                    admin: Some(state.admin.clone()),
+                    code_id: escrow_code_id,
+                    msg: to_json_binary(&EscrowInstantiateMsg {
+                        token_id: token.token,
+                        allowed_denom: Some(token.token_type),
+                    })?,
+                    funds: vec![],
+                    label: "escrow".to_string(),
+                });
+                response = response
+                    .add_attribute("create_escrow", "true")
+                    .add_submessage(SubMsg {
+                        id: ESCROW_INSTANTIATE_REPLY_ID,
+                        msg: init_msg,
+                        gas_limit: None,
+                        reply_on: ReplyOn::Always,
+                    });
+            }
+
+            Ok(response)
         }
 
         AcknowledgementMsg::Error(err) => {
@@ -486,7 +380,59 @@ fn ack_escrow_creation(
             }
             Ok(Response::new()
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "reject_pool_request")
+                .add_attribute("method", "reject_denom_register")
+                .add_attribute("error", err.clone()))
+        }
+    }
+}
+
+fn ack_deregister_denom(
+    deps: DepsMut,
+    _env: Env,
+    sender: String,
+    res: AcknowledgementMsg<DeRegisterDenomResponse>,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender, tx_id.clone());
+    let existing_req = PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
+        .may_load(deps.storage, req_key.clone())?
+        .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
+
+    // Remove pool request from MAP
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.remove(deps.storage, req_key);
+
+    // Check whether res is an error or not
+    match res {
+        AcknowledgementMsg::Ok(_data) => {
+            let token = existing_req.token;
+
+            let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone())?;
+
+            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_address.into_string(),
+                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom {
+                    denom: token.token_type.clone(),
+                })?,
+                funds: vec![],
+            });
+
+            Ok(Response::new()
+                .add_message(msg)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("method", "ack_deregister_denom")
+                .add_attribute("token", token.token.to_string())
+                .add_attribute("token_type", token.token_type.get_key()))
+        }
+
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("method", "reject_denom_deregister")
                 .add_attribute("error", err.clone()))
         }
     }
