@@ -11,6 +11,7 @@ use crate::{
 pub struct InstantiateMsg {
     // Pool Code ID
     pub vlp_code_id: u64,
+    pub stable_vlp_code_id: u64,
     pub virtual_balance_code_id: u64,
 }
 
@@ -64,6 +65,7 @@ pub enum ExecuteMsg {
         admin: Option<String>,
         // Pool Code ID
         vlp_code_id: Option<u64>,
+        stable_vlp_code_id: Option<u64>,
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
     },

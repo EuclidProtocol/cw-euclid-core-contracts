@@ -12,6 +12,7 @@ modules = []
 router = { path = "../contracts/hub/router" }
 virtual_balance = { path = "../contracts/hub/virtual_balance" }
 vlp = { path = "../contracts/hub/vlp" }
+stable_vlp = { path = "../contracts/hub/stable_vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }
 cw20 = { path = "../contracts/liquidity/cw20" }

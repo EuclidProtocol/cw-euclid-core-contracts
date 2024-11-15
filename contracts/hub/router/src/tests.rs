@@ -20,6 +20,7 @@ mod tests {
     fn init(deps: DepsMut, info: MessageInfo) -> Response {
         let msg = InstantiateMsg {
             vlp_code_id: 1,
+            stable_vlp_code_id: 0,
             virtual_balance_code_id: 2,
         };
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -34,6 +35,7 @@ mod tests {
         let expected_state = State {
             admin: "owner".to_string(),
             vlp_code_id: 1,
+            stable_vlp_code_id: 0,
             virtual_balance_address: None,
             locked: false,
         };
@@ -51,6 +53,7 @@ mod tests {
         // Instantiate the contract first
         let msg = InstantiateMsg {
             vlp_code_id: 1,
+            stable_vlp_code_id: 0,
             virtual_balance_code_id: 2,
         };
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
@@ -198,6 +201,7 @@ mod tests {
         let msg = ExecuteMsg::UpdateRouterState {
             admin: Some("new_admin".to_string()),
             vlp_code_id: Some(1),
+            stable_vlp_code_id: Some(0),
             virtual_balance_address: Some(Addr::unchecked("new_virtual_balance_address")),
             locked: Some(true),
         };

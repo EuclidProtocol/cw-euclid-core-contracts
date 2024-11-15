@@ -1,7 +1,4 @@
 #![cfg(not(target_arch = "wasm32"))]
-
-use cosmwasm_std::Addr;
-use cosmwasm_std::Coin;
 use cw20::Cw20Contract;
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
@@ -18,6 +15,7 @@ use euclid::msgs::router::RegisterFactoryChainIbc;
 use euclid::msgs::router::RegisterFactoryChainNative;
 use factory::FactoryContract;
 use router::RouterContract;
+use stable_vlp::StableVlpContract;
 use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
 
@@ -29,7 +27,6 @@ pub fn setup_factory(
 ) -> FactoryContract<MockBase> {
     let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let chain = interchain.get_chain(factory_chain_id).unwrap();
-    let router_chain = interchain.get_chain(router_chain_id).unwrap();
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let cw20 = Cw20Contract::new(chain.clone());
@@ -109,6 +106,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
     let router = RouterContract::new(chain.clone());
     let virtual_balance = VirtualBalanceContract::new(chain.clone());
     let vlp = VlpContract::new(chain.clone());
+    let stable_vlp = StableVlpContract::new(chain.clone());
 
     router.upload().unwrap();
     virtual_balance.upload().unwrap();
@@ -118,6 +116,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
                 vlp_code_id: vlp.code_id().unwrap(),
+                stable_vlp_code_id: stable_vlp.code_id().unwrap(),
                 virtual_balance_code_id: virtual_balance.code_id().unwrap(),
             },
             None,

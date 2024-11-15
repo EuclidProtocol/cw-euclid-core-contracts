@@ -68,6 +68,7 @@ fn test_register_factory() {
         .instantiate(
             &RouterInstantiateMsg {
                 vlp_code_id: 3,
+                stable_vlp_code_id: 4,
                 virtual_balance_code_id,
             },
             None,

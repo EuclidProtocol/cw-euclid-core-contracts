@@ -7,10 +7,6 @@ use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload,
 };
 
-use euclid::msgs::cw20::QueryMsgFns as Cw20QueryMsgFns;
-use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
-use euclid::msgs::router::QueryMsgFns as RouterQueryMsgFns;
-
 use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::{
@@ -35,6 +31,7 @@ use factory::{
 };
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::RouterContract;
+use stable_vlp::StableVlpContract;
 use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
 
@@ -119,6 +116,7 @@ fn test_create_pool_with_funds() {
     let router_nibiru = RouterContract::new(nibiru.clone());
     let virtual_balance_nibiru = VirtualBalanceContract::new(nibiru.clone());
     let vlp_nibiru = VlpContract::new(nibiru.clone());
+    let stable_vlp_nibiru = StableVlpContract::new(nibiru.clone());
 
     factory_osmosis.upload().unwrap();
     escrow_osmosis.upload().unwrap();
@@ -126,11 +124,13 @@ fn test_create_pool_with_funds() {
     router_nibiru.upload().unwrap();
     virtual_balance_nibiru.upload().unwrap();
     vlp_nibiru.upload().unwrap();
+    stable_vlp_nibiru.upload().unwrap();
 
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
                 vlp_code_id: 3,
+                stable_vlp_code_id: 4,
                 virtual_balance_code_id: 2,
             },
             None,
@@ -482,11 +482,11 @@ fn test_create_pool_with_funds() {
     let factory_nibiru = FactoryContract::new(nibiru.clone());
     let escrow_nibiru = EscrowContract::new(nibiru.clone());
     let cw20_nibiru = Cw20Contract::new(nibiru.clone());
-    //4
-    factory_nibiru.upload().unwrap();
     //5
-    escrow_nibiru.upload().unwrap();
+    factory_nibiru.upload().unwrap();
     //6
+    escrow_nibiru.upload().unwrap();
+    //7
     cw20_nibiru.upload().unwrap();
 
     factory_nibiru
@@ -494,8 +494,8 @@ fn test_create_pool_with_funds() {
             &euclid::msgs::factory::InstantiateMsg {
                 router_contract: router_nibiru.address().unwrap().into_string(),
                 chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                escrow_code_id: 5,
-                cw20_code_id: 6,
+                escrow_code_id: 6,
+                cw20_code_id: 7,
                 is_native: true,
             },
             None,
@@ -725,7 +725,6 @@ fn test_create_pool_with_funds() {
 fn test_add_liquidity() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
-    let factory_chain = interchain.get_chain("osmosis").unwrap();
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
     let router = crate::helpers::chains::setup_router(&router_chain);

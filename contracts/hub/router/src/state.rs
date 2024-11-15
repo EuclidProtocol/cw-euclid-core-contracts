@@ -14,6 +14,8 @@ pub struct State {
     pub admin: String,
     // Pool Code ID
     pub vlp_code_id: u64,
+    // Stable Pool Code ID
+    pub stable_vlp_code_id: u64,
     pub virtual_balance_address: Option<Addr>,
     pub locked: bool,
 }

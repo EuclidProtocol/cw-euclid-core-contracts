@@ -69,8 +69,9 @@ pub fn register_pool(
 
     let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
-        sender: sender.clone(),
         tx_id: tx_id.clone(),
+        mint_lp_tokens: Uint128::zero(),
+        sender: sender.clone(),
     };
 
     Ok(Response::new()
@@ -213,6 +214,8 @@ pub fn add_liquidity(
     let liquidity_response = AddLiquidityResponse {
         mint_lp_tokens: lp_allocation,
         vlp_address: env.contract.address.to_string(),
+        tx_id: tx_id.clone(),
+        sender: sender.clone(),
     };
 
     // Prepare acknowledgement
