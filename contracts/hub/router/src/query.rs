@@ -100,12 +100,12 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
 
     ensure!(
         first_swap.token_in == msg.asset_in,
-        ContractError::new("Asset IN doen't match router")
+        ContractError::new("Asset IN does not match router")
     );
 
     ensure!(
         last_swap.token_out == msg.asset_out,
-        ContractError::new("Asset OUT doen't match router")
+        ContractError::new("Asset OUT does not match router")
     );
 
     let swap_vlps = validate_swap_pairs(deps, &msg.swaps);

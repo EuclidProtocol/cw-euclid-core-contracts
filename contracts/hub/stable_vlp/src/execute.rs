@@ -428,13 +428,13 @@ pub fn execute_swap(
     // Calculate the amount of asset to be swapped
     let swap_amount = amount_in.checked_sub(total_fee)?;
 
-    // TODO replace with compute_swap
     let receive_amount = compute_swap(
         &Decimal256::from_integer(amount_in),
         &Decimal256::from_integer(token_in_reserve),
         &Decimal256::from_integer(token_out_reserve),
     )?
     .return_amount;
+    println!("receive_amount: {}", receive_amount);
     // let receive_amount = calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?;
 
     // Verify that the receive amount is greater than 0 to be eligible for any swap

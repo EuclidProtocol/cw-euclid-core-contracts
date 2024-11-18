@@ -13,6 +13,7 @@ use euclid::{
     msgs::{
         self,
         router::{ExecuteMsg, TokenDenom},
+        stable_vlp::GetLiquidityResponse,
         virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceMsg, ExecuteTransfer},
     },
     pool::{DeRegisterDenomResponse, RegisterDenomResponse},
@@ -288,53 +289,105 @@ fn execute_request_pool_creation(
         ContractError::new("Cannot create pool with two new tokens")
     );
 
-    FUNDS_INFO.save(deps.storage, &(pair_with_denom, slippage_tolerance_bps))?;
+    FUNDS_INFO.save(
+        deps.storage,
+        &(pair_with_denom.clone(), slippage_tolerance_bps),
+    )?;
 
-    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
-        sender: sender.clone(),
-        pair: pair.clone(),
-        tx_id,
-    };
-
-    let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
-    // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
-    if vlp.is_some() {
-        let msg = WasmMsg::Execute {
-            contract_addr: vlp.unwrap(),
-            msg: to_json_binary(&register_msg)?,
-            funds: vec![],
+    if pair_with_denom.token_1.amount == pair_with_denom.token_2.amount {
+        let register_msg = msgs::stable_vlp::ExecuteMsg::RegisterStablePool {
+            sender: sender.clone(),
+            pair: pair.clone(),
+            tx_id,
         };
-        Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
-    } else {
-        let instantiate_msg = msgs::vlp::InstantiateMsg {
-            router: env.contract.address.to_string(),
-            virtual_balance: state
-                .virtual_balance_address
-                .ok_or(ContractError::Generic {
-                    err: "virtual balance not instantiated".to_string(),
-                })?
-                .to_string(),
-            pair,
-            fee: Fee {
-                lp_fee_bps: 10,
-                euclid_fee_bps: 10,
-                recipient: CrossChainUser {
-                    address: state.admin.clone(),
-                    chain_uid: ChainUid::vsl_chain_uid()?,
+
+        let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
+        // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
+        if vlp.is_some() {
+            let msg = WasmMsg::Execute {
+                contract_addr: vlp.unwrap(),
+                msg: to_json_binary(&register_msg)?,
+                funds: vec![],
+            };
+            Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
+        } else {
+            let instantiate_msg = msgs::stable_vlp::InstantiateMsg {
+                router: env.contract.address.to_string(),
+                virtual_balance: state
+                    .virtual_balance_address
+                    .ok_or(ContractError::Generic {
+                        err: "virtual balance not instantiated".to_string(),
+                    })?
+                    .to_string(),
+                pair,
+                fee: Fee {
+                    lp_fee_bps: 10,
+                    euclid_fee_bps: 10,
+                    recipient: CrossChainUser {
+                        address: state.admin.clone(),
+                        chain_uid: ChainUid::vsl_chain_uid()?,
+                    },
                 },
-            },
-            execute: Some(register_msg),
-            admin: state.admin.clone(),
-        };
-        let msg = WasmMsg::Instantiate {
-            admin: Some(state.admin),
-            code_id: state.vlp_code_id,
-            msg: to_json_binary(&instantiate_msg)?,
-            funds: vec![],
-            label: "VLP".to_string(),
+                execute: Some(register_msg),
+                admin: state.admin.clone(),
+            };
+            let msg = WasmMsg::Instantiate {
+                admin: Some(state.admin),
+                code_id: state.stable_vlp_code_id,
+                msg: to_json_binary(&instantiate_msg)?,
+                funds: vec![],
+                label: "Stable VLP".to_string(),
+            };
+
+            Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_INSTANTIATE_REPLY_ID)))
+        }
+    } else {
+        let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
+            sender: sender.clone(),
+            pair: pair.clone(),
+            tx_id,
         };
 
-        Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_INSTANTIATE_REPLY_ID)))
+        let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
+        // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
+        if vlp.is_some() {
+            let msg = WasmMsg::Execute {
+                contract_addr: vlp.unwrap(),
+                msg: to_json_binary(&register_msg)?,
+                funds: vec![],
+            };
+            Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
+        } else {
+            let instantiate_msg = msgs::vlp::InstantiateMsg {
+                router: env.contract.address.to_string(),
+                virtual_balance: state
+                    .virtual_balance_address
+                    .ok_or(ContractError::Generic {
+                        err: "virtual balance not instantiated".to_string(),
+                    })?
+                    .to_string(),
+                pair,
+                fee: Fee {
+                    lp_fee_bps: 10,
+                    euclid_fee_bps: 10,
+                    recipient: CrossChainUser {
+                        address: state.admin.clone(),
+                        chain_uid: ChainUid::vsl_chain_uid()?,
+                    },
+                },
+                execute: Some(register_msg),
+                admin: state.admin.clone(),
+            };
+            let msg = WasmMsg::Instantiate {
+                admin: Some(state.admin),
+                code_id: state.vlp_code_id,
+                msg: to_json_binary(&instantiate_msg)?,
+                funds: vec![],
+                label: "VLP".to_string(),
+            };
+
+            Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_INSTANTIATE_REPLY_ID)))
+        }
     }
 }
 
@@ -577,12 +630,12 @@ fn ibc_execute_swap(
 
     ensure!(
         first_swap.token_in == msg.asset_in.token,
-        ContractError::new("Asset IN doen't match router")
+        ContractError::new("Asset IN does not match router")
     );
 
     ensure!(
         last_swap.token_out == msg.asset_out,
-        ContractError::new("Asset OUT doen't match router")
+        ContractError::new("Asset OUT does not match router")
     );
 
     let req_key = (
@@ -710,8 +763,21 @@ fn ibc_execute_swap(
             )
             .add_attribute("partner_fee_amount", msg.partner_fee_amount.to_string());
     }
+    //     let liquidity_response: GetLiquidityResponse = deps.querier.query(
+    //         &cosmwasm_std::QueryRequest::Wasm(cosmwasm_std::WasmQuery::Smart {
+    //             contract_addr: first_swap.vlp_address.clone(),
+    //             msg: to_json_binary(&euclid::msgs::stable_vlp::QueryMsg::Liquidity {})?,
+    //         }),
+    //     )?;
+    //    let swap_msg =  if liquidity_response.token_1_reserve == liquidity_response.token_2_reserve {
+    //         return Err(ContractError::Generic {
+    //             err: "Liquidity is not enough".to_string(),
+    //         });
+    //     } else {
 
-    let swap_msg = msgs::vlp::ExecuteMsg::Swap {
+    //     }
+
+    let swap_msg = msgs::stable_vlp::ExecuteMsg::Swap {
         sender: sender.clone(),
         asset_in: msg.asset_in.token.clone(),
         amount_in: msg.amount_in,

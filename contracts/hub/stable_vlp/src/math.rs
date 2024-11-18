@@ -19,14 +19,17 @@ pub(crate) fn compute_swap(
     offer_pool: &Decimal256,
     ask_pool: &Decimal256,
 ) -> Result<SwapResult, ContractError> {
-    let token_precision = 2;
+    let token_precision = 1;
 
     // let xp = pools.iter().map(|p| p.amount).collect::<Vec<_>>();
-    let xp = [Decimal256::one()];
+    let xp = [
+        Decimal256::from_integer(Uint256::from(1000u128)),
+        Decimal256::from_integer(Uint256::from(1000u128)),
+    ];
 
     let new_ask_pool = calc_y(
         // compute_current_amp(config, env)?,
-        Uint64::new(10),
+        Uint64::new(1000),
         offer_pool + offer_asset,
         &xp,
         token_precision,
@@ -65,7 +68,6 @@ fn calculate_step(
     let d_p_mul = d_product.checked_mul(N_COINS)?;
 
     let l_val = leverage_mul.checked_add(d_p_mul)?.checked_mul(initial_d)?;
-
     let leverage_sub = initial_d.checked_mul(leverage - Decimal256::one())?;
     let n_coins_sum = d_product.checked_mul(N_COINS.checked_add(Decimal256::one())?)?;
 
