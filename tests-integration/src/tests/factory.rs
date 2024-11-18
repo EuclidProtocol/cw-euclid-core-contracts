@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 
-use cosmwasm_std::{coin, coins, Addr, Coin, Uint128};
+use cosmwasm_std::{coin, Addr, Coin, Uint128};
 use cw20::Cw20Contract;
 use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload,

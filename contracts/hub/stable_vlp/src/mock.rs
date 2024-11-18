@@ -4,7 +4,8 @@ use crate::contract::{execute, instantiate, query, reply};
 use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
 use euclid::fee::Fee;
-use euclid::msgs::stable_vlp::{ExecuteMsg, GetStateResponse, InstantiateMsg, QueryMsg};
+use euclid::msgs::stable_vlp::QueryMsg;
+use euclid::msgs::vlp::{ExecuteMsg, GetStateResponse, InstantiateMsg};
 use euclid::token::Pair;
 use mock::mock::MockApp;
 

@@ -9,65 +9,6 @@ use cosmwasm_std::{Decimal256, Uint128};
 use cw_asset::AssetInfo;
 
 #[cw_serde]
-pub struct InstantiateMsg {
-    pub router: String,
-    pub virtual_balance: String,
-    pub pair: Pair,
-    pub fee: Fee,
-    pub execute: Option<ExecuteMsg>,
-    pub admin: String,
-}
-
-#[cw_serde]
-pub enum ExecuteMsg {
-    // Registers a new pool from a new chain to an already existing VLP
-    RegisterStablePool {
-        sender: CrossChainUser,
-        pair: Pair,
-        tx_id: String,
-    },
-
-    // Registers a new pool from a new chain to an already existing VLP
-    UpdateFee {
-        lp_fee_bps: Option<u64>,
-        euclid_fee_bps: Option<u64>,
-        recipient: Option<CrossChainUser>,
-    },
-
-    Swap {
-        sender: CrossChainUser,
-        tx_id: String,
-        asset_in: Token,
-        amount_in: Uint128,
-        min_token_out: Uint128,
-        next_swaps: Vec<NextSwapVlp>,
-        test_fail: Option<bool>,
-    },
-    AddLiquidity {
-        sender: CrossChainUser,
-        tx_id: String,
-        liquidity: PairWithAmount,
-        slippage_tolerance_bps: u64,
-    },
-    RemoveLiquidity {
-        sender: CrossChainUser,
-        tx_id: String,
-        lp_allocation: Uint128,
-    },
-    UpdateState {
-        // Router Contract
-        router: Option<String>,
-        // Virtual Coin Contract
-        virtual_balance: Option<String>,
-        // Fee per swap for each transaction
-        fee: Option<Fee>,
-        // The last timestamp where the balances for each token have been updated
-        last_updated: Option<u64>,
-        admin: Option<String>,
-    },
-}
-
-#[cw_serde]
 #[derive(QueryResponses)]
 
 pub enum QueryMsg {

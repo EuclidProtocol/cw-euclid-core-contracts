@@ -1,6 +1,7 @@
 use crate::contract::{execute, instantiate, query};
 use cw_orch::{interface, prelude::*};
-use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use euclid::msgs::stable_vlp::QueryMsg;
+use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, MigrateMsg};
 pub const CONTRACT_ID: &str = "vlp_contract";
 
 #[interface(InstantiateMsg, ExecuteMsg, QueryMsg, MigrateMsg, id = CONTRACT_ID)]

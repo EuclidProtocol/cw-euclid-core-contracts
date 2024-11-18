@@ -13,7 +13,6 @@ use euclid::{
     msgs::{
         self,
         router::{ExecuteMsg, TokenDenom},
-        stable_vlp::GetLiquidityResponse,
         virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceMsg, ExecuteTransfer},
     },
     pool::{DeRegisterDenomResponse, RegisterDenomResponse},
@@ -295,7 +294,7 @@ fn execute_request_pool_creation(
     )?;
 
     if pair_with_denom.token_1.amount == pair_with_denom.token_2.amount {
-        let register_msg = msgs::stable_vlp::ExecuteMsg::RegisterStablePool {
+        let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
             sender: sender.clone(),
             pair: pair.clone(),
             tx_id,
@@ -311,7 +310,7 @@ fn execute_request_pool_creation(
             };
             Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
         } else {
-            let instantiate_msg = msgs::stable_vlp::InstantiateMsg {
+            let instantiate_msg = msgs::vlp::InstantiateMsg {
                 router: env.contract.address.to_string(),
                 virtual_balance: state
                     .virtual_balance_address
@@ -777,7 +776,7 @@ fn ibc_execute_swap(
 
     //     }
 
-    let swap_msg = msgs::stable_vlp::ExecuteMsg::Swap {
+    let swap_msg = msgs::vlp::ExecuteMsg::Swap {
         sender: sender.clone(),
         asset_in: msg.asset_in.token.clone(),
         amount_in: msg.amount_in,

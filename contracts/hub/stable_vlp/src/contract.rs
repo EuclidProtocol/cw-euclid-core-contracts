@@ -13,7 +13,8 @@ use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
 use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
-use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::stable_vlp::QueryMsg;
+use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
 
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
@@ -60,7 +61,7 @@ pub fn instantiate(
     let response =
         msg.execute
             .map_or(Ok(Response::default()), |execute_msg| match execute_msg {
-                ExecuteMsg::RegisterStablePool {
+                ExecuteMsg::RegisterPool {
                     sender,
                     pair,
                     tx_id,
@@ -82,7 +83,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RegisterStablePool {
+        ExecuteMsg::RegisterPool {
             sender,
             pair,
             tx_id,

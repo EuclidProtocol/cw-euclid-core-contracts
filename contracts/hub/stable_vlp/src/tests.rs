@@ -8,7 +8,7 @@ mod tests {
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
-    use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg};
+    use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
     use euclid::token::{Pair, Token};
     use std::collections::HashMap;
 
@@ -98,7 +98,7 @@ mod tests {
             token_2: Token::create("token2".to_string()).unwrap(),
         };
 
-        let msg = ExecuteMsg::RegisterStablePool {
+        let msg = ExecuteMsg::RegisterPool {
             sender,
             pair,
             tx_id: "1".to_string(),
