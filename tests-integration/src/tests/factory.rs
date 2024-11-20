@@ -4,12 +4,16 @@ use std::collections::HashMap;
 use cosmwasm_std::{coin, Addr, Coin, Uint128};
 use cw20::Cw20Contract;
 use cw_orch::prelude::{
-    ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload,
+    ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload, Environment,
 };
 
-use euclid::msgs::cw20::QueryMsgFns as Cw20QueryMsgFns;
+use euclid::chain::CrossChainUser;
+use euclid::fee::{PartnerFee, BPS_100_PERCENT};
 use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::QueryMsgFns as RouterQueryMsgFns;
+use euclid::swap::NextSwapPair;
+use euclid::token::TokenType;
+use euclid::{chain::CrossChainUserWithLimit, msgs::cw20::QueryMsgFns as Cw20QueryMsgFns};
 
 use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
@@ -29,6 +33,7 @@ use euclid::{
     },
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
 };
+use factory::state::PENDING_SWAPS;
 use factory::{
     mock::{mock_factory, MockFactory},
     FactoryContract,
@@ -38,7 +43,7 @@ use router::RouterContract;
 use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
 
-use crate::helpers::factory::{add_liquidity, create_pool, register_token};
+use crate::helpers::factory::{add_liquidity, create_pool, faucet, register_token, swap_request};
 
 #[test]
 fn test_proper_instantiation() {
@@ -725,7 +730,6 @@ fn test_create_pool_with_funds() {
 fn test_add_liquidity() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
-    let factory_chain = interchain.get_chain("osmosis").unwrap();
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
     let router = crate::helpers::chains::setup_router(&router_chain);
@@ -754,5 +758,1458 @@ fn test_add_liquidity() {
     );
     create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
 
-    add_liquidity(&interchain, &factory, pair_info, BPS_1_PERCENT);
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(&interchain, &factory, pair_info, BPS_1_PERCENT, None, funds);
+}
+
+#[test]
+#[should_panic(expected = "Slippage Tolerance must be between 0 and 100")]
+fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(&interchain, &factory, pair_info, 0, None, funds);
+}
+
+#[test]
+#[should_panic(expected = "Pool doesn't exist for this chain")]
+fn test_add_liquidity_fails_when_pool_does_not_exit() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_100_PERCENT,
+        None,
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Amount cannot be zero")]
+fn test_add_liquidity_fails_with_zero_liquidity_amount() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(0u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_100_PERCENT,
+        None,
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "The deposit amount is insufficient to add the liquidity")]
+fn test_add_liquidity_fails_with_insufficient_deposit() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_100_PERCENT,
+        None,
+        vec![],
+    );
+}
+
+#[test]
+#[should_panic(expected = "UnsupportedDenomination")]
+fn test_add_liquidity_fails_with_unsupported_token_denomination() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let mut pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+
+    // Attempt to add liquidity with tokens that aren't allowed by the escrow.
+    pair_info.token_1.token_type = TokenType::Native {
+        denom: "osmo".to_string(),
+    };
+
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_100_PERCENT,
+        None,
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Extra funds are not allowed")]
+fn test_add_liquidity_fails_with_extra_funds() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128() + 10,
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_100_PERCENT,
+        None,
+        funds,
+    );
+}
+
+#[test]
+fn test_add_liquidity_with_timeout() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_100_PERCENT,
+        Some(30),
+        funds,
+    );
+}
+
+#[test]
+fn test_add_liquidity_with_invalid_timeout() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_100_PERCENT,
+        Some(30),
+        funds,
+    );
+}
+#[test]
+fn test_swap_request() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        100,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(100),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        None,
+        vec![NextSwapPair {
+            token_in: Token::create("eucl".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender,
+            },
+            limit: None,
+        }],
+        None,
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Extra funds sent with message")]
+fn test_swap_request_fails_with_extra_funds() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // Send extra funds beyond amount_in
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(100),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        None, // Send extra funds beyond amount_in
+        vec![NextSwapPair {
+            token_in: Token::create("eucl".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender,
+            },
+            limit: None,
+        }],
+        None,
+        funds,
+    );
+}
+
+#[test]
+fn test_swap_request_with_valid_partner_fee() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // swapping
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(1000),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        Some(60),
+        // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
+        // last_swap.token_out doesn’t match asset_out.
+        vec![NextSwapPair {
+            token_in: Token::create("eucl".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender.clone(),
+            },
+            limit: None,
+        }],
+        Some(PartnerFee {
+            partner_fee_bps: 30,
+            recipient: sender,
+        }),
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "InvalidPartnerFee")]
+fn test_swap_request_fails_with_invalid_partner_fee_bps() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // Providing a partner_fee_bps above MAX_PARTNER_FEE_BPS
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(1000),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        None,
+        vec![NextSwapPair {
+            token_in: Token::create("eucl".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender.clone(),
+            },
+            limit: None,
+        }],
+        Some(PartnerFee {
+            partner_fee_bps: 31,
+            recipient: sender,
+        }),
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "UnsupportedDenomination")]
+fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    // Use a token not supported by the escrow
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "juno".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // swapping for inavlid denom not registered on escrow
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(1000),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        None,
+        vec![],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender.clone(),
+            },
+            limit: None,
+        }],
+        None,
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Amount cannot be zero")]
+fn test_swap_request_fails_for_zero_amount_in() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // swapping
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(0),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        None,
+        vec![],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender.clone(),
+            },
+            limit: None,
+        }],
+        None,
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Cannot Swap 0 tokens")]
+fn test_swap_request_fails_for_zero_min_amount_out() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // swapping
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(1000),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(0),
+        None,
+        vec![],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender.clone(),
+            },
+            limit: None,
+        }],
+        None,
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Token in doesn't match swap route")]
+fn test_swap_request_fails_for_invalid_swap_route() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // swapping
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(1000),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        None,
+        // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
+        // last_swap.token_out doesn’t match asset_out.
+        vec![NextSwapPair {
+            token_in: Token::create("osmo".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender.clone(),
+            },
+            limit: None,
+        }],
+        None,
+        funds,
+    );
+}
+
+#[test]
+fn test_swap_request_with_timeout() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // swapping
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(1000),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        Some(60),
+        // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
+        // last_swap.token_out doesn’t match asset_out.
+        vec![NextSwapPair {
+            token_in: Token::create("eucl".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender.clone(),
+            },
+            limit: None,
+        }],
+        None,
+        funds,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Invalid Timeout")]
+fn test_swap_request_fails_with_timeout_greater_than_240s() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = crate::helpers::chains::setup_router(&router_chain);
+    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let pair_info = PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create("eucl".to_string()).unwrap(),
+            amount: Uint128::from(10_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "eucl".to_string(),
+            },
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create("nibi".to_string()).unwrap(),
+            amount: Uint128::from(100_000u128),
+            token_type: euclid::token::TokenType::Native {
+                denom: "nibi".to_string(),
+            },
+        },
+    };
+    register_token(
+        &interchain,
+        &factory,
+        pair_info.token_1.to_token_with_denom(),
+    );
+    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+
+    let asset_in = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+
+    // adding funds
+    let chain = interchain
+        .get_chain(factory.environment().chain_id().as_str())
+        .unwrap();
+    let mut funds = vec![];
+    for token in pair_info.get_vec_token_info() {
+        faucet(
+            &chain,
+            chain.sender.as_str(),
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
+    }
+
+    add_liquidity(
+        &interchain,
+        &factory,
+        pair_info,
+        BPS_1_PERCENT,
+        None,
+        funds.clone(),
+    );
+
+    funds.clear();
+    faucet(
+        &chain,
+        chain.sender.as_str(),
+        1000,
+        asset_in.token_type.clone(),
+        &mut funds,
+    );
+
+    // swapping
+    swap_request(
+        &interchain,
+        &factory,
+        asset_in,
+        Uint128::new(1000),
+        Token::create("nibi".to_string()).unwrap(),
+        Uint128::new(50),
+        Some(241),
+        // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
+        // last_swap.token_out doesn’t match asset_out.
+        vec![NextSwapPair {
+            token_in: Token::create("eucl".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        vec![CrossChainUserWithLimit {
+            user: CrossChainUser {
+                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                address: sender.clone(),
+            },
+            limit: None,
+        }],
+        None,
+        funds,
+    );
 }

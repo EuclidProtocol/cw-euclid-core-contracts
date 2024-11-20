@@ -552,7 +552,7 @@ pub fn execute_swap_request(
 
     ensure!(
         first_swap.token_in == asset_in.token,
-        ContractError::new("Amount in doesn't match swap route")
+        ContractError::new("Token in doesn't match swap route")
     );
 
     let last_swap = swaps.last().ok_or(ContractError::Generic {
@@ -561,7 +561,7 @@ pub fn execute_swap_request(
 
     ensure!(
         last_swap.token_out == asset_out,
-        ContractError::new("Amount out doesn't match swap route")
+        ContractError::new("Token out doesn't match swap route")
     );
 
     let channel = if !state.is_native {
