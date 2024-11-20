@@ -433,7 +433,8 @@ pub fn execute_swap(
         &Decimal256::from_integer(token_in_reserve),
         &Decimal256::from_integer(token_out_reserve),
     )?
-    .return_amount;
+    .return_amount
+    .checked_div(Uint128::new(100))?;
     println!("receive_amount: {}", receive_amount);
     // let receive_amount = calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?;
 

@@ -1062,4 +1062,47 @@ fn test_stable_pool() {
         // There was a decode error or the packet timed out
         // Else the packet timed-out, you may have a relayer error or something is wrong in your application
     };
+
+    let liquidity_query: GetLiquidityResponse = vlp_nibiru
+        .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
+        .unwrap();
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityResponse {
+            pair: Pair {
+                token_1: Token::create("eucl".to_string()).unwrap(),
+                token_2: Token::create("osmo".to_string()).unwrap(),
+            },
+            token_1_reserve: Uint128::new(10_999),
+            token_2_reserve: Uint128::new(9_001),
+            total_lp_tokens: Uint128::new(9000),
+        }
+    );
+
+    escrow_osmosis.set_address(&Addr::unchecked("contract1"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("osmo".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(10_000u128),
+        }
+    );
+
+    // This is the escrow for the Euclid token
+    escrow_osmosis.set_address(&Addr::unchecked("contract2"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(11_000u128),
+        }
+    );
 }
