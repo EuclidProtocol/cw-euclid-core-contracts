@@ -17,7 +17,7 @@ pub struct PoolCreateRequest {
     pub tx_id: String,
     // Pool Pair
     pub pair_info: PairWithDenomAndAmount,
-    pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
+    pub lp_token_instantiate_msg: snip20_reference_impl::msg::InstantiateMsg,
 }
 
 // Request to create pool saved in state to manage during acknowledgement
@@ -29,7 +29,7 @@ pub struct PoolWithLiquidityCreateRequest {
     pub tx_id: String,
     // Pool Pair
     pub pair_info: PairWithDenomAndAmount,
-    pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
+    pub lp_token_instantiate_msg: snip20_reference_impl::msg::InstantiateMsg,
 }
 
 #[cw_serde]

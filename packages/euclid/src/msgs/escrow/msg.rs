@@ -1,7 +1,7 @@
 use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
-use cw20::Cw20ReceiveMsg;
+use cosmwasm_std::{Addr, Binary, Uint128};
+use snip20_reference_impl::receiver::Snip20ReceiveMsg;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -15,15 +15,26 @@ pub struct InstantiateMsg {
 #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     // Updates allowed denoms
-    AddAllowedDenom { denom: TokenType },
+    AddAllowedDenom {
+        denom: TokenType,
+    },
     // Removes a denom from allowed denoms
-    DisallowDenom { denom: TokenType },
+    DisallowDenom {
+        denom: TokenType,
+    },
     DepositNative {},
-    // Recieve CW20 TOKENS structure
-    Receive(Cw20ReceiveMsg),
+    // Recieve SNIP20 TOKENS structure
+    Receive(Snip20ReceiveMsg),
 
-    // Have a separate Msg for cw20 tokens? flow should be better if the message is unified
-    Withdraw { recipient: Addr, amount: Uint128 },
+    // Have a separate Msg for snip20 tokens? flow should be better if the message is unified
+    Withdraw {
+        recipient: Addr,
+        amount: Uint128,
+        memo: Option<String>,
+        decoys: Option<Vec<Addr>>,
+        entropy: Option<Binary>,
+        padding: Option<String>,
+    },
 }
 
 #[cw_serde]
@@ -73,11 +84,13 @@ pub struct AllowedTokenResponse {
 pub struct EscrowInstantiateResponse {
     pub token: Token,
     pub address: String,
+    pub code_hash: String,
 }
 
 #[cw_serde]
-pub struct Cw20InstantiateResponse {
+pub struct Snip20InstantiateResponse {
     pub pair: Pair,
     pub address: String,
+    pub code_hash: String,
     pub vlp: String,
 }

@@ -2,9 +2,8 @@ use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
+    ensure, to_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
 };
-use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
@@ -12,6 +11,7 @@ use euclid::{
     swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
+use secret_storage_plus::{Item, Map};
 
 // Message that implements an ExecuteSwap on the VLP contract
 
@@ -94,6 +94,7 @@ impl ChainIbcExecuteMsg {
         deps: &mut DepsMut,
         env: &Env,
         router_contract: String,
+        router_contract_code_hash: Option<String>,
         chain_uid: ChainUid,
         is_native: bool,
         channel: String,
@@ -101,7 +102,7 @@ impl ChainIbcExecuteMsg {
     ) -> Result<SubMsg, ContractError> {
         if is_native {
             let router_msg = router::ExecuteMsg::NativeReceiveCallback {
-                msg: to_json_binary(self)?,
+                msg: to_binary(self)?,
                 chain_uid,
             };
             let mut count = CHAIN_IBC_EXECUTE_MSG_QUEUE_COUNT
@@ -123,7 +124,8 @@ impl ChainIbcExecuteMsg {
             Ok(SubMsg::reply_always(
                 WasmMsg::Execute {
                     contract_addr: router_contract,
-                    msg: to_json_binary(&router_msg)?,
+                    code_hash: router_contract_code_hash.unwrap_or_default(),
+                    msg: to_binary(&router_msg)?,
                     funds: vec![],
                 },
                 count,
@@ -131,7 +133,7 @@ impl ChainIbcExecuteMsg {
         } else {
             let packet = IbcMsg::SendPacket {
                 channel_id: channel,
-                data: to_json_binary(self)?,
+                data: to_binary(self)?,
                 timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
             };
             Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
@@ -267,14 +269,14 @@ impl HubIbcExecuteMsg {
             euclid::chain::ChainType::Ibc(ibc_info) => {
                 let packet = IbcMsg::SendPacket {
                     channel_id: ibc_info.from_hub_channel,
-                    data: to_json_binary(self)?,
+                    data: to_binary(self)?,
                     timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
                 };
                 Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
             }
             euclid::chain::ChainType::Native {} => {
                 let factory_msg = factory::ExecuteMsg::NativeReceiveCallback {
-                    msg: to_json_binary(self)?,
+                    msg: to_binary(self)?,
                 };
                 let mut count = HUB_IBC_EXECUTE_MSG_QUEUE_COUNT
                     .load(deps.storage)
@@ -295,7 +297,8 @@ impl HubIbcExecuteMsg {
                 Ok(SubMsg::reply_always(
                     WasmMsg::Execute {
                         contract_addr: chain.factory,
-                        msg: to_json_binary(&factory_msg)?,
+                        code_hash: chain.factory_code_hash,
+                        msg: to_binary(&factory_msg)?,
                         funds: vec![],
                     },
                     count,

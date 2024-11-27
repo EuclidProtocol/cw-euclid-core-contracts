@@ -1,8 +1,7 @@
 use cosmwasm_std::{
-    ensure, from_json, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout, MessageInfo, Response,
-    Uint128,
+    ensure, from_binary, to_binary, Binary, CosmosMsg, DepsMut, Env, IbcTimeout, MessageInfo,
+    Response, StdError, Uint128,
 };
-use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     deposit::DepositTokenRequest,
@@ -12,7 +11,7 @@ use euclid::{
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
-        factory::cw20::FactoryCw20HookMsg,
+        factory::snip20::FactoryCw20HookMsg,
     },
     pool::{DenomRegisterDeregisterRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
@@ -24,14 +23,16 @@ use euclid_ibc::msg::{
     ChainIbcExecuteMsg, ChainIbcRemoveLiquidityExecuteMsg, ChainIbcTransferExecuteMsg,
     ChainIbcWithdrawExecuteMsg, HubIbcExecuteMsg,
 };
+use snip20_reference_impl::receiver::Snip20ReceiveMsg;
 
 use crate::{
     ibc::receive,
+    query::get_contract_code_hash,
     state::{
         State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
         PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
-        VLP_TO_CW20,
+        VLP_TO_SNIP20,
     },
 };
 
@@ -63,7 +64,6 @@ pub fn execute_request_pool_creation(
     lp_token_name: String,
     lp_token_symbol: String,
     lp_token_decimal: u8,
-    lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     slippage_tolerance_bps: u64,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -110,20 +110,26 @@ pub fn execute_request_pool_creation(
                         token.amount,
                         env.contract.address.clone().to_string(),
                         Some(sender.address.clone()),
+                        None,
+                        None,
+                        None,
+                        None,
                     )?;
                     msgs.push(msg);
                 }
                 TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
             }
             // Ensure valid denom if token already exists
-            let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
-            if let Some(escrow_address) = escrow_address {
+            let escrow_info = TOKEN_TO_ESCROW.get(deps.storage, &token.clone().token);
+            if let Some(escrow_info) = escrow_info.clone() {
                 let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
                     denom: token.clone().token_type,
                 };
-                let token_allowed: AllowedTokenResponse = deps
-                    .querier
-                    .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+                let token_allowed: AllowedTokenResponse = deps.querier.query_wasm_smart(
+                    escrow_info.code_hash,
+                    escrow_info.addr,
+                    &token_allowed_query_msg,
+                )?;
 
                 ensure!(
                     token_allowed.allowed,
@@ -162,10 +168,10 @@ pub fn execute_request_pool_creation(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-    ensure!(
-        !PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolAlreadyExists {}
-    );
+
+    if PAIR_TO_VLP.get(deps.storage, &pair.get_tupple()).is_some() {
+        return Err(ContractError::PoolAlreadyExists {});
+    }
 
     let channel = if !state.is_native {
         HUB_CHANNEL.load(deps.storage)?
@@ -174,32 +180,31 @@ pub fn execute_request_pool_creation(
     };
     let timeout = get_timeout(timeout)?;
 
-    // We might get errors in ack if marketing is not valid
-    if let Some(marketing) = &lp_token_marketing {
-        if let Some(logo) = &marketing.logo {
-            ensure!(
-                matches!(logo, Logo::Url(_)),
-                ContractError::new("Only URL logos are supported")
-            );
-        }
+    // // We might get errors in ack if marketing is not valid
+    // if let Some(marketing) = &lp_token_marketing {
+    //     if let Some(logo) = &marketing.logo {
+    //         ensure!(
+    //             matches!(logo, Logo::Url(_)),
+    //             ContractError::new("Only URL logos are supported")
+    //         );
+    //     }
 
-        if let Some(marketing_address) = &marketing.marketing {
-            deps.api.addr_validate(marketing_address)?;
-        }
-    }
+    //     if let Some(marketing_address) = &marketing.marketing {
+    //         deps.api.addr_validate(marketing_address)?;
+    //     }
+    // }
 
-    let lp_token_instantiate_msg = cw20_base::msg::InstantiateMsg {
+    let lp_token_instantiate_msg = snip20_reference_impl::msg::InstantiateMsg {
         name: lp_token_name,
         symbol: lp_token_symbol,
         decimals: lp_token_decimal,
-        initial_balances: vec![],
-        mint: Some(cw20::MinterResponse {
-            minter: env.contract.address.clone().into_string(),
-            cap: None,
-        }),
-        marketing: lp_token_marketing,
+        initial_balances: None,
+        admin: None,
+        prng_seed: to_binary(&"seed")?,
+        config: None,
+        supported_denoms: None,
     };
-    lp_token_instantiate_msg.validate()?;
+    // lp_token_instantiate_msg.validate()?;
 
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
@@ -220,6 +225,7 @@ pub fn execute_request_pool_creation(
         deps,
         &env,
         state.router_contract,
+        state.router_contract_code_hash,
         state.chain_uid,
         state.is_native,
         channel.clone(),
@@ -262,14 +268,16 @@ pub fn add_liquidity_request(
         ContractError::InvalidSlippageTolerance {}
     );
 
-    ensure!(
-        !PENDING_ADD_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
-    ensure!(
-        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolDoesNotExist {}
-    );
+    if PENDING_ADD_LIQUIDITY
+        .get(deps.storage, &(info.sender.clone(), tx_id.clone()))
+        .is_some()
+    {
+        return Err(ContractError::TxAlreadyExist {});
+    }
+
+    if PAIR_TO_VLP.get(deps.storage, &pair.get_tupple()).is_none() {
+        return Err(ContractError::PoolDoesNotExist {});
+    }
 
     let channel = if !state.is_native {
         HUB_CHANNEL.load(deps.storage)?
@@ -293,15 +301,18 @@ pub fn add_liquidity_request(
 
         // Vouchers are not escrowed
         if !token.token_type.is_voucher() {
-            let escrow_address = TOKEN_TO_ESCROW
-                .load(deps.storage, token.token)
-                .or(Err(ContractError::EscrowDoesNotExist {}))?;
+            let escrow_info = TOKEN_TO_ESCROW
+                .get(deps.storage, &token.token)
+                .ok_or(ContractError::EscrowDoesNotExist {})
+                .unwrap();
             let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
                 denom: token.token_type.clone(),
             };
-            let token_allowed: AllowedTokenResponse = deps
-                .querier
-                .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+            let token_allowed: AllowedTokenResponse = deps.querier.query_wasm_smart(
+                escrow_info.code_hash,
+                escrow_info.addr,
+                &token_allowed_query_msg,
+            )?;
 
             ensure!(
                 token_allowed.allowed,
@@ -323,6 +334,10 @@ pub fn add_liquidity_request(
                         token.amount,
                         env.contract.address.clone().to_string(),
                         Some(sender.address.clone()),
+                        None,
+                        None,
+                        None,
+                        None,
                     )?;
                     msgs.push(msg);
                 }
@@ -342,9 +357,9 @@ pub fn add_liquidity_request(
         tx_id: tx_id.clone(),
     };
 
-    PENDING_ADD_LIQUIDITY.save(
+    PENDING_ADD_LIQUIDITY.insert(
         deps.storage,
-        (info.sender.clone(), tx_id.clone()),
+        &(info.sender.clone(), tx_id.clone()),
         &liquidity_tx_info,
     )?;
 
@@ -358,6 +373,7 @@ pub fn add_liquidity_request(
         deps,
         &env,
         state.router_contract,
+        state.router_contract_code_hash,
         state.chain_uid,
         state.is_native,
         channel,
@@ -393,20 +409,22 @@ pub fn remove_liquidity_request(
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
-    ensure!(
-        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
+    if PENDING_REMOVE_LIQUIDITY
+        .get(deps.storage, &(sender_addr.clone(), tx_id.clone()))
+        .is_some()
+    {
+        return Err(ContractError::TxAlreadyExist {});
+    }
 
-    let vlp = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
-    let cw20 = VLP_TO_CW20.load(deps.storage, vlp)?;
+    let vlp = PAIR_TO_VLP.get(deps.storage, &pair.get_tupple()).unwrap();
+    let snip20 = VLP_TO_SNIP20.get(deps.storage, &vlp).unwrap();
 
-    ensure!(cw20 == info.sender, ContractError::Unauthorized {});
+    ensure!(snip20 == info.sender, ContractError::Unauthorized {});
 
-    ensure!(
-        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolDoesNotExist {}
-    );
+    if PAIR_TO_VLP.get(deps.storage, &pair.get_tupple()).is_none() {
+        return Err(ContractError::PoolDoesNotExist {});
+    }
+
     // TODO: Do we want to add check for lp shares for early fail?
 
     let channel = if !state.is_native {
@@ -424,12 +442,12 @@ pub fn remove_liquidity_request(
         lp_allocation,
         pair: pair.clone(),
         tx_id: tx_id.clone(),
-        cw20,
+        snip20,
     };
 
-    PENDING_REMOVE_LIQUIDITY.save(
+    PENDING_REMOVE_LIQUIDITY.insert(
         deps.storage,
-        (sender_addr.clone(), tx_id.clone()),
+        &(sender_addr.clone(), tx_id.clone()),
         &liquidity_tx_info,
     )?;
 
@@ -444,6 +462,7 @@ pub fn remove_liquidity_request(
         deps,
         &env,
         state.router_contract,
+        state.router_contract_code_hash,
         state.chain_uid,
         state.is_native,
         channel,
@@ -461,7 +480,7 @@ pub fn remove_liquidity_request(
         .add_submessage(remove_liq_msg))
 }
 
-// TODO make execute_swap an internal function OR merge execute_swap_request and execute_swap into one function
+// // TODO make execute_swap an internal function OR merge execute_swap_request and execute_swap into one function
 
 pub fn execute_swap_request(
     deps: &mut DepsMut,
@@ -498,11 +517,14 @@ pub fn execute_swap_request(
 
     if !asset_in.token_type.is_voucher() {
         // Verify that this asset is allowed
-        let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+        let escrow = TOKEN_TO_ESCROW
+            .get(deps.storage, &asset_in.token.clone())
+            .unwrap();
 
         let token_allowed: euclid::msgs::escrow::AllowedTokenResponse =
             deps.querier.query_wasm_smart(
-                escrow,
+                escrow.code_hash,
+                escrow.addr,
                 &euclid::msgs::escrow::QueryMsg::TokenAllowed {
                     denom: asset_in.token_type.clone(),
                 },
@@ -519,7 +541,9 @@ pub fn execute_swap_request(
             // Verify thatthe amount of funds passed is greater than the asset amount
             fund_manager.use_fund(amount_in, denom)?;
         }
-        TokenType::Smart { contract_address } => {
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             ensure!(
                 info.sender == *contract_address,
                 ContractError::Unauthorized {}
@@ -532,7 +556,7 @@ pub fn execute_swap_request(
         ContractError::new("Extra funds sent with message")
     );
 
-    let partner_fee_amount = amount_in.checked_mul_ceil(Decimal::bps(partner_fee_bps))?;
+    let partner_fee_amount = calculate_partner_fee(amount_in, partner_fee_bps)?;
 
     let amount_in = amount_in.checked_sub(partner_fee_amount)?;
     // Verify that the asset amount is greater than 0
@@ -541,10 +565,13 @@ pub fn execute_swap_request(
     // Verify that the min amount out is greater than 0
     ensure!(!min_amount_out.is_zero(), ContractError::ZeroAssetAmount {});
 
-    ensure!(
-        !PENDING_SWAPS.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
+    // Check if the transaction already exists in `PENDING_SWAPS`
+    if PENDING_SWAPS
+        .get(deps.storage, &(sender_addr.clone(), tx_id.clone()))
+        .is_some()
+    {
+        return Err(ContractError::TxAlreadyExist {});
+    }
 
     let first_swap = swaps.first().ok_or(ContractError::Generic {
         err: "Empty Swap not allowed".to_string(),
@@ -590,9 +617,9 @@ pub fn execute_swap_request(
         partner_fee_amount,
         partner_fee_recipient: partner_fee_recipient.clone(),
     };
-    PENDING_SWAPS.save(
+    PENDING_SWAPS.insert(
         deps.storage,
-        (sender_addr.clone(), tx_id.clone()),
+        &(sender_addr.clone(), tx_id.clone()),
         &swap_info,
     )?;
 
@@ -615,6 +642,7 @@ pub fn execute_swap_request(
         deps,
         &env,
         state.router_contract.clone(),
+        state.router_contract_code_hash,
         state.chain_uid.clone(),
         state.is_native,
         channel,
@@ -631,6 +659,26 @@ pub fn execute_swap_request(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
         .add_submessage(swap_msg))
+}
+
+// Calculate partner fee amount as a ceiling operation
+fn calculate_partner_fee(amount_in: Uint128, partner_fee_bps: u64) -> Result<Uint128, StdError> {
+    // Ensure partner_fee_bps is within a valid range (0 - 10,000 basis points)
+    if partner_fee_bps > 10_000 {
+        return Err(StdError::generic_err("Invalid basis points"));
+    }
+
+    // Convert `partner_fee_bps` to Uint128 for compatibility and calculate the ceiling of (amount_in * partner_fee_bps) / 10,000
+    let bps = Uint128::from(partner_fee_bps as u128);
+    let multiplier = Uint128::from(10_000u128); // Represents 10,000 basis points (100%)
+
+    // Perform the multiplication and rounding up for ceiling division
+    let fee_numerator = amount_in
+        .checked_mul(bps)?
+        .checked_add(multiplier.checked_sub(Uint128::one())?)?;
+    let partner_fee_amount = fee_numerator.checked_div(multiplier)?;
+
+    Ok(partner_fee_amount)
 }
 
 pub fn execute_deposit_token(
@@ -666,15 +714,20 @@ pub fn execute_deposit_token(
 
     let timeout = get_timeout(timeout)?;
 
-    ensure!(
-        !PENDING_TOKEN_DEPOSIT.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
+    if PENDING_TOKEN_DEPOSIT
+        .get(deps.storage, &(sender_addr.clone(), tx_id.clone()))
+        .is_some()
+    {
+        return Err(ContractError::TxAlreadyExist {});
+    }
     // Verify that this asset is allowed
-    let escrow = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+    let escrow = TOKEN_TO_ESCROW
+        .get(deps.storage, &asset_in.token.clone())
+        .unwrap();
 
     let token_allowed: euclid::msgs::escrow::AllowedTokenResponse = deps.querier.query_wasm_smart(
-        escrow,
+        escrow.code_hash,
+        escrow.addr,
         &euclid::msgs::escrow::QueryMsg::TokenAllowed {
             denom: asset_in.token_type.clone(),
         },
@@ -689,7 +742,9 @@ pub fn execute_deposit_token(
         TokenType::Native { denom } => {
             fund_manager.use_fund(amount_in, denom)?;
         }
-        TokenType::Smart { contract_address } => {
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             ensure!(
                 info.sender == *contract_address,
                 ContractError::Unauthorized {}
@@ -712,9 +767,9 @@ pub fn execute_deposit_token(
         recipient: recipient.clone(),
     };
 
-    PENDING_TOKEN_DEPOSIT.save(
+    PENDING_TOKEN_DEPOSIT.insert(
         deps.storage,
-        (sender_addr.clone(), tx_id.clone()),
+        &(sender_addr.clone(), tx_id.clone()),
         &deposit_token_info,
     )?;
 
@@ -730,6 +785,7 @@ pub fn execute_deposit_token(
             deps,
             &env,
             state.clone().router_contract,
+            state.clone().router_contract_code_hash,
             state.clone().chain_uid,
             state.is_native,
             channel,
@@ -748,24 +804,24 @@ pub fn execute_deposit_token(
         .add_submessage(deposit_token_msg))
 }
 
-/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
+/// Receives a message of type [`Snip20ReceiveMsg`] and processes it depending on the received template.
 ///
-/// * **cw20_msg** is the CW20 message that has to be processed.
-pub fn receive_cw20(
+/// * **snip20_msg** is the SNIP20 message that has to be processed.
+pub fn receive_snip20(
     mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    cw20_msg: Cw20ReceiveMsg,
+    snip20_msg: Snip20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     let sender = CrossChainUser {
-        address: cw20_msg.sender,
+        address: snip20_msg.sender.to_string(),
         chain_uid: state.chain_uid,
     };
 
-    match from_json(&cw20_msg.msg)? {
-        // Allow to swap using a CW20 hook message
+    match from_binary(&snip20_msg.msg.unwrap())? {
+        // Allow to swap using a SNIP20 hook message
         FactoryCw20HookMsg::Swap {
             asset_in,
             asset_out,
@@ -779,11 +835,15 @@ pub fn receive_cw20(
 
             // ensure that contract address is same as asset being swapped
             ensure!(
-                contract_adr == asset_in.token_type.get_smart_contract_address()?,
+                contract_adr
+                    == asset_in
+                        .token_type
+                        .get_smart_contract_address_and_code_hash()?
+                        .0,
                 ContractError::AssetDoesNotExist {}
             );
 
-            let amount_in = cw20_msg.amount;
+            let amount_in = snip20_msg.amount;
 
             // ensure that the contract address is the same as the asset contract address
             execute_swap_request(
@@ -822,11 +882,13 @@ pub fn receive_cw20(
             timeout,
         } => {
             let contract_adr = info.sender.clone();
+            let code_hash = get_contract_code_hash(deps.querier, contract_adr.to_string())?;
 
             let asset_in = token.with_type(TokenType::Smart {
                 contract_address: contract_adr.to_string(),
+                code_hash,
             });
-            let amount_in = cw20_msg.amount;
+            let amount_in = snip20_msg.amount;
 
             // ensure that the contract address is the same as the asset contract address
             execute_deposit_token(
@@ -858,19 +920,19 @@ pub fn execute_request_register_denom(
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
-    ensure!(
-        !PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
-            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
-    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
-    if let Some(escrow_address) = escrow_address {
+    if PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
+        .get(deps.storage, &(info.sender.clone(), tx_id.clone()))
+        .is_some()
+    {
+        return Err(ContractError::TxAlreadyExist {});
+    }
+    if let Some(escrow) = TOKEN_TO_ESCROW.get(deps.storage, &token.token.clone()) {
         let denom_allowed_msg = EscrowQueryMsg::TokenAllowed {
             denom: token.token_type.clone(),
         };
-        let denom_allowed: AllowedTokenResponse = deps
-            .querier
-            .query_wasm_smart(escrow_address, &denom_allowed_msg)?;
+        let denom_allowed: AllowedTokenResponse =
+            deps.querier
+                .query_wasm_smart(escrow.code_hash, escrow.addr, &denom_allowed_msg)?;
 
         // Denom should not be already registered
         ensure!(
@@ -895,6 +957,7 @@ pub fn execute_request_register_denom(
         deps,
         &env,
         state.router_contract,
+        state.router_contract_code_hash,
         state.chain_uid,
         state.is_native,
         channel,
@@ -907,9 +970,9 @@ pub fn execute_request_register_denom(
         token: token.clone(),
     };
 
-    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.save(
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.insert(
         deps.storage,
-        (info.sender.clone(), tx_id.clone()),
+        &(info.sender.clone(), tx_id.clone()),
         &req,
     )?;
 
@@ -948,18 +1011,21 @@ pub fn execute_request_deregister_denom(
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
-    ensure!(
-        !PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
-            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
-    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone())?;
+    if PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
+        .get(deps.storage, &(info.sender.clone(), tx_id.clone()))
+        .is_some()
+    {
+        return Err(ContractError::TxAlreadyExist {});
+    }
+    let escrow = TOKEN_TO_ESCROW
+        .get(deps.storage, &token.token.clone())
+        .unwrap();
     let denom_allowed_msg = EscrowQueryMsg::TokenAllowed {
         denom: token.token_type.clone(),
     };
-    let denom_allowed: AllowedTokenResponse = deps
-        .querier
-        .query_wasm_smart(escrow_address, &denom_allowed_msg)?;
+    let denom_allowed: AllowedTokenResponse =
+        deps.querier
+            .query_wasm_smart(escrow.code_hash, escrow.addr, &denom_allowed_msg)?;
 
     // Denom should be allowed for it to be available for deregister
     ensure!(denom_allowed.allowed, ContractError::AssetDoesNotExist {});
@@ -980,6 +1046,7 @@ pub fn execute_request_deregister_denom(
         deps,
         &env,
         state.router_contract,
+        state.router_contract_code_hash,
         state.chain_uid,
         state.is_native,
         channel,
@@ -992,9 +1059,9 @@ pub fn execute_request_deregister_denom(
         token: token.clone(),
     };
 
-    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.save(
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.insert(
         deps.storage,
-        (info.sender.clone(), tx_id.clone()),
+        &(info.sender.clone(), tx_id.clone()),
         &req,
     )?;
 
@@ -1046,6 +1113,7 @@ pub fn execute_withdraw_virtual_balance(
         deps,
         &env,
         state.router_contract,
+        state.router_contract_code_hash,
         state.chain_uid,
         state.is_native,
         channel,
@@ -1104,6 +1172,7 @@ pub fn execute_transfer_virtual_balance(
         deps,
         &env,
         state.router_contract,
+        state.router_contract_code_hash,
         state.chain_uid,
         state.is_native,
         channel,
@@ -1124,9 +1193,12 @@ pub fn execute_update_state(
     deps: DepsMut,
     info: MessageInfo,
     router_contract: Option<String>,
+    router_code_hash: Option<String>,
     admin: Option<String>,
     escrow_code_id: Option<u64>,
-    cw20_code_id: Option<u64>,
+    escrow_code_hash: Option<String>,
+    snip20_code_id: Option<u64>,
+    snip20_code_hash: Option<String>,
     is_native: Option<bool>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -1138,9 +1210,20 @@ pub fn execute_update_state(
 
     let new_state = State {
         router_contract: router_contract.clone().unwrap_or(state.router_contract),
+        router_contract_code_hash: Some(
+            router_code_hash
+                .clone()
+                .unwrap_or(state.router_contract_code_hash.unwrap()),
+        ),
         admin: admin.clone().unwrap_or(state.admin),
         escrow_code_id: escrow_code_id.unwrap_or(state.escrow_code_id),
-        cw20_code_id: cw20_code_id.unwrap_or(state.cw20_code_id),
+        escrow_code_hash: escrow_code_hash
+            .clone()
+            .unwrap_or(state.escrow_code_hash.clone()),
+        snip20_code_id: snip20_code_id.unwrap_or(state.snip20_code_id),
+        snip20_code_hash: snip20_code_hash
+            .clone()
+            .unwrap_or(state.snip20_code_hash.clone()),
         chain_uid: state.chain_uid,
         is_native: is_native.unwrap_or(state.is_native),
         partner_fees_collected: state.partner_fees_collected,
@@ -1156,12 +1239,26 @@ pub fn execute_update_state(
             router_contract.unwrap_or("unchanged".to_string()),
         )
         .add_attribute(
+            "router_contract_code_hash",
+            router_code_hash.unwrap_or("unchanged".to_string()),
+        )
+        .add_attribute(
             "escrow_code_id",
             escrow_code_id.unwrap_or(state.escrow_code_id).to_string(),
         )
         .add_attribute(
-            "cw20_code_id",
-            cw20_code_id.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
+            "escrow_code_hash",
+            escrow_code_hash
+                .unwrap_or(state.escrow_code_hash)
+                .to_string(),
+        )
+        .add_attribute(
+            "snip20_code_id",
+            snip20_code_id.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
+        )
+        .add_attribute(
+            "snip20_code_hash",
+            snip20_code_hash.map_or_else(|| "unchanged".to_string(), |x| x.to_string()),
         )
         .add_attribute(
             "is_native",
@@ -1175,7 +1272,7 @@ pub fn execute_native_receive_callback(
     info: MessageInfo,
     msg: Binary,
 ) -> Result<Response, ContractError> {
-    let msg: HubIbcExecuteMsg = from_json(msg)?;
+    let msg: HubIbcExecuteMsg = from_binary(&msg)?;
     let state = STATE.load(deps.storage)?;
 
     // Only native chains can directly use this messages

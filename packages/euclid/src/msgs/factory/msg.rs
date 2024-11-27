@@ -8,15 +8,19 @@ use crate::{
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
-use cw20::Cw20ReceiveMsg;
+use snip20_reference_impl::receiver::Snip20ReceiveMsg;
 
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
+    //Applicable if router is on secret which is impossible
+    pub router_contract_code_hash: Option<String>,
     pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
-    pub cw20_code_id: u64,
+    pub escrow_code_hash: String,
+    pub snip20_code_id: u64,
+    pub snip20_code_hash: String,
     pub is_native: bool,
 }
 
@@ -55,7 +59,6 @@ pub enum ExecuteMsg {
         lp_token_name: String,
         lp_token_symbol: String,
         lp_token_decimal: u8,
-        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
     },
     UpdateHubChannel {
         new_channel: String,
@@ -81,16 +84,21 @@ pub enum ExecuteMsg {
     UpdateFactoryState {
         // The Router Contract Address on the Virtual Settlement Layer
         router_contract: Option<String>,
+        router_contract_code_hash: Option<String>,
         // Contract admin
         admin: Option<String>,
         // Escrow Code ID
         escrow_code_id: Option<u64>,
-        // CW20 Code ID
-        cw20_code_id: Option<u64>,
+        // Escrow Code Hash
+        escrow_code_hash: Option<String>,
+        // SNIP20 Code ID
+        snip20_code_id: Option<u64>,
+        // SNIP20 Code Hash
+        snip20_code_hash: Option<String>,
         is_native: Option<bool>,
     },
     // Recieve CW20 TOKENS structure
-    Receive(Cw20ReceiveMsg),
+    Receive(Snip20ReceiveMsg),
 
     // IBC Callbacks
     IbcCallbackAckAndTimeout {
@@ -161,7 +169,8 @@ pub struct GetLPTokenResponse {
 
 #[cw_serde]
 pub struct GetEscrowResponse {
-    pub escrow_address: Option<Addr>,
+    pub escrow_address: Addr,
+    pub escrow_code_hash: String,
     pub denoms: Vec<TokenType>,
 }
 // We define a custom struct for each query response
@@ -173,8 +182,10 @@ pub struct StateResponse {
     pub admin: String,
     // Escrow Code ID
     pub escrow_code_id: u64,
-    // CW20 Code ID
-    pub cw20_code_id: u64,
+    pub escrow_code_hash: String,
+    // Snip20 Code ID
+    pub snip20_code_id: u64,
+    pub snip20_code_hash: String,
     pub is_native: bool,
     pub partner_fees_collected: DenomFees,
 }

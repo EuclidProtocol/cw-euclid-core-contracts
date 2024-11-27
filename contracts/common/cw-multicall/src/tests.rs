@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    from_json,
+    from_binary,
     testing::{mock_dependencies, mock_dependencies_with_balances, mock_env, mock_info},
     BalanceResponse, BankQuery, Coin, DepsMut, Env, MessageInfo,
 };
@@ -48,7 +48,7 @@ fn test_multiquery_call() {
         queries: queries.clone(),
     };
     let result = query(deps.as_ref(), env.clone(), msg.clone()).unwrap();
-    let result: MultiQueryResponse = from_json(result).unwrap();
+    let result: MultiQueryResponse = from_binary(&result).unwrap();
 
     assert_eq!(
         result.responses.len(),
@@ -61,7 +61,7 @@ fn test_multiquery_call() {
     assert_eq!(bank_response.err, None, "Successful Query");
 
     assert_eq!(
-        from_json::<BalanceResponse>(&bank_response.result.unwrap()).unwrap(),
+        from_binary::<BalanceResponse>(&bank_response.result.unwrap()).unwrap(),
         BalanceResponse {
             amount: coin.clone()
         },
@@ -74,7 +74,7 @@ fn test_multiquery_call() {
     assert_eq!(raw_bank_response.err, None, "Successful Raw Query");
 
     let raw_balance_response: BalanceResponse =
-        from_json(raw_bank_response.result.unwrap()).unwrap();
+        from_binary(&raw_bank_response.result.unwrap()).unwrap();
     assert_eq!(
         raw_balance_response,
         BalanceResponse { amount: coin },

@@ -1,11 +1,14 @@
 use cosmwasm_std::{
-    ensure, from_json, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, Uint128,
+    ensure, from_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response, Uint128,
 };
 
-use cw20::Cw20ReceiveMsg;
-use euclid::{error::ContractError, msgs::escrow::cw20::EscrowCw20HookMsg, token::TokenType};
+use euclid::{error::ContractError, msgs::escrow::snip20::EscrowSnip20HookMsg, token::TokenType};
+use snip20_reference_impl::receiver::Snip20ReceiveMsg;
 
-use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
+use crate::{
+    query::get_contract_code_hash,
+    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE},
+};
 
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
@@ -131,23 +134,23 @@ pub fn execute_deposit_native(
     Ok(Response::new().add_attribute("method", "deposit"))
 }
 
-/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
+/// Receives a message of type [`Snip20ReceiveMsg`] and processes it depending on the received template.
 ///
-/// * **cw20_msg** is the CW20 message that has to be processed.
-pub fn receive_cw20(
+/// * **snip20_msg** is the SNIP20 message that has to be processed.
+pub fn receive_snip20(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    cw20_msg: Cw20ReceiveMsg,
+    snip20_msg: Snip20ReceiveMsg,
 ) -> Result<Response, ContractError> {
-    match from_json(&cw20_msg.msg)? {
-        EscrowCw20HookMsg::Deposit {} => {
+    match from_binary(&snip20_msg.msg.unwrap())? {
+        EscrowSnip20HookMsg::Deposit {} => {
             let factory_address = STATE.load(deps.storage)?.factory_address;
             // Only the factory can call this function
-            let sender = cw20_msg.sender;
+            let sender = snip20_msg.sender;
             ensure!(sender == factory_address, ContractError::Unauthorized {});
 
-            let amount_sent = cw20_msg.amount;
+            let amount_sent = snip20_msg.amount;
             // TODO should this check be on the factory level? Or even before the factory
             ensure!(
                 !amount_sent.is_zero(),
@@ -155,15 +158,16 @@ pub fn receive_cw20(
             );
             let asset_sent = info.sender.clone().into_string();
             let asset_sent = TokenType::Smart {
-                contract_address: asset_sent,
+                contract_address: asset_sent.clone(),
+                code_hash: get_contract_code_hash(deps.querier, asset_sent)?,
             };
 
-            execute_deposit_cw20(deps, env, info, amount_sent, asset_sent)
+            execute_deposit_snip20(deps, env, info, amount_sent, asset_sent)
         }
     }
 }
 
-pub fn execute_deposit_cw20(
+pub fn execute_deposit_snip20(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
@@ -210,6 +214,10 @@ pub fn execute_withdraw(
     info: MessageInfo,
     recipient: Addr,
     amount: Uint128,
+    memo: Option<String>,
+    decoys: Option<Vec<Addr>>,
+    entropy: Option<Binary>,
+    padding: Option<String>,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
@@ -238,7 +246,15 @@ pub fn execute_withdraw(
             remaining_withdraw_amount
         };
 
-        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
+        let send_msg = denom.create_transfer_msg(
+            transfer_amount,
+            recipient.to_string(),
+            None,
+            memo.clone(),
+            decoys.clone(),
+            entropy.clone(),
+            padding.clone(),
+        )?;
         messages.push(send_msg);
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 

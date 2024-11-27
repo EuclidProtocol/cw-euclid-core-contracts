@@ -1,121 +1,108 @@
-use std::collections::HashMap;
+// use std::collections::HashMap;
 
-use cosmwasm_std::{coin, BlockInfo, Decimal, Timestamp, Validator};
-use cw_multi_test::{App, AppBuilder, BankKeeper, MockAddressGenerator, MockApiBech32, WasmKeeper};
-pub const ADMIN_USERNAME: &str = "am";
+// use cosmwasm_std::{coin, Addr, BlockInfo, Coin, Decimal, Timestamp, Validator};
+// use secret_multi_test::{App, AppBuilder, BankKeeper, Executor, WasmKeeper};
+// pub const ADMIN_USERNAME: &str = "am";
 
-pub type MockApp = App<BankKeeper, MockApiBech32>;
+// pub type MockApp = App<BankKeeper>;
 
-use cosmwasm_std::{Addr, Coin};
-use cw_multi_test::{AppResponse, Executor};
+// pub use anyhow::Result as AnyResult;
+// pub type ExecuteResult = AnyResult<secret_multi_test::AppResponse>;
 
-pub use anyhow::Result as AnyResult;
+// /// Creates a mock application with default or custom denominations.
+// pub fn mock_app(denoms: Option<Vec<&str>>) -> MockApp {
+//     let denoms = denoms.unwrap_or(vec!["eucl", "uusd"]);
+//     AppBuilder::new()
+//         .with_wasm(WasmKeeper::new()) // Removed the call to with_address_generator
+//         .build(|router, _api, storage| {
+//             router
+//                 .bank
+//                 .init_balance(
+//                     storage,
+//                     &Addr::unchecked("bank"),
+//                     denoms
+//                         .iter()
+//                         .map(|d| coin(u128::MAX, *d))
+//                         .collect::<Vec<Coin>>(),
+//                 )
+//                 .unwrap();
 
-pub type ExecuteResult = AnyResult<AppResponse>;
+//             router
+//                 .staking
+//                 .add_validator(
+//                     storage,
+//                     &BlockInfo {
+//                         height: 0,
+//                         time: Timestamp::default(),
+//                         chain_id: "euclid".to_string(),
+//                     },
+//                     Validator {
+//                         address: "validator1".to_string(),
+//                         commission: Decimal::zero(),
+//                         max_commission: Decimal::percent(20),
+//                         max_change_rate: Decimal::percent(1),
+//                     },
+//                 )
+//                 .unwrap();
 
-pub fn mock_app(denoms: Option<Vec<&str>>) -> MockApp {
-    let denoms = denoms.unwrap_or(vec!["eucl", "uusd"]);
-    AppBuilder::new()
-        .with_api(MockApiBech32::new("eucl"))
-        .with_wasm(WasmKeeper::new().with_address_generator(MockAddressGenerator))
-        .build(|router, api, storage| {
-            router
-                .bank
-                .init_balance(
-                    storage,
-                    &Addr::unchecked("bank"),
-                    denoms
-                        .iter()
-                        .map(|d| coin(u128::MAX, *d))
-                        .collect::<Vec<Coin>>(),
-                )
-                .unwrap();
+//             router
+//                 .staking
+//                 .add_validator(
+//                     storage,
+//                     &BlockInfo {
+//                         height: 0,
+//                         time: Timestamp::default(),
+//                         chain_id: "euclid-1".to_string(),
+//                     },
+//                     Validator {
+//                         address: "validator2".to_string(),
+//                         commission: Decimal::zero(),
+//                         max_commission: Decimal::percent(20),
+//                         max_change_rate: Decimal::percent(1),
+//                     },
+//                 )
+//                 .unwrap();
+//         })
+// }
 
-            router
-                .staking
-                .add_validator(
-                    api,
-                    storage,
-                    &BlockInfo {
-                        height: 0,
-                        time: Timestamp::default(),
-                        chain_id: "euclid".to_string(),
-                    },
-                    Validator {
-                        address: MockApiBech32::new("eucl")
-                            .addr_make("validator1")
-                            .to_string(),
-                        commission: Decimal::zero(),
-                        max_commission: Decimal::percent(20),
-                        max_change_rate: Decimal::percent(1),
-                    },
-                )
-                .unwrap();
+// /// Initializes balances in the mock app.
+// pub fn init_balances(app: &mut MockApp, balances: Vec<(Addr, &[Coin])>) {
+//     for (addr, coins) in balances {
+//         app.send_tokens(Addr::unchecked("bank"), addr, coins)
+//             .unwrap();
+//     }
+// }
 
-            router
-                .staking
-                .add_validator(
-                    api,
-                    storage,
-                    &BlockInfo {
-                        height: 0,
-                        time: Timestamp::default(),
-                        chain_id: "euclid-1".to_string(),
-                    },
-                    Validator {
-                        address: MockApiBech32::new("eucl")
-                            .addr_make("validator2")
-                            .to_string(),
-                        commission: Decimal::zero(),
-                        max_commission: Decimal::percent(20),
-                        max_change_rate: Decimal::percent(1),
-                    },
-                )
-                .unwrap();
-        })
-}
+// /// Represents a mock environment for testing.
+// pub struct MockEuclid {
+//     pub admin_address: Addr,
+//     pub wallets: HashMap<String, Addr>,
+// }
 
-pub fn init_balances(app: &mut MockApp, balances: Vec<(Addr, &[Coin])>) {
-    for (addr, coins) in balances {
-        app.send_tokens(Addr::unchecked("bank"), addr, coins)
-            .unwrap();
-    }
-}
+// impl MockEuclid {
+//     /// Creates a new `MockEuclid` instance with an admin wallet.
+//     pub fn new(app: &mut MockApp, admin_name: &str) -> MockEuclid {
+//         let mut wallets = HashMap::new();
+//         let admin_address = Addr::unchecked(admin_name);
+//         wallets.insert(admin_name.to_string(), admin_address.clone());
 
-pub struct MockEuclid {
-    pub admin_address: Addr,
-    pub wallets: HashMap<String, Addr>,
-}
+//         MockEuclid {
+//             admin_address,
+//             wallets,
+//         }
+//     }
 
-impl MockEuclid {
-    pub fn new(app: &mut MockApp, admin_name: &str) -> MockEuclid {
-        let mut wallets = HashMap::new();
-        let admin_address = app.api().addr_make(admin_name);
-        wallets
-            .entry(admin_name.to_string())
-            .and_modify(|_| {
-                panic!("Wallet already exists");
-            })
-            .or_insert(admin_address.clone());
+//     /// Adds a new wallet with a given name.
+//     pub fn add_wallet(&mut self, name: &str) -> Addr {
+//         let addr = Addr::unchecked(name);
+//         if self.wallets.insert(name.to_string(), addr.clone()).is_some() {
+//             panic!("Wallet already exists");
+//         }
+//         addr
+//     }
 
-        MockEuclid {
-            admin_address,
-            wallets,
-        }
-    }
-
-    pub fn add_wallet(&mut self, router: &mut MockApp, name: &str) -> Addr {
-        let addr = router.api().addr_make(name);
-        self.wallets
-            .entry(name.to_string())
-            .and_modify(|_| {
-                panic!("Wallet already exists");
-            })
-            .or_insert(addr.clone());
-        addr
-    }
-
-    pub fn get_wallet(&self, name: &str) -> &Addr {
-        self.wallets.get(name).unwrap()
-    }
-}
+//     /// Retrieves the wallet address for a given name.
+//     pub fn get_wallet(&self, name: &str) -> &Addr {
+//         self.wallets.get(name).expect("Wallet not found")
+//     }
+// }

@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, StdError, StdResult, Uint128};
-use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
+use cosmwasm_std::{ensure, Addr, StdError, StdResult, Uint128};
+use secret_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::error::ContractError;
 
@@ -118,6 +118,7 @@ pub struct CrossChainUserWithLimit {
 pub struct Chain {
     pub factory_chain_id: String,
     pub factory: String,
+    pub factory_code_hash: String,
     pub chain_type: ChainType,
 }
 
@@ -144,4 +145,10 @@ impl Chain {
             _ => Err(ContractError::new("Not an ibc chain")),
         }
     }
+}
+
+#[cw_serde]
+pub struct AnyContractInfo {
+    pub addr: Addr,
+    pub code_hash: String,
 }

@@ -1,9 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement,
-    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, ReplyOn, Response, StdError,
-    StdResult, SubMsg, WasmMsg,
+    from_binary, to_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement, IbcBasicResponse,
+    IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, StdResult, SubMsg, Uint256,
+    WasmMsg,
 };
 use euclid::{
     deposit::DepositTokenResponse,
@@ -11,8 +11,8 @@ use euclid::{
     events::{deposit_token_event, swap_event},
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
-        cw20::ExecuteMsg as Cw20ExecuteMsg, escrow::InstantiateMsg as EscrowInstantiateMsg,
-        factory::ExecuteMsg,
+        escrow::InstantiateMsg as EscrowInstantiateMsg, factory::ExecuteMsg,
+        snip20::ExecuteMsg as Snip20ExecuteMsg,
     },
     pool::{DeRegisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
     swap::{SwapResponse, TransferResponse, WithdrawResponse},
@@ -21,11 +21,14 @@ use euclid::{
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 
 use crate::{
-    reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
+    query::get_contract_code_hash,
+    reply::{
+        ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, SNIP20_INSTANTIATE_REPLY_ID,
+    },
     state::{
         PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
         PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20, VLP_TO_LP_SHARES,
+        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_SNIP20,
     },
 };
 
@@ -40,10 +43,11 @@ pub fn ibc_packet_ack(
     let internal_msg = ExecuteMsg::IbcCallbackAckAndTimeout { ack: ack.clone() };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
-        msg: to_json_binary(&internal_msg)?,
+        code_hash: env.contract.code_hash,
+        msg: to_binary(&internal_msg)?,
         funds: vec![],
     });
-    let msg: Result<ChainIbcExecuteMsg, StdError> = from_json(&ack.original_packet.data);
+    let msg: Result<ChainIbcExecuteMsg, StdError> = from_binary(&ack.original_packet.data);
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
@@ -60,7 +64,7 @@ pub fn ibc_ack_packet_internal_call(
     env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<Response, ContractError> {
-    let msg: ChainIbcExecuteMsg = from_json(&ack.original_packet.data)?;
+    let msg: ChainIbcExecuteMsg = from_binary(&ack.original_packet.data)?;
     reusable_internal_ack_call(deps, env, msg, ack.acknowledgement.data, false)
 }
 pub fn reusable_internal_ack_call(
@@ -74,41 +78,41 @@ pub fn reusable_internal_ack_call(
     match msg {
         ChainIbcExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<PoolCreationResponse> = from_binary(&ack)?;
 
             ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
         }
 
         ChainIbcExecuteMsg::RegisterDenom { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<RegisterDenomResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<RegisterDenomResponse> = from_binary(&ack)?;
 
             ack_register_denom(deps, env, sender.address, res, tx_id, is_native)
         }
         ChainIbcExecuteMsg::DeRegisterDenom { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<DeRegisterDenomResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<DeRegisterDenomResponse> = from_binary(&ack)?;
 
             ack_deregister_denom(deps, env, sender.address, res, tx_id, is_native)
         }
 
         ChainIbcExecuteMsg::AddLiquidity { tx_id, sender, .. } => {
             // Process acknowledgment for add liquidity
-            let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<AddLiquidityResponse> = from_binary(&ack)?;
             ack_add_liquidity(deps, res, sender.address, tx_id, is_native)
         }
         ChainIbcExecuteMsg::RemoveLiquidity(msg) => {
             // Process acknowledgment for add liquidity
-            let res: AcknowledgementMsg<RemoveLiquidityResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<RemoveLiquidityResponse> = from_binary(&ack)?;
             ack_remove_liquidity(deps, res, msg.sender.address, msg.tx_id, is_native)
         }
         ChainIbcExecuteMsg::Swap(swap) => {
             // Process acknowledgment for swap
-            let res: AcknowledgementMsg<SwapResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<SwapResponse> = from_binary(&ack)?;
             ack_swap_request(deps, res, swap.sender.address, swap.tx_id, is_native)
         }
         ChainIbcExecuteMsg::Withdraw(msg) => {
-            let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<WithdrawResponse> = from_binary(&ack)?;
             ack_withdraw_request(
                 deps,
                 res,
@@ -119,7 +123,7 @@ pub fn reusable_internal_ack_call(
             )
         }
         ChainIbcExecuteMsg::Transfer(msg) => {
-            let res: AcknowledgementMsg<TransferResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<TransferResponse> = from_binary(&ack)?;
             ack_transfer_request(
                 deps,
                 res,
@@ -131,17 +135,17 @@ pub fn reusable_internal_ack_call(
         }
         ChainIbcExecuteMsg::DepositToken(deposit) => {
             // Process acknowledgment for deposit
-            let res: AcknowledgementMsg<DepositTokenResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<DepositTokenResponse> = from_binary(&ack)?;
             ack_deposit_token_request(deps, res, deposit.sender.address, deposit.tx_id, is_native)
         } // ChainIbcExecuteMsg::RequestWithdraw {
           //     token_id, tx_id, ..
           // } => {
-          //     let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack.acknowledgement.data)?;
+          //     let res: AcknowledgementMsg<WithdrawResponse> = from_binary(ack.acknowledgement.data)?;
           //     ack_request_withdraw(deps, res, token_id, tx_id)
           // }
           // ChainIbcExecuteMsg::RequestEscrowCreation { token, tx_id, .. } => {
           //     let res: AcknowledgementMsg<InstantiateEscrowResponse> =
-          //         from_json(ack.acknowledgement.data)?;
+          //         from_binary(ack.acknowledgement.data)?;
           //     ack_request_instantiate_escrow(deps, env, res, token)
           // }
     }
@@ -160,7 +164,7 @@ pub fn ibc_packet_timeout(
         msg.packet.src.channel_id.clone(),
         |count| -> StdResult<_> { Ok(count.unwrap_or_default() + 1) },
     )?;
-    let failed_ack = IbcAcknowledgement::new(to_json_binary(&AcknowledgementMsg::Error::<()>(
+    let failed_ack = IbcAcknowledgement::new(to_binary(&AcknowledgementMsg::Error::<()>(
         "Timeout".to_string(),
     ))?);
 
@@ -198,11 +202,13 @@ fn ack_pool_creation(
             // Load state to get escrow code id in case we need to instantiate
             let state = STATE.load(deps.storage)?;
             let escrow_code_id = state.escrow_code_id;
-            let cw20_code_id = state.cw20_code_id;
+            let escrow_code_hash = state.escrow_code_hash;
+            let snip20_code_id = state.snip20_code_id;
+            let snip20_code_hash = state.snip20_code_hash;
 
-            PAIR_TO_VLP.save(
+            PAIR_TO_VLP.insert(
                 deps.storage,
-                existing_req.pair_info.get_pair()?.get_tupple(),
+                &existing_req.pair_info.get_pair()?.get_tupple(),
                 &data.vlp_contract.clone(),
             )?;
             // Prepare response
@@ -216,15 +222,13 @@ fn ack_pool_creation(
                 if token.token_type.is_voucher() {
                     continue;
                 }
-                let escrow_contract =
-                    TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
 
                 // Instantiate escrow if one doesn't exist
                 // if escrow_contract.is_none() {
                 //     let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                 //         admin: Some(state.admin.clone()),
                 //         code_id: escrow_code_id,
-                //         msg: to_json_binary(&EscrowInstantiateMsg {
+                //         msg: to_binary(&EscrowInstantiateMsg {
                 //             token_id: token.token,
                 //             allowed_denom: Some(token.token_type),
                 //         })?,
@@ -239,9 +243,17 @@ fn ack_pool_creation(
                 //         reply_on: ReplyOn::Always,
                 //     });
                 // }
-                match escrow_contract {
-                    Some(address) => {
-                        let send_msg = token.token_type.create_escrow_msg(token.amount, address)?;
+                match TOKEN_TO_ESCROW.get(deps.storage, &token.token.clone()) {
+                    Some(escrow_contract) => {
+                        let send_msg = token.token_type.create_escrow_msg(
+                            token.amount,
+                            escrow_contract.addr,
+                            escrow_contract.code_hash,
+                            None,
+                            None,
+                            None,
+                            None,
+                        )?;
                         res = res.add_message(send_msg);
                     }
                     // Instantiate escrow if one doesn't exist
@@ -249,14 +261,15 @@ fn ack_pool_creation(
                         let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                             admin: Some(state.admin.clone()),
                             code_id: escrow_code_id,
-                            msg: to_json_binary(&EscrowInstantiateMsg {
+                            code_hash: escrow_code_hash.clone(),
+                            msg: to_binary(&EscrowInstantiateMsg {
                                 token_id: token.clone().token,
                                 allowed_denom: Some(token.clone().token_type),
                             })?,
                             funds: vec![],
                             label: "escrow".to_string(),
                         });
-                        PENDING_DEPOSIT_TOKEN.save(deps.storage, token.clone().token, &token)?;
+                        PENDING_DEPOSIT_TOKEN.insert(deps.storage, &token.clone().token, &token)?;
                         res = res.add_submessage(SubMsg {
                             id: ESCROW_INSTANTIATE_REPLY_ID,
                             msg: init_msg,
@@ -267,27 +280,30 @@ fn ack_pool_creation(
                 }
             }
             let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
-            // Instantiate cw20
+            // Instantiate snip20
             let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                 admin: Some(state.admin.clone()),
-                code_id: cw20_code_id,
-                msg: to_json_binary(&euclid::msgs::cw20::InstantiateMsg {
+                code_id: snip20_code_id,
+                code_hash: snip20_code_hash,
+                msg: to_binary(&euclid::msgs::snip20::InstantiateMsg {
                     name: lp_token_instantiate_data.name,
                     symbol: lp_token_instantiate_data.symbol,
                     decimals: lp_token_instantiate_data.decimals,
                     initial_balances: vec![],
-                    mint: lp_token_instantiate_data.mint,
-                    marketing: lp_token_instantiate_data.marketing,
                     vlp: data.vlp_contract,
                     factory: env.contract.address,
                     token_pair: existing_req.pair_info.get_pair()?,
+                    admin: None,
+                    prng_seed: to_binary(&"seed")?,
+                    config: None,
+                    supported_denoms: None,
                 })?,
                 funds: vec![],
-                label: "cw20".to_string(),
+                label: "snip20".to_string(),
             });
 
             Ok(res.add_submessage(SubMsg {
-                id: CW20_INSTANTIATE_REPLY_ID,
+                id: SNIP20_INSTANTIATE_REPLY_ID,
                 msg: init_cw20_msg,
                 gas_limit: None,
                 reply_on: ReplyOn::Always,
@@ -317,20 +333,21 @@ fn ack_register_denom(
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
     let existing_req = PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
-        .may_load(deps.storage, req_key.clone())?
+        .get(deps.storage, &req_key.clone())
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
 
     // Remove pool request from MAP
-    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.remove(deps.storage, req_key);
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.remove(deps.storage, &req_key)?;
 
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(_data) => {
             let state = STATE.load(deps.storage)?;
             let escrow_code_id = state.escrow_code_id;
+            let escrow_code_hash = state.escrow_code_hash;
             let token = existing_req.token;
 
-            let existing_escrow = TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
+            // let existing_escrow = TOKEN_TO_ESCROW.get(deps.storage, &token.token.clone())?;
 
             let mut response = Response::new()
                 .add_attribute("tx_id", tx_id)
@@ -338,10 +355,11 @@ fn ack_register_denom(
                 .add_attribute("token", token.token.to_string())
                 .add_attribute("token_type", token.token_type.get_key());
 
-            if let Some(escrow_address) = existing_escrow {
+            if let Some(escrow) = TOKEN_TO_ESCROW.get(deps.storage, &token.token.clone()) {
                 let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: escrow_address.into_string(),
-                    msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom {
+                    contract_addr: escrow.addr.into_string(),
+                    code_hash: escrow.code_hash,
+                    msg: to_binary(&euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom {
                         denom: token.token_type.clone(),
                     })?,
                     funds: vec![],
@@ -354,7 +372,8 @@ fn ack_register_denom(
                 let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                     admin: Some(state.admin.clone()),
                     code_id: escrow_code_id,
-                    msg: to_json_binary(&EscrowInstantiateMsg {
+                    code_hash: escrow_code_hash,
+                    msg: to_binary(&EscrowInstantiateMsg {
                         token_id: token.token,
                         allowed_denom: Some(token.token_type),
                     })?,
@@ -397,22 +416,25 @@ fn ack_deregister_denom(
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
     let existing_req = PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
-        .may_load(deps.storage, req_key.clone())?
+        .get(deps.storage, &req_key.clone())
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
 
     // Remove pool request from MAP
-    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.remove(deps.storage, req_key);
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.remove(deps.storage, &req_key)?;
 
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(_data) => {
             let token = existing_req.token;
 
-            let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone())?;
+            let escrow = TOKEN_TO_ESCROW
+                .get(deps.storage, &token.token.clone())
+                .unwrap();
 
             let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: escrow_address.into_string(),
-                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom {
+                contract_addr: escrow.addr.into_string(),
+                code_hash: escrow.code_hash,
+                msg: to_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom {
                     denom: token.token_type.clone(),
                 })?,
                 funds: vec![],
@@ -449,19 +471,21 @@ fn ack_add_liquidity(
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
     // Validate that the pending exists for the sender
-    let liquidity_info = PENDING_ADD_LIQUIDITY.load(deps.storage, req_key.clone())?;
+    let liquidity_info = PENDING_ADD_LIQUIDITY
+        .get(deps.storage, &req_key.clone())
+        .unwrap();
     // Remove this from pending
-    PENDING_ADD_LIQUIDITY.remove(deps.storage, req_key);
+    PENDING_ADD_LIQUIDITY.remove(deps.storage, &req_key)?;
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
             // Remove liquidity shares
             let shares = VLP_TO_LP_SHARES
-                .may_load(deps.storage, data.vlp_address.clone())?
-                .unwrap_or(Int256::zero());
+                .get(deps.storage, &data.vlp_address.clone())
+                .unwrap_or(Uint256::zero());
             let shares = shares.checked_add(data.mint_lp_tokens.into())?;
 
-            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
+            VLP_TO_LP_SHARES.insert(deps.storage, &data.vlp_address.clone(), &shares)?;
             // Prepare response
             let mut res = Response::new().add_attribute("method", "ack_add_liquidity");
 
@@ -473,30 +497,44 @@ fn ack_add_liquidity(
                 }
 
                 let liquidity = token_info.amount;
-                let escrow_contract =
-                    TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
-                let send_msg = token_info
-                    .token_type
-                    .create_escrow_msg(liquidity, escrow_contract)?;
+                let escrow = TOKEN_TO_ESCROW
+                    .get(deps.storage, &token_info.token.clone())
+                    .unwrap();
+                let send_msg = token_info.token_type.create_escrow_msg(
+                    liquidity,
+                    escrow.addr,
+                    escrow.code_hash,
+                    None,
+                    None,
+                    None,
+                    None,
+                )?;
                 res = res.add_message(send_msg);
             }
 
-            // Mint cw20 tokens for sender //
-            // Get cw20 contract address
-            let cw20_address = VLP_TO_CW20.load(deps.storage, data.vlp_address)?;
+            // Mint snip20 tokens for sender //
+            // Get snip20 contract address
+            let snip20_address = VLP_TO_SNIP20.get(deps.storage, &data.vlp_address).unwrap();
+            let snip20_code_hash =
+                get_contract_code_hash(deps.querier, snip20_address.clone().into_string())?;
 
             // Send mint msg
-            let cw20_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: cw20_address.into_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Mint {
+            let snip20_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: snip20_address.into_string(),
+                code_hash: snip20_code_hash,
+                msg: to_binary(&Snip20ExecuteMsg::Mint {
                     recipient: liquidity_info.sender,
                     amount: data.mint_lp_tokens,
+                    memo: None,
+                    decoys: None,
+                    entropy: None,
+                    padding: None,
                 })?,
                 funds: vec![],
             });
 
             Ok(res
-                .add_message(cw20_mint_msg)
+                .add_message(snip20_mint_msg)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("sender", sender))
         }
@@ -515,6 +553,10 @@ fn ack_add_liquidity(
                 let msg = token_info.token_type.create_transfer_msg(
                     token_info.amount,
                     sender.to_string(),
+                    None,
+                    None,
+                    None,
+                    None,
                     None,
                 )?;
                 msgs.push(msg);
@@ -540,37 +582,46 @@ fn ack_remove_liquidity(
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
     // Validate that the pending exists for the sender
-    let liquidity_info = PENDING_REMOVE_LIQUIDITY.load(deps.storage, req_key.clone())?;
+    let liquidity_info = PENDING_REMOVE_LIQUIDITY
+        .get(deps.storage, &req_key.clone())
+        .unwrap();
     // Remove this from pending
-    PENDING_REMOVE_LIQUIDITY.remove(deps.storage, req_key.clone());
+    PENDING_REMOVE_LIQUIDITY.remove(deps.storage, &req_key.clone())?;
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
             // Remove liquidity shares
             let shares = VLP_TO_LP_SHARES
-                .may_load(deps.storage, data.vlp_address.clone())?
-                .unwrap_or(Int256::zero());
+                .get(deps.storage, &data.vlp_address.clone())
+                .unwrap_or(Uint256::zero());
             let shares = shares.checked_sub(data.burn_lp_tokens.into())?;
 
-            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
+            VLP_TO_LP_SHARES.insert(deps.storage, &data.vlp_address.clone(), &shares)?;
             // Prepare response
             let res = Response::new().add_attribute("method", "ack_remove_liquidity");
 
-            // Burn cw20 tokens for sender //
-            // Get cw20 contract address
-            let cw20_address = VLP_TO_CW20.load(deps.storage, data.vlp_address)?;
+            // Burn snip20 tokens for sender //
+            // Get snip20 contract address
+            let snip20_address = VLP_TO_SNIP20.get(deps.storage, &data.vlp_address).unwrap();
+            let snip20_code_hash =
+                get_contract_code_hash(deps.querier, snip20_address.clone().into_string())?;
 
             // Send burn msg
-            let cw20_burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: cw20_address.into_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Burn {
+            let snip20_burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: snip20_address.into_string(),
+                code_hash: snip20_code_hash,
+                msg: to_binary(&Snip20ExecuteMsg::Burn {
                     amount: liquidity_info.lp_allocation,
+                    memo: None,
+                    decoys: None,
+                    entropy: None,
+                    padding: None,
                 })?,
                 funds: vec![],
             });
 
             Ok(res
-                .add_message(cw20_burn_msg)
+                .add_message(snip20_burn_msg)
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id))
         }
@@ -580,17 +631,22 @@ fn ack_remove_liquidity(
             if is_native {
                 return Err(ContractError::new(&err));
             }
-            // Send back cw20 to original sender
-            let cw20_send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: liquidity_info.cw20.to_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+            // Send back snip20 to original sender
+            let snip20_send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: liquidity_info.snip20.to_string(),
+                code_hash: get_contract_code_hash(deps.querier, liquidity_info.snip20.to_string())?,
+                msg: to_binary(&Snip20ExecuteMsg::Transfer {
                     recipient: sender.clone().into_string(),
                     amount: liquidity_info.lp_allocation,
+                    memo: None,
+                    decoys: None,
+                    entropy: None,
+                    padding: None,
                 })?,
                 funds: vec![],
             });
             Ok(Response::new()
-                .add_message(cw20_send_msg)
+                .add_message(snip20_send_msg)
                 .add_attribute("method", "liquidity_tx_err_refund")
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id)
@@ -610,9 +666,11 @@ fn ack_swap_request(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     // Validate that the pending swap exists for the sender
-    let swap_info = PENDING_SWAPS.load(deps.storage, (sender.clone(), tx_id.clone()))?;
+    let swap_info = PENDING_SWAPS
+        .get(deps.storage, &(sender.clone(), tx_id.clone()))
+        .unwrap();
     // Remove this from pending swaps
-    PENDING_SWAPS.remove(deps.storage, (sender.clone(), tx_id.clone()));
+    PENDING_SWAPS.remove(deps.storage, &(sender.clone(), tx_id.clone()))?;
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
@@ -639,8 +697,18 @@ fn ack_swap_request(
                 STATE.save(deps.storage, &state)?;
             }
             if !asset_in.token_type.is_voucher() {
-                let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
-                let send_msg = asset_in.create_escrow_msg(swap_info.amount_in, escrow_address)?;
+                let escrow = TOKEN_TO_ESCROW
+                    .get(deps.storage, &asset_in.token.clone())
+                    .unwrap();
+                let send_msg = asset_in.create_escrow_msg(
+                    swap_info.amount_in,
+                    escrow.addr,
+                    escrow.code_hash,
+                    None,
+                    None,
+                    None,
+                    None,
+                )?;
                 response = response.add_message(send_msg);
 
                 // if partner fee is not zero, send it to the partner fee recipient
@@ -648,6 +716,10 @@ fn ack_swap_request(
                     let partner_send_msg = asset_in.create_transfer_msg(
                         swap_info.partner_fee_amount,
                         swap_info.partner_fee_recipient.to_string(),
+                        None,
+                        None,
+                        None,
+                        None,
                         None,
                     )?;
                     response = response.add_message(partner_send_msg)
@@ -678,6 +750,10 @@ fn ack_swap_request(
                         .checked_add(swap_info.partner_fee_amount)?,
                     sender.to_string(),
                     None,
+                    None,
+                    None,
+                    None,
+                    None,
                 )?;
                 response = response.add_message(msg);
             }
@@ -696,18 +772,30 @@ fn ack_deposit_token_request(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     // Validate that the pending swap exists for the sender
-    let deposit_info = PENDING_TOKEN_DEPOSIT.load(deps.storage, (sender.clone(), tx_id.clone()))?;
+    let deposit_info = PENDING_TOKEN_DEPOSIT
+        .get(deps.storage, &(sender.clone(), tx_id.clone()))
+        .unwrap();
     // Remove this from pending swaps
-    PENDING_TOKEN_DEPOSIT.remove(deps.storage, (sender.clone(), tx_id.clone()));
+    PENDING_TOKEN_DEPOSIT.remove(deps.storage, &(sender.clone(), tx_id.clone()))?;
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(data) => {
             let asset_in = deposit_info.asset_in.clone();
 
             // Get corresponding escrow
-            let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
+            let escrow = TOKEN_TO_ESCROW
+                .get(deps.storage, &asset_in.token.clone())
+                .unwrap();
 
-            let send_msg = asset_in.create_escrow_msg(data.amount, escrow_address)?;
+            let send_msg = asset_in.create_escrow_msg(
+                data.amount,
+                escrow.addr,
+                escrow.code_hash,
+                None,
+                None,
+                None,
+                None,
+            )?;
             let response = Response::new()
                 .add_event(deposit_token_event(&tx_id, &deposit_info))
                 .add_attribute("method", "process_successfull_deposit_token")
@@ -728,6 +816,10 @@ fn ack_deposit_token_request(
             let msg = deposit_info.asset_in.create_transfer_msg(
                 deposit_info.amount_in,
                 sender.to_string(),
+                None,
+                None,
+                None,
+                None,
                 None,
             )?;
 

@@ -4,8 +4,8 @@ use cosmwasm_std::{
     ensure, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg,
     IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder,
 };
-use cw_storage_plus::Map;
 use euclid::error::ContractError;
+use secret_storage_plus::Map;
 
 /// (channel_id) -> count. Reset on channel closure.
 pub const CONNECTION_COUNTS: Map<String, u32> = Map::new("connection_counts");

@@ -1,8 +1,7 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Int256};
-use cw_storage_plus::{Item, Map};
+use cosmwasm_std::{Addr, Uint256};
 use euclid::{
-    chain::ChainUid,
+    chain::{AnyContractInfo, ChainUid},
     deposit::DepositTokenRequest,
     fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
@@ -10,17 +9,25 @@ use euclid::{
     swap::SwapRequest,
     token::{PairWithDenomAndAmount, Token, TokenWithDenomAndAmount},
 };
+use secret_storage_plus::{Item, Map};
+use secret_toolkit::storage::Keymap;
 
 #[cw_serde]
 pub struct State {
     // The Router Contract Address on the Virtual Settlement Layer
     pub router_contract: String,
+    // Router contract code_hash only useful if router is on secret network.
+    pub router_contract_code_hash: Option<String>,
     // Contract admin
     pub admin: String,
     // Escrow Code ID
     pub escrow_code_id: u64,
-    // CW20 Code ID
-    pub cw20_code_id: u64,
+    // Escrow Code Hash
+    pub escrow_code_hash: String,
+    // SNIP20 Code ID
+    pub snip20_code_id: u64,
+    // SNIP20 Code Hash
+    pub snip20_code_hash: String,
     // The Unique Chain Identifier
     // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
     // IN THE EUCLID ECOSYSTEM
@@ -35,42 +42,42 @@ pub const STATE: Item<State> = Item::new("state");
 // Channel that connects factory to hub chain
 pub const HUB_CHANNEL: Item<String> = Item::new("hub_channel");
 
-// Map Pair to vlp address
-pub const PAIR_TO_VLP: Map<(Token, Token), String> = Map::new("pair_to_vlp");
+// Keymap Pair to vlp address
+pub const PAIR_TO_VLP: Keymap<(Token, Token), String> = Keymap::new(b"pair_to_vlp");
 
-// Map vlp to LP Allocations
-pub const VLP_TO_LP_SHARES: Map<String, Int256> = Map::new("vlp_to_lp_shares");
+// Keymap vlp to LP Allocations
+pub const VLP_TO_LP_SHARES: Keymap<String, Uint256> = Keymap::new(b"vlp_to_lp_shares");
 
 // New Factory states
-pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
+pub const TOKEN_TO_ESCROW: Keymap<Token, AnyContractInfo> = Keymap::new(b"token_to_escrow");
 
-// New CW20 states
-pub const VLP_TO_CW20: Map<String, Addr> = Map::new("vlp_to_cw20");
+// New SNIP20 states
+pub const VLP_TO_SNIP20: Keymap<String, Addr> = Keymap::new(b"vlp_to_cw20");
 
-// Map for pending pool requests for user
+// Keymap for pending pool requests for user
 pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =
     Map::new("request_to_pool");
 
-pub const PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS: Map<
+pub const PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS: Keymap<
     (Addr, String),
     DenomRegisterDeregisterRequest,
-> = Map::new("request_denom_register_deregister");
+> = Keymap::new(b"request_denom_register_deregister");
 
-// Map for pending swaps for user
-pub const PENDING_SWAPS: Map<(Addr, String), SwapRequest> = Map::new("pending_swaps");
+// Keymap for pending swaps for user
+pub const PENDING_SWAPS: Keymap<(Addr, String), SwapRequest> = Keymap::new(b"pending_swaps");
 
-// Map for pending token deposits for user
-pub const PENDING_TOKEN_DEPOSIT: Map<(Addr, String), DepositTokenRequest> =
-    Map::new("pending_token_deposit");
+// Keymap for pending token deposits for user
+pub const PENDING_TOKEN_DEPOSIT: Keymap<(Addr, String), DepositTokenRequest> =
+    Keymap::new(b"pending_token_deposit");
 
-// Map for PENDING liquidity transactions
-pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
-    Map::new("pending_add_liquidity");
-// Map for PENDING liquidity transactions
-pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> =
-    Map::new("pending_remove_liquidity");
+// Keymap for PENDING liquidity transactions
+pub const PENDING_ADD_LIQUIDITY: Keymap<(Addr, String), AddLiquidityRequest> =
+    Keymap::new(b"pending_add_liquidity");
+// Keymap for PENDING liquidity transactions
+pub const PENDING_REMOVE_LIQUIDITY: Keymap<(Addr, String), RemoveLiquidityRequest> =
+    Keymap::new(b"pending_remove_liquidity");
 
-pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
-    Map::new("pending_deposit_token");
+pub const PENDING_DEPOSIT_TOKEN: Keymap<Token, TokenWithDenomAndAmount> =
+    Keymap::new(b"pending_deposit_token");
 
 pub const FUNDS_INFO: Item<PairWithDenomAndAmount> = Item::new("funds_info");

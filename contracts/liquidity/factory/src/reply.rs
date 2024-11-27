@@ -1,31 +1,38 @@
 use crate::{
     ibc,
-    state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_CW20},
+    query::get_contract_code_hash,
+    state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_SNIP20},
 };
-use cosmwasm_std::{from_json, DepsMut, Env, Reply, Response, SubMsgResult};
-use cw_utils::{parse_execute_response_data, parse_reply_instantiate_data};
-use euclid::error::ContractError;
+use cosmwasm_std::{from_binary, DepsMut, Env, Reply, Response, SubMsgResult};
+use euclid::{chain::AnyContractInfo, error::ContractError};
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
+use secret_utils::{parse_execute_response_data, parse_reply_instantiate_data};
 
 pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
 pub const IBC_RECEIVE_REPLY_ID: u64 = 3;
-pub const CW20_INSTANTIATE_REPLY_ID: u64 = 4;
+pub const SNIP20_INSTANTIATE_REPLY_ID: u64 = 4;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
-            let instantiate_data: cw_utils::MsgInstantiateContractResponse =
+            let instantiate_data: secret_utils::MsgInstantiateContractResponse =
                 parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
             let escrow_address = deps.api.addr_validate(&instantiate_data.contract_address)?;
+            let escrow_code_hash =
+                get_contract_code_hash(deps.querier, escrow_address.clone().to_string())?;
             let escrow_data: euclid::msgs::escrow::EscrowInstantiateResponse =
-                from_json(instantiate_data.data.unwrap_or_default())?;
+                from_binary(&instantiate_data.data.unwrap_or_default())?;
+            let escrow_info = AnyContractInfo {
+                addr: escrow_address.clone(),
+                code_hash: escrow_code_hash.clone(),
+            };
 
-            TOKEN_TO_ESCROW.save(deps.storage, escrow_data.token.clone(), &escrow_address)?;
+            TOKEN_TO_ESCROW.insert(deps.storage, &escrow_data.token.clone(), &escrow_info)?;
 
             let mut response = Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
@@ -33,15 +40,21 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
                 .add_attribute("token_id", escrow_data.token.to_string());
 
             let pending_deposit_token =
-                PENDING_DEPOSIT_TOKEN.may_load(deps.storage, escrow_data.token.clone())?;
+                PENDING_DEPOSIT_TOKEN.get(deps.storage, &escrow_data.token.clone());
 
             match pending_deposit_token {
                 Some(token) => {
-                    let deposit_msg = token
-                        .token_type
-                        .create_escrow_msg(token.amount, escrow_address)?;
+                    let deposit_msg = token.token_type.create_escrow_msg(
+                        token.amount,
+                        escrow_address,
+                        escrow_code_hash,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )?;
                     response = response.add_message(deposit_msg);
-                    PENDING_DEPOSIT_TOKEN.remove(deps.storage, token.token);
+                    PENDING_DEPOSIT_TOKEN.remove(deps.storage, &token.token)?;
                 }
                 None => {}
             }
@@ -51,23 +64,23 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     }
 }
 
-pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_snip20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
-            let instantiate_data: cw_utils::MsgInstantiateContractResponse =
+            let instantiate_data: secret_utils::MsgInstantiateContractResponse =
                 parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
-            let cw20_address = deps.api.addr_validate(&instantiate_data.contract_address)?;
-            let cw20_data: euclid::msgs::escrow::Cw20InstantiateResponse =
-                from_json(instantiate_data.data.unwrap_or_default())?;
+            let snip20_address = deps.api.addr_validate(&instantiate_data.contract_address)?;
+            let snip20_data: euclid::msgs::escrow::Snip20InstantiateResponse =
+                from_binary(&instantiate_data.data.unwrap_or_default())?;
 
-            VLP_TO_CW20.save(deps.storage, cw20_data.vlp, &cw20_address)?;
+            VLP_TO_SNIP20.insert(deps.storage, &snip20_data.vlp, &snip20_address)?;
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
-                .add_attribute("cw20", cw20_address))
+                .add_attribute("cw20", snip20_address))
         }
     }
 }

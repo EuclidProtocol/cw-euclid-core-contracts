@@ -1,0 +1,88 @@
+# Based on https://github.com/actions-rs/example/blob/master/.github/workflows/quickstart.yml
+
+on: [push, pull_request]
+
+name: Tests
+
+jobs:
+  
+          
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Run Unit Tests
+        run: cargo unit-test
+
+  integration-tests:
+      name: Integration Tests
+      runs-on: ubuntu-latest
+      services:
+        # Label used to access the service container
+        secretdev:
+          # Docker Hub image
+          options: --name secretdev
+          image: ghcr.io/scrtlabs/localsecret:v1.6.0-alpha.4
+          volumes: 
+            - "/home/runner/work/snip20-reference-impl/snip20-reference-impl/:/root/code"
+          ports:
+            # Opens tcp port
+            - 5000:5000
+            - 9091:9091
+            - 1317:1317
+
+
+      steps:
+        - name: Checkout sources
+          uses: actions/checkout@v3
+
+        - name: Install stable toolchain
+          uses: dtolnay/rust-toolchain@stable
+          with:
+            targets: wasm32-unknown-unknown
+        - name: Compile WASM contract
+          run: |
+              sudo apt-get install -y binaryen
+              make compile-optimized && make compile-optimized-receiver
+#         - name: Compile WASM contract
+#           uses: actions-rs/cargo@v1
+#           with:
+#             command: build
+#             args: --release --target wasm32-unknown-unknown --locked
+#           env:
+#             RUSTFLAGS: "-C link-arg=-s"
+
+        - name: Run Integration Tests
+          run: |
+              ./tests/integration.sh
+
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy -- -D warnings
+
+      # TODO: we should check
+      # CHANGES_IN_REPO=$(git status --porcelain)
+      # after this, but I don't know how
+      - name: Generate Schema
+        run: cargo schema --locked

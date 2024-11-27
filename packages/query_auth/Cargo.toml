@@ -1,0 +1,31 @@
+[package]
+name = "query_auth"
+version = "0.1.0"
+authors = ["Guy Garcia <guysebastiangarcia@gmail.com>"]
+edition = "2018"
+
+exclude = [
+  # Those files are rust-optimizer artifacts. You might want to commit them for convenience but they should not be part of the source code publication.
+  "contract.wasm",
+  "hash.txt",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# for quicker tests, cargo test --lib
+# for more explicit tests, cargo test --features=backtraces
+backtraces = ["shade-protocol/backtraces"]
+debug-print = ["shade-protocol/debug-print"]
+
+[dependencies]
+shade-protocol = { workspace = true }
+cosmwasm-std = { workspace = true }
+schemars = { workspace = true }
+
+[dev-dependencies]
+shade-multi-test = { workspace = true }

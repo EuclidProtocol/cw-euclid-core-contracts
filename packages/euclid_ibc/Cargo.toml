@@ -17,9 +17,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 cosmwasm-std = { workspace = true }
-cw-storage-plus = { workspace = true }
+secret-storage-plus = { workspace = true }
 itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
-cw-utils = { workspace = true }
+secret-utils = { workspace = true }
 thiserror = { workspace = true }
 euclid = { workspace = true }

@@ -16,9 +16,12 @@ mod tests {
         let state = State {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             router_contract: "router_contract".to_string(),
+            router_contract_code_hash: Some("router_code_hash".to_string()),
             admin: "admin".to_string(),
             escrow_code_id: 1,
-            cw20_code_id: 2,
+            escrow_code_hash: "".into(),
+            snip20_code_id: 2,
+            snip20_code_hash: "".into(),
             is_native: true,
             partner_fees_collected: DenomFees {
                 totals: HashMap::default(),
@@ -32,8 +35,11 @@ mod tests {
             router_contract: "router".to_string(),
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             escrow_code_id: 1,
-            cw20_code_id: 2,
+            escrow_code_hash: "".to_string(),
+            snip20_code_id: 2,
+            snip20_code_hash: "".to_string(),
             is_native: true,
+            router_contract_code_hash: Some("router_code_hash".to_string()),
         };
         let info = mock_info("owner", &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -46,10 +52,13 @@ mod tests {
         assert_eq!(0, res.messages.len());
         let expected_state = State {
             router_contract: "router".to_string(),
+            router_contract_code_hash: Some("router_code_hash".to_string()),
             admin: "owner".to_string(),
             escrow_code_id: 1,
+            escrow_code_hash: "escrow".to_string(),
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
-            cw20_code_id: 2,
+            snip20_code_id: 2,
+            snip20_code_hash: "snip20".to_string(),
             is_native: true,
             partner_fees_collected: DenomFees {
                 totals: HashMap::default(),

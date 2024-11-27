@@ -1,5 +1,5 @@
 use cosmwasm_std::{DepsMut, Env};
-use cw_storage_plus::Item;
+use secret_storage_plus::Item;
 
 use crate::{chain::CrossChainUser, error::ContractError};
 

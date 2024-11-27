@@ -1,4 +1,4 @@
-use cosmwasm_std::{to_json_binary, to_json_vec, Binary, Deps, QueryResponse};
+use cosmwasm_std::{to_binary, to_vec, Binary, Deps, QueryResponse};
 use euclid::error::ContractError;
 use euclid_utils::msgs::multicall::{MultiQuery, MultiQueryResponse, SingleQueryResponse};
 
@@ -32,7 +32,7 @@ pub fn query_multi_queries(deps: Deps, queries: Vec<MultiQuery>) -> Result<Binar
             }
         })
         .collect();
-    Ok(to_json_binary(&MultiQueryResponse { responses })?)
+    Ok(to_binary(&MultiQueryResponse { responses })?)
 }
 
 /*
@@ -54,7 +54,7 @@ or a `ContractError` on failure.
 fn query_multi_query(deps: Deps, query: &MultiQuery) -> Result<QueryResponse, ContractError> {
     // As we don't know the response type, we will use raw query to get binary response
     let raw_query = match query {
-        MultiQuery::Query(query) => to_json_vec(&query)?,
+        MultiQuery::Query(query) => to_vec(&query)?,
         MultiQuery::RawQuery(query) => query.as_bytes().to_vec(),
     };
     let result = deps

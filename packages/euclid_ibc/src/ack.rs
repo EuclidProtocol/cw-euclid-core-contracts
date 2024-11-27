@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_json_binary, Binary};
+use cosmwasm_std::{to_binary, Binary};
 use euclid::error::ContractError;
 
 /// A custom acknowledgement type.
@@ -34,10 +34,10 @@ impl<S> AcknowledgementMsg<S> {
 
 pub fn make_ack_success() -> Result<Binary, ContractError> {
     let res = AcknowledgementMsg::Ok(b"1");
-    Ok(to_json_binary(&res)?)
+    Ok(to_binary(&res)?)
 }
 
 pub fn make_ack_fail(err: String) -> Result<Binary, ContractError> {
     let res = AcknowledgementMsg::Error::<()>(err);
-    Ok(to_json_binary(&res)?)
+    Ok(to_binary(&res)?)
 }

@@ -15,7 +15,7 @@ pub mod tests;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mock;
 
-#[cfg(not(target_arch = "wasm32"))]
-mod interface;
-#[cfg(not(target_arch = "wasm32"))]
-pub use crate::interface::FactoryContract;
+// #[cfg(not(target_arch = "wasm32"))]
+// mod interface;
+// #[cfg(not(target_arch = "wasm32"))]
+// pub use crate::interface::FactoryContract;

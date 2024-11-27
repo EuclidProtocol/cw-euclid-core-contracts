@@ -29,7 +29,7 @@ pub struct RemoveLiquidityRequest {
 
     pub lp_allocation: Uint128,
     pub pair: Pair,
-    pub cw20: Addr,
+    pub snip20: Addr,
 }
 // Struct to handle Acknowledgement Response for a Liquidity Request
 #[cw_serde]

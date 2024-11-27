@@ -5,7 +5,7 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Std
 use euclid::error::ContractError;
 
 use crate::query::query_multi_queries;
-use cw2::set_contract_version;
+use secret_cw2::set_contract_version;
 
 use euclid_utils::msgs::multicall::{ExecuteMsg, InstantiateMsg, QueryMsg};
 

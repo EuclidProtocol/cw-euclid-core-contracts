@@ -40,23 +40,23 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 [dependencies]
 cosmwasm-schema = { workspace = true }
 cosmwasm-std = { workspace = true, features = [
-  "cosmwasm_1_2",
+  # "cosmwasm_1_2",
   # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
   # "cosmwasm_1_4",
   "ibc3",
 ] }
-cw-storage-plus = { workspace = true }
-cw-utils = { workspace = true }
-cw2 = { workspace = true }
-cw20 = { workspace = true }
-cw20-base = { workspace = true, features = ["library"] }
+secret-storage-plus = { workspace = true }
+secret-toolkit ={ workspace = true}
+secret-utils = { workspace = true }
+secret-cw2 = { workspace = true }
+snip20-reference-impl = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
 euclid-ibc = { workspace = true }
 cw-orch = "=0.24.1"
-
+anybuf = {workspace = true}
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-cw-multi-test = { workspace = true }
+secret-multi-test = { workspace = true }
 mock = { workspace = true }

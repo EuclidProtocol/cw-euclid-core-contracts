@@ -3,27 +3,27 @@ use std::collections::HashMap;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
-use cw2::set_contract_version;
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
 use euclid::fee::DenomFees;
 use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
+use secret_cw2::set_contract_version;
 
 use crate::execute::{
     add_liquidity_request, execute_deposit_token, execute_native_receive_callback,
     execute_request_deregister_denom, execute_request_pool_creation,
     execute_request_register_denom, execute_swap_request, execute_transfer_virtual_balance,
     execute_update_hub_channel, execute_update_state, execute_withdraw_virtual_balance,
-    receive_cw20,
+    receive_snip20,
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
     pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
 use crate::reply::{
-    on_cw20_instantiate_reply, on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply,
-    on_ibc_receive_reply, CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID,
-    IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
+    on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply, on_ibc_receive_reply,
+    on_snip20_instantiate_reply, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
+    IBC_RECEIVE_REPLY_ID, SNIP20_INSTANTIATE_REPLY_ID,
 };
 use crate::state::{State, STATE};
 use crate::{ibc, reply};
@@ -43,14 +43,17 @@ pub fn instantiate(
     let chain_uid = msg.chain_uid.validate()?.to_owned();
     let state = State {
         router_contract: msg.router_contract.clone(),
+        router_contract_code_hash: msg.router_contract_code_hash,
         admin: info.sender.clone().to_string(),
         escrow_code_id: msg.escrow_code_id,
-        cw20_code_id: msg.cw20_code_id,
+        snip20_code_id: msg.snip20_code_id,
         chain_uid,
         is_native: msg.is_native,
         partner_fees_collected: DenomFees {
             totals: HashMap::default(),
         },
+        escrow_code_hash: msg.escrow_code_hash,
+        snip20_code_hash: msg.snip20_code_hash,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -145,7 +148,6 @@ pub fn execute(
             lp_token_name,
             lp_token_symbol,
             lp_token_decimal,
-            lp_token_marketing,
             timeout,
         } => execute_request_pool_creation(
             &mut deps,
@@ -155,7 +157,6 @@ pub fn execute(
             lp_token_name,
             lp_token_symbol,
             lp_token_decimal,
-            lp_token_marketing,
             slippage_tolerance_bps,
             timeout,
         ),
@@ -189,20 +190,26 @@ pub fn execute(
         ),
         ExecuteMsg::UpdateFactoryState {
             router_contract,
+            router_contract_code_hash,
             admin,
             escrow_code_id,
-            cw20_code_id,
+            escrow_code_hash,
+            snip20_code_id,
+            snip20_code_hash,
             is_native,
         } => execute_update_state(
             deps,
             info,
             router_contract,
+            router_contract_code_hash,
             admin,
             escrow_code_id,
-            cw20_code_id,
+            escrow_code_hash,
+            snip20_code_id,
+            snip20_code_hash,
             is_native,
         ),
-        ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::Receive(msg) => receive_snip20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
             ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)
         }
@@ -247,7 +254,7 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
     }
     match msg.id {
         ESCROW_INSTANTIATE_REPLY_ID => on_escrow_instantiate_reply(deps, msg),
-        CW20_INSTANTIATE_REPLY_ID => on_cw20_instantiate_reply(deps, msg),
+        SNIP20_INSTANTIATE_REPLY_ID => on_snip20_instantiate_reply(deps, msg),
         IBC_ACK_AND_TIMEOUT_REPLY_ID => on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => on_ibc_receive_reply(deps, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(

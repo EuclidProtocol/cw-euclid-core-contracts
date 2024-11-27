@@ -1,9 +1,10 @@
 [package]
-name = "cw20"
+name = "snip20"
 version = "0.2.0"
 authors = [
   "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
   "Joe Monem <jmonem@icloud.com>",
+  "Abhishek Chauhan <chauhan123happy@gmail.com>",
 ]
 edition = "2021"
 
@@ -39,15 +40,13 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 [dependencies]
 cosmwasm-schema = { workspace = true }
 cosmwasm-std = { workspace = true, features = [
-  "cosmwasm_1_2",
   # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
   # "cosmwasm_1_4",
   "ibc3",
 ] }
-cw-storage-plus = { workspace = true }
-cw2 = { workspace = true }
-cw20-base = { workspace = true }
-cw20 = { workspace = true }
+secret-storage-plus = { workspace = true }
+secret-cw2 = { workspace = true }
+snip20-reference-impl = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
@@ -55,4 +54,4 @@ euclid = { workspace = true }
 cw-orch = "=0.24.1"
 
 [dev-dependencies]
-cw-multi-test = { workspace = true }
+secret-multi-test = { workspace = true }

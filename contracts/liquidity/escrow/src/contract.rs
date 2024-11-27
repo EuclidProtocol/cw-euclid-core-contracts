@@ -1,17 +1,17 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128,
 };
 
-use cw2::set_contract_version;
 use euclid::error::ContractError;
+use secret_cw2::set_contract_version;
 
 // use cw2::set_contract_version;
 
 use crate::execute::{
     self, execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom,
-    execute_withdraw, receive_cw20,
+    execute_withdraw, receive_snip20,
 };
 use crate::query::{self, query_token_id};
 use crate::state::{State, STATE};
@@ -41,6 +41,7 @@ pub fn instantiate(
     let data = EscrowInstantiateResponse {
         token: msg.token_id.clone(),
         address: env.contract.address.to_string(),
+        code_hash: env.contract.code_hash.clone(),
     };
     let mut res = Response::new();
 
@@ -52,7 +53,7 @@ pub fn instantiate(
         .add_attribute("method", "instantiate")
         .add_attribute("token_id", msg.token_id.as_str())
         .add_attribute("factory_address", info.sender)
-        .set_data(to_json_binary(&data)?))
+        .set_data(to_binary(&data)?))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -66,10 +67,17 @@ pub fn execute(
         ExecuteMsg::DepositNative {} => execute_deposit_native(deps, env, info),
         ExecuteMsg::AddAllowedDenom { denom } => execute_add_allowed_denom(deps, env, info, denom),
         ExecuteMsg::DisallowDenom { denom } => execute_disallow_denom(deps, env, info, denom),
-        ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
-        ExecuteMsg::Withdraw { recipient, amount } => {
-            execute_withdraw(deps, env, info, recipient, amount)
-        }
+        ExecuteMsg::Receive(msg) => receive_snip20(deps, env, info, msg),
+        ExecuteMsg::Withdraw {
+            recipient,
+            amount,
+            memo,
+            decoys,
+            entropy,
+            padding,
+        } => execute_withdraw(
+            deps, env, info, recipient, amount, memo, decoys, entropy, padding,
+        ),
     }
 }
 

@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
+    ensure, from_binary, to_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
     IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -35,12 +35,13 @@ pub fn ibc_packet_receive(
     };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
-        msg: to_json_binary(&internal_msg)?,
+        code_hash: env.contract.code_hash,
+        msg: to_binary(&internal_msg)?,
         funds: vec![],
     });
     let sub_msg = SubMsg::reply_always(internal_msg, IBC_RECEIVE_REPLY_ID);
 
-    let msg: Result<HubIbcExecuteMsg, StdError> = from_json(&msg.packet.data);
+    let msg: Result<HubIbcExecuteMsg, StdError> = from_binary(&msg.packet.data);
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
@@ -70,7 +71,7 @@ pub fn ibc_receive_internal_call(
         ContractError::Unauthorized {}
     );
 
-    let msg: HubIbcExecuteMsg = from_json(msg.packet.data)?;
+    let msg: HubIbcExecuteMsg = from_binary(&msg.packet.data)?;
     reusable_internal_call(deps, env, msg)
 }
 
@@ -114,7 +115,7 @@ fn execute_register_router(
         ContractError::new("Chain UID mismatch")
     );
 
-    let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
+    let ack = to_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -146,7 +147,7 @@ fn execute_update_factory_channel(
         ContractError::new("Chain UID mismatch")
     );
 
-    let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
+    let ack = to_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -171,6 +172,10 @@ fn execute_release_escrow(
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
         recipient: deps.api.addr_validate(&to_address)?,
         amount,
+        memo: None,
+        decoys: None,
+        entropy: None,
+        padding: None,
     };
 
     let ack_msg = ReleaseEscrowResponse {
@@ -181,17 +186,18 @@ fn execute_release_escrow(
         to_address: to_address.clone(),
     };
 
-    let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
+    let ack = to_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 
-    // Get escrow address
-    let escrow_address = TOKEN_TO_ESCROW
-        .load(deps.storage, token.validate()?.to_owned())?
-        .into_string();
+    // Get escrow
+    let escrow = TOKEN_TO_ESCROW
+        .get(deps.storage, token.validate()?)
+        .unwrap();
 
     Ok(Response::new()
         .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: escrow_address,
-            msg: to_json_binary(&withdraw_msg)?,
+            contract_addr: escrow.addr.to_string(),
+            code_hash: escrow.code_hash,
+            msg: to_binary(&withdraw_msg)?,
             funds: vec![],
         }))
         .add_attribute("method", "release escrow_execute")
