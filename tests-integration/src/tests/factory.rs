@@ -1169,6 +1169,7 @@ fn test_add_liquidity_with_timeout() {
 }
 
 #[test]
+#[should_panic(expected = "Invalid Timeout")]
 fn test_add_liquidity_with_invalid_timeout() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
@@ -1221,7 +1222,7 @@ fn test_add_liquidity_with_invalid_timeout() {
         &factory,
         pair_info,
         BPS_100_PERCENT,
-        Some(30),
+        Some(241),
         funds,
     );
 }
