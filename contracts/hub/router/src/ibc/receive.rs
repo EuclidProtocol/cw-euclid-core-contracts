@@ -247,6 +247,8 @@ fn execute_request_pool_creation(
             .may_load(deps.storage, token.token.clone())?
             .unwrap_or_default();
 
+        one_token_already_exists = one_token_already_exists || !registered_denoms.is_empty();
+
         // If its a voucher, then we need to check if this token atleast exist on one of the chains
         if token.token_type.is_voucher() {
             ensure!(
@@ -284,7 +286,6 @@ fn execute_request_pool_creation(
                 ));
             }
         }
-        one_token_already_exists = one_token_already_exists || !registered_denoms.is_empty();
     }
 
     // Cannot create pool if both tokens are new
