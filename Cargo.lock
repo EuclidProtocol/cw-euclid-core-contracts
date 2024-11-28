@@ -10,7 +10,7 @@ checksum = "0c77f8d4bac08f74fbc4fce8943cb2d35e742682b6cae8cb65555d6cd3830feb"
 dependencies = [
  "anyhow",
  "bech32 0.11.0",
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "cosmwasm-std 1.5.8",
  "cw-storage-plus",
  "cw-utils",
@@ -24,7 +24,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.8",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -268,7 +268,7 @@ dependencies = [
  "ed25519-zebra",
  "k256 0.11.6",
  "rand_core 0.6.4",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -281,7 +281,7 @@ dependencies = [
  "ed25519-zebra",
  "k256 0.13.4",
  "rand_core 0.6.4",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -307,11 +307,24 @@ version = "1.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93d388adfa9cb449557a92e9318121ac1a481fc4f599213b03a5b62699b403b4"
 dependencies = [
- "cosmwasm-schema-derive",
+ "cosmwasm-schema-derive 1.5.8",
  "schemars 0.8.21",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.64",
+]
+
+[[package]]
+name = "cosmwasm-schema"
+version = "2.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f86b4d949b6041519c58993a73f4bbfba8083ba14f7001eae704865a09065845"
+dependencies = [
+ "cosmwasm-schema-derive 2.1.4",
+ "schemars 0.8.21",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -323,6 +336,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "cosmwasm-schema-derive"
+version = "2.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8ef1b5835a65fcca3ab8b9a02b4f4dacc78e233a5c2f20b270efb9db0666d12"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -339,7 +363,7 @@ dependencies = [
  "schemars 0.8.21",
  "serde",
  "serde-json-wasm 0.4.1",
- "thiserror",
+ "thiserror 1.0.64",
  "uint",
 ]
 
@@ -362,7 +386,7 @@ dependencies = [
  "serde-json-wasm 0.5.2",
  "sha2 0.10.8",
  "static_assertions",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -433,13 +457,29 @@ version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57de8d3761e46be863e3ac1eba8c8a976362a48c6abf240df1e26c3e421ee9e8"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "cosmwasm-std 1.5.8",
  "cw-storage-plus",
  "cw-utils",
  "schemars 0.8.21",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
+]
+
+[[package]]
+name = "cw-multicall"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema 2.1.4",
+ "euclid",
+ "euclid-utils",
+ "mock",
+ "schemars 0.8.21",
+ "secret-cosmwasm-std",
+ "secret-cw2",
+ "secret-multi-test 0.13.4 (git+https://github.com/kent-3/secret-plus-utils?branch=protobuf-fix)",
+ "secret-storage-plus 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
+ "serde",
 ]
 
 [[package]]
@@ -460,7 +500,7 @@ dependencies = [
  "log",
  "schemars 0.8.21",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -471,7 +511,7 @@ checksum = "bad52865e313bb7ed3f3938f7ad9d566e430fb6143a63476c22bed505ea78cd7"
 dependencies = [
  "convert_case",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -491,7 +531,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.8",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -549,13 +589,13 @@ version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c4a657e5caacc3a0d00ee96ca8618745d050b8f757c709babafb81208d4239c"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "cosmwasm-std 1.5.8",
  "cw2",
  "schemars 0.8.21",
  "semver",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -564,13 +604,13 @@ version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6c120b24fbbf5c3bedebb97f2cc85fbfa1c3287e09223428e7e597b5293c1fa"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "cosmwasm-std 1.5.8",
  "cw-storage-plus",
  "schemars 0.8.21",
  "semver",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -579,7 +619,7 @@ version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "526e39bb20534e25a1cd0386727f0038f4da294e5e535729ba3ef54055246abd"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "cosmwasm-std 1.5.8",
  "cw-utils",
  "schemars 0.8.21",
@@ -592,7 +632,7 @@ version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76221201da08fed611c857ea3aa21c031a4a7dc771a8b1750559ca987335dc02"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "cosmwasm-std 1.5.8",
  "cw-controllers",
  "cw-storage-plus",
@@ -602,7 +642,7 @@ dependencies = [
  "schemars 0.8.21",
  "semver",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -784,7 +824,7 @@ name = "escrow"
 version = "0.2.0"
 dependencies = [
  "anybuf",
- "cosmwasm-schema",
+ "cosmwasm-schema 2.1.4",
  "cw-orch",
  "euclid",
  "mock",
@@ -792,10 +832,10 @@ dependencies = [
  "secret-cosmwasm-std",
  "secret-cw2",
  "secret-multi-test 0.13.4 (git+https://github.com/kent-3/secret-plus-utils?branch=protobuf-fix)",
- "secret-storage-plus 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
+ "secret-toolkit",
  "serde",
  "snip20-reference-impl",
- "thiserror",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
@@ -803,39 +843,42 @@ name = "euclid"
 version = "0.2.0"
 dependencies = [
  "anyhow",
- "cosmwasm-schema",
+ "cosmwasm-schema 2.1.4",
  "cw-orch",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "schemars 0.8.21",
  "secret-cosmwasm-std",
  "secret-storage-plus 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
+ "secret-toolkit",
  "secret-utils 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
  "serde",
  "snip20-reference-impl",
  "syn 1.0.109",
- "thiserror",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
 name = "euclid-ibc"
 version = "0.2.0"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 2.1.4",
  "euclid",
- "itertools 0.10.5",
+ "itertools 0.13.0",
+ "schemars 0.8.21",
  "secret-cosmwasm-std",
  "secret-storage-plus 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
  "secret-utils 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
- "thiserror",
+ "serde",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
 name = "euclid-utils"
 version = "0.1.0"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 2.1.4",
  "euclid",
  "schemars 0.8.21",
  "secret-cosmwasm-std",
@@ -848,7 +891,7 @@ name = "factory"
 version = "0.2.0"
 dependencies = [
  "anybuf",
- "cosmwasm-schema",
+ "cosmwasm-schema 2.1.4",
  "cw-orch",
  "euclid",
  "euclid-ibc",
@@ -857,12 +900,11 @@ dependencies = [
  "secret-cosmwasm-std",
  "secret-cw2",
  "secret-multi-test 0.13.4 (git+https://github.com/kent-3/secret-plus-utils?branch=protobuf-fix)",
- "secret-storage-plus 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
  "secret-toolkit",
  "secret-utils 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
  "serde",
  "snip20-reference-impl",
- "thiserror",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
@@ -995,6 +1037,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1068,8 +1119,8 @@ name = "mock"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cosmwasm-schema",
- "itertools 0.10.5",
+ "cosmwasm-schema 2.1.4",
+ "itertools 0.13.0",
  "schemars 0.8.21",
  "secret-cosmwasm-std",
  "secret-multi-test 0.13.4 (git+https://github.com/kent-3/secret-plus-utils?branch=protobuf-fix)",
@@ -1077,7 +1128,7 @@ dependencies = [
  "secret-utils 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
  "serde",
  "snip20-reference-impl",
- "thiserror",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
@@ -1108,7 +1159,7 @@ checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -1190,9 +1241,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.87"
+version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3e4daa0dcf6feba26f985457cdf104d4b4256fc5a09547140f3631bb076b19a"
+checksum = "37d3544b3f2748c54e147655edb5025752e2303145b5aefb3c3ea2c78b973bb0"
 dependencies = [
  "unicode-ident",
 ]
@@ -1240,7 +1291,7 @@ dependencies = [
  "itertools 0.12.1",
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -1258,7 +1309,7 @@ version = "0.1.0"
 source = "git+https://github.com/securesecrets/query-authentication?branch=cosmwasm_v1_upgrade#024c13c08c8e4d25d890de2418fb1ae2c45425e9"
 dependencies = [
  "bech32 0.8.1",
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "remain",
  "ripemd160",
  "schemars 0.8.21",
@@ -1266,7 +1317,7 @@ dependencies = [
  "secret-cosmwasm-std",
  "serde",
  "sha2 0.9.9",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1352,7 +1403,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom",
  "libredox",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1363,7 +1414,7 @@ checksum = "46aef80f842736de545ada6ec65b81ee91504efd6853f4b96de7414c42ae7443"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -1463,7 +1514,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde_derive_internals 0.29.1",
- "syn 2.0.79",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -1522,7 +1573,7 @@ dependencies = [
  "ed25519-zebra",
  "k256 0.11.6",
  "rand_core 0.6.4",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1540,7 +1591,7 @@ dependencies = [
  "secret-cosmwasm-crypto",
  "serde",
  "serde-json-wasm 0.4.1",
- "thiserror",
+ "thiserror 1.0.64",
  "uint",
 ]
 
@@ -1559,7 +1610,7 @@ name = "secret-cw2"
 version = "1.0.1"
 source = "git+https://github.com/securesecrets/secret-plus-utils?branch=main#ca5c1704375c622398811b6339711b52b8dd3ad1"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "schemars 0.8.21",
  "secret-cosmwasm-std",
  "secret-storage-plus 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
@@ -1582,7 +1633,7 @@ dependencies = [
  "secret-storage-plus 0.13.4 (git+https://github.com/kent-3/secret-plus-utils?branch=protobuf-fix)",
  "secret-utils 0.13.4 (git+https://github.com/kent-3/secret-plus-utils?branch=protobuf-fix)",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1600,7 +1651,7 @@ dependencies = [
  "secret-storage-plus 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils)",
  "secret-utils 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils)",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1776,7 +1827,7 @@ dependencies = [
  "schemars 0.8.21",
  "secret-cosmwasm-std",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1787,7 +1838,7 @@ dependencies = [
  "schemars 0.8.21",
  "secret-cosmwasm-std",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1798,7 +1849,7 @@ dependencies = [
  "schemars 0.8.21",
  "secret-cosmwasm-std",
  "serde",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1809,9 +1860,9 @@ checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
 
 [[package]]
 name = "serde"
-version = "1.0.210"
+version = "1.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8e3592472072e6e22e0a54d5904d9febf8508f65fb8552499a1abc7d1078c3a"
+checksum = "6513c1ad0b11a9376da888e3e0baa0077f1aed55c17f50e7b2397136129fb88f"
 dependencies = [
  "serde_derive",
 ]
@@ -1845,13 +1896,13 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.210"
+version = "1.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "243902eda00fad750862fc144cea25caca5e20d615af0a81bee94ca738f1df1f"
+checksum = "ad1e866f866923f252f05c889987993144fb74e722403468a4ebd70c3cd756c0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -1873,7 +1924,7 @@ checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -1933,7 +1984,7 @@ dependencies = [
  "chrono",
  "const_format",
  "contract-derive",
- "cosmwasm-schema",
+ "cosmwasm-schema 1.5.8",
  "query-authentication",
  "rand_chacha 0.2.2",
  "rand_core 0.5.1",
@@ -1948,7 +1999,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "subtle",
- "thiserror",
+ "thiserror 1.0.64",
 ]
 
 [[package]]
@@ -1975,17 +2026,17 @@ dependencies = [
 name = "snip20"
 version = "0.2.0"
 dependencies = [
- "cosmwasm-schema",
+ "cosmwasm-schema 2.1.4",
  "cw-orch",
  "euclid",
  "schemars 0.8.21",
  "secret-cosmwasm-std",
  "secret-cw2",
  "secret-multi-test 0.13.4 (git+https://github.com/kent-3/secret-plus-utils?branch=protobuf-fix)",
- "secret-storage-plus 0.13.4 (git+https://github.com/securesecrets/secret-plus-utils?branch=main)",
+ "secret-toolkit",
  "serde",
  "snip20-reference-impl",
- "thiserror",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
@@ -1993,7 +2044,7 @@ name = "snip20-reference-impl"
 version = "1.0.0"
 dependencies = [
  "base64 0.21.7",
- "cosmwasm-schema",
+ "cosmwasm-schema 2.1.4",
  "getrandom",
  "rand",
  "schemars 0.8.21",
@@ -2077,9 +2128,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.79"
+version = "2.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89132cd0bf050864e1d38dc3bbc07a0eb8e7530af26344d3d2bbbef83499f590"
+checksum = "44d46482f1c1c87acd84dea20c1bf5ebff4c757009ed6bf19cfd36fb10e92c4e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2110,7 +2161,16 @@ version = "1.0.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d50af8abc119fb8bb6dbabcfa89656f46f84aa0ac7688088608076ad2b459a84"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.64",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c006c85c7651b3cf2ada4584faa36773bd07bac24acfb39f3c431b36d7e667aa"
+dependencies = [
+ "thiserror-impl 2.0.3",
 ]
 
 [[package]]
@@ -2121,7 +2181,18 @@ checksum = "08904e7672f5eb876eaaf87e0ce17857500934f4981c4a0ab2b4aa98baac7fc3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f077553d607adc1caf65430528a576c757a71ed73944b66ebb58ef2bbd243568"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -2240,7 +2311,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
  "wasm-bindgen-shared",
 ]
 
@@ -2262,7 +2333,7 @@ checksum = "26c6ab57572f7a24a4985830b120de1594465e5d500f24afe89e16b4e833ef68"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -2379,7 +2450,7 @@ checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.79",
+ "syn 2.0.89",
 ]
 
 [[package]]

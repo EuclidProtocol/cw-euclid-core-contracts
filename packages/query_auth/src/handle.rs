@@ -3,10 +3,7 @@ use shade_protocol::{
     c_std::{to_binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult},
     contract_interfaces::query_auth::{
         auth::{HashedKey, Key, PermitKey},
-        Admin,
-        ContractStatus,
-        ExecuteAnswer,
-        RngSeed,
+        Admin, ContractStatus, ExecuteAnswer, RngSeed,
     },
     query_authentication::viewing_keys::ViewingKey,
     utils::{
@@ -77,7 +74,11 @@ pub fn try_set_viewing_key(
 ) -> StdResult<Response> {
     HashedKey(Key(key).hash()).save(deps.storage, info.sender)?;
 
-    Ok(Response::new().set_data(to_binary(&ExecuteAnswer::SetViewingKey { status: Success })?))
+    Ok(
+        Response::new().set_data(to_binary(&ExecuteAnswer::SetViewingKey {
+            status: Success,
+        })?),
+    )
 }
 
 pub fn try_block_permit_key(

@@ -3,10 +3,10 @@ use crate::{
     query::get_contract_code_hash,
     state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_SNIP20},
 };
-use cosmwasm_std::{from_binary, DepsMut, Env, Reply, Response, SubMsgResult};
+use cosmwasm_std::{from_binary, DepsMut, Env, Reply, Response, SubMsgResponse, SubMsgResult};
 use euclid::{chain::AnyContractInfo, error::ContractError};
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
-use secret_utils::{parse_execute_response_data, parse_reply_instantiate_data};
+use secret_utils::parse_execute_response_data;
 
 pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
@@ -16,17 +16,19 @@ pub const SNIP20_INSTANTIATE_REPLY_ID: u64 = 4;
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
-        SubMsgResult::Ok(..) => {
-            let instantiate_data: secret_utils::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
-                })?;
+        SubMsgResult::Ok(res) => {
+            // let instantiate_data: secret_utils::MsgInstantiateContractResponse =
+            //     parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+            //         err: res.to_string(),
+            //     })?;
 
-            let escrow_address = deps.api.addr_validate(&instantiate_data.contract_address)?;
+            let escrow_address = deps
+                .api
+                .addr_validate(&parse_reply_address_from_event(res.clone()))?;
             let escrow_code_hash =
                 get_contract_code_hash(deps.querier, escrow_address.clone().to_string())?;
             let escrow_data: euclid::msgs::escrow::EscrowInstantiateResponse =
-                from_binary(&instantiate_data.data.unwrap_or_default())?;
+                from_binary(&res.data.unwrap_or_default())?;
             let escrow_info = AnyContractInfo {
                 addr: escrow_address.clone(),
                 code_hash: escrow_code_hash.clone(),
@@ -67,15 +69,17 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
 pub fn on_snip20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
-        SubMsgResult::Ok(..) => {
-            let instantiate_data: secret_utils::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
-                })?;
+        SubMsgResult::Ok(res) => {
+            // let instantiate_data: secret_utils::MsgInstantiateContractResponse =
+            //     parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+            //         err: res.to_string(),
+            //     })?;
 
-            let snip20_address = deps.api.addr_validate(&instantiate_data.contract_address)?;
+            let snip20_address = deps
+                .api
+                .addr_validate(&parse_reply_address_from_event(res.clone()))?;
             let snip20_data: euclid::msgs::escrow::Snip20InstantiateResponse =
-                from_binary(&instantiate_data.data.unwrap_or_default())?;
+                from_binary(&res.data.unwrap_or_default())?;
 
             VLP_TO_SNIP20.insert(deps.storage, &snip20_data.vlp, &snip20_address)?;
             Ok(Response::new()
@@ -168,4 +172,25 @@ pub fn on_reply_native_ibc_wrapper_call(
             Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
         }
     }
+}
+
+pub fn parse_reply_address_from_event(res: SubMsgResponse) -> String {
+    let mut address = String::new();
+    let mut found_address = false;
+
+    for event in &res.events {
+        if event.ty == "instantiate" {
+            for attribute in &event.attributes {
+                if attribute.key == "contract_address" || attribute.key == "_contract_addr" {
+                    address.clone_from(&attribute.value);
+                    found_address = true;
+                    break;
+                }
+            }
+        }
+        if found_address {
+            break;
+        }
+    }
+    address
 }

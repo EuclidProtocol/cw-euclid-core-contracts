@@ -1,4 +1,5 @@
-use cosmwasm_schema::cw_serde;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::Uint128;
 
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
 // Request to create pool saved in state to manage during acknowledgement
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PoolCreateRequest {
     // Request sender
     pub sender: String,
@@ -21,7 +22,7 @@ pub struct PoolCreateRequest {
 }
 
 // Request to create pool saved in state to manage during acknowledgement
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PoolWithLiquidityCreateRequest {
     // Request sender
     pub sender: String,
@@ -32,7 +33,7 @@ pub struct PoolWithLiquidityCreateRequest {
     pub lp_token_instantiate_msg: snip20_reference_impl::msg::InstantiateMsg,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct DenomRegisterDeregisterRequest {
     // Request sender
     pub sender: String,
@@ -43,7 +44,7 @@ pub struct DenomRegisterDeregisterRequest {
 }
 
 // Struct to handle Acknowledgement Response for a Pool Creation Request
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
     pub tx_id: String,
@@ -51,8 +52,8 @@ pub struct PoolCreationResponse {
     pub sender: CrossChainUser,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct RegisterDenomResponse {}
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct DeRegisterDenomResponse {}

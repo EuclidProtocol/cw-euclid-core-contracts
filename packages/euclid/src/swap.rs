@@ -1,4 +1,5 @@
-use cosmwasm_schema::cw_serde;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, IbcTimeout, Uint128};
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
 };
 
 // Struct that stores a certain swap info
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct SwapRequest {
     pub sender: String,
     pub tx_id: String,
@@ -31,32 +32,32 @@ pub struct SwapRequest {
     pub partner_fee_recipient: Addr,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct NextSwapVlp {
     pub vlp_address: String,
     pub test_fail: Option<bool>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct NextSwapPair {
     pub token_in: Token,
     pub token_out: Token,
     pub test_fail: Option<bool>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct SwapResponse {
     pub amount_out: Uint128,
     pub tx_id: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct WithdrawResponse {
     pub token: Token,
     pub tx_id: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TransferResponse {
     pub token: Token,
     pub tx_id: String,

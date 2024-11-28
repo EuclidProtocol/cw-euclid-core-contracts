@@ -1,9 +1,10 @@
-use cosmwasm_schema::cw_serde;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::Uint128;
 
 use crate::{chain::CrossChainUser, token::Token};
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct EscrowReleaseRequest {
     pub sender: CrossChainUser,
     pub tx_id: String,
@@ -13,7 +14,7 @@ pub struct EscrowReleaseRequest {
 }
 
 // Struct to handle Acknowledgement Response for a Liquidity Request
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct EscrowReleaseResponse {
     pub success: bool,
 }

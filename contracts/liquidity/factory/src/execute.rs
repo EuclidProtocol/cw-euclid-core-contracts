@@ -164,10 +164,12 @@ pub fn execute_request_pool_creation(
         ContractError::new("Cannot create pool with same token")
     );
 
-    ensure!(
-        !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
+    if PENDING_POOL_REQUESTS
+        .get(deps.storage, &(info.sender.clone(), tx_id.clone()))
+        .is_some()
+    {
+        return Err(ContractError::TxAlreadyExist {});
+    }
 
     if PAIR_TO_VLP.get(deps.storage, &pair.get_tupple()).is_some() {
         return Err(ContractError::PoolAlreadyExists {});
@@ -213,7 +215,7 @@ pub fn execute_request_pool_creation(
         lp_token_instantiate_msg,
     };
 
-    PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
+    PENDING_POOL_REQUESTS.insert(deps.storage, &(info.sender.clone(), tx_id.clone()), &req)?;
 
     let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
         pair: pair_with_denom_and_amount,

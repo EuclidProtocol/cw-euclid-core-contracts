@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Addr;
 use euclid::token::Pair;
-use secret_storage_plus::Item;
+use secret_toolkit::storage::Item;
 
 #[cw_serde]
 pub struct State {
@@ -10,4 +10,4 @@ pub struct State {
     pub vlp: String,
 }
 
-pub const STATE: Item<State> = Item::new("state");
+pub const STATE: Item<State> = Item::new(b"state");

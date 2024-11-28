@@ -38,17 +38,20 @@ pub fn execute_add_allowed_denom(
 
     ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
 
-    // Add the new denom to denom to amount map
-    let new_amount =
-        DENOM_TO_AMOUNT.update(deps.storage, denom.get_key(), |existing| match existing {
-            Some(existing) => Ok::<_, ContractError>(existing),
-            None => Ok(Uint128::zero()),
-        })?;
+    let denom_key = denom.get_key(); // Get the key for the denom
+
+    // Fetch the current amount for the denom from storage
+    let existing_amount = DENOM_TO_AMOUNT
+        .get(deps.storage, &denom_key)
+        .unwrap_or(Uint128::zero());
+
+    // Insert the existing amount (or default to zero if none exists) back into storage
+    DENOM_TO_AMOUNT.insert(deps.storage, &denom_key, &existing_amount)?;
 
     Ok(Response::new()
         .add_attribute("method", "add_allowed_denom")
         .add_attribute("new_denom", denom.get_key())
-        .add_attribute("amount", new_amount))
+        .add_attribute("amount", existing_amount))
 }
 
 pub fn execute_disallow_denom(
@@ -118,12 +121,14 @@ pub fn execute_deposit_native(
         );
 
         // Check current balance of denom
-        let current_balance = DENOM_TO_AMOUNT.load(deps.storage, token_type.get_key())?;
+        let current_balance = DENOM_TO_AMOUNT
+            .get(deps.storage, &token_type.get_key())
+            .unwrap();
 
         // Add the sent amount to current balance and save it
-        DENOM_TO_AMOUNT.save(
+        DENOM_TO_AMOUNT.insert(
             deps.storage,
-            token_type.get_key(),
+            &token_type.get_key(),
             &current_balance.checked_add(token.amount)?,
         )?;
         state.total_amount = state.total_amount.checked_add(token.amount)?;
@@ -187,12 +192,12 @@ pub fn execute_deposit_snip20(
     );
 
     // Check current balance of denom
-    let current_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
+    let current_balance = DENOM_TO_AMOUNT.get(deps.storage, &denom.get_key()).unwrap();
 
     // Add the sent amount to current balance and save it
-    DENOM_TO_AMOUNT.save(
+    DENOM_TO_AMOUNT.insert(
         deps.storage,
-        denom.get_key(),
+        &denom.get_key(),
         &current_balance.checked_add(amount)?,
     )?;
 
@@ -238,7 +243,7 @@ pub fn execute_withdraw(
             .next()
             .ok_or(ContractError::new("Denom Iter Faiiled"))?;
 
-        let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
+        let denom_balance = DENOM_TO_AMOUNT.get(deps.storage, &denom.get_key()).unwrap();
 
         let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
             denom_balance
@@ -258,9 +263,9 @@ pub fn execute_withdraw(
         messages.push(send_msg);
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
-        DENOM_TO_AMOUNT.save(
+        DENOM_TO_AMOUNT.insert(
             deps.storage,
-            denom.get_key(),
+            &denom.get_key(),
             &denom_balance.checked_sub(transfer_amount)?,
         )?;
     }

@@ -1,5 +1,6 @@
 use crate::chain::CrossChainUser;
-use cosmwasm_schema::cw_serde;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::Uint128;
 use std::collections::HashMap;
 
@@ -10,7 +11,7 @@ pub const BPS_1_PERCENT: u64 = 100;
 // Set maximum fee as 10%
 pub const MAX_FEE_BPS: u64 = BPS_10_PERCENT;
 // Fee Config for a VLP contract
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct Fee {
     // Fee for lp providers
     pub lp_fee_bps: u64,
@@ -20,7 +21,7 @@ pub struct Fee {
     pub recipient: CrossChainUser,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TotalFees {
     // Fee for lp providers
     pub lp_fees: DenomFees,
@@ -28,7 +29,7 @@ pub struct TotalFees {
     pub euclid_fees: DenomFees,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct DenomFees {
     // A map to store the total fees per denomination
     pub totals: HashMap<String, Uint128>,
@@ -51,7 +52,7 @@ impl DenomFees {
 pub const MAX_PARTNER_FEE_BPS: u64 = 30;
 
 // Fee Config for a VLP contract
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PartnerFee {
     // The percentage of the fee for platform - 0 to 1
     pub partner_fee_bps: u64,

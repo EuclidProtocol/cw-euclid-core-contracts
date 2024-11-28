@@ -2,10 +2,7 @@ use shade_protocol::{
     c_std::{Addr, Deps, StdResult},
     contract_interfaces::query_auth::{
         auth::{Key, PermitKey},
-        Admin,
-        ContractStatus,
-        QueryAnswer,
-        QueryPermit,
+        Admin, ContractStatus, QueryAnswer, QueryPermit,
     },
     utils::storage::plus::{ItemStorage, MapStorage},
 };

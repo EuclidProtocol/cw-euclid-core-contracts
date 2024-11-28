@@ -1,6 +1,7 @@
-use cosmwasm_schema::cw_serde;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct Pagination<T> {
     pub min: Option<T>,
     pub max: Option<T>,

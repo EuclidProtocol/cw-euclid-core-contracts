@@ -2,8 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_binary, to_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement, IbcBasicResponse,
-    IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, StdResult, SubMsg, Uint256,
-    WasmMsg,
+    IbcPacketAckMsg, IbcPacketTimeoutMsg, ReplyOn, Response, StdError, SubMsg, Uint256, WasmMsg,
 };
 use euclid::{
     deposit::DepositTokenResponse,
@@ -19,6 +18,8 @@ use euclid::{
     token::Token,
 };
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
+use secret_toolkit::utils::InitCallback;
+use snip20_reference_impl::msg::InitConfig;
 
 use crate::{
     query::get_contract_code_hash,
@@ -157,13 +158,20 @@ pub fn ibc_packet_timeout(
     env: Env,
     msg: IbcPacketTimeoutMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    TIMEOUT_COUNTS.update(
-        deps.storage,
-        // timed out packets are sent by us, so lookup based on packet
-        // source, not destination.
-        msg.packet.src.channel_id.clone(),
-        |count| -> StdResult<_> { Ok(count.unwrap_or_default() + 1) },
-    )?;
+    // timed out packets are sent by us, so lookup based on packet
+    // source, not destination.
+    let channel_id = msg.packet.src.channel_id.clone();
+
+    // Fetch the current timeout count for the channel
+    let current_count = TIMEOUT_COUNTS
+        .get(deps.storage, &channel_id)
+        .unwrap_or_default();
+
+    let new_count = current_count + 1;
+
+    // Insert the updated timeout count back into storage
+    TIMEOUT_COUNTS.insert(deps.storage, &channel_id, &new_count)?;
+
     let failed_ack = IbcAcknowledgement::new(to_binary(&AcknowledgementMsg::Error::<()>(
         "Timeout".to_string(),
     ))?);
@@ -190,11 +198,11 @@ fn ack_pool_creation(
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
     let existing_req = PENDING_POOL_REQUESTS
-        .may_load(deps.storage, req_key.clone())?
+        .get(deps.storage, &req_key.clone())
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
 
     // Remove pool request from MAP
-    PENDING_POOL_REQUESTS.remove(deps.storage, req_key);
+    PENDING_POOL_REQUESTS.remove(deps.storage, &req_key)?;
 
     // Check whether res is an error or not
     match res {
@@ -258,21 +266,32 @@ fn ack_pool_creation(
                     }
                     // Instantiate escrow if one doesn't exist
                     None => {
-                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                            admin: Some(state.admin.clone()),
-                            code_id: escrow_code_id,
-                            code_hash: escrow_code_hash.clone(),
-                            msg: to_binary(&EscrowInstantiateMsg {
-                                token_id: token.clone().token,
-                                allowed_denom: Some(token.clone().token_type),
-                            })?,
-                            funds: vec![],
-                            label: "escrow".to_string(),
-                        });
+                        // let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                        //     admin: Some(state.admin.clone()),
+                        //     code_id: escrow_code_id,
+                        //     code_hash: escrow_code_hash.clone(),
+                        //     msg: to_binary(&EscrowInstantiateMsg {
+                        //         token_id: token.clone().token,
+                        //         allowed_denom: Some(token.clone().token_type),
+                        //     })?,
+                        //     funds: vec![],
+                        //     label: "escrow".to_string(),
+                        // });
+
+                        let init_msg = EscrowInstantiateMsg {
+                            token_id: token.clone().token,
+                            allowed_denom: Some(token.clone().token_type),
+                        };
                         PENDING_DEPOSIT_TOKEN.insert(deps.storage, &token.clone().token, &token)?;
                         res = res.add_submessage(SubMsg {
                             id: ESCROW_INSTANTIATE_REPLY_ID,
-                            msg: init_msg,
+                            msg: init_msg.to_cosmos_msg(
+                                Some(state.admin.clone()),
+                                "escrow".to_string(),
+                                escrow_code_id,
+                                escrow_code_hash.clone(),
+                                None,
+                            )?,
                             gas_limit: None,
                             reply_on: ReplyOn::Always,
                         });
@@ -280,31 +299,59 @@ fn ack_pool_creation(
                 }
             }
             let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
+
+            // let init_snip20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+            //     admin: Some(state.admin.clone()),
+            //     code_id: snip20_code_id,
+            //     code_hash: snip20_code_hash,
+            //     msg: to_binary(&euclid::msgs::snip20::InstantiateMsg {
+            //         name: lp_token_instantiate_data.name,
+            //         symbol: lp_token_instantiate_data.symbol,
+            //         decimals: lp_token_instantiate_data.decimals,
+            //         initial_balances: vec![],
+            //         vlp: data.vlp_contract,
+            //         factory: env.contract.address,
+            //         token_pair: existing_req.pair_info.get_pair()?,
+            //         admin: None,
+            //         prng_seed: to_binary(&"seed")?,
+            //         config: None,
+            //         supported_denoms: None,
+            //     })?,
+            //     funds: vec![],
+            //     label: "snip20".to_string(),
+            // });
+
             // Instantiate snip20
-            let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+            let init_snip20_msg = euclid::msgs::snip20::InstantiateMsg {
+                name: lp_token_instantiate_data.name,
+                symbol: lp_token_instantiate_data.symbol,
+                decimals: lp_token_instantiate_data.decimals,
+                initial_balances: vec![],
+                vlp: data.vlp_contract,
+                factory: env.contract.address,
+                token_pair: existing_req.pair_info.get_pair()?,
                 admin: Some(state.admin.clone()),
-                code_id: snip20_code_id,
-                code_hash: snip20_code_hash,
-                msg: to_binary(&euclid::msgs::snip20::InstantiateMsg {
-                    name: lp_token_instantiate_data.name,
-                    symbol: lp_token_instantiate_data.symbol,
-                    decimals: lp_token_instantiate_data.decimals,
-                    initial_balances: vec![],
-                    vlp: data.vlp_contract,
-                    factory: env.contract.address,
-                    token_pair: existing_req.pair_info.get_pair()?,
-                    admin: None,
-                    prng_seed: to_binary(&"seed")?,
-                    config: None,
-                    supported_denoms: None,
-                })?,
-                funds: vec![],
-                label: "snip20".to_string(),
-            });
+                prng_seed: to_binary(&"seed")?,
+                config: Some(InitConfig {
+                    public_total_supply: Some(true),
+                    enable_deposit: Some(true),
+                    enable_redeem: Some(true),
+                    enable_mint: Some(true),
+                    enable_burn: Some(true),
+                    can_modify_denoms: Some(true),
+                }),
+                supported_denoms: None,
+            };
 
             Ok(res.add_submessage(SubMsg {
                 id: SNIP20_INSTANTIATE_REPLY_ID,
-                msg: init_cw20_msg,
+                msg: init_snip20_msg.to_cosmos_msg(
+                    Some(state.admin.clone()),
+                    "snip20".to_string(),
+                    snip20_code_id,
+                    snip20_code_hash,
+                    None,
+                )?,
                 gas_limit: None,
                 reply_on: ReplyOn::Always,
             }))

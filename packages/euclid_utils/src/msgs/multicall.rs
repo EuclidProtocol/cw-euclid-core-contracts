@@ -1,13 +1,15 @@
-use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_schema::QueryResponses;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Empty, QueryRequest, QueryResponse};
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InstantiateMsg {}
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum ExecuteMsg {}
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[derive(QueryResponses)]
 
 pub enum QueryMsg {
@@ -15,20 +17,20 @@ pub enum QueryMsg {
     MultiQuery { queries: Vec<MultiQuery> },
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum MultiQuery {
     Query(QueryRequest<Empty>),
     RawQuery(String),
 }
 
 // We define a custom struct for each query response
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct MultiQueryResponse {
     pub responses: Vec<SingleQueryResponse>,
 }
 
 // We define a custom struct for each query response
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct SingleQueryResponse {
     pub result: Option<QueryResponse>,
     pub err: Option<String>,

@@ -23,3 +23,5 @@ cosmwasm-schema = { workspace = true }
 secret-utils = { workspace = true }
 thiserror = { workspace = true }
 euclid = { workspace = true }
+serde ={ workspace = true}
+schemars ={ workspace = true}

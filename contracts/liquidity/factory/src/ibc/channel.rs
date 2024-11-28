@@ -5,12 +5,12 @@ use cosmwasm_std::{
     IbcChannelOpenMsg, IbcChannelOpenResponse, IbcOrder,
 };
 use euclid::error::ContractError;
-use secret_storage_plus::Map;
+use secret_toolkit::storage::Keymap;
 
 /// (channel_id) -> count. Reset on channel closure.
-pub const CONNECTION_COUNTS: Map<String, u32> = Map::new("connection_counts");
+pub const CONNECTION_COUNTS: Keymap<String, u32> = Keymap::new(b"connection_counts");
 /// (channel_id) -> timeout_count. Reset on channel closure.
-pub const TIMEOUT_COUNTS: Map<String, u32> = Map::new("timeout_count");
+pub const TIMEOUT_COUNTS: Keymap<String, u32> = Keymap::new(b"timeout_count");
 
 pub const IBC_VERSION: &str = "counter-1";
 
@@ -35,7 +35,7 @@ pub fn ibc_channel_connect(
 
     // Initialize the count for this channel to zero.
     let channel = msg.channel().endpoint.channel_id.clone();
-    CONNECTION_COUNTS.save(deps.storage, channel.clone(), &0)?;
+    CONNECTION_COUNTS.insert(deps.storage, &channel.clone(), &0)?;
 
     Ok(IbcBasicResponse::new()
         .add_attribute("method", "ibc_channel_connect")
@@ -50,7 +50,7 @@ pub fn ibc_channel_close(
 ) -> Result<IbcBasicResponse, ContractError> {
     let channel = msg.channel().endpoint.channel_id.clone();
     // Reset the state for the channel.
-    CONNECTION_COUNTS.remove(deps.storage, channel.clone());
+    CONNECTION_COUNTS.remove(deps.storage, &channel.clone())?;
     Ok(IbcBasicResponse::new()
         .add_attribute("method", "ibc_channel_close")
         .add_attribute("channel", channel))

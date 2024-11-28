@@ -9,8 +9,10 @@ use euclid::{
     swap::SwapRequest,
     token::{PairWithDenomAndAmount, Token, TokenWithDenomAndAmount},
 };
-use secret_storage_plus::{Item, Map};
-use secret_toolkit::storage::Keymap;
+use secret_toolkit::{
+    serialization::Json,
+    storage::{Item, Keymap},
+};
 
 #[cw_serde]
 pub struct State {
@@ -37,47 +39,48 @@ pub struct State {
     pub partner_fees_collected: DenomFees,
 }
 
-pub const STATE: Item<State> = Item::new("state");
+pub const STATE: Item<State> = Item::new(b"state");
 
 // Channel that connects factory to hub chain
-pub const HUB_CHANNEL: Item<String> = Item::new("hub_channel");
+pub const HUB_CHANNEL: Item<String> = Item::new(b"hub_channel");
 
 // Keymap Pair to vlp address
-pub const PAIR_TO_VLP: Keymap<(Token, Token), String> = Keymap::new(b"pair_to_vlp");
+pub const PAIR_TO_VLP: Keymap<(Token, Token), String, Json> = Keymap::new(b"pair_to_vlp");
 
 // Keymap vlp to LP Allocations
-pub const VLP_TO_LP_SHARES: Keymap<String, Uint256> = Keymap::new(b"vlp_to_lp_shares");
+pub const VLP_TO_LP_SHARES: Keymap<String, Uint256, Json> = Keymap::new(b"vlp_to_lp_shares");
 
 // New Factory states
-pub const TOKEN_TO_ESCROW: Keymap<Token, AnyContractInfo> = Keymap::new(b"token_to_escrow");
+pub const TOKEN_TO_ESCROW: Keymap<Token, AnyContractInfo, Json> = Keymap::new(b"token_to_escrow");
 
 // New SNIP20 states
-pub const VLP_TO_SNIP20: Keymap<String, Addr> = Keymap::new(b"vlp_to_cw20");
+pub const VLP_TO_SNIP20: Keymap<String, Addr, Json> = Keymap::new(b"vlp_to_cw20");
 
 // Keymap for pending pool requests for user
-pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =
-    Map::new("request_to_pool");
+pub const PENDING_POOL_REQUESTS: Keymap<(Addr, String), PoolCreateRequest, Json> =
+    Keymap::new(b"request_to_pool");
 
 pub const PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS: Keymap<
     (Addr, String),
     DenomRegisterDeregisterRequest,
+    Json,
 > = Keymap::new(b"request_denom_register_deregister");
 
 // Keymap for pending swaps for user
-pub const PENDING_SWAPS: Keymap<(Addr, String), SwapRequest> = Keymap::new(b"pending_swaps");
+pub const PENDING_SWAPS: Keymap<(Addr, String), SwapRequest, Json> = Keymap::new(b"pending_swaps");
 
 // Keymap for pending token deposits for user
-pub const PENDING_TOKEN_DEPOSIT: Keymap<(Addr, String), DepositTokenRequest> =
+pub const PENDING_TOKEN_DEPOSIT: Keymap<(Addr, String), DepositTokenRequest, Json> =
     Keymap::new(b"pending_token_deposit");
 
 // Keymap for PENDING liquidity transactions
-pub const PENDING_ADD_LIQUIDITY: Keymap<(Addr, String), AddLiquidityRequest> =
+pub const PENDING_ADD_LIQUIDITY: Keymap<(Addr, String), AddLiquidityRequest, Json> =
     Keymap::new(b"pending_add_liquidity");
 // Keymap for PENDING liquidity transactions
-pub const PENDING_REMOVE_LIQUIDITY: Keymap<(Addr, String), RemoveLiquidityRequest> =
+pub const PENDING_REMOVE_LIQUIDITY: Keymap<(Addr, String), RemoveLiquidityRequest, Json> =
     Keymap::new(b"pending_remove_liquidity");
 
-pub const PENDING_DEPOSIT_TOKEN: Keymap<Token, TokenWithDenomAndAmount> =
+pub const PENDING_DEPOSIT_TOKEN: Keymap<Token, TokenWithDenomAndAmount, Json> =
     Keymap::new(b"pending_deposit_token");
 
-pub const FUNDS_INFO: Item<PairWithDenomAndAmount> = Item::new("funds_info");
+pub const FUNDS_INFO: Item<PairWithDenomAndAmount> = Item::new(b"funds_info");

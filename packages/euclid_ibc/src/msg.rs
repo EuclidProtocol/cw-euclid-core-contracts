@@ -1,6 +1,7 @@
 use std::ops::Add;
 
-use cosmwasm_schema::cw_serde;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::{
     ensure, to_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
 };
@@ -21,7 +22,7 @@ pub const CHAIN_IBC_EXECUTE_MSG_QUEUE_COUNT: Item<u64> =
     Item::new("chain_ibc_execute_msg_queue_count");
 pub const CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE: (u64, u64) = (2001, 3000);
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum ChainIbcExecuteMsg {
     // Request Pool Creation
     RequestPoolCreation {
@@ -141,7 +142,7 @@ impl ChainIbcExecuteMsg {
     }
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ChainIbcRemoveLiquidityExecuteMsg {
     // Factory will set this using info.sender
     pub sender: CrossChainUser,
@@ -156,7 +157,7 @@ pub struct ChainIbcRemoveLiquidityExecuteMsg {
     pub tx_id: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ChainIbcSwapExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
@@ -178,7 +179,7 @@ pub struct ChainIbcSwapExecuteMsg {
     pub tx_id: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ChainIbcWithdrawExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
@@ -192,7 +193,7 @@ pub struct ChainIbcWithdrawExecuteMsg {
     pub timeout: Option<u64>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ChainIbcTransferExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
@@ -205,7 +206,7 @@ pub struct ChainIbcTransferExecuteMsg {
     pub timeout: Option<u64>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ChainIbcDepositTokenExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
@@ -222,7 +223,7 @@ pub const HUB_IBC_EXECUTE_MSG_QUEUE: Map<u64, HubIbcExecuteMsg> =
 pub const HUB_IBC_EXECUTE_MSG_QUEUE_COUNT: Item<u64> = Item::new("hub_ibc_execute_msg_queue_count");
 pub const HUB_IBC_EXECUTE_MSG_QUEUE_RANGE: (u64, u64) = (1001, 2000);
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum HubIbcExecuteMsg {
     // Send Factory Registration Message from Router to Factory
     RegisterFactory {

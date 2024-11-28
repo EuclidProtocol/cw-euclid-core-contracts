@@ -1,4 +1,6 @@
-use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_schema::QueryResponses;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
 use crate::{
@@ -7,14 +9,14 @@ use crate::{
     token::{Pair, Token, TokenType},
     utils::pagination::Pagination,
 };
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InstantiateMsg {
     // Pool Code ID
     pub vlp_code_id: u64,
     pub virtual_balance_code_id: u64,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     ReregisterChain {
@@ -69,7 +71,7 @@ pub enum ExecuteMsg {
     },
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     #[returns(StateResponse)]
@@ -109,10 +111,10 @@ pub enum QueryMsg {
     QueryTokenDenoms { token: Token },
 }
 // We define a custom struct for each query response
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct MigrateMsg {}
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct QuerySimulateSwap {
     pub asset_in: Token,
     pub amount_in: Uint128,
@@ -121,7 +123,7 @@ pub struct QuerySimulateSwap {
     pub swaps: Vec<NextSwapPair>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct StateResponse {
     pub admin: String,
     pub vlp_code_id: u64,
@@ -129,91 +131,91 @@ pub struct StateResponse {
     pub locked: bool,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllVlpResponse {
     pub vlps: Vec<VlpResponse>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct VlpResponse {
     pub vlp: String,
     pub token_1: Token,
     pub token_2: Token,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ChainResponse {
     pub chain: Chain,
     pub chain_uid: ChainUid,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllChainResponse {
     pub chains: Vec<ChainResponse>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct SimulateSwapResponse {
     pub amount_out: Uint128,
     pub asset_out: Token,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct SimulateEscrowReleaseResponse {
     pub remaining_amount: Uint128,
     pub release_amounts: Vec<(Uint128, CrossChainUserWithLimit)>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TokenEscrowsResponse {
     pub chains: Vec<TokenEscrowChainResponse>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TokenEscrowChainResponse {
     pub chain_uid: ChainUid,
     pub balance: Uint128,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct EscrowResponse {
     pub token: Token,
     pub chain_uid: ChainUid,
     pub balance: Uint128,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllEscrowsResponse {
     pub escrows: Vec<EscrowResponse>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TokenDenom {
     pub chain_uid: ChainUid,
     pub token_type: TokenType,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TokenDenomsResponse {
     pub denoms: Vec<TokenDenom>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum RegisterFactoryChainType {
     Native(RegisterFactoryChainNative),
     Ibc(RegisterFactoryChainIbc),
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct RegisterFactoryChainNative {
     pub factory_address: String,
 }
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct RegisterFactoryChainIbc {
     pub channel: String,
     pub timeout: Option<u64>,

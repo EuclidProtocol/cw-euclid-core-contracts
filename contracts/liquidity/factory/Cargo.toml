@@ -45,7 +45,6 @@ cosmwasm-std = { workspace = true, features = [
   # "cosmwasm_1_4",
   "ibc3",
 ] }
-secret-storage-plus = { workspace = true }
 secret-toolkit ={ workspace = true}
 secret-utils = { workspace = true }
 secret-cw2 = { workspace = true }

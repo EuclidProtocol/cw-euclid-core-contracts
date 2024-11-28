@@ -4,12 +4,14 @@ use crate::{
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
-use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_schema::QueryResponses;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::Uint128;
 
 use super::router::TokenDenom;
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InstantiateMsg {
     pub router: String,
     pub virtual_balance: String,
@@ -19,7 +21,7 @@ pub struct InstantiateMsg {
     pub admin: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum ExecuteMsg {
     // Registers a new pool from a new chain to an already existing VLP
     RegisterPool {
@@ -68,7 +70,7 @@ pub enum ExecuteMsg {
     },
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[derive(QueryResponses)]
 
 pub enum QueryMsg {
@@ -104,13 +106,13 @@ pub enum QueryMsg {
 }
 
 // We define a custom struct for each query response
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetSwapResponse {
     pub amount_out: Uint128,
     pub asset_out: Token,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetStateResponse {
     pub pair: Pair,
     pub router: String,
@@ -122,7 +124,7 @@ pub struct GetStateResponse {
     pub admin: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetLiquidityResponse {
     pub pair: Pair,
     pub token_1_reserve: Uint128,
@@ -130,45 +132,45 @@ pub struct GetLiquidityResponse {
     pub total_lp_tokens: Uint128,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct FeeResponse {
     pub fee: Fee,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TotalFeesResponse {
     pub total_fees: TotalFees,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct TotalFeesPerDenomResponse {
     pub lp_fees: Uint128,
     pub euclid_fees: Uint128,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PoolResponse {
     pub lp_shares: Uint128,
     pub reserve_1: Uint128,
     pub reserve_2: Uint128,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PoolInfo {
     pub chain_uid: ChainUid,
     pub pool: PoolResponse,
 }
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllPoolsResponse {
     pub pools: Vec<PoolInfo>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct MigrateMsg {
     pub denoms: Vec<(Token, TokenDenom)>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct VlpRemoveLiquidityResponse {
     pub liquidity_released: PairWithAmount,
     pub burn_lp_tokens: Uint128,
@@ -177,7 +179,7 @@ pub struct VlpRemoveLiquidityResponse {
     pub vlp_address: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct VlpSwapResponse {
     pub sender: CrossChainUser,
     pub tx_id: String,

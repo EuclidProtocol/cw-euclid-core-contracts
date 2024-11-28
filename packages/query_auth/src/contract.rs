@@ -1,24 +1,11 @@
 use crate::{handle, query};
 use shade_protocol::{
     c_std::{
-        shd_entry_point,
-        to_binary,
-        Binary,
-        Deps,
-        DepsMut,
-        Env,
-        MessageInfo,
-        Response,
-        StdError,
+        shd_entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError,
         StdResult,
     },
     contract_interfaces::query_auth::{
-        Admin,
-        ContractStatus,
-        ExecuteMsg,
-        InstantiateMsg,
-        QueryMsg,
-        RngSeed,
+        Admin, ContractStatus, ExecuteMsg, InstantiateMsg, QueryMsg, RngSeed,
     },
     utils::{pad_handle_result, pad_query_result, storage::plus::ItemStorage},
 };

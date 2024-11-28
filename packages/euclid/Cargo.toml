@@ -27,6 +27,7 @@ snip20-reference-impl = { workspace = true }
 serde = { workspace = true }
 schemars = { workspace = true }
 cw-orch = "=0.24.1"
+secret-toolkit ={ workspace = true }
 
 syn = "1.0"
 quote = "1.0"

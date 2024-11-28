@@ -150,7 +150,7 @@ pub enum ContractError {
 
     #[error("The Channel specified does not currently exist")]
     ChannelDoesNotExist {},
-        
+
     #[error("The specified channel already exists")]
     ChannelAlreadyExists {},
 

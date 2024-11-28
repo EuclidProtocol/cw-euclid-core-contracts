@@ -4,12 +4,17 @@ use cosmwasm_std::{
     SystemResult, Uint128,
 };
 use euclid::{
-    error::ContractError, liquidity::{AddLiquidityRequest, RemoveLiquidityRequest}, msgs::factory::{
+    error::ContractError,
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    msgs::factory::{
         AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
         GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
         GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
         PoolVlpResponse, StateResponse,
-    }, swap::SwapRequest, token::{Pair, Token}, utils::pagination::{Pagination, DEFAULT_PAGINATION_LIMIT, DEFAULT_PAGINATION_SKIP}
+    },
+    swap::SwapRequest,
+    token::{Pair, Token},
+    utils::pagination::{Pagination, DEFAULT_PAGINATION_LIMIT, DEFAULT_PAGINATION_SKIP},
 };
 
 use crate::state::{
@@ -172,10 +177,10 @@ pub fn pending_swaps(
         .collect();
 
     // Convert the response to binary format
-    Ok(to_binary(&GetPendingSwapsResponse { pending_swaps: paginated_swaps })?)
+    Ok(to_binary(&GetPendingSwapsResponse {
+        pending_swaps: paginated_swaps,
+    })?)
 }
-
-
 
 // Returns the pending liquidity transactions for a user with pagination
 pub fn pending_liquidity(
@@ -195,13 +200,17 @@ pub fn pending_liquidity(
 
     for item in iter {
         let ((entry_user, tx_id), add_liquidity_request) = item?;
-        
+
         // Check if the entry belongs to the specified user
         if entry_user == user {
             // Filter by min and max bounds if specified
             let tx_id_str = tx_id.clone();
-            let meets_min = pagination.min.map_or(true, |min| tx_id_str >= min.to_string());
-            let meets_max = pagination.max.map_or(true, |max| tx_id_str <= max.to_string());
+            let meets_min = pagination
+                .min
+                .map_or(true, |min| tx_id_str >= min.to_string());
+            let meets_max = pagination
+                .max
+                .map_or(true, |max| tx_id_str <= max.to_string());
 
             // Add entry if it meets all criteria
             if meets_min && meets_max {
@@ -227,7 +236,6 @@ pub fn pending_liquidity(
     })?)
 }
 
-
 // Returns the pending liquidity transactions for a user with pagination
 pub fn pending_remove_liquidity(
     deps: Deps,
@@ -245,13 +253,17 @@ pub fn pending_remove_liquidity(
     let iter = binding.iter(deps.storage)?;
     for item in iter {
         let ((entry_user, tx_id), remove_liquidity_request) = item?;
-        
+
         // Check if the entry belongs to the specified user
         if entry_user == user {
             // Filter by min and max bounds if specified
             let tx_id_str = tx_id.clone();
-            let meets_min = pagination.min.map_or(true, |min| tx_id_str >= min.to_string());
-            let meets_max = pagination.max.map_or(true, |max| tx_id_str <= max.to_string());
+            let meets_min = pagination
+                .min
+                .map_or(true, |min| tx_id_str >= min.to_string());
+            let meets_max = pagination
+                .max
+                .map_or(true, |max| tx_id_str <= max.to_string());
 
             // Add entry if it meets all criteria
             if meets_min && meets_max {
@@ -276,7 +288,6 @@ pub fn pending_remove_liquidity(
         pending_remove_liquidity: paginated_remove_liquidity,
     })?)
 }
-
 
 pub fn get_contract_code_hash(
     querier: QuerierWrapper,

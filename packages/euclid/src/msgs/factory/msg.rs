@@ -6,11 +6,13 @@ use crate::{
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::pagination::Pagination,
 };
-use cosmwasm_schema::{cw_serde, QueryResponses};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use cosmwasm_schema::QueryResponses;
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use snip20_reference_impl::receiver::Snip20ReceiveMsg;
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
@@ -24,8 +26,8 @@ pub struct InstantiateMsg {
     pub is_native: bool,
 }
 
-#[cw_serde]
-#[derive(cw_orch::ExecuteFns)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+// #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     AddLiquidityRequest {
         pair_info: PairWithDenomAndAmount,
@@ -113,8 +115,7 @@ pub enum ExecuteMsg {
     },
 }
 
-#[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug,QueryResponses)]
 pub enum QueryMsg {
     #[returns(GetVlpResponse)]
     GetVlp { pair: Pair },
@@ -157,24 +158,24 @@ pub enum QueryMsg {
     GetEscrow { token_id: String },
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetVlpResponse {
     pub vlp_address: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetLPTokenResponse {
     pub token_address: Addr,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetEscrowResponse {
     pub escrow_address: Addr,
     pub escrow_code_hash: String,
     pub denoms: Vec<TokenType>,
 }
 // We define a custom struct for each query response
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct StateResponse {
     pub chain_uid: ChainUid,
     pub router_contract: String,
@@ -190,36 +191,36 @@ pub struct StateResponse {
     pub partner_fees_collected: DenomFees,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PartnerFeesCollectedResponse {
     pub total: DenomFees,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PartnerFeesCollectedPerDenomResponse {
     pub total: Uint128,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllPoolsResponse {
     pub pools: Vec<PoolVlpResponse>, // Assuming pool addresses are strings
 }
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PoolVlpResponse {
     pub pair: Pair,
     pub vlp: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct MigrateMsg {}
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct RegisterFactoryResponse {
     pub factory_address: String,
     pub chain_id: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ReleaseEscrowResponse {
     pub factory_address: String,
     pub chain_id: String,
@@ -228,21 +229,21 @@ pub struct ReleaseEscrowResponse {
     pub to_address: String,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetPendingSwapsResponse {
     pub pending_swaps: Vec<SwapRequest>,
 }
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetPendingLiquidityResponse {
     pub pending_add_liquidity: Vec<AddLiquidityRequest>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetPendingRemoveLiquidityResponse {
     pub pending_remove_liquidity: Vec<RemoveLiquidityRequest>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>, // Assuming pool addresses are strings
 }

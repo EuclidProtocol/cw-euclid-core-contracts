@@ -58,9 +58,9 @@ pub fn execute(
             vlp,
         } => execute_update_state(deps, env, info, token_pair, factory_address, vlp),
         _ => {
-            let msg_to_send:snip20_reference_impl::msg::ExecuteMsg = msg.into();
+            let msg_to_send: snip20_reference_impl::msg::ExecuteMsg = msg.into();
             Ok(execute_snip20(deps, env, info, msg_to_send)?)
-        },
+        }
     }
 }
 

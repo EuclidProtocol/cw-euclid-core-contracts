@@ -45,9 +45,9 @@ cosmwasm-std = { workspace = true, features = [
   # "cosmwasm_1_4",
   "ibc3",
 ] }
-secret-storage-plus = { workspace = true }
 secret-cw2 = { workspace = true }
 snip20-reference-impl = { workspace = true }
+secret-toolkit ={ workspace = true}
 schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }

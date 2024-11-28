@@ -1,21 +1,23 @@
-use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_schema::QueryResponses;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Uint128};
 
 use crate::{chain::CrossChainUser, virtual_balance::BalanceKey};
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct State {
     pub router: String,
     pub admin: Addr,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InstantiateMsg {
     pub router: Addr,
     pub admin: Option<Addr>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum ExecuteMsg {
     Mint(ExecuteMint),
     Transfer(ExecuteTransfer),
@@ -26,13 +28,13 @@ pub enum ExecuteMsg {
     },
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ExecuteMint {
     pub amount: Uint128,
     pub balance_key: BalanceKey,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ExecuteTransfer {
     pub amount: Uint128,
     pub token_id: String,
@@ -44,16 +46,16 @@ pub struct ExecuteTransfer {
     pub to: CrossChainUser,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ExecuteBurn {
     pub amount: Uint128,
     pub balance_key: BalanceKey,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct MigrateMsg {}
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[derive(QueryResponses)]
 
 pub enum QueryMsg {
@@ -71,22 +73,22 @@ pub enum QueryMsg {
 }
 
 // We define a custom struct for each query response
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetStateResponse {
     pub state: State,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetBalanceResponse {
     pub amount: Uint128,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetUserBalancesResponse {
     pub balances: Vec<GetUserBalancesResponseItem>,
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct GetUserBalancesResponseItem {
     pub amount: Uint128,
     pub token_id: String,

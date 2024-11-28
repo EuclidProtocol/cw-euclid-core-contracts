@@ -1,6 +1,7 @@
 use core::fmt;
 
-use cosmwasm_schema::cw_serde;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::Event;
 
 use crate::{deposit::DepositTokenRequest, swap::SwapRequest, token::TokenWithAmount};
@@ -66,7 +67,7 @@ pub fn register_factory_event(
         .add_attribute("tx_id", tx_id)
 }
 
-#[cw_serde]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum TxType {
     Swap,
     DepositToken,
