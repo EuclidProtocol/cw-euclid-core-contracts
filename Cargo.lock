@@ -768,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "cw20"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -1016,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "escrow"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -1090,7 +1090,7 @@ dependencies = [
 
 [[package]]
 name = "factory"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -2084,7 +2084,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -2647,7 +2647,7 @@ dependencies = [
  "cw-orch-interchain",
  "cw-storage-plus",
  "cw-utils",
- "cw20 0.2.0",
+ "cw20 0.2.1",
  "escrow",
  "euclid",
  "factory",
@@ -2953,7 +2953,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "virtual_balance"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -2970,7 +2970,7 @@ dependencies = [
 
 [[package]]
 name = "vlp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
