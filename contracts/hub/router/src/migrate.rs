@@ -1,6 +1,6 @@
 use cosmwasm_std::{entry_point, DepsMut, Env, Response};
 use cw2::CONTRACT;
-use euclid::{error::ContractError, msgs::vlp::MigrateMsg};
+use euclid::{error::ContractError, msgs::router::MigrateMsg};
 
 use crate::state::TOKEN_DENOMS;
 

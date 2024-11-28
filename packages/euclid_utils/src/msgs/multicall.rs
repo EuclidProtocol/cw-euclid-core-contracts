@@ -33,3 +33,6 @@ pub struct SingleQueryResponse {
     pub result: Option<QueryResponse>,
     pub err: Option<String>,
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}
