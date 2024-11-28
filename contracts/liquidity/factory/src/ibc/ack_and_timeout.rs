@@ -5,6 +5,7 @@ use cosmwasm_std::{
     IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, ReplyOn, Response, StdError,
     StdResult, SubMsg, WasmMsg,
 };
+use cw20::Cw20Coin;
 use euclid::{
     deposit::DepositTokenResponse,
     error::ContractError,
@@ -275,7 +276,10 @@ fn ack_pool_creation(
                     name: lp_token_instantiate_data.name,
                     symbol: lp_token_instantiate_data.symbol,
                     decimals: lp_token_instantiate_data.decimals,
-                    initial_balances: vec![],
+                    initial_balances: vec![Cw20Coin {
+                        amount: data.mint_lp_tokens,
+                        address: data.sender.address,
+                    }],
                     mint: lp_token_instantiate_data.mint,
                     marketing: lp_token_instantiate_data.marketing,
                     vlp: data.vlp_contract,
