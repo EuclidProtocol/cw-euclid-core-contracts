@@ -1,6 +1,6 @@
 [package]
 name = "escrow"
-version = "0.2.0"
+version = "0.2.1"
 authors = [
   "gachouchani1999 <georgeschouchani1@gmail.com>",
   "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
