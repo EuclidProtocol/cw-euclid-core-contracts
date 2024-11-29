@@ -162,6 +162,7 @@ pub fn execute(
         ExecuteMsg::WithdrawVirtualBalance {
             token,
             amount,
+            preferred_denom,
             cross_chain_addresses,
             timeout,
         } => execute_withdraw_virtual_balance(
@@ -170,6 +171,7 @@ pub fn execute(
             info,
             token,
             amount,
+            preferred_denom,
             cross_chain_addresses,
             timeout,
         ),

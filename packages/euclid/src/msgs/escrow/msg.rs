@@ -15,15 +15,23 @@ pub struct InstantiateMsg {
 #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     // Updates allowed denoms
-    AddAllowedDenom { denom: TokenType },
+    AddAllowedDenom {
+        denom: TokenType,
+    },
     // Removes a denom from allowed denoms
-    DisallowDenom { denom: TokenType },
+    DisallowDenom {
+        denom: TokenType,
+    },
     DepositNative {},
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
 
     // Have a separate Msg for cw20 tokens? flow should be better if the message is unified
-    Withdraw { recipient: Addr, amount: Uint128 },
+    Withdraw {
+        recipient: Addr,
+        amount: Uint128,
+        preferred_denom: Option<TokenType>,
+    },
 }
 
 #[cw_serde]

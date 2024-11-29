@@ -298,6 +298,8 @@ pub fn remove_liquidity(
     // Prepare Liquidity Response
     let liquidity_response = VlpRemoveLiquidityResponse {
         burn_lp_tokens: lp_allocation,
+        //TODO
+        preferred_denom: None,
         tx_id: tx_id.clone(),
         sender: sender.clone(),
         vlp_address: env.contract.address.to_string(),

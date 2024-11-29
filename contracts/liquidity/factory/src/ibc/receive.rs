@@ -12,7 +12,7 @@ use euclid::{
         escrow::ExecuteMsg as EscrowExecuteMsg,
         factory::{ExecuteMsg, RegisterFactoryResponse, ReleaseEscrowResponse},
     },
-    token::Token,
+    token::{Token, TokenType},
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
@@ -88,8 +88,9 @@ pub fn reusable_internal_call(
             token,
             to_address,
             tx_id,
+            preferred_denom,
             ..
-        } => execute_release_escrow(deps, env, amount, token, to_address, tx_id),
+        } => execute_release_escrow(deps, env, amount, preferred_denom, token, to_address, tx_id),
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             execute_update_factory_channel(deps, env, chain_uid, tx_id)
         }
@@ -164,6 +165,7 @@ fn execute_release_escrow(
     deps: DepsMut,
     env: Env,
     amount: Uint128,
+    preferred_denom: Option<TokenType>,
     token: Token,
     to_address: String,
     tx_id: String,
@@ -171,6 +173,7 @@ fn execute_release_escrow(
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
         recipient: deps.api.addr_validate(&to_address)?,
         amount,
+        preferred_denom,
     };
 
     let ack_msg = ReleaseEscrowResponse {

@@ -103,6 +103,7 @@ pub fn execute(
                     sender,
                     token,
                     amount,
+                    preferred_denom,
                     cross_chain_addresses,
                     timeout,
                     tx_id,
@@ -112,6 +113,7 @@ pub fn execute(
                     info,
                     sender,
                     token,
+                    preferred_denom,
                     amount,
                     cross_chain_addresses,
                     timeout,
@@ -120,6 +122,7 @@ pub fn execute(
                 ExecuteMsg::WithdrawVoucher {
                     token,
                     amount,
+                    preferred_denom,
                     cross_chain_addresses,
                     timeout,
                 } => execute_withdraw_voucher(
@@ -128,6 +131,7 @@ pub fn execute(
                     info,
                     token,
                     amount,
+                    preferred_denom,
                     cross_chain_addresses,
                     timeout,
                 ),

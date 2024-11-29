@@ -63,6 +63,7 @@ pub enum ExecuteMsg {
     WithdrawVirtualBalance {
         token: Token,
         amount: Uint128,
+        preferred_denom: Option<TokenType>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },

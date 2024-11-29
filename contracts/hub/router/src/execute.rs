@@ -12,7 +12,7 @@ use euclid::{
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
-    token::Token,
+    token::{Token, TokenType},
     utils::tx::generate_tx,
     virtual_balance::BalanceKey,
 };
@@ -224,6 +224,7 @@ pub fn execute_withdraw_voucher(
     info: MessageInfo,
     token: Token,
     amount: Option<Uint128>,
+    preferred_denom: Option<TokenType>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -246,6 +247,7 @@ pub fn execute_withdraw_voucher(
             sender: cross_chain_user,
             token,
             amount,
+            preferred_denom,
             cross_chain_addresses,
             timeout,
             tx_id: tx_id.clone(),
@@ -265,6 +267,7 @@ pub fn execute_release_escrow(
     info: MessageInfo,
     sender: CrossChainUser,
     token: Token,
+    preferred_denom: Option<TokenType>,
     // Leaving this empty means that we will release the entire balance
     amount: Option<Uint128>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
@@ -379,6 +382,7 @@ pub fn execute_release_escrow(
         let send_msg = HubIbcExecuteMsg::ReleaseEscrow {
             sender: sender.clone(),
             amount: release_amount,
+            preferred_denom: preferred_denom.clone(),
             token: token.clone(),
             to_address: cross_chain_address.user.address.clone(),
             // We can't use same tx id because it might conflict with pending requests on receiving chain

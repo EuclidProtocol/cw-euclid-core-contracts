@@ -67,9 +67,11 @@ pub fn execute(
         ExecuteMsg::AddAllowedDenom { denom } => execute_add_allowed_denom(deps, env, info, denom),
         ExecuteMsg::DisallowDenom { denom } => execute_disallow_denom(deps, env, info, denom),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
-        ExecuteMsg::Withdraw { recipient, amount } => {
-            execute_withdraw(deps, env, info, recipient, amount)
-        }
+        ExecuteMsg::Withdraw {
+            recipient,
+            amount,
+            preferred_denom,
+        } => execute_withdraw(deps, env, info, recipient, amount, preferred_denom),
     }
 }
 

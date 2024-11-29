@@ -10,7 +10,7 @@ use euclid::{
     error::ContractError,
     msgs::{factory, router},
     swap::NextSwapPair,
-    token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
+    token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
 };
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -183,6 +183,7 @@ pub struct ChainIbcWithdrawExecuteMsg {
     // User will provide this
     pub token: Token,
     pub amount: Uint128,
+    pub preffered_denom: Option<TokenType>,
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     // Unique per tx
@@ -239,6 +240,7 @@ pub enum HubIbcExecuteMsg {
         chain_uid: ChainUid,
         sender: CrossChainUser,
         amount: Uint128,
+        preferred_denom: Option<TokenType>,
         token: Token,
         to_address: String,
 

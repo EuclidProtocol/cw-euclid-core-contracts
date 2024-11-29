@@ -210,6 +210,7 @@ pub fn execute_withdraw(
     info: MessageInfo,
     recipient: Addr,
     amount: Uint128,
+    preferred_denom: Option<TokenType>,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
@@ -221,32 +222,60 @@ pub fn execute_withdraw(
     ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
 
     let mut messages: Vec<CosmosMsg> = Vec::new();
-    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
-
     let mut remaining_withdraw_amount = amount;
-    // Ensure that the amount desired doesn't exceed the current balance
-    while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
-        let denom = allowed_denoms
-            .next()
-            .ok_or(ContractError::new("Denom Iter Faiiled"))?;
+    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
+    if let Some(preferred_denom) = preferred_denom {
+        ensure!(
+            allowed_denoms
+                .find(|denom| denom.get_key() == preferred_denom.get_key())
+                .is_some(),
+            ContractError::UnsupportedDenomination {}
+        );
+        let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, preferred_denom.get_key())?;
 
-        let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
+        ensure!(
+            denom_balance.ge(&amount),
+            ContractError::new("Insufficient balance in preferred denom",)
+        );
 
-        let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
-            denom_balance
-        } else {
-            remaining_withdraw_amount
-        };
+        let transfer_amount = remaining_withdraw_amount;
 
-        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
+        let send_msg =
+            preferred_denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
         messages.push(send_msg);
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
         DENOM_TO_AMOUNT.save(
             deps.storage,
-            denom.get_key(),
+            preferred_denom.get_key(),
             &denom_balance.checked_sub(transfer_amount)?,
         )?;
+    } else {
+        // Ensure that the amount desired doesn't exceed the current balance
+        while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
+            let denom = allowed_denoms
+                .next()
+                .ok_or(ContractError::new("Denom Iter Faiiled"))?;
+
+            let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
+
+            let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
+                denom_balance
+            } else {
+                remaining_withdraw_amount
+            };
+
+            let send_msg =
+                denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
+            messages.push(send_msg);
+            remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
+
+            DENOM_TO_AMOUNT.save(
+                deps.storage,
+                denom.get_key(),
+                &denom_balance.checked_sub(transfer_amount)?,
+            )?;
+        }
     }
 
     // After all the transfer messages, ensure that total amount that needs to be sent is zero

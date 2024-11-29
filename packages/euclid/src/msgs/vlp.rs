@@ -2,7 +2,7 @@ use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
     swap::NextSwapVlp,
-    token::{Pair, PairWithAmount, Token},
+    token::{Pair, PairWithAmount, Token, TokenType},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
@@ -167,6 +167,7 @@ pub struct MigrateMsg {}
 #[cw_serde]
 pub struct VlpRemoveLiquidityResponse {
     pub liquidity_released: PairWithAmount,
+    pub preferred_denom: Option<TokenType>,
     pub burn_lp_tokens: Uint128,
     pub tx_id: String,
     pub sender: CrossChainUser,

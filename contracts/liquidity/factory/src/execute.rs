@@ -1017,6 +1017,7 @@ pub fn execute_withdraw_virtual_balance(
     info: MessageInfo,
     token: Token,
     amount: Uint128,
+    preffered_denom: Option<TokenType>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -1038,6 +1039,7 @@ pub fn execute_withdraw_virtual_balance(
         sender,
         token,
         amount,
+        preffered_denom,
         cross_chain_addresses,
         tx_id: tx_id.clone(),
         timeout: Some(timeout),
