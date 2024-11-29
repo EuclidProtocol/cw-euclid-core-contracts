@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout,
-    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout, MessageInfo, Response,
+    Uint128,
 };
 use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
@@ -14,10 +14,10 @@ use euclid::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
         factory::cw20::FactoryCw20HookMsg,
     },
-    pool::{EscrowCreateRequest, PoolCreateRequest},
+    pool::{DenomRegisterDeregisterRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
-    token::{Pair, PairWithDenom, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::msg::{
@@ -28,9 +28,10 @@ use euclid_ibc::msg::{
 use crate::{
     ibc::receive,
     state::{
-        State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_ESCROW_REQUESTS,
-        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT,
-        STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+        State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_CW20,
     },
 };
 
@@ -58,20 +59,104 @@ pub fn execute_request_pool_creation(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
-    pair_with_denom: PairWithDenom,
+    pair_with_denom_and_amount: PairWithDenomAndAmount,
     lp_token_name: String,
     lp_token_symbol: String,
     lp_token_decimal: u8,
     lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+    slippage_tolerance_bps: u64,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let pair = pair_with_denom.get_pair()?;
+    ensure!(
+        slippage_tolerance_bps.le(&BPS_100_PERCENT),
+        ContractError::InvalidSlippageTolerance {}
+    );
+
+    let pair = pair_with_denom_and_amount.get_pair()?;
+    pair.validate()?;
+
     let state = STATE.load(deps.storage)?;
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid.clone(),
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    let mut res = Response::new();
+
+    // Changes factory state without sending liquidity request to router. That will be handled in Pool creation request's reply in router
+    // Add liquidity Section //
+    // Prepare msg vector
+    let mut msgs: Vec<CosmosMsg> = Vec::new();
+
+    let mut fund_manager = FundManager::new(&info.funds);
+    let mut one_token_already_exists = false;
+    // Do an early check for tokens escrow so that if it exists, it should allow the denom that we are sending
+    let tokens = pair_with_denom_and_amount.get_vec_token_info();
+    for token in tokens {
+        // Validate token id
+        token.token.validate()?;
+
+        // Vouchers are not escrowed
+        if !token.token_type.is_voucher() {
+            match token.token_type.clone() {
+                TokenType::Native { denom } => {
+                    // Use funds, if its not present this will throw error.
+                    // This will make sure enough funds are provided with the message
+                    fund_manager.use_fund(token.amount, &denom)?;
+                }
+                TokenType::Smart { .. } => {
+                    let msg = token.token_type.create_transfer_msg(
+                        token.amount,
+                        env.contract.address.clone().to_string(),
+                        Some(sender.address.clone()),
+                    )?;
+                    msgs.push(msg);
+                }
+                TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
+            }
+            // Ensure valid denom if token already exists
+            let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
+            if let Some(escrow_address) = escrow_address {
+                let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
+                    denom: token.clone().token_type,
+                };
+                let token_allowed: AllowedTokenResponse = deps
+                    .querier
+                    .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+
+                ensure!(
+                    token_allowed.allowed,
+                    ContractError::UnsupportedDenomination {}
+                );
+                one_token_already_exists = true;
+            }
+        } else {
+            // If its a voucher token, then we can assume that one token already exists
+            one_token_already_exists = true;
+        }
+    }
+
+    ensure!(
+        fund_manager.validate_funds_are_empty().is_ok(),
+        ContractError::new("Extra funds are not allowed")
+    );
+
+    ensure!(
+        one_token_already_exists,
+        ContractError::new(
+            "Cannot create pool two new tokens. Atleast one token must already be registered."
+        )
+    );
+
+    res = res.add_messages(msgs);
+
+    let pair = pair_with_denom_and_amount.get_pair()?;
+    // Ensure tokens in pair are different
+    ensure!(
+        pair.token_1 != pair.token_2,
+        ContractError::new("Cannot create pool with same token")
+    );
 
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
@@ -81,42 +166,12 @@ pub fn execute_request_pool_creation(
         !PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
         ContractError::PoolAlreadyExists {}
     );
-    let mut one_token_already_exists = false;
-    let tokens = pair_with_denom.get_vec_token_info();
-    for token in tokens {
-        // Vouchers are not escrowed
-        if token.token_type.is_voucher() {
-            // If its a voucher token, then we can assume that one token already exists
-            one_token_already_exists = true;
-            continue;
-        }
 
-        // Ensure valid denom if token already exists
-        let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
-        if let Some(escrow_address) = escrow_address {
-            let token_allowed_query_msg = EscrowQueryMsg::TokenAllowed {
-                denom: token.clone().token_type,
-            };
-            let token_allowed: AllowedTokenResponse = deps
-                .querier
-                .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
-
-            ensure!(
-                token_allowed.allowed,
-                ContractError::UnsupportedDenomination {}
-            );
-            one_token_already_exists = true;
-        }
-    }
-
-    ensure!(
-        one_token_already_exists,
-        ContractError::new(
-            "Cannot create pool two new tokens. Atleast one token must already be registered."
-        )
-    );
-
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let timeout = get_timeout(timeout)?;
 
     // We might get errors in ack if marketing is not valid
@@ -149,16 +204,17 @@ pub fn execute_request_pool_creation(
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
-        pair_info: pair_with_denom.clone(),
+        pair_info: pair_with_denom_and_amount.clone(),
         lp_token_instantiate_msg,
     };
 
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
-        pair: pair_with_denom,
+        pair: pair_with_denom_and_amount,
         sender,
         tx_id: tx_id.clone(),
+        slippage_tolerance_bps,
     }
     .to_msg(
         deps,
@@ -170,7 +226,7 @@ pub fn execute_request_pool_creation(
         timeout,
     )?;
 
-    Ok(Response::new()
+    Ok(res
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
@@ -179,73 +235,6 @@ pub fn execute_request_pool_creation(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation")
         .add_submessage(pool_create_msg))
-}
-
-pub fn execute_request_register_escrow(
-    deps: &mut DepsMut,
-    env: Env,
-    info: MessageInfo,
-    token: TokenWithDenom,
-    timeout: Option<u64>,
-) -> Result<Response, ContractError> {
-    // Vouchers are not escrowed
-    ensure!(
-        !token.token_type.is_voucher(),
-        ContractError::UnsupportedDenomination {}
-    );
-
-    let state = STATE.load(deps.storage)?;
-    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
-
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
-    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
-
-    ensure!(
-        !PENDING_ESCROW_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
-        ContractError::TxAlreadyExist {}
-    );
-
-    let escrow_address = TOKEN_TO_ESCROW.has(deps.storage, token.clone().token);
-    ensure!(!escrow_address, ContractError::TokenAlreadyExist {});
-
-    let channel = HUB_CHANNEL.load(deps.storage)?;
-    let timeout = get_timeout(timeout)?;
-
-    let register_escrow_msg = ChainIbcExecuteMsg::RequestEscrowCreation {
-        token: token.clone().token,
-        sender,
-        tx_id: tx_id.clone(),
-    }
-    .to_msg(
-        deps,
-        &env,
-        state.router_contract,
-        state.chain_uid,
-        state.is_native,
-        channel,
-        timeout,
-    )?;
-
-    let req = EscrowCreateRequest {
-        tx_id: tx_id.clone(),
-        sender: info.sender.to_string(),
-        token,
-    };
-
-    PENDING_ESCROW_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
-
-    Ok(Response::new()
-        .add_event(tx_event(
-            &tx_id,
-            info.sender.as_str(),
-            euclid::events::TxType::PoolCreation,
-        ))
-        .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "request_escrow_creation")
-        .add_submessage(register_escrow_msg))
 }
 
 // Add liquidity to the pool
@@ -258,7 +247,6 @@ pub fn add_liquidity_request(
     slippage_tolerance_bps: u64,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    pair_info.validate()?;
     let pair = pair_info.get_pair()?;
 
     // Check that slippage tolerance is between 1 and 100
@@ -283,7 +271,11 @@ pub fn add_liquidity_request(
         ContractError::PoolDoesNotExist {}
     );
 
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let timeout = get_timeout(timeout)?;
 
     // Prepare msg vector
@@ -293,6 +285,9 @@ pub fn add_liquidity_request(
     // Do an early check for tokens escrow so that if it exists, it should allow the denom that we are sending
     let tokens = pair_info.get_vec_token_info();
     for token in tokens {
+        // validate token
+        token.token_type.validate(deps.as_ref())?;
+
         // Ensure liquidity is not zero
         ensure!(!token.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -414,7 +409,11 @@ pub fn remove_liquidity_request(
     );
     // TODO: Do we want to add check for lp shares for early fail?
 
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let timeout = get_timeout(timeout)?;
 
     // Check that the liquidity is greater than 0
@@ -479,7 +478,8 @@ pub fn execute_swap_request(
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
     // Validate asset in
-    asset_in.validate(deps.as_ref())?;
+    asset_in.token_type.validate(deps.as_ref())?;
+    asset_in.token.validate()?;
 
     let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
@@ -564,7 +564,11 @@ pub fn execute_swap_request(
         ContractError::new("Amount out doesn't match swap route")
     );
 
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let timeout = get_timeout(timeout)?;
 
     let partner_fee_recipient = partner_fee
@@ -650,10 +654,15 @@ pub fn execute_deposit_token(
     let recipient = recipient.unwrap_or(sender.clone());
 
     // Validate asset in
-    asset_in.validate(deps.as_ref())?;
+    asset_in.token.validate()?;
+    asset_in.token_type.validate(deps.as_ref())?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
 
     let timeout = get_timeout(timeout)?;
 
@@ -827,63 +836,179 @@ pub fn receive_cw20(
     }
 }
 
-// New factory functions //
 pub fn execute_request_register_denom(
-    deps: DepsMut,
+    deps: &mut DepsMut,
+    env: Env,
     info: MessageInfo,
     token: TokenWithDenom,
+    timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let admin = STATE.load(deps.storage)?.admin;
+    // Vouchers are not registered
     ensure!(
-        admin == info.sender.into_string(),
-        ContractError::Unauthorized {}
+        !token.token_type.is_voucher(),
+        ContractError::UnsupportedDenomination {}
     );
 
-    let escrow_address = TOKEN_TO_ESCROW
-        .load(deps.storage, token.token.clone())
-        .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
+    let state = STATE.load(deps.storage)?;
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
 
-    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: escrow_address.into_string(),
-        msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom {
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid.clone(),
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        !PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
+            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
+    if let Some(escrow_address) = escrow_address {
+        let denom_allowed_msg = EscrowQueryMsg::TokenAllowed {
             denom: token.token_type.clone(),
-        })?,
-        funds: vec![],
-    });
+        };
+        let denom_allowed: AllowedTokenResponse = deps
+            .querier
+            .query_wasm_smart(escrow_address, &denom_allowed_msg)?;
+
+        // Denom should not be already registered
+        ensure!(
+            !denom_allowed.allowed,
+            ContractError::EscrowAlreadyExists {}
+        );
+    }
+
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
+    let timeout = get_timeout(timeout)?;
+
+    let request_register_denom_msg = ChainIbcExecuteMsg::RegisterDenom {
+        token: token.clone(),
+        sender,
+        tx_id: tx_id.clone(),
+    }
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel,
+        timeout,
+    )?;
+
+    let req = DenomRegisterDeregisterRequest {
+        tx_id: tx_id.clone(),
+        sender: info.sender.to_string(),
+        token: token.clone(),
+    };
+
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.save(
+        deps.storage,
+        (info.sender.clone(), tx_id.clone()),
+        &req,
+    )?;
+
     Ok(Response::new()
-        .add_submessage(SubMsg::new(msg))
-        .add_attribute("method", "request_add_allowed_denom")
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::PoolCreation,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "request_register_denom")
         .add_attribute("token", token.token.to_string())
-        .add_attribute("denom", token.token_type.get_key()))
+        .add_attribute("token_type", token.token_type.get_key())
+        .add_submessage(request_register_denom_msg))
 }
 
 pub fn execute_request_deregister_denom(
-    deps: DepsMut,
+    deps: &mut DepsMut,
+    env: Env,
     info: MessageInfo,
     token: TokenWithDenom,
+    timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
-    let admin = STATE.load(deps.storage)?.admin;
+    // Vouchers are not registered
     ensure!(
-        admin == info.sender.into_string(),
-        ContractError::Unauthorized {}
+        !token.token_type.is_voucher(),
+        ContractError::UnsupportedDenomination {}
     );
 
-    let escrow_address = TOKEN_TO_ESCROW
-        .load(deps.storage, token.token.clone())
-        .map_err(|_err| ContractError::EscrowDoesNotExist {})?;
+    let state = STATE.load(deps.storage)?;
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
 
-    let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: escrow_address.into_string(),
-        msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom {
-            denom: token.token_type.clone(),
-        })?,
-        funds: vec![],
-    });
+    let sender = CrossChainUser {
+        address: info.sender.to_string(),
+        chain_uid: state.chain_uid.clone(),
+    };
+    let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    ensure!(
+        !PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
+            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone())?;
+    let denom_allowed_msg = EscrowQueryMsg::TokenAllowed {
+        denom: token.token_type.clone(),
+    };
+    let denom_allowed: AllowedTokenResponse = deps
+        .querier
+        .query_wasm_smart(escrow_address, &denom_allowed_msg)?;
+
+    // Denom should be allowed for it to be available for deregister
+    ensure!(denom_allowed.allowed, ContractError::AssetDoesNotExist {});
+
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
+    let timeout = get_timeout(timeout)?;
+
+    let request_deregister_denom_msg = ChainIbcExecuteMsg::DeRegisterDenom {
+        token: token.clone(),
+        sender,
+        tx_id: tx_id.clone(),
+    }
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        state.chain_uid,
+        state.is_native,
+        channel,
+        timeout,
+    )?;
+
+    let req = DenomRegisterDeregisterRequest {
+        tx_id: tx_id.clone(),
+        sender: info.sender.to_string(),
+        token: token.clone(),
+    };
+
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.save(
+        deps.storage,
+        (info.sender.clone(), tx_id.clone()),
+        &req,
+    )?;
+
     Ok(Response::new()
-        .add_submessage(SubMsg::new(msg))
-        .add_attribute("method", "request_disallow_denom")
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::PoolCreation,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "request_deregister_denom")
         .add_attribute("token", token.token.to_string())
-        .add_attribute("denom", token.token_type.get_key()))
+        .add_attribute("token_type", token.token_type.get_key())
+        .add_submessage(request_deregister_denom_msg))
 }
 
 pub fn execute_withdraw_virtual_balance(
@@ -897,7 +1022,11 @@ pub fn execute_withdraw_virtual_balance(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid.clone(),
@@ -951,7 +1080,11 @@ pub fn execute_transfer_virtual_balance(
 
     let state = STATE.load(deps.storage)?;
 
-    let channel = HUB_CHANNEL.load(deps.storage)?;
+    let channel = if !state.is_native {
+        HUB_CHANNEL.load(deps.storage)?
+    } else {
+        String::default()
+    };
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid.clone(),

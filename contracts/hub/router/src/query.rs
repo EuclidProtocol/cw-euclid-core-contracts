@@ -6,14 +6,15 @@ use euclid::{
     msgs::router::{
         AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
         EscrowResponse, QuerySimulateSwap, SimulateEscrowReleaseResponse, SimulateSwapResponse,
-        StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
+        StateResponse, TokenDenomsResponse, TokenEscrowChainResponse, TokenEscrowsResponse,
+        VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
     utils::pagination::{Pagination, DEFAULT_PAGINATION_LIMIT, DEFAULT_PAGINATION_SKIP},
 };
 
-use crate::state::{CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, STATE, TOKEN_VLPS, VLPS};
+use crate::state::{CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, STATE, TOKEN_DENOMS, VLPS};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -296,7 +297,7 @@ pub fn query_all_tokens(
 
     let start = start.map(Bound::inclusive);
     let end = end.map(Bound::exclusive);
-    let tokens = TOKEN_VLPS
+    let tokens = TOKEN_DENOMS
         .keys(deps.storage, start, end, Order::Ascending)
         .skip(skip.unwrap_or(DEFAULT_PAGINATION_SKIP) as usize)
         .take(limit.unwrap_or(DEFAULT_PAGINATION_LIMIT) as usize)
@@ -304,6 +305,11 @@ pub fn query_all_tokens(
         .collect();
 
     Ok(to_json_binary(&AllTokensResponse { tokens })?)
+}
+
+pub fn query_token_denoms(deps: Deps, token: Token) -> Result<Binary, ContractError> {
+    let denoms = TOKEN_DENOMS.load(deps.storage, token)?;
+    Ok(to_json_binary(&TokenDenomsResponse { denoms })?)
 }
 
 pub fn verify_cross_chain_addresses(

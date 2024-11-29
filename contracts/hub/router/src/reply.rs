@@ -23,8 +23,8 @@ use euclid_ibc::{
 };
 
 use crate::{
-    ibc,
-    state::{PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
+    ibc::{self, receive::ibc_execute_add_liquidity},
+    state::{FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
 };
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
@@ -67,29 +67,29 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 (liquidity.pair.token_1, liquidity.pair.token_2),
                 &vlp_address,
             )?;
+            let pool_creation_response = from_json::<PoolCreationResponse>(
+                instantiate_data.data.clone().unwrap_or_default(),
+            )?;
+            let (funds, slippage_tolerance_bps) = FUNDS_INFO
+                .load(deps.storage)
+                .map_err(|_| ContractError::InsufficientFunds {})?;
 
-            let pool_creation_response =
-                from_json::<PoolCreationResponse>(instantiate_data.data.unwrap_or_default());
+            let response = ibc_execute_add_liquidity(
+                deps,
+                pool_creation_response.sender.clone(),
+                funds,
+                slippage_tolerance_bps,
+                pool_creation_response.tx_id.clone(),
+            )?;
 
-            // This is probably IBC Message so send ok Ack as data
-            if pool_creation_response.is_ok() {
-                let ack = AcknowledgementMsg::Ok(pool_creation_response?);
-
-                Ok(Response::new()
-                    .add_attribute("action", "reply_vlp_instantiate")
-                    .add_attribute("vlp", vlp_address)
-                    .add_attribute("action", "reply_pool_register")
-                    .set_data(to_json_binary(&ack)?))
-            } else {
-                Ok(Response::new()
-                    .add_attribute("action", "reply_vlp_instantiate")
-                    .add_attribute("vlp", vlp_address))
-            }
+            Ok(response
+                .add_attribute("action", "reply_vlp_instantiate")
+                .add_attribute("vlp", vlp_address))
         }
     }
 }
 
-pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -99,12 +99,23 @@ pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
                 })?;
             let pool_creation_response: PoolCreationResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
-
             let vlp_address = pool_creation_response.vlp_contract.clone();
+            let ack = AcknowledgementMsg::Ok(pool_creation_response.clone());
 
-            let ack = AcknowledgementMsg::Ok(pool_creation_response);
+            let funds_info = FUNDS_INFO.may_load(deps.storage)?;
 
-            Ok(Response::new()
+            let mut response = Response::new();
+            if let Some((funds, slippage_tolerance_bps)) = funds_info {
+                response = ibc_execute_add_liquidity(
+                    deps,
+                    pool_creation_response.sender,
+                    funds,
+                    slippage_tolerance_bps,
+                    pool_creation_response.tx_id,
+                )?;
+            }
+
+            Ok(response
                 .add_attribute("action", "reply_pool_register")
                 .add_attribute("vlp", vlp_address)
                 .set_data(to_json_binary(&ack)?))
@@ -112,7 +123,7 @@ pub fn on_pool_register_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
     }
 }
 
-pub fn on_add_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
@@ -123,12 +134,30 @@ pub fn on_add_liquidity_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Co
             let liquidity_response: AddLiquidityResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
 
-            let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
+            let mut res = Response::new();
+            let funds = FUNDS_INFO.may_load(deps.storage)?;
+            match funds {
+                Some(_) => {
+                    let pool_response = PoolCreationResponse {
+                        mint_lp_tokens: liquidity_response.mint_lp_tokens,
+                        vlp_contract: liquidity_response.vlp_address.clone(),
+                        tx_id: liquidity_response.tx_id.clone(),
+                        sender: liquidity_response.sender.clone(),
+                    };
+                    FUNDS_INFO.remove(deps.storage);
 
-            Ok(Response::new()
+                    let ack = AcknowledgementMsg::Ok(pool_response);
+                    res = res.set_data(to_json_binary(&ack)?);
+                }
+                None => {
+                    let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
+                    res = res.set_data(to_json_binary(&ack)?);
+                }
+            }
+
+            Ok(res
                 .add_attribute("action", "reply_add_liquidity")
-                .add_attribute("liquidity", format!("{liquidity_response:?}"))
-                .set_data(to_json_binary(&ack)?))
+                .add_attribute("liquidity", format!("{liquidity_response:?}")))
         }
     }
 }

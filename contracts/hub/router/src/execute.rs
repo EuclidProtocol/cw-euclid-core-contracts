@@ -6,7 +6,6 @@ use cosmwasm_std::{
 use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
     error::ContractError,
-    escrow::ReleaseEscrowInternalResponse,
     events::{tx_event, TxType},
     msgs::{
         router::{ExecuteMsg, RegisterFactoryChainType},
@@ -97,7 +96,6 @@ pub fn execute_register_factory(
     chain_info: RegisterFactoryChainType,
 ) -> Result<Response, ContractError> {
     let chain_uid = chain_uid.validate()?.to_owned();
-
     ensure!(
         !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
         ContractError::new("Factory already exists")
@@ -391,8 +389,9 @@ pub fn execute_release_escrow(
 
         response = response.add_attribute(
             format!(
-                "release_escrow_expected_{sender}",
-                sender = cross_chain_address.user.to_sender_string()
+                "release_escrow_expected_{token}_{sender}",
+                sender = cross_chain_address.user.to_sender_string(),
+                token = token
             ),
             release_amount,
         );
@@ -425,14 +424,11 @@ pub fn execute_release_escrow(
     }
 
     Ok(response
-        .add_attribute("method", "release_escrow")
+        .add_attribute("method", "release_escrow_initiate")
+        .add_attribute("token", token.to_string())
         .add_attribute("release_expected", amount)
-        .add_attribute("actual_released", transfer_amount)
-        .add_submessages(release_msgs)
-        .set_data(to_json_binary(&ReleaseEscrowInternalResponse {
-            amount_out: transfer_amount,
-            tx_id,
-        })?))
+        .add_attribute("release_initiated", transfer_amount)
+        .add_submessages(release_msgs))
 }
 
 pub fn execute_native_receive_callback(

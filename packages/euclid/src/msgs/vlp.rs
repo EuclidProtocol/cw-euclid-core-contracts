@@ -26,7 +26,6 @@ pub enum ExecuteMsg {
         tx_id: String,
     },
 
-    // Registers a new pool from a new chain to an already existing VLP
     UpdateFee {
         lp_fee_bps: Option<u64>,
         euclid_fee_bps: Option<u64>,
@@ -47,6 +46,7 @@ pub enum ExecuteMsg {
         tx_id: String,
         liquidity: PairWithAmount,
         slippage_tolerance_bps: u64,
+        called_by_register_pool_with_funds: bool,
     },
     RemoveLiquidity {
         sender: CrossChainUser,

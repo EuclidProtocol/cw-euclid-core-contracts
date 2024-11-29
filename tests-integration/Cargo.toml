@@ -14,6 +14,7 @@ virtual_balance = { path = "../contracts/hub/virtual_balance" }
 vlp = { path = "../contracts/hub/vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }
+cw20 = { path = "../contracts/liquidity/cw20" }
 
 
 #Other Crates
@@ -26,8 +27,9 @@ cw-storage-plus = { workspace = true }
 itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
 cw-utils = { workspace = true }
-cw-orch = "=0.23.0"
-cw-orch-interchain = "=0.1.0"
+cw-orch = "=0.24.1"
+cw-orch-interchain = "=0.3.0"
+ibc-relayer-types = "=0.25.1"
 
 anyhow = "1.0.79"
 

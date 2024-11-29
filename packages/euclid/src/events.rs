@@ -3,7 +3,11 @@ use core::fmt;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Event;
 
-use crate::{deposit::DepositTokenRequest, swap::SwapRequest, token::TokenWithAmount};
+use crate::{
+    deposit::DepositTokenRequest,
+    swap::SwapRequest,
+    token::{Token, TokenType, TokenWithAmount},
+};
 
 pub fn liquidity_event(
     pool: &[TokenWithAmount],
@@ -73,7 +77,8 @@ pub enum TxType {
     AddLiquidity,
     RemoveLiquidity,
     PoolCreation,
-    EscrowCreation,
+    RegisterDenom,
+    DeregisterDenom,
     EscrowRelease,
     TransferVirtualBalance,
     EscrowWithdraw,
@@ -91,7 +96,8 @@ impl fmt::Display for TxType {
             TxType::AddLiquidity => "add_liquidity",
             TxType::RemoveLiquidity => "remove_liquidity",
             TxType::PoolCreation => "pool_creation",
-            TxType::EscrowCreation => "escrow_creation",
+            TxType::RegisterDenom => "register_denom",
+            TxType::DeregisterDenom => "deregister_denom",
             TxType::EscrowRelease => "escrow_release",
             TxType::TransferVirtualBalance => "transfer_virtual_balance",
             TxType::EscrowWithdraw => "escrow_withdraw",
@@ -115,4 +121,18 @@ pub fn tx_event(tx_id: &str, sender: &str, tx_type: TxType) -> Event {
 
 pub fn simple_event() -> Event {
     Event::new("euclid").add_attribute("version", "1.0.0")
+}
+
+pub fn register_denom_event(token: &Token, chain_uid: &str, denom: &TokenType) -> Event {
+    Event::new("euclid-register-denom")
+        .add_attribute("token", token.to_string())
+        .add_attribute(format!("{}_chain_uid", token), chain_uid)
+        .add_attribute(format!("{}_denom", token), denom.get_key())
+}
+
+pub fn deregister_denom_event(token: &Token, chain_uid: &str, denom: &TokenType) -> Event {
+    Event::new("euclid-deregister-denom")
+        .add_attribute("token", token.to_string())
+        .add_attribute(format!("{}_chain_uid", token), chain_uid)
+        .add_attribute(format!("{}_denom", token), denom.get_key())
 }

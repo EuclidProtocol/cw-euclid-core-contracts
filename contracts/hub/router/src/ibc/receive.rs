@@ -2,22 +2,22 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, MessageInfo, Order, Response, StdError, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     deposit::DepositTokenResponse,
     error::ContractError,
-    events::{tx_event, TxType},
+    events::{deregister_denom_event, register_denom_event, tx_event, TxType},
     fee::Fee,
     msgs::{
         self,
-        router::ExecuteMsg,
+        router::{ExecuteMsg, TokenDenom},
         virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceMsg, ExecuteTransfer},
     },
-    pool::EscrowCreationResponse,
+    pool::{DeRegisterDenomResponse, RegisterDenomResponse},
     swap::{TransferResponse, WithdrawResponse},
-    token::{PairWithDenom, PairWithDenomAndAmount, Token},
+    token::{PairWithDenomAndAmount, TokenWithDenom},
     virtual_balance::BalanceKey,
 };
 use euclid_ibc::{
@@ -35,8 +35,8 @@ use crate::{
         VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, VLPS,
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
+        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS, VLPS,
     },
 };
 
@@ -77,7 +77,6 @@ pub fn ibc_receive_internal_call(
     // Get the chain data from current channel received
     let channel = msg.packet.dest.channel_id;
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
-
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
 
     // Ensure source port is the registered factory
@@ -111,14 +110,22 @@ pub fn reusable_internal_call(
             pair,
             sender,
             tx_id,
+            slippage_tolerance_bps,
         } => {
             ensure!(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_pool_creation(deps.branch(), env, sender, pair, tx_id)
+            execute_request_pool_creation(
+                deps.branch(),
+                env,
+                sender,
+                pair,
+                tx_id,
+                slippage_tolerance_bps,
+            )
         }
-        ChainIbcExecuteMsg::RequestEscrowCreation {
+        ChainIbcExecuteMsg::RegisterDenom {
             token,
             sender,
             tx_id,
@@ -127,7 +134,18 @@ pub fn reusable_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_request_escrow_creation(deps.branch(), env, sender, token, tx_id)
+            execute_register_denom(deps.branch(), env, sender, token, tx_id)
+        }
+        ChainIbcExecuteMsg::DeRegisterDenom {
+            token,
+            sender,
+            tx_id,
+        } => {
+            ensure!(
+                sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            execute_deregister_denom(deps.branch(), env, sender, token, tx_id)
         }
         ChainIbcExecuteMsg::AddLiquidity {
             slippage_tolerance_bps,
@@ -140,14 +158,7 @@ pub fn reusable_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_add_liquidity(
-                deps.branch(),
-                env,
-                sender,
-                pair,
-                slippage_tolerance_bps,
-                tx_id,
-            )
+            ibc_execute_add_liquidity(deps.branch(), sender, pair, slippage_tolerance_bps, tx_id)
         }
         ChainIbcExecuteMsg::RemoveLiquidity(msg) => {
             ensure!(
@@ -190,32 +201,11 @@ pub fn reusable_internal_call(
                 }))?))
         }
         ChainIbcExecuteMsg::Transfer(msg) => {
-            {
-                ensure!(
-                    msg.sender.chain_uid == chain_uid,
-                    ContractError::new("Chain UID mismatch")
-                );
-                ibc_execute_transfer_virtual_balance(deps.branch(), env, msg)
-            }
-            // let release_msg = ExecuteMsg::ReleaseEscrowInternal {
-            //     sender: msg.sender,
-            //     token: msg.token.clone(),
-            //     amount: Some(msg.amount),
-            //     cross_chain_addresses: msg.recipient_addresses,
-            //     timeout: msg.timeout,
-            //     tx_id: msg.tx_id.clone(),
-            // };
-
-            // Ok(Response::new()
-            //     .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            //         contract_addr: env.contract.address.to_string(),
-            //         msg: to_json_binary(&release_msg)?,
-            //         funds: vec![],
-            //     }))
-            //     .set_data(to_json_binary(&AcknowledgementMsg::Ok(TransferResponse {
-            //         token: msg.token,
-            //         tx_id: msg.tx_id,
-            //     }))?))
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            ibc_execute_transfer_virtual_balance(deps.branch(), env, msg)
         }
         ChainIbcExecuteMsg::DepositToken(msg) => {
             ensure!(
@@ -232,75 +222,85 @@ fn execute_request_pool_creation(
     deps: DepsMut,
     env: Env,
     sender: CrossChainUser,
-    pair_with_denom: PairWithDenom,
+    pair_with_denom: PairWithDenomAndAmount,
     tx_id: String,
+    slippage_tolerance_bps: u64,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     let pair = pair_with_denom.get_pair()?;
     pair.validate()?;
 
-    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
-        sender: sender.clone(),
-        pair: pair.clone(),
-        tx_id: tx_id.clone(),
-    };
-
-    let response = Response::new()
+    let mut response = Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
             TxType::PoolCreation,
         ))
-        .add_attribute("tx_id", tx_id)
+        .add_attribute("tx_id", tx_id.clone())
         .add_attribute("method", "request_pool_creation");
 
     let mut one_token_already_exists = false;
 
     for token in pair_with_denom.get_vec_token_info() {
-        // Check if token is already validated. Its validated if it has an escrow on sender chain
-        let mut validated_token = ESCROW_BALANCES.has(
-            deps.storage,
-            (token.token.clone(), sender.clone().chain_uid),
-        );
+        let mut registered_denoms = TOKEN_DENOMS
+            .may_load(deps.storage, token.token.clone())?
+            .unwrap_or_default();
 
-        // Check if token is already present on any chain
-        let range = ESCROW_BALANCES.prefix(token.token).keys_raw(
-            deps.storage,
-            None,
-            None,
-            Order::Ascending,
-        );
+        one_token_already_exists = one_token_already_exists || !registered_denoms.is_empty();
 
-        let token_exists_on_any_chain = range.take(1).count() > 0;
-        if token_exists_on_any_chain {
-            one_token_already_exists = true;
-        }
-
+        // If its a voucher, then we need to check if this token atleast exist on one of the chains
         if token.token_type.is_voucher() {
             ensure!(
-                token_exists_on_any_chain,
+                !registered_denoms.is_empty(),
                 ContractError::new(
                     "Cannot create pool with voucher token that doesn't exist on any chain"
                 )
             );
-            // Voucher token is valid if it exists on any chain
-            validated_token = true;
+        } else {
+            let token_registered_on_sender_chain = registered_denoms.iter().any(|denom| {
+                denom.chain_uid == sender.chain_uid && denom.token_type == token.token_type
+            });
+            // If its not a voucher, then this token must be present on sender chain with sent denom or its completely new token
+            ensure!(
+                registered_denoms.is_empty() || token_registered_on_sender_chain,
+                ContractError::new(
+                    format!(
+                        "Token: {}:: sCannot use already existing denom without register first",
+                        token.token
+                    )
+                    .as_str()
+                )
+            );
+            // If its not a registered denom, lets register it now
+            if !token_registered_on_sender_chain {
+                registered_denoms.push(TokenDenom {
+                    chain_uid: sender.chain_uid.clone(),
+                    token_type: token.token_type.clone(),
+                });
+                TOKEN_DENOMS.save(deps.storage, token.token.clone(), &registered_denoms)?;
+                response = response.add_event(register_denom_event(
+                    &token.token,
+                    &sender.chain_uid.to_string(),
+                    &token.token_type,
+                ));
+            }
         }
-
-        // There are two cases
-        // token already exists on the sender chain - We can safely assume that this was validated already by factory so allow pool creation
-        // token not present in sender chain -  This token should not have escrow on any other chain, i.e. This should be completely new token
-        ensure!(
-            validated_token || !token_exists_on_any_chain,
-            ContractError::new("Cannot use already existing token without registering it first")
-        )
     }
 
+    // Cannot create pool if both tokens are new
     ensure!(
         one_token_already_exists,
         ContractError::new("Cannot create pool with two new tokens")
     );
+
+    FUNDS_INFO.save(deps.storage, &(pair_with_denom, slippage_tolerance_bps))?;
+
+    let register_msg = msgs::vlp::ExecuteMsg::RegisterPool {
+        sender: sender.clone(),
+        pair: pair.clone(),
+        tx_id,
+    };
 
     let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
     // If vlp is already there, send execute msg to it to register the pool, else create a new pool with register msg attached to instantiate msg
@@ -339,43 +339,103 @@ fn execute_request_pool_creation(
             funds: vec![],
             label: "VLP".to_string(),
         };
+
         Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_INSTANTIATE_REPLY_ID)))
     }
 }
 
-fn execute_request_escrow_creation(
+fn execute_register_denom(
     deps: DepsMut,
     _env: Env,
     sender: CrossChainUser,
-    token: Token,
+    token: TokenWithDenom,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    token.validate()?;
+    token.token.validate()?;
 
-    let token_exists = ESCROW_BALANCES.has(deps.storage, (token.clone(), sender.clone().chain_uid));
+    let mut token_denoms = TOKEN_DENOMS
+        .load(deps.storage, token.token.clone())
+        .unwrap_or_default();
+
+    let token_exists = token_denoms
+        .iter()
+        .any(|denom| denom.chain_uid == sender.chain_uid && denom.token_type == token.token_type);
+
     ensure!(!token_exists, ContractError::TokenAlreadyExist {});
 
-    ESCROW_BALANCES.save(
-        deps.storage,
-        (token.clone(), sender.clone().chain_uid),
-        &Uint128::zero(),
-    )?;
+    token_denoms.push(TokenDenom {
+        chain_uid: sender.chain_uid.clone(),
+        token_type: token.token_type.clone(),
+    });
 
-    let ack = AcknowledgementMsg::Ok(EscrowCreationResponse {});
+    TOKEN_DENOMS.save(deps.storage, token.token.clone(), &token_denoms)?;
+
+    let ack: AcknowledgementMsg<RegisterDenomResponse> =
+        AcknowledgementMsg::Ok(RegisterDenomResponse {});
+
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
-            TxType::EscrowCreation,
+            TxType::RegisterDenom,
+        ))
+        .add_event(register_denom_event(
+            &token.token,
+            &sender.chain_uid.to_string(),
+            &token.token_type,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "request_escrow_creation")
+        .add_attribute("method", "execute_register_denom")
         .set_data(to_json_binary(&ack)?))
 }
 
-fn ibc_execute_add_liquidity(
+fn execute_deregister_denom(
     deps: DepsMut,
     _env: Env,
+    sender: CrossChainUser,
+    token: TokenWithDenom,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    token.token.validate()?;
+
+    let mut token_denoms = TOKEN_DENOMS
+        .load(deps.storage, token.token.clone())
+        .unwrap_or_default();
+
+    let token_exists = token_denoms
+        .iter()
+        .any(|denom| denom.chain_uid == sender.chain_uid && denom.token_type == token.token_type);
+
+    ensure!(token_exists, ContractError::AssetDoesNotExist {});
+
+    // Remove the denom from list
+    token_denoms.retain(|denom| {
+        denom.chain_uid != sender.chain_uid || denom.token_type != token.token_type
+    });
+
+    TOKEN_DENOMS.save(deps.storage, token.token.clone(), &token_denoms)?;
+
+    let ack: AcknowledgementMsg<DeRegisterDenomResponse> =
+        AcknowledgementMsg::Ok(DeRegisterDenomResponse {});
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::DeregisterDenom,
+        ))
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "execute_deregister_denom")
+        .add_event(deregister_denom_event(
+            &token.token,
+            &sender.chain_uid.to_string(),
+            &token.token_type,
+        ))
+        .set_data(to_json_binary(&ack)?))
+}
+
+pub fn ibc_execute_add_liquidity(
+    deps: DepsMut,
     sender: CrossChainUser,
     pair: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
@@ -461,6 +521,7 @@ fn ibc_execute_add_liquidity(
         sender,
         tx_id,
         slippage_tolerance_bps,
+        called_by_register_pool_with_funds: false,
     };
 
     let msg = WasmMsg::Execute {

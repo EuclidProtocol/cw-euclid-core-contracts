@@ -6,9 +6,9 @@ use euclid::{
     deposit::DepositTokenRequest,
     fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    pool::{EscrowCreateRequest, PoolCreateRequest},
+    pool::{DenomRegisterDeregisterRequest, PoolCreateRequest},
     swap::SwapRequest,
-    token::Token,
+    token::{PairWithDenomAndAmount, Token, TokenWithDenomAndAmount},
 };
 
 #[cw_serde]
@@ -51,8 +51,10 @@ pub const VLP_TO_CW20: Map<String, Addr> = Map::new("vlp_to_cw20");
 pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =
     Map::new("request_to_pool");
 
-pub const PENDING_ESCROW_REQUESTS: Map<(Addr, String), EscrowCreateRequest> =
-    Map::new("request_to_pool");
+pub const PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS: Map<
+    (Addr, String),
+    DenomRegisterDeregisterRequest,
+> = Map::new("request_denom_register_deregister");
 
 // Map for pending swaps for user
 pub const PENDING_SWAPS: Map<(Addr, String), SwapRequest> = Map::new("pending_swaps");
@@ -67,3 +69,8 @@ pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
 // Map for PENDING liquidity transactions
 pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> =
     Map::new("pending_remove_liquidity");
+
+pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
+    Map::new("pending_deposit_token");
+
+pub const FUNDS_INFO: Item<PairWithDenomAndAmount> = Item::new("funds_info");

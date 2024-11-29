@@ -17,7 +17,7 @@ use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
     self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_simulate_escrow_release, query_state, query_token_escrows, query_vlp,
+    query_simulate_escrow_release, query_state, query_token_denoms, query_token_escrows, query_vlp,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
@@ -28,7 +28,7 @@ use crate::state::{State, DEREGISTERED_CHAINS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:factory";
+const CONTRACT_NAME: &str = "crates.io:router";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -179,6 +179,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::QueryAllEscrows { pagination } => query_all_escrows(deps, pagination),
         QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
+        QueryMsg::QueryTokenDenoms { token } => query_token_denoms(deps, token),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

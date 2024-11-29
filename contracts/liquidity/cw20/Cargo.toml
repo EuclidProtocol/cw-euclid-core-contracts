@@ -1,6 +1,6 @@
 [package]
 name = "cw20"
-version = "0.2.0"
+version = "0.2.1"
 authors = [
   "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
   "Joe Monem <jmonem@icloud.com>",
@@ -52,6 +52,7 @@ schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
+cw-orch = "=0.24.1"
 
 [dev-dependencies]
 cw-multi-test = { workspace = true }
