@@ -23,7 +23,7 @@ use crate::{
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        STATE,
+        STATE, TOKEN_DENOMS,
     },
 };
 
@@ -307,6 +307,16 @@ pub fn execute_release_escrow(
         ContractError::InsufficientFunds {}
     );
 
+    if let Some(ref preferred_denom) = preferred_denom {
+        let token_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
+        // Ensure that the preferred denom is valid
+        ensure!(
+            token_denoms
+                .iter()
+                .any(|x| x.token_type == preferred_denom.clone()),
+            ContractError::InvalidDenom {}
+        );
+    }
     let mut response = Response::new()
         .add_event(tx_event(
             &tx_id,

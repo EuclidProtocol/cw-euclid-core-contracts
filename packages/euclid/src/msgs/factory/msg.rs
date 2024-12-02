@@ -39,6 +39,7 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
 
         partner_fee: Option<PartnerFee>,
+        preferred_denom: Option<TokenType>,
     },
     RequestRegisterDenom {
         token: TokenWithDenom,

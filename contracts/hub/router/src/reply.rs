@@ -191,7 +191,6 @@ pub fn on_remove_liquidity_reply(
                         sender: remove_liquidity_tx.sender.clone(),
                         token: token.token.clone(),
                         amount: Some(token.amount),
-                        //TODO
                         preferred_denom: None,
                         forwarding_message: None,
                         cross_chain_addresses: remove_liquidity_tx.cross_chain_addresses.clone(),
@@ -264,12 +263,11 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 amount_out: vlp_swap_response.amount_out,
                 tx_id: vlp_swap_response.tx_id,
             };
-            // let ack = AcknowledgementMsg::Ok(swap_response.clone());
 
             // Prepare burn msg
             let release_msg = ExecuteMsg::ReleaseEscrowInternal {
                 sender: swap_msg.sender,
-                preferred_denom: None,
+                preferred_denom: swap_msg.preferred_denom,
                 forwarding_message: None,
                 token: swap_msg.asset_out.clone(),
                 amount: Some(swap_response.amount_out),

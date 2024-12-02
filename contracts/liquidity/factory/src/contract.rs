@@ -93,6 +93,7 @@ pub fn execute(
             swaps,
             cross_chain_addresses,
             partner_fee,
+            preferred_denom,
         } => {
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser {
@@ -112,6 +113,7 @@ pub fn execute(
                 timeout,
                 cross_chain_addresses,
                 partner_fee,
+                preferred_denom,
             )
         }
         ExecuteMsg::DepositToken {

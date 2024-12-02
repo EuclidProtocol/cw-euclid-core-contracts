@@ -476,6 +476,7 @@ pub fn execute_swap_request(
     timeout: Option<u64>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
+    preferred_denom: Option<TokenType>,
 ) -> Result<Response, ContractError> {
     // Validate asset in
     asset_in.token_type.validate(deps.as_ref())?;
@@ -610,6 +611,7 @@ pub fn execute_swap_request(
             chain_uid: state.chain_uid.clone(),
         },
         partner_fee_amount,
+        preferred_denom,
     })
     .to_msg(
         deps,
@@ -774,6 +776,7 @@ pub fn receive_cw20(
             swaps,
             cross_chain_addresses,
             partner_fee,
+            preferred_denom,
         } => {
             let contract_adr = info.sender.clone();
 
@@ -799,6 +802,7 @@ pub fn receive_cw20(
                 timeout,
                 cross_chain_addresses,
                 partner_fee,
+                preferred_denom,
             )
         }
         FactoryCw20HookMsg::RemoveLiquidity {

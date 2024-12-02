@@ -175,6 +175,7 @@ pub struct ChainIbcSwapExecuteMsg {
 
     // Unique per tx
     pub tx_id: String,
+    pub preferred_denom: Option<TokenType>,
 }
 
 #[cw_serde]
