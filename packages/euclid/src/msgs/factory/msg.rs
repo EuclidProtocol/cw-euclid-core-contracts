@@ -50,6 +50,7 @@ pub enum ExecuteMsg {
     },
     RequestPoolCreation {
         pair: PairWithDenomAndAmount,
+        stable_pool: bool,
         slippage_tolerance_bps: u64,
         timeout: Option<u64>,
         lp_token_name: String,

@@ -29,6 +29,7 @@ pub enum ChainIbcExecuteMsg {
         sender: CrossChainUser,
         tx_id: String,
         pair: PairWithDenomAndAmount,
+        stable_pool: bool,
         // User will provide this data
         slippage_tolerance_bps: u64,
     },

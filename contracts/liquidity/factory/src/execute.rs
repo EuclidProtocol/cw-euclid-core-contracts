@@ -60,6 +60,7 @@ pub fn execute_request_pool_creation(
     env: Env,
     info: MessageInfo,
     pair_with_denom_and_amount: PairWithDenomAndAmount,
+    stable_pool: bool,
     lp_token_name: String,
     lp_token_symbol: String,
     lp_token_decimal: u8,
@@ -215,6 +216,7 @@ pub fn execute_request_pool_creation(
         sender,
         tx_id: tx_id.clone(),
         slippage_tolerance_bps,
+        stable_pool,
     }
     .to_msg(
         deps,

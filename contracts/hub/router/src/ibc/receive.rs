@@ -111,6 +111,7 @@ pub fn reusable_internal_call(
             sender,
             tx_id,
             slippage_tolerance_bps,
+            stable_pool,
         } => {
             ensure!(
                 sender.chain_uid == chain_uid,
@@ -121,6 +122,7 @@ pub fn reusable_internal_call(
                 env,
                 sender,
                 pair,
+                stable_pool,
                 tx_id,
                 slippage_tolerance_bps,
             )
@@ -223,6 +225,7 @@ fn execute_request_pool_creation(
     env: Env,
     sender: CrossChainUser,
     pair_with_denom: PairWithDenomAndAmount,
+    stable_pool: bool,
     tx_id: String,
     slippage_tolerance_bps: u64,
 ) -> Result<Response, ContractError> {
@@ -331,17 +334,10 @@ fn execute_request_pool_creation(
             admin: state.admin.clone(),
         };
 
-        // Use stable VLP if amounts are equal, regular VLP otherwise
-        let code_id = if pair_with_denom.token_1.amount == pair_with_denom.token_2.amount {
-            state.stable_vlp_code_id
+        let (code_id, label) = if stable_pool {
+            (state.stable_vlp_code_id, "Stable VLP")
         } else {
-            state.vlp_code_id
-        };
-
-        let label = if pair_with_denom.token_1.amount == pair_with_denom.token_2.amount {
-            "Stable VLP"
-        } else {
-            "VLP"
+            (state.vlp_code_id, "VLP")
         };
 
         let msg = WasmMsg::Instantiate {
