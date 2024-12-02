@@ -314,6 +314,7 @@ fn test_execute_withdraw() {
                 recipient: Addr::unchecked("recipient1".to_string()),
                 amount: Uint128::new(50),
                 preferred_denom: None,
+                forwarding_message: None,
             },
             expected_error: None,
         },
@@ -323,6 +324,7 @@ fn test_execute_withdraw() {
                 recipient: Addr::unchecked("recipient1".to_string()),
                 amount: Uint128::new(2000),
                 preferred_denom: None,
+                forwarding_message: None,
             }, // Use 2000 which exceeds the balance
             expected_error: Some(ContractError::InsufficientDeposit {}),
         },
@@ -332,6 +334,7 @@ fn test_execute_withdraw() {
                 recipient: Addr::unchecked("recipient1".to_string()),
                 amount: Uint128::new(50),
                 preferred_denom: None,
+                forwarding_message: None,
             },
             expected_error: Some(ContractError::Unauthorized {}),
         },

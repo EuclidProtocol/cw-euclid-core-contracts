@@ -2,7 +2,8 @@ use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
+    ensure, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128,
+    WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use euclid::{
@@ -183,7 +184,8 @@ pub struct ChainIbcWithdrawExecuteMsg {
     // User will provide this
     pub token: Token,
     pub amount: Uint128,
-    pub preffered_denom: Option<TokenType>,
+    pub preferred_denom: Option<TokenType>,
+    pub forwarding_message: Option<Binary>,
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     // Unique per tx
@@ -241,6 +243,7 @@ pub enum HubIbcExecuteMsg {
         sender: CrossChainUser,
         amount: Uint128,
         preferred_denom: Option<TokenType>,
+        forwarding_message: Option<Binary>,
         token: Token,
         to_address: String,
 

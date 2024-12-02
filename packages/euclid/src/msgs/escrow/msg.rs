@@ -1,6 +1,6 @@
 use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -31,6 +31,7 @@ pub enum ExecuteMsg {
         recipient: Addr,
         amount: Uint128,
         preferred_denom: Option<TokenType>,
+        forwarding_message: Option<Binary>,
     },
 }
 

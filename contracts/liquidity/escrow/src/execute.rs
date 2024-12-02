@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, Uint128,
+    ensure, from_json, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response, Uint128,
 };
 
 use cw20::Cw20ReceiveMsg;
@@ -211,6 +211,7 @@ pub fn execute_withdraw(
     recipient: Addr,
     amount: Uint128,
     preferred_denom: Option<TokenType>,
+    forwarding_message: Option<Binary>,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
@@ -286,11 +287,17 @@ pub fn execute_withdraw(
 
     state.total_amount = state.total_amount.checked_sub(amount)?;
     STATE.save(deps.storage, &state)?;
-
-    Ok(Response::new()
+    let mut response = Response::new()
         .add_messages(messages)
         .add_attribute("method", "escrow_withdraw")
         .add_attribute("amount", amount)
         .add_attribute("token", state.token_id.to_string())
-        .add_attribute("recipient", recipient))
+        .add_attribute("recipient", recipient);
+
+    if let Some(forwarding_message) = forwarding_message {
+        let msg: CosmosMsg = from_json(&forwarding_message)?;
+        response = response.add_message(msg);
+    }
+
+    Ok(response)
 }

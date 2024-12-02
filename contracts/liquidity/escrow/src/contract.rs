@@ -71,7 +71,16 @@ pub fn execute(
             recipient,
             amount,
             preferred_denom,
-        } => execute_withdraw(deps, env, info, recipient, amount, preferred_denom),
+            forwarding_message,
+        } => execute_withdraw(
+            deps,
+            env,
+            info,
+            recipient,
+            amount,
+            preferred_denom,
+            forwarding_message,
+        ),
     }
 }
 

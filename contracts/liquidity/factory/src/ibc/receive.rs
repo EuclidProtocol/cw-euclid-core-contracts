@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
     IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -89,8 +89,18 @@ pub fn reusable_internal_call(
             to_address,
             tx_id,
             preferred_denom,
+            forwarding_message,
             ..
-        } => execute_release_escrow(deps, env, amount, preferred_denom, token, to_address, tx_id),
+        } => execute_release_escrow(
+            deps,
+            env,
+            amount,
+            preferred_denom,
+            forwarding_message,
+            token,
+            to_address,
+            tx_id,
+        ),
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             execute_update_factory_channel(deps, env, chain_uid, tx_id)
         }
@@ -166,6 +176,7 @@ fn execute_release_escrow(
     env: Env,
     amount: Uint128,
     preferred_denom: Option<TokenType>,
+    forwarding_message: Option<Binary>,
     token: Token,
     to_address: String,
     tx_id: String,
@@ -174,6 +185,7 @@ fn execute_release_escrow(
         recipient: deps.api.addr_validate(&to_address)?,
         amount,
         preferred_denom,
+        forwarding_message,
     };
 
     let ack_msg = ReleaseEscrowResponse {

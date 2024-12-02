@@ -163,6 +163,7 @@ pub fn execute(
             token,
             amount,
             preferred_denom,
+            forwarding_message,
             cross_chain_addresses,
             timeout,
         } => execute_withdraw_virtual_balance(
@@ -172,6 +173,7 @@ pub fn execute(
             token,
             amount,
             preferred_denom,
+            forwarding_message,
             cross_chain_addresses,
             timeout,
         ),
