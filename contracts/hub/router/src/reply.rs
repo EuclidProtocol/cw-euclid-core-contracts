@@ -7,7 +7,6 @@ use cw_utils::{
 };
 use euclid::{
     error::ContractError,
-    escrow::ReleaseEscrowInternalResponse,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
         self,
@@ -35,7 +34,6 @@ pub const SWAP_REPLY_ID: u64 = 5;
 
 pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
-pub const RELEASE_ESCROW_REPLY_ID: u64 = 8;
 
 pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
@@ -282,14 +280,11 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
 
             Ok(
                 Response::new()
-                    .add_submessage(SubMsg::reply_always(
-                        CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: env.contract.address.to_string(),
-                            msg: to_json_binary(&release_msg)?,
-                            funds: vec![],
-                        }),
-                        RELEASE_ESCROW_REPLY_ID,
-                    ))
+                    .add_submessage(SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: env.contract.address.to_string(),
+                        msg: to_json_binary(&release_msg)?,
+                        funds: vec![],
+                    })))
                     .add_attribute("action", "reply_swap")
                     .add_attribute("swap", format!("{swap_response:?}"))
                     .add_attribute("amount_out", swap_response.amount_out)
@@ -298,33 +293,6 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                     .add_attribute("asset_type", swap_msg.asset_in.token_type.get_key())
                     .add_attribute("amount_in", swap_msg.amount_in), // .set_data(to_json_binary(&ack)?)
             )
-        }
-    }
-}
-
-pub fn on_release_escrow_reply(
-    _deps: DepsMut,
-    _env: Env,
-    msg: Reply,
-) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        // Fail the swap if escrow release fails
-        SubMsgResult::Err(err) => Ok(Response::new().set_data(make_ack_fail(err)?)),
-        // Send success ack for swap if release escrow succeeds
-        SubMsgResult::Ok(..) => {
-            let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
-                })?;
-            let release_escrow_response: ReleaseEscrowInternalResponse =
-                from_json(execute_data.data.unwrap_or_default())?;
-
-            let swap_response = SwapResponse {
-                amount_out: release_escrow_response.amount_out,
-                tx_id: release_escrow_response.tx_id,
-            };
-            let ack = AcknowledgementMsg::Ok(swap_response.clone());
-            Ok(Response::new().set_data(to_json_binary(&ack)?))
         }
     }
 }
