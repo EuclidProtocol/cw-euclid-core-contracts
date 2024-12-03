@@ -6,13 +6,12 @@ use crate::{
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::pagination::Pagination,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
 use cosmwasm_schema::QueryResponses;
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use snip20_reference_impl::receiver::Snip20ReceiveMsg;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
@@ -26,7 +25,7 @@ pub struct InstantiateMsg {
     pub is_native: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 // #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     AddLiquidityRequest {
@@ -115,7 +114,8 @@ pub enum ExecuteMsg {
     },
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug,QueryResponses)]
+#[cw_serde]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(GetVlpResponse)]
     GetVlp { pair: Pair },
@@ -158,24 +158,24 @@ pub enum QueryMsg {
     GetEscrow { token_id: String },
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct GetVlpResponse {
     pub vlp_address: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct GetLPTokenResponse {
     pub token_address: Addr,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct GetEscrowResponse {
     pub escrow_address: Addr,
     pub escrow_code_hash: String,
     pub denoms: Vec<TokenType>,
 }
 // We define a custom struct for each query response
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct StateResponse {
     pub chain_uid: ChainUid,
     pub router_contract: String,
@@ -191,36 +191,36 @@ pub struct StateResponse {
     pub partner_fees_collected: DenomFees,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct PartnerFeesCollectedResponse {
     pub total: DenomFees,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct PartnerFeesCollectedPerDenomResponse {
     pub total: Uint128,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct AllPoolsResponse {
     pub pools: Vec<PoolVlpResponse>, // Assuming pool addresses are strings
 }
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct PoolVlpResponse {
     pub pair: Pair,
     pub vlp: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct MigrateMsg {}
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct RegisterFactoryResponse {
     pub factory_address: String,
     pub chain_id: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct ReleaseEscrowResponse {
     pub factory_address: String,
     pub chain_id: String,
@@ -229,21 +229,21 @@ pub struct ReleaseEscrowResponse {
     pub to_address: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct GetPendingSwapsResponse {
     pub pending_swaps: Vec<SwapRequest>,
 }
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct GetPendingLiquidityResponse {
     pub pending_add_liquidity: Vec<AddLiquidityRequest>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct GetPendingRemoveLiquidityResponse {
     pub pending_remove_liquidity: Vec<RemoveLiquidityRequest>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>, // Assuming pool addresses are strings
 }

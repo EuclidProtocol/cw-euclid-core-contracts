@@ -28,13 +28,13 @@ euclid-utils = { path = "./packages/euclid_utils" }
 
 cosmwasm-schema = "2.1.4"
 snip20-reference-impl ={ path = "./packages/snip20-reference-impl/"}
-schemars = "0.8.21"
-serde = { version = "1.0.215", default-features = false, features = ["derive"] }
+schemars = { version = "0.8.11" }
+serde = { version = "1.0" }
 thiserror = { version = "2.0.3" }
-itertools = "0.13.0"
+# itertools = "0.13.0"
 
 mock = { path = "./packages/mock" }
-secret-toolkit = { version = "0.10.1", default-features = false, features = [
+secret-toolkit = { version = "0.10.1", features = [
   "utils",
   "serialization",
   "viewing-key",
@@ -44,14 +44,13 @@ secret-toolkit = { version = "0.10.1", default-features = false, features = [
   "snip721",
 ] }
 
-cosmwasm-std = { package = "secret-cosmwasm-std", version = "1.1.11", features = [
+cosmwasm-std = { package = "secret-cosmwasm-std", version = "1.1.10", features = [
   "stargate",
   "staking",
   "ibc3",
   "random",
-],default-features = false }
-cosmwasm-storage = { package = "secret-cosmwasm-storage", version = "1.1.11",default-features = false }
-secret-cw-controllers = { path = "./packages/controllers/",default-features = false }
+]}
+cosmwasm-storage = { package = "secret-cosmwasm-storage", version = "1.0.0"}
 secret-storage-plus = { git = "https://github.com/securesecrets/secret-plus-utils", version = "0.13.4", branch = "main"}
 secret-utils = { git = "https://github.com/securesecrets/secret-plus-utils", version = "0.13.4", branch = "main" }
 secret-cw2 = { git = "https://github.com/securesecrets/secret-plus-utils", version = "1.0.1", branch = "main"}

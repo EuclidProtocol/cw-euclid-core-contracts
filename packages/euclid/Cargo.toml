@@ -19,14 +19,14 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 cosmwasm-std = { workspace = true}
 secret-storage-plus = { workspace = true }
-itertools = { workspace = true }
+# itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
 secret-utils = { workspace = true }
 thiserror = { workspace = true }
 snip20-reference-impl = { workspace = true }
 serde = { workspace = true }
 schemars = { workspace = true }
-cw-orch = "=0.24.1"
+# cw-orch = "=0.24.1"
 secret-toolkit ={ workspace = true }
 
 syn = "1.0"

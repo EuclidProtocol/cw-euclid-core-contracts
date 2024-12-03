@@ -73,8 +73,11 @@ pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError>
 }
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
+    println!("Here REached1");
     let state = STATE.load(deps.storage)?;
+    println!("state: {:?}", state);
     let hub = HUB_CHANNEL.may_load(deps.storage)?;
+    println!("hub: {:?}", hub);
     Ok(to_binary(&StateResponse {
         chain_uid: state.chain_uid,
         router_contract: state.router_contract,

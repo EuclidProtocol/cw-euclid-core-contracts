@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
@@ -43,15 +41,13 @@ pub fn instantiate(
     let chain_uid = msg.chain_uid.validate()?.to_owned();
     let state = State {
         router_contract: msg.router_contract.clone(),
-        router_contract_code_hash: msg.router_contract_code_hash,
+        router_contract_code_hash: msg.router_contract_code_hash.unwrap_or_default(),
         admin: info.sender.clone().to_string(),
         escrow_code_id: msg.escrow_code_id,
         snip20_code_id: msg.snip20_code_id,
         chain_uid,
         is_native: msg.is_native,
-        partner_fees_collected: DenomFees {
-            totals: HashMap::default(),
-        },
+        partner_fees_collected: DenomFees { totals: Vec::new() },
         escrow_code_hash: msg.escrow_code_hash,
         snip20_code_hash: msg.snip20_code_hash,
     };

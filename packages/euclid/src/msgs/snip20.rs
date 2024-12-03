@@ -1,6 +1,5 @@
+use cosmwasm_schema::cw_serde;
 use cosmwasm_schema::QueryResponses;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Binary, Uint128};
 use secret_toolkit::utils::InitCallback;
 use snip20_reference_impl::msg::{
@@ -11,7 +10,7 @@ use snip20_reference_impl::msg::{InitConfig, InitialBalance};
 
 use crate::token::Pair;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct InstantiateMsg {
     pub name: String,
     pub symbol: String,
@@ -46,7 +45,7 @@ impl From<InstantiateMsg> for Snip20InstantiateMsg {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub enum ExecuteMsg {
     UpdateState {
         token_pair: Option<Pair>,
@@ -312,7 +311,7 @@ impl From<ExecuteMsg> for Snip20ExecuteMsg {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     //NOTE: Balance is included in andr_query

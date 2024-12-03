@@ -1,12 +1,11 @@
 use crate::token::{Pair, Token, TokenType};
+use cosmwasm_schema::cw_serde;
 use cosmwasm_schema::QueryResponses;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Binary, Uint128};
 use secret_toolkit::utils::InitCallback;
 use snip20_reference_impl::receiver::Snip20ReceiveMsg;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct InstantiateMsg {
     // The only allowed Token ID for the contract
     pub token_id: Token,
@@ -18,7 +17,7 @@ impl InitCallback for InstantiateMsg {
     const BLOCK_SIZE: usize = 256;
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 // #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     // Updates allowed denoms
@@ -44,7 +43,7 @@ pub enum ExecuteMsg {
     },
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(StateResponse)]
@@ -62,39 +61,39 @@ pub enum QueryMsg {
     AllowedDenoms {},
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct MigrateMsg {}
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct StateResponse {
     pub token: Token,
     pub factory_address: Addr,
     pub total_amount: Uint128,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct TokenIdResponse {
     pub token_id: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct AllowedDenomsResponse {
     pub denoms: Vec<TokenType>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct AllowedTokenResponse {
     pub allowed: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct EscrowInstantiateResponse {
     pub token: Token,
     pub address: String,
     pub code_hash: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct Snip20InstantiateResponse {
     pub pair: Pair,
     pub address: String,

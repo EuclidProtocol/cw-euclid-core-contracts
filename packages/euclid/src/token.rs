@@ -1,8 +1,7 @@
 use std::fmt;
 use std::ops::Deref;
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     coin, ensure, to_binary, Addr, BankMsg, Binary, Coin, ContractInfoResponse, CosmosMsg, Deps,
     QuerierWrapper, StdError, StdResult, Uint128, WasmMsg, WasmQuery,
@@ -14,7 +13,7 @@ use crate::error::ContractError;
 use crate::msgs::virtual_balance::ExecuteTransfer;
 
 // Token asset that represents an identifier for a token
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct Token(String);
 
 // Implement Deref to allow easy access to the inner type
@@ -127,7 +126,7 @@ impl fmt::Display for Token {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct Pair {
     pub token_1: Token,
     pub token_2: Token,
@@ -246,7 +245,7 @@ impl KeyDeserialize for Pair {
         Ok(Pair { token_1, token_2 })
     }
 }
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub enum TokenType {
     Native {
         denom: String,
@@ -462,13 +461,13 @@ impl TokenType {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct TokenWithAmount {
     pub token: Token,
     pub amount: Uint128,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct TokenWithDenomAndAmount {
     pub token: Token,
     pub amount: Uint128,
@@ -491,7 +490,7 @@ impl TokenWithDenomAndAmount {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct TokenWithDenom {
     pub token: Token,
     pub token_type: TokenType,
@@ -542,7 +541,7 @@ impl TokenWithDenom {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct PairWithAmount {
     pub token_1: TokenWithAmount,
     pub token_2: TokenWithAmount,
@@ -572,7 +571,7 @@ impl PairWithAmount {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct PairWithDenom {
     pub token_1: TokenWithDenom,
     pub token_2: TokenWithDenom,
@@ -611,7 +610,7 @@ impl PairWithDenom {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct PairWithDenomAndAmount {
     pub token_1: TokenWithDenomAndAmount,
     pub token_2: TokenWithDenomAndAmount,

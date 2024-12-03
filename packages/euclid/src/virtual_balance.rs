@@ -2,14 +2,14 @@ use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
+
 type AnyChainAddress = String;
 type TokenId = String;
 // Balance is stored again Chain Id, Address of the user on any chain, and for a specific Token Id
 pub type SerializedBalanceKey = (ChainUid, AnyChainAddress, TokenId);
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct BalanceKey {
     pub cross_chain_user: CrossChainUser,
     pub token_id: TokenId,

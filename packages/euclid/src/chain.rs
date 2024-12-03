@@ -1,14 +1,14 @@
 use std::ops::Deref;
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{ensure, Addr, StdError, StdResult, Uint128};
+use schemars::JsonSchema;
 use secret_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
+use serde::{Deserialize, Serialize};
 
 use crate::error::ContractError;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-#[derive(PartialOrd)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, PartialOrd)]
 pub struct ChainUid(String);
 
 // Implement Deref to allow easy access to the inner type
@@ -78,7 +78,7 @@ impl KeyDeserialize for ChainUid {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct CrossChainUser {
     pub chain_uid: ChainUid,
     pub address: String,
@@ -109,13 +109,13 @@ impl CrossChainUser {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct CrossChainUserWithLimit {
     pub user: CrossChainUser,
     pub limit: Option<Uint128>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct Chain {
     pub factory_chain_id: String,
     pub factory: String,
@@ -123,13 +123,13 @@ pub struct Chain {
     pub chain_type: ChainType,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct IbcChain {
     pub from_hub_channel: String,
     pub from_factory_channel: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub enum ChainType {
     Ibc(IbcChain),
     Native {},
@@ -148,7 +148,7 @@ impl Chain {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct AnyContractInfo {
     pub addr: Addr,
     pub code_hash: String,

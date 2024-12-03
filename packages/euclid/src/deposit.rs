@@ -2,11 +2,10 @@ use crate::{
     chain::CrossChainUser,
     token::{Token, TokenWithDenom},
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{IbcTimeout, Uint128};
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct DepositTokenRequest {
     pub sender: String,
     pub tx_id: String,
@@ -20,7 +19,7 @@ pub struct DepositTokenRequest {
 }
 
 // Struct to handle Acknowledgement Response for a Deposit Token Request
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct DepositTokenResponse {
     pub amount: Uint128,
     pub token: Token,

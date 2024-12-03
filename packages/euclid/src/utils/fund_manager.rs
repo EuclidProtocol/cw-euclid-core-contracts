@@ -1,19 +1,15 @@
-use std::collections::HashMap;
-
 use cosmwasm_std::{ensure, Coin, Uint128};
 
 use crate::error::ContractError;
 
 pub struct FundManager {
-    funds: HashMap<String, Uint128>,
+    funds: Vec<(String, Uint128)>,
 }
 
 impl FundManager {
     /// Create a new fund manager
     pub fn new(funds: &[Coin]) -> Self {
-        let mut fund_manager = FundManager {
-            funds: HashMap::new(),
-        };
+        let mut fund_manager = FundManager { funds: vec![] };
         for fund in funds {
             fund_manager.add(fund);
         }
@@ -22,29 +18,42 @@ impl FundManager {
 
     /// Get the amount of funds in the manager for a given denom
     pub fn get(&self, denom: &str) -> Uint128 {
-        self.funds.get(denom).cloned().unwrap_or(Uint128::zero())
+        self.funds
+            .iter()
+            .find(|(key, _)| key == denom)
+            .map(|(_, amount)| *amount)
+            .unwrap_or(Uint128::zero())
     }
 
     /// Add funds to the manager
     pub fn add(&mut self, fund: &Coin) {
-        *self
-            .funds
-            .entry(fund.denom.to_string())
-            .or_insert(Uint128::zero()) += fund.amount;
+        for (key, amount) in self.funds.iter_mut() {
+            if key == &fund.denom {
+                *amount += fund.amount;
+                return;
+            }
+        }
+        self.funds.push((fund.denom.clone(), fund.amount));
     }
 
-    //   Use funds from the manager
+    /// Use funds from the manager
     pub fn use_fund(&mut self, amount: Uint128, denom: &str) -> Result<(), ContractError> {
         ensure!(
             !amount.is_zero(),
             ContractError::new("Amount cannot be zero")
         );
+        let current_amount = self.get(denom);
         ensure!(
-            self.get(denom).ge(&amount),
+            current_amount >= amount,
             ContractError::InsufficientFunds {}
         );
-        *self.funds.get_mut(denom).unwrap() -= amount;
-        Ok(())
+        for (key, value) in self.funds.iter_mut() {
+            if key == denom {
+                *value -= amount;
+                return Ok(());
+            }
+        }
+        Err(ContractError::InsufficientFunds {})
     }
 
     /// Validate that there are no zero funds in the manager
@@ -56,7 +65,7 @@ impl FundManager {
         Ok(())
     }
 
-    /// Validate that there are no funds in the manager. To be used after all funds operations are done.
+    /// Validate that there are no funds in the manager
     pub fn validate_funds_are_empty(&self) -> Result<(), ContractError> {
         ensure!(
             self.funds.iter().all(|(_, amount)| amount.is_zero()),

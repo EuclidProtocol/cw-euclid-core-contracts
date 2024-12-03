@@ -1,5 +1,4 @@
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{to_binary, Binary};
 use euclid::error::ContractError;
 
@@ -11,7 +10,7 @@ use euclid::error::ContractError;
 /// a JSON payload instead of a binary payload.
 ///
 /// [StdAck]: https://github.com/CosmWasm/cosmwasm/issues/1512
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub enum AcknowledgementMsg<S> {
     Ok(S),
     Error(String),

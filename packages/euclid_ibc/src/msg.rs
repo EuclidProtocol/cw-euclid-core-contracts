@@ -1,9 +1,8 @@
 use std::ops::Add;
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
+    to_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
@@ -12,17 +11,20 @@ use euclid::{
     swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
-use secret_storage_plus::{Item, Map};
+use secret_toolkit::{
+    serialization::Json,
+    storage::{Item, Keymap},
+};
 
 // Message that implements an ExecuteSwap on the VLP contract
 
-pub const CHAIN_IBC_EXECUTE_MSG_QUEUE: Map<u64, ChainIbcExecuteMsg> =
-    Map::new("chain_ibc_execute_msg_queue");
+pub const CHAIN_IBC_EXECUTE_MSG_QUEUE: Keymap<u64, ChainIbcExecuteMsg, Json> =
+    Keymap::new(b"chain_ibc_execute_msg_queue");
 pub const CHAIN_IBC_EXECUTE_MSG_QUEUE_COUNT: Item<u64> =
-    Item::new("chain_ibc_execute_msg_queue_count");
+    Item::new(b"chain_ibc_execute_msg_queue_count");
 pub const CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE: (u64, u64) = (2001, 3000);
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub enum ChainIbcExecuteMsg {
     // Request Pool Creation
     RequestPoolCreation {
@@ -95,7 +97,7 @@ impl ChainIbcExecuteMsg {
         deps: &mut DepsMut,
         env: &Env,
         router_contract: String,
-        router_contract_code_hash: Option<String>,
+        router_contract_code_hash: String,
         chain_uid: ChainUid,
         is_native: bool,
         channel: String,
@@ -114,18 +116,21 @@ impl ChainIbcExecuteMsg {
                 .min(CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.1)
                 .max(CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.0);
 
-            ensure!(
-                !CHAIN_IBC_EXECUTE_MSG_QUEUE.has(deps.storage, count),
-                ContractError::new("Msg Queue is full")
-            );
-            CHAIN_IBC_EXECUTE_MSG_QUEUE.save(deps.storage, count, self)?;
+            if CHAIN_IBC_EXECUTE_MSG_QUEUE
+                .get(deps.storage, &count)
+                .is_some()
+            {
+                return Err(ContractError::new("Msg Queue is full"));
+            }
+
+            CHAIN_IBC_EXECUTE_MSG_QUEUE.insert(deps.storage, &count, self)?;
 
             CHAIN_IBC_EXECUTE_MSG_QUEUE_COUNT.save(deps.storage, &count.add(1))?;
 
             Ok(SubMsg::reply_always(
                 WasmMsg::Execute {
                     contract_addr: router_contract,
-                    code_hash: router_contract_code_hash.unwrap_or_default(),
+                    code_hash: router_contract_code_hash,
                     msg: to_binary(&router_msg)?,
                     funds: vec![],
                 },
@@ -142,7 +147,7 @@ impl ChainIbcExecuteMsg {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct ChainIbcRemoveLiquidityExecuteMsg {
     // Factory will set this using info.sender
     pub sender: CrossChainUser,
@@ -157,7 +162,7 @@ pub struct ChainIbcRemoveLiquidityExecuteMsg {
     pub tx_id: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct ChainIbcSwapExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
@@ -179,7 +184,7 @@ pub struct ChainIbcSwapExecuteMsg {
     pub tx_id: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct ChainIbcWithdrawExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
@@ -193,7 +198,7 @@ pub struct ChainIbcWithdrawExecuteMsg {
     pub timeout: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct ChainIbcTransferExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
@@ -206,7 +211,7 @@ pub struct ChainIbcTransferExecuteMsg {
     pub timeout: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub struct ChainIbcDepositTokenExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
@@ -218,12 +223,13 @@ pub struct ChainIbcDepositTokenExecuteMsg {
     pub tx_id: String,
 }
 
-pub const HUB_IBC_EXECUTE_MSG_QUEUE: Map<u64, HubIbcExecuteMsg> =
-    Map::new("hub_ibc_execute_msg_queue");
-pub const HUB_IBC_EXECUTE_MSG_QUEUE_COUNT: Item<u64> = Item::new("hub_ibc_execute_msg_queue_count");
+pub const HUB_IBC_EXECUTE_MSG_QUEUE: Keymap<u64, HubIbcExecuteMsg, Json> =
+    Keymap::new(b"hub_ibc_execute_msg_queue");
+pub const HUB_IBC_EXECUTE_MSG_QUEUE_COUNT: Item<u64> =
+    Item::new(b"hub_ibc_execute_msg_queue_count");
 pub const HUB_IBC_EXECUTE_MSG_QUEUE_RANGE: (u64, u64) = (1001, 2000);
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub enum HubIbcExecuteMsg {
     // Send Factory Registration Message from Router to Factory
     RegisterFactory {
@@ -287,11 +293,14 @@ impl HubIbcExecuteMsg {
                     .min(HUB_IBC_EXECUTE_MSG_QUEUE_RANGE.1)
                     .max(HUB_IBC_EXECUTE_MSG_QUEUE_RANGE.0);
 
-                ensure!(
-                    !HUB_IBC_EXECUTE_MSG_QUEUE.has(deps.storage, count),
-                    ContractError::new("Msg Queue is full")
-                );
-                HUB_IBC_EXECUTE_MSG_QUEUE.save(deps.storage, count, self)?;
+                if HUB_IBC_EXECUTE_MSG_QUEUE
+                    .get(deps.storage, &count)
+                    .is_some()
+                {
+                    return Err(ContractError::new("Msg Queue is full"));
+                }
+
+                HUB_IBC_EXECUTE_MSG_QUEUE.insert(deps.storage, &count, self)?;
 
                 HUB_IBC_EXECUTE_MSG_QUEUE_COUNT.save(deps.storage, &count.add(1))?;
 

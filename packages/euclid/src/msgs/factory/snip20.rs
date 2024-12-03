@@ -1,6 +1,5 @@
+use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
@@ -9,7 +8,7 @@ use crate::{
     token::{Pair, Token, TokenWithDenom},
 };
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[cw_serde]
 pub enum FactoryCw20HookMsg {
     Deposit {
         token: Token,

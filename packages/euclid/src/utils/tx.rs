@@ -1,9 +1,9 @@
 use cosmwasm_std::{DepsMut, Env};
-use secret_storage_plus::Item;
+use secret_toolkit::storage::Item;
 
 use crate::{chain::CrossChainUser, error::ContractError};
 
-const TX_NONCE: Item<u128> = Item::new("tx_nonce");
+const TX_NONCE: Item<u128> = Item::new(b"tx_nonce");
 
 pub fn generate_tx(
     deps: DepsMut,

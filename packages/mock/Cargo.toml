@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 cosmwasm-std = { workspace = true }
 secret-storage-plus = { workspace = true }
-itertools = { workspace = true }
+# itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
 secret-utils = { workspace = true }
 thiserror = { workspace = true }

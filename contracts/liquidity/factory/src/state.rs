@@ -19,7 +19,7 @@ pub struct State {
     // The Router Contract Address on the Virtual Settlement Layer
     pub router_contract: String,
     // Router contract code_hash only useful if router is on secret network.
-    pub router_contract_code_hash: Option<String>,
+    pub router_contract_code_hash: String,
     // Contract admin
     pub admin: String,
     // Escrow Code ID

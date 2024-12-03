@@ -49,10 +49,9 @@ secret-cw2 = { workspace = true }
 snip20-reference-impl = { workspace = true }
 secret-toolkit ={ workspace = true}
 schemars = { workspace = true }
-serde = { workspace = true, default-features = false, features = ["derive"] }
+serde = { workspace = true}
 thiserror = { workspace = true }
 euclid = { workspace = true }
-cw-orch = "=0.24.1"
 anybuf = {workspace = true}
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

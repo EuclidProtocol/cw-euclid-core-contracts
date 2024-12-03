@@ -1212,11 +1212,9 @@ pub fn execute_update_state(
 
     let new_state = State {
         router_contract: router_contract.clone().unwrap_or(state.router_contract),
-        router_contract_code_hash: Some(
-            router_code_hash
-                .clone()
-                .unwrap_or(state.router_contract_code_hash.unwrap()),
-        ),
+        router_contract_code_hash: router_code_hash
+            .clone()
+            .unwrap_or(state.router_contract_code_hash),
         admin: admin.clone().unwrap_or(state.admin),
         escrow_code_id: escrow_code_id.unwrap_or(state.escrow_code_id),
         escrow_code_hash: escrow_code_hash
