@@ -416,22 +416,22 @@ fn ack_register_denom(
                     .add_message(msg);
             } else {
                 // Instantiate escrow
-                let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                    admin: Some(state.admin.clone()),
-                    code_id: escrow_code_id,
-                    code_hash: escrow_code_hash,
-                    msg: to_binary(&EscrowInstantiateMsg {
-                        token_id: token.token,
-                        allowed_denom: Some(token.token_type),
-                    })?,
-                    funds: vec![],
-                    label: "escrow".to_string(),
-                });
+                let init_msg = EscrowInstantiateMsg {
+                    token_id: token.token,
+                    allowed_denom: Some(token.token_type),
+                };
+
                 response = response
                     .add_attribute("create_escrow", "true")
                     .add_submessage(SubMsg {
                         id: ESCROW_INSTANTIATE_REPLY_ID,
-                        msg: init_msg,
+                        msg: init_msg.to_cosmos_msg(
+                            Some(state.admin.clone()),
+                            "escrow".to_string(),
+                            escrow_code_id,
+                            escrow_code_hash,
+                            None,
+                        )?,
                         gas_limit: None,
                         reply_on: ReplyOn::Always,
                     });
