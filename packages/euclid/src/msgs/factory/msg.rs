@@ -9,6 +9,7 @@ use crate::{
 use cosmwasm_schema::cw_serde;
 use cosmwasm_schema::QueryResponses;
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use secret_toolkit::utils::HandleCallback;
 use snip20_reference_impl::receiver::Snip20ReceiveMsg;
 
 #[cw_serde]
@@ -112,6 +113,10 @@ pub enum ExecuteMsg {
     NativeReceiveCallback {
         msg: Binary,
     },
+}
+
+impl HandleCallback for ExecuteMsg {
+    const BLOCK_SIZE: usize = 256;
 }
 
 #[cw_serde]

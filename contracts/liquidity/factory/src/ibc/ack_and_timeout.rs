@@ -18,7 +18,7 @@ use euclid::{
     token::Token,
 };
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
-use secret_toolkit::utils::InitCallback;
+use secret_toolkit::utils::{InitCallback,HandleCallback};
 use snip20_reference_impl::msg::InitConfig;
 
 use crate::{
@@ -41,19 +41,20 @@ pub fn ibc_packet_ack(
     env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
+    // let internal_msg = ExecuteMsg::IbcCallbackAckAndTimeout { ack: ack.clone() };
+    // let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+    //     contract_addr: env.contract.address.to_string(),
+    //     code_hash: env.contract.code_hash,
+    //     msg: to_binary(&internal_msg)?,
+    //     funds: vec![],
+    // });
     let internal_msg = ExecuteMsg::IbcCallbackAckAndTimeout { ack: ack.clone() };
-    let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: env.contract.address.to_string(),
-        code_hash: env.contract.code_hash,
-        msg: to_binary(&internal_msg)?,
-        funds: vec![],
-    });
     let msg: Result<ChainIbcExecuteMsg, StdError> = from_binary(&ack.original_packet.data);
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
 
-    let sub_msg = SubMsg::reply_always(internal_msg, IBC_ACK_AND_TIMEOUT_REPLY_ID);
+    let sub_msg = SubMsg::reply_always(internal_msg.to_cosmos_msg(env.contract.code_hash, env.contract.address.to_string(), None)?, IBC_ACK_AND_TIMEOUT_REPLY_ID);
     Ok(IbcBasicResponse::new()
         .add_attribute("ibc_ack", ack.acknowledgement.data.to_string())
         .add_attribute("tx_id", tx_id)
@@ -221,7 +222,7 @@ fn ack_pool_creation(
             )?;
             // Prepare response
             let mut res = Response::new()
-                .add_attribute("tx_id", tx_id)
+                .add_attribute("tx_id", tx_id.clone())
                 .add_attribute("method", "pool_creation")
                 .add_attribute("vlp", data.vlp_contract.clone());
             // Collects PairInfo into a vector of Token Info for easy iteration
@@ -287,7 +288,7 @@ fn ack_pool_creation(
                             id: ESCROW_INSTANTIATE_REPLY_ID,
                             msg: init_msg.to_cosmos_msg(
                                 Some(state.admin.clone()),
-                                "escrow".to_string(),
+                                format!("{}-escrow-{}-{}",env.contract.address,token.token.to_string(),tx_id),
                                 escrow_code_id,
                                 escrow_code_hash.clone(),
                                 None,
@@ -328,7 +329,7 @@ fn ack_pool_creation(
                 decimals: lp_token_instantiate_data.decimals,
                 initial_balances: vec![],
                 vlp: data.vlp_contract,
-                factory: env.contract.address,
+                factory: env.contract.address.clone(),
                 token_pair: existing_req.pair_info.get_pair()?,
                 admin: Some(state.admin.clone()),
                 prng_seed: to_binary(&"seed")?,
@@ -347,7 +348,7 @@ fn ack_pool_creation(
                 id: SNIP20_INSTANTIATE_REPLY_ID,
                 msg: init_snip20_msg.to_cosmos_msg(
                     Some(state.admin.clone()),
-                    "snip20".to_string(),
+                    format!("{}-snip20-{}",env.contract.address,tx_id),
                     snip20_code_id,
                     snip20_code_hash,
                     None,
@@ -371,7 +372,7 @@ fn ack_pool_creation(
 
 fn ack_register_denom(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     sender: String,
     res: AcknowledgementMsg<RegisterDenomResponse>,
     tx_id: String,
@@ -389,7 +390,9 @@ fn ack_register_denom(
     // Check whether res is an error or not
     match res {
         AcknowledgementMsg::Ok(_data) => {
+
             let state = STATE.load(deps.storage)?;
+
             let escrow_code_id = state.escrow_code_id;
             let escrow_code_hash = state.escrow_code_hash;
             let token = existing_req.token;
@@ -397,7 +400,7 @@ fn ack_register_denom(
             // let existing_escrow = TOKEN_TO_ESCROW.get(deps.storage, &token.token.clone())?;
 
             let mut response = Response::new()
-                .add_attribute("tx_id", tx_id)
+                .add_attribute("tx_id", tx_id.clone())
                 .add_attribute("method", "ack_register_denom")
                 .add_attribute("token", token.token.to_string())
                 .add_attribute("token_type", token.token_type.get_key());
@@ -415,9 +418,10 @@ fn ack_register_denom(
                     .add_attribute("create_escrow", "false")
                     .add_message(msg);
             } else {
+
                 // Instantiate escrow
                 let init_msg = EscrowInstantiateMsg {
-                    token_id: token.token,
+                    token_id: token.token.clone(),
                     allowed_denom: Some(token.token_type),
                 };
 
@@ -427,7 +431,7 @@ fn ack_register_denom(
                         id: ESCROW_INSTANTIATE_REPLY_ID,
                         msg: init_msg.to_cosmos_msg(
                             Some(state.admin.clone()),
-                            "escrow".to_string(),
+                            format!("{}-escrow-{}-{}",env.contract.address,token.token.to_string(),tx_id),
                             escrow_code_id,
                             escrow_code_hash,
                             None,

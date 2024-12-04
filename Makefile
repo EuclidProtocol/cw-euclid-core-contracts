@@ -59,7 +59,7 @@ schema:
 start-server: # CTRL+C to stop
 	docker run -it --rm \
 		-p 26657:26657 -p 26656:26656 -p 1317:1317 -p 5000:5000 \
-		-v $$(pwd):/root/code \
+		-v "$$(pwd)":/root/code \
 		--name localsecret ghcr.io/scrtlabs/localsecret:v1.6.0
 
 # This relies on running `start-server` in another console
@@ -67,7 +67,7 @@ start-server: # CTRL+C to stop
 # by using `docker exec localsecret secretcli`.
 .PHONY: store-contract-local
 store-contract-local:
-	docker exec localsecret secretcli tx compute store -y --from a --gas 1000000 /root/code/contract.wasm.gz
+	docker exec localsecret secretcli tx compute store -y --from a  --gas auto --gas-prices 0.0125uscrt --gas-adjustment 1.3 -y -b sync /root/code/optimized-wasm/factory.wasm.gz
 
 .PHONY: integration-test
 integration-test:

@@ -15,7 +15,8 @@ pub const SNIP20_INSTANTIATE_REPLY_ID: u64 = 4;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
+        SubMsgResult::Err(err) => {
+            Err(ContractError::PoolInstantiateFailed { err })},
         SubMsgResult::Ok(res) => {
             // let instantiate_data: secret_utils::MsgInstantiateContractResponse =
             //     parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
@@ -91,9 +92,7 @@ pub fn on_snip20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
 
 pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Ok(Response::new()
-            .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
-            .add_attribute("error", err)),
+        SubMsgResult::Err(err) => Err(ContractError::new(&err)),
         SubMsgResult::Ok(res) => {
             let data = res
                 .data

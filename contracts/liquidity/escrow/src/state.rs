@@ -13,6 +13,6 @@ pub struct State {
 }
 
 pub const STATE: Item<State> = Item::new(b"state");
-pub const ALLOWED_DENOMS: Item<Vec<TokenType>> = Item::new(b"allowed_denoms");
+pub const ALLOWED_DENOMS: Item<Vec<TokenType>,Json> = Item::new(b"allowed_denoms");
 
 pub const DENOM_TO_AMOUNT: Keymap<String, Uint128, Json> = Keymap::new(b"denom_to_amount");

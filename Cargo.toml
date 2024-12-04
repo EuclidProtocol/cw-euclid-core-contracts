@@ -26,15 +26,15 @@ euclid = { path = "./packages/euclid" }
 euclid-ibc = { path = "./packages/euclid_ibc" }
 euclid-utils = { path = "./packages/euclid_utils" }
 
-cosmwasm-schema = "2.1.4"
+cosmwasm-schema = "2.1.5"
 snip20-reference-impl ={ path = "./packages/snip20-reference-impl/"}
-schemars = { version = "0.8.11" }
-serde = { version = "1.0" }
-thiserror = { version = "2.0.3" }
+schemars = { version = "0.8.21" }
+serde = { version = "1.0.216" }
+thiserror = { version = "2.0.6" }
 # itertools = "0.13.0"
 
 mock = { path = "./packages/mock" }
-secret-toolkit = { version = "0.10.1", features = [
+secret-toolkit = { version = "0.10.2", features = [
   "utils",
   "serialization",
   "viewing-key",
@@ -54,10 +54,10 @@ cosmwasm-storage = { package = "secret-cosmwasm-storage", version = "1.0.0"}
 secret-storage-plus = { git = "https://github.com/securesecrets/secret-plus-utils", version = "0.13.4", branch = "main"}
 secret-utils = { git = "https://github.com/securesecrets/secret-plus-utils", version = "0.13.4", branch = "main" }
 secret-cw2 = { git = "https://github.com/securesecrets/secret-plus-utils", version = "1.0.1", branch = "main"}
-anybuf = "=0.5.0"
+anybuf = "0.5.2"
 secret-multi-test = { git = "https://github.com/kent-3/secret-plus-utils", branch = "protobuf-fix"}
-shade-protocol = { git = "https://github.com/securesecrets/shade", rev = "lend-v1",features = [
+shade-protocol = { git = "https://github.com/securesecrets/shade", rev = "lend-v1" ,features = [
   "query_auth_impl",
   "admin","basic_staking"
 ] }
-shade-multi-test = { git = "https://github.com/securesecrets/shade", rev = "lend-v1",features = [ "query_auth", "admin"  ] }
+shade-multi-test = { git = "https://github.com/securesecrets/shade",features = [ "query_auth", "admin"  ] }

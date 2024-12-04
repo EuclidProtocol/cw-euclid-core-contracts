@@ -1,6 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_binary, to_binary, Binary, CosmosMsg, DepsMut, Env, IbcTimeout, MessageInfo,
-    Response, StdError, Uint128,
+    ensure, from_binary, to_binary, Binary, CosmosMsg, DepsMut, Env, IbcTimeout, MessageInfo, Response, StdError, Uint128
 };
 use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
@@ -921,6 +920,7 @@ pub fn execute_request_register_denom(
         chain_uid: state.chain_uid.clone(),
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
+    println!("tx_id :{:?}",tx_id);
 
     if PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
         .get(deps.storage, &(info.sender.clone(), tx_id.clone()))
@@ -1285,3 +1285,23 @@ pub fn execute_native_receive_callback(
     );
     receive::reusable_internal_call(deps, env, msg)
 }
+
+// pub fn test_ibc_ack(
+//     deps: DepsMut,
+//     env: Env,
+//     ack: IbcPacketAckMsg,
+// ) -> Result<Response, ContractError> {
+//        // Call `ibc_packet_ack` and capture the result
+//     let ibc_basic_response = ibc_ack_packet_internal_call(deps, env, ack)?;
+
+//     // Manually convert `IbcBasicResponse` to `Response`
+//     let mut response = Response::new()
+//         .add_attributes(ibc_basic_response.attributes)
+//         .add_events(ibc_basic_response.events);
+
+//     for submessage in ibc_basic_response.messages {
+//         response = response.add_submessage(submessage);
+//     }
+
+//     Ok(response)
+// }

@@ -94,7 +94,7 @@ pub enum ContractError {
     #[error("Pool request already exist")]
     PoolRequestAlreadyExists {},
 
-    #[error("Pool request {req:?} already exist")]
+    #[error("Pool request {req:?} does not exist")]
     PoolRequestDoesNotExists { req: String },
 
     #[error("Pool already created for this chain")]

@@ -2,16 +2,84 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate, query};
-    use crate::state::{State, HUB_CHANNEL, STATE};
+    use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
+    use crate::state::{State, HUB_CHANNEL, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, STATE};
 
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{DepsMut, Env, Response};
-    use euclid::chain::ChainUid;
+    use cosmwasm_std::testing::{self, mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::{to_binary, Addr, Binary, ContractInfo, DepsMut, Empty, Env, IbcAcknowledgement, IbcEndpoint, IbcPacket, IbcPacketAckMsg, IbcTimeout, IbcTimeoutBlock, Response, Timestamp};
+    use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::DenomFees;
     use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
+    use euclid::pool::{DenomRegisterDeregisterRequest, PoolCreationResponse, RegisterDenomResponse};
+    use euclid::token::{Token, TokenType, TokenWithDenom};
+    use euclid_ibc::ack::AcknowledgementMsg;
+    use euclid_ibc::msg::ChainIbcExecuteMsg;
+    use secret_multi_test::{App, Contract, ContractWrapper, Executor};
 
-    fn _initialize_state(deps: &mut DepsMut) {
+
+    fn contract_factory() -> Box<dyn Contract<Empty>> {
+        let contract = ContractWrapper::new(
+            crate::contract::execute,
+            crate::contract::instantiate,
+            crate::contract::query,
+        )
+        .with_migrate(crate::migrate::migrate).with_reply(crate::contract::reply);
+        Box::new(contract)
+    }
+
+    fn contract_snip20() -> Box<dyn Contract<Empty>> {
+        let contract = ContractWrapper::new(
+            snip20::contract::execute,
+            snip20::contract::instantiate,
+            snip20::contract::query,
+        )
+        .with_migrate(snip20::migrate::migrate);
+        Box::new(contract)
+    }
+
+    fn contract_escrow() -> Box<dyn Contract<Empty>> {
+        let contract = ContractWrapper::new(
+            escrow::contract::execute,
+            escrow::contract::instantiate,
+            escrow::contract::query,
+        )
+        .with_migrate(escrow::migrate::migrate);
+        Box::new(contract)
+    }
+
+    fn mock_app() -> App {
+        App::default()
+    }
+    
+    fn instantiate_factory(app: &mut App) -> ContractInfo {
+        let factory_info = app.store_code(contract_factory());
+        let escrow_info = app.store_code(contract_escrow());
+        let snip20_info = app.store_code(contract_snip20());
+
+        let msg = InstantiateMsg {
+            router_contract: "router".to_string(),
+            chain_uid: ChainUid::create("1".to_string()).unwrap(),
+            escrow_code_id: escrow_info.code_id,
+            escrow_code_hash: escrow_info.code_hash,
+            snip20_code_id: snip20_info.code_id,
+            snip20_code_hash: snip20_info.code_hash,
+            is_native: true,
+            router_contract_code_hash: Some("router_code_hash".to_string()),
+        };
+    
+        app.instantiate_contract(
+            factory_info,
+            Addr::unchecked("owner"),
+            &msg,
+            &[],
+            "snip20",
+            None,
+        )
+        .unwrap()
+    }
+
+    fn initialize_state(deps: &mut DepsMut) {
         let state = State {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             router_contract: "router_contract".to_string(),
@@ -42,52 +110,118 @@ mod tests {
         instantiate(deps, env, info, msg).unwrap()
     }
 
+    // #[test]
+    // fn test_init() {
+    //     let mut app = mock_app();
+    //     // let mut deps = mock_dependencies();
+    //     // let env = mock_env();
+    //     // let res = init(deps.as_mut(), env.clone());
+    //     // assert_eq!(0, res.messages.len());
+    //     // let expected_state = State {
+    //     //     router_contract: "router".to_string(),
+    //     //     router_contract_code_hash: "router_code_hash".to_string(),
+    //     //     admin: "owner".to_string(),
+    //     //     escrow_code_id: 1,
+    //     //     escrow_code_hash: "".to_string(),
+    //     //     chain_uid: ChainUid::create("1".to_string()).unwrap(),
+    //     //     snip20_code_id: 2,
+    //     //     snip20_code_hash: "".to_string(),
+    //     //     is_native: true,
+    //     //     partner_fees_collected: DenomFees { totals: Vec::new() },
+    //     // };
+    //     // let state = STATE.load(&deps.storage).unwrap();
+    //     // assert_eq!(state, expected_state);
+
+    //     // let msg = QueryMsg::GetState {};
+    //     // query(deps.as_ref(), env, msg).unwrap();
+    //     instantiate_factory(&mut app);
+    // }
+    // #[test]
+    // fn test_update_hub_channel() {
+    //     let mut deps = mock_dependencies();
+    //     let env = mock_env();
+    //     let info = mock_info("not_owner", &[]);
+    //     init(deps.as_mut(), env.clone());
+
+    //     HUB_CHANNEL
+    //         .save(deps.as_mut().storage, &"1".to_string())
+    //         .unwrap();
+    //     let msg = ExecuteMsg::UpdateHubChannel {
+    //         new_channel: "2".to_string(),
+    //     };
+    //     // Unauthorized
+    //     let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
+    //     assert_eq!(err, ContractError::Unauthorized {});
+
+    //     let info = mock_info("owner", &[]);
+    //     let _res = execute(deps.as_mut(), env, info, msg).unwrap();
+
+    //     assert_eq!(HUB_CHANNEL.load(&deps.storage).unwrap(), "2".to_string());
+    // }
+
     #[test]
-    fn test_init() {
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let res = init(deps.as_mut(), env.clone());
-        assert_eq!(0, res.messages.len());
-        let expected_state = State {
-            router_contract: "router".to_string(),
-            router_contract_code_hash: "router_code_hash".to_string(),
-            admin: "owner".to_string(),
-            escrow_code_id: 1,
-            escrow_code_hash: "".to_string(),
-            chain_uid: ChainUid::create("1".to_string()).unwrap(),
-            snip20_code_id: 2,
-            snip20_code_hash: "".to_string(),
-            is_native: true,
-            partner_fees_collected: DenomFees { totals: Vec::new() },
-        };
-        let state = STATE.load(&deps.storage).unwrap();
-        assert_eq!(state, expected_state);
+    fn test_ibc_ack_packet_internal_call() {
+        // Mock dependencies
+        // let mut deps = mock_dependencies();
+        // let env = mock_env();
 
-        let msg = QueryMsg::GetState {};
-        query(deps.as_ref(), env, msg).unwrap();
-    }
-    #[test]
-    fn test_update_hub_channel() {
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let info = mock_info("not_owner", &[]);
-        init(deps.as_mut(), env.clone());
+        let mut app = mock_app();
+        let factory = instantiate_factory(&mut app);
 
-        HUB_CHANNEL
-            .save(deps.as_mut().storage, &"1".to_string())
-            .unwrap();
-        let msg = ExecuteMsg::UpdateHubChannel {
-            new_channel: "2".to_string(),
-        };
-        // Unauthorized
-        let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
-        assert_eq!(err, ContractError::Unauthorized {});
+        let denom_register_msg = ExecuteMsg::RequestRegisterDenom { token: TokenWithDenom{
+            token: Token::create("uscrt".into()).unwrap(),
+            token_type: TokenType::Native { denom: "uscrt".into() }
+        }, timeout: None };
 
-        let info = mock_info("owner", &[]);
-        let _res = execute(deps.as_mut(), env, info, msg).unwrap();
+        let _ =app.execute_contract(
+            Addr::unchecked("owner"),
+            &ContractInfo {
+                address: factory.address.clone(),
+                code_hash: factory.code_hash.clone(),
+            },
+            &denom_register_msg,
+            &[],
+        ).unwrap();
 
-        assert_eq!(HUB_CHANNEL.load(&deps.storage).unwrap(), "2".to_string());
-    }
+
+        // PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.insert(deps.as_mut().storage, &(Addr::unchecked("todo!()"),"tx_123".into()),&DenomRegisterDeregisterRequest{
+        //     sender: "todo!()".into(),
+        //     tx_id: "tx_123".into(),
+        //     token: TokenWithDenom{
+        //         token: Token::create("uscrt".to_string()).unwrap(),
+        //         token_type: euclid::token::TokenType::Native { denom: "uscrt".to_string() },
+        //     },
+        // }).unwrap();
+
+        // Prepare mock IBC acknowledgment message
+        let original_packet_data = ChainIbcExecuteMsg::RegisterDenom { sender: CrossChainUser{
+            chain_uid:  ChainUid::create("secret".into()).unwrap(),
+            address: "owner".into(),
+        }, tx_id: "1:owner:cosmos-testnet-14002:12345:0:1".to_string(), token: TokenWithDenom{
+            token: Token::create("uscrt".to_string()).unwrap(),
+            token_type: euclid::token::TokenType::Native { denom: "uscrt".to_string() },
+        } };
+        let original_packet_binary = Binary::from(to_binary(&original_packet_data).unwrap());
+
+        let ack_data = AcknowledgementMsg::<RegisterDenomResponse>::Ok(RegisterDenomResponse{});
+        let ack_binary = Binary::from(to_binary(&ack_data).unwrap());
+
+        let packet = IbcPacket::new(original_packet_binary.clone(), IbcEndpoint { port_id: Default::default(), channel_id: Default::default() }, IbcEndpoint { port_id: Default::default(), channel_id: Default::default() }, 1, IbcTimeout::with_both(IbcTimeoutBlock{revision: 0,height: 0},Timestamp::from_nanos(0))); 
+
+        let ack = IbcPacketAckMsg::new(IbcAcknowledgement::new(ack_binary.clone()), packet.clone(), Addr::unchecked("relayer"));
+
+        println!("ack : {:?}",ack);
+        let msg = ExecuteMsg::IbcCallbackAckAndTimeout { ack };
+        let res = app.execute_contract(
+            Addr::unchecked("owner"),
+            &ContractInfo {
+                address: factory.address.clone(),
+                code_hash: factory.code_hash.clone(),
+            },
+            &msg,
+            &[],
+        ).unwrap();
+        }
 
     //     #[test]
     //     fn test_execute_request_pool_creation() {

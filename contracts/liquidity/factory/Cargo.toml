@@ -45,6 +45,8 @@ cosmwasm-std = { workspace = true, features = [
   # "cosmwasm_1_4",
   "ibc3",
 ] }
+# snip20 = {path = "../snip20"}
+# escrow = {path = "../escrow"}
 secret-toolkit ={ workspace = true}
 secret-utils = { workspace = true }
 secret-cw2 = { workspace = true }
