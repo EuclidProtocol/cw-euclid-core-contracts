@@ -65,6 +65,7 @@ pub enum ExecuteMsg {
         token: Token,
         amount: Uint128,
         preferred_denom: Option<TokenType>,
+        refund_address: Option<String>,
         forwarding_message: Option<Binary>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,

@@ -212,6 +212,7 @@ pub fn execute_withdraw(
     amount: Uint128,
     preferred_denom: Option<TokenType>,
     forwarding_message: Option<Binary>,
+    refund_address: Option<String>,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
@@ -296,7 +297,7 @@ pub fn execute_withdraw(
 
     if let Some(forwarding_message) = forwarding_message {
         let msg: CosmosMsg = from_json(&forwarding_message)?;
-        response = response.add_message(msg);
+        response = response.add_submessage(cosmwasm_std::SubMsg::reply_always(msg, 1));
     }
 
     Ok(response)

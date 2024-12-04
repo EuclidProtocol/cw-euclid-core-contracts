@@ -90,6 +90,7 @@ pub fn reusable_internal_call(
             tx_id,
             preferred_denom,
             forwarding_message,
+            refund_address,
             ..
         } => execute_release_escrow(
             deps,
@@ -97,6 +98,7 @@ pub fn reusable_internal_call(
             amount,
             preferred_denom,
             forwarding_message,
+            refund_address,
             token,
             to_address,
             tx_id,
@@ -177,6 +179,7 @@ fn execute_release_escrow(
     amount: Uint128,
     preferred_denom: Option<TokenType>,
     forwarding_message: Option<Binary>,
+    refund_address: Option<String>,
     token: Token,
     to_address: String,
     tx_id: String,
@@ -186,6 +189,7 @@ fn execute_release_escrow(
         amount,
         preferred_denom,
         forwarding_message,
+        refund_address,
     };
 
     let ack_msg = ReleaseEscrowResponse {

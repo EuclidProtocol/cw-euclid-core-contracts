@@ -315,6 +315,7 @@ fn test_execute_withdraw() {
                 amount: Uint128::new(50),
                 preferred_denom: None,
                 forwarding_message: None,
+                refund_address: None,
             },
             expected_error: None,
         },
@@ -325,6 +326,7 @@ fn test_execute_withdraw() {
                 amount: Uint128::new(2000),
                 preferred_denom: None,
                 forwarding_message: None,
+                refund_address: None,
             }, // Use 2000 which exceeds the balance
             expected_error: Some(ContractError::InsufficientDeposit {}),
         },
@@ -335,6 +337,7 @@ fn test_execute_withdraw() {
                 amount: Uint128::new(50),
                 preferred_denom: None,
                 forwarding_message: None,
+                refund_address: None,
             },
             expected_error: Some(ContractError::Unauthorized {}),
         },

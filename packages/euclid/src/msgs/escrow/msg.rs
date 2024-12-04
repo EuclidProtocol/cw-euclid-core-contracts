@@ -32,6 +32,7 @@ pub enum ExecuteMsg {
         amount: Uint128,
         preferred_denom: Option<TokenType>,
         forwarding_message: Option<Binary>,
+        refund_address: Option<String>,
     },
 }
 

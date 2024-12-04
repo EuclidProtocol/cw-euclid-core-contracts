@@ -1023,6 +1023,7 @@ pub fn execute_withdraw_virtual_balance(
     amount: Uint128,
     preferred_denom: Option<TokenType>,
     forwarding_message: Option<Binary>,
+    refund_address: Option<String>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -1046,6 +1047,7 @@ pub fn execute_withdraw_virtual_balance(
         amount,
         preferred_denom,
         forwarding_message,
+        refund_address,
         cross_chain_addresses,
         tx_id: tx_id.clone(),
         timeout: Some(timeout),

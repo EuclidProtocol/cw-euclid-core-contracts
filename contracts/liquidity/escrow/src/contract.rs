@@ -72,6 +72,7 @@ pub fn execute(
             amount,
             preferred_denom,
             forwarding_message,
+            refund_address,
         } => execute_withdraw(
             deps,
             env,
@@ -80,6 +81,7 @@ pub fn execute(
             amount,
             preferred_denom,
             forwarding_message,
+            refund_address,
         ),
     }
 }

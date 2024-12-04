@@ -187,6 +187,7 @@ pub struct ChainIbcWithdrawExecuteMsg {
     pub amount: Uint128,
     pub preferred_denom: Option<TokenType>,
     pub forwarding_message: Option<Binary>,
+    pub refund_address: Option<String>,
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     // Unique per tx
@@ -245,6 +246,7 @@ pub enum HubIbcExecuteMsg {
         amount: Uint128,
         preferred_denom: Option<TokenType>,
         forwarding_message: Option<Binary>,
+        refund_address: Option<String>,
         token: Token,
         to_address: String,
 

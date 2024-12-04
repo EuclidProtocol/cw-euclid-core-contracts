@@ -186,6 +186,7 @@ pub fn reusable_internal_call(
                 amount: Some(msg.amount),
                 preferred_denom: msg.preferred_denom,
                 forwarding_message: msg.forwarding_message,
+                refund_address: msg.refund_address,
                 cross_chain_addresses: msg.cross_chain_addresses,
                 timeout: msg.timeout,
                 tx_id: msg.tx_id.clone(),
