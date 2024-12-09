@@ -14,7 +14,7 @@ use crate::execute::{
     execute_withdraw, receive_cw20,
 };
 use crate::query::{self, query_token_id};
-use crate::reply::handle_refund;
+use crate::reply::{handle_refund, FORWARDING_MESSAGE_REPLY_ID};
 use crate::state::{State, STATE};
 
 use euclid::msgs::escrow::{EscrowInstantiateResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -100,7 +100,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     let id = msg.id;
     match id {
-        1 => handle_refund(deps, msg),
+        FORWARDING_MESSAGE_REPLY_ID => handle_refund(deps, msg),
         _ => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id
