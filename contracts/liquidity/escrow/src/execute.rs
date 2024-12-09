@@ -1,11 +1,15 @@
 use cosmwasm_std::{
-    ensure, from_json, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response, Uint128,
+    coin, ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
+    Response, SubMsg, Uint128, WasmMsg,
 };
 
-use cw20::Cw20ReceiveMsg;
+use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use euclid::{error::ContractError, msgs::escrow::cw20::EscrowCw20HookMsg, token::TokenType};
 
-use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
+use crate::{
+    reply::FORWARDING_MESSAGE_REPLY_ID,
+    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, REFUND_ADDRESS, STATE},
+};
 
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
@@ -224,6 +228,7 @@ pub fn execute_withdraw(
     ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
 
     let mut messages: Vec<CosmosMsg> = Vec::new();
+    let mut forwarding_messages: Vec<SubMsg> = Vec::new();
     let mut remaining_withdraw_amount = amount;
     let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
     if let Some(preferred_denom) = preferred_denom {
@@ -252,6 +257,38 @@ pub fn execute_withdraw(
             preferred_denom.get_key(),
             &denom_balance.checked_sub(transfer_amount)?,
         )?;
+        if let Some(forwarding_message) = forwarding_message {
+            if preferred_denom.is_native() {
+                let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: recipient.to_string(),
+                    msg: forwarding_message.clone(),
+                    funds: vec![coin(amount.u128(), preferred_denom.get_key())],
+                });
+                forwarding_messages.push(SubMsg::reply_always(
+                    forwarding_msg,
+                    FORWARDING_MESSAGE_REPLY_ID,
+                ));
+            }
+            if preferred_denom.is_smart() {
+                let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: preferred_denom.get_key(),
+                    msg: to_json_binary(&Cw20ExecuteMsg::Send {
+                        contract: recipient.clone().into_string(),
+                        amount,
+                        msg: forwarding_message,
+                    })?,
+                    funds: vec![],
+                });
+                forwarding_messages.push(SubMsg::reply_always(
+                    forwarding_msg,
+                    FORWARDING_MESSAGE_REPLY_ID,
+                ));
+            }
+            if let Some(refund_address) = refund_address {
+                REFUND_ADDRESS.save(deps.storage, &refund_address)?;
+            }
+            // TODO?: Handle voucher scenario
+        }
     } else {
         // Ensure that the amount desired doesn't exceed the current balance
         while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
@@ -277,6 +314,38 @@ pub fn execute_withdraw(
                 denom.get_key(),
                 &denom_balance.checked_sub(transfer_amount)?,
             )?;
+            if let Some(ref forwarding_message) = forwarding_message {
+                if denom.is_native() {
+                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: recipient.to_string(),
+                        msg: forwarding_message.clone(),
+                        funds: vec![coin(amount.u128(), denom.get_key())],
+                    });
+                    forwarding_messages.push(SubMsg::reply_always(
+                        forwarding_msg,
+                        FORWARDING_MESSAGE_REPLY_ID,
+                    ));
+                }
+                if denom.is_smart() {
+                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: denom.get_key(),
+                        msg: to_json_binary(&Cw20ExecuteMsg::Send {
+                            contract: recipient.clone().into_string(),
+                            amount,
+                            msg: forwarding_message.clone(),
+                        })?,
+                        funds: vec![],
+                    });
+                    forwarding_messages.push(SubMsg::reply_always(
+                        forwarding_msg,
+                        FORWARDING_MESSAGE_REPLY_ID,
+                    ));
+                }
+                if let Some(ref refund_address) = refund_address {
+                    REFUND_ADDRESS.save(deps.storage, &refund_address)?;
+                }
+                // TODO?: Handle voucher scenario
+            }
         }
     }
 
@@ -288,17 +357,13 @@ pub fn execute_withdraw(
 
     state.total_amount = state.total_amount.checked_sub(amount)?;
     STATE.save(deps.storage, &state)?;
-    let mut response = Response::new()
+    let response = Response::new()
         .add_messages(messages)
+        .add_submessages(forwarding_messages)
         .add_attribute("method", "escrow_withdraw")
         .add_attribute("amount", amount)
         .add_attribute("token", state.token_id.to_string())
         .add_attribute("recipient", recipient);
-
-    if let Some(forwarding_message) = forwarding_message {
-        let msg: CosmosMsg = from_json(&forwarding_message)?;
-        response = response.add_submessage(cosmwasm_std::SubMsg::reply_always(msg, 1));
-    }
 
     Ok(response)
 }

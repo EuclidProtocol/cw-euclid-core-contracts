@@ -11,5 +11,5 @@ pub struct State {
 
 pub const STATE: Item<State> = Item::new("state");
 pub const ALLOWED_DENOMS: Item<Vec<TokenType>> = Item::new("allowed_denoms");
-
+pub const REFUND_ADDRESS: Item<String> = Item::new("refund_address");
 pub const DENOM_TO_AMOUNT: Map<String, Uint128> = Map::new("denom_to_amount");
