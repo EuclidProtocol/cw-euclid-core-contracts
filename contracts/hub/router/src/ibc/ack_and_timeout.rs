@@ -81,11 +81,10 @@ pub fn reusable_internal_ack_call(
             token,
             tx_id,
             sender,
-            chain_uid,
             ..
         } => {
             let res = from_json(ack)?;
-            ibc_ack_release_escrow(deps, env, chain_uid, sender, amount, token, res, tx_id)
+            ibc_ack_release_escrow(deps, env, sender, amount, token, res, tx_id)
         }
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             let res = from_json(ack)?;
@@ -228,7 +227,6 @@ pub fn ibc_ack_update_factory_channel(
 pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,
-    chain_uid: ChainUid,
     sender: CrossChainUser,
     amount: Uint128,
     token: Token,
@@ -264,7 +262,7 @@ pub fn ibc_ack_release_escrow(
             let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
                 amount,
                 balance_key: BalanceKey {
-                    cross_chain_user: sender,
+                    cross_chain_user: sender.clone(),
                     token_id: token.to_string(),
                 },
             });
@@ -275,7 +273,7 @@ pub fn ibc_ack_release_escrow(
             });
 
             // Escrow release is failed, add the old escrow balance again
-            let escrow_key = ESCROW_BALANCES.key((token, chain_uid));
+            let escrow_key = ESCROW_BALANCES.key((token, sender.chain_uid));
             let new_balance = escrow_key.load(deps.storage)?.checked_add(amount)?;
             escrow_key.save(deps.storage, &new_balance)?;
 

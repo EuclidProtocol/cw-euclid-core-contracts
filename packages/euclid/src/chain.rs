@@ -4,7 +4,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{ensure, StdError, StdResult, Uint128};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
-use crate::error::ContractError;
+use crate::{error::ContractError, token::TokenType};
 
 #[cw_serde]
 #[derive(PartialOrd)]
@@ -103,8 +103,18 @@ impl CrossChainUser {
         Ok(self)
     }
 
-    pub fn with_limit(self, limit: Option<Limit>) -> CrossChainUserWithLimit {
-        CrossChainUserWithLimit { user: self, limit }
+    pub fn with_limit(
+        self,
+        limit: Option<Limit>,
+        preferred_denom: Option<TokenType>,
+        refund_address: Option<String>,
+    ) -> CrossChainUserWithLimit {
+        CrossChainUserWithLimit {
+            user: self,
+            limit,
+            preferred_denom,
+            refund_address,
+        }
     }
 }
 
@@ -119,6 +129,8 @@ pub enum Limit {
 pub struct CrossChainUserWithLimit {
     pub user: CrossChainUser,
     pub limit: Option<Limit>,
+    pub preferred_denom: Option<TokenType>,
+    pub refund_address: Option<String>,
 }
 
 #[cw_serde]

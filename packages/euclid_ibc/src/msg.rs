@@ -241,15 +241,11 @@ pub enum HubIbcExecuteMsg {
     },
 
     ReleaseEscrow {
-        chain_uid: ChainUid,
         sender: CrossChainUser,
         amount: Uint128,
-        preferred_denom: Option<TokenType>,
+        recipient: CrossChainUserWithLimit,
         forwarding_message: Option<Binary>,
-        refund_address: Option<String>,
         token: Token,
-        to_address: String,
-
         // Unique per tx
         tx_id: String,
     },

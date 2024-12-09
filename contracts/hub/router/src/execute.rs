@@ -12,7 +12,7 @@ use euclid::{
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
-    token::{Token, TokenType},
+    token::Token,
     utils::tx::generate_tx,
     virtual_balance::BalanceKey,
 };
@@ -224,9 +224,7 @@ pub fn execute_withdraw_voucher(
     info: MessageInfo,
     token: Token,
     amount: Option<Uint128>,
-    preferred_denom: Option<TokenType>,
     forwarding_message: Option<Binary>,
-    refund_address: Option<String>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -249,9 +247,7 @@ pub fn execute_withdraw_voucher(
             sender: cross_chain_user,
             token,
             amount,
-            preferred_denom,
             forwarding_message,
-            refund_address,
             cross_chain_addresses,
             timeout,
             tx_id: tx_id.clone(),
@@ -271,9 +267,7 @@ pub fn execute_release_escrow(
     info: MessageInfo,
     sender: CrossChainUser,
     token: Token,
-    preferred_denom: Option<TokenType>,
     forwarding_message: Option<Binary>,
-    refund_address: Option<String>,
     // Leaving this empty means that we will release the entire balance
     amount: Option<Uint128>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
@@ -310,16 +304,6 @@ pub fn execute_release_escrow(
         ContractError::InsufficientFunds {}
     );
 
-    if let Some(ref preferred_denom) = preferred_denom {
-        let token_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
-        // Ensure that the preferred denom is valid
-        ensure!(
-            token_denoms
-                .iter()
-                .any(|x| x.token_type == preferred_denom.clone()),
-            ContractError::InvalidDenom {}
-        );
-    }
     let mut response = Response::new()
         .add_event(tx_event(
             &tx_id,
@@ -333,15 +317,27 @@ pub fn execute_release_escrow(
 
     let mut cross_chain_addresses_iterator = cross_chain_addresses.into_iter().peekable();
     let mut remaining_withdraw_amount = amount;
+    let token_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
 
     let mut transfer_amount = Uint128::zero();
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
+            .clone()
             .next()
             .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
+
+        if let Some(ref preferred_denom) = cross_chain_address.preferred_denom {
+            // Ensure that the preferred denom is valid
+            ensure!(
+                token_denoms
+                    .iter()
+                    .any(|x| x.token_type == preferred_denom.clone()),
+                ContractError::InvalidDenom {}
+            );
+        }
 
         let escrow_key =
             ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
@@ -398,14 +394,11 @@ pub fn execute_release_escrow(
         let send_msg = HubIbcExecuteMsg::ReleaseEscrow {
             sender: sender.clone(),
             amount: release_amount,
-            preferred_denom: preferred_denom.clone(),
+            recipient: cross_chain_address.clone(),
             forwarding_message: forwarding_message.clone(),
-            refund_address: refund_address.clone(),
             token: token.clone(),
-            to_address: cross_chain_address.user.address.clone(),
             // We can't use same tx id because it might conflict with pending requests on receiving chain
             tx_id: generate_tx(deps.branch(), &env, &sender)?,
-            chain_uid: cross_chain_address.user.chain_uid.clone(),
         }
         .to_msg(deps, &env, chain, timeout)?;
 
