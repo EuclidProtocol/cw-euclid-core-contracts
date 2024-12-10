@@ -331,7 +331,8 @@ pub fn execute_release_escrow(
             ensure!(
                 token_denoms
                     .iter()
-                    .any(|x| x.token_type == preferred_denom.clone()),
+                    .any(|x| x.token_type == preferred_denom.clone()
+                        && x.chain_uid == cross_chain_address.user.chain_uid),
                 ContractError::InvalidDenom {}
             );
         }
