@@ -8,7 +8,7 @@ use euclid::{error::ContractError, msgs::escrow::cw20::EscrowCw20HookMsg, token:
 
 use crate::{
     reply::FORWARDING_MESSAGE_REPLY_ID,
-    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, REFUND_ADDRESS, STATE},
+    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, REFUND_ADDRESS, REFUND_ASSETS, STATE},
 };
 
 pub fn execute_add_allowed_denom(
@@ -260,16 +260,19 @@ pub fn execute_withdraw(
                     let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: recipient.to_string(),
                         msg: forwarding_message.clone(),
-                        funds: vec![coin(amount.u128(), denom)],
+                        funds: vec![coin(amount.u128(), denom.clone())],
                     });
                     forwarding_messages.push(SubMsg::reply_always(
                         forwarding_msg,
                         FORWARDING_MESSAGE_REPLY_ID,
                     ));
+                    let mut refund_assets = REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+                    refund_assets.push(coin(amount.u128(), denom));
+                    REFUND_ASSETS.save(deps.storage, &refund_assets)?;
                 }
                 TokenType::Smart { contract_address } => {
                     let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: contract_address,
+                        contract_addr: contract_address.clone(),
                         msg: to_json_binary(&Cw20ExecuteMsg::Send {
                             contract: recipient.clone().into_string(),
                             amount,
@@ -281,6 +284,9 @@ pub fn execute_withdraw(
                         forwarding_msg,
                         FORWARDING_MESSAGE_REPLY_ID,
                     ));
+                    let mut refund_assets = REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+                    refund_assets.push(coin(amount.u128(), contract_address));
+                    REFUND_ASSETS.save(deps.storage, &refund_assets)?;
                 }
                 TokenType::Voucher {} => {}
             }
@@ -324,16 +330,20 @@ pub fn execute_withdraw(
                         let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                             contract_addr: recipient.to_string(),
                             msg: forwarding_message.clone(),
-                            funds: vec![coin(amount.u128(), denom)],
+                            funds: vec![coin(amount.u128(), denom.clone())],
                         });
                         forwarding_messages.push(SubMsg::reply_always(
                             forwarding_msg,
                             FORWARDING_MESSAGE_REPLY_ID,
                         ));
+                        let mut refund_assets =
+                            REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+                        refund_assets.push(coin(amount.u128(), denom));
+                        REFUND_ASSETS.save(deps.storage, &refund_assets)?;
                     }
                     TokenType::Smart { contract_address } => {
                         let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: contract_address,
+                            contract_addr: contract_address.clone(),
                             msg: to_json_binary(&Cw20ExecuteMsg::Send {
                                 contract: recipient.clone().into_string(),
                                 amount,
@@ -345,6 +355,10 @@ pub fn execute_withdraw(
                             forwarding_msg,
                             FORWARDING_MESSAGE_REPLY_ID,
                         ));
+                        let mut refund_assets =
+                            REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+                        refund_assets.push(coin(amount.u128(), contract_address));
+                        REFUND_ASSETS.save(deps.storage, &refund_assets)?;
                     }
                     TokenType::Voucher {} => {}
                 }
