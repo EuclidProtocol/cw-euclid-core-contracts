@@ -8,6 +8,7 @@ pub fn handle_refund(deps: DepsMut, msg: Reply) -> Result<Response, ContractErro
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
             //TODO keep refund address?
+
             Ok(Response::new()
                 .add_attribute("action", "forwarding_message")
                 .add_attribute("error", err))

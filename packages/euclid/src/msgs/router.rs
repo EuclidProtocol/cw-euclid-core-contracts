@@ -35,7 +35,6 @@ pub enum ExecuteMsg {
     WithdrawVoucher {
         token: Token,
         amount: Option<Uint128>,
-        forwarding_message: Option<Binary>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
@@ -43,7 +42,6 @@ pub enum ExecuteMsg {
         sender: CrossChainUser,
         token: Token,
         amount: Option<Uint128>,
-        forwarding_message: Option<Binary>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
         tx_id: String,

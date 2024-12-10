@@ -224,7 +224,6 @@ pub fn execute_withdraw_voucher(
     info: MessageInfo,
     token: Token,
     amount: Option<Uint128>,
-    forwarding_message: Option<Binary>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -247,7 +246,6 @@ pub fn execute_withdraw_voucher(
             sender: cross_chain_user,
             token,
             amount,
-            forwarding_message,
             cross_chain_addresses,
             timeout,
             tx_id: tx_id.clone(),
@@ -267,7 +265,6 @@ pub fn execute_release_escrow(
     info: MessageInfo,
     sender: CrossChainUser,
     token: Token,
-    forwarding_message: Option<Binary>,
     // Leaving this empty means that we will release the entire balance
     amount: Option<Uint128>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
@@ -395,7 +392,6 @@ pub fn execute_release_escrow(
             sender: sender.clone(),
             amount: release_amount,
             recipient: cross_chain_address.clone(),
-            forwarding_message: forwarding_message.clone(),
             token: token.clone(),
             // We can't use same tx id because it might conflict with pending requests on receiving chain
             tx_id: generate_tx(deps.branch(), &env, &sender)?,

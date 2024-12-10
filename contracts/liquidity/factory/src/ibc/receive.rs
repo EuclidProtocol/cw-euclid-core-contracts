@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
     IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -87,18 +87,9 @@ pub fn reusable_internal_call(
             amount,
             token,
             tx_id,
-            forwarding_message,
             recipient,
             ..
-        } => execute_release_escrow(
-            deps,
-            env,
-            amount,
-            recipient,
-            forwarding_message,
-            token,
-            tx_id,
-        ),
+        } => execute_release_escrow(deps, env, amount, recipient, token, tx_id),
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             execute_update_factory_channel(deps, env, chain_uid, tx_id)
         }
@@ -174,7 +165,6 @@ fn execute_release_escrow(
     env: Env,
     amount: Uint128,
     recipient: CrossChainUserWithLimit,
-    forwarding_message: Option<Binary>,
     token: Token,
     tx_id: String,
 ) -> Result<Response, ContractError> {
@@ -182,7 +172,7 @@ fn execute_release_escrow(
         recipient: deps.api.addr_validate(&recipient.user.address)?,
         amount,
         preferred_denom: recipient.preferred_denom,
-        forwarding_message,
+        forwarding_message: recipient.forwarding_message,
         refund_address: recipient.refund_address,
     };
 

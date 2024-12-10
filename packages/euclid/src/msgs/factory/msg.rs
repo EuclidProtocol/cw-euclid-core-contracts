@@ -37,9 +37,7 @@ pub enum ExecuteMsg {
         swaps: Vec<NextSwapPair>,
         // First element in array has highest priority
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
         partner_fee: Option<PartnerFee>,
-        preferred_denom: Option<TokenType>,
     },
     RequestRegisterDenom {
         token: TokenWithDenom,
@@ -64,9 +62,6 @@ pub enum ExecuteMsg {
     WithdrawVirtualBalance {
         token: Token,
         amount: Uint128,
-        preferred_denom: Option<TokenType>,
-        refund_address: Option<String>,
-        forwarding_message: Option<Binary>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },

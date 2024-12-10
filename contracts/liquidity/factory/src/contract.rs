@@ -93,7 +93,6 @@ pub fn execute(
             swaps,
             cross_chain_addresses,
             partner_fee,
-            preferred_denom,
         } => {
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser {
@@ -113,7 +112,6 @@ pub fn execute(
                 timeout,
                 cross_chain_addresses,
                 partner_fee,
-                preferred_denom,
             )
         }
         ExecuteMsg::DepositToken {
@@ -164,9 +162,6 @@ pub fn execute(
         ExecuteMsg::WithdrawVirtualBalance {
             token,
             amount,
-            preferred_denom,
-            refund_address,
-            forwarding_message,
             cross_chain_addresses,
             timeout,
         } => execute_withdraw_virtual_balance(
@@ -175,9 +170,6 @@ pub fn execute(
             info,
             token,
             amount,
-            preferred_denom,
-            forwarding_message,
-            refund_address,
             cross_chain_addresses,
             timeout,
         ),

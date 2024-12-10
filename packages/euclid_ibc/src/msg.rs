@@ -2,8 +2,7 @@ use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128,
-    WasmMsg,
+    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use euclid::{
@@ -11,7 +10,7 @@ use euclid::{
     error::ContractError,
     msgs::{factory, router},
     swap::NextSwapPair,
-    token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -144,13 +143,10 @@ impl ChainIbcExecuteMsg {
 pub struct ChainIbcRemoveLiquidityExecuteMsg {
     // Factory will set this using info.sender
     pub sender: CrossChainUser,
-
     pub lp_allocation: Uint128,
     pub pair: Pair,
-
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
     // Unique per tx
     pub tx_id: String,
 }
@@ -169,13 +165,11 @@ pub struct ChainIbcSwapExecuteMsg {
 
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
     pub partner_fee_amount: Uint128,
     pub partner_fee_recipient: CrossChainUser,
 
     // Unique per tx
     pub tx_id: String,
-    pub preferred_denom: Option<TokenType>,
 }
 
 #[cw_serde]
@@ -185,9 +179,6 @@ pub struct ChainIbcWithdrawExecuteMsg {
     // User will provide this
     pub token: Token,
     pub amount: Uint128,
-    pub preferred_denom: Option<TokenType>,
-    pub forwarding_message: Option<Binary>,
-    pub refund_address: Option<String>,
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     // Unique per tx
@@ -244,7 +235,6 @@ pub enum HubIbcExecuteMsg {
         sender: CrossChainUser,
         amount: Uint128,
         recipient: CrossChainUserWithLimit,
-        forwarding_message: Option<Binary>,
         token: Token,
         // Unique per tx
         tx_id: String,

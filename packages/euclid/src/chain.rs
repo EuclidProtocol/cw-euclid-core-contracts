@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, StdError, StdResult, Uint128};
+use cosmwasm_std::{ensure, Binary, StdError, StdResult, Uint128};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::{error::ContractError, token::TokenType};
@@ -108,12 +108,14 @@ impl CrossChainUser {
         limit: Option<Limit>,
         preferred_denom: Option<TokenType>,
         refund_address: Option<String>,
+        forwarding_message: Option<Binary>,
     ) -> CrossChainUserWithLimit {
         CrossChainUserWithLimit {
             user: self,
             limit,
             preferred_denom,
             refund_address,
+            forwarding_message,
         }
     }
 }
@@ -131,6 +133,7 @@ pub struct CrossChainUserWithLimit {
     pub limit: Option<Limit>,
     pub preferred_denom: Option<TokenType>,
     pub refund_address: Option<String>,
+    pub forwarding_message: Option<Binary>,
 }
 
 #[cw_serde]

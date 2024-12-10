@@ -184,7 +184,6 @@ pub fn reusable_internal_call(
                 sender: msg.sender,
                 token: msg.token.clone(),
                 amount: Some(msg.amount),
-                forwarding_message: msg.forwarding_message,
                 cross_chain_addresses: msg.cross_chain_addresses,
                 timeout: msg.timeout,
                 tx_id: msg.tx_id.clone(),

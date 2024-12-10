@@ -5,7 +5,7 @@ use crate::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     fee::PartnerFee,
     swap::NextSwapPair,
-    token::{Pair, Token, TokenType, TokenWithDenom},
+    token::{Pair, Token, TokenWithDenom},
 };
 
 #[cw_serde]
@@ -23,7 +23,6 @@ pub enum FactoryCw20HookMsg {
         timeout: Option<u64>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         partner_fee: Option<PartnerFee>,
-        preferred_denom: Option<TokenType>,
     },
     RemoveLiquidity {
         pair: Pair,
