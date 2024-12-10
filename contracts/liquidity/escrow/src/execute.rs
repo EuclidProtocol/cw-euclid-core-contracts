@@ -247,9 +247,6 @@ pub fn execute_withdraw(
 
         let transfer_amount = remaining_withdraw_amount;
 
-        let send_msg =
-            preferred_denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
-        messages.push(send_msg);
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
         DENOM_TO_AMOUNT.save(
@@ -258,36 +255,46 @@ pub fn execute_withdraw(
             &denom_balance.checked_sub(transfer_amount)?,
         )?;
         if let Some(forwarding_message) = forwarding_message {
-            if preferred_denom.is_native() {
-                let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: recipient.to_string(),
-                    msg: forwarding_message.clone(),
-                    funds: vec![coin(amount.u128(), preferred_denom.get_key())],
-                });
-                forwarding_messages.push(SubMsg::reply_always(
-                    forwarding_msg,
-                    FORWARDING_MESSAGE_REPLY_ID,
-                ));
+            match preferred_denom {
+                TokenType::Native { denom } => {
+                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: recipient.to_string(),
+                        msg: forwarding_message.clone(),
+                        funds: vec![coin(amount.u128(), denom)],
+                    });
+                    forwarding_messages.push(SubMsg::reply_always(
+                        forwarding_msg,
+                        FORWARDING_MESSAGE_REPLY_ID,
+                    ));
+                }
+                TokenType::Smart { contract_address } => {
+                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: contract_address,
+                        msg: to_json_binary(&Cw20ExecuteMsg::Send {
+                            contract: recipient.clone().into_string(),
+                            amount,
+                            msg: forwarding_message,
+                        })?,
+                        funds: vec![],
+                    });
+                    forwarding_messages.push(SubMsg::reply_always(
+                        forwarding_msg,
+                        FORWARDING_MESSAGE_REPLY_ID,
+                    ));
+                }
+                TokenType::Voucher {} => {}
             }
-            if preferred_denom.is_smart() {
-                let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: preferred_denom.get_key(),
-                    msg: to_json_binary(&Cw20ExecuteMsg::Send {
-                        contract: recipient.clone().into_string(),
-                        amount,
-                        msg: forwarding_message,
-                    })?,
-                    funds: vec![],
-                });
-                forwarding_messages.push(SubMsg::reply_always(
-                    forwarding_msg,
-                    FORWARDING_MESSAGE_REPLY_ID,
-                ));
-            }
+
             if let Some(refund_address) = refund_address {
                 REFUND_ADDRESS.save(deps.storage, &refund_address)?;
             }
-            // TODO?: Handle voucher scenario
+        } else {
+            let send_msg = preferred_denom.create_transfer_msg(
+                transfer_amount,
+                recipient.to_string(),
+                None,
+            )?;
+            messages.push(send_msg);
         }
     } else {
         // Ensure that the amount desired doesn't exceed the current balance
@@ -304,9 +311,6 @@ pub fn execute_withdraw(
                 remaining_withdraw_amount
             };
 
-            let send_msg =
-                denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
-            messages.push(send_msg);
             remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
             DENOM_TO_AMOUNT.save(
@@ -315,36 +319,43 @@ pub fn execute_withdraw(
                 &denom_balance.checked_sub(transfer_amount)?,
             )?;
             if let Some(ref forwarding_message) = forwarding_message {
-                if denom.is_native() {
-                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: recipient.to_string(),
-                        msg: forwarding_message.clone(),
-                        funds: vec![coin(amount.u128(), denom.get_key())],
-                    });
-                    forwarding_messages.push(SubMsg::reply_always(
-                        forwarding_msg,
-                        FORWARDING_MESSAGE_REPLY_ID,
-                    ));
-                }
-                if denom.is_smart() {
-                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: denom.get_key(),
-                        msg: to_json_binary(&Cw20ExecuteMsg::Send {
-                            contract: recipient.clone().into_string(),
-                            amount,
+                match denom {
+                    TokenType::Native { denom } => {
+                        let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                            contract_addr: recipient.to_string(),
                             msg: forwarding_message.clone(),
-                        })?,
-                        funds: vec![],
-                    });
-                    forwarding_messages.push(SubMsg::reply_always(
-                        forwarding_msg,
-                        FORWARDING_MESSAGE_REPLY_ID,
-                    ));
+                            funds: vec![coin(amount.u128(), denom)],
+                        });
+                        forwarding_messages.push(SubMsg::reply_always(
+                            forwarding_msg,
+                            FORWARDING_MESSAGE_REPLY_ID,
+                        ));
+                    }
+                    TokenType::Smart { contract_address } => {
+                        let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                            contract_addr: contract_address,
+                            msg: to_json_binary(&Cw20ExecuteMsg::Send {
+                                contract: recipient.clone().into_string(),
+                                amount,
+                                msg: forwarding_message.clone(),
+                            })?,
+                            funds: vec![],
+                        });
+                        forwarding_messages.push(SubMsg::reply_always(
+                            forwarding_msg,
+                            FORWARDING_MESSAGE_REPLY_ID,
+                        ));
+                    }
+                    TokenType::Voucher {} => {}
                 }
+
                 if let Some(ref refund_address) = refund_address {
                     REFUND_ADDRESS.save(deps.storage, &refund_address)?;
                 }
-                // TODO?: Handle voucher scenario
+            } else {
+                let send_msg =
+                    denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
+                messages.push(send_msg);
             }
         }
     }
