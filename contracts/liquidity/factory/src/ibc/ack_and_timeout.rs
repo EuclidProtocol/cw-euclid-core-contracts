@@ -1,9 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement,
-    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, ReplyOn, Response, StdError,
-    StdResult, SubMsg, WasmMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement,
+    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, MessageInfo, ReplyOn, Response,
+    StdError, StdResult, SubMsg, WasmMsg,
 };
 use cw20::Cw20Coin;
 use euclid::{
@@ -58,9 +58,14 @@ pub fn ibc_packet_ack(
 
 pub fn ibc_ack_packet_internal_call(
     deps: DepsMut,
+    info: MessageInfo,
     env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<Response, ContractError> {
+    ensure!(
+        info.sender == env.contract.address,
+        ContractError::Unauthorized {}
+    );
     let msg: ChainIbcExecuteMsg = from_json(&ack.original_packet.data)?;
     reusable_internal_ack_call(deps, env, msg, ack.acknowledgement.data, false)
 }

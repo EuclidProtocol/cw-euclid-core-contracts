@@ -135,7 +135,7 @@ pub fn execute(
                     ibc_receive_internal_call(&mut deps, env, info, receive_msg)
                 }
                 ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
-                    ibc_ack_packet_internal_call(deps, env, ack)
+                    ibc_ack_packet_internal_call(deps, info, env, ack)
                 }
                 ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
                 ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
