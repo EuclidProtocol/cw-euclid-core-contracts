@@ -9,7 +9,7 @@ use cw_orch::prelude::{
 use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::{
-    chain::ChainUid,
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     fee::{DenomFees, BPS_1_PERCENT},
     msgs::{
@@ -22,6 +22,7 @@ use euclid::{
         virtual_balance::GetStateResponse,
         vlp::GetLiquidityResponse,
     },
+    swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
 };
 use factory::{
@@ -294,8 +295,7 @@ fn test_create_pool_with_funds() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0].outcome {
-        println!("{:?}", ack_tx.tx_id.response.events);
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -358,11 +358,9 @@ fn test_create_pool_with_funds() {
     );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
 
-    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+    let _vbalance_query: GetStateResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
         .unwrap();
-
-    println!("vbalance state is: {:?}", vbalance_query);
 
     // Osmo escrow contract
     escrow_osmosis.set_address(&Addr::unchecked("contract1"));
@@ -613,11 +611,9 @@ fn test_create_pool_with_funds() {
     );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
 
-    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+    let _vbalance_query: GetStateResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
         .unwrap();
-
-    println!("vbalance state is: {:?}", vbalance_query);
 
     // Nibiru escrow contract
     escrow_nibiru.set_address(&Addr::unchecked("contract6"));
@@ -714,6 +710,48 @@ fn test_create_pool_with_funds() {
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );
+    // Test swap
+    let eucl_token = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+    let nibi_token = TokenWithDenom {
+        token: Token::create("nibi".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "nibi".to_string(),
+        },
+    };
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest {
+                sender: None,
+                asset_in: eucl_token.clone(),
+                amount_in: Uint128::from(1_000u128),
+                asset_out: nibi_token.token.clone(),
+                min_amount_out: Uint128::from(9000u128),
+                timeout: None,
+                swaps: vec![NextSwapPair {
+                    token_in: eucl_token.token,
+                    token_out: nibi_token.token,
+                    test_fail: None,
+                }],
+                cross_chain_addresses: vec![CrossChainUserWithLimit {
+                    user: CrossChainUser {
+                        address: sender,
+                        chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                    },
+                    limit: None,
+                    preferred_denom: None,
+                    refund_address: None,
+                    forwarding_message: None,
+                }],
+                partner_fee: None,
+            },
+            Some(&[coin(1_000u128, "eucl")]),
+        )
+        .unwrap();
 }
 
 #[test]

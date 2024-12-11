@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 use cw2::set_contract_version;
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
