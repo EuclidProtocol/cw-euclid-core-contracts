@@ -1,9 +1,9 @@
 use cosmwasm_std::{
-    coin, ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
-    Response, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
+    Uint128,
 };
 
-use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
+use cw20::Cw20ReceiveMsg;
 use euclid::{error::ContractError, msgs::escrow::cw20::EscrowCw20HookMsg, token::TokenType};
 
 use crate::{
@@ -218,8 +218,21 @@ pub fn execute_withdraw(
     forwarding_message: Option<Binary>,
     refund_address: Option<String>,
 ) -> Result<Response, ContractError> {
+    // Clean any old refund address
+    REFUND_ADDRESS.remove(deps.storage);
+    REFUND_ASSETS.remove(deps.storage);
+
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
+    if let Some(ref refund_address) = refund_address {
+        deps.api
+            .addr_validate(refund_address)
+            .map_err(|_| ContractError::InvalidAddress {
+                address: refund_address.to_string(),
+                msg: "Invalid refund address".to_string(),
+            })?;
+        REFUND_ADDRESS.save(deps.storage, refund_address)?;
+    }
     ensure!(
         info.sender == state.factory_address,
         ContractError::Unauthorized {}
@@ -233,144 +246,49 @@ pub fn execute_withdraw(
     let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
     if let Some(preferred_denom) = preferred_denom {
         ensure!(
-            allowed_denoms
-                .find(|denom| denom.get_key() == preferred_denom.get_key())
-                .is_some(),
+            allowed_denoms.any(|denom| denom.get_key() == preferred_denom.get_key()),
             ContractError::UnsupportedDenomination {}
         );
-        let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, preferred_denom.get_key())?;
 
-        ensure!(
-            denom_balance.ge(&amount),
-            ContractError::new("Insufficient balance in preferred denom",)
-        );
+        // Only allow the preferred denom, remove all other denoms
+        allowed_denoms = vec![preferred_denom].into_iter().peekable();
+    }
 
-        let transfer_amount = remaining_withdraw_amount;
+    // Ensure that the amount desired doesn't exceed the current balance
+    while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
+        let denom = allowed_denoms
+            .next()
+            .ok_or(ContractError::new("Denom Iter Faiiled"))?;
+
+        let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
+
+        let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
+            denom_balance
+        } else {
+            remaining_withdraw_amount
+        };
 
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
         DENOM_TO_AMOUNT.save(
             deps.storage,
-            preferred_denom.get_key(),
+            denom.get_key(),
             &denom_balance.checked_sub(transfer_amount)?,
         )?;
-        if let Some(forwarding_message) = forwarding_message {
-            match preferred_denom {
-                TokenType::Native { denom } => {
-                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: recipient.to_string(),
-                        msg: forwarding_message.clone(),
-                        funds: vec![coin(amount.u128(), denom.clone())],
-                    });
-                    forwarding_messages.push(SubMsg::reply_always(
-                        forwarding_msg,
-                        FORWARDING_MESSAGE_REPLY_ID,
-                    ));
-                    let mut refund_assets = REFUND_ASSETS.load(deps.storage).unwrap_or_default();
-                    refund_assets.push(coin(amount.u128(), denom));
-                    REFUND_ASSETS.save(deps.storage, &refund_assets)?;
-                }
-                TokenType::Smart { contract_address } => {
-                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: contract_address.clone(),
-                        msg: to_json_binary(&Cw20ExecuteMsg::Send {
-                            contract: recipient.clone().into_string(),
-                            amount,
-                            msg: forwarding_message,
-                        })?,
-                        funds: vec![],
-                    });
-                    forwarding_messages.push(SubMsg::reply_always(
-                        forwarding_msg,
-                        FORWARDING_MESSAGE_REPLY_ID,
-                    ));
-                    let mut refund_assets = REFUND_ASSETS.load(deps.storage).unwrap_or_default();
-                    refund_assets.push(coin(amount.u128(), contract_address));
-                    REFUND_ASSETS.save(deps.storage, &refund_assets)?;
-                }
-                TokenType::Voucher {} => {}
-            }
 
-            if let Some(refund_address) = refund_address {
-                REFUND_ADDRESS.save(deps.storage, &refund_address)?;
-            }
+        let send_msg = denom.create_transfer_msg(
+            transfer_amount,
+            recipient.to_string(),
+            None,
+            forwarding_message.clone(),
+        )?;
+        if forwarding_message.is_some() {
+            forwarding_messages.push(SubMsg::reply_always(send_msg, FORWARDING_MESSAGE_REPLY_ID));
+            let mut refund_assets = REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+            refund_assets.push((denom, transfer_amount));
+            REFUND_ASSETS.save(deps.storage, &refund_assets)?;
         } else {
-            let send_msg = preferred_denom.create_transfer_msg(
-                transfer_amount,
-                recipient.to_string(),
-                None,
-            )?;
             messages.push(send_msg);
-        }
-    } else {
-        // Ensure that the amount desired doesn't exceed the current balance
-        while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
-            let denom = allowed_denoms
-                .next()
-                .ok_or(ContractError::new("Denom Iter Faiiled"))?;
-
-            let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
-
-            let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
-                denom_balance
-            } else {
-                remaining_withdraw_amount
-            };
-
-            remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
-
-            DENOM_TO_AMOUNT.save(
-                deps.storage,
-                denom.get_key(),
-                &denom_balance.checked_sub(transfer_amount)?,
-            )?;
-            if let Some(ref forwarding_message) = forwarding_message {
-                match denom {
-                    TokenType::Native { denom } => {
-                        let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: recipient.to_string(),
-                            msg: forwarding_message.clone(),
-                            funds: vec![coin(amount.u128(), denom.clone())],
-                        });
-                        forwarding_messages.push(SubMsg::reply_always(
-                            forwarding_msg,
-                            FORWARDING_MESSAGE_REPLY_ID,
-                        ));
-                        let mut refund_assets =
-                            REFUND_ASSETS.load(deps.storage).unwrap_or_default();
-                        refund_assets.push(coin(amount.u128(), denom));
-                        REFUND_ASSETS.save(deps.storage, &refund_assets)?;
-                    }
-                    TokenType::Smart { contract_address } => {
-                        let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: contract_address.clone(),
-                            msg: to_json_binary(&Cw20ExecuteMsg::Send {
-                                contract: recipient.clone().into_string(),
-                                amount,
-                                msg: forwarding_message.clone(),
-                            })?,
-                            funds: vec![],
-                        });
-                        forwarding_messages.push(SubMsg::reply_always(
-                            forwarding_msg,
-                            FORWARDING_MESSAGE_REPLY_ID,
-                        ));
-                        let mut refund_assets =
-                            REFUND_ASSETS.load(deps.storage).unwrap_or_default();
-                        refund_assets.push(coin(amount.u128(), contract_address));
-                        REFUND_ASSETS.save(deps.storage, &refund_assets)?;
-                    }
-                    TokenType::Voucher {} => {}
-                }
-
-                if let Some(ref refund_address) = refund_address {
-                    REFUND_ADDRESS.save(deps.storage, &refund_address)?;
-                }
-            } else {
-                let send_msg =
-                    denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
-                messages.push(send_msg);
-            }
         }
     }
 

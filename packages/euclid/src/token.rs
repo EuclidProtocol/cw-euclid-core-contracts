@@ -3,8 +3,8 @@ use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, Deps,
-    StdError, StdResult, Uint128, WasmMsg,
+    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg,
+    Deps, StdError, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
@@ -335,29 +335,65 @@ impl TokenType {
         amount: Uint128,
         recipient: String,
         allowance: Option<String>,
+        forwarding_message: Option<Binary>,
     ) -> Result<CosmosMsg, ContractError> {
         let msg = match self.clone() {
-            TokenType::Native { denom } => CosmosMsg::Bank(BankMsg::Send {
-                to_address: recipient,
-                amount: vec![Coin {
-                    denom: denom.to_string(),
-                    amount,
-                }],
-            }),
-            TokenType::Smart { contract_address } => CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: contract_address.to_string(),
-                msg: match allowance {
-                    Some(owner) => to_json_binary(&cw20_base::msg::ExecuteMsg::TransferFrom {
-                        owner,
-                        recipient,
-                        amount,
-                    })?,
-                    None => {
-                        to_json_binary(&cw20_base::msg::ExecuteMsg::Transfer { recipient, amount })?
-                    }
-                },
-                funds: vec![],
-            }),
+            TokenType::Native { denom } => {
+                if let Some(forwarding_message) = forwarding_message {
+                    CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: recipient.to_string(),
+                        msg: forwarding_message.clone(),
+                        funds: vec![coin(amount.u128(), denom.clone())],
+                    })
+                } else {
+                    CosmosMsg::Bank(BankMsg::Send {
+                        to_address: recipient,
+                        amount: vec![Coin {
+                            denom: denom.to_string(),
+                            amount,
+                        }],
+                    })
+                }
+            }
+            TokenType::Smart { contract_address } => {
+                if let Some(forwarding_message) = forwarding_message {
+                    CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: contract_address.to_string(),
+                        msg: match allowance {
+                            Some(owner) => to_json_binary(&cw20_base::msg::ExecuteMsg::SendFrom {
+                                owner,
+                                amount,
+                                contract: recipient.to_string(),
+                                msg: forwarding_message.clone(),
+                            })?,
+                            None => to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
+                                contract: recipient.to_string(),
+                                msg: forwarding_message.clone(),
+                                amount,
+                            })?,
+                        },
+                        funds: vec![],
+                    })
+                } else {
+                    CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: contract_address.to_string(),
+                        msg: match allowance {
+                            Some(owner) => {
+                                to_json_binary(&cw20_base::msg::ExecuteMsg::TransferFrom {
+                                    owner,
+                                    recipient,
+                                    amount,
+                                })?
+                            }
+                            None => to_json_binary(&cw20_base::msg::ExecuteMsg::Transfer {
+                                recipient,
+                                amount,
+                            })?,
+                        },
+                        funds: vec![],
+                    })
+                }
+            }
             TokenType::Voucher { .. } => {
                 return Err(ContractError::new("Voucher can only be transferred in vsl"));
             }
@@ -434,9 +470,10 @@ impl TokenWithDenom {
         amount: Uint128,
         recipient: String,
         allowance: Option<String>,
+        forwarding_message: Option<Binary>,
     ) -> Result<CosmosMsg, ContractError> {
         self.token_type
-            .create_transfer_msg(amount, recipient, allowance)
+            .create_transfer_msg(amount, recipient, allowance, forwarding_message)
     }
 
     pub fn create_escrow_msg(

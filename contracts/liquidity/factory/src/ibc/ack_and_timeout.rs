@@ -520,6 +520,7 @@ fn ack_add_liquidity(
                     token_info.amount,
                     sender.to_string(),
                     None,
+                    None,
                 )?;
                 msgs.push(msg);
             }
@@ -653,6 +654,7 @@ fn ack_swap_request(
                         swap_info.partner_fee_amount,
                         swap_info.partner_fee_recipient.to_string(),
                         None,
+                        None,
                     )?;
                     response = response.add_message(partner_send_msg)
                 }
@@ -681,6 +683,7 @@ fn ack_swap_request(
                         .amount_in
                         .checked_add(swap_info.partner_fee_amount)?,
                     sender.to_string(),
+                    None,
                     None,
                 )?;
                 response = response.add_message(msg);
@@ -732,6 +735,7 @@ fn ack_deposit_token_request(
             let msg = deposit_info.asset_in.create_transfer_msg(
                 deposit_info.amount_in,
                 sender.to_string(),
+                None,
                 None,
             )?;
 

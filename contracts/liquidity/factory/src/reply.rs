@@ -35,15 +35,12 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
             let pending_deposit_token =
                 PENDING_DEPOSIT_TOKEN.may_load(deps.storage, escrow_data.token.clone())?;
 
-            match pending_deposit_token {
-                Some(token) => {
-                    let deposit_msg = token
-                        .token_type
-                        .create_escrow_msg(token.amount, escrow_address)?;
-                    response = response.add_message(deposit_msg);
-                    PENDING_DEPOSIT_TOKEN.remove(deps.storage, token.token);
-                }
-                None => {}
+            if let Some(token) = pending_deposit_token {
+                let deposit_msg = token
+                    .token_type
+                    .create_escrow_msg(token.amount, escrow_address)?;
+                response = response.add_message(deposit_msg);
+                PENDING_DEPOSIT_TOKEN.remove(deps.storage, token.token);
             }
 
             Ok(response)
