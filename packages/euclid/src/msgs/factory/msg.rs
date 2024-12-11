@@ -37,7 +37,6 @@ pub enum ExecuteMsg {
         swaps: Vec<NextSwapPair>,
         // First element in array has highest priority
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
         partner_fee: Option<PartnerFee>,
     },
     RequestRegisterDenom {

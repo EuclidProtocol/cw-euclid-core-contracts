@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
@@ -23,7 +23,7 @@ use crate::{
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        STATE,
+        STATE, TOKEN_DENOMS,
     },
 };
 
@@ -307,22 +307,35 @@ pub fn execute_release_escrow(
             sender.address.as_str(),
             TxType::EscrowRelease,
         ))
-        .add_attribute("tx_id", tx_id);
+        .add_attribute("tx_id", tx_id.clone());
 
     let timeout = get_timeout(timeout)?;
     let mut release_msgs: Vec<SubMsg> = vec![];
 
     let mut cross_chain_addresses_iterator = cross_chain_addresses.into_iter().peekable();
     let mut remaining_withdraw_amount = amount;
+    let token_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
 
     let mut transfer_amount = Uint128::zero();
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
+            .clone()
             .next()
             .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
+
+        if let Some(ref preferred_denom) = cross_chain_address.preferred_denom {
+            // Ensure that the preferred denom is valid
+            ensure!(
+                token_denoms
+                    .iter()
+                    .any(|x| x.token_type == preferred_denom.clone()
+                        && x.chain_uid == cross_chain_address.user.chain_uid),
+                ContractError::InvalidDenom {}
+            );
+        }
 
         let escrow_key =
             ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
@@ -336,7 +349,36 @@ pub fn execute_release_escrow(
             remaining_withdraw_amount
         };
 
-        let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
+        match cross_chain_address.limit {
+            Some(Limit::LessThanOrEqual(limit)) => {
+                ensure!(
+                    release_amount.le(&limit),
+                    ContractError::LimitExceeded {
+                        limit,
+                        amount: release_amount
+                    }
+                );
+            }
+            Some(Limit::Equal(limit)) => {
+                ensure!(
+                    release_amount.eq(&limit),
+                    ContractError::AmountMismatch {
+                        expected: limit,
+                        received: release_amount
+                    }
+                );
+            }
+            Some(Limit::GreaterThanOrEqual(limit)) => {
+                ensure!(
+                    release_amount.ge(&limit),
+                    ContractError::InsufficientAmount {
+                        min_amount: limit,
+                        amount: release_amount
+                    }
+                );
+            }
+            _ => {}
+        }
 
         if release_amount.is_zero() {
             continue;
@@ -350,11 +392,10 @@ pub fn execute_release_escrow(
         let send_msg = HubIbcExecuteMsg::ReleaseEscrow {
             sender: sender.clone(),
             amount: release_amount,
+            recipient: cross_chain_address.clone(),
             token: token.clone(),
-            to_address: cross_chain_address.user.address.clone(),
             // We can't use same tx id because it might conflict with pending requests on receiving chain
             tx_id: generate_tx(deps.branch(), &env, &sender)?,
-            chain_uid: cross_chain_address.user.chain_uid.clone(),
         }
         .to_msg(deps, &env, chain, timeout)?;
 

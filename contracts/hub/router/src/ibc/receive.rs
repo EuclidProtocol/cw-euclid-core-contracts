@@ -521,7 +521,6 @@ pub fn ibc_execute_add_liquidity(
         sender,
         tx_id,
         slippage_tolerance_bps,
-        called_by_register_pool_with_funds: false,
     };
 
     let msg = WasmMsg::Execute {

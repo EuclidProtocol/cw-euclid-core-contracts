@@ -143,13 +143,10 @@ impl ChainIbcExecuteMsg {
 pub struct ChainIbcRemoveLiquidityExecuteMsg {
     // Factory will set this using info.sender
     pub sender: CrossChainUser,
-
     pub lp_allocation: Uint128,
     pub pair: Pair,
-
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
     // Unique per tx
     pub tx_id: String,
 }
@@ -168,7 +165,6 @@ pub struct ChainIbcSwapExecuteMsg {
 
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
     pub partner_fee_amount: Uint128,
     pub partner_fee_recipient: CrossChainUser,
 
@@ -236,12 +232,10 @@ pub enum HubIbcExecuteMsg {
     },
 
     ReleaseEscrow {
-        chain_uid: ChainUid,
         sender: CrossChainUser,
         amount: Uint128,
+        recipient: CrossChainUserWithLimit,
         token: Token,
-        to_address: String,
-
         // Unique per tx
         tx_id: String,
     },

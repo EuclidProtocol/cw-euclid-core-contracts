@@ -1,7 +1,7 @@
 use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order, Uint128};
 use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
-    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
     error::ContractError,
     msgs::router::{
         AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
@@ -162,8 +162,36 @@ pub fn query_simulate_escrow_release(
             remaining_withdraw_amount
         };
 
-        let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
-
+        match cross_chain_address.limit {
+            Some(Limit::LessThanOrEqual(limit)) => {
+                ensure!(
+                    release_amount.le(&limit),
+                    ContractError::LimitExceeded {
+                        limit,
+                        amount: release_amount
+                    }
+                );
+            }
+            Some(Limit::Equal(limit)) => {
+                ensure!(
+                    release_amount.eq(&limit),
+                    ContractError::AmountMismatch {
+                        expected: limit,
+                        received: release_amount
+                    }
+                );
+            }
+            Some(Limit::GreaterThanOrEqual(limit)) => {
+                ensure!(
+                    release_amount.ge(&limit),
+                    ContractError::InsufficientAmount {
+                        min_amount: limit,
+                        amount: release_amount
+                    }
+                );
+            }
+            _ => {}
+        }
         if release_amount.is_zero() {
             continue;
         }

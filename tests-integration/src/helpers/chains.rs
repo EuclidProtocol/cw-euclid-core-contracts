@@ -1,21 +1,18 @@
 #![cfg(not(target_arch = "wasm32"))]
-
-use cosmwasm_std::Addr;
-use cosmwasm_std::Coin;
 use cw20::Cw20Contract;
-use cw_orch::mock::MockBase;
-use cw_orch::prelude::*;
-
-use euclid::msgs::factory::ExecuteMsgFns as FactoryExecuteMsgFns;
-use euclid::msgs::router::ExecuteMsgFns as RouterExecuteMsgFns;
-
-use cw_orch_interchain::InterchainEnv;
-use cw_orch_interchain::MockInterchainEnv;
+use cw_orch::{mock::MockBase, prelude::*};
+use cw_orch_interchain::{InterchainEnv, MockInterchainEnv};
 use escrow::EscrowContract;
-use euclid::chain::ChainUid;
-use euclid::msgs::router::QueryMsgFns;
-use euclid::msgs::router::RegisterFactoryChainIbc;
-use euclid::msgs::router::RegisterFactoryChainNative;
+use euclid::{
+    chain::ChainUid,
+    msgs::{
+        factory::ExecuteMsgFns as FactoryExecuteMsgFns,
+        router::{
+            ExecuteMsgFns as RouterExecuteMsgFns, QueryMsgFns, RegisterFactoryChainIbc,
+            RegisterFactoryChainNative,
+        },
+    },
+};
 use factory::FactoryContract;
 use router::RouterContract;
 use virtual_balance::VirtualBalanceContract;
@@ -29,7 +26,7 @@ pub fn setup_factory(
 ) -> FactoryContract<MockBase> {
     let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let chain = interchain.get_chain(factory_chain_id).unwrap();
-    let router_chain = interchain.get_chain(router_chain_id).unwrap();
+    let _router_chain = interchain.get_chain(router_chain_id).unwrap();
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let cw20 = Cw20Contract::new(chain.clone());

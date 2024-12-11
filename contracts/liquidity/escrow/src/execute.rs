@@ -1,11 +1,15 @@
 use cosmwasm_std::{
-    ensure, from_json, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, Uint128,
+    coin, ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
+    Response, SubMsg, Uint128, WasmMsg,
 };
 
-use cw20::Cw20ReceiveMsg;
+use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use euclid::{error::ContractError, msgs::escrow::cw20::EscrowCw20HookMsg, token::TokenType};
 
-use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
+use crate::{
+    reply::FORWARDING_MESSAGE_REPLY_ID,
+    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, REFUND_ADDRESS, REFUND_ASSETS, STATE},
+};
 
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
@@ -210,6 +214,9 @@ pub fn execute_withdraw(
     info: MessageInfo,
     recipient: Addr,
     amount: Uint128,
+    preferred_denom: Option<TokenType>,
+    forwarding_message: Option<Binary>,
+    refund_address: Option<String>,
 ) -> Result<Response, ContractError> {
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
@@ -221,32 +228,150 @@ pub fn execute_withdraw(
     ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
 
     let mut messages: Vec<CosmosMsg> = Vec::new();
-    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
-
+    let mut forwarding_messages: Vec<SubMsg> = Vec::new();
     let mut remaining_withdraw_amount = amount;
-    // Ensure that the amount desired doesn't exceed the current balance
-    while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
-        let denom = allowed_denoms
-            .next()
-            .ok_or(ContractError::new("Denom Iter Faiiled"))?;
+    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
+    if let Some(preferred_denom) = preferred_denom {
+        ensure!(
+            allowed_denoms
+                .find(|denom| denom.get_key() == preferred_denom.get_key())
+                .is_some(),
+            ContractError::UnsupportedDenomination {}
+        );
+        let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, preferred_denom.get_key())?;
 
-        let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
+        ensure!(
+            denom_balance.ge(&amount),
+            ContractError::new("Insufficient balance in preferred denom",)
+        );
 
-        let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
-            denom_balance
-        } else {
-            remaining_withdraw_amount
-        };
+        let transfer_amount = remaining_withdraw_amount;
 
-        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
-        messages.push(send_msg);
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
         DENOM_TO_AMOUNT.save(
             deps.storage,
-            denom.get_key(),
+            preferred_denom.get_key(),
             &denom_balance.checked_sub(transfer_amount)?,
         )?;
+        if let Some(forwarding_message) = forwarding_message {
+            match preferred_denom {
+                TokenType::Native { denom } => {
+                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: recipient.to_string(),
+                        msg: forwarding_message.clone(),
+                        funds: vec![coin(amount.u128(), denom.clone())],
+                    });
+                    forwarding_messages.push(SubMsg::reply_always(
+                        forwarding_msg,
+                        FORWARDING_MESSAGE_REPLY_ID,
+                    ));
+                    let mut refund_assets = REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+                    refund_assets.push(coin(amount.u128(), denom));
+                    REFUND_ASSETS.save(deps.storage, &refund_assets)?;
+                }
+                TokenType::Smart { contract_address } => {
+                    let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: contract_address.clone(),
+                        msg: to_json_binary(&Cw20ExecuteMsg::Send {
+                            contract: recipient.clone().into_string(),
+                            amount,
+                            msg: forwarding_message,
+                        })?,
+                        funds: vec![],
+                    });
+                    forwarding_messages.push(SubMsg::reply_always(
+                        forwarding_msg,
+                        FORWARDING_MESSAGE_REPLY_ID,
+                    ));
+                    let mut refund_assets = REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+                    refund_assets.push(coin(amount.u128(), contract_address));
+                    REFUND_ASSETS.save(deps.storage, &refund_assets)?;
+                }
+                TokenType::Voucher {} => {}
+            }
+
+            if let Some(refund_address) = refund_address {
+                REFUND_ADDRESS.save(deps.storage, &refund_address)?;
+            }
+        } else {
+            let send_msg = preferred_denom.create_transfer_msg(
+                transfer_amount,
+                recipient.to_string(),
+                None,
+            )?;
+            messages.push(send_msg);
+        }
+    } else {
+        // Ensure that the amount desired doesn't exceed the current balance
+        while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
+            let denom = allowed_denoms
+                .next()
+                .ok_or(ContractError::new("Denom Iter Faiiled"))?;
+
+            let denom_balance = DENOM_TO_AMOUNT.load(deps.storage, denom.get_key())?;
+
+            let transfer_amount = if remaining_withdraw_amount.ge(&denom_balance) {
+                denom_balance
+            } else {
+                remaining_withdraw_amount
+            };
+
+            remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
+
+            DENOM_TO_AMOUNT.save(
+                deps.storage,
+                denom.get_key(),
+                &denom_balance.checked_sub(transfer_amount)?,
+            )?;
+            if let Some(ref forwarding_message) = forwarding_message {
+                match denom {
+                    TokenType::Native { denom } => {
+                        let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                            contract_addr: recipient.to_string(),
+                            msg: forwarding_message.clone(),
+                            funds: vec![coin(amount.u128(), denom.clone())],
+                        });
+                        forwarding_messages.push(SubMsg::reply_always(
+                            forwarding_msg,
+                            FORWARDING_MESSAGE_REPLY_ID,
+                        ));
+                        let mut refund_assets =
+                            REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+                        refund_assets.push(coin(amount.u128(), denom));
+                        REFUND_ASSETS.save(deps.storage, &refund_assets)?;
+                    }
+                    TokenType::Smart { contract_address } => {
+                        let forwarding_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                            contract_addr: contract_address.clone(),
+                            msg: to_json_binary(&Cw20ExecuteMsg::Send {
+                                contract: recipient.clone().into_string(),
+                                amount,
+                                msg: forwarding_message.clone(),
+                            })?,
+                            funds: vec![],
+                        });
+                        forwarding_messages.push(SubMsg::reply_always(
+                            forwarding_msg,
+                            FORWARDING_MESSAGE_REPLY_ID,
+                        ));
+                        let mut refund_assets =
+                            REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+                        refund_assets.push(coin(amount.u128(), contract_address));
+                        REFUND_ASSETS.save(deps.storage, &refund_assets)?;
+                    }
+                    TokenType::Voucher {} => {}
+                }
+
+                if let Some(ref refund_address) = refund_address {
+                    REFUND_ADDRESS.save(deps.storage, &refund_address)?;
+                }
+            } else {
+                let send_msg =
+                    denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
+                messages.push(send_msg);
+            }
+        }
     }
 
     // After all the transfer messages, ensure that total amount that needs to be sent is zero
@@ -257,11 +382,13 @@ pub fn execute_withdraw(
 
     state.total_amount = state.total_amount.checked_sub(amount)?;
     STATE.save(deps.storage, &state)?;
-
-    Ok(Response::new()
+    let response = Response::new()
         .add_messages(messages)
+        .add_submessages(forwarding_messages)
         .add_attribute("method", "escrow_withdraw")
         .add_attribute("amount", amount)
         .add_attribute("token", state.token_id.to_string())
-        .add_attribute("recipient", recipient))
+        .add_attribute("recipient", recipient);
+
+    Ok(response)
 }

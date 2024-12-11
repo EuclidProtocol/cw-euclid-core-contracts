@@ -6,11 +6,6 @@ use cw20::Cw20Contract;
 use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload,
 };
-
-use euclid::msgs::cw20::QueryMsgFns as Cw20QueryMsgFns;
-use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
-use euclid::msgs::router::QueryMsgFns as RouterQueryMsgFns;
-
 use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::{
@@ -725,7 +720,7 @@ fn test_create_pool_with_funds() {
 fn test_add_liquidity() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
-    let factory_chain = interchain.get_chain("osmosis").unwrap();
+    let _factory_chain = interchain.get_chain("osmosis").unwrap();
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
     let router = crate::helpers::chains::setup_router(&router_chain);
