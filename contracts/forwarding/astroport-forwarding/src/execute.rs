@@ -19,7 +19,6 @@ pub fn execute_cw20_receive(
     info: &MessageInfo,
     msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
-
     let amount = msg.amount;
     let from_token = TokenType::Smart {
         contract_address: info.sender.to_string(),
