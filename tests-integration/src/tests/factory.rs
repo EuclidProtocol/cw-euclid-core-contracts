@@ -752,6 +752,34 @@ fn test_create_pool_with_funds() {
             Some(&[coin(1_000u128, "eucl")]),
         )
         .unwrap();
+
+    // Check balances after swap
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("nibi".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            // Total amount decreased by 9506
+            total_amount: Uint128::from((100_000u128 * 2) - 9506),
+        }
+    );
+    // This is the escrow for the Euclid token
+    escrow_nibiru.set_address(&Addr::unchecked("contract4"));
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            // Total amount increased by 1000
+            total_amount: Uint128::from((10_000u128 * 2) + 1000),
+        }
+    );
 }
 
 #[test]
