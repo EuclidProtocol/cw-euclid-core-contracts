@@ -60,10 +60,6 @@ pub fn swap(
     from_amount: Uint128,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(
-        FORWARDING_STATE.may_load(deps.storage)?.is_none(),
-        ContractError::new("Contract already in forwarding state")
-    );
 
     let operations = swap_msg
         .operations
