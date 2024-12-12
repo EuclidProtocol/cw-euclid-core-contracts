@@ -19,11 +19,12 @@ use euclid::{
             RegisterFactoryChainIbc, RegisterFactoryChainNative, TokenDenom, TokenDenomsResponse,
             VlpResponse,
         },
-        virtual_balance::GetStateResponse,
+        virtual_balance::{GetBalanceResponse, GetStateResponse},
         vlp::GetLiquidityResponse,
     },
     swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
+    virtual_balance::BalanceKey,
 };
 use factory::{
     mock::{mock_factory, MockFactory},
@@ -733,13 +734,13 @@ fn test_create_pool_with_funds() {
                 min_amount_out: Uint128::from(9000u128),
                 timeout: None,
                 swaps: vec![NextSwapPair {
-                    token_in: eucl_token.token,
+                    token_in: eucl_token.token.clone(),
                     token_out: nibi_token.token,
                     test_fail: None,
                 }],
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
                     user: CrossChainUser {
-                        address: sender,
+                        address: sender.clone(),
                         chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
                     },
                     limit: None,
@@ -778,6 +779,74 @@ fn test_create_pool_with_funds() {
             factory_address: Addr::unchecked("contract3"),
             // Total amount increased by 1000
             total_amount: Uint128::from((10_000u128 * 2) + 1000),
+        }
+    );
+
+    // Test deposit
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::DepositToken {
+                amount_in: Uint128::from(100u128),
+                asset_in: eucl_token.clone(),
+                recipient: None,
+                timeout: None,
+            },
+            Some(&[coin(100, "eucl")]),
+        )
+        .unwrap();
+
+    let virtual_balance_query: GetBalanceResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+            balance_key: BalanceKey {
+                cross_chain_user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                token_id: eucl_token.token.to_string(),
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        virtual_balance_query,
+        GetBalanceResponse {
+            amount: Uint128::from(100u128),
+        }
+    );
+
+    // Test withdraw
+    factory_nibiru
+        .withdraw_virtual_balance(
+            Uint128::new(50),
+            vec![CrossChainUserWithLimit {
+                user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                limit: None,
+                preferred_denom: None,
+                refund_address: None,
+                forwarding_message: None,
+            }],
+            Token::create("eucl".to_string()).unwrap(),
+            None,
+        )
+        .unwrap();
+
+    let virtual_balance_query: GetBalanceResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+            balance_key: BalanceKey {
+                cross_chain_user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                token_id: eucl_token.token.to_string(),
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        virtual_balance_query,
+        GetBalanceResponse {
+            amount: Uint128::from(50u128),
         }
     );
 }
