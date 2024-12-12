@@ -83,7 +83,7 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
     let pools = PAIR_TO_VLP
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .flat_map(|item| -> Result<_, ContractError> {
-            let item = item.unwrap();
+            let item = item?;
             Ok(PoolVlpResponse {
                 pair: Pair::new(item.0 .0, item.0 .1)?,
                 vlp: item.1,

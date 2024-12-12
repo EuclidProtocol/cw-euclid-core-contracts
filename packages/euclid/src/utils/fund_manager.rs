@@ -43,7 +43,10 @@ impl FundManager {
             self.get(denom).ge(&amount),
             ContractError::InsufficientFunds {}
         );
-        *self.funds.get_mut(denom).unwrap() -= amount;
+        *self
+            .funds
+            .get_mut(denom)
+            .ok_or(ContractError::new("Denom not found"))? -= amount;
         Ok(())
     }
 
