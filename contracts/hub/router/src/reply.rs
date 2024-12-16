@@ -269,24 +269,29 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 amount: Some(swap_response.amount_out),
                 cross_chain_addresses: swap_msg.cross_chain_addresses,
                 timeout: None,
+                tx_id: swap_msg.tx_id.clone(),
+            };
+            let swap_response = SwapResponse {
+                amount_out: swap_response.amount_out,
                 tx_id: swap_msg.tx_id,
             };
 
-            Ok(
-                Response::new()
-                    .add_submessage(SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: env.contract.address.to_string(),
-                        msg: to_json_binary(&release_msg)?,
-                        funds: vec![],
-                    })))
-                    .add_attribute("action", "reply_swap")
-                    .add_attribute("swap", format!("{swap_response:?}"))
-                    .add_attribute("amount_out", swap_response.amount_out)
-                    .add_attribute("asset_out", swap_msg.asset_out.to_string())
-                    .add_attribute("asset_in", swap_msg.asset_in.token.to_string())
-                    .add_attribute("asset_type", swap_msg.asset_in.token_type.get_key())
-                    .add_attribute("amount_in", swap_msg.amount_in), // .set_data(to_json_binary(&ack)?)
-            )
+            let ack = AcknowledgementMsg::Ok(swap_response.clone());
+
+            Ok(Response::new()
+                .add_submessage(SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&release_msg)?,
+                    funds: vec![],
+                })))
+                .add_attribute("action", "reply_swap")
+                .add_attribute("swap", format!("{swap_response:?}"))
+                .add_attribute("amount_out", swap_response.amount_out)
+                .add_attribute("asset_out", swap_msg.asset_out.to_string())
+                .add_attribute("asset_in", swap_msg.asset_in.token.to_string())
+                .add_attribute("asset_type", swap_msg.asset_in.token_type.get_key())
+                .add_attribute("amount_in", swap_msg.amount_in)
+                .set_data(to_json_binary(&ack)?))
         }
     }
 }

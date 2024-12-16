@@ -320,7 +320,6 @@ pub fn execute_release_escrow(
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
-            .clone()
             .next()
             .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
         let chain =
@@ -343,7 +342,7 @@ pub fn execute_release_escrow(
             .may_load(deps.storage)?
             .unwrap_or(Uint128::zero());
 
-        let release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
+        let mut release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
             escrow_balance
         } else {
             remaining_withdraw_amount
@@ -351,29 +350,24 @@ pub fn execute_release_escrow(
 
         match cross_chain_address.limit {
             Some(Limit::LessThanOrEqual(limit)) => {
-                ensure!(
-                    release_amount.le(&limit),
-                    ContractError::LimitExceeded {
-                        limit,
-                        amount: release_amount
-                    }
-                );
+                release_amount = release_amount.min(limit);
             }
             Some(Limit::Equal(limit)) => {
-                ensure!(
-                    release_amount.eq(&limit),
-                    ContractError::AmountMismatch {
-                        expected: limit,
-                        received: release_amount
-                    }
-                );
-            }
-            Some(Limit::GreaterThanOrEqual(limit)) => {
                 ensure!(
                     release_amount.ge(&limit),
                     ContractError::InsufficientAmount {
                         min_amount: limit,
                         amount: release_amount
+                    }
+                );
+                release_amount = limit;
+            }
+            Some(Limit::GreaterThanOrEqual(limit)) => {
+                ensure!(
+                    release_amount.ge(&limit),
+                    ContractError::AmountMismatch {
+                        expected: limit,
+                        received: release_amount
                     }
                 );
             }

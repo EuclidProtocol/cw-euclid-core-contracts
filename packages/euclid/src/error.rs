@@ -243,6 +243,14 @@ pub enum ContractError {
     #[error("Invalid expiration")]
     InvalidExpiration {},
     // END CW20 ERRORS
+    #[error("Min received {received} is less than expected {expected}")]
+    MinReceived {
+        expected: Uint128,
+        received: Uint128,
+    },
+
+    #[error("Invalid Address: {address} {msg}")]
+    InvalidAddress { address: String, msg: String },
 }
 
 impl ContractError {
