@@ -74,6 +74,10 @@ pub fn ibc_receive_internal_call(
     info: MessageInfo,
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
+    ensure!(
+        info.sender == env.contract.address,
+        ContractError::Unauthorized {}
+    );
     // Get the chain data from current channel received
     let channel = msg.packet.dest.channel_id;
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
