@@ -408,7 +408,7 @@ pub fn execute_release_escrow(
 
     ensure!(
         transfer_amount.checked_add(remaining_withdraw_amount)? == amount,
-        ContractError::new("Amount mismatch after trasnfer calculations")
+        ContractError::new("Amount mismatch after transfer calculations")
     );
 
     if !transfer_amount.is_zero() {

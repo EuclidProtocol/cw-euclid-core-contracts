@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUserWithLimit},
@@ -54,8 +54,14 @@ pub fn ibc_packet_receive(
 pub fn ibc_receive_internal_call(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
+    ensure!(
+        info.sender == env.contract.address,
+        ContractError::Unauthorized {}
+    );
+
     let router = msg.packet.src.port_id.replace("wasm.", "");
     let state = STATE.load(deps.storage)?;
     ensure!(

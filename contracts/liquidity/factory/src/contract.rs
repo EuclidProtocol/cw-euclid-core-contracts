@@ -225,7 +225,7 @@ pub fn execute(
             ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, info, env, ack)
         }
         ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-            ibc::receive::ibc_receive_internal_call(deps, env, receive_msg)
+            ibc::receive::ibc_receive_internal_call(deps, env, info, receive_msg)
         }
         ExecuteMsg::NativeReceiveCallback { msg } => {
             execute_native_receive_callback(deps, env, info, msg)
