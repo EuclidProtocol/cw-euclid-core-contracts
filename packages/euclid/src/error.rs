@@ -1,7 +1,7 @@
 use std::num::ParseIntError;
 
 use cosmwasm_std::{
-    Addr, CheckedMultiplyFractionError, CheckedMultiplyRatioError, DivideByZeroError,
+    Addr, CheckedMultiplyFractionError, CheckedMultiplyRatioError, Decimal256, DivideByZeroError,
     OverflowError, StdError, Uint128,
 };
 use cw20_base::ContractError as Cw20ContractError;
@@ -194,8 +194,11 @@ pub enum ContractError {
     #[error("Liquity already exist in state for the sender")]
     LiquidityTxAlreadyExist {},
 
-    #[error("Slippage has been exceeded when providing liquidity.")]
-    LiquiditySlippageExceeded {},
+    #[error("Slippage has been exceeded when providing liquidity. Expected: {expected}, Received: {received}")]
+    LiquiditySlippageExceeded {
+        expected: Decimal256,
+        received: Decimal256,
+    },
 
     #[error("Pool Instantiate Failed {err}")]
     PoolInstantiateFailed { err: String },

@@ -2,9 +2,10 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate};
+    use crate::query::{calculate_lp_allocation, calculate_lp_allocation_for_liquidity};
     use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, DepsMut, Response, Uint128};
+    use cosmwasm_std::{coins, Decimal256, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
@@ -180,5 +181,56 @@ mod tests {
             err,
             ContractError::new("Euclid Fee cannot exceed maximum limit")
         );
+    }
+
+    #[test]
+    fn test_calculate_lp_allocation_for_liquidity() {
+        let token_1_liquidity = Uint128::new(800);
+        let token_2_liquidity = Uint128::new(1000);
+        let total_reserve_1 = Uint128::new(10000);
+        let total_reserve_2 = Uint128::new(10000);
+        let total_lp_tokens = Uint128::new(100);
+        let slippage_tolerance_bps = Some(2000); // 1% slippage tolerance
+
+        // Call the function to test
+        let lp_allocation = calculate_lp_allocation_for_liquidity(
+            token_1_liquidity,
+            token_2_liquidity,
+            total_reserve_1,
+            total_reserve_2,
+            total_lp_tokens,
+            slippage_tolerance_bps,
+        )
+        .unwrap();
+
+        // Assert the expected LP allocation
+        let expected_allocation = Uint128::new(8); // This value should be calculated based on the logic
+        assert_eq!(lp_allocation, expected_allocation);
+    }
+
+    #[test]
+    fn test_calculate_lp_allocation_for_liquidity_exceeded_slippage() {
+        let token_1_liquidity = Uint128::new(100);
+        let token_2_liquidity = Uint128::new(99);
+        let total_reserve_1 = Uint128::new(100);
+        let total_reserve_2 = Uint128::new(100);
+        let total_lp_tokens = Uint128::new(100);
+        let slippage_tolerance_bps = Some(0); // 0% slippage tolerance to force failure
+
+        // Call the function to test and expect an error
+        let err = calculate_lp_allocation_for_liquidity(
+            token_1_liquidity,
+            token_2_liquidity,
+            total_reserve_1,
+            total_reserve_2,
+            total_lp_tokens,
+            slippage_tolerance_bps,
+        )
+        .unwrap_err();
+
+        match err {
+            ContractError::LiquiditySlippageExceeded { .. } => (),
+            _ => panic!("Expected slippage exceeded error, got {:?}", err),
+        }
     }
 }

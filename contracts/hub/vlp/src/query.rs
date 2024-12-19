@@ -221,11 +221,20 @@ pub fn assert_slippage_tolerance(
     pool_ratio: Decimal256,
     slippage_tolerance_bps: u64,
 ) -> Result<bool, ContractError> {
-    let slippage = pool_ratio.abs_diff(ratio);
+    let slippage = ratio
+        .abs_diff(pool_ratio)
+        .checked_div(pool_ratio)
+        .map_err(|err| ContractError::Generic {
+            err: err.to_string(),
+        })?;
+
     let slippage_tolerance = Decimal256::bps(slippage_tolerance_bps);
     ensure!(
         slippage.le(&slippage_tolerance),
-        ContractError::LiquiditySlippageExceeded {}
+        ContractError::LiquiditySlippageExceeded {
+            expected: slippage,
+            received: slippage_tolerance,
+        }
     );
     Ok(true)
 }
