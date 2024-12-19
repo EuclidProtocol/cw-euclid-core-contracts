@@ -185,12 +185,12 @@ mod tests {
 
     #[test]
     fn test_calculate_lp_allocation_for_liquidity() {
-        let token_1_liquidity = Uint128::new(800);
+        let token_1_liquidity = Uint128::new(980);
         let token_2_liquidity = Uint128::new(1000);
         let total_reserve_1 = Uint128::new(10000);
         let total_reserve_2 = Uint128::new(10000);
-        let total_lp_tokens = Uint128::new(100);
-        let slippage_tolerance_bps = Some(2000); // 2% slippage tolerance
+        let total_lp_tokens = Uint128::new(10000); // 1:1 ratio for lp tokens to tokens present
+        let slippage_tolerance_bps = Some(200); // 2% slippage tolerance
 
         // Call the function to test
         let lp_allocation = calculate_lp_allocation_for_liquidity(
@@ -204,7 +204,7 @@ mod tests {
         .unwrap();
 
         // Assert the expected LP allocation
-        let expected_allocation = Uint128::new(8); // This value should be calculated based on the logic
+        let expected_allocation = Uint128::new(980); // This value should be calculated based on the logic
         assert_eq!(lp_allocation, expected_allocation);
     }
 
