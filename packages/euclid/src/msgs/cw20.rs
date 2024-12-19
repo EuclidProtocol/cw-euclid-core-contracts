@@ -256,3 +256,6 @@ impl From<QueryMsg> for Cw20QueryMsg {
         }
     }
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}

@@ -1,5 +1,7 @@
 use cosmwasm_std::{entry_point, DepsMut, Env, Response};
-use euclid::{error::ContractError, msgs::vlp::MigrateMsg};
+use euclid::error::ContractError;
+
+use euclid_utils::msgs::multicall::MigrateMsg;
 
 /// This is the migrate entry point for the contract.
 /// Currently, it does not perform any migration logic and simply returns an empty response.

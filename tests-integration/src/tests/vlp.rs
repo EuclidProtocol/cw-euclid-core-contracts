@@ -91,7 +91,7 @@ fn test_proper_instantiation() {
         "admin".to_string(),
     );
 
-    let token_id_response = MockVlp::query_state(&mock_vlp, &mut vlp);
+    let token_id_response = MockVlp::query_state(&mock_vlp, &vlp);
     let expected_token_id = GetStateResponse {
         pair,
         router: mock_router.addr().clone().into_string(),

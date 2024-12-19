@@ -6,11 +6,10 @@ use cw20::Cw20Contract;
 use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload,
 };
-
 use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::{
-    chain::ChainUid,
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     fee::{DenomFees, BPS_1_PERCENT},
     msgs::{
@@ -20,11 +19,12 @@ use euclid::{
             RegisterFactoryChainIbc, RegisterFactoryChainNative, TokenDenom, TokenDenomsResponse,
             VlpResponse,
         },
-        virtual_balance::GetStateResponse,
+        virtual_balance::{GetBalanceResponse, GetStateResponse},
         vlp::GetLiquidityResponse,
     },
     swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
+    virtual_balance::BalanceKey,
 };
 use factory::{
     mock::{mock_factory, MockFactory},
@@ -253,6 +253,7 @@ fn test_create_pool_with_funds() {
             lp_token_symbol: "osmo".to_string(),
             lp_token_decimal: 6,
             lp_token_marketing: None,
+            stable_pool: false,
         },
         None, // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
     );
@@ -290,6 +291,7 @@ fn test_create_pool_with_funds() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                stable_pool: false,
             },
             Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
@@ -300,8 +302,7 @@ fn test_create_pool_with_funds() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0].outcome {
-        println!("{:?}", ack_tx.tx_id.response.events);
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -364,11 +365,9 @@ fn test_create_pool_with_funds() {
     );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
 
-    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+    let _vbalance_query: GetStateResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
         .unwrap();
-
-    println!("vbalance state is: {:?}", vbalance_query);
 
     // Osmo escrow contract
     escrow_osmosis.set_address(&Addr::unchecked("contract1"));
@@ -558,6 +557,7 @@ fn test_create_pool_with_funds() {
                 lp_token_symbol: "nibi".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                stable_pool: false,
             },
             Some(&[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")]),
         )
@@ -619,11 +619,9 @@ fn test_create_pool_with_funds() {
     );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
 
-    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+    let _vbalance_query: GetStateResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
         .unwrap();
-
-    println!("vbalance state is: {:?}", vbalance_query);
 
     // Nibiru escrow contract
     escrow_nibiru.set_address(&Addr::unchecked("contract6"));
@@ -720,12 +718,151 @@ fn test_create_pool_with_funds() {
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );
+    // Test swap
+    let eucl_token = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+    let nibi_token = TokenWithDenom {
+        token: Token::create("nibi".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "nibi".to_string(),
+        },
+    };
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest {
+                sender: None,
+                asset_in: eucl_token.clone(),
+                amount_in: Uint128::from(1_000u128),
+                asset_out: nibi_token.token.clone(),
+                min_amount_out: Uint128::from(9000u128),
+                timeout: None,
+                swaps: vec![NextSwapPair {
+                    token_in: eucl_token.token.clone(),
+                    token_out: nibi_token.token,
+                    test_fail: None,
+                }],
+                cross_chain_addresses: vec![CrossChainUserWithLimit {
+                    user: CrossChainUser {
+                        address: sender.clone(),
+                        chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                    },
+                    limit: None,
+                    preferred_denom: None,
+                    refund_address: None,
+                    forwarding_message: None,
+                }],
+                partner_fee: None,
+            },
+            Some(&[coin(1_000u128, "eucl")]),
+        )
+        .unwrap();
+
+    // Check balances after swap
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("nibi".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            // Total amount decreased by 9506
+            total_amount: Uint128::from((100_000u128 * 2) - 9506),
+        }
+    );
+    // This is the escrow for the Euclid token
+    escrow_nibiru.set_address(&Addr::unchecked("contract4"));
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            // Total amount increased by 1000
+            total_amount: Uint128::from((10_000u128 * 2) + 1000),
+        }
+    );
+
+    // Test deposit
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::DepositToken {
+                amount_in: Uint128::from(100u128),
+                asset_in: eucl_token.clone(),
+                recipient: None,
+                timeout: None,
+            },
+            Some(&[coin(100, "eucl")]),
+        )
+        .unwrap();
+
+    let virtual_balance_query: GetBalanceResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+            balance_key: BalanceKey {
+                cross_chain_user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                token_id: eucl_token.token.to_string(),
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        virtual_balance_query,
+        GetBalanceResponse {
+            amount: Uint128::from(100u128),
+        }
+    );
+
+    // Test withdraw
+    factory_nibiru
+        .withdraw_virtual_balance(
+            Uint128::new(50),
+            vec![CrossChainUserWithLimit {
+                user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                limit: None,
+                preferred_denom: None,
+                refund_address: None,
+                forwarding_message: None,
+            }],
+            Token::create("eucl".to_string()).unwrap(),
+            None,
+        )
+        .unwrap();
+
+    let virtual_balance_query: GetBalanceResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+            balance_key: BalanceKey {
+                cross_chain_user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                token_id: eucl_token.token.to_string(),
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        virtual_balance_query,
+        GetBalanceResponse {
+            amount: Uint128::from(50u128),
+        }
+    );
 }
 
 #[test]
 fn test_add_liquidity() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let _factory_chain = interchain.get_chain("osmosis").unwrap();
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
     let router = crate::helpers::chains::setup_router(&router_chain);
@@ -752,7 +889,13 @@ fn test_add_liquidity() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        false,
+    );
 
     add_liquidity(&interchain, &factory, pair_info, BPS_1_PERCENT);
 }
@@ -917,6 +1060,7 @@ fn test_stable_pool() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                stable_pool: true,
             },
             Some(&[coin(10_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
@@ -1046,6 +1190,10 @@ fn test_stable_pool() {
                 }],
                 cross_chain_addresses: vec![],
                 partner_fee: None,
+                sender: Some(CrossChainUser {
+                    chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                    address: Addr::unchecked("sender_for_all_chains").into_string(),
+                }),
             },
             Some(&[coin(1000u128, "eucl")]),
         )

@@ -44,7 +44,7 @@ fn test_proper_instantiation() {
     );
 
     let token_id_response =
-        MockVirtualBalance::query_state(&mock_virtual_balance, &mut virtual_balance);
+        MockVirtualBalance::query_state(&mock_virtual_balance, &virtual_balance);
     let expected_token_id = GetStateResponse {
         state: State {
             router: mock_router.addr().clone().into_string(),

@@ -7,6 +7,7 @@ use cw2::set_contract_version;
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
 use euclid::fee::DenomFees;
+use euclid::token::TokenType;
 use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
@@ -85,9 +86,10 @@ pub fn execute(
             timeout,
         ),
         ExecuteMsg::ExecuteSwapRequest {
+            sender,
             asset_in,
-            amount_in,
             asset_out,
+            mut amount_in,
             min_amount_out,
             timeout,
             swaps,
@@ -95,15 +97,31 @@ pub fn execute(
             partner_fee,
         } => {
             let state = STATE.load(deps.storage)?;
-            let sender = CrossChainUser {
+            let mut verified_sender = CrossChainUser {
                 address: info.sender.to_string(),
                 chain_uid: state.chain_uid,
             };
+
+            // If token is not a voucher, verify custom sender and use it. Using custom sender is security issue if voucher is used
+            if !asset_in.token_type.is_voucher() {
+                verified_sender = sender.unwrap_or(verified_sender);
+            }
+
+            // If this asset is native, lets get the actual amount of funds sent because these amount can vary depending on forwarding contract swaps
+            if let TokenType::Native { denom } = &asset_in.token_type {
+                amount_in = info
+                    .funds
+                    .iter()
+                    .find(|fund| fund.denom == *denom)
+                    .ok_or(ContractError::InsufficientFunds {})?
+                    .amount;
+            }
+
             execute_swap_request(
                 &mut deps,
                 env,
                 info,
-                sender,
+                verified_sender,
                 asset_in,
                 amount_in,
                 asset_out,
@@ -206,10 +224,10 @@ pub fn execute(
         ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
-            ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)
+            ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, info, env, ack)
         }
         ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-            ibc::receive::ibc_receive_internal_call(deps, env, receive_msg)
+            ibc::receive::ibc_receive_internal_call(deps, env, info, receive_msg)
         }
         ExecuteMsg::NativeReceiveCallback { msg } => {
             execute_native_receive_callback(deps, env, info, msg)

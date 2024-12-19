@@ -72,6 +72,7 @@ pub fn create_pool(
     factory: &FactoryContract<MockBase>,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
+    stable_pool: bool,
 ) {
     let chain = interchain
         .get_chain(factory.environment().chain_id().as_str())
@@ -96,6 +97,7 @@ pub fn create_pool(
                 lp_token_symbol: "LPSYMBOL".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                stable_pool,
             },
             Some(&funds),
         )
