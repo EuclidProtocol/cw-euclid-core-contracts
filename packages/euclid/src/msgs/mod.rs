@@ -4,3 +4,4 @@ pub mod factory;
 pub mod router;
 pub mod virtual_balance;
 pub mod vlp;
+pub mod hook;

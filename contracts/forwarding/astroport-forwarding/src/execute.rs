@@ -3,7 +3,11 @@ use cosmwasm_std::{
     WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
-use euclid::{error::ContractError, token::TokenType};
+use euclid::{
+    error::ContractError,
+    msgs::hook::{EuclidForwardSwap, EuclidReceive},
+    token::TokenType,
+};
 use forwarding::msgs::astroport::{Cw20HookMsg, SwapMsg};
 
 use astroport::router::ExecuteMsg as AstroportExecuteMsg;
@@ -26,7 +30,11 @@ pub fn execute_cw20_receive(
 
     let msg: Cw20HookMsg = from_json(msg.msg)?;
     match msg {
-        Cw20HookMsg::Swap(swap_msg) => swap(deps, env, info, swap_msg, from_token, amount),
+        Cw20HookMsg::EuclidReceive(euclid_receive) => match euclid_receive {
+            EuclidReceive::ForwardSwap(swap_msg) => {
+                swap(deps, env, info, swap_msg, from_token, amount)
+            }
+        },
     }
 }
 
@@ -34,33 +42,36 @@ pub fn execute_forward(
     deps: &mut DepsMut,
     env: &Env,
     info: &MessageInfo,
-    msg: SwapMsg,
+    euclid_receive: EuclidReceive,
 ) -> Result<Response, ContractError> {
-    ensure!(
-        info.funds.len() == 1,
-        ContractError::new("only one token is supported")
-    );
-    let from_token = TokenType::Native {
-        denom: info.funds[0].denom.to_string(),
-    };
-    let from_amount = info.funds[0].amount;
+    match euclid_receive {
+        EuclidReceive::ForwardSwap(swap_msg) => {
+            ensure!(
+                info.funds.len() == 1,
+                ContractError::new("only one token is supported")
+            );
+            let from_token = TokenType::Native {
+                denom: info.funds[0].denom.to_string(),
+            };
+            let from_amount = info.funds[0].amount;
 
-    swap(deps, env, info, msg, from_token, from_amount)
+            swap(deps, env, info, swap_msg, from_token, from_amount)
+        }
+    }
 }
 
 pub fn swap(
     deps: &mut DepsMut,
     env: &Env,
     _info: &MessageInfo,
-    swap_msg: SwapMsg,
+    msg: EuclidForwardSwap,
     from_token: TokenType,
     from_amount: Uint128,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let swap_msg: SwapMsg = from_json(msg.data.clone())?;
 
-    let operations = swap_msg
-        .operations
-        .ok_or(ContractError::new("operations is required"))?;
+    let operations = swap_msg.operations;
     ensure!(
         !operations.is_empty(),
         ContractError::new("min 1 operation is required")
@@ -68,12 +79,13 @@ pub fn swap(
 
     let astro_execute_msg = AstroportExecuteMsg::ExecuteSwapOperations {
         operations,
-        minimum_receive: Some(swap_msg.minimum_receive),
-        to: None,
+        minimum_receive: Some(msg.minimum_receive),
+        // Contract will receive the tokens
+        to: Some(env.contract.address.to_string()),
         max_spread: swap_msg.max_spread,
     };
 
-    let previous_balance = swap_msg
+    let previous_balance = msg
         .to_token
         .get_balance(deps.as_ref(), env.contract.address.to_string())?;
 
@@ -81,16 +93,13 @@ pub fn swap(
         deps.storage,
         &ForwardingState {
             from_token: from_token.clone(),
-            to_token: swap_msg.to_token,
             from_amount,
             previous_balance,
-            min_received: swap_msg.minimum_receive,
-            forwarding_message: swap_msg.forwarding_message,
-            reciepient: swap_msg.reciepient,
+            msg,
         },
     )?;
 
-    let msg = match from_token {
+    let msg = match &from_token {
         TokenType::Native { denom } => WasmMsg::Execute {
             contract_addr: state.astro_router_address.to_string(),
             msg: to_json_binary(&astro_execute_msg)?,
@@ -103,7 +112,7 @@ pub fn swap(
                 msg: to_json_binary(&astro_execute_msg)?,
             };
             WasmMsg::Execute {
-                contract_addr: contract_address,
+                contract_addr: contract_address.to_string(),
                 msg: to_json_binary(&send_msg)?,
                 funds: vec![],
             }
@@ -111,5 +120,9 @@ pub fn swap(
         _ => return Err(ContractError::new("unsupported token type")),
     };
 
-    Ok(Response::new().add_submessage(SubMsg::reply_always(msg, ASTRO_SWAP_REPLY_ID)))
+    Ok(Response::new()
+        .add_attribute("dex", "astroport")
+        .add_attribute("start_swap_amount", from_amount)
+        .add_attribute("start_swap_token", from_token.get_key())
+        .add_submessage(SubMsg::reply_always(msg, ASTRO_SWAP_REPLY_ID)))
 }

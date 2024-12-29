@@ -1,8 +1,8 @@
 use astroport::router::SwapOperation;
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Decimal, Uint128};
+use cosmwasm_std::{Addr, Decimal};
 use cw20::Cw20ReceiveMsg;
-use euclid::token::TokenType;
+use euclid::msgs::hook::EuclidReceive;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -12,13 +12,13 @@ pub struct InstantiateMsg {
 #[cw_serde]
 #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
-    Swap(SwapMsg),
     Receive(Cw20ReceiveMsg),
+    EuclidReceive(EuclidReceive),
 }
 
 #[cw_serde]
 pub enum Cw20HookMsg {
-    Swap(SwapMsg),
+    EuclidReceive(EuclidReceive),
 }
 
 #[cw_serde]
@@ -27,10 +27,7 @@ pub enum QueryMsg {}
 
 #[cw_serde]
 pub struct SwapMsg {
-    pub operations: Option<Vec<SwapOperation>>,
+    pub operations: Vec<SwapOperation>,
     pub max_spread: Option<Decimal>,
-    pub minimum_receive: Uint128,
-    pub to_token: TokenType,
-    pub forwarding_message: Option<Binary>,
-    pub reciepient: Addr,
+    pub forwarding_msg: Option<EuclidReceive>,
 }

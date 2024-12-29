@@ -256,6 +256,9 @@ pub enum ContractError {
 
     #[error("Invalid Address: {address} {msg}")]
     InvalidAddress { address: String, msg: String },
+
+    #[error("Unsupported Euclid Receive Message")]
+    UnsupportedEuclidReceiveMessage {},
 }
 
 impl ContractError {

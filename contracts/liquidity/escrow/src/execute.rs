@@ -1,10 +1,13 @@
 use cosmwasm_std::{
-    ensure, from_json, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
-    Uint128,
+    ensure, from_json, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
 };
 
 use cw20::Cw20ReceiveMsg;
-use euclid::{error::ContractError, msgs::escrow::cw20::EscrowCw20HookMsg, token::TokenType};
+use euclid::{
+    error::ContractError,
+    msgs::{escrow::cw20::EscrowCw20HookMsg, hook::EuclidReceive},
+    token::TokenType,
+};
 
 use crate::{
     reply::FORWARDING_MESSAGE_REPLY_ID,
@@ -215,7 +218,7 @@ pub fn execute_withdraw(
     recipient: Addr,
     amount: Uint128,
     preferred_denom: Option<TokenType>,
-    forwarding_message: Option<Binary>,
+    forwarding_message: Option<EuclidReceive>,
     refund_address: Option<String>,
 ) -> Result<Response, ContractError> {
     // Clean any old refund address
@@ -276,6 +279,11 @@ pub fn execute_withdraw(
             &denom_balance.checked_sub(transfer_amount)?,
         )?;
 
+        // Wrap the forwading message into EuclidReceive Cosmos Msg
+        let forwarding_message = match &forwarding_message {
+            Some(forwarding_msg) => Some(forwarding_msg.to_cosmos_msg()?),
+            None => None,
+        };
         let send_msg = denom.create_transfer_msg(
             transfer_amount,
             recipient.to_string(),

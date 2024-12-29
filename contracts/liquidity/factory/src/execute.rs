@@ -287,7 +287,7 @@ pub fn add_liquidity_request(
     let tokens = pair_info.get_vec_token_info();
     for token in tokens {
         // validate token
-        token.token_type.validate(deps.as_ref())?;
+        token.token_type.validate(&deps.as_ref())?;
 
         // Ensure liquidity is not zero
         ensure!(!token.amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -480,7 +480,7 @@ pub fn execute_swap_request(
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
     // Validate asset in
-    asset_in.token_type.validate(deps.as_ref())?;
+    asset_in.token_type.validate(&deps.as_ref())?;
     asset_in.token.validate()?;
 
     let state = STATE.load(deps.storage)?;
@@ -657,7 +657,7 @@ pub fn execute_deposit_token(
 
     // Validate asset in
     asset_in.token.validate()?;
-    asset_in.token_type.validate(deps.as_ref())?;
+    asset_in.token_type.validate(&deps.as_ref())?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
     let channel = if !state.is_native {

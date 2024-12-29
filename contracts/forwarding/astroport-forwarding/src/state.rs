@@ -1,8 +1,8 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::Item;
+use euclid::msgs::hook::EuclidForwardSwap;
 use euclid::token::TokenType;
-
 #[cw_serde]
 pub struct State {
     pub astro_router_address: Addr,
@@ -13,12 +13,9 @@ pub const STATE: Item<State> = Item::new("state");
 #[cw_serde]
 pub struct ForwardingState {
     pub from_token: TokenType,
-    pub to_token: TokenType,
     pub from_amount: Uint128,
     pub previous_balance: Uint128,
-    pub min_received: Uint128,
-    pub forwarding_message: Option<Binary>,
-    pub reciepient: Addr,
+    pub msg: EuclidForwardSwap,
 }
 
 pub const FORWARDING_STATE: Item<ForwardingState> = Item::new("forwarding_state");

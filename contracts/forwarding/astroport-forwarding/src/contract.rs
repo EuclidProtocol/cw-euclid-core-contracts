@@ -44,7 +44,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Swap(msg) => execute_forward(deps.borrow_mut(), &env, &info, msg),
+        ExecuteMsg::EuclidReceive(msg) => execute_forward(deps.borrow_mut(), &env, &info, msg),
         ExecuteMsg::Receive(msg) => execute_cw20_receive(deps.borrow_mut(), &env, &info, msg),
     }
 }
