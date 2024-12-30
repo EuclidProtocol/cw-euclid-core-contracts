@@ -281,7 +281,7 @@ pub fn execute_withdraw(
 
         // Wrap the forwading message into EuclidReceive Cosmos Msg
         let forwarding_message = match &forwarding_message {
-            Some(forwarding_msg) => Some(forwarding_msg.to_cosmos_msg()?),
+            Some(forwarding_msg) => Some(forwarding_msg.to_receiver_msg()?),
             None => None,
         };
         let send_msg = denom.create_transfer_msg(

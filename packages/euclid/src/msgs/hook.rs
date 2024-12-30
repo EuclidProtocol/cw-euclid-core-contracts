@@ -17,7 +17,7 @@ pub enum EuclidReceiverMsg {
 }
 
 impl EuclidReceive {
-    pub fn to_cosmos_msg(&self) -> Result<Binary, ContractError> {
+    pub fn to_receiver_msg(&self) -> Result<Binary, ContractError> {
         Ok(to_json_binary(&EuclidReceiverMsg::EuclidReceive(
             self.clone(),
         ))?)
