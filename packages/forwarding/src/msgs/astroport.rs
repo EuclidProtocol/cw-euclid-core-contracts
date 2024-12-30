@@ -14,11 +14,7 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     Receive(Cw20ReceiveMsg),
     EuclidReceive(EuclidReceive),
-}
-
-#[cw_serde]
-pub enum Cw20HookMsg {
-    EuclidReceive(EuclidReceive),
+    Swap(SwapMsg),
 }
 
 #[cw_serde]

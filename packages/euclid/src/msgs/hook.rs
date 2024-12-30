@@ -4,12 +4,7 @@ use cosmwasm_std::{to_json_binary, Binary};
 use crate::error::ContractError;
 
 #[cw_serde]
-pub enum EuclidReceive {
-    ForwardSwap(EuclidForwardSwap),
-}
-
-#[cw_serde]
-pub struct EuclidForwardSwap {
+pub struct EuclidReceive {
     pub data: Binary,
     // Metadata to be logged into events for some off chain oracle/analytics
     pub meta: Option<String>,

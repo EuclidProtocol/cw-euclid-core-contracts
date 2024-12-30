@@ -4,12 +4,11 @@ use cosmwasm_std::{
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use euclid::{
-    error::ContractError,
-    events::simple_event,
-    msgs::hook::{EuclidForwardSwap, EuclidReceive},
-    token::TokenType,
+    error::ContractError, events::simple_event, msgs::hook::EuclidReceive, token::TokenType,
 };
-use forwarding::msgs::astroport::{Cw20HookMsg, SwapMsg};
+use forwarding::msgs::{
+    astroport::SwapMsg, cw20::Cw20HookMsg, euclid_receive::AstroportEuclidReceiveHook,
+};
 
 use astroport::router::ExecuteMsg as AstroportExecuteMsg;
 
@@ -22,51 +21,68 @@ pub fn execute_cw20_receive(
     deps: &mut DepsMut,
     env: &Env,
     info: &MessageInfo,
-    msg: Cw20ReceiveMsg,
+    receive_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
-    let amount = msg.amount;
+    let amount = receive_msg.amount;
     let from_token = TokenType::Smart {
         contract_address: info.sender.to_string(),
     };
 
-    let msg: Cw20HookMsg = from_json(msg.msg)?;
+    let msg: Cw20HookMsg = from_json(receive_msg.msg)?;
     match msg {
-        Cw20HookMsg::EuclidReceive(euclid_receive) => match euclid_receive {
-            EuclidReceive::ForwardSwap(swap_msg) => {
-                let event = simple_event().add_attribute(
-                    "meta",
-                    swap_msg.meta.clone().unwrap_or("no_meta".to_string()),
-                );
-                let response = swap(deps, env, info, swap_msg, from_token, amount)?;
-                Ok(response.add_event(event))
-            }
-        },
+        Cw20HookMsg::EuclidReceive(euclid_receive) => receive_euclid_cw20(
+            deps,
+            env,
+            info,
+            receive_msg.sender.to_string(),
+            euclid_receive,
+            amount,
+        ),
+        Cw20HookMsg::Swap(swap_msg) => swap(deps, env, swap_msg, from_token, amount),
     }
 }
 
-pub fn execute_forward(
+pub fn receive_euclid_native(
     deps: &mut DepsMut,
     env: &Env,
     info: &MessageInfo,
     euclid_receive: EuclidReceive,
 ) -> Result<Response, ContractError> {
-    match euclid_receive {
-        EuclidReceive::ForwardSwap(swap_msg) => {
-            ensure!(
-                info.funds.len() == 1,
-                ContractError::new("only one token is supported")
-            );
-            let from_token = TokenType::Native {
-                denom: info.funds[0].denom.to_string(),
-            };
-            let from_amount = info.funds[0].amount;
-
+    match from_json::<AstroportEuclidReceiveHook>(euclid_receive.data.clone())? {
+        AstroportEuclidReceiveHook::Swap(swap_msg) => {
+            let response = crate::contract::execute(
+                deps.branch(),
+                env.clone(),
+                info.clone(),
+                forwarding::msgs::astroport::ExecuteMsg::Swap(swap_msg),
+            )?;
             let event = simple_event().add_attribute(
                 "meta",
-                swap_msg.meta.clone().unwrap_or("no_meta".to_string()),
+                euclid_receive.meta.clone().unwrap_or("no_meta".to_string()),
             );
+            Ok(response.add_event(event))
+        }
+    }
+}
 
-            let response = swap(deps, env, info, swap_msg, from_token, from_amount)?;
+pub fn receive_euclid_cw20(
+    deps: &mut DepsMut,
+    env: &Env,
+    _info: &MessageInfo,
+    sender: String,
+    euclid_receive: EuclidReceive,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    match from_json::<AstroportEuclidReceiveHook>(euclid_receive.data.clone())? {
+        AstroportEuclidReceiveHook::Swap(swap_msg) => {
+            let from_token = TokenType::Smart {
+                contract_address: sender.to_string(),
+            };
+            let response = swap(deps, env, swap_msg, from_token, amount)?;
+            let event = simple_event().add_attribute(
+                "meta",
+                euclid_receive.meta.clone().unwrap_or("no_meta".to_string()),
+            );
             Ok(response.add_event(event))
         }
     }
@@ -75,13 +91,11 @@ pub fn execute_forward(
 pub fn swap(
     deps: &mut DepsMut,
     env: &Env,
-    _info: &MessageInfo,
-    msg: EuclidForwardSwap,
+    swap_msg: SwapMsg,
     from_token: TokenType,
     from_amount: Uint128,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    let swap_msg: SwapMsg = from_json(msg.data.clone())?;
 
     let operations = swap_msg.operations.clone();
     ensure!(
