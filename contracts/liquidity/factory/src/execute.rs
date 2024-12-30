@@ -857,7 +857,8 @@ pub fn receive_euclid_native(
                 info,
                 ExecuteMsg::ExecuteSwapRequest(swap_msg),
             )?;
-            let event = simple_event().add_attribute("meta", meta.unwrap_or_default());
+            let event =
+                simple_event().add_attribute("meta", meta.clone().unwrap_or("no_meta".to_string()));
             Ok(response.add_event(event))
         }
     }
@@ -892,7 +893,8 @@ pub fn receive_euclid_cw20(
                 swap_msg.cross_chain_addresses,
                 swap_msg.partner_fee,
             )?;
-            let event = simple_event().add_attribute("meta", meta.unwrap_or_default());
+            let event =
+                simple_event().add_attribute("meta", meta.clone().unwrap_or("no_meta".to_string()));
             Ok(response.add_event(event))
         }
     }

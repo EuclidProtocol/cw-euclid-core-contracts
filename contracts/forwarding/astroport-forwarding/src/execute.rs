@@ -33,8 +33,10 @@ pub fn execute_cw20_receive(
     match msg {
         Cw20HookMsg::EuclidReceive(euclid_receive) => match euclid_receive {
             EuclidReceive::ForwardSwap(swap_msg) => {
-                let event =
-                    simple_event().add_attribute("meta", swap_msg.meta.clone().unwrap_or_default());
+                let event = simple_event().add_attribute(
+                    "meta",
+                    swap_msg.meta.clone().unwrap_or("no_meta".to_string()),
+                );
                 let response = swap(deps, env, info, swap_msg, from_token, amount)?;
                 Ok(response.add_event(event))
             }
@@ -59,8 +61,10 @@ pub fn execute_forward(
             };
             let from_amount = info.funds[0].amount;
 
-            let event =
-                simple_event().add_attribute("meta", swap_msg.meta.clone().unwrap_or_default());
+            let event = simple_event().add_attribute(
+                "meta",
+                swap_msg.meta.clone().unwrap_or("no_meta".to_string()),
+            );
 
             let response = swap(deps, env, info, swap_msg, from_token, from_amount)?;
             Ok(response.add_event(event))
