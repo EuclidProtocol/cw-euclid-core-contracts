@@ -7,12 +7,13 @@ use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     deposit::DepositTokenRequest,
     error::ContractError,
-    events::{deposit_token_event, swap_event, tx_event, TxType},
+    events::{deposit_token_event, simple_event, swap_event, tx_event, TxType},
     fee::{PartnerFee, BPS_100_PERCENT, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
-        factory::cw20::FactoryCw20HookMsg,
+        factory::{cw20::FactoryCw20HookMsg, ExecuteMsg, ExecuteSwapRequest},
+        hook::{EuclidForwardSwap, EuclidReceive},
     },
     pool::{DenomRegisterDeregisterRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
@@ -834,6 +835,65 @@ pub fn receive_cw20(
             execute_deposit_token(
                 &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
             )
+        }
+        FactoryCw20HookMsg::EuclidReceive(euclid_receive) => {
+            receive_euclid_cw20(deps, env, info, sender, cw20_msg.amount, euclid_receive)
+        }
+    }
+}
+
+pub fn receive_euclid_native(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    euclid_receive: EuclidReceive,
+) -> Result<Response, ContractError> {
+    match euclid_receive {
+        EuclidReceive::ForwardSwap(EuclidForwardSwap { data, meta }) => {
+            let swap_msg = from_json::<ExecuteSwapRequest>(data)?;
+            let response = crate::contract::execute(
+                deps,
+                env,
+                info,
+                ExecuteMsg::ExecuteSwapRequest(swap_msg),
+            )?;
+            let event = simple_event().add_attribute("meta", meta.unwrap_or_default());
+            Ok(response.add_event(event))
+        }
+    }
+}
+
+pub fn receive_euclid_cw20(
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: CrossChainUser,
+    amount: Uint128,
+    euclid_msg: EuclidReceive,
+) -> Result<Response, ContractError> {
+    match euclid_msg {
+        EuclidReceive::ForwardSwap(EuclidForwardSwap { data, meta }) => {
+            let swap_msg = from_json::<ExecuteSwapRequest>(data)?;
+            ensure!(
+                info.sender == swap_msg.asset_in.token_type.get_smart_contract_address()?,
+                ContractError::Unauthorized {}
+            );
+            let response = execute_swap_request(
+                &mut deps,
+                env,
+                info,
+                sender,
+                swap_msg.asset_in,
+                amount,
+                swap_msg.asset_out,
+                swap_msg.min_amount_out,
+                swap_msg.swaps,
+                swap_msg.timeout,
+                swap_msg.cross_chain_addresses,
+                swap_msg.partner_fee,
+            )?;
+            let event = simple_event().add_attribute("meta", meta.unwrap_or_default());
+            Ok(response.add_event(event))
         }
     }
 }

@@ -14,7 +14,9 @@ use euclid::{
     fee::{DenomFees, BPS_1_PERCENT},
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
-        factory::{AllPoolsResponse, ExecuteMsgFns, PoolVlpResponse, StateResponse},
+        factory::{
+            AllPoolsResponse, ExecuteMsgFns, ExecuteSwapRequest, PoolVlpResponse, StateResponse,
+        },
         router::{
             RegisterFactoryChainIbc, RegisterFactoryChainNative, TokenDenom, TokenDenomsResponse,
             VlpResponse,
@@ -726,7 +728,7 @@ fn test_create_pool_with_funds() {
     };
     factory_nibiru
         .execute(
-            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest {
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
                 sender: None,
                 asset_in: eucl_token.clone(),
                 amount_in: Uint128::from(1_000u128),
@@ -749,7 +751,7 @@ fn test_create_pool_with_funds() {
                     forwarding_message: None,
                 }],
                 partner_fee: None,
-            },
+            }),
             Some(&[coin(1_000u128, "eucl")]),
         )
         .unwrap();

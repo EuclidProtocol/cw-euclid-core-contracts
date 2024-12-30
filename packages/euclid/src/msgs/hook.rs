@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_json_binary, Binary, Uint128};
+use cosmwasm_std::{to_json_binary, Binary};
 
-use crate::{error::ContractError, token::TokenType};
+use crate::error::ContractError;
 
 #[cw_serde]
 pub enum EuclidReceive {
@@ -11,9 +11,8 @@ pub enum EuclidReceive {
 #[cw_serde]
 pub struct EuclidForwardSwap {
     pub data: Binary,
-    pub to_token: TokenType,
-    pub minimum_receive: Uint128,
-    pub recipient: String,
+    // Metadata to be logged into events for some off chain oracle/analytics
+    pub meta: Option<String>,
 }
 
 // This is just a helper to properly serialize the above message
