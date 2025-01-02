@@ -2,6 +2,7 @@ use crate::{
     chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    msgs::hook::EuclidReceive,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::pagination::Pagination,
@@ -28,18 +29,7 @@ pub enum ExecuteMsg {
         slippage_tolerance_bps: u64,
         timeout: Option<u64>,
     },
-    ExecuteSwapRequest {
-        sender: Option<CrossChainUser>,
-        asset_in: TokenWithDenom,
-        amount_in: Uint128,
-        asset_out: Token,
-        min_amount_out: Uint128,
-        timeout: Option<u64>,
-        swaps: Vec<NextSwapPair>,
-        // First element in array has highest priority
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-        partner_fee: Option<PartnerFee>,
-    },
+    ExecuteSwapRequest(ExecuteSwapRequest),
     RequestRegisterDenom {
         token: TokenWithDenom,
         timeout: Option<u64>,
@@ -92,6 +82,8 @@ pub enum ExecuteMsg {
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
 
+    EuclidReceive(EuclidReceive),
+
     // IBC Callbacks
     IbcCallbackAckAndTimeout {
         ack: IbcPacketAckMsg,
@@ -103,6 +95,20 @@ pub enum ExecuteMsg {
     NativeReceiveCallback {
         msg: Binary,
     },
+}
+
+#[cw_serde]
+pub struct ExecuteSwapRequest {
+    pub sender: Option<CrossChainUser>,
+    pub asset_in: TokenWithDenom,
+    pub amount_in: Uint128,
+    pub asset_out: Token,
+    pub min_amount_out: Uint128,
+    pub timeout: Option<u64>,
+    pub swaps: Vec<NextSwapPair>,
+    // First element in array has highest priority
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    pub partner_fee: Option<PartnerFee>,
 }
 
 #[cw_serde]

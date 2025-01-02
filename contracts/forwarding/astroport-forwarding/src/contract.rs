@@ -2,13 +2,13 @@ use std::borrow::BorrowMut;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
+use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 
 use cw2::set_contract_version;
-use euclid::error::ContractError;
+use euclid::{error::ContractError, token::TokenType};
 
 use crate::{
-    execute::{execute_cw20_receive, execute_forward},
+    execute::{execute_cw20_receive, receive_euclid_native, swap},
     reply::{on_astro_swap_reply, ASTRO_SWAP_REPLY_ID},
     state::{State, STATE},
 };
@@ -44,8 +44,22 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Swap(msg) => execute_forward(deps.borrow_mut(), &env, &info, msg),
+        ExecuteMsg::EuclidReceive(msg) => {
+            receive_euclid_native(deps.borrow_mut(), &env, &info, msg)
+        }
         ExecuteMsg::Receive(msg) => execute_cw20_receive(deps.borrow_mut(), &env, &info, msg),
+        ExecuteMsg::Swap(swap_msg) => {
+            ensure!(
+                info.funds.len() == 1,
+                ContractError::new("only one token is supported")
+            );
+            let from_token = TokenType::Native {
+                denom: info.funds[0].denom.to_string(),
+            };
+            let from_amount = info.funds[0].amount;
+
+            swap(deps.borrow_mut(), &env, swap_msg, from_token, from_amount)
+        }
     }
 }
 

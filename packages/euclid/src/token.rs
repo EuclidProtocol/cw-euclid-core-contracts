@@ -274,7 +274,7 @@ impl TokenType {
     }
 
     /// Validates smart contract addresses, checks against empty denom and zero supply
-    pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
+    pub fn validate(&self, deps: &Deps) -> Result<(), ContractError> {
         if let Self::Native { denom } = &self {
             let potential_supply = deps.querier.query_supply(denom.clone())?;
             let non_zero_supply = !potential_supply.amount.is_zero();

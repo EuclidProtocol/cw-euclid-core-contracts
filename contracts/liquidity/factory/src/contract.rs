@@ -15,7 +15,7 @@ use crate::execute::{
     execute_request_deregister_denom, execute_request_pool_creation,
     execute_request_register_denom, execute_swap_request, execute_transfer_virtual_balance,
     execute_update_hub_channel, execute_update_state, execute_withdraw_virtual_balance,
-    receive_cw20,
+    receive_cw20, receive_euclid_native,
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
@@ -85,17 +85,7 @@ pub fn execute(
             slippage_tolerance_bps,
             timeout,
         ),
-        ExecuteMsg::ExecuteSwapRequest {
-            sender,
-            asset_in,
-            asset_out,
-            mut amount_in,
-            min_amount_out,
-            timeout,
-            swaps,
-            cross_chain_addresses,
-            partner_fee,
-        } => {
+        ExecuteMsg::ExecuteSwapRequest(msg) => {
             let state = STATE.load(deps.storage)?;
             let mut verified_sender = CrossChainUser {
                 address: info.sender.to_string(),
@@ -103,12 +93,12 @@ pub fn execute(
             };
 
             // If token is not a voucher, verify custom sender and use it. Using custom sender is security issue if voucher is used
-            if !asset_in.token_type.is_voucher() {
-                verified_sender = sender.unwrap_or(verified_sender);
+            if !msg.asset_in.token_type.is_voucher() {
+                verified_sender = msg.sender.unwrap_or(verified_sender);
             }
-
+            let mut amount_in = msg.amount_in;
             // If this asset is native, lets get the actual amount of funds sent because these amount can vary depending on forwarding contract swaps
-            if let TokenType::Native { denom } = &asset_in.token_type {
+            if let TokenType::Native { denom } = &msg.asset_in.token_type {
                 amount_in = info
                     .funds
                     .iter()
@@ -122,14 +112,14 @@ pub fn execute(
                 env,
                 info,
                 verified_sender,
-                asset_in,
+                msg.asset_in,
                 amount_in,
-                asset_out,
-                min_amount_out,
-                swaps,
-                timeout,
-                cross_chain_addresses,
-                partner_fee,
+                msg.asset_out,
+                msg.min_amount_out,
+                msg.swaps,
+                msg.timeout,
+                msg.cross_chain_addresses,
+                msg.partner_fee,
             )
         }
         ExecuteMsg::DepositToken {
@@ -221,6 +211,7 @@ pub fn execute(
             is_native,
         ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
             ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, info, env, ack)
         }

@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "astroport-forwarding"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "astroport",
  "cosmwasm-schema",
@@ -1100,7 +1100,7 @@ dependencies = [
 
 [[package]]
 name = "escrow"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "euclid"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "cosmwasm-schema",
@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "factory"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
