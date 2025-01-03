@@ -109,6 +109,7 @@ pub struct ExecuteSwapRequest {
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     pub partner_fee: Option<PartnerFee>,
+    pub meta: Option<String>,
 }
 
 #[cw_serde]

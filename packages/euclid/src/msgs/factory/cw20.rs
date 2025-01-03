@@ -24,6 +24,7 @@ pub enum FactoryCw20HookMsg {
         timeout: Option<u64>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         partner_fee: Option<PartnerFee>,
+        meta: Option<String>,
     },
     RemoveLiquidity {
         pair: Pair,
