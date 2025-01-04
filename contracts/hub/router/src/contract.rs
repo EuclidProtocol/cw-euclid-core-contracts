@@ -135,7 +135,7 @@ pub fn execute(
                     ibc_receive_internal_call(&mut deps, env, info, receive_msg)
                 }
                 ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
-                    ibc_ack_packet_internal_call(deps, env, ack)
+                    ibc_ack_packet_internal_call(deps, info, env, ack)
                 }
                 ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
                 ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
@@ -198,7 +198,6 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         ADD_LIQUIDITY_REPLY_ID => reply::on_add_liquidity_reply(deps, msg),
         REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, env, msg),
         SWAP_REPLY_ID => reply::on_swap_reply(deps, env, msg),
-
         VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID => {
             reply::on_virtual_balance_instantiate_reply(deps, msg)
         }

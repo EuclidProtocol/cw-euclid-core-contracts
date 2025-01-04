@@ -7,12 +7,16 @@ use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     deposit::DepositTokenRequest,
     error::ContractError,
-    events::{deposit_token_event, swap_event, tx_event, TxType},
+    events::{deposit_token_event, simple_event, swap_event, tx_event, TxType},
     fee::{PartnerFee, BPS_100_PERCENT, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
-        factory::cw20::FactoryCw20HookMsg,
+        factory::{
+            cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook, ExecuteMsg,
+            ExecuteSwapRequest,
+        },
+        hook::EuclidReceive,
     },
     pool::{DenomRegisterDeregisterRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
@@ -110,6 +114,7 @@ pub fn execute_request_pool_creation(
                         token.amount,
                         env.contract.address.clone().to_string(),
                         Some(sender.address.clone()),
+                        None,
                     )?;
                     msgs.push(msg);
                 }
@@ -286,7 +291,7 @@ pub fn add_liquidity_request(
     let tokens = pair_info.get_vec_token_info();
     for token in tokens {
         // validate token
-        token.token_type.validate(deps.as_ref())?;
+        token.token_type.validate(&deps.as_ref())?;
 
         // Ensure liquidity is not zero
         ensure!(!token.amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -323,6 +328,7 @@ pub fn add_liquidity_request(
                         token.amount,
                         env.contract.address.clone().to_string(),
                         Some(sender.address.clone()),
+                        None,
                     )?;
                     msgs.push(msg);
                 }
@@ -478,7 +484,7 @@ pub fn execute_swap_request(
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
     // Validate asset in
-    asset_in.token_type.validate(deps.as_ref())?;
+    asset_in.token_type.validate(&deps.as_ref())?;
     asset_in.token.validate()?;
 
     let state = STATE.load(deps.storage)?;
@@ -655,7 +661,7 @@ pub fn execute_deposit_token(
 
     // Validate asset in
     asset_in.token.validate()?;
-    asset_in.token_type.validate(deps.as_ref())?;
+    asset_in.token_type.validate(&deps.as_ref())?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
     let channel = if !state.is_native {
@@ -832,6 +838,102 @@ pub fn receive_cw20(
             execute_deposit_token(
                 &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
             )
+        }
+        FactoryCw20HookMsg::EuclidReceive(euclid_receive) => {
+            receive_euclid_cw20(deps, env, info, sender, cw20_msg.amount, euclid_receive)
+        }
+    }
+}
+
+pub fn receive_euclid_native(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    euclid_receive: EuclidReceive,
+) -> Result<Response, ContractError> {
+    match from_json::<FactoryEuclidReceiveHook>(euclid_receive.data.clone())? {
+        FactoryEuclidReceiveHook::Swap {
+            sender,
+            asset_in,
+            asset_out,
+            min_amount_out,
+            swaps,
+            timeout,
+            cross_chain_addresses,
+            partner_fee,
+        } => {
+            ensure!(
+                asset_in.token_type.is_native(),
+                ContractError::InvalidAsset {
+                    asset: asset_in.token.to_string(),
+                }
+            );
+            let swap_msg = ExecuteSwapRequest {
+                sender: sender.clone(),
+                asset_in,
+                amount_in: Uint128::zero(),
+                asset_out,
+                min_amount_out,
+                swaps,
+                timeout,
+                cross_chain_addresses,
+                partner_fee,
+            };
+            let response = crate::contract::execute(
+                deps,
+                env,
+                info,
+                ExecuteMsg::ExecuteSwapRequest(swap_msg),
+            )?;
+            let event = simple_event()
+                .add_attribute("meta", euclid_receive.meta.unwrap_or("no_meta".to_string()));
+            Ok(response.add_event(event))
+        }
+    }
+}
+
+pub fn receive_euclid_cw20(
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: CrossChainUser,
+    amount: Uint128,
+    euclid_msg: EuclidReceive,
+) -> Result<Response, ContractError> {
+    match from_json::<FactoryEuclidReceiveHook>(euclid_msg.data.clone())? {
+        FactoryEuclidReceiveHook::Swap {
+            sender: _sender,
+            asset_in,
+            asset_out,
+            min_amount_out,
+            swaps,
+            timeout,
+            cross_chain_addresses,
+            partner_fee,
+        } => {
+            ensure!(
+                info.sender == asset_in.token_type.get_smart_contract_address()?,
+                ContractError::Unauthorized {}
+            );
+            let response = execute_swap_request(
+                &mut deps,
+                env,
+                info,
+                _sender.unwrap_or(sender),
+                asset_in,
+                amount,
+                asset_out,
+                min_amount_out,
+                swaps,
+                timeout,
+                cross_chain_addresses,
+                partner_fee,
+            )?;
+            let event = simple_event().add_attribute(
+                "meta",
+                euclid_msg.meta.clone().unwrap_or("no_meta".to_string()),
+            );
+            Ok(response.add_event(event))
         }
     }
 }

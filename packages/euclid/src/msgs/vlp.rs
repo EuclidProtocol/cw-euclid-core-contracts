@@ -2,12 +2,10 @@ use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
     swap::NextSwapVlp,
-    token::{Pair, PairWithAmount, Token},
+    token::{Pair, PairWithAmount, Token, TokenType},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
-
-use super::router::TokenDenom;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -48,7 +46,6 @@ pub enum ExecuteMsg {
         tx_id: String,
         liquidity: PairWithAmount,
         slippage_tolerance_bps: u64,
-        called_by_register_pool_with_funds: bool,
     },
     RemoveLiquidity {
         sender: CrossChainUser,
@@ -164,13 +161,12 @@ pub struct AllPoolsResponse {
 }
 
 #[cw_serde]
-pub struct MigrateMsg {
-    pub denoms: Vec<(Token, TokenDenom)>,
-}
+pub struct MigrateMsg {}
 
 #[cw_serde]
 pub struct VlpRemoveLiquidityResponse {
     pub liquidity_released: PairWithAmount,
+    pub preferred_denom: Option<TokenType>,
     pub burn_lp_tokens: Uint128,
     pub tx_id: String,
     pub sender: CrossChainUser,

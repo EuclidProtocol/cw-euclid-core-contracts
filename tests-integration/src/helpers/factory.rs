@@ -6,11 +6,11 @@ use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 
 use cw_orch_interchain::IbcQueryHandler;
-use euclid::chain::CrossChainUserWithLimit;
+use euclid::chain::{CrossChainUser, CrossChainUserWithLimit};
 use euclid::fee::PartnerFee;
 use euclid::msgs::cw20::ExecuteMsgFns;
 use euclid::msgs::factory::{
-    ExecuteMsgFns as FactoryExecuteMsgFns, QueryMsgFns as FactoryQueryMsgFns,
+    ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns
 };
 
 use cw_orch_interchain::InterchainEnv;
@@ -139,6 +139,7 @@ pub fn add_liquidity(
 pub fn swap_request(
     interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
+    sender: Option<CrossChainUser>,
     asset_in: TokenWithDenom,
     amount_in: Uint128,
     asset_out: Token,
@@ -151,7 +152,8 @@ pub fn swap_request(
 ) {
     let tx_response = factory
         .execute(
-            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest {
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+                sender,
                 asset_in,
                 amount_in,
                 asset_out,
@@ -160,7 +162,7 @@ pub fn swap_request(
                 swaps,
                 cross_chain_addresses,
                 partner_fee,
-            },
+            }),
             Some(&funds),
         )
         .unwrap();

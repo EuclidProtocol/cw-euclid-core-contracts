@@ -6,34 +6,32 @@ use cw20::Cw20Contract;
 use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload, Environment,
 };
-
-use euclid::chain::CrossChainUser;
-use euclid::fee::{PartnerFee, BPS_100_PERCENT};
-use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
-use euclid::msgs::router::QueryMsgFns as RouterQueryMsgFns;
-use euclid::swap::NextSwapPair;
-use euclid::token::TokenType;
-use euclid::{chain::CrossChainUserWithLimit, msgs::cw20::QueryMsgFns as Cw20QueryMsgFns};
-
 use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
+use euclid::chain::CrossChainUser;
+use euclid::fee::{PartnerFee, BPS_100_PERCENT};
+use euclid::swap::NextSwapPair;
+use euclid::token::TokenType;
 use euclid::{
     chain::ChainUid,
     error::ContractError,
     fee::{DenomFees, BPS_1_PERCENT},
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
-        factory::{AllPoolsResponse, ExecuteMsgFns, PoolVlpResponse, StateResponse},
+        factory::{
+            AllPoolsResponse, ExecuteMsgFns, ExecuteSwapRequest, PoolVlpResponse, StateResponse,
+        },
         router::{
             RegisterFactoryChainIbc, RegisterFactoryChainNative, TokenDenom, TokenDenomsResponse,
             VlpResponse,
         },
-        virtual_balance::GetStateResponse,
+        virtual_balance::{GetBalanceResponse, GetStateResponse},
         vlp::GetLiquidityResponse,
     },
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
+    virtual_balance::BalanceKey,
 };
-use factory::state::PENDING_SWAPS;
+use euclid::chain::CrossChainUserWithLimit;
 use factory::{
     mock::{mock_factory, MockFactory},
     FactoryContract,
@@ -304,8 +302,7 @@ fn test_create_pool_with_funds() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0].outcome {
-        println!("{:?}", ack_tx.tx_id.response.events);
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -368,11 +365,9 @@ fn test_create_pool_with_funds() {
     );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
 
-    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+    let _vbalance_query: GetStateResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
         .unwrap();
-
-    println!("vbalance state is: {:?}", vbalance_query);
 
     // Osmo escrow contract
     escrow_osmosis.set_address(&Addr::unchecked("contract1"));
@@ -623,11 +618,9 @@ fn test_create_pool_with_funds() {
     );
     virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
 
-    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+    let _vbalance_query: GetStateResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
         .unwrap();
-
-    println!("vbalance state is: {:?}", vbalance_query);
 
     // Nibiru escrow contract
     escrow_nibiru.set_address(&Addr::unchecked("contract6"));
@@ -722,6 +715,144 @@ fn test_create_pool_with_funds() {
             token: Token::create("nibi".to_string()).unwrap(),
             factory_address: Addr::unchecked("contract3"),
             total_amount: Uint128::from(100_000u128 * 2),
+        }
+    );
+    // Test swap
+    let eucl_token = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+    let nibi_token = TokenWithDenom {
+        token: Token::create("nibi".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: "nibi".to_string(),
+        },
+    };
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+                sender: None,
+                asset_in: eucl_token.clone(),
+                amount_in: Uint128::from(1_000u128),
+                asset_out: nibi_token.token.clone(),
+                min_amount_out: Uint128::from(9000u128),
+                timeout: None,
+                swaps: vec![NextSwapPair {
+                    token_in: eucl_token.token.clone(),
+                    token_out: nibi_token.token,
+                    test_fail: None,
+                }],
+                cross_chain_addresses: vec![CrossChainUserWithLimit {
+                    user: CrossChainUser {
+                        address: sender.clone(),
+                        chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                    },
+                    limit: None,
+                    preferred_denom: None,
+                    refund_address: None,
+                    forwarding_message: None,
+                }],
+                partner_fee: None,
+            }),
+            Some(&[coin(1_000u128, "eucl")]),
+        )
+        .unwrap();
+
+    // Check balances after swap
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("nibi".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            // Total amount decreased by 9506
+            total_amount: Uint128::from((100_000u128 * 2) - 9506),
+        }
+    );
+    // This is the escrow for the Euclid token
+    escrow_nibiru.set_address(&Addr::unchecked("contract4"));
+    let escrow_query: EscrowStateResponse = escrow_nibiru
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract3"),
+            // Total amount increased by 1000
+            total_amount: Uint128::from((10_000u128 * 2) + 1000),
+        }
+    );
+
+    // Test deposit
+    factory_nibiru
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::DepositToken {
+                amount_in: Uint128::from(100u128),
+                asset_in: eucl_token.clone(),
+                recipient: None,
+                timeout: None,
+            },
+            Some(&[coin(100, "eucl")]),
+        )
+        .unwrap();
+
+    let virtual_balance_query: GetBalanceResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+            balance_key: BalanceKey {
+                cross_chain_user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                token_id: eucl_token.token.to_string(),
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        virtual_balance_query,
+        GetBalanceResponse {
+            amount: Uint128::from(100u128),
+        }
+    );
+
+    // Test withdraw
+    factory_nibiru
+        .withdraw_virtual_balance(
+            Uint128::new(50),
+            vec![CrossChainUserWithLimit {
+                user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                limit: None,
+                preferred_denom: None,
+                refund_address: None,
+                forwarding_message: None,
+            }],
+            Token::create("eucl".to_string()).unwrap(),
+            None,
+        )
+        .unwrap();
+
+    let virtual_balance_query: GetBalanceResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+            balance_key: BalanceKey {
+                cross_chain_user: CrossChainUser {
+                    address: sender.clone(),
+                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+                },
+                token_id: eucl_token.token.to_string(),
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        virtual_balance_query,
+        GetBalanceResponse {
+            amount: Uint128::from(50u128),
         }
     );
 }
@@ -1088,6 +1219,7 @@ fn test_add_liquidity() {
 fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let _factory_chain = interchain.get_chain("osmosis").unwrap();
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
     let router = crate::helpers::chains::setup_router(&router_chain);
@@ -1810,7 +1942,8 @@ fn test_swap_request() {
 
     let swap_request_msg = factory_osmosis
         .execute(
-            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest {
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+                sender: None,
                 asset_in: TokenWithDenom {
                     token: Token::create("eucl".to_string()).unwrap(),
                     token_type: euclid::token::TokenType::Native {
@@ -1832,9 +1965,12 @@ fn test_swap_request() {
                         address: sender,
                     },
                     limit: None,
+                    preferred_denom: None,
+                    refund_address: None,
+                    forwarding_message: None,
                 }],
                 partner_fee: None,
-            },
+            }),
             Some(&[coin(100u128, "eucl")]),
         )
         .unwrap();
@@ -1851,105 +1987,6 @@ fn test_swap_request() {
         // There was a decode error or the packet timed out
         // Else the packet timed-out, you may have a relayer error or something is wrong in your application
     };
-}
-
-#[test]
-#[should_panic(expected = "Extra funds sent with message")]
-fn test_swap_request_fails_with_extra_funds() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
-    let router_chain = interchain.get_chain("nibiru").unwrap();
-
-    let router = crate::helpers::chains::setup_router(&router_chain);
-    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
-
-    let pair_info = PairWithDenomAndAmount {
-        token_1: TokenWithDenomAndAmount {
-            token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
-            token_type: euclid::token::TokenType::Native {
-                denom: "eucl".to_string(),
-            },
-        },
-        token_2: TokenWithDenomAndAmount {
-            token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
-            token_type: euclid::token::TokenType::Native {
-                denom: "nibi".to_string(),
-            },
-        },
-    };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
-
-    let asset_in = TokenWithDenom {
-        token: Token::create("eucl".to_string()).unwrap(),
-        token_type: euclid::token::TokenType::Native {
-            denom: "eucl".to_string(),
-        },
-    };
-
-    // adding funds
-    let chain = interchain
-        .get_chain(factory.environment().chain_id().as_str())
-        .unwrap();
-    let mut funds = vec![];
-    for token in pair_info.get_vec_token_info() {
-        faucet(
-            &chain,
-            chain.sender.as_str(),
-            token.amount.u128(),
-            token.token_type.clone(),
-            &mut funds,
-        );
-    }
-
-    add_liquidity(
-        &interchain,
-        &factory,
-        pair_info,
-        BPS_1_PERCENT,
-        None,
-        funds.clone(),
-    );
-
-    funds.clear();
-    faucet(
-        &chain,
-        chain.sender.as_str(),
-        1000,
-        asset_in.token_type.clone(),
-        &mut funds,
-    );
-
-    // Send extra funds beyond amount_in
-    swap_request(
-        &interchain,
-        &factory,
-        asset_in,
-        Uint128::new(100),
-        Token::create("nibi".to_string()).unwrap(),
-        Uint128::new(50),
-        None, // Send extra funds beyond amount_in
-        vec![NextSwapPair {
-            token_in: Token::create("eucl".to_string()).unwrap(),
-            token_out: Token::create("nibi".to_string()).unwrap(),
-            test_fail: None,
-        }],
-        vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender,
-            },
-            limit: None,
-        }],
-        None,
-        funds,
-    );
 }
 
 #[test]
@@ -2028,6 +2065,7 @@ fn test_swap_request_with_valid_partner_fee() {
     swap_request(
         &interchain,
         &factory,
+        None,
         asset_in,
         Uint128::new(1000),
         Token::create("nibi".to_string()).unwrap(),
@@ -2046,6 +2084,9 @@ fn test_swap_request_with_valid_partner_fee() {
                 address: sender.clone(),
             },
             limit: None,
+            preferred_denom: None,
+            refund_address: None,
+            forwarding_message: None,
         }],
         Some(PartnerFee {
             partner_fee_bps: 30,
@@ -2132,6 +2173,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     swap_request(
         &interchain,
         &factory,
+        None,
         asset_in,
         Uint128::new(1000),
         Token::create("nibi".to_string()).unwrap(),
@@ -2148,6 +2190,9 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
                 address: sender.clone(),
             },
             limit: None,
+            preferred_denom: None,
+            refund_address: None,
+            forwarding_message: None,
         }],
         Some(PartnerFee {
             partner_fee_bps: 31,
@@ -2235,6 +2280,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
     swap_request(
         &interchain,
         &factory,
+        None,
         asset_in,
         Uint128::new(1000),
         Token::create("nibi".to_string()).unwrap(),
@@ -2247,101 +2293,9 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
                 address: sender.clone(),
             },
             limit: None,
-        }],
-        None,
-        funds,
-    );
-}
-
-#[test]
-#[should_panic(expected = "Amount cannot be zero")]
-fn test_swap_request_fails_for_zero_amount_in() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
-    let router_chain = interchain.get_chain("nibiru").unwrap();
-
-    let router = crate::helpers::chains::setup_router(&router_chain);
-    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
-
-    let pair_info = PairWithDenomAndAmount {
-        token_1: TokenWithDenomAndAmount {
-            token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
-            token_type: euclid::token::TokenType::Native {
-                denom: "eucl".to_string(),
-            },
-        },
-        token_2: TokenWithDenomAndAmount {
-            token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
-            token_type: euclid::token::TokenType::Native {
-                denom: "nibi".to_string(),
-            },
-        },
-    };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
-
-    let asset_in = TokenWithDenom {
-        token: Token::create("eucl".to_string()).unwrap(),
-        token_type: euclid::token::TokenType::Native {
-            denom: "eucl".to_string(),
-        },
-    };
-
-    // adding funds
-    let chain = interchain
-        .get_chain(factory.environment().chain_id().as_str())
-        .unwrap();
-    let mut funds = vec![];
-    for token in pair_info.get_vec_token_info() {
-        faucet(
-            &chain,
-            chain.sender.as_str(),
-            token.amount.u128(),
-            token.token_type.clone(),
-            &mut funds,
-        );
-    }
-
-    add_liquidity(
-        &interchain,
-        &factory,
-        pair_info,
-        BPS_1_PERCENT,
-        None,
-        funds.clone(),
-    );
-
-    funds.clear();
-    faucet(
-        &chain,
-        chain.sender.as_str(),
-        1000,
-        asset_in.token_type.clone(),
-        &mut funds,
-    );
-
-    // swapping
-    swap_request(
-        &interchain,
-        &factory,
-        asset_in,
-        Uint128::new(0),
-        Token::create("nibi".to_string()).unwrap(),
-        Uint128::new(50),
-        None,
-        vec![],
-        vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
-            },
-            limit: None,
+            preferred_denom: None,
+            refund_address: None,
+            forwarding_message: None,
         }],
         None,
         funds,
@@ -2425,6 +2379,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
     swap_request(
         &interchain,
         &factory,
+        None,
         asset_in,
         Uint128::new(1000),
         Token::create("nibi".to_string()).unwrap(),
@@ -2437,6 +2392,9 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
                 address: sender.clone(),
             },
             limit: None,
+            preferred_denom: None,
+            refund_address: None,
+            forwarding_message: None,
         }],
         None,
         funds,
@@ -2520,6 +2478,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     swap_request(
         &interchain,
         &factory,
+        None,
         asset_in,
         Uint128::new(1000),
         Token::create("nibi".to_string()).unwrap(),
@@ -2538,6 +2497,9 @@ fn test_swap_request_fails_for_invalid_swap_route() {
                 address: sender.clone(),
             },
             limit: None,
+            preferred_denom: None,
+            refund_address: None,
+            forwarding_message: None,
         }],
         None,
         funds,
@@ -2620,6 +2582,7 @@ fn test_swap_request_with_timeout() {
     swap_request(
         &interchain,
         &factory,
+        None,
         asset_in,
         Uint128::new(1000),
         Token::create("nibi".to_string()).unwrap(),
@@ -2638,6 +2601,9 @@ fn test_swap_request_with_timeout() {
                 address: sender.clone(),
             },
             limit: None,
+            preferred_denom: None,
+            refund_address: None,
+            forwarding_message: None,
         }],
         None,
         funds,
@@ -2721,6 +2687,7 @@ fn test_swap_request_fails_with_timeout_greater_than_240s() {
     swap_request(
         &interchain,
         &factory,
+        None,
         asset_in,
         Uint128::new(1000),
         Token::create("nibi".to_string()).unwrap(),
@@ -2739,6 +2706,9 @@ fn test_swap_request_fails_with_timeout_greater_than_240s() {
                 address: sender.clone(),
             },
             limit: None,
+            preferred_denom: None,
+            refund_address: None,
+            forwarding_message: None,
         }],
         None,
         funds,

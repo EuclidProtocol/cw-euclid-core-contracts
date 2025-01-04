@@ -5,7 +5,7 @@ secretcli tx compute store ./target/wasm32-unknown-unknown/release/snip20.wasm -
 
 INSTANTIATE
 ================================================================
-secretcli tx compute instantiate 12318 '{"router_contract":"nibi15v6ucun55ud6aera98wm6su2fs46pja9apef3pthfp3mmza3eg3sy44cwq","chain_uid":"secret","escrow_code_id":12319,"escrow_code_hash":"25d467c87f5378333af6d9cfc0e40e0dcbfe984eebb987f5278e61650c1e88fa","snip20_code_id":12320,"snip20_code_hash":"f11bdae9c36ce54dd7a648837b5975de8be2e741a45aaae93eae52b491509149","is_native":false}' --from owner --chain-id pulsar-3 --node https://rpc.testnet.secretsaturn.net/ --fees=70000uscrt --label factorytest18 -y --admin secret12739yy09ln4vv2tcwchccuxatmmjz4q2axrzj2
+secretcli tx compute instantiate 12856 '{"router_contract":"nibi15v6ucun55ud6aera98wm6su2fs46pja9apef3pthfp3mmza3eg3sy44cwq","chain_uid":"secret","escrow_code_id":12855,"escrow_code_hash":"cdb6fc6da6de88a6b767fa06b2f2f86af7b3e00265c6ec65acd837e8054c8dae","snip20_code_id":12854,"snip20_code_hash":"232b598e60162afce0f1b934cde6bbf433241d6e99f33f76c6ba6c560dc9a6c3","is_native":false}' --from owner --chain-id pulsar-3 --node https://rpc.testnet.secretsaturn.net/ --fees=70000uscrt --label factorytest18 -y --admin secret12739yy09ln4vv2tcwchccuxatmmjz4q2axrzj2
 ================================================================
 
 EXECUTE

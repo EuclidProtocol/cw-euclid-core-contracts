@@ -1,10 +1,11 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement,
-    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, ReplyOn, Response, StdError,
-    StdResult, SubMsg, WasmMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement,
+    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, MessageInfo, ReplyOn, Response,
+    StdError, StdResult, SubMsg, WasmMsg,
 };
+use cw20::Cw20Coin;
 use euclid::{
     deposit::DepositTokenResponse,
     error::ContractError,
@@ -57,9 +58,14 @@ pub fn ibc_packet_ack(
 
 pub fn ibc_ack_packet_internal_call(
     deps: DepsMut,
+    info: MessageInfo,
     env: Env,
     ack: IbcPacketAckMsg,
 ) -> Result<Response, ContractError> {
+    ensure!(
+        info.sender == env.contract.address,
+        ContractError::Unauthorized {}
+    );
     let msg: ChainIbcExecuteMsg = from_json(&ack.original_packet.data)?;
     reusable_internal_ack_call(deps, env, msg, ack.acknowledgement.data, false)
 }
@@ -275,7 +281,10 @@ fn ack_pool_creation(
                     name: lp_token_instantiate_data.name,
                     symbol: lp_token_instantiate_data.symbol,
                     decimals: lp_token_instantiate_data.decimals,
-                    initial_balances: vec![],
+                    initial_balances: vec![Cw20Coin {
+                        amount: data.mint_lp_tokens,
+                        address: data.sender.address,
+                    }],
                     mint: lp_token_instantiate_data.mint,
                     marketing: lp_token_instantiate_data.marketing,
                     vlp: data.vlp_contract,
@@ -516,6 +525,7 @@ fn ack_add_liquidity(
                     token_info.amount,
                     sender.to_string(),
                     None,
+                    None,
                 )?;
                 msgs.push(msg);
             }
@@ -649,6 +659,7 @@ fn ack_swap_request(
                         swap_info.partner_fee_amount,
                         swap_info.partner_fee_recipient.to_string(),
                         None,
+                        None,
                     )?;
                     response = response.add_message(partner_send_msg)
                 }
@@ -677,6 +688,7 @@ fn ack_swap_request(
                         .amount_in
                         .checked_add(swap_info.partner_fee_amount)?,
                     sender.to_string(),
+                    None,
                     None,
                 )?;
                 response = response.add_message(msg);
@@ -728,6 +740,7 @@ fn ack_deposit_token_request(
             let msg = deposit_info.asset_in.create_transfer_msg(
                 deposit_info.amount_in,
                 sender.to_string(),
+                None,
                 None,
             )?;
 

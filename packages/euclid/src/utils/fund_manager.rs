@@ -43,7 +43,10 @@ impl FundManager {
             self.get(denom).ge(&amount),
             ContractError::InsufficientFunds {}
         );
-        *self.funds.get_mut(denom).unwrap() -= amount;
+        *self
+            .funds
+            .get_mut(denom)
+            .ok_or(ContractError::new("Denom not found"))? -= amount;
         Ok(())
     }
 
@@ -61,6 +64,15 @@ impl FundManager {
         ensure!(
             self.funds.iter().all(|(_, amount)| amount.is_zero()),
             ContractError::new("Funds should be empty")
+        );
+        Ok(())
+    }
+
+    /// Validate that there are n number of funds in the manager
+    pub fn validate_n_funds(&self, n: usize) -> Result<(), ContractError> {
+        ensure!(
+            self.funds.len() == n,
+            ContractError::new(&format!("Expected {} funds, got {}", n, self.funds.len()))
         );
         Ok(())
     }

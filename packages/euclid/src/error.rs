@@ -1,8 +1,8 @@
 use std::num::ParseIntError;
 
 use cosmwasm_std::{
-    Addr, CheckedMultiplyFractionError, CheckedMultiplyRatioError, DivideByZeroError,
-    OverflowError, StdError, Uint128,
+    Addr, CheckedFromRatioError, CheckedMultiplyFractionError, CheckedMultiplyRatioError,
+    Decimal256, DivideByZeroError, OverflowError, StdError, Uint128,
 };
 use cw20_base::ContractError as Cw20ContractError;
 use thiserror::Error;
@@ -22,6 +22,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     CheckedMultiplyRatioError(#[from] CheckedMultiplyRatioError),
+
+    #[error("{0}")]
+    CheckedFromRatioError(#[from] CheckedFromRatioError),
 
     #[error("{0}")]
     DivideByZero(#[from] DivideByZeroError),
@@ -68,6 +71,21 @@ pub enum ContractError {
     #[error("UnsupportedDenomination")]
     UnsupportedDenomination {},
 
+    #[error("Limit exceeded: {limit} < {amount}")]
+    LimitExceeded { limit: Uint128, amount: Uint128 },
+
+    #[error("Amount mismatch: expected {expected}, received {received}")]
+    AmountMismatch {
+        expected: Uint128,
+        received: Uint128,
+    },
+
+    #[error("Insufficient amount: min_amount {min_amount}, amount {amount}")]
+    InsufficientAmount {
+        min_amount: Uint128,
+        amount: Uint128,
+    },
+
     #[error("CannotEscrowVoucher")]
     CannotEscrowVoucher {},
 
@@ -79,7 +97,6 @@ pub enum ContractError {
 
     #[error("Not Implemented")]
     NotImplemented {},
-
     #[error("DenomDoesNotExist")]
     DenomDoesNotExist {},
 
@@ -179,8 +196,11 @@ pub enum ContractError {
     #[error("Liquity already exist in state for the sender")]
     LiquidityTxAlreadyExist {},
 
-    #[error("Slippage has been exceeded when providing liquidity.")]
-    LiquiditySlippageExceeded {},
+    #[error("Slippage has been exceeded when providing liquidity. Expected: {expected}, Received: {received}")]
+    LiquiditySlippageExceeded {
+        expected: Decimal256,
+        received: Decimal256,
+    },
 
     #[error("Pool Instantiate Failed {err}")]
     PoolInstantiateFailed { err: String },
@@ -228,6 +248,17 @@ pub enum ContractError {
     #[error("Invalid expiration")]
     InvalidExpiration {},
     // END CW20 ERRORS
+    #[error("Min received {received} is less than expected {expected}")]
+    MinReceived {
+        expected: Uint128,
+        received: Uint128,
+    },
+
+    #[error("Invalid Address: {address} {msg}")]
+    InvalidAddress { address: String, msg: String },
+
+    #[error("Unsupported Euclid Receive Message")]
+    UnsupportedEuclidReceiveMessage {},
 }
 
 impl ContractError {

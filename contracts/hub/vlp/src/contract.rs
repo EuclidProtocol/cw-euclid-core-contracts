@@ -97,7 +97,6 @@ pub fn execute(
             tx_id,
             slippage_tolerance_bps,
             liquidity,
-            called_by_register_pool_with_funds,
         } => add_liquidity(
             deps,
             env,
@@ -106,7 +105,6 @@ pub fn execute(
             liquidity,
             slippage_tolerance_bps,
             tx_id,
-            called_by_register_pool_with_funds,
         ),
         ExecuteMsg::RemoveLiquidity {
             sender,

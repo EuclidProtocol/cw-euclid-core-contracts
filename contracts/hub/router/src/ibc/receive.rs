@@ -8,7 +8,7 @@ use euclid::{
     chain::{ChainUid, CrossChainUser},
     deposit::DepositTokenResponse,
     error::ContractError,
-    events::{tx_event, TxType},
+    events::{deregister_denom_event, register_denom_event, tx_event, TxType},
     fee::Fee,
     msgs::{
         self,
@@ -74,6 +74,10 @@ pub fn ibc_receive_internal_call(
     info: MessageInfo,
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
+    ensure!(
+        info.sender == env.contract.address,
+        ContractError::Unauthorized {}
+    );
     // Get the chain data from current channel received
     let channel = msg.packet.dest.channel_id;
     let chain_uid = CHANNEL_TO_CHAIN_UID.load(deps.storage, channel)?;
@@ -231,7 +235,7 @@ fn execute_request_pool_creation(
     let pair = pair_with_denom.get_pair()?;
     pair.validate()?;
 
-    let response = Response::new()
+    let mut response = Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
@@ -246,6 +250,8 @@ fn execute_request_pool_creation(
         let mut registered_denoms = TOKEN_DENOMS
             .may_load(deps.storage, token.token.clone())?
             .unwrap_or_default();
+
+        one_token_already_exists = one_token_already_exists || !registered_denoms.is_empty();
 
         // If its a voucher, then we need to check if this token atleast exist on one of the chains
         if token.token_type.is_voucher() {
@@ -274,12 +280,16 @@ fn execute_request_pool_creation(
             if !token_registered_on_sender_chain {
                 registered_denoms.push(TokenDenom {
                     chain_uid: sender.chain_uid.clone(),
-                    token_type: token.token_type,
+                    token_type: token.token_type.clone(),
                 });
-                TOKEN_DENOMS.save(deps.storage, token.token, &registered_denoms)?;
+                TOKEN_DENOMS.save(deps.storage, token.token.clone(), &registered_denoms)?;
+                response = response.add_event(register_denom_event(
+                    &token.token,
+                    &sender.chain_uid.to_string(),
+                    &token.token_type,
+                ));
             }
         }
-        one_token_already_exists = one_token_already_exists || !registered_denoms.is_empty();
     }
 
     // Cannot create pool if both tokens are new
@@ -373,11 +383,13 @@ fn execute_register_denom(
             &sender.to_sender_string(),
             TxType::RegisterDenom,
         ))
+        .add_event(register_denom_event(
+            &token.token,
+            &sender.chain_uid.to_string(),
+            &token.token_type,
+        ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_register_denom")
-        .add_attribute("token", token.token.to_string())
-        .add_attribute("chain_uid", sender.chain_uid.to_string())
-        .add_attribute("denom", token.token_type.get_key())
         .set_data(to_json_binary(&ack)?))
 }
 
@@ -418,9 +430,11 @@ fn execute_deregister_denom(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_deregister_denom")
-        .add_attribute("token", token.token.to_string())
-        .add_attribute("chain_uid", sender.chain_uid.to_string())
-        .add_attribute("denom", token.token_type.get_key())
+        .add_event(deregister_denom_event(
+            &token.token,
+            &sender.chain_uid.to_string(),
+            &token.token_type,
+        ))
         .set_data(to_json_binary(&ack)?))
 }
 
@@ -511,7 +525,6 @@ pub fn ibc_execute_add_liquidity(
         sender,
         tx_id,
         slippage_tolerance_bps,
-        called_by_register_pool_with_funds: false,
     };
 
     let msg = WasmMsg::Execute {

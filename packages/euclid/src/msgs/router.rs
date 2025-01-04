@@ -110,7 +110,9 @@ pub enum QueryMsg {
 }
 // We define a custom struct for each query response
 #[cw_serde]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub denoms: Vec<(Token, TokenDenom)>,
+}
 
 #[cw_serde]
 pub struct QuerySimulateSwap {

@@ -116,7 +116,6 @@ pub fn register_pool_with_funds(
         pair_with_amount,
         slippage_tolerance_bps,
         tx_id,
-        true,
     )
 }
 
@@ -144,7 +143,6 @@ pub fn add_liquidity(
     liquidity: PairWithAmount,
     slippage_tolerance_bps: u64,
     tx_id: String,
-    called_by_register_pool_with_funds: bool,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
@@ -298,6 +296,8 @@ pub fn remove_liquidity(
     // Prepare Liquidity Response
     let liquidity_response = VlpRemoveLiquidityResponse {
         burn_lp_tokens: lp_allocation,
+        //TODO
+        preferred_denom: None,
         tx_id: tx_id.clone(),
         sender: sender.clone(),
         vlp_address: env.contract.address.to_string(),
