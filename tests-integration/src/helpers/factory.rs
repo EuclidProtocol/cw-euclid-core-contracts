@@ -10,7 +10,7 @@ use euclid::chain::{CrossChainUser, CrossChainUserWithLimit};
 use euclid::fee::PartnerFee;
 use euclid::msgs::cw20::ExecuteMsgFns;
 use euclid::msgs::factory::{
-    ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns
+    ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns,
 };
 
 use cw_orch_interchain::InterchainEnv;

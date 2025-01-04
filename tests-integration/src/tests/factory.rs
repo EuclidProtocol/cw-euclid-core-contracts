@@ -9,6 +9,7 @@ use cw_orch::prelude::{
 use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::chain::CrossChainUser;
+use euclid::chain::CrossChainUserWithLimit;
 use euclid::fee::{PartnerFee, BPS_100_PERCENT};
 use euclid::swap::NextSwapPair;
 use euclid::token::TokenType;
@@ -31,7 +32,6 @@ use euclid::{
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
     virtual_balance::BalanceKey,
 };
-use euclid::chain::CrossChainUserWithLimit;
 use factory::{
     mock::{mock_factory, MockFactory},
     FactoryContract,
