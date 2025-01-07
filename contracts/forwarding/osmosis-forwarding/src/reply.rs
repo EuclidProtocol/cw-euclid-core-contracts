@@ -1,5 +1,6 @@
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Reply, Response, SubMsgResult};
+use cosmwasm_std::{ensure, to_json_binary, Decimal, DepsMut, Env, Reply, Response, SubMsgResult};
 use euclid::{error::ContractError, msgs::hook::EuclidReceiverMsg};
+use forwarding::msgs::osmosis::Slippage;
 
 use crate::state::{ForwardingState, FORWARDING_STATE};
 
@@ -23,9 +24,33 @@ pub fn on_osmo_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Respons
                 .get_balance(deps.as_ref(), env.contract.address.to_string())?;
 
             let swap_amount = new_balance.checked_sub(previous_balance)?;
-
+            match swap_msg.slippage {
+                Slippage::MinOutputAmount(min_output_amount) => {
+                    ensure!(
+                        swap_amount >= min_output_amount,
+                        ContractError::MinReceived {
+                            expected: min_output_amount,
+                            received: swap_amount,
+                        }
+                    );
+                }
+                Slippage::Twap {
+                    window_seconds: _,
+                    slippage_percentage,
+                } => {
+                    let min_output_amount =
+                        swap_msg.input_coin.amount * (Decimal::one() - slippage_percentage);
+                    ensure!(
+                        swap_amount >= min_output_amount,
+                        ContractError::MinReceived {
+                            expected: min_output_amount,
+                            received: swap_amount,
+                        }
+                    );
+                }
+            }
             // ensure!(
-            //     swap_amount >= swap_msg.minimum_receive,
+            //     swap_amount >= swap_msg.input_coin.amount,
             //     ContractError::MinReceived {
             //         expected: swap_msg.minimum_receive,
             //         received: swap_amount,

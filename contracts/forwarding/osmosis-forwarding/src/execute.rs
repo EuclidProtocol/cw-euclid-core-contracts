@@ -1,13 +1,12 @@
 use cosmwasm_std::{
-    coin, ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
-    WasmMsg,
+    coin, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use euclid::{
     error::ContractError, events::simple_event, msgs::hook::EuclidReceive, token::TokenType,
 };
 use forwarding::msgs::{
-    cw20::{Cw20HookMsg, OsmosisCw20HookMsg},
+    cw20::OsmosisCw20HookMsg,
     euclid_receive::OsmosisEuclidReceiveHook,
     osmosis::{OsmosisExecuteMsg, SwapMsg},
 };
@@ -100,10 +99,10 @@ pub fn swap(
     let state = STATE.load(deps.storage)?;
 
     let osmo_execute_msg = OsmosisExecuteMsg::Swap {
-        input_coin: todo!(),
-        output_denom: todo!(),
-        slippage: todo!(),
-        route: todo!(),
+        input_coin: swap_msg.input_coin.clone(),
+        output_denom: swap_msg.output_denom.clone(),
+        slippage: swap_msg.slippage.clone(),
+        route: swap_msg.route.clone(),
     };
 
     let previous_balance = swap_msg
@@ -116,7 +115,7 @@ pub fn swap(
             from_token: from_token.clone(),
             from_amount,
             previous_balance,
-            swap_msg,
+            swap_msg: swap_msg.clone(),
         },
     )?;
 

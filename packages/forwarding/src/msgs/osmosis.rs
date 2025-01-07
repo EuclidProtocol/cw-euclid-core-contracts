@@ -50,10 +50,10 @@ pub enum QueryMsg {}
 
 #[cw_serde]
 pub struct SwapMsg {
-    input_coin: Coin,
-    output_denom: String,
-    slippage: Slippage,
-    route: Option<Vec<SwapAmountInRoute>>,
+    pub input_coin: Coin,
+    pub output_denom: String,
+    pub slippage: Slippage,
+    pub route: Option<Vec<SwapAmountInRoute>>,
     pub forwarding_msg: Option<EuclidReceive>,
     pub to_token: TokenType,
     pub recipient: String,
