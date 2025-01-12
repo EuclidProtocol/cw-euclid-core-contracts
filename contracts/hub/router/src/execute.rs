@@ -1,10 +1,10 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
+    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
@@ -13,37 +13,19 @@ use euclid::{
     },
     timeout::get_timeout,
     token::Token,
-    utils::generate_tx,
+    utils::tx::generate_tx,
     virtual_balance::BalanceKey,
 };
 use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
     ibc::receive,
-    reply::VIRTUAL_BALANCE_BURN_REPLY_ID,
+    query::verify_cross_chain_addresses,
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, STATE,
+        State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
+        STATE, TOKEN_DENOMS,
     },
 };
-
-// Function to update the pool code ID
-pub fn execute_update_vlp_code_id(
-    deps: DepsMut,
-    info: MessageInfo,
-    new_vlp_code_id: u64,
-) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
-
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-
-    state.vlp_code_id = new_vlp_code_id;
-
-    STATE.save(deps.storage, &state)?;
-
-    Ok(Response::new()
-        .add_attribute("method", "update_pool_code_id")
-        .add_attribute("new_vlp_code_id", new_vlp_code_id.to_string()))
-}
 
 pub fn execute_update_lock(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
@@ -114,7 +96,6 @@ pub fn execute_register_factory(
     chain_info: RegisterFactoryChainType,
 ) -> Result<Response, ContractError> {
     let chain_uid = chain_uid.validate()?.to_owned();
-
     ensure!(
         !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
         ContractError::new("Factory already exists")
@@ -133,7 +114,6 @@ pub fn execute_register_factory(
         ContractError::new("Cannot use VSL chain uid")
     );
 
-    // TODO: Add check for existing chain ids
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
@@ -156,7 +136,6 @@ pub fn execute_register_factory(
                 data: to_json_binary(&msg)?,
                 timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
             };
-
             Ok(response
                 .add_attribute("channel", ibc_info.channel)
                 .add_attribute("timeout", timeout.to_string())
@@ -248,6 +227,14 @@ pub fn execute_withdraw_voucher(
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
+    verify_cross_chain_addresses(
+        deps.as_ref(),
+        cross_chain_addresses
+            .clone()
+            .into_iter()
+            .map(|x| x.user)
+            .collect(),
+    )?;
     let cross_chain_user = CrossChainUser {
         chain_uid: ChainUid::vsl_chain_uid()?,
         address: info.sender.to_string(),
@@ -271,6 +258,7 @@ pub fn execute_withdraw_voucher(
         .add_attribute("method", "withdraw_voucher"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn execute_release_escrow(
     deps: &mut DepsMut,
     env: Env,
@@ -283,11 +271,12 @@ pub fn execute_release_escrow(
     timeout: Option<u64>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
     );
+
+    let state = STATE.load(deps.storage)?;
 
     let virtual_balance_address = state
         .virtual_balance_address
@@ -318,22 +307,34 @@ pub fn execute_release_escrow(
             sender.address.as_str(),
             TxType::EscrowRelease,
         ))
-        .add_attribute("tx_id", tx_id);
+        .add_attribute("tx_id", tx_id.clone());
 
     let timeout = get_timeout(timeout)?;
     let mut release_msgs: Vec<SubMsg> = vec![];
 
     let mut cross_chain_addresses_iterator = cross_chain_addresses.into_iter().peekable();
     let mut remaining_withdraw_amount = amount;
+    let token_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
 
     let mut transfer_amount = Uint128::zero();
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
             .next()
-            .ok_or(ContractError::new("Cross Chain Address Iter Faiiled"))?;
+            .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
+
+        if let Some(ref preferred_denom) = cross_chain_address.preferred_denom {
+            // Ensure that the preferred denom is valid
+            ensure!(
+                token_denoms
+                    .iter()
+                    .any(|x| x.token_type == preferred_denom.clone()
+                        && x.chain_uid == cross_chain_address.user.chain_uid),
+                ContractError::InvalidDenom {}
+            );
+        }
 
         let escrow_key =
             ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
@@ -341,13 +342,37 @@ pub fn execute_release_escrow(
             .may_load(deps.storage)?
             .unwrap_or(Uint128::zero());
 
-        let release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
+        let mut release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
             escrow_balance
         } else {
             remaining_withdraw_amount
         };
 
-        let release_amount = release_amount.min(cross_chain_address.limit.unwrap_or(Uint128::MAX));
+        match cross_chain_address.limit {
+            Some(Limit::LessThanOrEqual(limit)) => {
+                release_amount = release_amount.min(limit);
+            }
+            Some(Limit::Equal(limit)) => {
+                ensure!(
+                    release_amount.ge(&limit),
+                    ContractError::InsufficientAmount {
+                        min_amount: limit,
+                        amount: release_amount
+                    }
+                );
+                release_amount = limit;
+            }
+            Some(Limit::GreaterThanOrEqual(limit)) => {
+                ensure!(
+                    release_amount.ge(&limit),
+                    ContractError::AmountMismatch {
+                        expected: limit,
+                        received: release_amount
+                    }
+                );
+            }
+            _ => {}
+        }
 
         if release_amount.is_zero() {
             continue;
@@ -361,18 +386,18 @@ pub fn execute_release_escrow(
         let send_msg = HubIbcExecuteMsg::ReleaseEscrow {
             sender: sender.clone(),
             amount: release_amount,
+            recipient: cross_chain_address.clone(),
             token: token.clone(),
-            to_address: cross_chain_address.user.address.clone(),
             // We can't use same tx id because it might conflict with pending requests on receiving chain
             tx_id: generate_tx(deps.branch(), &env, &sender)?,
-            chain_uid: cross_chain_address.user.chain_uid.clone(),
         }
         .to_msg(deps, &env, chain, timeout)?;
 
         response = response.add_attribute(
             format!(
-                "release_escrow_expected_{sender}",
-                sender = cross_chain_address.user.to_sender_string()
+                "release_escrow_expected_{token}_{sender}",
+                sender = cross_chain_address.user.to_sender_string(),
+                token = token
             ),
             release_amount,
         );
@@ -383,7 +408,7 @@ pub fn execute_release_escrow(
 
     ensure!(
         transfer_amount.checked_add(remaining_withdraw_amount)? == amount,
-        ContractError::new("Amount mismatch after trasnfer calculations")
+        ContractError::new("Amount mismatch after transfer calculations")
     );
 
     if !transfer_amount.is_zero() {
@@ -401,16 +426,14 @@ pub fn execute_release_escrow(
             msg: to_json_binary(&burn_virtual_balance_msg)?,
             funds: vec![],
         });
-        response = response.add_submessage(SubMsg::reply_always(
-            burn_virtual_balance_msg,
-            VIRTUAL_BALANCE_BURN_REPLY_ID,
-        ));
+        response = response.add_message(burn_virtual_balance_msg);
     }
 
     Ok(response
-        .add_attribute("method", "release_escrow")
+        .add_attribute("method", "release_escrow_initiate")
+        .add_attribute("token", token.to_string())
         .add_attribute("release_expected", amount)
-        .add_attribute("actual_released", transfer_amount)
+        .add_attribute("release_initiated", transfer_amount)
         .add_submessages(release_msgs))
 }
 
@@ -430,4 +453,56 @@ pub fn execute_native_receive_callback(
     // Only registered factory contract can execute this message
     ensure!(chain.factory == info.sender, ContractError::Unauthorized {});
     receive::reusable_internal_call(deps, env, info, msg, chain_uid)
+}
+
+pub fn execute_update_router_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    admin: Option<String>,
+    vlp_code_id: Option<u64>,
+    virtual_balance_address: Option<Addr>,
+    locked: Option<bool>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let verified_virtual_balance_address: Result<Option<Addr>, ContractError> =
+        virtual_balance_address
+            .as_ref()
+            .map_or(Ok(state.virtual_balance_address), |address| {
+                let validated_addr = Some(deps.api.addr_validate(address.as_str())?);
+                Ok(validated_addr)
+            });
+
+    // Validate Admin Address if provided
+    let verified_admin = if let Some(ref admin) = admin {
+        deps.api.addr_validate(admin.as_str())?.to_string()
+    } else {
+        state.admin
+    };
+
+    let state = State {
+        admin: verified_admin,
+        vlp_code_id: vlp_code_id.unwrap_or(state.vlp_code_id),
+        virtual_balance_address: verified_virtual_balance_address?,
+        locked: locked.unwrap_or(state.locked),
+    };
+
+    STATE.save(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_state")
+        .add_attribute("admin", admin.unwrap_or("unchanged".to_string()))
+        .add_attribute(
+            "vlp_code_id",
+            vlp_code_id.map_or("unchanged".to_string(), |code_id| code_id.to_string()),
+        )
+        .add_attribute(
+            "virtual_balance_address",
+            virtual_balance_address.map_or("unchanged".to_string(), |addr| addr.to_string()),
+        )
+        .add_attribute(
+            "locked",
+            locked.map_or("unchanged".to_string(), |locked_val| locked_val.to_string()),
+        ))
 }

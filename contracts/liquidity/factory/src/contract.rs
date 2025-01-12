@@ -7,13 +7,15 @@ use cw2::set_contract_version;
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
 use euclid::fee::DenomFees;
+use euclid::token::TokenType;
 use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::{
-    add_liquidity_request, execute_native_receive_callback, execute_request_deregister_denom,
-    execute_request_pool_creation, execute_request_register_denom, execute_request_register_escrow,
-    execute_swap_request, execute_update_hub_channel, execute_withdraw_virtual_balance,
-    receive_cw20,
+    add_liquidity_request, execute_deposit_token, execute_native_receive_callback,
+    execute_request_deregister_denom, execute_request_pool_creation,
+    execute_request_register_denom, execute_swap_request, execute_transfer_virtual_balance,
+    execute_update_hub_channel, execute_update_state, execute_withdraw_virtual_balance,
+    receive_cw20, receive_euclid_native,
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
@@ -73,61 +75,82 @@ pub fn execute(
     match msg {
         ExecuteMsg::AddLiquidityRequest {
             pair_info,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
+            slippage_tolerance_bps,
             timeout,
         } => add_liquidity_request(
             &mut deps,
             info,
             env,
             pair_info,
-            token_1_liquidity,
-            token_2_liquidity,
-            slippage_tolerance,
+            slippage_tolerance_bps,
             timeout,
         ),
-        ExecuteMsg::ExecuteSwapRequest {
-            asset_in,
-            asset_out,
+        ExecuteMsg::ExecuteSwapRequest(msg) => {
+            let state = STATE.load(deps.storage)?;
+            let mut verified_sender = CrossChainUser {
+                address: info.sender.to_string(),
+                chain_uid: state.chain_uid,
+            };
+
+            // If token is not a voucher, verify custom sender and use it. Using custom sender is security issue if voucher is used
+            if !msg.asset_in.token_type.is_voucher() {
+                verified_sender = msg.sender.unwrap_or(verified_sender);
+            }
+            let mut amount_in = msg.amount_in;
+            // If this asset is native, lets get the actual amount of funds sent because these amount can vary depending on forwarding contract swaps
+            if let TokenType::Native { denom } = &msg.asset_in.token_type {
+                amount_in = info
+                    .funds
+                    .iter()
+                    .find(|fund| fund.denom == *denom)
+                    .ok_or(ContractError::InsufficientFunds {})?
+                    .amount;
+            }
+
+            execute_swap_request(
+                &mut deps,
+                env,
+                info,
+                verified_sender,
+                msg.asset_in,
+                amount_in,
+                msg.asset_out,
+                msg.min_amount_out,
+                msg.swaps,
+                msg.timeout,
+                msg.cross_chain_addresses,
+                msg.partner_fee,
+                msg.meta,
+            )
+        }
+        ExecuteMsg::DepositToken {
             amount_in,
-            min_amount_out,
+            asset_in,
+            recipient,
             timeout,
-            swaps,
-            cross_chain_addresses,
-            partner_fee,
         } => {
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser {
                 address: info.sender.to_string(),
                 chain_uid: state.chain_uid,
             };
-            execute_swap_request(
-                &mut deps,
-                info,
-                env,
-                sender,
-                asset_in,
-                asset_out,
-                amount_in,
-                min_amount_out,
-                swaps,
-                timeout,
-                cross_chain_addresses,
-                partner_fee,
+
+            execute_deposit_token(
+                &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
             )
         }
         ExecuteMsg::UpdateHubChannel { new_channel } => {
             execute_update_hub_channel(deps, info, new_channel)
         }
-        ExecuteMsg::RequestRegisterDenom { token } => {
-            execute_request_register_denom(deps, info, token)
+        ExecuteMsg::RequestRegisterDenom { token, timeout } => {
+            execute_request_register_denom(&mut deps, env, info, token, timeout)
         }
-        ExecuteMsg::RequestDeregisterDenom { token } => {
-            execute_request_deregister_denom(deps, info, token)
+        ExecuteMsg::RequestDeregisterDenom { token, timeout } => {
+            execute_request_deregister_denom(&mut deps, env, info, token, timeout)
         }
         ExecuteMsg::RequestPoolCreation {
             pair,
+            slippage_tolerance_bps,
             lp_token_name,
             lp_token_symbol,
             lp_token_decimal,
@@ -142,11 +165,9 @@ pub fn execute(
             lp_token_symbol,
             lp_token_decimal,
             lp_token_marketing,
+            slippage_tolerance_bps,
             timeout,
         ),
-        ExecuteMsg::RequestRegisterEscrow { token, timeout } => {
-            execute_request_register_escrow(&mut deps, env, info, token, timeout)
-        }
         ExecuteMsg::WithdrawVirtualBalance {
             token,
             amount,
@@ -161,13 +182,42 @@ pub fn execute(
             cross_chain_addresses,
             timeout,
         ),
-
+        ExecuteMsg::TransferVirtualBalance {
+            token,
+            amount,
+            recipient_address,
+            timeout,
+        } => execute_transfer_virtual_balance(
+            &mut deps,
+            env,
+            info,
+            token,
+            amount,
+            recipient_address,
+            timeout,
+        ),
+        ExecuteMsg::UpdateFactoryState {
+            router_contract,
+            admin,
+            escrow_code_id,
+            cw20_code_id,
+            is_native,
+        } => execute_update_state(
+            deps,
+            info,
+            router_contract,
+            admin,
+            escrow_code_id,
+            cw20_code_id,
+            is_native,
+        ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
-            ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, env, ack)
+            ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, info, env, ack)
         }
         ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-            ibc::receive::ibc_receive_internal_call(deps, env, receive_msg)
+            ibc::receive::ibc_receive_internal_call(deps, env, info, receive_msg)
         }
         ExecuteMsg::NativeReceiveCallback { msg } => {
             execute_native_receive_callback(deps, env, info, msg)

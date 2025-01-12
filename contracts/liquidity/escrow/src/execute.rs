@@ -1,11 +1,18 @@
 use cosmwasm_std::{
-    ensure, from_json, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, Uint128,
+    ensure, from_json, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
 };
 
 use cw20::Cw20ReceiveMsg;
-use euclid::{cw20::Cw20HookMsg, error::ContractError, token::TokenType};
+use euclid::{
+    error::ContractError,
+    msgs::{escrow::cw20::EscrowCw20HookMsg, hook::EuclidReceive},
+    token::TokenType,
+};
 
-use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
+use crate::{
+    reply::FORWARDING_MESSAGE_REPLY_ID,
+    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, REFUND_ADDRESS, REFUND_ASSETS, STATE},
+};
 
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
@@ -13,6 +20,9 @@ pub fn execute_add_allowed_denom(
     info: MessageInfo,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
+    // Vouchers are not escrowed
+    ensure!(!denom.is_voucher(), ContractError::CannotEscrowVoucher {});
+
     // TODO nonpayable to this function? would be better to limit depositing funds through the deposit functions
     // Only the factory can call this function
     let factory_address = STATE.load(deps.storage)?.factory_address;
@@ -138,7 +148,7 @@ pub fn receive_cw20(
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     match from_json(&cw20_msg.msg)? {
-        Cw20HookMsg::Deposit {} => {
+        EscrowCw20HookMsg::Deposit {} => {
             let factory_address = STATE.load(deps.storage)?.factory_address;
             // Only the factory can call this function
             let sender = cw20_msg.sender;
@@ -157,7 +167,6 @@ pub fn receive_cw20(
 
             execute_deposit_cw20(deps, env, info, amount_sent, asset_sent)
         }
-        _ => Err(ContractError::UnsupportedMessage {}),
     }
 }
 
@@ -168,6 +177,8 @@ pub fn execute_deposit_cw20(
     amount: Uint128,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
+    ensure!(denom.is_smart(), ContractError::UnsupportedDenomination {});
+
     // Non-zero and unauthorized checks were made in receive_cw20
 
     let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
@@ -206,9 +217,25 @@ pub fn execute_withdraw(
     info: MessageInfo,
     recipient: Addr,
     amount: Uint128,
+    preferred_denom: Option<TokenType>,
+    forwarding_message: Option<EuclidReceive>,
+    refund_address: Option<String>,
 ) -> Result<Response, ContractError> {
+    // Clean any old refund address
+    REFUND_ADDRESS.remove(deps.storage);
+    REFUND_ASSETS.remove(deps.storage);
+
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
+    if let Some(ref refund_address) = refund_address {
+        deps.api
+            .addr_validate(refund_address)
+            .map_err(|_| ContractError::InvalidAddress {
+                address: refund_address.to_string(),
+                msg: "Invalid refund address".to_string(),
+            })?;
+        REFUND_ADDRESS.save(deps.storage, refund_address)?;
+    }
     ensure!(
         info.sender == state.factory_address,
         ContractError::Unauthorized {}
@@ -217,9 +244,19 @@ pub fn execute_withdraw(
     ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
 
     let mut messages: Vec<CosmosMsg> = Vec::new();
-    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
-
+    let mut forwarding_messages: Vec<SubMsg> = Vec::new();
     let mut remaining_withdraw_amount = amount;
+    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
+    if let Some(preferred_denom) = preferred_denom {
+        ensure!(
+            allowed_denoms.any(|denom| denom.get_key() == preferred_denom.get_key()),
+            ContractError::UnsupportedDenomination {}
+        );
+
+        // Only allow the preferred denom, remove all other denoms
+        allowed_denoms = vec![preferred_denom].into_iter().peekable();
+    }
+
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
         let denom = allowed_denoms
@@ -234,8 +271,6 @@ pub fn execute_withdraw(
             remaining_withdraw_amount
         };
 
-        let send_msg = denom.create_transfer_msg(transfer_amount, recipient.to_string(), None)?;
-        messages.push(send_msg);
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
         DENOM_TO_AMOUNT.save(
@@ -243,6 +278,26 @@ pub fn execute_withdraw(
             denom.get_key(),
             &denom_balance.checked_sub(transfer_amount)?,
         )?;
+
+        // Wrap the forwading message into EuclidReceive Cosmos Msg
+        let forwarding_message = match &forwarding_message {
+            Some(forwarding_msg) => Some(forwarding_msg.to_receiver_msg()?),
+            None => None,
+        };
+        let send_msg = denom.create_transfer_msg(
+            transfer_amount,
+            recipient.to_string(),
+            None,
+            forwarding_message.clone(),
+        )?;
+        if forwarding_message.is_some() {
+            forwarding_messages.push(SubMsg::reply_always(send_msg, FORWARDING_MESSAGE_REPLY_ID));
+            let mut refund_assets = REFUND_ASSETS.load(deps.storage).unwrap_or_default();
+            refund_assets.push((denom, transfer_amount));
+            REFUND_ASSETS.save(deps.storage, &refund_assets)?;
+        } else {
+            messages.push(send_msg);
+        }
     }
 
     // After all the transfer messages, ensure that total amount that needs to be sent is zero
@@ -253,10 +308,13 @@ pub fn execute_withdraw(
 
     state.total_amount = state.total_amount.checked_sub(amount)?;
     STATE.save(deps.storage, &state)?;
-
-    Ok(Response::new()
+    let response = Response::new()
         .add_messages(messages)
-        .add_attribute("method", "withdraw")
+        .add_submessages(forwarding_messages)
+        .add_attribute("method", "escrow_withdraw")
         .add_attribute("amount", amount)
-        .add_attribute("recipient", recipient))
+        .add_attribute("token", state.token_id.to_string())
+        .add_attribute("recipient", recipient);
+
+    Ok(response)
 }

@@ -2,10 +2,10 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, Response, StdError, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::ChainUid,
+    chain::{ChainUid, CrossChainUserWithLimit},
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
@@ -44,7 +44,6 @@ pub fn ibc_packet_receive(
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
-
     Ok(IbcReceiveResponse::new()
         .add_attribute("method", "ibc_packet_receive")
         .add_attribute("tx_id", tx_id)
@@ -55,10 +54,15 @@ pub fn ibc_packet_receive(
 pub fn ibc_receive_internal_call(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     msg: IbcPacketReceiveMsg,
 ) -> Result<Response, ContractError> {
-    let router = msg.packet.src.port_id.replace("wasm.", "");
+    ensure!(
+        info.sender == env.contract.address,
+        ContractError::Unauthorized {}
+    );
 
+    let router = msg.packet.src.port_id.replace("wasm.", "");
     let state = STATE.load(deps.storage)?;
     ensure!(
         state.router_contract == router,
@@ -88,10 +92,10 @@ pub fn reusable_internal_call(
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
             token,
-            to_address,
             tx_id,
+            recipient,
             ..
-        } => execute_release_escrow(deps, env, amount, token, to_address, tx_id),
+        } => execute_release_escrow(deps, env, amount, recipient, token, tx_id),
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             execute_update_factory_channel(deps, env, chain_uid, tx_id)
         }
@@ -161,17 +165,21 @@ fn execute_update_factory_channel(
         .add_attribute("router", state.router_contract)
         .set_data(ack))
 }
+
 fn execute_release_escrow(
     deps: DepsMut,
     env: Env,
     amount: Uint128,
+    recipient: CrossChainUserWithLimit,
     token: Token,
-    to_address: String,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
-        recipient: deps.api.addr_validate(&to_address)?,
+        recipient: deps.api.addr_validate(&recipient.user.address)?,
         amount,
+        preferred_denom: recipient.preferred_denom,
+        forwarding_message: recipient.forwarding_message,
+        refund_address: recipient.refund_address,
     };
 
     let ack_msg = ReleaseEscrowResponse {
@@ -179,7 +187,7 @@ fn execute_release_escrow(
         chain_id: env.block.chain_id,
         amount,
         token: token.clone(),
-        to_address: to_address.clone(),
+        to_address: recipient.user.address.clone(),
     };
 
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
@@ -195,8 +203,10 @@ fn execute_release_escrow(
             msg: to_json_binary(&withdraw_msg)?,
             funds: vec![],
         }))
-        .add_attribute("method", "release escrow")
+        .add_attribute("method", "release escrow_execute")
+        .add_attribute("token", token.to_string())
+        .add_attribute("amount", amount.to_string())
         .add_attribute("tx_id", tx_id)
-        .add_attribute("to_address", to_address)
+        .add_attribute("to_address", recipient.user.address)
         .set_data(ack))
 }

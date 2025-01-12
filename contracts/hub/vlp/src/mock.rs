@@ -14,6 +14,7 @@ impl MockVlp {
     pub fn addr(&self) -> &Addr {
         &self.0
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn instantiate(
         app: &mut MockApp,
         code_id: u64,

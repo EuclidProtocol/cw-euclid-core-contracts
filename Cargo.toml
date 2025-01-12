@@ -4,6 +4,8 @@ resolver = "2"
 members = [
     "contracts/hub/*",
     "contracts/liquidity/*",
+    "contracts/forwarding/*",
+    "contracts/common/*",
     "packages/*",
     "tests-integration",
 ]
@@ -23,6 +25,8 @@ strip = true
 [workspace.dependencies]
 euclid = { path = "./packages/euclid" }
 euclid-ibc = { path = "./packages/euclid_ibc" }
+euclid-utils = { path = "./packages/euclid_utils" }
+forwarding = { path = "./packages/forwarding" }
 
 cosmwasm-std = "1.5.3"
 cosmwasm-schema = "1.5.0"
@@ -37,4 +41,7 @@ thiserror = { version = "1.0.49" }
 itertools = "0.10"
 
 mock = { path = "./packages/mock" }
-cw-multi-test = { version = "1.2.0", features = ["cosmwasm_1_2"] }
+cw-multi-test = { version = "1.2.0", features = [
+    "cosmwasm_1_2",
+    "cosmwasm_1_1",
+] }

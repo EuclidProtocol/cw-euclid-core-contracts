@@ -4,8 +4,8 @@ use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
-    token::{Pair, Token},
-    utils::Pagination,
+    token::{Pair, Token, TokenType},
+    utils::pagination::Pagination,
 };
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -15,6 +15,7 @@ pub struct InstantiateMsg {
 }
 
 #[cw_serde]
+#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     ReregisterChain {
         chain: ChainUid,
@@ -27,10 +28,6 @@ pub enum ExecuteMsg {
         channel: String,
     },
     UpdateLock {},
-    // Update Pool Code ID
-    UpdateVLPCodeId {
-        new_vlp_code_id: u64,
-    },
     RegisterFactory {
         chain_uid: ChainUid,
         chain_info: RegisterFactoryChainType,
@@ -49,7 +46,6 @@ pub enum ExecuteMsg {
         timeout: Option<u64>,
         tx_id: String,
     },
-
     // IBC Callbacks
     IbcCallbackAckAndTimeout {
         ack: IbcPacketAckMsg,
@@ -63,10 +59,18 @@ pub enum ExecuteMsg {
         msg: Binary,
         chain_uid: ChainUid,
     },
+    UpdateRouterState {
+        // Contract admin
+        admin: Option<String>,
+        // Pool Code ID
+        vlp_code_id: Option<u64>,
+        virtual_balance_address: Option<Addr>,
+        locked: Option<bool>,
+    },
 }
 
 #[cw_serde]
-#[derive(QueryResponses)]
+#[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     #[returns(StateResponse)]
     GetState {},
@@ -95,13 +99,20 @@ pub enum QueryMsg {
         token: Token,
         pagination: Pagination<ChainUid>,
     },
+    #[returns(AllEscrowsResponse)]
+    QueryAllEscrows { pagination: Pagination<Token> },
 
     #[returns(AllTokensResponse)]
     QueryAllTokens { pagination: Pagination<Token> },
+
+    #[returns(TokenDenomsResponse)]
+    QueryTokenDenoms { token: Token },
 }
 // We define a custom struct for each query response
 #[cw_serde]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub denoms: Vec<(Token, TokenDenom)>,
+}
 
 #[cw_serde]
 pub struct QuerySimulateSwap {
@@ -167,14 +178,31 @@ pub struct TokenEscrowChainResponse {
 }
 
 #[cw_serde]
-pub struct TokenResponse {
+pub struct EscrowResponse {
     pub token: Token,
     pub chain_uid: ChainUid,
+    pub balance: Uint128,
+}
+
+#[cw_serde]
+pub struct AllEscrowsResponse {
+    pub escrows: Vec<EscrowResponse>,
 }
 
 #[cw_serde]
 pub struct AllTokensResponse {
-    pub tokens: Vec<TokenResponse>,
+    pub tokens: Vec<Token>,
+}
+
+#[cw_serde]
+pub struct TokenDenom {
+    pub chain_uid: ChainUid,
+    pub token_type: TokenType,
+}
+
+#[cw_serde]
+pub struct TokenDenomsResponse {
+    pub denoms: Vec<TokenDenom>,
 }
 
 #[cw_serde]

@@ -10,7 +10,7 @@ use euclid::{
     error::ContractError,
     msgs::{factory, router},
     swap::NextSwapPair,
-    token::{Pair, Token},
+    token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -28,26 +28,31 @@ pub enum ChainIbcExecuteMsg {
         // Factory will set this using info.sender
         sender: CrossChainUser,
         tx_id: String,
-        pair: Pair,
+        pair: PairWithDenomAndAmount,
+        // User will provide this data
+        slippage_tolerance_bps: u64,
     },
-    // Request Pool Creation
-    RequestEscrowCreation {
+    // Register Denom for a token
+    RegisterDenom {
         sender: CrossChainUser,
         tx_id: String,
-        token: Token,
+        token: TokenWithDenom,
+    },
+
+    // Register Denom for a token
+    DeRegisterDenom {
+        sender: CrossChainUser,
+        tx_id: String,
+        token: TokenWithDenom,
     },
     AddLiquidity {
         // Factory will set this using info.sender
         sender: CrossChainUser,
 
-        // User will provide this data and factory will verify using info funds
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-
         // User will provide this data
-        slippage_tolerance: u64,
+        slippage_tolerance_bps: u64,
 
-        pair: Pair,
+        pair: PairWithDenomAndAmount,
 
         // Unique per tx
         tx_id: String,
@@ -61,27 +66,11 @@ pub enum ChainIbcExecuteMsg {
 
     // Withdraw virtual balance message sent from factory
     Withdraw(ChainIbcWithdrawExecuteMsg),
-    // RequestWithdraw {
-    //     token_id: Token,
-    //     amount: Uint128,
 
-    //     // Factory will set this using info.sender
-    //     sender: String,
+    // Transfer virtual balance message sent from factory
+    Transfer(ChainIbcTransferExecuteMsg),
 
-    //     // First element in array has highest priority
-    //     cross_chain_addresses: Vec<CrossChainUser>,
-
-    //     // Unique per tx
-    //     tx_id: String,
-    // },
-    // RequestEscrowCreation {
-    //     token: Token,
-    //     // Factory will set this using info.sender
-    //     sender: String,
-    //     // Unique per tx
-    //     tx_id: String,
-    //     //TODO Add allowed denoms?
-    // },
+    DepositToken(ChainIbcDepositTokenExecuteMsg),
 }
 
 impl ChainIbcExecuteMsg {
@@ -92,10 +81,14 @@ impl ChainIbcExecuteMsg {
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
             Self::Withdraw(msg) => msg.tx_id.clone(),
-            Self::RequestEscrowCreation { tx_id, .. } => tx_id.clone(),
+            Self::DepositToken(msg) => msg.tx_id.clone(),
+            Self::RegisterDenom { tx_id, .. } => tx_id.clone(),
+            Self::DeRegisterDenom { tx_id, .. } => tx_id.clone(),
+            Self::Transfer(msg) => msg.tx_id.clone(),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn to_msg(
         &self,
         deps: &mut DepsMut,
@@ -150,13 +143,10 @@ impl ChainIbcExecuteMsg {
 pub struct ChainIbcRemoveLiquidityExecuteMsg {
     // Factory will set this using info.sender
     pub sender: CrossChainUser,
-
     pub lp_allocation: Uint128,
     pub pair: Pair,
-
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
     // Unique per tx
     pub tx_id: String,
 }
@@ -167,7 +157,7 @@ pub struct ChainIbcSwapExecuteMsg {
     pub sender: CrossChainUser,
 
     // User will provide this
-    pub asset_in: Token,
+    pub asset_in: TokenWithDenom,
     pub amount_in: Uint128,
     pub asset_out: Token,
     pub min_amount_out: Uint128,
@@ -175,6 +165,8 @@ pub struct ChainIbcSwapExecuteMsg {
 
     // First element in array has highest priority
     pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    pub partner_fee_amount: Uint128,
+    pub partner_fee_recipient: CrossChainUser,
 
     // Unique per tx
     pub tx_id: String,
@@ -192,6 +184,31 @@ pub struct ChainIbcWithdrawExecuteMsg {
     // Unique per tx
     pub tx_id: String,
     pub timeout: Option<u64>,
+}
+
+#[cw_serde]
+pub struct ChainIbcTransferExecuteMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+    // User will provide this
+    pub token: Token,
+    pub amount: Uint128,
+    pub recipient_address: CrossChainUser,
+    // Unique per tx
+    pub tx_id: String,
+    pub timeout: Option<u64>,
+}
+
+#[cw_serde]
+pub struct ChainIbcDepositTokenExecuteMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+    // User will provide this
+    pub asset_in: Token,
+    pub amount_in: Uint128,
+    pub recipient: CrossChainUser,
+    // Unique per tx
+    pub tx_id: String,
 }
 
 pub const HUB_IBC_EXECUTE_MSG_QUEUE: Map<u64, HubIbcExecuteMsg> =
@@ -215,12 +232,10 @@ pub enum HubIbcExecuteMsg {
     },
 
     ReleaseEscrow {
-        chain_uid: ChainUid,
         sender: CrossChainUser,
         amount: Uint128,
+        recipient: CrossChainUserWithLimit,
         token: Token,
-        to_address: String,
-
         // Unique per tx
         tx_id: String,
     },

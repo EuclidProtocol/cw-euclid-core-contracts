@@ -1,3 +1,5 @@
 [alias]
 wasm = "build --release --lib --target wasm32-unknown-unknown"
 unit-test= "test --lib"
+format = "fmt --all"
+lint = "clippy -- -W clippy::pedantic"

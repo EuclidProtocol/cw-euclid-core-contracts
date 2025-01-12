@@ -1,6 +1,6 @@
 use crate::{
     ibc,
-    state::{TOKEN_TO_ESCROW, VLP_TO_CW20},
+    state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_CW20},
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Reply, Response, SubMsgResult};
 use cw_utils::{parse_execute_response_data, parse_reply_instantiate_data};
@@ -26,10 +26,24 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
                 from_json(instantiate_data.data.unwrap_or_default())?;
 
             TOKEN_TO_ESCROW.save(deps.storage, escrow_data.token.clone(), &escrow_address)?;
-            Ok(Response::new()
+
+            let mut response = Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
-                .add_attribute("escrow", escrow_address)
-                .add_attribute("token_id", escrow_data.token.to_string()))
+                .add_attribute("escrow", escrow_address.clone())
+                .add_attribute("token_id", escrow_data.token.to_string());
+
+            let pending_deposit_token =
+                PENDING_DEPOSIT_TOKEN.may_load(deps.storage, escrow_data.token.clone())?;
+
+            if let Some(token) = pending_deposit_token {
+                let deposit_msg = token
+                    .token_type
+                    .create_escrow_msg(token.amount, escrow_address)?;
+                response = response.add_message(deposit_msg);
+                PENDING_DEPOSIT_TOKEN.remove(deps.storage, token.token);
+            }
+
+            Ok(response)
         }
     }
 }

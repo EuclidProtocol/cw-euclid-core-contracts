@@ -4,6 +4,7 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Resp
 use cw2::set_contract_version;
 use euclid::msgs::escrow::Cw20InstantiateResponse;
 
+use crate::execute::execute_update_state;
 use crate::state::{State, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::cw20::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -49,63 +50,17 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    Ok(execute_cw20(deps, env, info, msg.into())?)
-    // match msg {
-    //     ExecuteMsg::Transfer { recipient, amount } => Ok(execute_cw20(
-    //         deps,
-    //         env,
-    //         info,
-    //         Cw20ExecuteMsg::Transfer { recipient, amount },
-    //     )?),
-    //     ExecuteMsg::Burn { amount } => todo!(),
-    //     ExecuteMsg::Send {
-    //         contract,
-    //         amount,
-    //         msg,
-    //     } => todo!(),
-    //     ExecuteMsg::IncreaseAllowance {
-    //         spender,
-    //         amount,
-    //         expires,
-    //     } => todo!(),
-    //     ExecuteMsg::DecreaseAllowance {
-    //         spender,
-    //         amount,
-    //         expires,
-    //     } => todo!(),
-    //     ExecuteMsg::TransferFrom {
-    //         owner,
-    //         recipient,
-    //         amount,
-    //     } => todo!(),
-    //     ExecuteMsg::SendFrom {
-    //         owner,
-    //         contract,
-    //         amount,
-    //         msg,
-    //     } => todo!(),
-    //     ExecuteMsg::BurnFrom { owner, amount } => todo!(),
-    //     ExecuteMsg::Mint { recipient, amount } => todo!(),
-    //     ExecuteMsg::UpdateMarketing {
-    //         project,
-    //         description,
-    //         marketing,
-    //     } => todo!(),
-    //     ExecuteMsg::UploadLogo(_) => todo!(),
-    // }
+    match msg {
+        ExecuteMsg::UpdateState {
+            token_pair,
+            factory_address,
+            vlp,
+        } => execute_update_state(deps, env, info, token_pair, factory_address, vlp),
+        _ => Ok(execute_cw20(deps, env, info, msg.into())?),
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     Ok(cw20_query(deps, env, msg.into())?)
-    // match msg {
-    // QueryMsg::TokenInfo {  } => todo!(),
-    // QueryMsg::Minter {  } => todo!(),
-    // QueryMsg::Allowance { owner, spender } => todo!(),
-    // QueryMsg::AllAllowances { owner, start_after, limit } => todo!(),
-    // QueryMsg::AllAccounts { start_after, limit } => todo!(),
-    // QueryMsg::MarketingInfo {  } => todo!(),
-    // QueryMsg::DownloadLogo {  } => todo!(),
-    // QueryMsg::Balance { address } => todo!(),
-    // }
 }

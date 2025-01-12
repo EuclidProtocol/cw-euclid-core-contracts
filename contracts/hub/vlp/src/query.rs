@@ -3,9 +3,10 @@ use cosmwasm_std::{
 };
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
+use euclid::fee::BPS_100_PERCENT;
 use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::swap::NextSwapVlp;
-use euclid::token::Token;
+use euclid::token::{Pair, PairWithAmount, Token};
 
 use euclid::msgs::vlp::{
     AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
@@ -218,14 +219,97 @@ pub fn calculate_lp_allocation(
 pub fn assert_slippage_tolerance(
     ratio: Decimal256,
     pool_ratio: Decimal256,
-    slippage_tolerance: u64,
+    slippage_tolerance_bps: u64,
 ) -> Result<bool, ContractError> {
-    let slippage = pool_ratio.abs_diff(ratio);
-    let slippage_tolerance =
-        Decimal256::from_ratio(Uint128::from(slippage_tolerance), Uint128::from(100u128));
+    let slippage = ratio.abs_diff(pool_ratio).checked_div(pool_ratio)?;
+
+    let slippage_tolerance = Decimal256::bps(slippage_tolerance_bps);
     ensure!(
         slippage.le(&slippage_tolerance),
-        ContractError::LiquiditySlippageExceeded {}
+        ContractError::LiquiditySlippageExceeded {
+            expected: slippage,
+            received: slippage_tolerance,
+        }
     );
     Ok(true)
+}
+
+/// Calculates the LP allocation for provided liquidity amounts
+///
+/// # Arguments
+///
+/// * `liquidity` - The pair of tokens with amounts being provided as liquidity
+/// * `pair` - The token pair configuration for the pool
+/// * `total_reserve_1` - Current total reserve of token 1
+/// * `total_reserve_2` - Current total reserve of token 2
+/// * `total_lp_tokens` - Total LP tokens currently in circulation
+/// * `slippage_tolerance_bps` - Slippage tolerance in basis points (optional)
+///
+/// # Returns
+///
+/// Returns the calculated LP allocation amount
+pub fn calculate_lp_allocation_for_liquidity(
+    token_1_liquidity: Uint128,
+    token_2_liquidity: Uint128,
+    total_reserve_1: Uint128,
+    total_reserve_2: Uint128,
+    total_lp_tokens: Uint128,
+    slippage_tolerance_bps: Option<u64>,
+) -> Result<Uint128, ContractError> {
+    // Verify that ratio of assets provided is equal to the ratio of assets in the pool
+    let ratio =
+        Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
+            ContractError::Generic {
+                err: err.to_string(),
+            }
+        })?;
+
+    // Get liquidity ratio (current ratio of token reserves or provided ratio if first time)
+    let lq_ratio =
+        Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
+
+    // Check slippage if tolerance is provided
+    if let Some(slippage_tolerance_bps) = slippage_tolerance_bps {
+        ensure!(
+            slippage_tolerance_bps.le(&BPS_100_PERCENT),
+            ContractError::InvalidSlippageTolerance {}
+        );
+        assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
+    }
+
+    // Calculate liquidity added share for LP provider from total liquidity
+    let lp_allocation = calculate_lp_allocation(
+        token_1_liquidity,
+        token_2_liquidity,
+        total_reserve_1,
+        total_reserve_2,
+        total_lp_tokens,
+    )?;
+
+    ensure!(
+        !lp_allocation.is_zero(),
+        ContractError::Generic {
+            err: "LP Allocation cannot be zero".to_string()
+        }
+    );
+
+    Ok(lp_allocation)
+}
+
+/// Extracts the token amount for a given token from a pair with amounts
+/// by matching it against a reference token
+pub fn extract_token_amount(liquidity: &PairWithAmount, pair: &Pair) -> (Uint128, Uint128) {
+    let token_1_liquidity = if liquidity.token_1.token == pair.token_1 {
+        liquidity.token_1.amount
+    } else {
+        liquidity.token_2.amount
+    };
+
+    let token_2_liquidity = if liquidity.token_2.token == pair.token_2 {
+        liquidity.token_2.amount
+    } else {
+        liquidity.token_1.amount
+    };
+
+    (token_1_liquidity, token_2_liquidity)
 }

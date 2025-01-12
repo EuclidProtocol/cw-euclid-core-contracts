@@ -8,7 +8,14 @@ pub mod migrate;
 pub mod query;
 pub mod reply;
 pub mod state;
+
+#[cfg(test)]
 pub mod tests;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mock;
+
+#[cfg(not(target_arch = "wasm32"))]
+mod interface;
+#[cfg(not(target_arch = "wasm32"))]
+pub use crate::interface::FactoryContract;

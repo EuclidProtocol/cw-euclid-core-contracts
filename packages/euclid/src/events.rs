@@ -3,16 +3,34 @@ use core::fmt;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Event;
 
-use crate::{pool::Pool, swap::SwapRequest};
+use crate::{
+    deposit::DepositTokenRequest,
+    swap::SwapRequest,
+    token::{Token, TokenType, TokenWithAmount},
+};
 
-pub fn liquidity_event(pool: &Pool, tx_id: &str) -> Event {
-    simple_event()
+pub fn liquidity_event(
+    pool: &[TokenWithAmount],
+    liquidity_change: &[TokenWithAmount],
+    tx_id: &str,
+) -> Event {
+    let mut event = simple_event()
         .add_attribute("action", "liquidity_change")
-        .add_attribute("token_1_id", pool.pair.token_1.to_string())
-        .add_attribute("token_1_liquidity", pool.reserve_1)
-        .add_attribute("token_2_id", pool.pair.token_2.to_string())
-        .add_attribute("token_2_liquidity", pool.reserve_2)
-        .add_attribute("tx_id", tx_id)
+        .add_attribute("tx_id", tx_id);
+
+    for token in pool {
+        event = event.add_attribute("token_id", token.token.to_string());
+        event = event.add_attribute(format!("token_liquidity_{}", token.token), token.amount);
+    }
+
+    for token in liquidity_change {
+        event = event.add_attribute(
+            format!("token_liquidity_change_{}", token.token),
+            token.amount,
+        );
+    }
+
+    event
 }
 
 pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
@@ -26,6 +44,16 @@ pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
         .add_attribute("min_amount_out", swap.min_amount_out)
         .add_attribute("swaps", format!("{swaps:?}", swaps = swap.swaps))
         .add_attribute("timeout", format!("{timeout:?}", timeout = swap.timeout))
+}
+
+pub fn deposit_token_event(tx_id: &str, deposit: &DepositTokenRequest) -> Event {
+    simple_event()
+        .add_attribute("action", "deposit_token")
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("asset_in", deposit.asset_in.token.to_string())
+        .add_attribute("asset_in_denom", deposit.asset_in.token_type.get_key())
+        .add_attribute("amount_in", deposit.amount_in)
+        .add_attribute("timeout", format!("{timeout:?}", timeout = deposit.timeout))
 }
 
 pub fn register_factory_event(
@@ -45,11 +73,14 @@ pub fn register_factory_event(
 #[cw_serde]
 pub enum TxType {
     Swap,
+    DepositToken,
     AddLiquidity,
     RemoveLiquidity,
     PoolCreation,
-    EscrowCreation,
+    RegisterDenom,
+    DeregisterDenom,
     EscrowRelease,
+    TransferVirtualBalance,
     EscrowWithdraw,
     RegisterFactory,
     UpdateFactoryChannel,
@@ -60,12 +91,15 @@ pub enum TxType {
 impl fmt::Display for TxType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
+            TxType::DepositToken => "deposit_token",
             TxType::Swap => "swap",
             TxType::AddLiquidity => "add_liquidity",
             TxType::RemoveLiquidity => "remove_liquidity",
             TxType::PoolCreation => "pool_creation",
-            TxType::EscrowCreation => "escrow_creation",
+            TxType::RegisterDenom => "register_denom",
+            TxType::DeregisterDenom => "deregister_denom",
             TxType::EscrowRelease => "escrow_release",
+            TxType::TransferVirtualBalance => "transfer_virtual_balance",
             TxType::EscrowWithdraw => "escrow_withdraw",
             TxType::RegisterFactory => "register_factory",
             TxType::UpdateFactoryChannel => "update_factory_channel",
@@ -77,10 +111,7 @@ impl fmt::Display for TxType {
 }
 
 pub fn tx_event(tx_id: &str, sender: &str, tx_type: TxType) -> Event {
-    let tx_type = match tx_type {
-        TxType::AddLiquidity => "add_liquidity".to_string(),
-        t => format!("{t:?}"),
-    };
+    let tx_type = tx_type.to_string();
     simple_event()
         .add_attribute("action", "transaction")
         .add_attribute("tx_id", tx_id)
@@ -90,4 +121,18 @@ pub fn tx_event(tx_id: &str, sender: &str, tx_type: TxType) -> Event {
 
 pub fn simple_event() -> Event {
     Event::new("euclid").add_attribute("version", "1.0.0")
+}
+
+pub fn register_denom_event(token: &Token, chain_uid: &str, denom: &TokenType) -> Event {
+    Event::new("euclid-register-denom")
+        .add_attribute("token", token.to_string())
+        .add_attribute(format!("{}_chain_uid", token), chain_uid)
+        .add_attribute(format!("{}_denom", token), denom.get_key())
+}
+
+pub fn deregister_denom_event(token: &Token, chain_uid: &str, denom: &TokenType) -> Event {
+    Event::new("euclid-deregister-denom")
+        .add_attribute("token", token.to_string())
+        .add_attribute(format!("{}_chain_uid", token), chain_uid)
+        .add_attribute(format!("{}_denom", token), denom.get_key())
 }

@@ -3,8 +3,12 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 use std::collections::HashMap;
 
+pub const BPS_100_PERCENT: u64 = 10000;
+pub const BPS_10_PERCENT: u64 = 1000;
+pub const BPS_1_PERCENT: u64 = 100;
+
 // Set maximum fee as 10%
-pub const MAX_FEE_BPS: u64 = 1000;
+pub const MAX_FEE_BPS: u64 = BPS_10_PERCENT;
 // Fee Config for a VLP contract
 #[cw_serde]
 pub struct Fee {

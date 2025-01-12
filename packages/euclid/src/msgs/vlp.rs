@@ -2,7 +2,7 @@ use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
     swap::NextSwapVlp,
-    token::{Pair, Token},
+    token::{Pair, PairWithAmount, Token, TokenType},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
@@ -26,7 +26,6 @@ pub enum ExecuteMsg {
         tx_id: String,
     },
 
-    // Registers a new pool from a new chain to an already existing VLP
     UpdateFee {
         lp_fee_bps: Option<u64>,
         euclid_fee_bps: Option<u64>,
@@ -45,24 +44,25 @@ pub enum ExecuteMsg {
     AddLiquidity {
         sender: CrossChainUser,
         tx_id: String,
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-        slippage_tolerance: u64,
+        liquidity: PairWithAmount,
+        slippage_tolerance_bps: u64,
     },
     RemoveLiquidity {
         sender: CrossChainUser,
         tx_id: String,
         lp_allocation: Uint128,
     },
-    /*
-
-    // Update the fee for the VLP
-    UpdateFee {
-        lp_fee: u64,
-        treasury_fee: u64,
-        staker_fee: u64,
+    UpdateState {
+        // Router Contract
+        router: Option<String>,
+        // Virtual Coin Contract
+        virtual_balance: Option<String>,
+        // Fee per swap for each transaction
+        fee: Option<Fee>,
+        // The last timestamp where the balances for each token have been updated
+        last_updated: Option<u64>,
+        admin: Option<String>,
     },
-    */
 }
 
 #[cw_serde]
@@ -165,8 +165,8 @@ pub struct MigrateMsg {}
 
 #[cw_serde]
 pub struct VlpRemoveLiquidityResponse {
-    pub token_1_liquidity_released: Uint128,
-    pub token_2_liquidity_released: Uint128,
+    pub liquidity_released: PairWithAmount,
+    pub preferred_denom: Option<TokenType>,
     pub burn_lp_tokens: Uint128,
     pub tx_id: String,
     pub sender: CrossChainUser,

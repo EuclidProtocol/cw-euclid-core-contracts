@@ -1,10 +1,11 @@
 use crate::{
-    chain::{ChainUid, CrossChainUserWithLimit},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    msgs::hook::EuclidReceive,
     swap::{NextSwapPair, SwapRequest},
-    token::{Pair, PairWithDenom, Token, TokenType, TokenWithDenom},
-    utils::Pagination,
+    token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
@@ -21,43 +22,30 @@ pub struct InstantiateMsg {
 }
 
 #[cw_serde]
+#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     AddLiquidityRequest {
-        pair_info: PairWithDenom,
-        token_1_liquidity: Uint128,
-        token_2_liquidity: Uint128,
-        slippage_tolerance: u64,
+        pair_info: PairWithDenomAndAmount,
+        slippage_tolerance_bps: u64,
         timeout: Option<u64>,
     },
-    ExecuteSwapRequest {
-        asset_in: TokenWithDenom,
-        asset_out: Token,
-        amount_in: Uint128,
-        min_amount_out: Uint128,
-        timeout: Option<u64>,
-        swaps: Vec<NextSwapPair>,
-        // First element in array has highest priority
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-
-        partner_fee: Option<PartnerFee>,
-    },
+    ExecuteSwapRequest(ExecuteSwapRequest),
     RequestRegisterDenom {
         token: TokenWithDenom,
+        timeout: Option<u64>,
     },
     RequestDeregisterDenom {
         token: TokenWithDenom,
+        timeout: Option<u64>,
     },
     RequestPoolCreation {
-        pair: PairWithDenom,
+        pair: PairWithDenomAndAmount,
+        slippage_tolerance_bps: u64,
         timeout: Option<u64>,
         lp_token_name: String,
         lp_token_symbol: String,
         lp_token_decimal: u8,
         lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
-    },
-    RequestRegisterEscrow {
-        token: TokenWithDenom,
-        timeout: Option<u64>,
     },
     UpdateHubChannel {
         new_channel: String,
@@ -68,9 +56,33 @@ pub enum ExecuteMsg {
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         timeout: Option<u64>,
     },
-
+    TransferVirtualBalance {
+        token: Token,
+        amount: Uint128,
+        recipient_address: CrossChainUser,
+        timeout: Option<u64>,
+    },
+    DepositToken {
+        asset_in: TokenWithDenom,
+        amount_in: Uint128,
+        timeout: Option<u64>,
+        recipient: Option<CrossChainUser>,
+    },
+    UpdateFactoryState {
+        // The Router Contract Address on the Virtual Settlement Layer
+        router_contract: Option<String>,
+        // Contract admin
+        admin: Option<String>,
+        // Escrow Code ID
+        escrow_code_id: Option<u64>,
+        // CW20 Code ID
+        cw20_code_id: Option<u64>,
+        is_native: Option<bool>,
+    },
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
+
+    EuclidReceive(EuclidReceive),
 
     // IBC Callbacks
     IbcCallbackAckAndTimeout {
@@ -86,7 +98,22 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-#[derive(QueryResponses)]
+pub struct ExecuteSwapRequest {
+    pub sender: Option<CrossChainUser>,
+    pub asset_in: TokenWithDenom,
+    pub amount_in: Uint128,
+    pub asset_out: Token,
+    pub min_amount_out: Uint128,
+    pub timeout: Option<u64>,
+    pub swaps: Vec<NextSwapPair>,
+    // First element in array has highest priority
+    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    pub partner_fee: Option<PartnerFee>,
+    pub meta: Option<String>,
+}
+
+#[cw_serde]
+#[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     #[returns(GetVlpResponse)]
     GetVlp { pair: Pair },
