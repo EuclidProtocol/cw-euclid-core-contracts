@@ -755,6 +755,7 @@ fn test_create_pool_with_funds() {
                     forwarding_message: None,
                 }],
                 partner_fee: None,
+                meta: None,
             }),
             Some(&[coin(1_000u128, "eucl")]),
         )
