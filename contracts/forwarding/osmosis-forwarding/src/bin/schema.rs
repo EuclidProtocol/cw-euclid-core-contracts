@@ -1,9 +1,10 @@
-use std::env::current_dir;
-
 use cosmwasm_schema::{export_schema_with_title, schema_for, write_api};
-use forwarding::msgs::astroport::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use forwarding::msgs::cw20::Cw20HookMsg;
-use forwarding::msgs::euclid_receive::AstroportEuclidReceiveHook;
+use forwarding::msgs::{
+    cw20::Cw20HookMsg,
+    euclid_receive::OsmosisEuclidReceiveHook,
+    osmosis::{ExecuteMsg, InstantiateMsg, QueryMsg},
+};
+use std::env::current_dir;
 
 fn main() {
     let mut out_dir = current_dir().unwrap();
@@ -17,7 +18,7 @@ fn main() {
 
     export_schema_with_title(&schema_for!(Cw20HookMsg), &out_dir, "cw20receive");
     export_schema_with_title(
-        &schema_for!(AstroportEuclidReceiveHook),
+        &schema_for!(OsmosisEuclidReceiveHook),
         &out_dir,
         "euclid-receive",
     );
