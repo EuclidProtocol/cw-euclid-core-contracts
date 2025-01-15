@@ -1,5 +1,7 @@
-use cosmwasm_std::{ensure, to_json_binary, Decimal, DepsMut, Env, Reply, Response, SubMsgResult};
-use euclid::{error::ContractError, msgs::hook::EuclidReceiverMsg};
+use cosmwasm_std::{
+    ensure, to_json_binary, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult,
+};
+use euclid::{error::ContractError, msgs::hook::EuclidReceiverMsg, token::TokenType};
 use forwarding::msgs::osmosis::Slippage;
 
 use crate::state::{ForwardingState, FORWARDING_STATE};
@@ -38,8 +40,22 @@ pub fn on_osmo_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Respons
                     window_seconds: _,
                     slippage_percentage,
                 } => {
+                    let input_coin = match from_token {
+                        TokenType::Native { ref denom } => Coin {
+                            denom: denom.to_string(),
+                            amount: from_amount,
+                        },
+                        TokenType::Smart {
+                            ref contract_address,
+                        } => Coin {
+                            denom: contract_address.to_string(),
+                            amount: from_amount,
+                        },
+                        _ => return Err(ContractError::new("unsupported token type")),
+                    };
+
                     let min_output_amount =
-                        swap_msg.input_coin.amount * (Decimal::one() - slippage_percentage);
+                        input_coin.amount * (Decimal::one() - slippage_percentage);
                     ensure!(
                         swap_amount >= min_output_amount,
                         ContractError::MinReceived {

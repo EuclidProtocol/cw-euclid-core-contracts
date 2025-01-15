@@ -1,5 +1,6 @@
 use cosmwasm_std::{
-    coin, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    coin, from_json, to_json_binary, Coin, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
+    WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use euclid::{
@@ -98,9 +99,25 @@ pub fn swap(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
+    let input_coin = match from_token {
+        TokenType::Native { ref denom } => Coin {
+            denom: denom.to_string(),
+            amount: from_amount,
+        },
+        TokenType::Smart {
+            ref contract_address,
+        } => Coin {
+            denom: contract_address.to_string(),
+            amount: from_amount,
+        },
+        _ => return Err(ContractError::new("from token can't be a voucher")),
+    };
+
+    let output_denom = &swap_msg.to_token.get_denom()?;
+
     let osmo_execute_msg = OsmosisExecuteMsg::Swap {
-        input_coin: swap_msg.input_coin.clone(),
-        output_denom: swap_msg.output_denom.clone(),
+        input_coin,
+        output_denom: output_denom.clone(),
         slippage: swap_msg.slippage.clone(),
         route: swap_msg.route.clone(),
     };
