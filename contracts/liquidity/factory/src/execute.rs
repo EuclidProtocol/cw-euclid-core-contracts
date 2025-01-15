@@ -482,6 +482,7 @@ pub fn execute_swap_request(
     timeout: Option<u64>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
+    meta: Option<String>,
 ) -> Result<Response, ContractError> {
     // Validate asset in
     asset_in.token_type.validate(&deps.as_ref())?;
@@ -558,7 +559,7 @@ pub fn execute_swap_request(
 
     ensure!(
         first_swap.token_in == asset_in.token,
-        ContractError::new("Amount in doesn't match swap route")
+        ContractError::new("Token in doesn't match swap route")
     );
 
     let last_swap = swaps.last().ok_or(ContractError::Generic {
@@ -567,7 +568,7 @@ pub fn execute_swap_request(
 
     ensure!(
         last_swap.token_out == asset_out,
-        ContractError::new("Amount out doesn't match swap route")
+        ContractError::new("Token out doesn't match swap route")
     );
 
     let channel = if !state.is_native {
@@ -634,6 +635,7 @@ pub fn execute_swap_request(
             euclid::events::TxType::Swap,
         ))
         .add_event(swap_event(&tx_id, &swap_info))
+        .add_event(simple_event().add_attribute("meta", meta.unwrap_or("no_meta".to_string())))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
         .add_submessage(swap_msg))
@@ -780,6 +782,7 @@ pub fn receive_cw20(
             swaps,
             cross_chain_addresses,
             partner_fee,
+            meta,
         } => {
             let contract_adr = info.sender.clone();
 
@@ -805,6 +808,7 @@ pub fn receive_cw20(
                 timeout,
                 cross_chain_addresses,
                 partner_fee,
+                meta,
             )
         }
         FactoryCw20HookMsg::RemoveLiquidity {
@@ -878,6 +882,7 @@ pub fn receive_euclid_native(
                 timeout,
                 cross_chain_addresses,
                 partner_fee,
+                meta: euclid_receive.meta,
             };
             let response = crate::contract::execute(
                 deps,
@@ -885,9 +890,7 @@ pub fn receive_euclid_native(
                 info,
                 ExecuteMsg::ExecuteSwapRequest(swap_msg),
             )?;
-            let event = simple_event()
-                .add_attribute("meta", euclid_receive.meta.unwrap_or("no_meta".to_string()));
-            Ok(response.add_event(event))
+            Ok(response)
         }
     }
 }
@@ -928,12 +931,9 @@ pub fn receive_euclid_cw20(
                 timeout,
                 cross_chain_addresses,
                 partner_fee,
+                euclid_msg.meta,
             )?;
-            let event = simple_event().add_attribute(
-                "meta",
-                euclid_msg.meta.clone().unwrap_or("no_meta".to_string()),
-            );
-            Ok(response.add_event(event))
+            Ok(response)
         }
     }
 }

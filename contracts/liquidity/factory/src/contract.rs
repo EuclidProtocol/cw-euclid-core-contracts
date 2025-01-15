@@ -120,6 +120,7 @@ pub fn execute(
                 msg.timeout,
                 msg.cross_chain_addresses,
                 msg.partner_fee,
+                msg.meta,
             )
         }
         ExecuteMsg::DepositToken {
