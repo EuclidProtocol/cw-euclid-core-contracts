@@ -149,6 +149,7 @@ pub fn swap_request(
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
     funds: Vec<Coin>,
+    meta: Option<String>,
 ) {
     let tx_response = factory
         .execute(
@@ -162,6 +163,7 @@ pub fn swap_request(
                 swaps,
                 cross_chain_addresses,
                 partner_fee,
+                meta,
             }),
             Some(&funds),
         )
