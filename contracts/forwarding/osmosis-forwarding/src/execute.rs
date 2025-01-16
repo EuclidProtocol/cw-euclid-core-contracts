@@ -119,7 +119,7 @@ pub fn swap(
         input_coin,
         output_denom: output_denom.clone(),
         slippage: swap_msg.slippage.clone(),
-        route: swap_msg.route.clone(),
+        route: Some(swap_msg.route.clone()),
     };
 
     let previous_balance = swap_msg

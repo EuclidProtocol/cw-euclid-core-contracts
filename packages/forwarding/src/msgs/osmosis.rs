@@ -56,7 +56,7 @@ pub enum QueryMsg {}
 #[cw_serde]
 pub struct SwapMsg {
     pub slippage: Slippage,
-    pub route: Option<Vec<SwapAmountInRoute>>,
+    pub route: Vec<SwapAmountInRoute>,
     pub forwarding_msg: Option<EuclidReceive>,
     pub to_token: TokenType,
     pub recipient: String,
