@@ -10,13 +10,15 @@ use euclid::{
     events::{deposit_token_event, swap_event},
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
-        escrow::InstantiateMsg as EscrowInstantiateMsg, factory::ExecuteMsg,
+         escrow::InstantiateMsg as EscrowInstantiateMsg,
+         factory::ExecuteMsg,
         snip20::ExecuteMsg as Snip20ExecuteMsg,
     },
     pool::{DeRegisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
     swap::{SwapResponse, TransferResponse, WithdrawResponse},
     token::Token,
 };
+
 use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
 use secret_toolkit::utils::{InitCallback,HandleCallback};
 use snip20_reference_impl::msg::InitConfig;
@@ -393,8 +395,8 @@ fn ack_register_denom(
 
             let state = STATE.load(deps.storage)?;
 
-            let escrow_code_id = state.escrow_code_id;
-            let escrow_code_hash = state.escrow_code_hash;
+            let _escrow_code_id = state.escrow_code_id;
+            let escrow_code_hash = state.clone().escrow_code_hash;
             let token = existing_req.token;
 
             // let existing_escrow = TOKEN_TO_ESCROW.get(deps.storage, &token.token.clone())?;
@@ -420,20 +422,20 @@ fn ack_register_denom(
             } else {
 
                 // Instantiate escrow
-                let init_msg = EscrowInstantiateMsg {
+                let exec_msg = euclid::msgs::proxy::ExecuteMsg::InitializeEscrow {
                     token_id: token.token.clone(),
                     allowed_denom: Some(token.token_type),
                 };
 
                 response = response
                     .add_attribute("create_escrow", "true")
+                    .add_attribute("State", format!("{:?}",state))
+                    .add_attribute("contract_address", env.contract.address.clone(),)
                     .add_submessage(SubMsg {
                         id: ESCROW_INSTANTIATE_REPLY_ID,
-                        msg: init_msg.to_cosmos_msg(
-                            Some(state.admin.clone()),
-                            format!("{}-escrow-{}-{}",env.contract.address,token.token.to_string(),tx_id),
-                            escrow_code_id,
-                            escrow_code_hash,
+                        msg: exec_msg.to_cosmos_msg(
+                            "25ae93ee2d04fd6d57b89841be28a6670375a555e3efc2153fcaae903fed60d5".into(),
+                            "secret1zvdltpd044z9q7qfgythcrt4l8hvzcdxkrrjsa".into(),
                             None,
                         )?,
                         gas_limit: None,

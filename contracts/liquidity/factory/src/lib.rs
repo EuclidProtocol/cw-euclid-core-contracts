@@ -9,8 +9,8 @@ pub mod query;
 pub mod reply;
 pub mod state;
 
-// #[cfg(test)]
-// pub mod tests;
+#[cfg(test)]
+pub mod tests;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mock;

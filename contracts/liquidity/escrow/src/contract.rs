@@ -7,8 +7,6 @@ use cosmwasm_std::{
 use euclid::error::ContractError;
 use secret_cw2::set_contract_version;
 
-// use cw2::set_contract_version;
-
 use crate::execute::{
     self, execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom,
     execute_withdraw, receive_snip20,

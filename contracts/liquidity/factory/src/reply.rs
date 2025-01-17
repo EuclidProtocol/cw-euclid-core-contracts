@@ -1,7 +1,6 @@
 use crate::{
     ibc,
-    query::get_contract_code_hash,
-    state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_SNIP20},
+    state::{PENDING_DEPOSIT_TOKEN, STATE, TOKEN_TO_ESCROW, VLP_TO_SNIP20},
 };
 use cosmwasm_std::{from_binary, DepsMut, Env, Reply, Response, SubMsgResponse, SubMsgResult};
 use euclid::{chain::AnyContractInfo, error::ContractError};
@@ -15,8 +14,13 @@ pub const SNIP20_INSTANTIATE_REPLY_ID: u64 = 4;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => {
-            Err(ContractError::PoolInstantiateFailed { err })},
+        SubMsgResult::Err(err) => 
+        Ok(Response::new()
+            .add_attribute("reply_escrow_instantiate", "error")
+            .add_attribute("error", err.clone())),
+        // Err(ContractError::PoolInstantiateFailed { err }),
+        // {
+        //     Err(ContractError::PoolInstantiateFailed { err })},
         SubMsgResult::Ok(res) => {
             // let instantiate_data: secret_utils::MsgInstantiateContractResponse =
             //     parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
@@ -26,8 +30,9 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
             let escrow_address = deps
                 .api
                 .addr_validate(&parse_reply_address_from_event(res.clone()))?;
-            let escrow_code_hash =
-                get_contract_code_hash(deps.querier, escrow_address.clone().to_string())?;
+            let escrow_code_hash = STATE.load(deps.storage)?.escrow_code_hash;
+            // // let escrow_code_hash =
+            // //     get_contract_code_hash(deps.querier, escrow_address.clone().to_string())?;
             let escrow_data: euclid::msgs::escrow::EscrowInstantiateResponse =
                 from_binary(&res.data.unwrap_or_default())?;
             let escrow_info = AnyContractInfo {
@@ -38,8 +43,8 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
             TOKEN_TO_ESCROW.insert(deps.storage, &escrow_data.token.clone(), &escrow_info)?;
 
             let mut response = Response::new()
-                .add_attribute("action", "reply_pool_instantiate")
-                .add_attribute("escrow", escrow_address.clone())
+                .add_attribute("action", "reply_escrow_instantiate")
+                .add_attribute("escrow adress", escrow_address.clone())
                 .add_attribute("token_id", escrow_data.token.to_string());
 
             let pending_deposit_token =
@@ -67,6 +72,7 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     }
 }
 
+
 pub fn on_snip20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
@@ -92,7 +98,9 @@ pub fn on_snip20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
 
 pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::new(&err)),
+        SubMsgResult::Err(err) => Ok(Response::new()
+        .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
+        .add_attribute("error", err.clone())),
         SubMsgResult::Ok(res) => {
             let data = res
                 .data

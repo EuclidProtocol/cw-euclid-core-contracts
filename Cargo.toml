@@ -6,6 +6,7 @@ members = [
     "contracts/liquidity/*",
     "contracts/common/*",
     "packages/*",
+    "./proxy-contract"
     # "tests-integration",
 ]
 
@@ -61,3 +62,4 @@ shade-protocol = { git = "https://github.com/securesecrets/shade", rev = "lend-v
   "admin","basic_staking"
 ] }
 shade-multi-test = { git = "https://github.com/securesecrets/shade",features = [ "query_auth", "admin"  ] }
+proxy = { path = "./proxy-contract/"}

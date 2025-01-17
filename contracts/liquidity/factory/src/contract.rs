@@ -50,6 +50,7 @@ pub fn instantiate(
         partner_fees_collected: DenomFees { totals: Vec::new() },
         escrow_code_hash: msg.escrow_code_hash,
         snip20_code_hash: msg.snip20_code_hash,
+        proxy_address : msg.proxy_address
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -193,6 +194,7 @@ pub fn execute(
             snip20_code_id,
             snip20_code_hash,
             is_native,
+            proxy_address,
         } => execute_update_state(
             deps,
             info,
@@ -204,6 +206,7 @@ pub fn execute(
             snip20_code_id,
             snip20_code_hash,
             is_native,
+            proxy_address
         ),
         ExecuteMsg::Receive(msg) => receive_snip20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {

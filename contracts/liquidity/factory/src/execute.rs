@@ -1202,6 +1202,7 @@ pub fn execute_update_state(
     snip20_code_id: Option<u64>,
     snip20_code_hash: Option<String>,
     is_native: Option<bool>,
+    proxy_address : Option<String>
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -1227,6 +1228,7 @@ pub fn execute_update_state(
         chain_uid: state.chain_uid,
         is_native: is_native.unwrap_or(state.is_native),
         partner_fees_collected: state.partner_fees_collected,
+        proxy_address: proxy_address.clone().unwrap_or(state.proxy_address),
     };
 
     STATE.save(deps.storage, &new_state)?;
