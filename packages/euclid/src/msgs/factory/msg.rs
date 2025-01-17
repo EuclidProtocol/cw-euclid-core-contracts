@@ -24,7 +24,8 @@ pub struct InstantiateMsg {
     pub snip20_code_id: u64,
     pub snip20_code_hash: String,
     pub is_native: bool,
-    pub proxy_address : String,
+    pub proxy_code_id: u64,
+    pub proxy_code_hash: String,
 }
 
 #[cw_serde]
@@ -99,7 +100,6 @@ pub enum ExecuteMsg {
         // SNIP20 Code Hash
         snip20_code_hash: Option<String>,
         is_native: Option<bool>,
-        proxy_address: Option<String>
     },
     // Recieve CW20 TOKENS structure
     Receive(Snip20ReceiveMsg),
@@ -196,6 +196,8 @@ pub struct StateResponse {
     pub snip20_code_hash: String,
     pub is_native: bool,
     pub partner_fees_collected: DenomFees,
+    pub proxy_address : Addr,
+    pub proxy_code_hash: String
 }
 
 #[cw_serde]

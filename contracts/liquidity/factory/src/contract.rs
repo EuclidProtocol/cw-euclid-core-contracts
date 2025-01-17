@@ -1,6 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
+use cosmwasm_std::{
+    Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, SubMsg,
+};
 use euclid::chain::CrossChainUser;
 use euclid::error::ContractError;
 use euclid::fee::DenomFees;
@@ -19,13 +21,12 @@ use crate::query::{
     pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
 use crate::reply::{
-    on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply, on_ibc_receive_reply,
-    on_snip20_instantiate_reply, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
-    IBC_RECEIVE_REPLY_ID, SNIP20_INSTANTIATE_REPLY_ID,
+    on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply, on_ibc_receive_reply, on_proxy_execute_reply, on_proxy_instantiate_reply, on_snip20_instantiate_reply, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID, PROXY_EXECUTE_REPLY_ID, PROXY_INSTANTIATE_REPLY_ID, SNIP20_INSTANTIATE_REPLY_ID
 };
-use crate::state::{State, STATE};
+use crate::state::{Proxy, State, PROXY, STATE};
 use crate::{ibc, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use secret_toolkit::utils::InitCallback;
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:factory";
@@ -34,7 +35,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -48,20 +49,41 @@ pub fn instantiate(
         chain_uid,
         is_native: msg.is_native,
         partner_fees_collected: DenomFees { totals: Vec::new() },
-        escrow_code_hash: msg.escrow_code_hash,
+        escrow_code_hash: msg.escrow_code_hash.clone(),
         snip20_code_hash: msg.snip20_code_hash,
-        proxy_address : msg.proxy_address
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
+    PROXY.save(
+        deps.storage,
+        &Proxy {
+            address: Addr::unchecked(""),
+            code_hash: msg.proxy_code_hash.clone(),
+        },
+    )?;
 
+    let proxy_init_msg = euclid::msgs::proxy::InstantiateMsg {
+        escrow_code_id: msg.escrow_code_id,
+        escrow_code_hash: msg.escrow_code_hash,
+    };
+    let submsg = SubMsg::reply_always(
+        proxy_init_msg.to_cosmos_msg(
+            None,
+            format!("proxy - {:?}", env.contract.address),
+            msg.proxy_code_id,
+            msg.proxy_code_hash,
+            None,
+        )?,
+        PROXY_INSTANTIATE_REPLY_ID,
+    );
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
         .add_attribute("escrow_code_id", state.escrow_code_id.to_string())
-        .add_attribute("chain_uid", state.chain_uid.to_string()))
+        .add_attribute("chain_uid", state.chain_uid.to_string())
+        .add_submessage(submsg))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -194,7 +216,6 @@ pub fn execute(
             snip20_code_id,
             snip20_code_hash,
             is_native,
-            proxy_address,
         } => execute_update_state(
             deps,
             info,
@@ -206,7 +227,6 @@ pub fn execute(
             snip20_code_id,
             snip20_code_hash,
             is_native,
-            proxy_address
         ),
         ExecuteMsg::Receive(msg) => receive_snip20(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
@@ -256,6 +276,8 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         SNIP20_INSTANTIATE_REPLY_ID => on_snip20_instantiate_reply(deps, msg),
         IBC_ACK_AND_TIMEOUT_REPLY_ID => on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => on_ibc_receive_reply(deps, msg),
+        PROXY_INSTANTIATE_REPLY_ID => on_proxy_instantiate_reply(deps, msg),
+        PROXY_EXECUTE_REPLY_ID => on_proxy_execute_reply(deps, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

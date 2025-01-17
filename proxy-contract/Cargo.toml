@@ -1,0 +1,50 @@
+[package]
+name = "proxy"
+version = "0.1.0"
+authors = ["SecretTemplateExample"]
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+
+[features]
+default = []
+# for quicker tests, cargo test --lib
+# for more explicit tests, cargo test --features=backtraces
+backtraces = ["cosmwasm-std/backtraces"]
+# use library feature to disable all instantiate/execute/query exports
+library = []
+
+
+[dependencies]
+cosmwasm-std = {workspace = true}
+cosmwasm-storage = {workspace = true}
+schemars = {workspace = true}
+serde = {workspace = true}
+thiserror = {workspace = true}
+cosmwasm-schema = {workspace = true}
+secret-toolkit ={ workspace = true}
+euclid ={ workspace = true}
+
+# Uncomment these for some common extra tools
+# secret-toolkit = { git = "https://github.com/scrtlabs/secret-toolkit", tag = "v0.8.0" }
+# cw-storage-plus = { version = "1.0.1", default-features = false }
+
+# [patch.crates-io]
+# uncomment this if you use cw-storage-plus
+# cosmwasm-std = { git = "https://github.com/scrtlabs/cosmwasm", tag = "v1.1.9-secret" }
+
+[[bin]]
+name = "schema"
+required-features = ["schema"]

@@ -10,12 +10,8 @@ pub struct InstantiateMsg {
     pub escrow_code_hash: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
-pub struct InstantiateEscrowMsg {
-    // The only allowed Token ID for the contract
-    pub token_id: Token,
-    // Possibly add allowed denoms in Instantiation
-    pub allowed_denom: Option<TokenType>,
+impl InitCallback for InstantiateMsg {
+    const BLOCK_SIZE: usize = 256;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -32,9 +28,5 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {}
 
 impl HandleCallback for ExecuteMsg {
-    const BLOCK_SIZE: usize = 256;
-}
-
-impl InitCallback for InstantiateEscrowMsg {
     const BLOCK_SIZE: usize = 256;
 }

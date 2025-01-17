@@ -1,8 +1,10 @@
 use crate::{
     ibc,
-    state::{PENDING_DEPOSIT_TOKEN, STATE, TOKEN_TO_ESCROW, VLP_TO_SNIP20},
+    state::{PENDING_DEPOSIT_TOKEN, PROXY, STATE, TOKEN_TO_ESCROW, VLP_TO_SNIP20},
 };
-use cosmwasm_std::{from_binary, DepsMut, Env, Reply, Response, SubMsgResponse, SubMsgResult};
+use cosmwasm_std::{
+    from_binary, Addr, DepsMut, Env, Reply, Response, SubMsgResponse, SubMsgResult,
+};
 use euclid::{chain::AnyContractInfo, error::ContractError};
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
 use secret_utils::parse_execute_response_data;
@@ -11,11 +13,12 @@ pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
 pub const IBC_RECEIVE_REPLY_ID: u64 = 3;
 pub const SNIP20_INSTANTIATE_REPLY_ID: u64 = 4;
+pub const PROXY_INSTANTIATE_REPLY_ID: u64 = 5;
+pub const PROXY_EXECUTE_REPLY_ID: u64 = 6;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => 
-        Ok(Response::new()
+        SubMsgResult::Err(err) => Ok(Response::new()
             .add_attribute("reply_escrow_instantiate", "error")
             .add_attribute("error", err.clone())),
         // Err(ContractError::PoolInstantiateFailed { err }),
@@ -72,15 +75,67 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     }
 }
 
+pub fn on_proxy_execute_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Ok(Response::new()
+            .add_attribute("reply_proxy_execute", "error")
+            .add_attribute("error", err.clone())),
+        // Err(ContractError::PoolInstantiateFailed { err }),
+        // {
+        //     Err(ContractError::PoolInstantiateFailed { err })},
+        SubMsgResult::Ok(res) => {
+
+            // let escrow_address = deps
+            //     .api
+            //     .addr_validate(&parse_reply_address_from_event(res.clone()))?;
+            let escrow: String= from_binary(&res.data.clone().unwrap())?;
+            let escrow_address = deps.api.addr_validate(&escrow.clone())?;
+            let escrow_code_hash = STATE.load(deps.storage)?.escrow_code_hash;
+            // // let escrow_code_hash =
+            // //     get_contract_code_hash(deps.querier, escrow_address.clone().to_string())?;
+            let escrow_data: euclid::msgs::escrow::EscrowInstantiateResponse =
+                from_binary(&res.data.unwrap_or_default())?;
+            let escrow_info = AnyContractInfo {
+                addr: escrow_address.clone(),
+                code_hash: escrow_code_hash.clone(),
+            };
+
+            TOKEN_TO_ESCROW.insert(deps.storage, &escrow_data.token.clone(), &escrow_info)?;
+
+            let mut response = Response::new()
+                .add_attribute("action", "reply_proxy_execute")
+                .add_attribute("escrow adress", escrow_address.clone())
+                .add_attribute("token_id", escrow_data.token.to_string());
+
+            let pending_deposit_token =
+                PENDING_DEPOSIT_TOKEN.get(deps.storage, &escrow_data.token.clone());
+
+            match pending_deposit_token {
+                Some(token) => {
+                    let deposit_msg = token.token_type.create_escrow_msg(
+                        token.amount,
+                        escrow_address,
+                        escrow_code_hash,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )?;
+                    response = response.add_message(deposit_msg);
+                    PENDING_DEPOSIT_TOKEN.remove(deps.storage, &token.token)?;
+                }
+                None => {}
+            }
+
+            Ok(response)
+        }
+    }
+}
 
 pub fn on_snip20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(res) => {
-            // let instantiate_data: secret_utils::MsgInstantiateContractResponse =
-            //     parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
-            //         err: res.to_string(),
-            //     })?;
 
             let snip20_address = deps
                 .api
@@ -99,8 +154,8 @@ pub fn on_snip20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
 pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Ok(Response::new()
-        .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
-        .add_attribute("error", err.clone())),
+            .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
+            .add_attribute("error", err.clone())),
         SubMsgResult::Ok(res) => {
             let data = res
                 .data
@@ -179,6 +234,25 @@ pub fn on_reply_native_ibc_wrapper_call(
                 true,
             )?;
             Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
+        }
+    }
+}
+
+pub fn on_proxy_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Ok(Response::new()
+            .add_attribute("reply_on_proxy_instantiate_reply", "error")
+            .add_attribute("error", err.clone())),
+        SubMsgResult::Ok(res) => {
+            let mut proxy = PROXY.load(deps.storage)?;
+            if proxy.address != Addr::unchecked("") {
+                return Err(ContractError::ProxyAlreadyInitialized {});
+            }
+            let proxy_address = parse_reply_address_from_event(res);
+            proxy.address = deps.api.addr_validate(&proxy_address)?;
+            PROXY.save(deps.storage, &proxy)?;
+
+            Ok(Response::new().add_attribute("reply_on_proxy_instantiate_reply", "success"))
         }
     }
 }

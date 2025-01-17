@@ -37,8 +37,15 @@ pub struct State {
     pub is_native: bool,
     // Total partner fees collected
     pub partner_fees_collected: DenomFees,
-    pub proxy_address : String
 }
+
+#[cw_serde]
+pub struct Proxy {
+    pub address : Addr,
+    pub code_hash: String
+}
+
+pub const PROXY: Item<Proxy> = Item::new(b"proxy");
 
 pub const STATE: Item<State> = Item::new(b"state");
 

@@ -37,6 +37,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("The proxy contract is already initialized")]
+    ProxyAlreadyInitialized {},
+
     #[error("Tx already exist")]
     TxAlreadyExist {},
 

@@ -26,12 +26,10 @@ use snip20_reference_impl::msg::InitConfig;
 use crate::{
     query::get_contract_code_hash,
     reply::{
-        ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, SNIP20_INSTANTIATE_REPLY_ID,
+        ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, PROXY_EXECUTE_REPLY_ID, SNIP20_INSTANTIATE_REPLY_ID
     },
     state::{
-        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
-        PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_SNIP20,
+        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, PROXY, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_SNIP20
     },
 };
 
@@ -287,7 +285,7 @@ fn ack_pool_creation(
                         };
                         PENDING_DEPOSIT_TOKEN.insert(deps.storage, &token.clone().token, &token)?;
                         res = res.add_submessage(SubMsg {
-                            id: ESCROW_INSTANTIATE_REPLY_ID,
+                            id: PROXY_EXECUTE_REPLY_ID,
                             msg: init_msg.to_cosmos_msg(
                                 Some(state.admin.clone()),
                                 format!("{}-escrow-{}-{}",env.contract.address,token.token.to_string(),tx_id),
@@ -374,7 +372,7 @@ fn ack_pool_creation(
 
 fn ack_register_denom(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     sender: String,
     res: AcknowledgementMsg<RegisterDenomResponse>,
     tx_id: String,
@@ -393,10 +391,11 @@ fn ack_register_denom(
     match res {
         AcknowledgementMsg::Ok(_data) => {
 
-            let state = STATE.load(deps.storage)?;
+            // let state = STATE.load(deps.storage)?;
 
-            let _escrow_code_id = state.escrow_code_id;
-            let escrow_code_hash = state.clone().escrow_code_hash;
+            // let _escrow_code_id = state.escrow_code_id;
+            // let _escrow_code_hash = state.clone().escrow_code_hash;
+            let proxy = PROXY.load(deps.storage)?;
             let token = existing_req.token;
 
             // let existing_escrow = TOKEN_TO_ESCROW.get(deps.storage, &token.token.clone())?;
@@ -421,7 +420,7 @@ fn ack_register_denom(
                     .add_message(msg);
             } else {
 
-                // Instantiate escrow
+                // Instantiate escrow using proxy
                 let exec_msg = euclid::msgs::proxy::ExecuteMsg::InitializeEscrow {
                     token_id: token.token.clone(),
                     allowed_denom: Some(token.token_type),
@@ -429,13 +428,11 @@ fn ack_register_denom(
 
                 response = response
                     .add_attribute("create_escrow", "true")
-                    .add_attribute("State", format!("{:?}",state))
-                    .add_attribute("contract_address", env.contract.address.clone(),)
                     .add_submessage(SubMsg {
-                        id: ESCROW_INSTANTIATE_REPLY_ID,
+                        id: PROXY_EXECUTE_REPLY_ID,
                         msg: exec_msg.to_cosmos_msg(
-                            "25ae93ee2d04fd6d57b89841be28a6670375a555e3efc2153fcaae903fed60d5".into(),
-                            "secret1zvdltpd044z9q7qfgythcrt4l8hvzcdxkrrjsa".into(),
+                            proxy.code_hash,
+                            proxy.address.into_string(),
                             None,
                         )?,
                         gas_limit: None,

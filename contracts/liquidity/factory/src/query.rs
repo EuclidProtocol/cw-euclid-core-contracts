@@ -18,8 +18,7 @@ use euclid::{
 };
 
 use crate::state::{
-    HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-    STATE, TOKEN_TO_ESCROW, VLP_TO_SNIP20,
+    HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PROXY, STATE, TOKEN_TO_ESCROW, VLP_TO_SNIP20
 };
 
 // Returns the VLP address
@@ -73,11 +72,9 @@ pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError>
 }
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
-    println!("Here REached1");
     let state = STATE.load(deps.storage)?;
-    println!("state: {:?}", state);
+    let proxy = PROXY.load(deps.storage)?;
     let hub = HUB_CHANNEL.may_load(deps.storage)?;
-    println!("hub: {:?}", hub);
     Ok(to_binary(&StateResponse {
         chain_uid: state.chain_uid,
         router_contract: state.router_contract,
@@ -89,6 +86,8 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         snip20_code_hash: state.snip20_code_hash,
         is_native: state.is_native,
         partner_fees_collected: state.partner_fees_collected,
+        proxy_address : proxy.address,
+        proxy_code_hash: proxy.code_hash
     })?)
 }
 
