@@ -1,10 +1,9 @@
+use crate::state::{ForwardingState, FORWARDING_STATE};
 use cosmwasm_std::{
     ensure, to_json_binary, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult,
 };
 use euclid::{error::ContractError, msgs::hook::EuclidReceiverMsg, token::TokenType};
-use forwarding::msgs::osmosis::Slippage;
-
-use crate::state::{ForwardingState, FORWARDING_STATE};
+use swaprouter::msg::Slippage as OsmosisSlippage;
 
 pub const OSMO_SWAP_REPLY_ID: u64 = 1;
 
@@ -27,7 +26,7 @@ pub fn on_osmo_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Respons
 
             let swap_amount = new_balance.checked_sub(previous_balance)?;
             match swap_msg.slippage {
-                Slippage::MinOutputAmount(min_output_amount) => {
+                OsmosisSlippage::MinOutputAmount(min_output_amount) => {
                     ensure!(
                         swap_amount >= min_output_amount,
                         ContractError::MinReceived {
@@ -36,7 +35,7 @@ pub fn on_osmo_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Respons
                         }
                     );
                 }
-                Slippage::Twap {
+                OsmosisSlippage::Twap {
                     window_seconds: _,
                     slippage_percentage,
                 } => {

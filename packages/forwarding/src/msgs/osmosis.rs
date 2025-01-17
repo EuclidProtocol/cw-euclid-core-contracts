@@ -1,21 +1,13 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Coin, Decimal, Uint128};
+use cosmwasm_std::{Addr, Coin};
 use cw20::Cw20ReceiveMsg;
 use euclid::{msgs::hook::EuclidReceive, token::TokenType};
 use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
+use swaprouter::msg::Slippage as OsmosisSlippage;
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub osmo_router: Addr,
-}
-
-#[cw_serde]
-pub enum Slippage {
-    Twap {
-        window_seconds: Option<u64>,
-        slippage_percentage: Decimal,
-    },
-    MinOutputAmount(Uint128),
 }
 
 #[cw_serde]
@@ -39,7 +31,7 @@ pub enum OsmosisExecuteMsg {
     Swap {
         input_coin: Coin,
         output_denom: String,
-        slippage: Slippage,
+        slippage: OsmosisSlippage,
         route: Option<Vec<SwapAmountInRoute>>,
     },
 }
@@ -50,7 +42,7 @@ pub enum QueryMsg {}
 
 #[cw_serde]
 pub struct SwapMsg {
-    pub slippage: Slippage,
+    pub slippage: OsmosisSlippage,
     pub route: Option<Vec<SwapAmountInRoute>>,
     pub forwarding_msg: Option<EuclidReceive>,
     pub to_token: TokenType,

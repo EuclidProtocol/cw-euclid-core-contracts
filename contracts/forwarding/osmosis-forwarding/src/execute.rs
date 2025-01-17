@@ -7,11 +7,10 @@ use euclid::{
     error::ContractError, events::simple_event, msgs::hook::EuclidReceive, token::TokenType,
 };
 use forwarding::msgs::{
-    cw20::OsmosisCw20HookMsg,
-    euclid_receive::OsmosisEuclidReceiveHook,
-    osmosis::{OsmosisExecuteMsg, SwapMsg},
+    cw20::OsmosisCw20HookMsg, euclid_receive::OsmosisEuclidReceiveHook, osmosis::SwapMsg,
 };
 use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
+use swaprouter::msg::ExecuteMsg as OsmosisExecuteMsg;
 
 // use osmosis::ExecuteMsg as OsmosisExecuteMsg;
 

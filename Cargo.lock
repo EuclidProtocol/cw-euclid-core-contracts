@@ -1258,6 +1258,7 @@ dependencies = [
  "osmosis-std",
  "schemars",
  "serde",
+ "swaprouter",
 ]
 
 [[package]]
@@ -1912,6 +1913,7 @@ dependencies = [
  "osmosis-std",
  "schemars",
  "serde",
+ "swaprouter",
  "thiserror",
 ]
 
@@ -2640,6 +2642,21 @@ name = "subtle-ng"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
+
+[[package]]
+name = "swaprouter"
+version = "0.1.0"
+source = "git+https://github.com/osmosis-labs/osmosis?tag=v28.0.0#39ec8f9e54742aa52ed531210b02218171dfadd9"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw2",
+ "osmosis-std",
+ "schemars",
+ "serde",
+ "thiserror",
+]
 
 [[package]]
 name = "syn"
