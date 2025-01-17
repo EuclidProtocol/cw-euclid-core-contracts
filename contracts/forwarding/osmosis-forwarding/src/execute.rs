@@ -9,7 +9,6 @@ use euclid::{
 use forwarding::msgs::{
     cw20::OsmosisCw20HookMsg, euclid_receive::OsmosisEuclidReceiveHook, osmosis::SwapMsg,
 };
-use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 use swaprouter::msg::ExecuteMsg as OsmosisExecuteMsg;
 
 // use osmosis::ExecuteMsg as OsmosisExecuteMsg;
@@ -115,17 +114,10 @@ pub fn swap(
 
     let output_denom = &swap_msg.to_token.get_denom()?;
 
-    let route = swap_msg
+    let osmo_route = swap_msg
         .route
-        .clone()
-        .ok_or(ContractError::new("route is required"))?;
-
-    let osmo_route = route
         .iter()
-        .map(|route| SwapAmountInRoute {
-            pool_id: route.pool_id,
-            token_out_denom: route.token_out_denom.clone(),
-        })
+        .map(|route| route.clone().into())
         .collect();
 
     let osmo_execute_msg = OsmosisExecuteMsg::Swap {
@@ -174,5 +166,5 @@ pub fn swap(
         .add_attribute("dex", "osmosis")
         .add_attribute("start_swap_amount", from_amount)
         .add_attribute("start_swap_token", from_token.get_key())
-        .add_submessage(SubMsg::reply_always(msg, OSMO_SWAP_REPLY_ID)))
+        .add_submessage(SubMsg::reply_on_success(msg, OSMO_SWAP_REPLY_ID)))
 }

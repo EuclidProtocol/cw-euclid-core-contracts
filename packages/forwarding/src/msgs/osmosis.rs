@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Coin};
+use cosmwasm_std::Addr;
 use cw20::Cw20ReceiveMsg;
 use euclid::{msgs::hook::EuclidReceive, token::TokenType};
 use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
@@ -19,32 +19,29 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-pub enum OsmosisExecuteMsg {
-    /// The contract's owner determines how can update the routes. This method
-    /// allows the owner to be transfered to someone else.
-    TransferOwnership { new_owner: String },
-    SetRoute {
-        input_denom: String,
-        output_denom: String,
-        pool_route: Vec<SwapAmountInRoute>,
-    },
-    Swap {
-        input_coin: Coin,
-        output_denom: String,
-        slippage: OsmosisSlippage,
-        route: Option<Vec<SwapAmountInRoute>>,
-    },
-}
-
-#[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {}
 
 #[cw_serde]
 pub struct SwapMsg {
     pub slippage: OsmosisSlippage,
-    pub route: Option<Vec<SwapAmountInRoute>>,
+    pub route: Vec<SwapRoute>,
     pub forwarding_msg: Option<EuclidReceive>,
     pub to_token: TokenType,
     pub recipient: String,
+}
+
+#[cw_serde]
+pub struct SwapRoute {
+    pub pool_id: u64,
+    pub token_out_denom: String,
+}
+
+impl From<SwapRoute> for SwapAmountInRoute {
+    fn from(route: SwapRoute) -> Self {
+        Self {
+            pool_id: route.pool_id as u64,
+            token_out_denom: route.token_out_denom,
+        }
+    }
 }
