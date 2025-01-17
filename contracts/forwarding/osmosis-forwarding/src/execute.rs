@@ -11,6 +11,7 @@ use forwarding::msgs::{
     euclid_receive::OsmosisEuclidReceiveHook,
     osmosis::{OsmosisExecuteMsg, SwapMsg},
 };
+use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 
 // use osmosis::ExecuteMsg as OsmosisExecuteMsg;
 
@@ -115,11 +116,24 @@ pub fn swap(
 
     let output_denom = &swap_msg.to_token.get_denom()?;
 
+    let route = swap_msg
+        .route
+        .clone()
+        .ok_or(ContractError::new("route is required"))?;
+
+    let osmo_route = route
+        .iter()
+        .map(|route| SwapAmountInRoute {
+            pool_id: route.pool_id,
+            token_out_denom: route.token_out_denom.clone(),
+        })
+        .collect();
+
     let osmo_execute_msg = OsmosisExecuteMsg::Swap {
         input_coin,
         output_denom: output_denom.clone(),
         slippage: swap_msg.slippage.clone(),
-        route: Some(swap_msg.route.clone()),
+        route: Some(osmo_route),
     };
 
     let previous_balance = swap_msg

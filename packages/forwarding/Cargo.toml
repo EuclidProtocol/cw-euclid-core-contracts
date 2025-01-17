@@ -23,6 +23,6 @@ cw20 = { workspace = true }
 euclid = { workspace = true }
 
 astroport = { git = "https://github.com/astroport-fi/astroport-core", branch = "main" }
-osmosis-std = "=0.25.0"
+osmosis-std="0.16.2"
 
 cw-orch = "=0.24.1"

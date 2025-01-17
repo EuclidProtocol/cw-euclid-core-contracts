@@ -2,6 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Coin, Decimal, Uint128};
 use cw20::Cw20ReceiveMsg;
 use euclid::{msgs::hook::EuclidReceive, token::TokenType};
+use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -23,12 +24,6 @@ pub enum ExecuteMsg {
     Receive(Cw20ReceiveMsg),
     EuclidReceive(EuclidReceive),
     Swap(SwapMsg),
-}
-
-#[cw_serde]
-pub struct SwapAmountInRoute {
-    pub pool_id: u64,
-    pub token_out_denom: String,
 }
 
 #[cw_serde]
@@ -56,7 +51,7 @@ pub enum QueryMsg {}
 #[cw_serde]
 pub struct SwapMsg {
     pub slippage: Slippage,
-    pub route: Vec<SwapAmountInRoute>,
+    pub route: Option<Vec<SwapAmountInRoute>>,
     pub forwarding_msg: Option<EuclidReceive>,
     pub to_token: TokenType,
     pub recipient: String,

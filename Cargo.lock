@@ -1909,6 +1909,7 @@ dependencies = [
  "euclid",
  "forwarding",
  "mock",
+ "osmosis-std",
  "schemars",
  "serde",
  "thiserror",
@@ -1916,15 +1917,15 @@ dependencies = [
 
 [[package]]
 name = "osmosis-std"
-version = "0.25.0"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca66dca7e8c9b11b995cd41a44c038134ccca4469894d663d8a9452d6e716241"
+checksum = "75895e4db1a81ca29118e366365744f64314938327e4eedba8e6e462fb15e94f"
 dependencies = [
  "chrono",
  "cosmwasm-std",
  "osmosis-std-derive",
- "prost 0.12.6",
- "prost-types 0.12.6",
+ "prost 0.11.9",
+ "prost-types 0.11.9",
  "schemars",
  "serde",
  "serde-cw-value",
@@ -1932,9 +1933,9 @@ dependencies = [
 
 [[package]]
 name = "osmosis-std-derive"
-version = "0.20.1"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5ebdfd1bc8ed04db596e110c6baa9b174b04f6ed1ec22c666ddc5cb3fa91bd7"
+checksum = "f47f0b2f22adb341bb59e5a3a1b464dde033181954bd055b9ae86d6511ba465b"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
