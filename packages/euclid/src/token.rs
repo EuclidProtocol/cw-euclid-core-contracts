@@ -329,6 +329,14 @@ impl TokenType {
         }
     }
 
+    pub fn get_denom(&self) -> Result<String, ContractError> {
+        match self.clone() {
+            TokenType::Native { denom } => Ok(denom),
+            TokenType::Smart { contract_address } => Ok(contract_address),
+            TokenType::Voucher { .. } => Err(ContractError::new("Voucher has no denom")),
+        }
+    }
+
     // Create Cosmos Msg depending on type of token
     pub fn create_transfer_msg(
         &self,

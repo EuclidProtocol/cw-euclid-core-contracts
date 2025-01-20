@@ -1971,6 +1971,7 @@ fn test_swap_request() {
                     forwarding_message: None,
                 }],
                 partner_fee: None,
+                meta: None,
             }),
             Some(&[coin(100u128, "eucl")]),
         )
@@ -2094,6 +2095,7 @@ fn test_swap_request_with_valid_partner_fee() {
             recipient: sender,
         }),
         funds,
+        None,
     );
 }
 
@@ -2200,6 +2202,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
             recipient: sender,
         }),
         funds,
+        None,
     );
 }
 
@@ -2300,6 +2303,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         }],
         None,
         funds,
+        None,
     );
 }
 
@@ -2399,6 +2403,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         }],
         None,
         funds,
+        None,
     );
 }
 
@@ -2504,6 +2509,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         }],
         None,
         funds,
+        None,
     );
 }
 
@@ -2608,6 +2614,7 @@ fn test_swap_request_with_timeout() {
         }],
         None,
         funds,
+        None,
     );
 }
 
@@ -2713,5 +2720,6 @@ fn test_swap_request_fails_with_timeout_greater_than_240s() {
         }],
         None,
         funds,
+        None,
     );
 }
