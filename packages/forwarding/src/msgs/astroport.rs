@@ -30,3 +30,6 @@ pub struct SwapMsg {
     pub minimum_receive: Uint128,
     pub recipient: String,
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}

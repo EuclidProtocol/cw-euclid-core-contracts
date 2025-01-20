@@ -45,3 +45,6 @@ impl From<SwapRoute> for SwapAmountInRoute {
         }
     }
 }
+
+#[cw_serde]
+pub struct MigrateMsg {}
