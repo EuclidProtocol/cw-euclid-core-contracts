@@ -150,5 +150,5 @@ pub fn swap(
         .add_attribute("dex", "astroport")
         .add_attribute("start_swap_amount", from_amount)
         .add_attribute("start_swap_token", from_token.get_key())
-        .add_submessage(SubMsg::reply_always(msg, ASTRO_SWAP_REPLY_ID)))
+        .add_submessage(SubMsg::reply_on_success(msg, ASTRO_SWAP_REPLY_ID)))
 }
