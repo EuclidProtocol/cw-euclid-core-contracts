@@ -254,6 +254,7 @@ impl HubIbcExecuteMsg {
         &self,
         deps: &mut DepsMut,
         env: &Env,
+        chain_uid: ChainUid,
         chain: Chain,
         timeout: u64,
     ) -> Result<SubMsg, ContractError> {
@@ -265,6 +266,18 @@ impl HubIbcExecuteMsg {
                     timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
                 };
                 Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
+            }
+            euclid::chain::ChainType::Evm(_) => {
+                let router_internal_msg = router::ExecuteMsg::EvmSendPacket {
+                    msg: to_json_binary(self)?,
+                    chain_uid,
+                };
+                // Trigger a Send Packet execute call to the same contract
+                Ok(SubMsg::new(WasmMsg::Execute {
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&router_internal_msg)?,
+                    funds: vec![],
+                }))
             }
             euclid::chain::ChainType::Native {} => {
                 let factory_msg = factory::ExecuteMsg::NativeReceiveCallback {

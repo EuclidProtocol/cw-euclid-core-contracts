@@ -67,6 +67,35 @@ pub enum ExecuteMsg {
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
     },
+
+    EvmSendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    EvmReceivePacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+    },
+
+    EvmReceivePacketInternalCallback {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    EvmReceiveAck {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+        ack: Binary,
+    },
 }
 
 #[cw_serde]

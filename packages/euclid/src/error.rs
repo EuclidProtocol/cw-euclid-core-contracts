@@ -145,6 +145,9 @@ pub enum ContractError {
     #[error("No Channel for Local Chain")]
     NoChannelForLocalChain {},
 
+    #[error("No Channel for EVM Chain")]
+    NoChannelForEvmChain {},
+
     #[error("DuplicateTokens")]
     DuplicateTokens {},
 

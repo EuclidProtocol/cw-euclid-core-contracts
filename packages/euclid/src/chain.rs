@@ -150,14 +150,22 @@ pub struct IbcChain {
 }
 
 #[cw_serde]
+pub struct EvmChain {}
+
+#[cw_serde]
 pub enum ChainType {
     Ibc(IbcChain),
+    Evm(EvmChain),
     Native {},
 }
 
 impl Chain {
     pub fn is_native(&self) -> bool {
         matches!(self.chain_type, ChainType::Native {})
+    }
+
+    pub fn is_evm(&self) -> bool {
+        matches!(self.chain_type, ChainType::Evm(_))
     }
 
     pub fn ibc_info(&self) -> Result<IbcChain, ContractError> {

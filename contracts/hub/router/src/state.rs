@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
@@ -47,3 +47,10 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<
 > = Map::new("pending_remove_liquidity");
 
 pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
+
+//EVM Relay sequence map
+pub const EVM_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> = Map::new("evm_packet_relay_map");
+
+//EVM Relay sequence count
+pub const EVM_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
+    Map::new("evm_packet_relay_sequence_count");
