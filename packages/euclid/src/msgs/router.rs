@@ -238,12 +238,19 @@ pub struct TokenDenomsResponse {
 pub enum RegisterFactoryChainType {
     Native(RegisterFactoryChainNative),
     Ibc(RegisterFactoryChainIbc),
+    Evm(RegisterFactoryChainEvm),
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainNative {
     pub factory_address: String,
 }
+
+#[cw_serde]
+pub struct RegisterFactoryChainEvm {
+    pub factory_address: String,
+}
+
 #[cw_serde]
 pub struct RegisterFactoryChainIbc {
     pub channel: String,

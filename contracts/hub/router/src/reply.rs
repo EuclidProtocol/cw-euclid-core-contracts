@@ -434,7 +434,7 @@ pub fn on_evm_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
                 })
                 .unwrap_or_default();
 
-            let euclid_event = simple_event().add_attribute("action", "evm-relay");
+            let euclid_event = simple_event().add_attribute("action", "evm-write-acknowledgement");
 
             let write_acknowledge_event =
                 Event::new("euclid-write-acknowledgement").add_attribute("ack", data.to_string());

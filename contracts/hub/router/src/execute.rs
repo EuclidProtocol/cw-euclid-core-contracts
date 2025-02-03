@@ -6,7 +6,7 @@ use cosmwasm_std::{
 };
 
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
+    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, Limit},
     error::ContractError,
     events::{simple_event, tx_event, TxType},
     msgs::{
@@ -153,6 +153,19 @@ pub fn execute_register_factory(
                 factory: native_info.factory_address,
                 factory_chain_id: env.block.chain_id.clone(),
                 chain_type: euclid::chain::ChainType::Native {},
+            };
+            Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
+        }
+        RegisterFactoryChainType::Evm(evm_info) => {
+            let msg = HubIbcExecuteMsg::RegisterFactory {
+                chain_uid: chain_uid.clone(),
+                tx_id: tx_id.clone(),
+            };
+            // Save chain info because this call will fail if the tx is not sucessful
+            let chain = Chain {
+                factory: evm_info.factory_address,
+                factory_chain_id: env.block.chain_id.clone(),
+                chain_type: euclid::chain::ChainType::Evm(EvmChain {}),
             };
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
         }
@@ -525,16 +538,18 @@ pub fn execute_evm_send_packet(
     chain_uid: ChainUid,
     msg: Binary,
 ) -> Result<Response, ContractError> {
-    let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    ensure!(chain.is_evm(), ContractError::Unauthorized {});
+    // let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+    // ensure!(chain.is_evm(), ContractError::Unauthorized {});
 
-    let sequence = EVM_PACKET_RELAY_SEQUENCE_COUNT.load(deps.storage, chain_uid.clone())?;
+    let sequence = EVM_PACKET_RELAY_SEQUENCE_COUNT
+        .load(deps.storage, chain_uid.clone())
+        .unwrap_or(0);
 
     EVM_PACKET_RELAY_MAP.save(deps.storage, (chain_uid.clone(), sequence), &msg)?;
 
     EVM_PACKET_RELAY_SEQUENCE_COUNT.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
 
-    let euclid_event = simple_event().add_attribute("action", "evm-relay");
+    let euclid_event = simple_event().add_attribute("action", "evm-send-packet");
 
     let send_packet_event = Event::new("euclid-send-packet")
         .add_attribute("msg", msg.to_string())
@@ -612,8 +627,8 @@ pub fn execute_evm_receive_acknowledgement(
     _hash: String,
     ack: Binary,
 ) -> Result<Response, ContractError> {
-    let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    ensure!(chain.is_evm(), ContractError::Unauthorized {});
+    // let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+    // ensure!(chain.is_evm(), ContractError::Unauthorized {});
 
     let existing_request =
         EVM_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
@@ -627,9 +642,9 @@ pub fn execute_evm_receive_acknowledgement(
 
     EVM_PACKET_RELAY_MAP.remove(deps.storage, (chain_uid.clone(), sequence));
 
-    let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+    let chain_type = euclid::chain::ChainType::Evm(EvmChain {});
 
     let msg: HubIbcExecuteMsg = from_json(msg)?;
 
-    ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain.chain_type)
+    ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)
 }
