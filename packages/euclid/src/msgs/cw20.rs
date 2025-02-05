@@ -263,7 +263,7 @@ impl From<QueryMsg> for Cw20QueryMsg {
             }
             QueryMsg::MarketingInfo {} => Cw20QueryMsg::MarketingInfo {},
             QueryMsg::DownloadLogo {} => Cw20QueryMsg::DownloadLogo {},
-            QueryMsg::State {} => panic!("State query not supported by Cw20QueryMsg"),
+            _ => panic!("Unsupported Msg"),
         }
     }
 }
