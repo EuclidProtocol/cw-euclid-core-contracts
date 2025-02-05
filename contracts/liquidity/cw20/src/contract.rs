@@ -7,7 +7,7 @@ use euclid::msgs::escrow::Cw20InstantiateResponse;
 use crate::execute::execute_update_state;
 use crate::state::{State, STATE};
 use euclid::error::ContractError;
-use euclid::msgs::cw20::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::cw20::{ExecuteMsg, InstantiateMsg, QueryMsg, StateResponse};
 
 use cw20_base::contract::{
     execute as execute_cw20, instantiate as cw20_instantiate, query as cw20_query,
@@ -62,5 +62,16 @@ pub fn execute(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
-    Ok(cw20_query(deps, env, msg.into())?)
+    match msg {
+        QueryMsg::State {} => {
+            let state = STATE.load(deps.storage)?;
+            let response = StateResponse {
+                token_pair: state.token_pair,
+                factory_address: state.factory_address,
+                vlp: state.vlp,
+            };
+            Ok(to_json_binary(&response)?)
+        }
+        _ => Ok(cw20_query(deps, env, msg.into())?),
+    }
 }

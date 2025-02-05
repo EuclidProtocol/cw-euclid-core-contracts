@@ -230,6 +230,16 @@ pub enum QueryMsg {
     DownloadLogo {},
     #[returns(cw20::BalanceResponse)]
     Balance { address: String },
+    /// Returns the current state of the contract
+    #[returns(StateResponse)]
+    State {},
+}
+
+#[cw_serde]
+pub struct StateResponse {
+    pub token_pair: Pair,
+    pub factory_address: Addr,
+    pub vlp: String,
 }
 
 impl From<QueryMsg> for Cw20QueryMsg {
@@ -253,6 +263,7 @@ impl From<QueryMsg> for Cw20QueryMsg {
             }
             QueryMsg::MarketingInfo {} => Cw20QueryMsg::MarketingInfo {},
             QueryMsg::DownloadLogo {} => Cw20QueryMsg::DownloadLogo {},
+            QueryMsg::State {} => panic!("State query not supported by Cw20QueryMsg"),
         }
     }
 }
