@@ -54,3 +54,11 @@ pub const EVM_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> = Map::new("evm_pa
 //EVM Relay sequence count
 pub const EVM_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
     Map::new("evm_packet_relay_sequence_count");
+
+//SOLANA Relay sequence map
+pub const SOLANA_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
+    Map::new("solana_packet_relay_map");
+
+//SOLANA Relay sequence count
+pub const SOLANA_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
+    Map::new("solana_packet_relay_sequence_count");

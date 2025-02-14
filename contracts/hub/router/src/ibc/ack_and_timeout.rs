@@ -198,8 +198,21 @@ pub fn ibc_ack_update_factory_channel(
 
             let old_channel = match old_chain_type {
                 ChainType::Ibc(ibc_chain) => ibc_chain.from_hub_channel,
-                ChainType::Native {} => return Err(ContractError::NoChannelForLocalChain {}),
-                ChainType::Evm(_) => return Err(ContractError::NoChannelForEvmChain {}),
+                ChainType::Native {} => {
+                    return Err(ContractError::NoChannelForChain {
+                        chain: "local".to_string(),
+                    })
+                }
+                ChainType::Evm(_) => {
+                    return Err(ContractError::NoChannelForChain {
+                        chain: "evm".to_string(),
+                    })
+                }
+                ChainType::Solana(_) => {
+                    return Err(ContractError::NoChannelForChain {
+                        chain: "solana".to_string(),
+                    })
+                }
             };
             CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid.clone(), &chain_data)?;
             if let ChainType::Ibc(ibc_info) = chain_data.chain_type {

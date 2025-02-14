@@ -6,7 +6,7 @@ use cosmwasm_std::{
 };
 use cw_storage_plus::{Item, Map};
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     msgs::{factory, router},
     swap::NextSwapPair,
@@ -95,46 +95,49 @@ impl ChainIbcExecuteMsg {
         env: &Env,
         router_contract: String,
         chain_uid: ChainUid,
-        is_native: bool,
-        channel: String,
+        chain_type: ChainType,
         timeout: u64,
     ) -> Result<SubMsg, ContractError> {
-        if is_native {
-            let router_msg = router::ExecuteMsg::NativeReceiveCallback {
-                msg: to_json_binary(self)?,
-                chain_uid,
-            };
-            let mut count = CHAIN_IBC_EXECUTE_MSG_QUEUE_COUNT
-                .load(deps.storage)
-                .unwrap_or(CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.0);
+        match chain_type {
+            ChainType::Native {} => {
+                let router_msg = router::ExecuteMsg::NativeReceiveCallback {
+                    msg: to_json_binary(self)?,
+                    chain_uid,
+                };
+                let mut count = CHAIN_IBC_EXECUTE_MSG_QUEUE_COUNT
+                    .load(deps.storage)
+                    .unwrap_or(CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.0);
 
-            count = count
-                .min(CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.1)
-                .max(CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.0);
+                count = count
+                    .min(CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.1)
+                    .max(CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE.0);
 
-            ensure!(
-                !CHAIN_IBC_EXECUTE_MSG_QUEUE.has(deps.storage, count),
-                ContractError::new("Msg Queue is full")
-            );
-            CHAIN_IBC_EXECUTE_MSG_QUEUE.save(deps.storage, count, self)?;
+                ensure!(
+                    !CHAIN_IBC_EXECUTE_MSG_QUEUE.has(deps.storage, count),
+                    ContractError::new("Msg Queue is full")
+                );
+                CHAIN_IBC_EXECUTE_MSG_QUEUE.save(deps.storage, count, self)?;
 
-            CHAIN_IBC_EXECUTE_MSG_QUEUE_COUNT.save(deps.storage, &count.add(1))?;
+                CHAIN_IBC_EXECUTE_MSG_QUEUE_COUNT.save(deps.storage, &count.add(1))?;
 
-            Ok(SubMsg::reply_always(
-                WasmMsg::Execute {
-                    contract_addr: router_contract,
-                    msg: to_json_binary(&router_msg)?,
-                    funds: vec![],
-                },
-                count,
-            ))
-        } else {
-            let packet = IbcMsg::SendPacket {
-                channel_id: channel,
-                data: to_json_binary(self)?,
-                timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-            };
-            Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
+                Ok(SubMsg::reply_always(
+                    WasmMsg::Execute {
+                        contract_addr: router_contract,
+                        msg: to_json_binary(&router_msg)?,
+                        funds: vec![],
+                    },
+                    count,
+                ))
+            }
+            ChainType::Ibc(ibc_info) => {
+                let packet = IbcMsg::SendPacket {
+                    channel_id: ibc_info.from_hub_channel,
+                    data: to_json_binary(self)?,
+                    timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+                };
+                Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
+            }
+            _ => Err(ContractError::new("Unsupported chain type")),
         }
     }
 }
@@ -269,6 +272,18 @@ impl HubIbcExecuteMsg {
             }
             euclid::chain::ChainType::Evm(_) => {
                 let router_internal_msg = router::ExecuteMsg::EvmSendPacket {
+                    msg: to_json_binary(self)?,
+                    chain_uid,
+                };
+                // Trigger a Send Packet execute call to the same contract
+                Ok(SubMsg::new(WasmMsg::Execute {
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&router_internal_msg)?,
+                    funds: vec![],
+                }))
+            }
+            euclid::chain::ChainType::Solana(_) => {
+                let router_internal_msg = router::ExecuteMsg::SolanaSendPacket {
                     msg: to_json_binary(self)?,
                     chain_uid,
                 };

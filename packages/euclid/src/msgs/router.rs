@@ -96,6 +96,35 @@ pub enum ExecuteMsg {
         hash: String,
         ack: Binary,
     },
+
+    SolanaSendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    SolanaReceivePacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+    },
+
+    SolanaReceivePacketInternalCallback {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    SolanaReceiveAck {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+        ack: Binary,
+    },
 }
 
 #[cw_serde]
@@ -140,6 +169,11 @@ pub enum QueryMsg {
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct MigrateMsg {
+    pub v0_2_0_to_v0_2_1: Option<MigrateV020ToV021>,
+}
+
+#[cw_serde]
+pub struct MigrateV020ToV021 {
     pub denoms: Vec<(Token, TokenDenom)>,
 }
 

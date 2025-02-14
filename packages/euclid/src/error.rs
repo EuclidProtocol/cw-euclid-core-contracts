@@ -142,11 +142,8 @@ pub enum ContractError {
     #[error("Cannot Swap 0 tokens")]
     ZeroAssetAmount {},
 
-    #[error("No Channel for Local Chain")]
-    NoChannelForLocalChain {},
-
-    #[error("No Channel for EVM Chain")]
-    NoChannelForEvmChain {},
+    #[error("No Channel for Chain: {chain}")]
+    NoChannelForChain { chain: String },
 
     #[error("DuplicateTokens")]
     DuplicateTokens {},

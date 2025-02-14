@@ -1,14 +1,12 @@
-use std::ops::Add;
-
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, Event, IbcMsg,
-    IbcTimeout, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
+    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 
 use euclid::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, Limit},
     error::ContractError,
-    events::{simple_event, tx_event, TxType},
+    events::{tx_event, TxType},
     msgs::{
         router::{ExecuteMsg, RegisterFactoryChainType},
         virtual_balance::ExecuteBurn,
@@ -18,18 +16,14 @@ use euclid::{
     utils::tx::generate_tx,
     virtual_balance::BalanceKey,
 };
-use euclid_ibc::{
-    ack::make_ack_fail,
-    msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg},
-};
+use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
-    ibc::{ack_and_timeout, receive},
+    ibc::receive,
     query::verify_cross_chain_addresses,
-    reply::EVM_RECEIVE_REPLY_ID,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        EVM_PACKET_RELAY_MAP, EVM_PACKET_RELAY_SEQUENCE_COUNT, STATE, TOKEN_DENOMS,
+        STATE, TOKEN_DENOMS,
     },
 };
 
@@ -233,7 +227,9 @@ pub fn execute_update_factory_channel(
             .add_message(CosmosMsg::Ibc(packet)))
     } else {
         // Can't update channel for a local chain
-        Err(ContractError::NoChannelForLocalChain {})
+        Err(ContractError::NoChannelForChain {
+            chain: chain_info.get_chain_type_str(),
+        })
     }
 }
 
@@ -530,121 +526,4 @@ pub fn execute_update_router_state(
             "locked",
             locked.map_or("unchanged".to_string(), |locked_val| locked_val.to_string()),
         ))
-}
-
-pub fn execute_evm_send_packet(
-    deps: DepsMut,
-    _env: Env,
-    chain_uid: ChainUid,
-    msg: Binary,
-) -> Result<Response, ContractError> {
-    // let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    // ensure!(chain.is_evm(), ContractError::Unauthorized {});
-
-    let sequence = EVM_PACKET_RELAY_SEQUENCE_COUNT
-        .load(deps.storage, chain_uid.clone())
-        .unwrap_or(0);
-
-    EVM_PACKET_RELAY_MAP.save(deps.storage, (chain_uid.clone(), sequence), &msg)?;
-
-    EVM_PACKET_RELAY_SEQUENCE_COUNT.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
-
-    let euclid_event = simple_event().add_attribute("action", "evm-send-packet");
-
-    let send_packet_event = Event::new("euclid-send-packet")
-        .add_attribute("msg", msg.to_string())
-        .add_attribute("chain_uid", chain_uid.to_string())
-        .add_attribute("sequence", sequence.to_string())
-        .add_attribute("hash", "hash".to_string());
-
-    Ok(Response::new()
-        .add_event(euclid_event)
-        .add_event(send_packet_event))
-}
-
-pub fn execute_evm_receive_packet(
-    deps: DepsMut,
-    env: Env,
-    chain_uid: ChainUid,
-    msg: Binary,
-    sequence: u128,
-    hash: String,
-) -> Result<Response, ContractError> {
-    let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    ensure!(chain.is_evm(), ContractError::Unauthorized {});
-
-    let write_acknowledge_event = Event::new("euclid-write-acknowledgement")
-        .add_attribute("msg", msg.to_string())
-        .add_attribute("chain_uid", chain_uid.to_string())
-        .add_attribute("sequence", sequence.to_string())
-        .add_attribute("hash", hash.to_string());
-
-    let internal_msg = ExecuteMsg::EvmReceivePacketInternalCallback {
-        msg: msg.clone(),
-        chain_uid: chain_uid.clone(),
-    };
-    let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: env.contract.address.to_string(),
-        msg: to_json_binary(&internal_msg)?,
-        funds: vec![],
-    });
-
-    let sub_msg = SubMsg::reply_always(internal_msg, EVM_RECEIVE_REPLY_ID);
-    let msg: Result<ChainIbcExecuteMsg, StdError> = from_json(&msg);
-    let tx_id = msg
-        .map(|m| m.get_tx_id())
-        .unwrap_or("tx_id_not_found".to_string());
-
-    Ok(Response::new()
-        .add_attribute("method", "evm_packet_receive")
-        .add_attribute("tx_id", tx_id)
-        .set_data(make_ack_fail("default_fail".to_string())?)
-        .add_event(write_acknowledge_event)
-        .add_submessage(sub_msg))
-}
-
-pub fn execute_evm_receive_packet_internal_callback(
-    deps: &mut DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: Binary,
-    chain_uid: ChainUid,
-) -> Result<Response, ContractError> {
-    ensure!(
-        info.sender == env.contract.address,
-        ContractError::Unauthorized {}
-    );
-    let msg: ChainIbcExecuteMsg = from_json(msg)?;
-    receive::reusable_internal_call(deps, env, info, msg, chain_uid)
-}
-
-pub fn execute_evm_receive_acknowledgement(
-    deps: DepsMut,
-    env: Env,
-    chain_uid: ChainUid,
-    msg: Binary,
-    sequence: u128,
-    _hash: String,
-    ack: Binary,
-) -> Result<Response, ContractError> {
-    // let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    // ensure!(chain.is_evm(), ContractError::Unauthorized {});
-
-    let existing_request =
-        EVM_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
-
-    ensure!(
-        existing_request == msg,
-        ContractError::new("Ack source msg doesn't match with existing request")
-    );
-
-    // Remove the existing request as its already relayed now
-
-    EVM_PACKET_RELAY_MAP.remove(deps.storage, (chain_uid.clone(), sequence));
-
-    let chain_type = euclid::chain::ChainType::Evm(EvmChain {});
-
-    let msg: HubIbcExecuteMsg = from_json(msg)?;
-
-    ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)
 }
