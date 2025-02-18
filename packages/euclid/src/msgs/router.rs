@@ -12,6 +12,7 @@ pub struct InstantiateMsg {
     // Pool Code ID
     pub vlp_code_id: u64,
     pub virtual_balance_code_id: u64,
+    pub mock_relayer_address: Option<String>,
 }
 
 #[cw_serde]
@@ -66,6 +67,7 @@ pub enum ExecuteMsg {
         vlp_code_id: Option<u64>,
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
+        mock_relayer_address: Option<String>,
     },
 
     EvmSendPacket {

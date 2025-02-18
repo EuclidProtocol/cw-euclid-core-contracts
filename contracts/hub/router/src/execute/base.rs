@@ -23,7 +23,7 @@ use crate::{
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        STATE, TOKEN_DENOMS,
+        MOCK_RELAYER_ADDRESS, STATE, TOKEN_DENOMS,
     },
 };
 
@@ -483,6 +483,7 @@ pub fn execute_update_router_state(
     vlp_code_id: Option<u64>,
     virtual_balance_address: Option<Addr>,
     locked: Option<bool>,
+    mock_relayer_address: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
@@ -511,7 +512,14 @@ pub fn execute_update_router_state(
 
     STATE.save(deps.storage, &state)?;
 
-    Ok(Response::new()
+    let mut response = Response::new();
+
+    if let Some(ref mock_relayer_address) = mock_relayer_address {
+        MOCK_RELAYER_ADDRESS.save(deps.storage, mock_relayer_address)?;
+        response = response.add_attribute("mock_relayer_update", mock_relayer_address);
+    }
+
+    Ok(response
         .add_attribute("method", "update_state")
         .add_attribute("admin", admin.unwrap_or("unchanged".to_string()))
         .add_attribute(

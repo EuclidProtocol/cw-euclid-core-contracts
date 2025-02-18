@@ -20,6 +20,8 @@ pub struct State {
 
 pub const STATE: Item<State> = Item::new("state");
 
+pub const MOCK_RELAYER_ADDRESS: Item<String> = Item::new("mock_relayer_address");
+
 // Convert it to multi index map?
 pub const VLPS: Map<(Token, Token), String> = Map::new("vlps");
 

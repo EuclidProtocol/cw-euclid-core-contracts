@@ -22,7 +22,11 @@ impl MockRouter {
         vlp_code_id: u64,
         virtual_balance_code_id: u64,
     ) -> Self {
-        let msg = mock_router_instantiate_msg(vlp_code_id, virtual_balance_code_id);
+        let msg = mock_router_instantiate_msg(
+            vlp_code_id,
+            virtual_balance_code_id,
+            Some(sender.to_string()),
+        );
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid router", None);
 
         Self(res.unwrap())
@@ -58,10 +62,12 @@ pub fn mock_router() -> Box<dyn Contract<Empty>> {
 pub fn mock_router_instantiate_msg(
     vlp_code_id: u64,
     virtual_balance_code_id: u64,
+    mock_relayer_address: Option<String>,
 ) -> InstantiateMsg {
     InstantiateMsg {
         vlp_code_id,
         virtual_balance_code_id,
+        mock_relayer_address,
     }
 }
 

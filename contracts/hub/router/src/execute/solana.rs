@@ -7,7 +7,6 @@ use cosmwasm_std::{
 use euclid::{
     chain::{ChainUid, SolanaChain},
     error::ContractError,
-    events::simple_event,
     msgs::router::ExecuteMsg,
 };
 use euclid_ibc::{
@@ -18,17 +17,24 @@ use euclid_ibc::{
 use crate::{
     ibc::{ack_and_timeout, receive},
     reply::SOLANA_RECEIVE_REPLY_ID,
-    state::{CHAIN_UID_TO_CHAIN, SOLANA_PACKET_RELAY_MAP, SOLANA_PACKET_RELAY_SEQUENCE_COUNT},
+    state::{
+        CHAIN_UID_TO_CHAIN, MOCK_RELAYER_ADDRESS, SOLANA_PACKET_RELAY_MAP,
+        SOLANA_PACKET_RELAY_SEQUENCE_COUNT,
+    },
 };
 
 pub fn execute_solana_send_packet(
     deps: DepsMut,
-    _env: Env,
+    info: MessageInfo,
+    env: Env,
     chain_uid: ChainUid,
     msg: Binary,
 ) -> Result<Response, ContractError> {
-    // let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    // ensure!(chain.is_evm(), ContractError::Unauthorized {});
+    // Only contract can call this function internally
+    ensure!(
+        info.sender == env.contract.address,
+        ContractError::Unauthorized {}
+    );
 
     let sequence = SOLANA_PACKET_RELAY_SEQUENCE_COUNT
         .load(deps.storage, chain_uid.clone())
@@ -38,8 +44,6 @@ pub fn execute_solana_send_packet(
 
     SOLANA_PACKET_RELAY_SEQUENCE_COUNT.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
 
-    let euclid_event = simple_event().add_attribute("action", "solana-send-packet");
-
     let send_packet_event = Event::new("euclid-solana-send-packet")
         .add_attribute("msg", msg.to_string())
         .add_attribute("chain_uid", chain_uid.to_string())
@@ -47,18 +51,23 @@ pub fn execute_solana_send_packet(
         .add_attribute("hash", "hash".to_string());
 
     Ok(Response::new()
-        .add_event(euclid_event)
+        .add_attribute("action", "solana-send-packet")
         .add_event(send_packet_event))
 }
 
 pub fn execute_solana_receive_packet(
     deps: DepsMut,
+    info: MessageInfo,
     env: Env,
     chain_uid: ChainUid,
     msg: Binary,
     sequence: u128,
     hash: String,
 ) -> Result<Response, ContractError> {
+    ensure!(
+        info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        ContractError::Unauthorized {}
+    );
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     ensure!(chain.is_solana(), ContractError::Unauthorized {});
 
@@ -85,6 +94,7 @@ pub fn execute_solana_receive_packet(
         .unwrap_or("tx_id_not_found".to_string());
 
     Ok(Response::new()
+        .add_attribute("action", "solana-write-acknowledgement")
         .add_attribute("method", "solana_packet_receive")
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
@@ -109,6 +119,7 @@ pub fn execute_solana_receive_packet_internal_callback(
 
 pub fn execute_solana_receive_acknowledgement(
     deps: DepsMut,
+    info: MessageInfo,
     env: Env,
     chain_uid: ChainUid,
     msg: Binary,
@@ -116,9 +127,10 @@ pub fn execute_solana_receive_acknowledgement(
     _hash: String,
     ack: Binary,
 ) -> Result<Response, ContractError> {
-    // let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-    // ensure!(chain.is_evm(), ContractError::Unauthorized {});
-
+    ensure!(
+        info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        ContractError::Unauthorized {}
+    );
     let existing_request =
         SOLANA_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
 
@@ -134,6 +146,15 @@ pub fn execute_solana_receive_acknowledgement(
     let chain_type = euclid::chain::ChainType::Solana(SolanaChain {});
 
     let msg: HubIbcExecuteMsg = from_json(msg)?;
+
+    // Verify chain uid is registerd and is solana chain if its not a register factory msg
+    match msg {
+        HubIbcExecuteMsg::RegisterFactory { .. } => {}
+        _ => {
+            let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+            ensure!(chain.is_solana(), ContractError::Unauthorized {});
+        }
+    }
 
     ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)
 }

@@ -157,6 +157,7 @@ pub fn execute(
                     vlp_code_id,
                     virtual_balance_address,
                     locked,
+                    mock_relayer_address,
                 } => execute_update_router_state(
                     deps,
                     info,
@@ -164,16 +165,17 @@ pub fn execute(
                     vlp_code_id,
                     virtual_balance_address,
                     locked,
+                    mock_relayer_address,
                 ),
                 ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
-                    execute_evm_send_packet(deps, env, chain_uid, msg)
+                    execute_evm_send_packet(deps, info, env, chain_uid, msg)
                 }
                 ExecuteMsg::EvmReceivePacket {
                     msg,
                     chain_uid,
                     sequence,
                     hash,
-                } => execute_evm_receive_packet(deps, env, chain_uid, msg, sequence, hash),
+                } => execute_evm_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
 
                 ExecuteMsg::EvmReceivePacketInternalCallback { msg, chain_uid } => {
                     execute_evm_receive_packet_internal_callback(
@@ -187,18 +189,18 @@ pub fn execute(
                     hash,
                     ack,
                 } => execute_evm_receive_acknowledgement(
-                    deps, env, chain_uid, msg, sequence, hash, ack,
+                    deps, info, env, chain_uid, msg, sequence, hash, ack,
                 ),
 
                 ExecuteMsg::SolanaSendPacket { msg, chain_uid } => {
-                    execute_solana_send_packet(deps, env, chain_uid, msg)
+                    execute_solana_send_packet(deps, info, env, chain_uid, msg)
                 }
                 ExecuteMsg::SolanaReceivePacket {
                     msg,
                     chain_uid,
                     sequence,
                     hash,
-                } => execute_solana_receive_packet(deps, env, chain_uid, msg, sequence, hash),
+                } => execute_solana_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
 
                 ExecuteMsg::SolanaReceivePacketInternalCallback { msg, chain_uid } => {
                     execute_solana_receive_packet_internal_callback(
@@ -212,7 +214,7 @@ pub fn execute(
                     hash,
                     ack,
                 } => execute_solana_receive_acknowledgement(
-                    deps, env, chain_uid, msg, sequence, hash, ack,
+                    deps, info, env, chain_uid, msg, sequence, hash, ack,
                 ),
 
                 _ => Err(ContractError::UnreachableCode {}),
