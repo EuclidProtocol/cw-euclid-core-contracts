@@ -4,7 +4,9 @@ use cosmwasm_std::{
 };
 
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, Limit},
+    chain::{
+        Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, Limit, SolanaChain,
+    },
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
@@ -151,15 +153,20 @@ pub fn execute_register_factory(
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
         }
         RegisterFactoryChainType::Evm(evm_info) => {
-            let msg = HubIbcExecuteMsg::RegisterFactory {
-                chain_uid: chain_uid.clone(),
-                tx_id: tx_id.clone(),
-            };
             // Save chain info because this call will fail if the tx is not sucessful
             let chain = Chain {
                 factory: evm_info.factory_address,
                 factory_chain_id: env.block.chain_id.clone(),
                 chain_type: euclid::chain::ChainType::Evm(EvmChain {}),
+            };
+            Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
+        }
+        RegisterFactoryChainType::Solana(solana_info) => {
+            // Save chain info because this call will fail if the tx is not sucessful
+            let chain = Chain {
+                factory: solana_info.factory_address,
+                factory_chain_id: env.block.chain_id.clone(),
+                chain_type: euclid::chain::ChainType::Solana(SolanaChain {}),
             };
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
         }

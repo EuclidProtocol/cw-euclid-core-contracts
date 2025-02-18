@@ -131,7 +131,7 @@ impl ChainIbcExecuteMsg {
             }
             ChainType::Ibc(ibc_info) => {
                 let packet = IbcMsg::SendPacket {
-                    channel_id: ibc_info.from_hub_channel,
+                    channel_id: ibc_info.from_factory_channel,
                     data: to_json_binary(self)?,
                     timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
                 };

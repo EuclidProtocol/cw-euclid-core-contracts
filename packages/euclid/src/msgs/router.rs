@@ -275,6 +275,7 @@ pub enum RegisterFactoryChainType {
     Native(RegisterFactoryChainNative),
     Ibc(RegisterFactoryChainIbc),
     Evm(RegisterFactoryChainEvm),
+    Solana(RegisterFactoryChainSolana),
 }
 
 #[cw_serde]
@@ -284,6 +285,11 @@ pub struct RegisterFactoryChainNative {
 
 #[cw_serde]
 pub struct RegisterFactoryChainEvm {
+    pub factory_address: String,
+}
+
+#[cw_serde]
+pub struct RegisterFactoryChainSolana {
     pub factory_address: String,
 }
 
