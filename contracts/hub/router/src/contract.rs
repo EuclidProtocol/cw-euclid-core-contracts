@@ -35,7 +35,7 @@ use crate::reply::{
     IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SOLANA_RECEIVE_REPLY_ID, SWAP_REPLY_ID,
     VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{State, DEREGISTERED_CHAINS, STATE};
+use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -57,6 +57,10 @@ pub fn instantiate(
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
+    if let Some(mock_relayer_address) = msg.mock_relayer_address {
+        MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
+    }
+    
     STATE.save(deps.storage, &state)?;
 
     let virtual_balance_instantiate_msg = euclid::msgs::virtual_balance::InstantiateMsg {
