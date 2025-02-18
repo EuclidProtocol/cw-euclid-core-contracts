@@ -439,8 +439,8 @@ pub fn on_evm_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
 
             let euclid_event = simple_event().add_attribute("action", "evm-write-acknowledgement");
 
-            let write_acknowledge_event =
-                Event::new("euclid-evm-write-acknowledgement").add_attribute("ack", data.to_string());
+            let write_acknowledge_event = Event::new("euclid-evm-write-acknowledgement")
+                .add_attribute("ack", data.to_string());
 
             Ok(Response::new()
                 .add_attribute("reply_on_evm_receive_processing", "success")
