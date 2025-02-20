@@ -60,7 +60,7 @@ pub fn instantiate(
     if let Some(mock_relayer_address) = msg.mock_relayer_address {
         MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
     }
-    
+
     STATE.save(deps.storage, &state)?;
 
     let virtual_balance_instantiate_msg = euclid::msgs::virtual_balance::InstantiateMsg {
