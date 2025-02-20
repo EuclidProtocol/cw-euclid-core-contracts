@@ -418,7 +418,7 @@ pub fn on_evm_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
         SubMsgResult::Err(err) => {
             let euclid_event = simple_event().add_attribute("action", "evm-relay");
 
-            let write_acknowledge_event = Event::new("euclid-write-acknowledgement")
+            let write_acknowledge_event = Event::new("euclid-evm-write-acknowledgemen")
                 .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
 
             Ok(Response::new()
