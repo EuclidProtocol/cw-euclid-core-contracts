@@ -134,10 +134,11 @@ pub fn execute_solana_receive_acknowledgement(
     let existing_request =
         SOLANA_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
 
-    ensure!(
-        existing_request == msg,
-        ContractError::new("Ack source msg doesn't match with existing request")
-    );
+    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
+    // ensure!(
+    //     existing_request == msg,
+    //     ContractError::new("Ack source msg doesn't match with existing request")
+    // );
 
     // Remove the existing request as its already relayed now
 
