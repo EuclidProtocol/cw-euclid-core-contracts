@@ -69,6 +69,7 @@ fn test_register_factory() {
             &RouterInstantiateMsg {
                 vlp_code_id: 3,
                 virtual_balance_code_id,
+                mock_relayer_address: None,
             },
             None,
             None,

@@ -13,6 +13,17 @@ use crate::execute::{
     execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
     execute_update_lock, execute_update_router_state, execute_withdraw_voucher,
 };
+
+use crate::execute::evm::{
+    execute_evm_receive_acknowledgement, execute_evm_receive_packet,
+    execute_evm_receive_packet_internal_callback, execute_evm_send_packet,
+};
+
+use crate::execute::solana::{
+    execute_solana_receive_acknowledgement, execute_solana_receive_packet,
+    execute_solana_receive_packet_internal_callback, execute_solana_send_packet,
+};
+
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
@@ -20,11 +31,11 @@ use crate::query::{
     query_simulate_escrow_release, query_state, query_token_denoms, query_token_escrows, query_vlp,
 };
 use crate::reply::{
-    self, ADD_LIQUIDITY_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
-    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
-    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    self, ADD_LIQUIDITY_REPLY_ID, EVM_RECEIVE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
+    IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SOLANA_RECEIVE_REPLY_ID, SWAP_REPLY_ID,
+    VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{State, DEREGISTERED_CHAINS, STATE};
+use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESS, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -45,6 +56,10 @@ pub fn instantiate(
         locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    if let Some(mock_relayer_address) = msg.mock_relayer_address {
+        MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
+    }
 
     STATE.save(deps.storage, &state)?;
 
@@ -146,6 +161,7 @@ pub fn execute(
                     vlp_code_id,
                     virtual_balance_address,
                     locked,
+                    mock_relayer_address,
                 } => execute_update_router_state(
                     deps,
                     info,
@@ -153,7 +169,58 @@ pub fn execute(
                     vlp_code_id,
                     virtual_balance_address,
                     locked,
+                    mock_relayer_address,
                 ),
+                ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
+                    execute_evm_send_packet(deps, info, env, chain_uid, msg)
+                }
+                ExecuteMsg::EvmReceivePacket {
+                    msg,
+                    chain_uid,
+                    sequence,
+                    hash,
+                } => execute_evm_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
+
+                ExecuteMsg::EvmReceivePacketInternalCallback { msg, chain_uid } => {
+                    execute_evm_receive_packet_internal_callback(
+                        &mut deps, env, info, msg, chain_uid,
+                    )
+                }
+                ExecuteMsg::EvmReceiveAck {
+                    msg,
+                    chain_uid,
+                    sequence,
+                    hash,
+                    ack,
+                } => execute_evm_receive_acknowledgement(
+                    deps, info, env, chain_uid, msg, sequence, hash, ack,
+                ),
+
+                ExecuteMsg::SolanaSendPacket { msg, chain_uid } => {
+                    execute_solana_send_packet(deps, info, env, chain_uid, msg)
+                }
+                ExecuteMsg::SolanaReceivePacket {
+                    msg,
+                    chain_uid,
+                    sequence,
+                    hash,
+                } => execute_solana_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
+
+                ExecuteMsg::SolanaReceivePacketInternalCallback { msg, chain_uid } => {
+                    execute_solana_receive_packet_internal_callback(
+                        &mut deps, env, info, msg, chain_uid,
+                    )
+                }
+                ExecuteMsg::SolanaReceiveAck {
+                    msg,
+                    chain_uid,
+                    sequence,
+                    hash,
+                    ack,
+                } => execute_solana_receive_acknowledgement(
+                    deps, info, env, chain_uid, msg, sequence, hash, ack,
+                ),
+
                 _ => Err(ContractError::UnreachableCode {}),
             }
         }
@@ -204,6 +271,10 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
 
         IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
+
+        EVM_RECEIVE_REPLY_ID => reply::on_evm_receive_reply(deps, msg),
+
+        SOLANA_RECEIVE_REPLY_ID => reply::on_solana_receive_reply(deps, msg),
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",

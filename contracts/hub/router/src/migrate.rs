@@ -21,6 +21,9 @@ fn migrate_v0_2_0_to_v0_2_1(
     if contract_version.version != "0.2.0" {
         return Ok(Response::default());
     }
+    let msg = msg
+        .v0_2_0_to_v0_2_1
+        .ok_or(ContractError::new("Invalid migrate message"))?;
 
     let denoms_iter = msg.denoms.iter();
     for (token, denom) in denoms_iter {

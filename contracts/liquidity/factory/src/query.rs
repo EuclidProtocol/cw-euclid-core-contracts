@@ -1,6 +1,7 @@
 use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Order, Uint128};
 use cw_storage_plus::Bound;
 use euclid::{
+    chain::{ChainType, IbcChain},
     error::ContractError,
     msgs::factory::{
         AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
@@ -166,4 +167,17 @@ pub fn pending_remove_liquidity(
     Ok(to_json_binary(&GetPendingRemoveLiquidityResponse {
         pending_remove_liquidity,
     })?)
+}
+
+pub fn get_chain_type(deps: Deps) -> Result<ChainType, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    if state.is_native {
+        Ok(ChainType::Native {})
+    } else {
+        let channel = HUB_CHANNEL.load(deps.storage)?;
+        Ok(ChainType::Ibc(IbcChain {
+            from_hub_channel: "not-implemented".to_string(),
+            from_factory_channel: channel,
+        }))
+    }
 }

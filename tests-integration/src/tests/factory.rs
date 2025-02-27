@@ -135,6 +135,7 @@ fn test_create_pool_with_funds() {
             &euclid::msgs::router::InstantiateMsg {
                 vlp_code_id: 3,
                 virtual_balance_code_id: 2,
+                mock_relayer_address: None,
             },
             None,
             None,
@@ -904,6 +905,7 @@ fn test_add_liquidity() {
             &euclid::msgs::router::InstantiateMsg {
                 vlp_code_id: 3,
                 virtual_balance_code_id: 2,
+                mock_relayer_address: None,
             },
             None,
             None,
@@ -1712,6 +1714,7 @@ fn test_swap_request() {
             &euclid::msgs::router::InstantiateMsg {
                 vlp_code_id: 3,
                 virtual_balance_code_id: 2,
+                mock_relayer_address: None,
             },
             None,
             None,

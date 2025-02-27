@@ -4,7 +4,9 @@ use cosmwasm_std::{
 };
 
 use euclid::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
+    chain::{
+        Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, Limit, SolanaChain,
+    },
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
@@ -23,7 +25,7 @@ use crate::{
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        STATE, TOKEN_DENOMS,
+        MOCK_RELAYER_ADDRESS, STATE, TOKEN_DENOMS,
     },
 };
 
@@ -148,7 +150,25 @@ pub fn execute_register_factory(
                 factory_chain_id: env.block.chain_id.clone(),
                 chain_type: euclid::chain::ChainType::Native {},
             };
-            Ok(response.add_submessage(msg.to_msg(deps, &env, chain, 0)?))
+            Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
+        }
+        RegisterFactoryChainType::Evm(evm_info) => {
+            // Save chain info because this call will fail if the tx is not sucessful
+            let chain = Chain {
+                factory: evm_info.factory_address,
+                factory_chain_id: env.block.chain_id.clone(),
+                chain_type: euclid::chain::ChainType::Evm(EvmChain {}),
+            };
+            Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
+        }
+        RegisterFactoryChainType::Solana(solana_info) => {
+            // Save chain info because this call will fail if the tx is not sucessful
+            let chain = Chain {
+                factory: solana_info.factory_address,
+                factory_chain_id: env.block.chain_id.clone(),
+                chain_type: euclid::chain::ChainType::Solana(SolanaChain {}),
+            };
+            Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
         }
     }
 }
@@ -214,7 +234,9 @@ pub fn execute_update_factory_channel(
             .add_message(CosmosMsg::Ibc(packet)))
     } else {
         // Can't update channel for a local chain
-        Err(ContractError::NoChannelForLocalChain {})
+        Err(ContractError::NoChannelForChain {
+            chain: chain_info.get_chain_type_str(),
+        })
     }
 }
 
@@ -391,7 +413,13 @@ pub fn execute_release_escrow(
             // We can't use same tx id because it might conflict with pending requests on receiving chain
             tx_id: generate_tx(deps.branch(), &env, &sender)?,
         }
-        .to_msg(deps, &env, chain, timeout)?;
+        .to_msg(
+            deps,
+            &env,
+            cross_chain_address.user.chain_uid.clone(),
+            chain,
+            timeout,
+        )?;
 
         response = response.add_attribute(
             format!(
@@ -462,6 +490,7 @@ pub fn execute_update_router_state(
     vlp_code_id: Option<u64>,
     virtual_balance_address: Option<Addr>,
     locked: Option<bool>,
+    mock_relayer_address: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
@@ -490,7 +519,14 @@ pub fn execute_update_router_state(
 
     STATE.save(deps.storage, &state)?;
 
-    Ok(Response::new()
+    let mut response = Response::new();
+
+    if let Some(ref mock_relayer_address) = mock_relayer_address {
+        MOCK_RELAYER_ADDRESS.save(deps.storage, mock_relayer_address)?;
+        response = response.add_attribute("mock_relayer_update", mock_relayer_address);
+    }
+
+    Ok(response
         .add_attribute("method", "update_state")
         .add_attribute("admin", admin.unwrap_or("unchanged".to_string()))
         .add_attribute(
