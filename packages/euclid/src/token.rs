@@ -274,7 +274,7 @@ impl TokenType {
     }
 
     /// Validates smart contract addresses, checks against empty denom and zero supply
-    pub fn validate(&self, deps: Deps) -> Result<(), ContractError> {
+    pub fn validate(&self, deps: &Deps) -> Result<(), ContractError> {
         if let Self::Native { denom } = &self {
             let potential_supply = deps.querier.query_supply(denom.clone())?;
             let non_zero_supply = !potential_supply.amount.is_zero();
@@ -326,6 +326,14 @@ impl TokenType {
             TokenType::Native { denom } => format!("native:{denom}"),
             TokenType::Smart { contract_address } => format!("smart:{contract_address}"),
             TokenType::Voucher { .. } => "voucher".to_string(),
+        }
+    }
+
+    pub fn get_denom(&self) -> Result<String, ContractError> {
+        match self.clone() {
+            TokenType::Native { denom } => Ok(denom),
+            TokenType::Smart { contract_address } => Ok(contract_address),
+            TokenType::Voucher { .. } => Err(ContractError::new("Voucher has no denom")),
         }
     }
 

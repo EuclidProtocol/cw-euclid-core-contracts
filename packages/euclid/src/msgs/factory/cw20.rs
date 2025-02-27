@@ -4,6 +4,7 @@ use cosmwasm_std::Uint128;
 use crate::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     fee::PartnerFee,
+    msgs::hook::EuclidReceive,
     swap::NextSwapPair,
     token::{Pair, Token, TokenWithDenom},
 };
@@ -23,6 +24,7 @@ pub enum FactoryCw20HookMsg {
         timeout: Option<u64>,
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
         partner_fee: Option<PartnerFee>,
+        meta: Option<String>,
     },
     RemoveLiquidity {
         pair: Pair,
@@ -31,4 +33,5 @@ pub enum FactoryCw20HookMsg {
         // First element in array has highest priority
         cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     },
+    EuclidReceive(EuclidReceive),
 }

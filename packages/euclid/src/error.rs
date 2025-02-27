@@ -142,8 +142,8 @@ pub enum ContractError {
     #[error("Cannot Swap 0 tokens")]
     ZeroAssetAmount {},
 
-    #[error("No Channel for Local Chain")]
-    NoChannelForLocalChain {},
+    #[error("No Channel for Chain: {chain}")]
+    NoChannelForChain { chain: String },
 
     #[error("DuplicateTokens")]
     DuplicateTokens {},
@@ -256,6 +256,9 @@ pub enum ContractError {
 
     #[error("Invalid Address: {address} {msg}")]
     InvalidAddress { address: String, msg: String },
+
+    #[error("Unsupported Euclid Receive Message")]
+    UnsupportedEuclidReceiveMessage {},
 }
 
 impl ContractError {

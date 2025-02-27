@@ -1,6 +1,6 @@
 [package]
 name = "astroport-forwarding"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Anshudhar Kumar Singh <anshudhar2001@gmail.com>"]
 edition = "2021"
 

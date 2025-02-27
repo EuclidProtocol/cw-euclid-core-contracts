@@ -13,6 +13,7 @@ pub struct InstantiateMsg {
     pub vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
     pub virtual_balance_code_id: u64,
+    pub mock_relayer_address: Option<String>,
 }
 
 #[cw_serde]
@@ -68,6 +69,65 @@ pub enum ExecuteMsg {
         stable_vlp_code_id: Option<u64>,
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
+        mock_relayer_address: Option<String>,
+    },
+
+    EvmSendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    EvmReceivePacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+    },
+
+    EvmReceivePacketInternalCallback {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    EvmReceiveAck {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+        ack: Binary,
+    },
+
+    SolanaSendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    SolanaReceivePacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+    },
+
+    SolanaReceivePacketInternalCallback {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    SolanaReceiveAck {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+        ack: Binary,
     },
 }
 
@@ -113,6 +173,11 @@ pub enum QueryMsg {
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct MigrateMsg {
+    pub v0_2_0_to_v0_2_1: Option<MigrateV020ToV021>,
+}
+
+#[cw_serde]
+pub struct MigrateV020ToV021 {
     pub denoms: Vec<(Token, TokenDenom)>,
 }
 
@@ -211,12 +276,25 @@ pub struct TokenDenomsResponse {
 pub enum RegisterFactoryChainType {
     Native(RegisterFactoryChainNative),
     Ibc(RegisterFactoryChainIbc),
+    Evm(RegisterFactoryChainEvm),
+    Solana(RegisterFactoryChainSolana),
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainNative {
     pub factory_address: String,
 }
+
+#[cw_serde]
+pub struct RegisterFactoryChainEvm {
+    pub factory_address: String,
+}
+
+#[cw_serde]
+pub struct RegisterFactoryChainSolana {
+    pub factory_address: String,
+}
+
 #[cw_serde]
 pub struct RegisterFactoryChainIbc {
     pub channel: String,

@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Reply, Response, SubMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Event, Reply, Response, SubMsg,
     SubMsgResult, WasmMsg,
 };
 use cw_utils::{
@@ -7,6 +7,7 @@ use cw_utils::{
 };
 use euclid::{
     error::ContractError,
+    events::simple_event,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
         self,
@@ -37,6 +38,12 @@ pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 
 pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
+
+pub const EVM_RECEIVE_REPLY_ID: u64 = 13;
+pub const EVM_ACK_AND_TIMEOUT_REPLY_ID: u64 = 14;
+
+pub const SOLANA_RECEIVE_REPLY_ID: u64 = 15;
+pub const SOLANA_ACK_AND_TIMEOUT_REPLY_ID: u64 = 16;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -402,6 +409,83 @@ pub fn on_reply_native_ibc_wrapper_call(
                 chain_type,
             )?;
             Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
+        }
+    }
+}
+
+pub fn on_evm_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => {
+            let euclid_event = simple_event().add_attribute("action", "evm-relay");
+
+            let write_acknowledge_event = Event::new("euclid-evm-write-acknowledgement")
+                .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
+
+            Ok(Response::new()
+                .add_attribute("reply_on_evm_receive_processing", "error")
+                .add_attribute("error", err.clone())
+                .add_event(euclid_event)
+                .add_event(write_acknowledge_event))
+        }
+        SubMsgResult::Ok(res) => {
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+
+            let euclid_event = simple_event().add_attribute("action", "evm-write-acknowledgement");
+
+            let write_acknowledge_event = Event::new("euclid-evm-write-acknowledgement")
+                .add_attribute("ack", data.to_string());
+
+            Ok(Response::new()
+                .add_attribute("reply_on_evm_receive_processing", "success")
+                .add_event(euclid_event)
+                .add_event(write_acknowledge_event)
+                .set_data(data))
+        }
+    }
+}
+
+pub fn on_solana_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => {
+            let euclid_event = simple_event().add_attribute("action", "evm-relay");
+
+            let write_acknowledge_event = Event::new("euclid-solana-write-acknowledgement")
+                .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
+
+            Ok(Response::new()
+                .add_attribute("reply_on_solana_receive_processing", "error")
+                .add_attribute("error", err.clone())
+                .add_event(euclid_event)
+                .add_event(write_acknowledge_event))
+        }
+        SubMsgResult::Ok(res) => {
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+
+            let euclid_event =
+                simple_event().add_attribute("action", "solana-write-acknowledgement");
+
+            let write_acknowledge_event = Event::new("euclid-solana-write-acknowledgement")
+                .add_attribute("ack", data.to_string());
+
+            Ok(Response::new()
+                .add_attribute("reply_on_solana_receive_processing", "success")
+                .add_event(euclid_event)
+                .add_event(write_acknowledge_event)
+                .set_data(data))
         }
     }
 }

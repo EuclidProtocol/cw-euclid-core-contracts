@@ -1,10 +1,10 @@
 use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, Binary, StdError, StdResult, Uint128};
+use cosmwasm_std::{ensure, StdError, StdResult, Uint128};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
-use crate::{error::ContractError, token::TokenType};
+use crate::{error::ContractError, msgs::hook::EuclidReceive, token::TokenType};
 
 #[cw_serde]
 #[derive(PartialOrd)]
@@ -108,7 +108,7 @@ impl CrossChainUser {
         limit: Option<Limit>,
         preferred_denom: Option<TokenType>,
         refund_address: Option<String>,
-        forwarding_message: Option<Binary>,
+        forwarding_message: Option<EuclidReceive>,
     ) -> CrossChainUserWithLimit {
         CrossChainUserWithLimit {
             user: self,
@@ -133,7 +133,7 @@ pub struct CrossChainUserWithLimit {
     pub limit: Option<Limit>,
     pub preferred_denom: Option<TokenType>,
     pub refund_address: Option<String>,
-    pub forwarding_message: Option<Binary>,
+    pub forwarding_message: Option<EuclidReceive>,
 }
 
 #[cw_serde]
@@ -150,8 +150,16 @@ pub struct IbcChain {
 }
 
 #[cw_serde]
+pub struct EvmChain {}
+
+#[cw_serde]
+pub struct SolanaChain {}
+
+#[cw_serde]
 pub enum ChainType {
     Ibc(IbcChain),
+    Evm(EvmChain),
+    Solana(SolanaChain),
     Native {},
 }
 
@@ -160,10 +168,27 @@ impl Chain {
         matches!(self.chain_type, ChainType::Native {})
     }
 
+    pub fn is_evm(&self) -> bool {
+        matches!(self.chain_type, ChainType::Evm(_))
+    }
+
+    pub fn is_solana(&self) -> bool {
+        matches!(self.chain_type, ChainType::Solana(_))
+    }
+
     pub fn ibc_info(&self) -> Result<IbcChain, ContractError> {
         match self.chain_type.clone() {
             ChainType::Ibc(data) => Ok(data),
             _ => Err(ContractError::new("Not an ibc chain")),
+        }
+    }
+
+    pub fn get_chain_type_str(&self) -> String {
+        match self.chain_type {
+            ChainType::Ibc(_) => "ibc".to_string(),
+            ChainType::Evm(_) => "evm".to_string(),
+            ChainType::Solana(_) => "solana".to_string(),
+            ChainType::Native {} => "native".to_string(),
         }
     }
 }

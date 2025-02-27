@@ -67,6 +67,15 @@ impl FundManager {
         );
         Ok(())
     }
+
+    /// Validate that there are n number of funds in the manager
+    pub fn validate_n_funds(&self, n: usize) -> Result<(), ContractError> {
+        ensure!(
+            self.funds.len() == n,
+            ContractError::new(&format!("Expected {} funds, got {}", n, self.funds.len()))
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]

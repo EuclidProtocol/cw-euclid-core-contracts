@@ -22,6 +22,7 @@ mod tests {
             vlp_code_id: 1,
             stable_vlp_code_id: 0,
             virtual_balance_code_id: 2,
+            mock_relayer_address: None,
         };
         instantiate(deps, mock_env(), info, msg).unwrap()
     }
@@ -55,6 +56,7 @@ mod tests {
             vlp_code_id: 1,
             stable_vlp_code_id: 0,
             virtual_balance_code_id: 2,
+            mock_relayer_address: None,
         };
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
@@ -204,6 +206,7 @@ mod tests {
             stable_vlp_code_id: Some(0),
             virtual_balance_address: Some(Addr::unchecked("new_virtual_balance_address")),
             locked: Some(true),
+            mock_relayer_address: Some("new_mock_relayer_address".to_string()),
         };
         let info = mock_info("not_owner", &[]);
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();

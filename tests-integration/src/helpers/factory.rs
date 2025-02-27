@@ -1,21 +1,24 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::coin;
+use cosmwasm_std::{coin, Uint128};
 use cw20::Cw20Contract;
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 
 use cw_orch_interchain::IbcQueryHandler;
+use euclid::chain::{CrossChainUser, CrossChainUserWithLimit};
+use euclid::fee::PartnerFee;
 use euclid::msgs::cw20::ExecuteMsgFns;
 use euclid::msgs::factory::{
-    ExecuteMsgFns as FactoryExecuteMsgFns, QueryMsgFns as FactoryQueryMsgFns,
+    ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns,
 };
 
 use cw_orch_interchain::InterchainEnv;
 use cw_orch_interchain::MockInterchainEnv;
-use euclid::token::PairWithDenomAndAmount;
+use euclid::swap::NextSwapPair;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
+use euclid::token::{PairWithDenomAndAmount, Token};
 use factory::FactoryContract;
 
 pub fn register_token(
@@ -116,27 +119,54 @@ pub fn add_liquidity(
     factory: &FactoryContract<MockBase>,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
+    timeout: Option<u64>,
+    funds: Vec<Coin>,
 ) {
-    let chain = interchain
-        .get_chain(factory.environment().chain_id().as_str())
-        .unwrap();
-    let mut funds = vec![];
-    for token in pair_with_denom.get_vec_token_info() {
-        faucet(
-            &chain,
-            chain.sender.as_str(),
-            token.amount.u128(),
-            token.token_type.clone(),
-            &mut funds,
-        );
-    }
     let tx_response = factory
         .execute(
             &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
                 pair_info: pair_with_denom.clone(),
                 slippage_tolerance_bps,
-                timeout: None,
+                timeout,
             },
+            Some(&funds),
+        )
+        .unwrap();
+
+    let _ = interchain
+        .await_packets(factory.environment().chain_id().as_str(), tx_response)
+        .unwrap();
+}
+
+pub fn swap_request(
+    interchain: &MockInterchainEnv,
+    factory: &FactoryContract<MockBase>,
+    sender: Option<CrossChainUser>,
+    asset_in: TokenWithDenom,
+    amount_in: Uint128,
+    asset_out: Token,
+    min_amount_out: Uint128,
+    timeout: Option<u64>,
+    swaps: Vec<NextSwapPair>,
+    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    partner_fee: Option<PartnerFee>,
+    funds: Vec<Coin>,
+    meta: Option<String>,
+) {
+    let tx_response = factory
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+                sender,
+                asset_in,
+                amount_in,
+                asset_out,
+                min_amount_out,
+                timeout,
+                swaps,
+                cross_chain_addresses,
+                partner_fee,
+                meta,
+            }),
             Some(&funds),
         )
         .unwrap();

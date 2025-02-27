@@ -2,10 +2,10 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate};
-    use crate::query::{calculate_lp_allocation, calculate_lp_allocation_for_liquidity};
+    use crate::query::calculate_lp_allocation_for_liquidity;
     use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, Decimal256, DepsMut, Response, Uint128};
+    use cosmwasm_std::{coins, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};

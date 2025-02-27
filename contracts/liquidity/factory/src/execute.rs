@@ -7,12 +7,16 @@ use euclid::{
     chain::{CrossChainUser, CrossChainUserWithLimit},
     deposit::DepositTokenRequest,
     error::ContractError,
-    events::{deposit_token_event, swap_event, tx_event, TxType},
+    events::{deposit_token_event, simple_event, swap_event, tx_event, TxType},
     fee::{PartnerFee, BPS_100_PERCENT, MAX_PARTNER_FEE_BPS},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
-        factory::cw20::FactoryCw20HookMsg,
+        factory::{
+            cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook, ExecuteMsg,
+            ExecuteSwapRequest,
+        },
+        hook::EuclidReceive,
     },
     pool::{DenomRegisterDeregisterRequest, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
@@ -27,6 +31,7 @@ use euclid_ibc::msg::{
 
 use crate::{
     ibc::receive,
+    query::get_chain_type,
     state::{
         State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
@@ -169,11 +174,6 @@ pub fn execute_request_pool_creation(
         ContractError::PoolAlreadyExists {}
     );
 
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
     let timeout = get_timeout(timeout)?;
 
     // We might get errors in ack if marketing is not valid
@@ -212,6 +212,8 @@ pub fn execute_request_pool_creation(
 
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
+    let chain_type = get_chain_type(deps.as_ref())?;
+
     let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
         pair: pair_with_denom_and_amount,
         sender,
@@ -224,8 +226,7 @@ pub fn execute_request_pool_creation(
         &env,
         state.router_contract,
         state.chain_uid,
-        state.is_native,
-        channel.clone(),
+        chain_type,
         timeout,
     )?;
 
@@ -274,11 +275,6 @@ pub fn add_liquidity_request(
         ContractError::PoolDoesNotExist {}
     );
 
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
     let timeout = get_timeout(timeout)?;
 
     // Prepare msg vector
@@ -289,7 +285,7 @@ pub fn add_liquidity_request(
     let tokens = pair_info.get_vec_token_info();
     for token in tokens {
         // validate token
-        token.token_type.validate(deps.as_ref())?;
+        token.token_type.validate(&deps.as_ref())?;
 
         // Ensure liquidity is not zero
         ensure!(!token.amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -352,6 +348,8 @@ pub fn add_liquidity_request(
         &liquidity_tx_info,
     )?;
 
+    let chain_type = get_chain_type(deps.as_ref())?;
+
     let add_liq_msg = ChainIbcExecuteMsg::AddLiquidity {
         sender,
         slippage_tolerance_bps,
@@ -363,8 +361,7 @@ pub fn add_liquidity_request(
         &env,
         state.router_contract,
         state.chain_uid,
-        state.is_native,
-        channel,
+        chain_type,
         timeout,
     )?;
 
@@ -411,13 +408,7 @@ pub fn remove_liquidity_request(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
         ContractError::PoolDoesNotExist {}
     );
-    // TODO: Do we want to add check for lp shares for early fail?
 
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
     let timeout = get_timeout(timeout)?;
 
     // Check that the liquidity is greater than 0
@@ -437,6 +428,7 @@ pub fn remove_liquidity_request(
         &liquidity_tx_info,
     )?;
 
+    let chain_type = get_chain_type(deps.as_ref())?;
     let remove_liq_msg = ChainIbcExecuteMsg::RemoveLiquidity(ChainIbcRemoveLiquidityExecuteMsg {
         sender,
         lp_allocation,
@@ -449,8 +441,7 @@ pub fn remove_liquidity_request(
         &env,
         state.router_contract,
         state.chain_uid,
-        state.is_native,
-        channel,
+        chain_type,
         timeout,
     )?;
 
@@ -480,9 +471,10 @@ pub fn execute_swap_request(
     timeout: Option<u64>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
+    meta: Option<String>,
 ) -> Result<Response, ContractError> {
     // Validate asset in
-    asset_in.token_type.validate(deps.as_ref())?;
+    asset_in.token_type.validate(&deps.as_ref())?;
     asset_in.token.validate()?;
 
     let state = STATE.load(deps.storage)?;
@@ -556,7 +548,7 @@ pub fn execute_swap_request(
 
     ensure!(
         first_swap.token_in == asset_in.token,
-        ContractError::new("Amount in doesn't match swap route")
+        ContractError::new("Token in doesn't match swap route")
     );
 
     let last_swap = swaps.last().ok_or(ContractError::Generic {
@@ -565,14 +557,9 @@ pub fn execute_swap_request(
 
     ensure!(
         last_swap.token_out == asset_out,
-        ContractError::new("Amount out doesn't match swap route")
+        ContractError::new("Token out doesn't match swap route")
     );
 
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
     let timeout = get_timeout(timeout)?;
 
     let partner_fee_recipient = partner_fee
@@ -600,6 +587,8 @@ pub fn execute_swap_request(
         &swap_info,
     )?;
 
+    let chain_type = get_chain_type(deps.as_ref())?;
+
     let swap_msg = ChainIbcExecuteMsg::Swap(euclid_ibc::msg::ChainIbcSwapExecuteMsg {
         sender,
         asset_in,
@@ -620,8 +609,7 @@ pub fn execute_swap_request(
         &env,
         state.router_contract.clone(),
         state.chain_uid.clone(),
-        state.is_native,
-        channel,
+        chain_type,
         timeout,
     )?;
 
@@ -632,6 +620,7 @@ pub fn execute_swap_request(
             euclid::events::TxType::Swap,
         ))
         .add_event(swap_event(&tx_id, &swap_info))
+        .add_event(simple_event().add_attribute("meta", meta.unwrap_or("no_meta".to_string())))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
         .add_submessage(swap_msg))
@@ -659,14 +648,9 @@ pub fn execute_deposit_token(
 
     // Validate asset in
     asset_in.token.validate()?;
-    asset_in.token_type.validate(deps.as_ref())?;
+    asset_in.token_type.validate(&deps.as_ref())?;
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
 
     let timeout = get_timeout(timeout)?;
 
@@ -722,6 +706,8 @@ pub fn execute_deposit_token(
         &deposit_token_info,
     )?;
 
+    let chain_type = get_chain_type(deps.as_ref())?;
+
     let deposit_token_msg =
         ChainIbcExecuteMsg::DepositToken(euclid_ibc::msg::ChainIbcDepositTokenExecuteMsg {
             sender,
@@ -735,8 +721,7 @@ pub fn execute_deposit_token(
             &env,
             state.clone().router_contract,
             state.clone().chain_uid,
-            state.is_native,
-            channel,
+            chain_type,
             timeout,
         )?;
 
@@ -778,6 +763,7 @@ pub fn receive_cw20(
             swaps,
             cross_chain_addresses,
             partner_fee,
+            meta,
         } => {
             let contract_adr = info.sender.clone();
 
@@ -803,6 +789,7 @@ pub fn receive_cw20(
                 timeout,
                 cross_chain_addresses,
                 partner_fee,
+                meta,
             )
         }
         FactoryCw20HookMsg::RemoveLiquidity {
@@ -836,6 +823,98 @@ pub fn receive_cw20(
             execute_deposit_token(
                 &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
             )
+        }
+        FactoryCw20HookMsg::EuclidReceive(euclid_receive) => {
+            receive_euclid_cw20(deps, env, info, sender, cw20_msg.amount, euclid_receive)
+        }
+    }
+}
+
+pub fn receive_euclid_native(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    euclid_receive: EuclidReceive,
+) -> Result<Response, ContractError> {
+    match from_json::<FactoryEuclidReceiveHook>(euclid_receive.data.clone())? {
+        FactoryEuclidReceiveHook::Swap {
+            sender,
+            asset_in,
+            asset_out,
+            min_amount_out,
+            swaps,
+            timeout,
+            cross_chain_addresses,
+            partner_fee,
+        } => {
+            ensure!(
+                asset_in.token_type.is_native(),
+                ContractError::InvalidAsset {
+                    asset: asset_in.token.to_string(),
+                }
+            );
+            let swap_msg = ExecuteSwapRequest {
+                sender: sender.clone(),
+                asset_in,
+                amount_in: Uint128::zero(),
+                asset_out,
+                min_amount_out,
+                swaps,
+                timeout,
+                cross_chain_addresses,
+                partner_fee,
+                meta: euclid_receive.meta,
+            };
+            let response = crate::contract::execute(
+                deps,
+                env,
+                info,
+                ExecuteMsg::ExecuteSwapRequest(swap_msg),
+            )?;
+            Ok(response)
+        }
+    }
+}
+
+pub fn receive_euclid_cw20(
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: CrossChainUser,
+    amount: Uint128,
+    euclid_msg: EuclidReceive,
+) -> Result<Response, ContractError> {
+    match from_json::<FactoryEuclidReceiveHook>(euclid_msg.data.clone())? {
+        FactoryEuclidReceiveHook::Swap {
+            sender: _sender,
+            asset_in,
+            asset_out,
+            min_amount_out,
+            swaps,
+            timeout,
+            cross_chain_addresses,
+            partner_fee,
+        } => {
+            ensure!(
+                info.sender == asset_in.token_type.get_smart_contract_address()?,
+                ContractError::Unauthorized {}
+            );
+            let response = execute_swap_request(
+                &mut deps,
+                env,
+                info,
+                _sender.unwrap_or(sender),
+                asset_in,
+                amount,
+                asset_out,
+                min_amount_out,
+                swaps,
+                timeout,
+                cross_chain_addresses,
+                partner_fee,
+                euclid_msg.meta,
+            )?;
+            Ok(response)
         }
     }
 }
@@ -883,12 +962,9 @@ pub fn execute_request_register_denom(
         );
     }
 
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
     let timeout = get_timeout(timeout)?;
+
+    let chain_type = get_chain_type(deps.as_ref())?;
 
     let request_register_denom_msg = ChainIbcExecuteMsg::RegisterDenom {
         token: token.clone(),
@@ -900,8 +976,7 @@ pub fn execute_request_register_denom(
         &env,
         state.router_contract,
         state.chain_uid,
-        state.is_native,
-        channel,
+        chain_type,
         timeout,
     )?;
 
@@ -968,12 +1043,9 @@ pub fn execute_request_deregister_denom(
     // Denom should be allowed for it to be available for deregister
     ensure!(denom_allowed.allowed, ContractError::AssetDoesNotExist {});
 
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
     let timeout = get_timeout(timeout)?;
+
+    let chain_type = get_chain_type(deps.as_ref())?;
 
     let request_deregister_denom_msg = ChainIbcExecuteMsg::DeRegisterDenom {
         token: token.clone(),
@@ -985,8 +1057,7 @@ pub fn execute_request_deregister_denom(
         &env,
         state.router_contract,
         state.chain_uid,
-        state.is_native,
-        channel,
+        chain_type,
         timeout,
     )?;
 
@@ -1026,17 +1097,14 @@ pub fn execute_withdraw_virtual_balance(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid.clone(),
     };
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
     let timeout = get_timeout(timeout)?;
+
+    let chain_type = get_chain_type(deps.as_ref())?;
 
     let withdraw_msg = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
         sender,
@@ -1051,8 +1119,7 @@ pub fn execute_withdraw_virtual_balance(
         &env,
         state.router_contract,
         state.chain_uid,
-        state.is_native,
-        channel,
+        chain_type,
         timeout,
     )?;
 
@@ -1084,11 +1151,6 @@ pub fn execute_transfer_virtual_balance(
 
     let state = STATE.load(deps.storage)?;
 
-    let channel = if !state.is_native {
-        HUB_CHANNEL.load(deps.storage)?
-    } else {
-        String::default()
-    };
     let sender = CrossChainUser {
         address: info.sender.to_string(),
         chain_uid: state.chain_uid.clone(),
@@ -1096,6 +1158,7 @@ pub fn execute_transfer_virtual_balance(
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
     let timeout = get_timeout(timeout)?;
 
+    let chain_type = get_chain_type(deps.as_ref())?;
     let withdraw_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
         sender,
         token,
@@ -1109,8 +1172,7 @@ pub fn execute_transfer_virtual_balance(
         &env,
         state.router_contract,
         state.chain_uid,
-        state.is_native,
-        channel,
+        chain_type,
         timeout,
     )?;
 
