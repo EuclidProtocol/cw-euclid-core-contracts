@@ -159,6 +159,7 @@ pub fn ibc_ack_register_factory(
             }
             Ok(response
                 .add_attribute("method", "register_factory_ack_success")
+                .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("factory_chain", data.chain_id)
                 .add_attribute("factory_address", data.factory_address))
         }
@@ -170,6 +171,7 @@ pub fn ibc_ack_register_factory(
             }
             Ok(response
                 .add_attribute("method", "register_factory_ack_error")
+                .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("error", err.clone()))
         }
     }
