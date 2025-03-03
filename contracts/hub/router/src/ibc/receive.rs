@@ -109,7 +109,8 @@ pub fn reusable_internal_call(
         !deregistered_chains.contains(&chain_uid),
         ContractError::DeregisteredChain {}
     );
-    match msg {
+    let tx_id = msg.get_tx_id();
+    let response = match msg {
         ChainIbcExecuteMsg::RequestPoolCreation {
             pair,
             sender,
@@ -127,7 +128,7 @@ pub fn reusable_internal_call(
                 pair,
                 tx_id,
                 slippage_tolerance_bps,
-            )
+            )?
         }
         ChainIbcExecuteMsg::RegisterDenom {
             token,
@@ -138,7 +139,7 @@ pub fn reusable_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_register_denom(deps.branch(), env, sender, token, tx_id)
+            execute_register_denom(deps.branch(), env, sender, token, tx_id)?
         }
         ChainIbcExecuteMsg::DeRegisterDenom {
             token,
@@ -149,7 +150,7 @@ pub fn reusable_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            execute_deregister_denom(deps.branch(), env, sender, token, tx_id)
+            execute_deregister_denom(deps.branch(), env, sender, token, tx_id)?
         }
         ChainIbcExecuteMsg::AddLiquidity {
             slippage_tolerance_bps,
@@ -162,21 +163,21 @@ pub fn reusable_internal_call(
                 sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_add_liquidity(deps.branch(), sender, pair, slippage_tolerance_bps, tx_id)
+            ibc_execute_add_liquidity(deps.branch(), sender, pair, slippage_tolerance_bps, tx_id)?
         }
         ChainIbcExecuteMsg::RemoveLiquidity(msg) => {
             ensure!(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_remove_liquidity(deps.branch(), env, msg)
+            ibc_execute_remove_liquidity(deps.branch(), env, msg)?
         }
         ChainIbcExecuteMsg::Swap(msg) => {
             ensure!(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_swap(deps.branch(), env, msg)
+            ibc_execute_swap(deps.branch(), env, msg)?
         }
         ChainIbcExecuteMsg::Withdraw(msg) => {
             ensure!(
@@ -193,7 +194,7 @@ pub fn reusable_internal_call(
                 tx_id: msg.tx_id.clone(),
             };
 
-            Ok(Response::new()
+            Response::new()
                 .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: env.contract.address.to_string(),
                     msg: to_json_binary(&release_msg)?,
@@ -202,14 +203,14 @@ pub fn reusable_internal_call(
                 .set_data(to_json_binary(&AcknowledgementMsg::Ok(WithdrawResponse {
                     token: msg.token,
                     tx_id: msg.tx_id,
-                }))?))
+                }))?)
         }
         ChainIbcExecuteMsg::Transfer(msg) => {
             ensure!(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
-            ibc_execute_transfer_virtual_balance(deps.branch(), env, msg)
+            ibc_execute_transfer_virtual_balance(deps.branch(), env, msg)?
         }
         ChainIbcExecuteMsg::DepositToken(msg) => {
             ensure!(
@@ -217,9 +218,11 @@ pub fn reusable_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
 
-            ibc_execute_deposit_token(deps.branch(), env, msg)
+            ibc_execute_deposit_token(deps.branch(), env, msg)?
         }
-    }
+    };
+    let response = response.add_attribute("tx_id", tx_id);
+    Ok(response)
 }
 
 fn execute_request_pool_creation(
