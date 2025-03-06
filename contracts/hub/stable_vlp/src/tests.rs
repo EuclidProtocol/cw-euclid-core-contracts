@@ -2,13 +2,14 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate};
+    use crate::math::compute_swap;
     use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, DepsMut, Response, Uint128};
+    use cosmwasm_std::{coins, Decimal256, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
-    use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
+    use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg};
     use euclid::token::{Pair, Token};
     use std::collections::HashMap;
 
@@ -180,5 +181,77 @@ mod tests {
             err,
             ContractError::new("Euclid Fee cannot exceed maximum limit")
         );
+    }
+
+    #[test]
+    fn test_compute_swap_equal_pools() {
+        // Test with equal pool sizes (1:1 ratio)
+        let offer_asset = Decimal256::from_ratio(100u128, 1u128);
+        let offer_pool = Decimal256::from_ratio(1000u128, 1u128);
+        let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
+        println!("offer_asset in decimal: {:?}", offer_asset);
+        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool).unwrap();
+        println!("result: {:?}", result);
+
+        // For stable swap with equal pools, return amount should be very close to offer amount
+        // with minimal spread
+        assert!(result.return_amount >= 99u128.into()); // Allow for small rounding
+        assert!(result.spread_amount <= 1u128.into());
+    }
+
+    #[test]
+    fn test_compute_swap_imbalanced_pools() {
+        // Test with imbalanced pools (2:1 ratio)
+        let offer_asset = Decimal256::from_ratio(100u128, 1u128);
+        let offer_pool = Decimal256::from_ratio(2000u128, 1u128);
+        let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
+
+        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool).unwrap();
+
+        // When pools are imbalanced, spread should be higher
+        assert!(result.return_amount < 100u128.into());
+        assert!(result.spread_amount > 1u128.into());
+    }
+
+    #[test]
+    fn test_compute_swap_small_amount() {
+        // Test with very small swap amount
+        let offer_asset = Decimal256::from_ratio(1u128, 1u128);
+        let offer_pool = Decimal256::from_ratio(1000000u128, 1u128);
+        let ask_pool = Decimal256::from_ratio(1000000u128, 1u128);
+
+        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool).unwrap();
+
+        // Small amounts should have minimal spread
+        assert!(result.return_amount >= 0u128.into());
+        assert!(result.spread_amount <= 1u128.into());
+    }
+
+    #[test]
+    fn test_compute_swap_large_amount() {
+        // Test with large swap amount relative to pool size
+        let offer_asset = Decimal256::from_ratio(1000u128, 1u128);
+        let offer_pool = Decimal256::from_ratio(2000u128, 1u128);
+        let ask_pool = Decimal256::from_ratio(2000u128, 1u128);
+
+        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool).unwrap();
+
+        // Large swaps should have higher spread due to impact on pool balance
+        assert!(result.return_amount < 1000u128.into());
+        assert!(result.spread_amount > 0u128.into());
+    }
+
+    #[test]
+    fn test_compute_swap_extreme_imbalance() {
+        // Test with extremely imbalanced pools
+        let offer_asset = Decimal256::from_ratio(100u128, 1u128);
+        let offer_pool = Decimal256::from_ratio(10000u128, 1u128);
+        let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
+
+        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool).unwrap();
+
+        // Highly imbalanced pools should result in higher spread
+        assert!(result.return_amount < 95u128.into());
+        assert!(result.spread_amount > 5u128.into());
     }
 }

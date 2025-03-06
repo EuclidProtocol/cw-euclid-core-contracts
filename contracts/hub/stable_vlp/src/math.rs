@@ -21,12 +21,7 @@ pub(crate) fn compute_swap(
 ) -> Result<SwapResult, ContractError> {
     let token_precision = 1;
 
-    // let xp = pools.iter().map(|p| p.amount).collect::<Vec<_>>();
-    let xp = [
-        Decimal256::from_integer(Uint256::from(1000u128)),
-        Decimal256::from_integer(Uint256::from(1000u128)),
-    ];
-
+    let xp = [*offer_pool, *ask_pool];
     let new_ask_pool = calc_y(
         // compute_current_amp(config, env)?,
         Uint64::new(1000),
@@ -36,7 +31,8 @@ pub(crate) fn compute_swap(
     )?;
 
     let return_amount = ask_pool.to_uint128_with_precision(token_precision)? - new_ask_pool;
-    let offer_asset_amount = offer_asset.to_uint128_with_precision(token_precision)?;
+    let return_amount = return_amount.checked_div(Uint128::new(10))?;
+    let offer_asset_amount = offer_asset.to_uint128_with_precision(0_u32)?;
 
     // We consider swap rate 1:1 in stable swap thus any difference is considered as spread.
     let spread_amount = offer_asset_amount.saturating_sub(return_amount);
