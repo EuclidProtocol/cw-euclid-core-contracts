@@ -20,7 +20,7 @@ mod tests {
     fn init(deps: DepsMut, info: MessageInfo) -> Response {
         let msg = InstantiateMsg {
             vlp_code_id: 1,
-            stable_vlp_code_id: 0,
+            stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
             mock_relayer_address: None,
         };
@@ -36,7 +36,7 @@ mod tests {
         let expected_state = State {
             admin: "owner".to_string(),
             vlp_code_id: 1,
-            stable_vlp_code_id: 0,
+            stable_vlp_code_id: 3,
             virtual_balance_address: None,
             locked: false,
         };
@@ -54,7 +54,7 @@ mod tests {
         // Instantiate the contract first
         let msg = InstantiateMsg {
             vlp_code_id: 1,
-            stable_vlp_code_id: 0,
+            stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
             mock_relayer_address: None,
         };

@@ -842,7 +842,7 @@ fn ibc_execute_transfer_virtual_balance(
     let virtual_balance_address = STATE
         .load(deps.storage)?
         .virtual_balance_address
-        .map_or(Err(ContractError::EmptyVirtualBalanceAddress {}), Ok)?
+        .ok_or(ContractError::EmptyVirtualBalanceAddress {})?
         .into_string();
 
     let transfer_voucher_msg =

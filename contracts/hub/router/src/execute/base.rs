@@ -483,6 +483,7 @@ pub fn execute_native_receive_callback(
     receive::reusable_internal_call(deps, env, info, msg, chain_uid)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn execute_update_router_state(
     deps: DepsMut,
     info: MessageInfo,

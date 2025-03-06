@@ -118,6 +118,7 @@ pub fn execute_evm_receive_packet_internal_callback(
     receive::reusable_internal_call(deps, env, info, msg, chain_uid)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn execute_evm_receive_acknowledgement(
     deps: DepsMut,
     info: MessageInfo,
@@ -132,7 +133,7 @@ pub fn execute_evm_receive_acknowledgement(
         info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
         ContractError::Unauthorized {}
     );
-    let existing_request =
+    let _existing_request =
         EVM_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
 
     // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable

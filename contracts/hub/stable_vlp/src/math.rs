@@ -52,7 +52,6 @@ pub(crate) fn compute_swap(
 /// * **Equation**
 ///
 /// A * sum(x_i) * n**n + D = A * D * n**n + D**(n+1) / (n**n * prod(x_i))
-
 /// Helper function used to calculate the D invariant as a last step in the `compute_d` public function.
 ///
 /// * **Equation**:
