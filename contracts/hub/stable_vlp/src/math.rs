@@ -12,30 +12,38 @@ const ITERATIONS: u8 = 64;
 pub const TOL: Decimal256 = Decimal256::raw(1000000000000);
 
 pub(crate) fn compute_swap(
-    // _storage: &dyn Storage,
-    // _env: &Env,
-    // config: &Config,
     offer_asset: &Decimal256,
     offer_pool: &Decimal256,
     ask_pool: &Decimal256,
 ) -> Result<SwapResult, ContractError> {
-    let token_precision = 1;
+    // Use a constant for amplification factor instead of hardcoding
+    const AMP_FACTOR: u64 = 1000;
+    const TOKEN_PRECISION: u8 = 1;
 
+    // Create array of pool amounts
     let xp = [*offer_pool, *ask_pool];
+
+    // Calculate new pool amount after swap
     let new_ask_pool = calc_y(
-        // compute_current_amp(config, env)?,
-        Uint64::new(1000),
+        Uint64::new(AMP_FACTOR),
         offer_pool + offer_asset,
         &xp,
-        token_precision,
+        TOKEN_PRECISION,
     )?;
 
-    let return_amount = ask_pool.to_uint128_with_precision(token_precision)? - new_ask_pool;
-    let return_amount = return_amount.checked_div(Uint128::new(10))?;
-    let offer_asset_amount = offer_asset.to_uint128_with_precision(0_u32)?;
+    // Calculate return amount (what user receives)
+    let ask_pool_amount = ask_pool.to_uint128_with_precision(TOKEN_PRECISION)?;
+    let new_ask_pool_amount = new_ask_pool;
+    let return_amount = ask_pool_amount
+        .checked_sub(new_ask_pool_amount)
+        .map_err(|_| ContractError::new("Negative return amount"))?
+        .checked_div(Uint128::new(10))?;
 
-    // We consider swap rate 1:1 in stable swap thus any difference is considered as spread.
-    let spread_amount = offer_asset_amount.saturating_sub(return_amount);
+    // Calculate offer amount (what user provides)
+    let offer_amount = offer_asset.to_uint128_with_precision(0_u32)?;
+
+    // Calculate spread (difference between what user provides and receives)
+    let spread_amount = offer_amount.saturating_sub(return_amount);
 
     Ok(SwapResult {
         return_amount,
