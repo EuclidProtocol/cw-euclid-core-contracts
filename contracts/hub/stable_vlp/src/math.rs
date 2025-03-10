@@ -14,21 +14,16 @@ pub(crate) fn compute_swap(
     offer_asset: &Decimal256,
     offer_pool: &Decimal256,
     ask_pool: &Decimal256,
+    amp_factor: Uint64,
 ) -> Result<SwapResult, ContractError> {
     // Use a constant for amplification factor instead of hardcoding
-    const AMP_FACTOR: u64 = 1000;
     const TOKEN_PRECISION: u8 = 1;
 
     // Create array of pool amounts
     let xp = [*offer_pool, *ask_pool];
 
     // Calculate new pool amount after swap
-    let new_ask_pool = calc_y(
-        Uint64::new(AMP_FACTOR),
-        offer_pool + offer_asset,
-        &xp,
-        TOKEN_PRECISION,
-    )?;
+    let new_ask_pool = calc_y(amp_factor, offer_pool + offer_asset, &xp, TOKEN_PRECISION)?;
 
     // Calculate return amount (what user receives)
     let ask_pool_amount = ask_pool.to_uint128_with_precision(TOKEN_PRECISION)?;
@@ -36,7 +31,7 @@ pub(crate) fn compute_swap(
     let return_amount = ask_pool_amount
         .checked_sub(new_ask_pool_amount)
         .map_err(|_| ContractError::new("Negative return amount"))?
-        .checked_div(Uint128::new(10))?;
+        .checked_div(Uint128::new(10u128.pow(TOKEN_PRECISION as u32)))?;
 
     // Calculate offer amount (what user provides)
     let offer_amount = offer_asset.to_uint128_with_precision(0_u32)?;

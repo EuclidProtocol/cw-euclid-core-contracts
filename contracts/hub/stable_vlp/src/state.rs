@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint64};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
@@ -31,3 +31,6 @@ pub const STATE: Item<State> = Item::new("state");
 pub const CHAIN_LP_TOKENS: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
 
 pub const BALANCES: Map<Token, Uint128> = Map::new("balances");
+
+// The amplification factor for the stableswap invariant, default is 1000
+pub const AMP_FACTOR: Item<Uint64> = Item::new("amp_factor");

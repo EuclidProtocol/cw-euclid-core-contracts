@@ -5,7 +5,7 @@ use crate::{
     token::{Pair, PairWithAmount, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Decimal256, Uint128};
+use cosmwasm_std::{Decimal256, Uint128, Uint64};
 use cw_asset::AssetInfo;
 
 #[cw_serde]
@@ -16,6 +16,7 @@ pub struct InstantiateMsg {
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
     pub admin: String,
+    pub amp_factor: Option<Uint64>,
 }
 
 #[cw_serde]
@@ -63,6 +64,7 @@ pub enum ExecuteMsg {
         // The last timestamp where the balances for each token have been updated
         last_updated: Option<u64>,
         admin: Option<String>,
+        amp_factor: Option<Uint64>,
     },
 }
 

@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, MessageInfo, Response, SubMsg,
-    Uint128, WasmMsg,
+    Uint128, Uint64, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
@@ -23,7 +23,7 @@ use crate::{
     math::compute_swap,
     query::{assert_slippage_tolerance, calculate_lp_allocation},
     reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
-    state::{self, State, BALANCES, CHAIN_LP_TOKENS, STATE},
+    state::{self, State, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -429,10 +429,13 @@ pub fn execute_swap(
     // Calculate the amount of asset to be swapped
     let swap_amount = amount_in.checked_sub(total_fee)?;
 
+    let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(Uint64::new(1000));
+
     let receive_amount = compute_swap(
         &Decimal256::from_integer(amount_in),
         &Decimal256::from_integer(token_in_reserve),
         &Decimal256::from_integer(token_out_reserve),
+        amp_factor,
     )?
     .return_amount;
     println!("receive_amount: {}", receive_amount);
@@ -667,7 +670,11 @@ pub fn update_state(
     fee: Option<Fee>,
     last_updated: Option<u64>,
     admin: Option<String>,
+    amp_factor: Option<Uint64>,
 ) -> Result<Response, ContractError> {
+    let mut response = Response::new()
+        .add_attribute("action", "update_state")
+        .add_event(simple_event());
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     // Verify that the router is a valid address
@@ -694,6 +701,11 @@ pub fn update_state(
         state.admin
     };
 
+    if let Some(amp_factor) = amp_factor {
+        AMP_FACTOR.save(deps.storage, &amp_factor)?;
+        response = response.add_attribute("amp_factor_updated", amp_factor.to_string());
+    }
+
     let new_state = State {
         pair: state.pair,
         router: verified_router,
@@ -707,7 +719,5 @@ pub fn update_state(
 
     STATE.save(deps.storage, &new_state)?;
 
-    Ok(Response::new()
-        .add_event(simple_event())
-        .add_attribute("action", "update_state"))
+    Ok(response)
 }
