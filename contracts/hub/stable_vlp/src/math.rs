@@ -1,8 +1,7 @@
-use cosmwasm_std::{
-    ConversionOverflowError, Decimal256, Fraction, StdError, StdResult, Uint128, Uint256, Uint64,
-};
+use cosmwasm_std::{Decimal256, StdError, StdResult, Uint128, Uint64};
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::SwapResult;
+use euclid::utils::math::Decimal256Ext;
 /// N = 2
 pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
 pub const AMP_PRECISION: u64 = 100;
@@ -107,78 +106,6 @@ pub fn compute_d(amp: Uint64, pools: &[Decimal256]) -> StdResult<Decimal256> {
         Err(StdError::generic_err(
             "Newton method for D failed to converge",
         ))
-    }
-}
-
-/// Trait extension for Decimal256 to work with token precisions more accurately.
-pub trait Decimal256Ext {
-    fn to_uint256(&self) -> Uint256;
-
-    fn to_uint128_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint128>;
-
-    fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256>;
-
-    fn from_integer(i: impl Into<Uint256>) -> Self;
-
-    fn checked_multiply_ratio(
-        &self,
-        numerator: Decimal256,
-        denominator: Decimal256,
-    ) -> StdResult<Decimal256>;
-
-    fn with_precision(
-        value: impl Into<Uint256>,
-        precision: impl Into<u32>,
-    ) -> StdResult<Decimal256>;
-}
-impl Decimal256Ext for Decimal256 {
-    fn to_uint256(&self) -> Uint256 {
-        self.numerator() / self.denominator()
-    }
-
-    fn to_uint128_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint128> {
-        let value = self.atomics();
-        let precision = precision.into();
-
-        value
-            .checked_div(10u128.pow(self.decimal_places() - precision).into())?
-            .try_into()
-            .map_err(|o: ConversionOverflowError| {
-                StdError::generic_err(format!("Error converting {}", o.value))
-            })
-    }
-
-    fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256> {
-        let value = self.atomics();
-        let precision = precision.into();
-
-        value
-            .checked_div(10u128.pow(self.decimal_places() - precision).into())
-            .map_err(|_| StdError::generic_err("DivideByZeroError"))
-    }
-
-    fn from_integer(i: impl Into<Uint256>) -> Self {
-        Decimal256::from_ratio(i.into(), 1u8)
-    }
-
-    fn checked_multiply_ratio(
-        &self,
-        numerator: Decimal256,
-        denominator: Decimal256,
-    ) -> StdResult<Decimal256> {
-        Ok(Decimal256::new(
-            self.atomics()
-                .checked_multiply_ratio(numerator.atomics(), denominator.atomics())
-                .map_err(|_| StdError::generic_err("CheckedMultiplyRatioError"))?,
-        ))
-    }
-
-    fn with_precision(
-        value: impl Into<Uint256>,
-        precision: impl Into<u32>,
-    ) -> StdResult<Decimal256> {
-        Decimal256::from_atomics(value, precision.into())
-            .map_err(|_| StdError::generic_err("Decimal256 range exceeded"))
     }
 }
 

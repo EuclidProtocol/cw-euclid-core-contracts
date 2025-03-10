@@ -15,11 +15,12 @@ use euclid::{
     pool::PoolCreationResponse,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
+    utils::math::Decimal256Ext,
     virtual_balance::BalanceKey,
 };
 
 use crate::{
-    math::{compute_swap, Decimal256Ext},
+    math::compute_swap,
     query::{assert_slippage_tolerance, calculate_lp_allocation},
     reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
     state::{self, State, BALANCES, CHAIN_LP_TOKENS, STATE},
