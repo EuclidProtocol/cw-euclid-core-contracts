@@ -9,6 +9,7 @@ use euclid::{
     chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     msgs::{factory, router},
+    pool::PoolConfig,
     swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
@@ -29,7 +30,7 @@ pub enum ChainIbcExecuteMsg {
         sender: CrossChainUser,
         tx_id: String,
         pair: PairWithDenomAndAmount,
-        stable_pool: bool,
+        pool_config: PoolConfig,
         // User will provide this data
         slippage_tolerance_bps: u64,
     },

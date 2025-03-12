@@ -1,10 +1,9 @@
-use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint128;
-
 use crate::{
     chain::CrossChainUser,
     token::{PairWithDenomAndAmount, TokenWithDenom},
 };
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{Uint128, Uint64};
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
@@ -56,3 +55,26 @@ pub struct RegisterDenomResponse {}
 
 #[cw_serde]
 pub struct DeRegisterDenomResponse {}
+
+#[cw_serde]
+pub enum PoolConfig {
+    Stable { amp_factor: Option<Uint64> },
+    ConstantProduct {},
+}
+
+// #[cw_serde]
+// pub struct PoolInstantiateMsg {
+//     pub router: String,
+//     pub virtual_balance: String,
+//     pub pair: Pair,
+//     pub fee: Fee,
+//     pub execute: Option<PoolExecuteMsg>,
+//     pub admin: String,
+//     pub amp_factor: Option<Uint64>,
+// }
+
+// #[cw_serde]
+// pub enum PoolExecuteMsg {
+//     Stable(StableExecuteMsg),
+//     ConstantProduct(ConstantProductExecuteMsg),
+// }

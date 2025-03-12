@@ -3,6 +3,7 @@ use crate::{
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::hook::EuclidReceive,
+    pool::PoolConfig,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::pagination::Pagination,
@@ -40,7 +41,7 @@ pub enum ExecuteMsg {
     },
     RequestPoolCreation {
         pair: PairWithDenomAndAmount,
-        stable_pool: bool,
+        pool_config: PoolConfig,
         slippage_tolerance_bps: u64,
         timeout: Option<u64>,
         lp_token_name: String,

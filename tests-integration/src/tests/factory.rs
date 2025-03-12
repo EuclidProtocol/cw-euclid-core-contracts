@@ -11,6 +11,7 @@ use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::chain::CrossChainUser;
 use euclid::chain::CrossChainUserWithLimit;
 use euclid::fee::{PartnerFee, BPS_100_PERCENT};
+use euclid::pool::PoolConfig;
 use euclid::swap::NextSwapPair;
 use euclid::token::TokenType;
 use euclid::{
@@ -260,7 +261,7 @@ fn test_create_pool_with_funds() {
             lp_token_symbol: "osmo".to_string(),
             lp_token_decimal: 6,
             lp_token_marketing: None,
-            stable_pool: false,
+            pool_config: PoolConfig::ConstantProduct {},
         },
         None, // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
     );
@@ -298,7 +299,7 @@ fn test_create_pool_with_funds() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
-                stable_pool: false,
+                pool_config: PoolConfig::ConstantProduct {},
             },
             Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
@@ -564,7 +565,7 @@ fn test_create_pool_with_funds() {
                 lp_token_symbol: "nibi".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
-                stable_pool: false,
+                pool_config: PoolConfig::ConstantProduct {},
             },
             Some(&[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")]),
         )
@@ -1035,7 +1036,7 @@ fn test_add_liquidity() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
-                stable_pool: false,
+                pool_config: PoolConfig::ConstantProduct {},
             },
             Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
@@ -1263,7 +1264,7 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     // adding funds
@@ -1378,7 +1379,7 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     // adding funds
@@ -1443,7 +1444,7 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     add_liquidity(
@@ -1498,7 +1499,7 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     // adding funds
@@ -1563,7 +1564,7 @@ fn test_add_liquidity_fails_with_extra_funds() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     // adding funds
@@ -1627,7 +1628,7 @@ fn test_add_liquidity_with_timeout() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     // adding funds
@@ -1692,7 +1693,7 @@ fn test_add_liquidity_with_invalid_timeout() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     // adding funds
@@ -1888,7 +1889,7 @@ fn test_swap_request() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
-                stable_pool: false,
+                pool_config: PoolConfig::ConstantProduct {},
             },
             Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
@@ -2082,7 +2083,7 @@ fn test_swap_request_with_valid_partner_fee() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     let asset_in = TokenWithDenom {
@@ -2197,7 +2198,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     let asset_in = TokenWithDenom {
@@ -2310,7 +2311,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     // Use a token not supported by the escrow
@@ -2417,7 +2418,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     let asset_in = TokenWithDenom {
@@ -2523,7 +2524,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     let asset_in = TokenWithDenom {
@@ -2634,7 +2635,7 @@ fn test_swap_request_with_timeout() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     let asset_in = TokenWithDenom {
@@ -2746,7 +2747,7 @@ fn test_swap_request_fails_with_timeout_greater_than_240s() {
         &factory,
         pair_info.clone(),
         BPS_1_PERCENT,
-        false,
+        PoolConfig::ConstantProduct {},
     );
 
     let asset_in = TokenWithDenom {
@@ -2983,7 +2984,7 @@ fn test_stable_pool() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
-                stable_pool: true,
+                pool_config: PoolConfig::Stable { amp_factor: None },
             },
             Some(&[coin(10_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
