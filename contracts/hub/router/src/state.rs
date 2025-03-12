@@ -13,7 +13,7 @@ pub struct State {
     // Contract admin
     pub admin: String,
     // Pool Code ID
-    pub vlp_code_id: u64,
+    pub constant_product_vlp_code_id: u64,
     // Stable Pool Code ID
     pub stable_vlp_code_id: u64,
     pub virtual_balance_address: Option<Addr>,

@@ -3,16 +3,17 @@ use cosmwasm_std::{
 };
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
-use euclid::pool::MINIMUM_LIQUIDITY;
-use euclid::swap::NextSwapVlp;
-use euclid::token::Token;
-
 use euclid::msgs::stable_vlp::{
     AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
     StablePoolInfo, StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
 };
+use euclid::pool::MINIMUM_LIQUIDITY;
+use euclid::swap::NextSwapVlp;
+use euclid::token::Token;
+use euclid::utils::math::Decimal256Ext;
 
-use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
+use crate::math::compute_swap;
+use crate::state::{State, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE};
 
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
@@ -47,23 +48,29 @@ pub fn query_simulate_swap(
 
     let token_in_reserve = BALANCES.load(deps.storage, asset_in)?;
     let token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
-    // TODO replace with compute_swap
-    let receive_amount = calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?;
+    let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
+    let receive_amount = compute_swap(
+        &Decimal256::from_integer(swap_amount),
+        &Decimal256::from_integer(token_in_reserve),
+        &Decimal256::from_integer(token_out_reserve),
+        amp_factor,
+    )?;
     let response = match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             let next_swap_response: GetSwapResponse = deps.querier.query_wasm_smart(
                 next_swap.vlp_address.clone(),
                 &euclid::msgs::vlp::QueryMsg::SimulateSwap {
                     asset: asset_out,
-                    asset_amount: receive_amount,
+                    asset_amount: receive_amount.return_amount,
                     swaps: forward_swaps.to_vec(),
                 },
             )?;
             Ok(to_json_binary(&next_swap_response)?)
         }
         None => Ok(to_json_binary(&GetSwapResponse {
-            amount_out: receive_amount,
+            amount_out: receive_amount.return_amount,
             asset_out,
+            spread_amount: receive_amount.spread_amount,
         })?),
     };
     response
@@ -122,6 +129,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,
         admin: state.admin,
+        amp_factor: AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR),
     })?)
 }
 
@@ -175,23 +183,6 @@ fn get_pool(
             .unwrap_or(Uint128::zero()),
         lp_shares: chain_lp_tokens,
     })
-}
-// Function to calculate the asset to be recieved after a swap
-pub fn calculate_swap(
-    swap_amount: Uint128,
-    reserve_in: Uint128,
-    reserve_out: Uint128,
-) -> Result<Uint128, ContractError> {
-    // Calculate the k constant product
-    let k = reserve_in.checked_mul(reserve_out)?;
-    // Calculate the new reserve of token 1
-    let new_reserve_in = reserve_in.checked_add(swap_amount)?;
-    // Calculate the new reserve of token 2
-    let new_reserve_out = k.checked_div(new_reserve_in)?;
-    // Calculate the amount of token 2 to be recieved
-    let token_2_recieved = reserve_out.checked_sub(new_reserve_out)?;
-
-    Ok(token_2_recieved)
 }
 
 pub fn calculate_lp_allocation(

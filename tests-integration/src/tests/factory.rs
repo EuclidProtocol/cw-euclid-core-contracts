@@ -137,7 +137,7 @@ fn test_create_pool_with_funds() {
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: 3,
+                constant_product_vlp_code_id: 3,
                 stable_vlp_code_id: 4,
                 virtual_balance_code_id: 2,
                 mock_relayer_address: None,
@@ -911,7 +911,7 @@ fn test_add_liquidity() {
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: 3,
+                constant_product_vlp_code_id: 3,
                 virtual_balance_code_id: 2,
                 mock_relayer_address: None,
                 stable_vlp_code_id: 4,
@@ -1764,7 +1764,7 @@ fn test_swap_request() {
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: 3,
+                constant_product_vlp_code_id: 3,
                 virtual_balance_code_id: 2,
                 mock_relayer_address: None,
                 stable_vlp_code_id: 4,
@@ -2859,7 +2859,7 @@ fn test_stable_pool() {
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: 3,
+                constant_product_vlp_code_id: 3,
                 stable_vlp_code_id: 4,
                 virtual_balance_code_id: 2,
                 mock_relayer_address: None,

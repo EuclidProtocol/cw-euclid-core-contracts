@@ -116,7 +116,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
     router
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: vlp.code_id().unwrap(),
+                constant_product_vlp_code_id: vlp.code_id().unwrap(),
                 stable_vlp_code_id: stable_vlp.code_id().unwrap(),
                 virtual_balance_code_id: virtual_balance.code_id().unwrap(),
                 mock_relayer_address: None,

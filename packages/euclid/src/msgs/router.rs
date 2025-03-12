@@ -9,9 +9,9 @@ use crate::{
 };
 #[cw_serde]
 pub struct InstantiateMsg {
-    // Pool Code ID
-    pub vlp_code_id: u64,
+    pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
+
     pub virtual_balance_code_id: u64,
     pub mock_relayer_address: Option<String>,
 }
@@ -193,7 +193,8 @@ pub struct QuerySimulateSwap {
 #[cw_serde]
 pub struct StateResponse {
     pub admin: String,
-    pub vlp_code_id: u64,
+    pub constant_product_vlp_code_id: u64,
+    pub stable_vlp_code_id: u64,
     pub virtual_balance_address: Option<Addr>,
     pub locked: bool,
 }

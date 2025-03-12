@@ -488,7 +488,7 @@ pub fn execute_update_router_state(
     deps: DepsMut,
     info: MessageInfo,
     admin: Option<String>,
-    vlp_code_id: Option<u64>,
+    constant_product_vlp_code_id: Option<u64>,
     stable_vlp_code_id: Option<u64>,
     virtual_balance_address: Option<Addr>,
     locked: Option<bool>,
@@ -514,7 +514,8 @@ pub fn execute_update_router_state(
 
     let state = State {
         admin: verified_admin,
-        vlp_code_id: vlp_code_id.unwrap_or(state.vlp_code_id),
+        constant_product_vlp_code_id: constant_product_vlp_code_id
+            .unwrap_or(state.constant_product_vlp_code_id),
         stable_vlp_code_id: stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id),
         virtual_balance_address: verified_virtual_balance_address?,
         locked: locked.unwrap_or(state.locked),
@@ -534,7 +535,8 @@ pub fn execute_update_router_state(
         .add_attribute("admin", admin.unwrap_or("unchanged".to_string()))
         .add_attribute(
             "vlp_code_id",
-            vlp_code_id.map_or("unchanged".to_string(), |code_id| code_id.to_string()),
+            constant_product_vlp_code_id
+                .map_or("unchanged".to_string(), |code_id| code_id.to_string()),
         )
         .add_attribute(
             "stable_vlp_code_id",

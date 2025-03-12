@@ -20,7 +20,8 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
         admin: state.admin,
-        vlp_code_id: state.vlp_code_id,
+        constant_product_vlp_code_id: state.constant_product_vlp_code_id,
+        stable_vlp_code_id: state.stable_vlp_code_id,
         virtual_balance_address: state.virtual_balance_address,
         locked: state.locked,
     })?)

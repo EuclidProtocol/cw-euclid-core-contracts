@@ -323,15 +323,10 @@ fn execute_request_pool_creation(
         };
         Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
     } else {
-        let (code_id, label) = match pool_config {
-            PoolConfig::Stable { .. } => (state.stable_vlp_code_id, "Stable VLP"),
-            PoolConfig::ConstantProduct {} => (state.vlp_code_id, "VLP"),
-        };
-
         let msg = match pool_config {
             PoolConfig::Stable { amp_factor } => WasmMsg::Instantiate {
                 admin: Some(state.admin.clone()),
-                code_id,
+                code_id: state.stable_vlp_code_id,
                 msg: to_json_binary(&msgs::stable_vlp::InstantiateMsg {
                     router: env.contract.address.to_string(),
                     virtual_balance: state
@@ -358,11 +353,11 @@ fn execute_request_pool_creation(
                     amp_factor,
                 })?,
                 funds: vec![],
-                label: label.to_string(),
+                label: "Stable VLP".to_string(),
             },
             PoolConfig::ConstantProduct {} => WasmMsg::Instantiate {
                 admin: Some(state.admin.clone()),
-                code_id,
+                code_id: state.constant_product_vlp_code_id,
                 msg: to_json_binary(&msgs::vlp::InstantiateMsg {
                     router: env.contract.address.to_string(),
                     virtual_balance: state
@@ -384,7 +379,7 @@ fn execute_request_pool_creation(
                     admin: state.admin.clone(),
                 })?,
                 funds: vec![],
-                label: label.to_string(),
+                label: "Constant Product VLP".to_string(),
             },
         };
 

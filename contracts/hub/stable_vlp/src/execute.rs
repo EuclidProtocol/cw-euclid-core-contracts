@@ -23,7 +23,7 @@ use crate::{
     math::compute_swap,
     query::{assert_slippage_tolerance, calculate_lp_allocation},
     reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
-    state::{self, State, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE},
+    state::{self, State, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -429,7 +429,7 @@ pub fn execute_swap(
     // Calculate the amount of asset to be swapped
     let swap_amount = amount_in.checked_sub(total_fee)?;
 
-    let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(Uint64::new(1000));
+    let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
 
     let receive_amount = compute_swap(
         &Decimal256::from_integer(amount_in),
