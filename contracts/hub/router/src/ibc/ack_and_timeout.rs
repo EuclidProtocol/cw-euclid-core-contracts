@@ -74,12 +74,14 @@ pub fn reusable_internal_ack_call(
     ack: Binary,
     chain_type: euclid::chain::ChainType,
 ) -> Result<Response, ContractError> {
-    match msg {
+    let tx_id = msg.get_tx_id();
+
+    let response = match msg {
         HubIbcExecuteMsg::RegisterFactory {
             chain_uid, tx_id, ..
         } => {
             let res = from_json(ack)?;
-            ibc_ack_register_factory(deps, env, chain_uid, chain_type, res, tx_id)
+            ibc_ack_register_factory(deps, env, chain_uid, chain_type, res, tx_id)?
         }
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
@@ -89,13 +91,15 @@ pub fn reusable_internal_ack_call(
             ..
         } => {
             let res = from_json(ack)?;
-            ibc_ack_release_escrow(deps, env, sender, amount, token, res, tx_id)
+            ibc_ack_release_escrow(deps, env, sender, amount, token, res, tx_id)?
         }
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             let res = from_json(ack)?;
-            ibc_ack_update_factory_channel(deps, env, chain_uid, chain_type, res, tx_id)
+            ibc_ack_update_factory_channel(deps, env, chain_uid, chain_type, res, tx_id)?
         }
-    }
+    };
+    let response = response.add_attribute("tx_id", tx_id);
+    Ok(response)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -155,6 +159,7 @@ pub fn ibc_ack_register_factory(
             }
             Ok(response
                 .add_attribute("method", "register_factory_ack_success")
+                .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("factory_chain", data.chain_id)
                 .add_attribute("factory_address", data.factory_address))
         }
@@ -166,6 +171,7 @@ pub fn ibc_ack_register_factory(
             }
             Ok(response
                 .add_attribute("method", "register_factory_ack_error")
+                .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("error", err.clone()))
         }
     }
