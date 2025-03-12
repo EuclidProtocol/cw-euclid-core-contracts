@@ -20,7 +20,8 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
         admin: state.admin,
-        vlp_code_id: state.vlp_code_id,
+        constant_product_vlp_code_id: state.constant_product_vlp_code_id,
+        stable_vlp_code_id: state.stable_vlp_code_id,
         virtual_balance_address: state.virtual_balance_address,
         locked: state.locked,
     })?)
@@ -100,12 +101,12 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
 
     ensure!(
         first_swap.token_in == msg.asset_in,
-        ContractError::new("Asset IN doen't match router")
+        ContractError::new("Asset IN does not match router")
     );
 
     ensure!(
         last_swap.token_out == msg.asset_out,
-        ContractError::new("Asset OUT doen't match router")
+        ContractError::new("Asset OUT does not match router")
     );
 
     let swap_vlps = validate_swap_pairs(deps, &msg.swaps);

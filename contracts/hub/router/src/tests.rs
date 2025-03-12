@@ -19,7 +19,8 @@ mod tests {
 
     fn init(deps: DepsMut, info: MessageInfo) -> Response {
         let msg = InstantiateMsg {
-            vlp_code_id: 1,
+            constant_product_vlp_code_id: 1,
+            stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
             mock_relayer_address: None,
         };
@@ -34,7 +35,8 @@ mod tests {
         init(deps.as_mut(), info);
         let expected_state = State {
             admin: "owner".to_string(),
-            vlp_code_id: 1,
+            constant_product_vlp_code_id: 1,
+            stable_vlp_code_id: 3,
             virtual_balance_address: None,
             locked: false,
         };
@@ -51,7 +53,8 @@ mod tests {
 
         // Instantiate the contract first
         let msg = InstantiateMsg {
-            vlp_code_id: 1,
+            constant_product_vlp_code_id: 1,
+            stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
             mock_relayer_address: None,
         };
@@ -200,6 +203,7 @@ mod tests {
         let msg = ExecuteMsg::UpdateRouterState {
             admin: Some("new_admin".to_string()),
             vlp_code_id: Some(1),
+            stable_vlp_code_id: Some(0),
             virtual_balance_address: Some(Addr::unchecked("new_virtual_balance_address")),
             locked: Some(true),
             mock_relayer_address: Some("new_mock_relayer_address".to_string()),
@@ -213,7 +217,7 @@ mod tests {
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
         let state = STATE.load(deps.as_ref().storage).unwrap();
         assert_eq!(state.admin, "new_admin".to_string());
-        assert_eq!(state.vlp_code_id, 1);
+        assert_eq!(state.constant_product_vlp_code_id, 1);
         assert_eq!(
             state.virtual_balance_address,
             Some(Addr::unchecked("new_virtual_balance_address"))

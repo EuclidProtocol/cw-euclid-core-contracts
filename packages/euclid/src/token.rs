@@ -90,7 +90,7 @@ impl Token {
     }
 }
 
-impl<'a> PrimaryKey<'a> for Token {
+impl PrimaryKey<'_> for Token {
     type Prefix = ();
     type SubPrefix = ();
 
@@ -102,7 +102,7 @@ impl<'a> PrimaryKey<'a> for Token {
     }
 }
 
-impl<'a> Prefixer<'a> for Token {
+impl Prefixer<'_> for Token {
     fn prefix(&self) -> Vec<Key> {
         vec![Key::Ref(self.as_bytes())]
     }
@@ -193,7 +193,7 @@ impl Pair {
     }
 }
 
-impl<'a> PrimaryKey<'a> for Pair {
+impl PrimaryKey<'_> for Pair {
     type Prefix = Token;
     type SubPrefix = ();
 

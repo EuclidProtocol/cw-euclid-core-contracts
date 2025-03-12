@@ -50,6 +50,7 @@ fn test_proper_instantiation() {
         router_code_id,
         owner.clone(),
         vlp_code_id,
+        0,
         virtual_balance_code_id,
     );
 

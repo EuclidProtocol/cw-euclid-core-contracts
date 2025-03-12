@@ -15,6 +15,7 @@ use euclid::msgs::factory::{
 
 use cw_orch_interchain::InterchainEnv;
 use cw_orch_interchain::MockInterchainEnv;
+use euclid::pool::PoolConfig;
 use euclid::swap::NextSwapPair;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
@@ -75,6 +76,7 @@ pub fn create_pool(
     factory: &FactoryContract<MockBase>,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
+    pool_config: PoolConfig,
 ) {
     let chain = interchain
         .get_chain(factory.environment().chain_id().as_str())
@@ -99,6 +101,7 @@ pub fn create_pool(
                 lp_token_symbol: "LPSYMBOL".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                pool_config,
             },
             Some(&funds),
         )

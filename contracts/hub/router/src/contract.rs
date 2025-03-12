@@ -50,7 +50,8 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
-        vlp_code_id: msg.vlp_code_id,
+        constant_product_vlp_code_id: msg.constant_product_vlp_code_id,
+        stable_vlp_code_id: msg.stable_vlp_code_id,
         admin: info.sender.to_string(),
         virtual_balance_address: None,
         locked: false,
@@ -159,6 +160,7 @@ pub fn execute(
                 ExecuteMsg::UpdateRouterState {
                     admin,
                     vlp_code_id,
+                    stable_vlp_code_id,
                     virtual_balance_address,
                     locked,
                     mock_relayer_address,
@@ -167,6 +169,7 @@ pub fn execute(
                     info,
                     admin,
                     vlp_code_id,
+                    stable_vlp_code_id,
                     virtual_balance_address,
                     locked,
                     mock_relayer_address,

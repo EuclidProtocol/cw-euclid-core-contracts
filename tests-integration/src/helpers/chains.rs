@@ -15,6 +15,7 @@ use euclid::{
 };
 use factory::FactoryContract;
 use router::RouterContract;
+use stable_vlp::StableVlpContract;
 use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
 
@@ -106,6 +107,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
     let router = RouterContract::new(chain.clone());
     let virtual_balance = VirtualBalanceContract::new(chain.clone());
     let vlp = VlpContract::new(chain.clone());
+    let stable_vlp = StableVlpContract::new(chain.clone());
 
     router.upload().unwrap();
     virtual_balance.upload().unwrap();
@@ -114,7 +116,8 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
     router
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: vlp.code_id().unwrap(),
+                constant_product_vlp_code_id: vlp.code_id().unwrap(),
+                stable_vlp_code_id: stable_vlp.code_id().unwrap(),
                 virtual_balance_code_id: virtual_balance.code_id().unwrap(),
                 mock_relayer_address: None,
             },

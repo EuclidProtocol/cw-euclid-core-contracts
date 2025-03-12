@@ -11,6 +11,7 @@ use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::chain::CrossChainUser;
 use euclid::chain::CrossChainUserWithLimit;
 use euclid::fee::{PartnerFee, BPS_100_PERCENT};
+use euclid::pool::PoolConfig;
 use euclid::swap::NextSwapPair;
 use euclid::token::TokenType;
 use euclid::{
@@ -38,6 +39,7 @@ use factory::{
 };
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::RouterContract;
+use stable_vlp::StableVlpContract;
 use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
 
@@ -122,6 +124,7 @@ fn test_create_pool_with_funds() {
     let router_nibiru = RouterContract::new(nibiru.clone());
     let virtual_balance_nibiru = VirtualBalanceContract::new(nibiru.clone());
     let vlp_nibiru = VlpContract::new(nibiru.clone());
+    let stable_vlp_nibiru = StableVlpContract::new(nibiru.clone());
 
     factory_osmosis.upload().unwrap();
     escrow_osmosis.upload().unwrap();
@@ -129,11 +132,13 @@ fn test_create_pool_with_funds() {
     router_nibiru.upload().unwrap();
     virtual_balance_nibiru.upload().unwrap();
     vlp_nibiru.upload().unwrap();
+    stable_vlp_nibiru.upload().unwrap();
 
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: 3,
+                constant_product_vlp_code_id: 3,
+                stable_vlp_code_id: 4,
                 virtual_balance_code_id: 2,
                 mock_relayer_address: None,
             },
@@ -256,6 +261,7 @@ fn test_create_pool_with_funds() {
             lp_token_symbol: "osmo".to_string(),
             lp_token_decimal: 6,
             lp_token_marketing: None,
+            pool_config: PoolConfig::ConstantProduct {},
         },
         None, // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
     );
@@ -293,6 +299,7 @@ fn test_create_pool_with_funds() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                pool_config: PoolConfig::ConstantProduct {},
             },
             Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
@@ -483,11 +490,11 @@ fn test_create_pool_with_funds() {
     let factory_nibiru = FactoryContract::new(nibiru.clone());
     let escrow_nibiru = EscrowContract::new(nibiru.clone());
     let cw20_nibiru = Cw20Contract::new(nibiru.clone());
-    //4
-    factory_nibiru.upload().unwrap();
     //5
-    escrow_nibiru.upload().unwrap();
+    factory_nibiru.upload().unwrap();
     //6
+    escrow_nibiru.upload().unwrap();
+    //7
     cw20_nibiru.upload().unwrap();
 
     factory_nibiru
@@ -495,8 +502,8 @@ fn test_create_pool_with_funds() {
             &euclid::msgs::factory::InstantiateMsg {
                 router_contract: router_nibiru.address().unwrap().into_string(),
                 chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                escrow_code_id: 5,
-                cw20_code_id: 6,
+                escrow_code_id: 6,
+                cw20_code_id: 7,
                 is_native: true,
             },
             None,
@@ -558,6 +565,7 @@ fn test_create_pool_with_funds() {
                 lp_token_symbol: "nibi".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                pool_config: PoolConfig::ConstantProduct {},
             },
             Some(&[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")]),
         )
@@ -903,9 +911,10 @@ fn test_add_liquidity() {
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: 3,
+                constant_product_vlp_code_id: 3,
                 virtual_balance_code_id: 2,
                 mock_relayer_address: None,
+                stable_vlp_code_id: 4,
             },
             None,
             None,
@@ -1027,6 +1036,7 @@ fn test_add_liquidity() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                pool_config: PoolConfig::ConstantProduct {},
             },
             Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
@@ -1249,7 +1259,13 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     // adding funds
     let chain = interchain
@@ -1358,7 +1374,13 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
         pair_info.token_1.to_token_with_denom(),
     );
 
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     // adding funds
     let chain = interchain
@@ -1417,7 +1439,13 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
         pair_info.token_1.to_token_with_denom(),
     );
 
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     add_liquidity(
         &interchain,
@@ -1466,7 +1494,13 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
         denom: "osmo".to_string(),
     };
 
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     // adding funds
     let chain = interchain
@@ -1525,7 +1559,13 @@ fn test_add_liquidity_fails_with_extra_funds() {
         pair_info.token_1.to_token_with_denom(),
     );
 
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     // adding funds
     let chain = interchain
@@ -1583,7 +1623,13 @@ fn test_add_liquidity_with_timeout() {
         pair_info.token_1.to_token_with_denom(),
     );
 
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     // adding funds
     let chain = interchain
@@ -1642,7 +1688,13 @@ fn test_add_liquidity_with_invalid_timeout() {
         pair_info.token_1.to_token_with_denom(),
     );
 
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     // adding funds
     let chain = interchain
@@ -1712,9 +1764,10 @@ fn test_swap_request() {
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                vlp_code_id: 3,
+                constant_product_vlp_code_id: 3,
                 virtual_balance_code_id: 2,
                 mock_relayer_address: None,
+                stable_vlp_code_id: 4,
             },
             None,
             None,
@@ -1836,6 +1889,7 @@ fn test_swap_request() {
                 lp_token_symbol: "osmo".to_string(),
                 lp_token_decimal: 6,
                 lp_token_marketing: None,
+                pool_config: PoolConfig::ConstantProduct {},
             },
             Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
         )
@@ -2024,7 +2078,13 @@ fn test_swap_request_with_valid_partner_fee() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     let asset_in = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -2133,7 +2193,13 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     let asset_in = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -2240,7 +2306,13 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     // Use a token not supported by the escrow
     let asset_in = TokenWithDenom {
@@ -2341,7 +2413,13 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     let asset_in = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -2441,7 +2519,13 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     let asset_in = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -2546,7 +2630,13 @@ fn test_swap_request_with_timeout() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     let asset_in = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -2652,7 +2742,13 @@ fn test_swap_request_fails_with_timeout_greater_than_240s() {
         &factory,
         pair_info.token_1.to_token_with_denom(),
     );
-    create_pool(&interchain, &factory, pair_info.clone(), BPS_1_PERCENT);
+    create_pool(
+        &interchain,
+        &factory,
+        pair_info.clone(),
+        BPS_1_PERCENT,
+        PoolConfig::ConstantProduct {},
+    );
 
     let asset_in = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -2724,5 +2820,362 @@ fn test_swap_request_fails_with_timeout_greater_than_240s() {
         None,
         funds,
         None,
+    );
+}
+
+#[test]
+fn test_stable_pool() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let osmosis = interchain.get_chain("osmosis").unwrap();
+    let nibiru = interchain.get_chain("nibiru").unwrap();
+
+    osmosis
+        .set_balance(
+            sender.clone(),
+            vec![
+                Coin::new(100000000000000, "osmo"),
+                Coin::new(100000000000000, "eucl"),
+            ],
+        )
+        .unwrap();
+
+    let factory_osmosis = FactoryContract::new(osmosis.clone());
+    let escrow_osmosis = EscrowContract::new(osmosis.clone());
+    let cw20_osmosis = Cw20Contract::new(osmosis.clone());
+    let router_nibiru = RouterContract::new(nibiru.clone());
+    let virtual_balance_nibiru = VirtualBalanceContract::new(nibiru.clone());
+    let vlp_nibiru = VlpContract::new(nibiru.clone());
+    let stable_vlp_nibiru = StableVlpContract::new(nibiru.clone());
+
+    factory_osmosis.upload().unwrap();
+    escrow_osmosis.upload().unwrap();
+    cw20_osmosis.upload().unwrap();
+    router_nibiru.upload().unwrap();
+    virtual_balance_nibiru.upload().unwrap();
+    vlp_nibiru.upload().unwrap();
+    stable_vlp_nibiru.upload().unwrap();
+
+    router_nibiru
+        .instantiate(
+            &euclid::msgs::router::InstantiateMsg {
+                constant_product_vlp_code_id: 3,
+                stable_vlp_code_id: 4,
+                virtual_balance_code_id: 2,
+                mock_relayer_address: None,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+
+    factory_osmosis
+        .instantiate(
+            &euclid::msgs::factory::InstantiateMsg {
+                router_contract: router_nibiru.address().unwrap().into_string(),
+                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                escrow_code_id: 2,
+                cw20_code_id: 3,
+                is_native: false,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+
+    // Set up channel from osmosis to nibiru
+    let channel_receipt = interchain
+        .create_contract_channel(&factory_osmosis, &router_nibiru, "counter-1", None)
+        .unwrap();
+
+    // After channel creation is complete, we get the channel id, which is necessary for ICA remote execution
+    let osmosis_channel = channel_receipt
+        .interchain_channel
+        .get_chain("osmosis")
+        .unwrap()
+        .channel
+        .unwrap();
+
+    // Update Hub Channel
+    factory_osmosis
+        .update_hub_channel(osmosis_channel.to_string())
+        .unwrap();
+
+    let register_factory_request = router_nibiru
+        .execute(
+            &euclid::msgs::router::ExecuteMsg::RegisterFactory {
+                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_info: euclid::msgs::router::RegisterFactoryChainType::Ibc(
+                    RegisterFactoryChainIbc {
+                        channel: osmosis_channel.to_string(),
+                        timeout: None,
+                    },
+                ),
+            },
+            None,
+        )
+        .unwrap();
+
+    let _ = interchain
+        .await_packets("nibiru", register_factory_request)
+        .unwrap();
+
+    // // Register escrow
+    let register_escrow_request = factory_osmosis
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
+                token: TokenWithDenom {
+                    token: Token::create("osmo".to_string()).unwrap(),
+                    token_type: euclid::token::TokenType::Native {
+                        denom: "osmo".to_string(),
+                    },
+                },
+                timeout: None,
+            },
+            None,
+        )
+        .unwrap();
+
+    let _ = interchain
+        .await_packets("osmosis", register_escrow_request)
+        .unwrap();
+
+    let token_denoms_response: TokenDenomsResponse = router_nibiru
+        .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
+            token: Token::create("osmo".to_string()).unwrap(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        token_denoms_response,
+        TokenDenomsResponse {
+            denoms: vec![TokenDenom {
+                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                token_type: euclid::token::TokenType::Native {
+                    denom: "osmo".to_string(),
+                },
+            }],
+        }
+    );
+
+    // Need to request register escrow first
+    let create_pool_with_funds_request = factory_osmosis
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
+                pair: PairWithDenomAndAmount {
+                    token_1: TokenWithDenomAndAmount {
+                        token: Token::create("eucl".to_string()).unwrap(),
+                        amount: Uint128::from(10_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "eucl".to_string(),
+                        },
+                    },
+                    token_2: TokenWithDenomAndAmount {
+                        token: Token::create("osmo".to_string()).unwrap(),
+                        amount: Uint128::from(10_000u128),
+                        token_type: euclid::token::TokenType::Native {
+                            denom: "osmo".to_string(),
+                        },
+                    },
+                },
+                slippage_tolerance_bps: 100,
+                timeout: None,
+                lp_token_name: "osmosis".to_string(),
+                lp_token_symbol: "osmo".to_string(),
+                lp_token_decimal: 6,
+                lp_token_marketing: None,
+                pool_config: PoolConfig::Stable { amp_factor: None },
+            },
+            Some(&[coin(10_000u128, "osmo"), coin(10_000u128, "eucl")]),
+        )
+        .unwrap();
+
+    let packet_lifetime = interchain
+        .await_packets("osmosis", create_pool_with_funds_request)
+        .unwrap();
+
+    // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+
+        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    } else {
+        panic!("packet timed out");
+        // There was a decode error or the packet timed out
+        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    };
+
+    let all_pools_query: AllPoolsResponse = factory_osmosis
+        .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
+        .unwrap();
+    assert_eq!(
+        all_pools_query,
+        AllPoolsResponse {
+            pools: vec![PoolVlpResponse {
+                pair: Pair::new(
+                    Token::create("eucl".to_string()).unwrap(),
+                    Token::create("osmo".to_string()).unwrap(),
+                )
+                .unwrap(),
+                vlp: Addr::unchecked("contract2").into_string(),
+            }],
+        }
+    );
+
+    let vlp_query: VlpResponse = router_nibiru
+        .query(&euclid::msgs::router::QueryMsg::GetVlp {
+            pair: Pair::new(
+                Token::create("osmo".to_string()).unwrap(),
+                Token::create("eucl".to_string()).unwrap(),
+            )
+            .unwrap(),
+        })
+        .unwrap();
+    assert_eq!(
+        vlp_query,
+        VlpResponse {
+            vlp: Addr::unchecked("contract2").into_string(),
+            token_1: Token::create("eucl".to_string()).unwrap(),
+            token_2: Token::create("osmo".to_string()).unwrap(),
+        }
+    );
+
+    // Got this address from the query above
+    vlp_nibiru.set_address(&Addr::unchecked("contract2"));
+
+    let liquidity_query: GetLiquidityResponse = vlp_nibiru
+        .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
+        .unwrap();
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityResponse {
+            pair: Pair {
+                token_1: Token::create("eucl".to_string()).unwrap(),
+                token_2: Token::create("osmo".to_string()).unwrap(),
+            },
+            token_1_reserve: Uint128::new(10_000),
+            token_2_reserve: Uint128::new(10_000),
+            total_lp_tokens: Uint128::new(9000),
+        }
+    );
+    virtual_balance_nibiru.set_address(&Addr::unchecked("contract1"));
+
+    let vbalance_query: GetStateResponse = virtual_balance_nibiru
+        .query(&euclid::msgs::virtual_balance::QueryMsg::GetState {})
+        .unwrap();
+
+    println!("vbalance state is: {:?}", vbalance_query);
+
+    // Osmo escrow contract
+    escrow_osmosis.set_address(&Addr::unchecked("contract1"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("osmo".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(10_000u128),
+        }
+    );
+
+    // This is the escrow for the Euclid token
+    escrow_osmosis.set_address(&Addr::unchecked("contract2"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(10_000u128),
+        }
+    );
+
+    // Swap
+    let swap_request = factory_osmosis
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+                asset_in: TokenWithDenom {
+                    token: Token::create("eucl".to_string()).unwrap(),
+                    token_type: euclid::token::TokenType::Native {
+                        denom: "eucl".to_string(),
+                    },
+                },
+                amount_in: Uint128::from(1000u128),
+                asset_out: Token::create("osmo".to_string()).unwrap(),
+                min_amount_out: Uint128::new(900),
+                timeout: None,
+                swaps: vec![NextSwapPair {
+                    token_in: Token::create("eucl".to_string()).unwrap(),
+                    token_out: Token::create("osmo".to_string()).unwrap(),
+                    test_fail: None,
+                }],
+                cross_chain_addresses: vec![],
+                partner_fee: None,
+                sender: Some(CrossChainUser {
+                    chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                    address: Addr::unchecked("sender_for_all_chains").into_string(),
+                }),
+                meta: None,
+            }),
+            Some(&[coin(1000u128, "eucl")]),
+        )
+        .unwrap();
+
+    let packet_lifetime = interchain.await_packets("osmosis", swap_request).unwrap();
+
+    // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+
+        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    } else {
+        panic!("packet timed out");
+        // There was a decode error or the packet timed out
+        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    };
+
+    let liquidity_query: GetLiquidityResponse = vlp_nibiru
+        .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
+        .unwrap();
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityResponse {
+            pair: Pair {
+                token_1: Token::create("eucl".to_string()).unwrap(),
+                token_2: Token::create("osmo".to_string()).unwrap(),
+            },
+            token_1_reserve: Uint128::new(10_999),
+            token_2_reserve: Uint128::new(9_009),
+            total_lp_tokens: Uint128::new(9000),
+        }
+    );
+
+    escrow_osmosis.set_address(&Addr::unchecked("contract1"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("osmo".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(10_000u128),
+        }
+    );
+
+    // This is the escrow for the Euclid token
+    escrow_osmosis.set_address(&Addr::unchecked("contract2"));
+    let escrow_query: EscrowStateResponse = escrow_osmosis
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: Token::create("eucl".to_string()).unwrap(),
+            factory_address: Addr::unchecked("contract0"),
+            total_amount: Uint128::from(11_000u128),
+        }
     );
 }

@@ -40,7 +40,7 @@ pub struct SwapRoute {
 impl From<SwapRoute> for SwapAmountInRoute {
     fn from(route: SwapRoute) -> Self {
         Self {
-            pool_id: route.pool_id as u64,
+            pool_id: route.pool_id,
             token_out_denom: route.token_out_denom,
         }
     }

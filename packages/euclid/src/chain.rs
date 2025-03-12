@@ -47,7 +47,7 @@ impl ChainUid {
     }
 }
 
-impl<'a> PrimaryKey<'a> for ChainUid {
+impl PrimaryKey<'_> for ChainUid {
     type Prefix = ();
     type SubPrefix = ();
 
@@ -59,7 +59,7 @@ impl<'a> PrimaryKey<'a> for ChainUid {
     }
 }
 
-impl<'a> Prefixer<'a> for ChainUid {
+impl Prefixer<'_> for ChainUid {
     fn prefix(&self) -> Vec<Key> {
         vec![Key::Ref(self.0.as_bytes())]
     }
