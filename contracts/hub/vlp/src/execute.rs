@@ -359,6 +359,7 @@ pub fn remove_liquidity(
 pub fn execute_swap(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     sender: CrossChainUser,
     asset_in: Token,
     amount_in: Uint128,
@@ -375,6 +376,8 @@ pub fn execute_swap(
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
     let mut state = state::STATE.load(deps.storage)?;
+
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
 
     let pair = state.pair.clone();
 
