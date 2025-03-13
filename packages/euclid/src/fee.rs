@@ -4,8 +4,10 @@ use cosmwasm_std::Uint128;
 use std::collections::HashMap;
 
 pub const BPS_100_PERCENT: u64 = 10000;
+pub const BPS_20_PERCENT: u64 = 2000;
 pub const BPS_10_PERCENT: u64 = 1000;
 pub const BPS_1_PERCENT: u64 = 100;
+pub const BPS_0_5_PERCENT: u64 = 50;
 
 // Set maximum fee as 10%
 pub const MAX_FEE_BPS: u64 = BPS_10_PERCENT;

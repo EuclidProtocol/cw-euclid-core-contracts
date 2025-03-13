@@ -47,7 +47,7 @@ pub enum ExecuteMsg {
         sender: CrossChainUser,
         tx_id: String,
         liquidity: PairWithAmount,
-        slippage_tolerance_bps: u64,
+        slippage_tolerance_bps: Option<u64>,
     },
     RemoveLiquidity {
         sender: CrossChainUser,
