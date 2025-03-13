@@ -94,6 +94,9 @@ pub fn execute_transfer(
         ContractError::Unauthorized {}
     );
 
+    // Make sure the sender and recipient are not the same
+    ensure!(msg.to != msg.from, ContractError::SameAddress {});
+
     let sender_balance_key = BalanceKey {
         token_id: msg.token_id.clone(),
         cross_chain_user: msg.from,
