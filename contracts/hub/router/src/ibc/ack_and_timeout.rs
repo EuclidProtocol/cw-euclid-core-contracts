@@ -264,17 +264,39 @@ pub fn ibc_ack_release_escrow(
         TxType::EscrowRelease,
     ));
     match res {
-        AcknowledgementMsg::Ok(data) => Ok(response
-            .add_attribute("method", "release_escrow_success")
-            .add_attribute("factory_chain", data.chain_id)
-            .add_attribute("factory_address", data.factory_address)
-            .add_attribute(
-                format!(
-                    "release_escrow_actual_{sender}",
-                    sender = sender.to_sender_string()
-                ),
-                amount,
-            )),
+        AcknowledgementMsg::Ok(data) => {
+            let mut response = response
+                .add_attribute("method", "release_escrow_success")
+                .add_attribute("factory_chain", data.chain_id)
+                .add_attribute("factory_address", data.factory_address)
+                .add_attribute(
+                    format!(
+                        "release_escrow_actual_{sender}",
+                        sender = sender.to_sender_string()
+                    ),
+                    amount,
+                );
+            for released in data.denoms {
+                response = response
+                    .add_attribute(
+                        format!(
+                            "escrow_released_token_{token}_denom_{denom}",
+                            token = data.token,
+                            denom = released.token_type.get_key()
+                        ),
+                        released.amount,
+                    )
+                    .add_attribute(
+                        format!(
+                            "escrow_balance_token_{token}_denom_{denom}",
+                            token = data.token,
+                            denom = released.token_type.get_key()
+                        ),
+                        released.new_balance,
+                    );
+            }
+            Ok(response)
+        }
         // Re-mint tokens
         AcknowledgementMsg::Error(err) => {
             let virtual_balance_address = STATE.load(deps.storage)?.virtual_balance_address.ok_or(
@@ -283,13 +305,14 @@ pub fn ibc_ack_release_escrow(
                 },
             )?;
 
+            let balance_key = BalanceKey {
+                cross_chain_user: sender.clone(),
+                token_id: token.to_string(),
+            };
             // Escrow release failed, mint tokens again for the original cross chain sender
             let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
                 amount,
-                balance_key: BalanceKey {
-                    cross_chain_user: sender.clone(),
-                    token_id: token.to_string(),
-                },
+                balance_key: balance_key.clone(),
             });
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: virtual_balance_address.into_string(),
@@ -307,8 +330,8 @@ pub fn ibc_ack_release_escrow(
                 .add_message(msg)
                 .add_attribute("method", "escrow_release_ack")
                 .add_attribute("error", err)
-                .add_attribute("mint_amount", "value")
-                .add_attribute("balance_key", "balance_key"))
+                .add_attribute("mint_amount", amount.to_string())
+                .add_attribute("balance_key", format!("{:?}", balance_key)))
         }
     }
 }

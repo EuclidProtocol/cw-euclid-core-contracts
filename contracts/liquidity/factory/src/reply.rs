@@ -11,6 +11,7 @@ pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
 pub const IBC_RECEIVE_REPLY_ID: u64 = 3;
 pub const CW20_INSTANTIATE_REPLY_ID: u64 = 4;
+pub const RELEASE_ESCROW_REPLY_ID: u64 = 5;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -150,6 +151,27 @@ pub fn on_reply_native_ibc_wrapper_call(
                 true,
             )?;
             Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
+        }
+    }
+}
+
+pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Generic {
+            err: err.to_string(),
+        }),
+        SubMsgResult::Ok(res) => {
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            Ok(Response::new()
+                .add_attribute("reply_on_release_escrow_processing", "success")
+                .set_data(data))
         }
     }
 }

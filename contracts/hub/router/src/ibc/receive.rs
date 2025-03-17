@@ -801,20 +801,18 @@ fn ibc_execute_deposit_token(
     let sender = msg.clone().sender;
 
     // Add token 1 in escrow balance
-    let token_escrow_key = (msg.asset_in.clone(), sender.chain_uid.clone());
+    let token_escrow_key = (msg.asset_in.token.clone(), sender.chain_uid.clone());
     let token_escrow_balance = ESCROW_BALANCES
         .may_load(deps.storage, token_escrow_key.clone())?
         .unwrap_or(Uint128::zero());
 
-    ESCROW_BALANCES.save(
-        deps.storage,
-        token_escrow_key,
-        &token_escrow_balance.checked_add(msg.amount_in)?,
-    )?;
+    let new_escrow_balance = token_escrow_balance.checked_add(msg.amount_in)?;
+
+    ESCROW_BALANCES.save(deps.storage, token_escrow_key, &new_escrow_balance)?;
 
     let deposit_token_response = DepositTokenResponse {
         amount: msg.amount_in,
-        token: msg.asset_in.clone(),
+        token: msg.asset_in.token.clone(),
         sender: msg.sender.clone(),
         recipient: msg.recipient.clone(),
     };
@@ -833,7 +831,7 @@ fn ibc_execute_deposit_token(
             amount: msg.amount_in,
             balance_key: BalanceKey {
                 cross_chain_user: msg.recipient,
-                token_id: msg.asset_in.to_string(),
+                token_id: msg.asset_in.token.to_string(),
             },
         }))?,
         funds: vec![],
@@ -853,6 +851,22 @@ fn ibc_execute_deposit_token(
                 TxType::DepositToken,
             )
             .add_attribute("tx_id", msg.tx_id.clone()),
+        )
+        .add_attribute(
+            format!(
+                "escrow_added_token_{token}_denom_{denom}",
+                token = msg.asset_in.token,
+                denom = msg.asset_in.token_type.get_key()
+            ),
+            msg.amount_in,
+        )
+        .add_attribute(
+            format!(
+                "escrow_balance_token_{token}_denom_{denom}",
+                token = msg.asset_in.token,
+                denom = msg.asset_in.token_type.get_key()
+            ),
+            new_escrow_balance,
         )
         .set_data(to_json_binary(&ack)?))
 }

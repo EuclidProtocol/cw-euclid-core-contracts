@@ -711,7 +711,7 @@ pub fn execute_deposit_token(
     let deposit_token_msg =
         ChainIbcExecuteMsg::DepositToken(euclid_ibc::msg::ChainIbcDepositTokenExecuteMsg {
             sender,
-            asset_in: asset_in.token,
+            asset_in,
             amount_in,
             tx_id: tx_id.clone(),
             recipient,

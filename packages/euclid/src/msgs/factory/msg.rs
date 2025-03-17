@@ -216,6 +216,12 @@ pub struct RegisterFactoryResponse {
     pub factory_address: String,
     pub chain_id: String,
 }
+#[cw_serde]
+pub struct ReleaseEscrowDenomsResponse {
+    pub token_type: TokenType,
+    pub amount: Uint128,
+    pub new_balance: Uint128,
+}
 
 #[cw_serde]
 pub struct ReleaseEscrowResponse {
@@ -224,6 +230,7 @@ pub struct ReleaseEscrowResponse {
     pub amount: Uint128,
     pub token: Token,
     pub to_address: String,
+    pub denoms: Vec<ReleaseEscrowDenomsResponse>,
 }
 
 #[cw_serde]
