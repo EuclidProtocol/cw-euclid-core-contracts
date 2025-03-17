@@ -133,6 +133,9 @@ pub enum ContractError {
     #[error("Virtual Balance Address Cannot Be Empty")]
     EmptyVirtualBalanceAddress {},
 
+    #[error("Sender and recipient cannot be the same")]
+    SameAddress {},
+
     #[error("ChannelNotFound")]
     ChannelNotFound {},
 

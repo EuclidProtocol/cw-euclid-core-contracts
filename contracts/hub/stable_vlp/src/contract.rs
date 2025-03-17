@@ -20,7 +20,7 @@ use crate::query::{
     query_total_fees_collected, query_total_fees_per_denom,
 };
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:vlp";
+const CONTRACT_NAME: &str = "crates.io:stable_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]

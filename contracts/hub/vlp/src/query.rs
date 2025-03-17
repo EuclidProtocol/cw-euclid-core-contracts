@@ -3,7 +3,7 @@ use cosmwasm_std::{
 };
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
-use euclid::fee::BPS_100_PERCENT;
+use euclid::fee::BPS_50_PERCENT;
 use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
@@ -254,7 +254,7 @@ pub fn calculate_lp_allocation_for_liquidity(
     total_reserve_1: Uint128,
     total_reserve_2: Uint128,
     total_lp_tokens: Uint128,
-    slippage_tolerance_bps: Option<u64>,
+    slippage_tolerance_bps: u64,
 ) -> Result<Uint128, ContractError> {
     // Verify that ratio of assets provided is equal to the ratio of assets in the pool
     let ratio =
@@ -269,13 +269,11 @@ pub fn calculate_lp_allocation_for_liquidity(
         Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
 
     // Check slippage if tolerance is provided
-    if let Some(slippage_tolerance_bps) = slippage_tolerance_bps {
-        ensure!(
-            slippage_tolerance_bps.le(&BPS_100_PERCENT),
-            ContractError::InvalidSlippageTolerance {}
-        );
-        assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
-    }
+    ensure!(
+        slippage_tolerance_bps.le(&BPS_50_PERCENT),
+        ContractError::InvalidSlippageTolerance {}
+    );
+    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
 
     // Calculate liquidity added share for LP provider from total liquidity
     let lp_allocation = calculate_lp_allocation(

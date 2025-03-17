@@ -185,7 +185,7 @@ pub fn add_liquidity(
         total_reserve_1,
         total_reserve_2,
         state.total_lp_tokens,
-        Some(slippage_tolerance_bps),
+        slippage_tolerance_bps,
     )?;
 
     let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
@@ -359,6 +359,7 @@ pub fn remove_liquidity(
 pub fn execute_swap(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     sender: CrossChainUser,
     asset_in: Token,
     amount_in: Uint128,
@@ -375,6 +376,8 @@ pub fn execute_swap(
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
     let mut state = state::STATE.load(deps.storage)?;
+
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
 
     let pair = state.pair.clone();
 

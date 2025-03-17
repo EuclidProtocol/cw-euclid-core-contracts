@@ -6,7 +6,7 @@ use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::{Fee, BPS_100_PERCENT, MAX_FEE_BPS},
+    fee::{Fee, BPS_50_PERCENT, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
     msgs::{
         stable_vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
@@ -172,7 +172,8 @@ pub fn add_liquidity(
 
     // Verify slippage tolerance is between 0 and 100
     ensure!(
-        slippage_tolerance_bps.le(&BPS_100_PERCENT),
+        // The maximum slippage tolerance is 20% in Uniswap Wallet
+        slippage_tolerance_bps.le(&BPS_50_PERCENT),
         ContractError::InvalidSlippageTolerance {}
     );
 
