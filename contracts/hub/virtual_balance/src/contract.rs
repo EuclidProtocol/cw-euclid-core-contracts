@@ -3,7 +3,9 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
-use crate::execute::{execute_approve, execute_burn, execute_mint, execute_transfer, execute_update_state};
+use crate::execute::{
+    execute_approve, execute_burn, execute_mint, execute_transfer, execute_update_state,
+};
 use crate::query::{query_balance, query_state, query_user_balances};
 use crate::state::STATE;
 use euclid::error::ContractError;
@@ -48,7 +50,7 @@ pub fn execute(
         ExecuteMsg::Transfer(msg) => execute_transfer(deps, info, msg),
         ExecuteMsg::UpdateState { router, admin } => {
             execute_update_state(deps, info, router, admin)
-        },
+        }
         ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
     }
 }
