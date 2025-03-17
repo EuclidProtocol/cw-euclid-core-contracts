@@ -14,7 +14,6 @@ use euclid::{
     pool::PoolCreationResponse,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
-    virtual_balance::BalanceKey,
 };
 
 use crate::{

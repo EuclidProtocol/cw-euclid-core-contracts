@@ -16,7 +16,6 @@ use euclid::{
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
     utils::math::Decimal256Ext,
-    virtual_balance::BalanceKey,
 };
 
 use crate::{
@@ -161,9 +160,8 @@ pub fn add_liquidity(
     let lq_ratio =
         Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
 
-    // Verify slippage tolerance is between 0 and 100
+    // Verify slippage tolerance is between 0 and 50
     ensure!(
-        // The maximum slippage tolerance is 20% in Uniswap Wallet
         slippage_tolerance_bps.le(&BPS_50_PERCENT),
         ContractError::InvalidSlippageTolerance {}
     );
