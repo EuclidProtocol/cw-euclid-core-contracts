@@ -424,6 +424,11 @@ pub fn execute_swap(
         .checked_add(lp_fee)?;
     token_out_reserve = token_out_reserve.checked_sub(receive_amount)?;
 
+    ensure!(
+        !token_out_reserve.is_zero(),
+        ContractError::new("Token out reserve is zero")
+    );
+
     BALANCES.save(deps.storage, asset_in.clone(), &token_in_reserve)?;
     BALANCES.save(deps.storage, asset_out.clone(), &token_out_reserve)?;
 
