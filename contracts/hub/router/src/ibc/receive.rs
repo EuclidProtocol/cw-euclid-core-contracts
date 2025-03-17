@@ -13,7 +13,9 @@ use euclid::{
     msgs::{
         self,
         router::{ExecuteMsg, TokenDenom},
-        virtual_balance::{ExecuteMint, ExecuteMsg as VirtualBalanceMsg, ExecuteTransfer},
+        virtual_balance::{
+            ExecuteApprove, ExecuteMint, ExecuteMsg as VirtualBalanceMsg, ExecuteTransfer,
+        },
     },
     pool::{DeRegisterDenomResponse, PoolConfig, RegisterDenomResponse},
     swap::{TransferResponse, WithdrawResponse},
@@ -503,29 +505,8 @@ pub fn ibc_execute_add_liquidity(
             })?;
 
     for token in pair.get_vec_token_info() {
-        // If its a voucher token, then transfer it to the vlp contract
-        if token.token_type.is_voucher() {
-            // Transfer voucher token to the vlp contract
-            let transfer_voucher_msg =
-                euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
-                    amount: token.amount,
-                    token_id: token.token.to_string(),
-                    from: sender.clone(),
-                    to: CrossChainUser {
-                        address: vlp_address.to_string(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
-                    },
-                });
-
-            let transfer_voucher_msg = WasmMsg::Execute {
-                contract_addr: virtual_balance_address.to_string(),
-                msg: to_json_binary(&transfer_voucher_msg)?,
-                funds: vec![],
-            };
-
-            // Should reject full execution if failed
-            response = response.add_message(transfer_voucher_msg);
-        } else {
+        // Mint if not voucher token
+        if !token.token_type.is_voucher() {
             // Increase Escrow balance
             let token_escrow_key = (token.token.clone(), sender.chain_uid.clone());
             let token_escrow_balance = ESCROW_BALANCES
@@ -543,10 +524,7 @@ pub fn ibc_execute_add_liquidity(
                 euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
                     amount: token.amount,
                     balance_key: BalanceKey {
-                        cross_chain_user: CrossChainUser {
-                            address: vlp_address.to_string(),
-                            chain_uid: ChainUid::vsl_chain_uid()?,
-                        },
+                        cross_chain_user: sender.clone(),
                         token_id: token.token.to_string(),
                     },
                 });
@@ -560,6 +538,27 @@ pub fn ibc_execute_add_liquidity(
             // Should reject full execution if failed
             response = response.add_message(mint_virtual_balance_msg);
         }
+
+        // Transfer voucher token to the vlp contract
+        let approve_voucher_msg =
+            euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
+                amount: token.amount,
+                token_id: token.token.to_string(),
+                spender: CrossChainUser {
+                    address: vlp_address.to_string(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
+                owner: sender.clone(),
+            });
+
+        let approve_voucher_msg = WasmMsg::Execute {
+            contract_addr: virtual_balance_address.to_string(),
+            msg: to_json_binary(&approve_voucher_msg)?,
+            funds: vec![],
+        };
+
+        // Should reject full execution if failed
+        response = response.add_message(approve_voucher_msg);
     }
 
     let add_liquidity_msg = msgs::vlp::ExecuteMsg::AddLiquidity {
@@ -683,27 +682,7 @@ fn ibc_execute_swap(
     })?;
 
     // Mint voucher token in escrow balance if it is not a voucher token
-    if msg.asset_in.token_type.is_voucher() {
-        let transfer_voucher_msg =
-            euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
-                amount: msg.amount_in,
-                token_id: msg.asset_in.token.to_string(),
-                from: sender.clone(),
-                to: CrossChainUser {
-                    address: first_swap.vlp_address.clone(),
-                    chain_uid: ChainUid::vsl_chain_uid()?,
-                },
-            });
-
-        let transfer_voucher_msg = WasmMsg::Execute {
-            contract_addr: virtual_balance_address.to_string(),
-            msg: to_json_binary(&transfer_voucher_msg)?,
-            funds: vec![],
-        };
-
-        // Should reject full execution if failed
-        response = response.add_message(transfer_voucher_msg);
-    } else {
+    if !msg.asset_in.token_type.is_voucher() {
         let token_escrow_key = (msg.asset_in.token.clone(), sender.chain_uid.clone());
         let token_escrow_balance = ESCROW_BALANCES
             .may_load(deps.storage, token_escrow_key.clone())?
@@ -720,10 +699,7 @@ fn ibc_execute_swap(
             euclid::msgs::virtual_balance::ExecuteMsg::Mint(ExecuteMint {
                 amount: msg.amount_in,
                 balance_key: BalanceKey {
-                    cross_chain_user: CrossChainUser {
-                        address: first_swap.vlp_address.clone(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
-                    },
+                    cross_chain_user: sender.clone(),
                     token_id: msg.asset_in.token.to_string(),
                 },
             });
@@ -737,6 +713,25 @@ fn ibc_execute_swap(
         // Should reject full execution if failed
         response = response.add_message(mint_virtual_balance_msg);
     }
+
+    let approve_voucher_msg = euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
+        amount: msg.amount_in,
+        token_id: msg.asset_in.token.to_string(),
+        spender: CrossChainUser {
+            address: first_swap.vlp_address.clone(),
+            chain_uid: ChainUid::vsl_chain_uid()?,
+        },
+        owner: sender.clone(),
+    });
+
+    let approve_voucher_msg = WasmMsg::Execute {
+        contract_addr: virtual_balance_address.to_string(),
+        msg: to_json_binary(&approve_voucher_msg)?,
+        funds: vec![],
+    };
+
+    // Should reject full execution if failed
+    response = response.add_message(approve_voucher_msg);
 
     if msg.asset_in.token_type.is_voucher()
         && !msg.partner_fee_amount.is_zero()
