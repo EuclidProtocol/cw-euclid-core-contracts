@@ -4,6 +4,7 @@ use cosmwasm_std::Uint128;
 use std::collections::HashMap;
 
 pub const BPS_100_PERCENT: u64 = 10000;
+pub const BPS_50_PERCENT: u64 = 5000;
 pub const BPS_20_PERCENT: u64 = 2000;
 pub const BPS_10_PERCENT: u64 = 1000;
 pub const BPS_1_PERCENT: u64 = 100;

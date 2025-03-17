@@ -185,7 +185,7 @@ pub fn add_liquidity(
         total_reserve_1,
         total_reserve_2,
         state.total_lp_tokens,
-        Some(slippage_tolerance_bps),
+        slippage_tolerance_bps,
     )?;
 
     let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;

@@ -190,7 +190,7 @@ mod tests {
         let total_reserve_1 = Uint128::new(10000);
         let total_reserve_2 = Uint128::new(10000);
         let total_lp_tokens = Uint128::new(10000); // 1:1 ratio for lp tokens to tokens present
-        let slippage_tolerance_bps = Some(200); // 2% slippage tolerance
+        let slippage_tolerance_bps = 200; // 2% slippage tolerance
 
         // Call the function to test
         let lp_allocation = calculate_lp_allocation_for_liquidity(
@@ -215,7 +215,7 @@ mod tests {
         let total_reserve_1 = Uint128::new(100);
         let total_reserve_2 = Uint128::new(100);
         let total_lp_tokens = Uint128::new(100);
-        let slippage_tolerance_bps = Some(0); // 0% slippage tolerance to force failure
+        let slippage_tolerance_bps = 0; // 0% slippage tolerance to force failure
 
         // Call the function to test and expect an error
         let err = calculate_lp_allocation_for_liquidity(

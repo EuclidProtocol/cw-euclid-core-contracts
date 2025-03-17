@@ -6,7 +6,7 @@ use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::{Fee, BPS_0_5_PERCENT, BPS_20_PERCENT, MAX_FEE_BPS},
+    fee::{Fee, BPS_50_PERCENT, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
     msgs::{
         stable_vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
@@ -108,7 +108,7 @@ pub fn add_liquidity(
     info: MessageInfo,
     sender: CrossChainUser,
     liquidity: PairWithAmount,
-    slippage_tolerance_bps: Option<u64>,
+    slippage_tolerance_bps: u64,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
@@ -171,10 +171,9 @@ pub fn add_liquidity(
         Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
 
     // Verify slippage tolerance is between 0 and 100
-    let slippage_tolerance_bps = slippage_tolerance_bps.unwrap_or(BPS_0_5_PERCENT);
     ensure!(
         // The maximum slippage tolerance is 20% in Uniswap Wallet
-        slippage_tolerance_bps.le(&BPS_20_PERCENT),
+        slippage_tolerance_bps.le(&BPS_50_PERCENT),
         ContractError::InvalidSlippageTolerance {}
     );
 
