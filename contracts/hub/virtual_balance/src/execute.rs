@@ -2,11 +2,11 @@ use cosmwasm_std::{ensure, Addr, DepsMut, MessageInfo, Response, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
-    msgs::virtual_balance::{ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
+    msgs::virtual_balance::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
     virtual_balance::BalanceKey,
 };
 
-use crate::state::{BALANCES, STATE};
+use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -86,28 +86,39 @@ pub fn execute_transfer(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    // Router can send on behalf of anyone, or any user can transfer his own funds
+    ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+
+    let sender_balance_key = BalanceKey {
+        token_id: msg.token_id.clone(),
+        cross_chain_user: msg.from.clone(),
+    };
+
+    let allowance = ALLOWANCES
+        .load(
+            deps.storage,
+            sender_balance_key.clone().to_serialized_balance_key(),
+        )
+        .unwrap_or(Allowance {
+            amount: Uint128::zero(),
+            spender: msg.from.clone(),
+        });
+
+    // Router can send on behalf of anyone, or any user can transfer his own funds, or if allowance is set and greater than amount
     ensure!(
         state.router == info.sender
-            || (msg.from.address == info.sender
-                && msg.from.chain_uid == ChainUid::vsl_chain_uid()?),
+            || (allowance.spender.address == info.sender && allowance.amount.ge(&msg.amount))
+            || (sender_balance_key.cross_chain_user.address == info.sender
+                && sender_balance_key.cross_chain_user.chain_uid == ChainUid::vsl_chain_uid()?),
         ContractError::Unauthorized {}
     );
 
     // Make sure the sender and recipient are not the same
-    ensure!(msg.to != msg.from, ContractError::SameAddress {});
+    ensure!(
+        msg.to != sender_balance_key.cross_chain_user,
+        ContractError::SameAddress {}
+    );
 
-    let sender_balance_key = BalanceKey {
-        token_id: msg.token_id.clone(),
-        cross_chain_user: msg.from,
-    };
     let sender_key = sender_balance_key.clone().to_serialized_balance_key();
-
-    let receiver_balance_key = BalanceKey {
-        token_id: msg.token_id.clone(),
-        cross_chain_user: msg.to,
-    };
-    let receiver_key = receiver_balance_key.clone().to_serialized_balance_key();
 
     // Decrease sender balance
     let sender_old_balance = BALANCES
@@ -125,23 +136,42 @@ pub fn execute_transfer(
     );
 
     let sender_new_balance = sender_old_balance.checked_sub(msg.amount)?;
+    BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
+
+    let receiver_balance_key = BalanceKey {
+        token_id: msg.token_id.clone(),
+        cross_chain_user: msg.to,
+    };
+    let receiver_key = receiver_balance_key.clone().to_serialized_balance_key();
 
     // Increase receiver balance
     let receiver_old_balance = BALANCES
         .may_load(deps.storage, receiver_key.clone())?
         .unwrap_or(Uint128::zero());
     let receiver_new_balance = receiver_old_balance.checked_add(msg.amount)?;
-
-    BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
-
     BALANCES.save(deps.storage, receiver_key, &receiver_new_balance)?;
 
-    Ok(Response::new()
+    let mut response = Response::new()
         .add_attribute("action", "execute_transfer")
         .add_attribute("transfer_amount", msg.amount)
         .add_attribute("from", format!("{sender_balance_key:?}"))
         .add_attribute("to", format!("{receiver_balance_key:?}"))
-        .add_attribute("burn_token_id", msg.token_id))
+        .add_attribute("burn_token_id", msg.token_id);
+
+    if allowance.amount.ge(&msg.amount) {
+        let mut new_allowance = allowance;
+        new_allowance.amount = new_allowance.amount.checked_sub(msg.amount)?;
+        ALLOWANCES.save(
+            deps.storage,
+            sender_balance_key.clone().to_serialized_balance_key(),
+            &new_allowance,
+        )?;
+        response = response
+            .add_attribute("allowance_used", msg.amount)
+            .add_attribute("new_allowance", new_allowance.amount);
+    }
+
+    Ok(response)
 }
 
 pub fn execute_update_state(
@@ -184,4 +214,50 @@ pub fn execute_update_state(
             "admin",
             admin.map_or_else(|| "unchanged".to_string(), |admin| admin.to_string()),
         ))
+}
+
+pub fn execute_approve(
+    deps: DepsMut,
+    info: MessageInfo,
+    msg: ExecuteApprove,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+
+    // Ensure that spender is on vsl chain
+    ensure!(
+        msg.spender.chain_uid == vsl_chain_uid,
+        ContractError::Unauthorized {}
+    );
+
+    // Ensure that spender and owner are not the same
+    ensure!(msg.spender != msg.owner, ContractError::SameAddress {});
+
+    // Router can send on behalf of anyone, or any user can transfer his own funds
+    ensure!(
+        state.router == info.sender
+            || (msg.owner.address == info.sender && msg.owner.chain_uid == vsl_chain_uid),
+        ContractError::Unauthorized {}
+    );
+
+    let key = BalanceKey {
+        token_id: msg.token_id.clone(),
+        cross_chain_user: msg.owner.clone(),
+    };
+    ALLOWANCES.save(
+        deps.storage,
+        key.to_serialized_balance_key(),
+        &Allowance {
+            amount: msg.amount,
+            spender: msg.spender.clone(),
+        },
+    )?;
+
+    Ok(Response::new()
+        .add_attribute("action", "execute_approve")
+        .add_attribute("approve_amount", msg.amount)
+        .add_attribute("approve_token_id", msg.token_id)
+        .add_attribute("approve_spender", msg.spender.to_sender_string())
+        .add_attribute("approve_owner", msg.owner.to_sender_string()))
 }

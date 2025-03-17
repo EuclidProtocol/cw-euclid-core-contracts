@@ -1,11 +1,16 @@
 use cosmwasm_std::{
-    ensure, from_json, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
+    ensure, from_json, to_json_binary, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response,
+    SubMsg, Uint128,
 };
 
 use cw20::Cw20ReceiveMsg;
 use euclid::{
     error::ContractError,
-    msgs::{escrow::cw20::EscrowCw20HookMsg, hook::EuclidReceive},
+    msgs::{
+        escrow::cw20::EscrowCw20HookMsg,
+        factory::{ReleaseEscrowDenomsResponse, ReleaseEscrowResponse},
+        hook::EuclidReceive,
+    },
     token::TokenType,
 };
 
@@ -13,6 +18,8 @@ use crate::{
     reply::FORWARDING_MESSAGE_REPLY_ID,
     state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, REFUND_ADDRESS, REFUND_ASSETS, STATE},
 };
+
+use euclid_ibc::ack::AcknowledgementMsg;
 
 pub fn execute_add_allowed_denom(
     deps: DepsMut,
@@ -213,7 +220,7 @@ pub fn execute_deposit_cw20(
 
 pub fn execute_withdraw(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     recipient: Addr,
     amount: Uint128,
@@ -257,6 +264,8 @@ pub fn execute_withdraw(
         allowed_denoms = vec![preferred_denom].into_iter().peekable();
     }
 
+    let mut released_denoms = vec![];
+
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
         let denom = allowed_denoms
@@ -273,11 +282,14 @@ pub fn execute_withdraw(
 
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
 
-        DENOM_TO_AMOUNT.save(
-            deps.storage,
-            denom.get_key(),
-            &denom_balance.checked_sub(transfer_amount)?,
-        )?;
+        let new_balance = denom_balance.checked_sub(transfer_amount)?;
+        DENOM_TO_AMOUNT.save(deps.storage, denom.get_key(), &new_balance)?;
+
+        released_denoms.push(ReleaseEscrowDenomsResponse {
+            token_type: denom.clone(),
+            amount: transfer_amount,
+            new_balance,
+        });
 
         // Wrap the forwading message into EuclidReceive Cosmos Msg
         let forwarding_message = match &forwarding_message {
@@ -308,13 +320,25 @@ pub fn execute_withdraw(
 
     state.total_amount = state.total_amount.checked_sub(amount)?;
     STATE.save(deps.storage, &state)?;
+
+    let ack_msg = ReleaseEscrowResponse {
+        factory_address: state.factory_address.to_string(),
+        chain_id: env.block.chain_id,
+        amount,
+        token: state.token_id.clone(),
+        to_address: recipient.to_string(),
+        denoms: released_denoms,
+    };
+    let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
+
     let response = Response::new()
         .add_messages(messages)
         .add_submessages(forwarding_messages)
         .add_attribute("method", "escrow_withdraw")
         .add_attribute("amount", amount)
         .add_attribute("token", state.token_id.to_string())
-        .add_attribute("recipient", recipient);
+        .add_attribute("recipient", recipient)
+        .set_data(ack);
 
     Ok(response)
 }

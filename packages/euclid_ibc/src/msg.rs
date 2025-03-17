@@ -209,7 +209,7 @@ pub struct ChainIbcDepositTokenExecuteMsg {
     // Factory will set this to info.sender
     pub sender: CrossChainUser,
     // User will provide this
-    pub asset_in: Token,
+    pub asset_in: TokenWithDenom,
     pub amount_in: Uint128,
     pub recipient: CrossChainUser,
     // Unique per tx

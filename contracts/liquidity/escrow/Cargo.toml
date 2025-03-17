@@ -52,6 +52,7 @@ schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
+euclid-ibc = { workspace = true }
 cw-orch = "=0.24.1"
 
 

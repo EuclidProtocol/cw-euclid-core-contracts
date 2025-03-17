@@ -9,7 +9,7 @@ use euclid::fee::{DenomFees, TotalFees};
 use crate::execute::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
 };
-use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
+use crate::reply::NEXT_SWAP_REPLY_ID;
 use crate::state::{State, BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
@@ -122,7 +122,6 @@ pub fn execute(
         } => execute_swap(
             deps,
             env,
-            info,
             sender,
             asset_in,
             amount_in,
@@ -171,7 +170,6 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        VIRTUAL_BALANCE_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
         NEXT_SWAP_REPLY_ID => reply::on_next_swap_reply(deps, msg),
 
         id => Err(ContractError::Generic {

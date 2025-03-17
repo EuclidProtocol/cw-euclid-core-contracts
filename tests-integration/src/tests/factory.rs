@@ -2859,9 +2859,9 @@ fn test_stable_pool() {
     router_nibiru
         .instantiate(
             &euclid::msgs::router::InstantiateMsg {
-                constant_product_vlp_code_id: 3,
-                stable_vlp_code_id: 4,
-                virtual_balance_code_id: 2,
+                constant_product_vlp_code_id: vlp_nibiru.code_id().unwrap(),
+                stable_vlp_code_id: stable_vlp_nibiru.code_id().unwrap(),
+                virtual_balance_code_id: virtual_balance_nibiru.code_id().unwrap(),
                 mock_relayer_address: None,
             },
             None,

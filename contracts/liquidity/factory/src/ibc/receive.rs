@@ -10,7 +10,7 @@ use euclid::{
     events::{tx_event, TxType},
     msgs::{
         escrow::ExecuteMsg as EscrowExecuteMsg,
-        factory::{ExecuteMsg, RegisterFactoryResponse, ReleaseEscrowResponse},
+        factory::{ExecuteMsg, RegisterFactoryResponse},
     },
     token::Token,
 };
@@ -20,7 +20,7 @@ use euclid_ibc::{
 };
 
 use crate::{
-    reply::IBC_RECEIVE_REPLY_ID,
+    reply::{IBC_RECEIVE_REPLY_ID, RELEASE_ESCROW_REPLY_ID},
     state::{HUB_CHANNEL, STATE, TOKEN_TO_ESCROW},
 };
 
@@ -182,31 +182,23 @@ fn execute_release_escrow(
         refund_address: recipient.refund_address,
     };
 
-    let ack_msg = ReleaseEscrowResponse {
-        factory_address: env.contract.address.to_string(),
-        chain_id: env.block.chain_id,
-        amount,
-        token: token.clone(),
-        to_address: recipient.user.address.clone(),
-    };
-
-    let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
-
     // Get escrow address
     let escrow_address = TOKEN_TO_ESCROW
         .load(deps.storage, token.validate()?.to_owned())?
         .into_string();
 
     Ok(Response::new()
-        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: escrow_address,
-            msg: to_json_binary(&withdraw_msg)?,
-            funds: vec![],
-        }))
+        .add_submessage(SubMsg::reply_always(
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: escrow_address,
+                msg: to_json_binary(&withdraw_msg)?,
+                funds: vec![],
+            }),
+            RELEASE_ESCROW_REPLY_ID,
+        ))
         .add_attribute("method", "release escrow_execute")
         .add_attribute("token", token.to_string())
         .add_attribute("amount", amount.to_string())
         .add_attribute("tx_id", tx_id)
-        .add_attribute("to_address", recipient.user.address)
-        .set_data(ack))
+        .add_attribute("to_address", recipient.user.address))
 }

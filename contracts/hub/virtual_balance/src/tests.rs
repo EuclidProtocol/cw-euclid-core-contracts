@@ -3,14 +3,15 @@
 mod tests {
 
     use crate::contract::{execute, instantiate};
-    use crate::state::{BALANCES, STATE};
+    use crate::state::{ALLOWANCES, BALANCES, STATE};
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
+    use cosmwasm_std::{Addr, DepsMut, MessageInfo, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::msgs::virtual_balance::{
-        ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer, InstantiateMsg, State,
+        ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer, InstantiateMsg,
+        State,
     };
     use euclid::virtual_balance::BalanceKey;
 
@@ -144,5 +145,106 @@ mod tests {
 
         assert_eq!(expected_snapshot_balance_user_1, snapshot_balance);
         assert_eq!(expected_snapshot_balance_user_2, snapshot_balance_2);
+    }
+
+    #[test]
+    fn test_allowance_and_transfer() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Setup initial state
+        let router = Addr::unchecked("router");
+        let admin = Addr::unchecked("admin");
+        let state = State {
+            router: router.to_string(),
+            admin: admin.clone(),
+        };
+        STATE.save(&mut deps.storage, &state).unwrap();
+
+        // Setup users
+        let owner = CrossChainUser {
+            chain_uid: ChainUid::vsl_chain_uid().unwrap(),
+            address: "owner".to_string(),
+        };
+        let spender = CrossChainUser {
+            chain_uid: ChainUid::vsl_chain_uid().unwrap(),
+            address: "spender".to_string(),
+        };
+        let recipient = CrossChainUser {
+            chain_uid: ChainUid::create("1".to_string()).unwrap(),
+            address: "recipient".to_string(),
+        };
+
+        // Mint tokens to owner
+        let balance_key = BalanceKey {
+            cross_chain_user: owner.clone(),
+            token_id: "eucl".to_string(),
+        };
+        let mint_msg = ExecuteMsg::Mint(ExecuteMint {
+            amount: Uint128::new(20),
+            balance_key: balance_key.clone(),
+        });
+        let info = MessageInfo {
+            sender: router.clone(),
+            funds: vec![],
+        };
+        execute(deps.as_mut(), env.clone(), info, mint_msg).unwrap();
+
+        // Owner approves spender
+        let approve_msg = ExecuteMsg::Approve(ExecuteApprove {
+            amount: Uint128::new(10),
+            token_id: "eucl".to_string(),
+            spender: spender.clone(),
+            owner: owner.clone(),
+        });
+        let info = MessageInfo {
+            sender: router.clone(),
+            funds: vec![],
+        };
+        execute(deps.as_mut(), env.clone(), info, approve_msg).unwrap();
+
+        // Verify allowance was set
+        let allowance = ALLOWANCES
+            .load(
+                &deps.storage,
+                balance_key.clone().to_serialized_balance_key(),
+            )
+            .unwrap();
+        assert_eq!(allowance.amount, Uint128::new(10));
+        assert_eq!(allowance.spender, spender);
+
+        // Spender transfers tokens to recipient
+        let transfer_msg = ExecuteMsg::Transfer(ExecuteTransfer {
+            amount: Uint128::new(5),
+            token_id: "eucl".to_string(),
+            from: owner.clone(),
+            to: recipient.clone(),
+        });
+        let info = MessageInfo {
+            sender: Addr::unchecked(spender.address.clone()),
+            funds: vec![],
+        };
+        execute(deps.as_mut(), env.clone(), info, transfer_msg).unwrap();
+
+        // Verify balances after transfer
+        let owner_balance = BALANCES
+            .load(
+                &deps.storage,
+                balance_key.clone().to_serialized_balance_key(),
+            )
+            .unwrap();
+        assert_eq!(owner_balance, Uint128::new(15));
+
+        let recipient_key = BalanceKey {
+            cross_chain_user: recipient,
+            token_id: "eucl".to_string(),
+        };
+        let recipient_balance = BALANCES
+            .load(
+                &deps.storage,
+                recipient_key.clone().to_serialized_balance_key(),
+            )
+            .unwrap();
+        assert_eq!(recipient_balance, Uint128::new(5));
     }
 }

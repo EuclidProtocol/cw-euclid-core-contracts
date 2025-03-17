@@ -16,7 +16,6 @@ use euclid::{
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
     utils::math::Decimal256Ext,
-    virtual_balance::BalanceKey,
 };
 
 use crate::{
@@ -113,30 +112,21 @@ pub fn add_liquidity(
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    let mut response = Response::new();
 
     // Ensure tokens are received by VLP
     for token in liquidity.get_vec_token() {
-        let token_reserve = BALANCES.load(deps.storage, token.token.clone())?;
-
-        // Router mints new tokens or this vlp gets new balance from token transfer by previous, so virtual_balance = amount_in + pool_current_liquidity
-        let vlp_virtual_balance_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
-            deps.querier.query_wasm_smart(
-                state.virtual_balance.clone(),
-                &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-                    balance_key: BalanceKey {
-                        cross_chain_user: CrossChainUser {
-                            address: env.contract.address.to_string(),
-                            chain_uid: ChainUid::vsl_chain_uid()?,
-                        },
-                        token_id: token.token.to_string(),
-                    },
-                },
-            )?;
-
-        ensure!(
-            vlp_virtual_balance_balance.amount == token_reserve.checked_add(token.amount)?,
-            ContractError::new("Liquidity didn't receive enough funds!")
-        );
+        // Contract should have approval to use voucher tokens on behalf of sender
+        let virtual_balance_transfer_msg = token.token.create_virtual_balance_transfer_msg(
+            state.virtual_balance.clone(),
+            token.amount,
+            sender.clone(),
+            CrossChainUser {
+                address: env.contract.address.to_string(),
+                chain_uid: ChainUid::vsl_chain_uid()?,
+            },
+        )?;
+        response = response.add_message(virtual_balance_transfer_msg);
     }
 
     let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
@@ -170,9 +160,8 @@ pub fn add_liquidity(
     let lq_ratio =
         Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
 
-    // Verify slippage tolerance is between 0 and 100
+    // Verify slippage tolerance is between 0 and 50
     ensure!(
-        // The maximum slippage tolerance is 20% in Uniswap Wallet
         slippage_tolerance_bps.le(&BPS_50_PERCENT),
         ContractError::InvalidSlippageTolerance {}
     );
@@ -223,7 +212,7 @@ pub fn add_liquidity(
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
-    Ok(Response::new()
+    Ok(response
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
@@ -392,25 +381,27 @@ pub fn execute_swap(
     let mut token_in_reserve = BALANCES.load(deps.storage, asset_in.clone())?;
     let mut token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
 
-    // Router mints new tokens or this vlp gets new balance from token transfer by previous, so virtual_balance = amount_in + pool_current_liquidity
-    let vlp_virtual_balance_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
-        deps.querier.query_wasm_smart(
-            state.virtual_balance.clone(),
-            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-                balance_key: BalanceKey {
-                    cross_chain_user: CrossChainUser {
-                        address: env.contract.address.to_string(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
-                    },
-                    token_id: asset_in.to_string(),
-                },
+    // Swap needs approval to use voucher tokens
+    let transfer_voucher_msg =
+        euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+            amount: amount_in,
+            token_id: asset_in.to_string(),
+            from: sender.clone(),
+            to: CrossChainUser {
+                address: env.contract.address.to_string(),
+                chain_uid: ChainUid::vsl_chain_uid()?,
             },
-        )?;
+        });
 
-    ensure!(
-        vlp_virtual_balance_balance.amount == token_in_reserve.checked_add(amount_in)?,
-        ContractError::new("Swap didn't receive any funds!")
-    );
+    let transfer_voucher_msg = WasmMsg::Execute {
+        contract_addr: state.virtual_balance.clone(),
+        msg: to_json_binary(&transfer_voucher_msg)?,
+        funds: vec![],
+    };
+
+    let mut response = Response::new();
+    // Should reject full execution if failed
+    response = response.add_message(transfer_voucher_msg);
 
     // Get Fee from the state
     let fee = state.clone().fee;
@@ -455,6 +446,11 @@ pub fn execute_swap(
         .checked_add(lp_fee)?;
     token_out_reserve = token_out_reserve.checked_sub(receive_amount)?;
 
+    ensure!(
+        !token_out_reserve.is_zero(),
+        ContractError::new("Token out reserve is zero")
+    );
+
     BALANCES.save(deps.storage, asset_in.clone(), &token_in_reserve)?;
     BALANCES.save(deps.storage, asset_out.clone(), &token_out_reserve)?;
 
@@ -468,8 +464,6 @@ pub fn execute_swap(
 
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&swap_response)?;
-
-    let mut response = Response::new();
 
     if !euclid_fee.is_zero() {
         // Add the euclid fee to total fees

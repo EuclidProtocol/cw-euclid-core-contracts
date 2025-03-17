@@ -24,6 +24,7 @@ pub enum ExecuteMsg {
         router: Option<String>,
         admin: Option<Addr>,
     },
+    Approve(ExecuteApprove),
 }
 
 #[cw_serde]
@@ -48,6 +49,14 @@ pub struct ExecuteTransfer {
 pub struct ExecuteBurn {
     pub amount: Uint128,
     pub balance_key: BalanceKey,
+}
+
+#[cw_serde]
+pub struct ExecuteApprove {
+    pub amount: Uint128,
+    pub token_id: String,
+    pub spender: CrossChainUser,
+    pub owner: CrossChainUser,
 }
 
 #[cw_serde]
