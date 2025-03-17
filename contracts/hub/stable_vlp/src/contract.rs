@@ -10,7 +10,7 @@ use crate::execute::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
 };
 use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
-use crate::state::{State, AMP_FACTOR, BALANCES, STATE};
+use crate::state::{State, AMP_FACTOR, BALANCES, DEFAULT_AMP_FACTOR, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -57,7 +57,7 @@ pub fn instantiate(
     BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
     BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
 
-    let amp_factor = msg.amp_factor.unwrap_or(Uint64::from(1000u64));
+    let amp_factor = msg.amp_factor.unwrap_or(DEFAULT_AMP_FACTOR);
     AMP_FACTOR.save(deps.storage, &amp_factor)?;
 
     let response =

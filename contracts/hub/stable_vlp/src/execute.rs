@@ -82,6 +82,8 @@ pub fn register_pool(
         ))
         .add_attribute("action", "register_pool")
         .add_attribute("pool_chain", sender.chain_uid.to_string())
+        .add_attribute("amp_factor", AMP_FACTOR.load(deps.storage)?.to_string())
+        .add_attribute("pool_type", "stable")
         .set_data(to_json_binary(&ack)?))
 }
 
