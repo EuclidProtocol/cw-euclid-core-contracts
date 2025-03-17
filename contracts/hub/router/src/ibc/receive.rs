@@ -852,6 +852,7 @@ fn ibc_execute_deposit_token(
             )
             .add_attribute("tx_id", msg.tx_id.clone()),
         )
+        .add_attribute("chain_uid", sender.chain_uid.to_string())
         .add_attribute(
             format!(
                 "escrow_added_token_{token}_denom_{denom}",

@@ -269,6 +269,7 @@ pub fn ibc_ack_release_escrow(
                 .add_attribute("method", "release_escrow_success")
                 .add_attribute("factory_chain", data.chain_id)
                 .add_attribute("factory_address", data.factory_address)
+                .add_attribute("chain_uid", sender.chain_uid.to_string())
                 .add_attribute(
                     format!(
                         "release_escrow_actual_{sender}",
