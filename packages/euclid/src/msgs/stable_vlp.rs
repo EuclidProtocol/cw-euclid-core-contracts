@@ -1,5 +1,9 @@
 use crate::{
-    chain::{ChainUid, CrossChainUser}, fee::{Fee, TotalFees}, pool::PoolConfig, swap::NextSwapVlp, token::{Pair, PairWithAmount, Token}
+    chain::{ChainUid, CrossChainUser},
+    fee::{Fee, TotalFees},
+    pool::PoolConfig,
+    swap::NextSwapVlp,
+    token::{Pair, PairWithAmount, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Decimal256, Uint128, Uint64};

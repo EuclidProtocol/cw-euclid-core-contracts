@@ -56,7 +56,6 @@ pub struct RegisterDenomResponse {}
 #[cw_serde]
 pub struct DeRegisterDenomResponse {}
 
-
 #[cw_serde]
 pub enum PoolConfig {
     Stable { amp_factor: Option<Uint64> },
