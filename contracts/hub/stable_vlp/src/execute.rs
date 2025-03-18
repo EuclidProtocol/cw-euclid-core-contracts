@@ -1,172 +1,20 @@
 use crate::{
     math::compute_swap,
-    query::{assert_slippage_tolerance, calculate_lp_allocation},
-    state::{self, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE},
+    state::{self, AMP_FACTOR, BALANCES, DEFAULT_AMP_FACTOR, STATE},
 };
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, MessageInfo, Response, SubMsg,
-    Uint128, WasmMsg,
+    ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, Response, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, tx_event, TxType},
-    fee::BPS_50_PERCENT,
-    liquidity::AddLiquidityResponse,
     msgs::{stable_vlp::VlpSwapResponse, virtual_balance::ExecuteTransfer},
     pool::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID},
     swap::NextSwapVlp,
-    token::{PairWithAmount, Token},
+    token::Token,
     utils::math::Decimal256Ext,
 };
-
-/// Adds liquidity to the VLP
-///
-/// # Arguments
-///
-/// * `deps` - The mutable dependencies for the contract execution.
-/// * `chain_id` - The chain id of the pool to add liquidity to.
-/// * `token_1_liquidity` - The amount of token 1 to add to the pool.
-/// * `token_2_liquidity` - The amount of token 2 to add to the pool.
-///
-/// # Errors
-///
-/// Returns an error if the pool does not exist.
-///
-/// # Returns
-///
-/// Returns a response with the action and chain id attributes if successful.
-pub fn add_liquidity(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: CrossChainUser,
-    liquidity: PairWithAmount,
-    slippage_tolerance_bps: u64,
-    tx_id: String,
-) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
-    let mut response = Response::new();
-
-    // Ensure tokens are received by VLP
-    for token in liquidity.get_vec_token() {
-        // Contract should have approval to use voucher tokens on behalf of sender
-        let virtual_balance_transfer_msg = token.token.create_virtual_balance_transfer_msg(
-            state.virtual_balance.clone(),
-            token.amount,
-            sender.clone(),
-            CrossChainUser {
-                address: env.contract.address.to_string(),
-                chain_uid: ChainUid::vsl_chain_uid()?,
-            },
-        )?;
-        response = response.add_message(virtual_balance_transfer_msg);
-    }
-
-    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
-
-    let pair = state.pair.clone();
-
-    let token_1_liquidity = if liquidity.token_1.token == pair.token_1 {
-        liquidity.token_1.amount
-    } else {
-        liquidity.token_2.amount
-    };
-
-    let token_2_liquidity = if liquidity.token_2.token == pair.token_2 {
-        liquidity.token_2.amount
-    } else {
-        liquidity.token_1.amount
-    };
-
-    // Verify that ratio of assets provided is equal to the ratio of assets in the pool
-    let ratio =
-        Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
-            ContractError::Generic {
-                err: err.to_string(),
-            }
-        })?;
-
-    let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
-    let mut total_reserve_2 = BALANCES.load(deps.storage, pair.token_2.clone())?;
-
-    // Lets get lq ratio, it will be the current ratio of token reserves or if its first time then it will be ratio of tokens provided
-    let lq_ratio =
-        Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
-
-    // Verify slippage tolerance is between 0 and 50
-    ensure!(
-        slippage_tolerance_bps.le(&BPS_50_PERCENT),
-        ContractError::InvalidSlippageTolerance {}
-    );
-
-    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
-
-    //TODO Change calculate_lp_allocation to use stable swap formula
-    // Calculate liquidity added share for LP provider from total liquidity
-    let lp_allocation = calculate_lp_allocation(
-        token_1_liquidity,
-        token_2_liquidity,
-        total_reserve_1,
-        total_reserve_2,
-        state.total_lp_tokens,
-    )?;
-
-    ensure!(
-        !lp_allocation.is_zero(),
-        ContractError::Generic {
-            err: "LP Allocation cannot be zero".to_string()
-        }
-    );
-
-    chain_lp_tokens = chain_lp_tokens.checked_add(lp_allocation)?;
-    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
-
-    // Add to total liquidity and total lp allocation
-    total_reserve_1 = total_reserve_1.checked_add(token_1_liquidity)?;
-    total_reserve_2 = total_reserve_2.checked_add(token_2_liquidity)?;
-
-    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
-    STATE.save(deps.storage, &state)?;
-
-    BALANCES.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
-
-    BALANCES.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
-
-    // Add current balance to SNAPSHOT MAP
-
-    // Prepare Liquidity Response
-    let liquidity_response = AddLiquidityResponse {
-        mint_lp_tokens: lp_allocation,
-        vlp_address: env.contract.address.to_string(),
-        tx_id: tx_id.clone(),
-        sender: sender.clone(),
-    };
-
-    // Prepare acknowledgement
-    let acknowledgement = to_json_binary(&liquidity_response)?;
-
-    Ok(response
-        .add_event(tx_event(
-            &tx_id,
-            &sender.to_sender_string(),
-            TxType::AddLiquidity,
-        ))
-        .add_event(liquidity_event(
-            &pair
-                .get_pair_with_amount(total_reserve_1, total_reserve_2)?
-                .get_vec_token(),
-            &liquidity.get_vec_token(),
-            &tx_id,
-        ))
-        .add_attribute("action", "add_liquidity")
-        .add_attribute("sender", sender.to_sender_string())
-        .add_attribute("lp_allocation", lp_allocation)
-        .add_attribute("liquidity_1_added", token_1_liquidity)
-        .add_attribute("liquidity_2_added", token_2_liquidity)
-        .set_data(acknowledgement))
-}
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute_swap(

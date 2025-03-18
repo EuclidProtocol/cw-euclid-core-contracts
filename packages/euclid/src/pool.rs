@@ -2,14 +2,16 @@ use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::{Fee, TotalFees, MAX_FEE_BPS},
+    fee::{Fee, TotalFees, BPS_50_PERCENT, MAX_FEE_BPS},
+    liquidity::AddLiquidityResponse,
     token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
 pub const VIRTUAL_BALANCE_TRANSFER_REPLY_ID: u64 = 1;
 pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, Uint64,
+    ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, Isqrt, MessageInfo, Response,
+    SubMsg, Uint128, Uint64,
 };
 use cw_storage_plus::{Item, Map};
 
@@ -96,6 +98,45 @@ pub struct State {
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
     pub admin: String,
+}
+
+pub fn calculate_lp_allocation(
+    token_1_amount: Uint128,
+    token_2_amount: Uint128,
+    total_liquidity_1: Uint128,
+    total_liquidity_2: Uint128,
+    total_lp_supply: Uint128,
+) -> Result<Uint128, ContractError> {
+    // IF LP supply is 0 use original function
+    if total_lp_supply.is_zero() {
+        let sq_root = Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?);
+        return Ok(sq_root.checked_sub(Uint128::new(MINIMUM_LIQUIDITY))?);
+    }
+
+    let lp_allocation = token_1_amount
+        .checked_multiply_ratio(total_lp_supply, total_liquidity_1)?
+        .min(token_2_amount.checked_multiply_ratio(total_lp_supply, total_liquidity_2)?);
+
+    Ok(lp_allocation)
+}
+
+// Function to assert slippage is tolerated during transaction
+pub fn assert_slippage_tolerance(
+    ratio: Decimal256,
+    pool_ratio: Decimal256,
+    slippage_tolerance_bps: u64,
+) -> Result<bool, ContractError> {
+    let slippage = ratio.abs_diff(pool_ratio).checked_div(pool_ratio)?;
+
+    let slippage_tolerance = Decimal256::bps(slippage_tolerance_bps);
+    ensure!(
+        slippage.le(&slippage_tolerance),
+        ContractError::LiquiditySlippageExceeded {
+            expected: slippage,
+            received: slippage_tolerance,
+        }
+    );
+    Ok(true)
 }
 
 pub fn update_fee(
@@ -353,5 +394,140 @@ pub fn remove_liquidity(
         .add_attribute("token_1_removed_liquidity", token_1_liquidity)
         .add_attribute("token_2_removed_liquidity", token_2_liquidity)
         .add_attribute("burn_lp", lp_allocation)
+        .set_data(acknowledgement))
+}
+
+pub fn add_liquidity(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    state_storage: &Item<State>,
+    balances_storage: &Map<Token, Uint128>,
+    chain_lp_tokens_storage: &Map<ChainUid, Uint128>,
+    sender: CrossChainUser,
+    liquidity: PairWithAmount,
+    slippage_tolerance_bps: u64,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let mut state = state_storage.load(deps.storage)?;
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    let mut response = Response::new();
+
+    // Ensure tokens are received by VLP
+    for token in liquidity.get_vec_token() {
+        // Contract should have approval to use voucher tokens on behalf of sender
+        let virtual_balance_transfer_msg = token.token.create_virtual_balance_transfer_msg(
+            state.virtual_balance.clone(),
+            token.amount,
+            sender.clone(),
+            CrossChainUser {
+                address: env.contract.address.to_string(),
+                chain_uid: ChainUid::vsl_chain_uid()?,
+            },
+        )?;
+        response = response.add_message(virtual_balance_transfer_msg);
+    }
+
+    let mut chain_lp_tokens =
+        chain_lp_tokens_storage.load(deps.storage, sender.chain_uid.clone())?;
+
+    let pair = state.pair.clone();
+
+    let token_1_liquidity = if liquidity.token_1.token == pair.token_1 {
+        liquidity.token_1.amount
+    } else {
+        liquidity.token_2.amount
+    };
+
+    let token_2_liquidity = if liquidity.token_2.token == pair.token_2 {
+        liquidity.token_2.amount
+    } else {
+        liquidity.token_1.amount
+    };
+
+    // Verify that ratio of assets provided is equal to the ratio of assets in the pool
+    let ratio =
+        Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
+            ContractError::Generic {
+                err: err.to_string(),
+            }
+        })?;
+
+    let mut total_reserve_1 = balances_storage.load(deps.storage, pair.token_1.clone())?;
+    let mut total_reserve_2 = balances_storage.load(deps.storage, pair.token_2.clone())?;
+
+    // Lets get lq ratio, it will be the current ratio of token reserves or if its first time then it will be ratio of tokens provided
+    let lq_ratio =
+        Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
+
+    // Verify slippage tolerance is between 0 and 50
+    ensure!(
+        slippage_tolerance_bps.le(&BPS_50_PERCENT),
+        ContractError::InvalidSlippageTolerance {}
+    );
+
+    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
+
+    //TODO Change calculate_lp_allocation to use stable swap formula
+    // Calculate liquidity added share for LP provider from total liquidity
+    let lp_allocation = calculate_lp_allocation(
+        token_1_liquidity,
+        token_2_liquidity,
+        total_reserve_1,
+        total_reserve_2,
+        state.total_lp_tokens,
+    )?;
+
+    ensure!(
+        !lp_allocation.is_zero(),
+        ContractError::Generic {
+            err: "LP Allocation cannot be zero".to_string()
+        }
+    );
+
+    chain_lp_tokens = chain_lp_tokens.checked_add(lp_allocation)?;
+    chain_lp_tokens_storage.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
+
+    // Add to total liquidity and total lp allocation
+    total_reserve_1 = total_reserve_1.checked_add(token_1_liquidity)?;
+    total_reserve_2 = total_reserve_2.checked_add(token_2_liquidity)?;
+
+    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
+    state_storage.save(deps.storage, &state)?;
+
+    balances_storage.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
+    balances_storage.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
+
+    // Add current balance to SNAPSHOT MAP
+
+    // Prepare Liquidity Response
+    let liquidity_response = AddLiquidityResponse {
+        mint_lp_tokens: lp_allocation,
+        vlp_address: env.contract.address.to_string(),
+        tx_id: tx_id.clone(),
+        sender: sender.clone(),
+    };
+
+    // Prepare acknowledgement
+    let acknowledgement = to_json_binary(&liquidity_response)?;
+
+    Ok(response
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::AddLiquidity,
+        ))
+        .add_event(liquidity_event(
+            &pair
+                .get_pair_with_amount(total_reserve_1, total_reserve_2)?
+                .get_vec_token(),
+            &liquidity.get_vec_token(),
+            &tx_id,
+        ))
+        .add_attribute("action", "add_liquidity")
+        .add_attribute("sender", sender.to_sender_string())
+        .add_attribute("lp_allocation", lp_allocation)
+        .add_attribute("liquidity_1_added", token_1_liquidity)
+        .add_attribute("liquidity_2_added", token_2_liquidity)
         .set_data(acknowledgement))
 }

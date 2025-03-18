@@ -1,13 +1,10 @@
-use cosmwasm_std::{
-    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Isqrt, Uint128,
-};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Uint128};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{
     AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
     StablePoolInfo, StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
 };
-use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
 use euclid::utils::math::Decimal256Ext;
@@ -183,43 +180,4 @@ fn get_pool(
             .unwrap_or(Uint128::zero()),
         lp_shares: chain_lp_tokens,
     })
-}
-
-pub fn calculate_lp_allocation(
-    token_1_amount: Uint128,
-    token_2_amount: Uint128,
-    total_liquidity_1: Uint128,
-    total_liquidity_2: Uint128,
-    total_lp_supply: Uint128,
-) -> Result<Uint128, ContractError> {
-    // IF LP supply is 0 use original function
-    if total_lp_supply.is_zero() {
-        let sq_root = Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?);
-        return Ok(sq_root.checked_sub(Uint128::new(MINIMUM_LIQUIDITY))?);
-    }
-
-    let lp_allocation = token_1_amount
-        .checked_multiply_ratio(total_lp_supply, total_liquidity_1)?
-        .min(token_2_amount.checked_multiply_ratio(total_lp_supply, total_liquidity_2)?);
-
-    Ok(lp_allocation)
-}
-
-// Function to assert slippage is tolerated during transaction
-pub fn assert_slippage_tolerance(
-    ratio: Decimal256,
-    pool_ratio: Decimal256,
-    slippage_tolerance_bps: u64,
-) -> Result<bool, ContractError> {
-    let slippage = ratio.abs_diff(pool_ratio).checked_div(pool_ratio)?;
-
-    let slippage_tolerance = Decimal256::bps(slippage_tolerance_bps);
-    ensure!(
-        slippage.le(&slippage_tolerance),
-        ContractError::LiquiditySlippageExceeded {
-            expected: slippage,
-            received: slippage_tolerance,
-        }
-    );
-    Ok(true)
 }

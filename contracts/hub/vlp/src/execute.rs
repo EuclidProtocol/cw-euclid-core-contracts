@@ -1,5 +1,5 @@
 use crate::{
-    query::{calculate_lp_allocation_for_liquidity, calculate_swap, extract_token_amount},
+    query::calculate_swap,
     reply::NEXT_SWAP_REPLY_ID,
     state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
@@ -10,11 +10,11 @@ use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, tx_event, TxType},
-    liquidity::AddLiquidityResponse,
     msgs::{
         virtual_balance::{ExecuteApprove, ExecuteTransfer},
         vlp::VlpSwapResponse,
     },
+    pool::add_liquidity,
     swap::NextSwapVlp,
     token::{PairWithAmount, Token},
 };
@@ -48,117 +48,14 @@ pub fn register_pool_with_funds(
         deps.branch(),
         env,
         info,
+        &STATE,
+        &BALANCES,
+        &CHAIN_LP_TOKENS,
         sender,
         pair_with_amount,
         slippage_tolerance_bps,
         tx_id,
     )
-}
-
-/// Adds liquidity to the VLP
-///
-/// # Arguments
-///
-/// * `deps` - The mutable dependencies for the contract execution.
-/// * `chain_id` - The chain id of the pool to add liquidity to.
-/// * `token_1_liquidity` - The amount of token 1 to add to the pool.
-/// * `token_2_liquidity` - The amount of token 2 to add to the pool.
-///
-/// # Errors
-///
-/// Returns an error if the pool does not exist.
-///
-/// # Returns
-///
-/// Returns a response with the action and chain id attributes if successful.
-pub fn add_liquidity(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: CrossChainUser,
-    liquidity: PairWithAmount,
-    slippage_tolerance_bps: u64,
-    tx_id: String,
-) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
-    let mut response = Response::new();
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
-
-    // Ensure tokens are received by VLP
-    for token in liquidity.get_vec_token() {
-        // Contract should have approval to use voucher tokens on behalf of sender
-        let virtual_balance_transfer_msg = token.token.create_virtual_balance_transfer_msg(
-            state.virtual_balance.clone(),
-            token.amount,
-            sender.clone(),
-            CrossChainUser {
-                address: env.contract.address.to_string(),
-                chain_uid: ChainUid::vsl_chain_uid()?,
-            },
-        )?;
-        response = response.add_message(virtual_balance_transfer_msg);
-    }
-
-    let pair = state.pair.clone();
-
-    let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
-    let mut total_reserve_2 = BALANCES.load(deps.storage, pair.token_2.clone())?;
-
-    let (token_1_liquidity, token_2_liquidity) = extract_token_amount(&liquidity, &pair);
-
-    let lp_allocation = calculate_lp_allocation_for_liquidity(
-        token_1_liquidity,
-        token_2_liquidity,
-        total_reserve_1,
-        total_reserve_2,
-        state.total_lp_tokens,
-        slippage_tolerance_bps,
-    )?;
-
-    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
-
-    chain_lp_tokens = chain_lp_tokens.checked_add(lp_allocation)?;
-    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
-
-    // Add to total liquidity and total lp allocation
-    total_reserve_1 = total_reserve_1.checked_add(token_1_liquidity)?;
-    total_reserve_2 = total_reserve_2.checked_add(token_2_liquidity)?;
-    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
-
-    STATE.save(deps.storage, &state)?;
-    BALANCES.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
-    BALANCES.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
-
-    response = response
-        .add_event(liquidity_event(
-            &pair
-                .get_pair_with_amount(total_reserve_1, total_reserve_2)?
-                .get_vec_token(),
-            &liquidity.get_vec_token(),
-            &tx_id,
-        ))
-        .add_attribute("sender", sender.to_sender_string())
-        .add_attribute("lp_allocation", lp_allocation)
-        .add_attribute("liquidity_1_added", token_1_liquidity)
-        .add_attribute("liquidity_2_added", token_2_liquidity);
-
-    // Prepare Liquidity Response
-    let liquidity_response = AddLiquidityResponse {
-        mint_lp_tokens: lp_allocation,
-        vlp_address: env.contract.address.to_string(),
-        tx_id: tx_id.clone(),
-        sender: sender.clone(),
-    };
-    // Prepare acknowledgement
-    let ack = to_json_binary(&liquidity_response)?;
-    Ok(response
-        .add_attribute("action", "add_liquidity")
-        .add_event(tx_event(
-            &tx_id,
-            &sender.to_sender_string(),
-            TxType::AddLiquidity,
-        ))
-        .set_data(ack))
 }
 
 #[allow(clippy::too_many_arguments)]
