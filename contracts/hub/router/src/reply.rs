@@ -9,12 +9,8 @@ use euclid::{
     error::ContractError,
     events::simple_event,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
-    msgs::{
-        self,
-        router::ExecuteMsg,
-        vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
-    },
-    pool::PoolCreationResponse,
+    msgs::{self, router::ExecuteMsg, vlp::VlpSwapResponse},
+    pool::{PoolCreationResponse, VlpRemoveLiquidityResponse},
     swap::SwapResponse,
 };
 use euclid_ibc::{

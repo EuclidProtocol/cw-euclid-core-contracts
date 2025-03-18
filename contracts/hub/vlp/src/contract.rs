@@ -9,11 +9,11 @@ use euclid::{
     error::ContractError,
     fee::{DenomFees, TotalFees},
     msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg},
-    pool::{register_pool, update_fee, update_state, State},
+    pool::{register_pool, remove_liquidity, update_fee, update_state, State},
 };
 
 use crate::{
-    execute::{add_liquidity, execute_swap, remove_liquidity},
+    execute::{add_liquidity, execute_swap},
     query::{
         query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
         query_total_fees_collected, query_total_fees_per_denom,
@@ -134,7 +134,17 @@ pub fn execute(
             sender,
             lp_allocation,
             tx_id,
-        } => remove_liquidity(deps, env, info, sender, lp_allocation, tx_id),
+        } => remove_liquidity(
+            deps,
+            env,
+            info,
+            &STATE,
+            &BALANCES,
+            &CHAIN_LP_TOKENS,
+            sender,
+            lp_allocation,
+            tx_id,
+        ),
         ExecuteMsg::Swap {
             sender,
             asset_in,

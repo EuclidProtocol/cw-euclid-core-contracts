@@ -1,12 +1,16 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
-    events::{simple_event, tx_event, TxType},
+    events::{liquidity_event, simple_event, tx_event, TxType},
     fee::{Fee, TotalFees, MAX_FEE_BPS},
-    token::{Pair, PairWithDenomAndAmount, TokenWithDenom},
+    token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
 };
+pub const VIRTUAL_BALANCE_TRANSFER_REPLY_ID: u64 = 1;
+pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint128, Uint64};
+use cosmwasm_std::{
+    ensure, to_json_binary, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, Uint64,
+};
 use cw_storage_plus::{Item, Map};
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
@@ -64,6 +68,15 @@ pub struct DeRegisterDenomResponse {}
 pub enum PoolConfig {
     Stable { amp_factor: Option<Uint64> },
     ConstantProduct {},
+}
+
+#[cw_serde]
+pub struct VlpRemoveLiquidityResponse {
+    pub liquidity_released: PairWithAmount,
+    pub burn_lp_tokens: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub vlp_address: String,
 }
 
 #[cw_serde]
@@ -235,4 +248,110 @@ pub fn register_pool(
         .add_attribute("pool_chain", sender.chain_uid.to_string())
         .add_attribute("pool_type", "stable")
         .set_data(to_json_binary(&ack)?))
+}
+
+pub fn remove_liquidity(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    state_storage: &Item<State>,
+    balances_storage: &Map<Token, Uint128>,
+    chain_lp_tokens_storage: &Map<ChainUid, Uint128>,
+    sender: CrossChainUser,
+    lp_allocation: Uint128,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    // Get the pool for the chain_id provided
+    let mut state = state_storage.load(deps.storage)?;
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    let pair = state.pair.clone();
+
+    let mut total_reserve_1 = balances_storage.load(deps.storage, pair.token_1.clone())?;
+    let mut total_reserve_2 = balances_storage.load(deps.storage, pair.token_2.clone())?;
+
+    // Remove chain lp tokens from the sender, remove liquidity only works for a single chain remove liquidity
+    let mut chain_lp_tokens =
+        chain_lp_tokens_storage.load(deps.storage, sender.chain_uid.clone())?;
+    chain_lp_tokens = chain_lp_tokens.checked_sub(lp_allocation)?;
+    chain_lp_tokens_storage.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
+
+    // Fetch allocated liquidity to LP tokens
+    let lp_tokens = state.total_lp_tokens;
+    let lp_share = Decimal::checked_from_ratio(lp_allocation, lp_tokens)
+        .map_err(|err| ContractError::new(&err.to_string()))?;
+
+    // Calculate tokens_1 to send
+    let token_1_liquidity = total_reserve_1.checked_mul_ceil(lp_share)?;
+    // Calculate tokens_2 to send
+    let token_2_liquidity = total_reserve_2.checked_mul_ceil(lp_share)?;
+
+    let liquidity_released = pair.get_pair_with_amount(token_1_liquidity, token_2_liquidity)?;
+
+    total_reserve_1 = total_reserve_1.checked_sub(token_1_liquidity)?;
+    total_reserve_2 = total_reserve_2.checked_sub(token_2_liquidity)?;
+
+    balances_storage.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
+    balances_storage.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
+
+    state.total_lp_tokens = state.total_lp_tokens.checked_sub(lp_allocation)?;
+    state_storage.save(deps.storage, &state)?;
+
+    // Prepare Liquidity Response
+    let liquidity_response = VlpRemoveLiquidityResponse {
+        burn_lp_tokens: lp_allocation,
+        tx_id: tx_id.clone(),
+        sender: sender.clone(),
+        vlp_address: env.contract.address.to_string(),
+        liquidity_released: liquidity_released.clone(),
+    };
+
+    // Prepare acknowledgement
+    let acknowledgement = to_json_binary(&liquidity_response)?;
+
+    let vlp_cross_chain_struct = CrossChainUser {
+        address: env.contract.address.to_string(),
+        chain_uid: ChainUid::vsl_chain_uid()?,
+    };
+
+    let token_1_transfer_msg = pair.token_1.create_virtual_balance_transfer_msg(
+        state.virtual_balance.clone(),
+        token_1_liquidity,
+        vlp_cross_chain_struct.clone(),
+        sender.clone(),
+    )?;
+
+    let token_2_transfer_msg = pair.token_2.create_virtual_balance_transfer_msg(
+        state.virtual_balance,
+        token_2_liquidity,
+        vlp_cross_chain_struct,
+        sender.clone(),
+    )?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::RemoveLiquidity,
+        ))
+        .add_submessage(SubMsg::reply_always(
+            token_1_transfer_msg,
+            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
+        ))
+        .add_submessage(SubMsg::reply_always(
+            token_2_transfer_msg,
+            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
+        ))
+        .add_event(liquidity_event(
+            &pair
+                .get_pair_with_amount(total_reserve_1, total_reserve_2)?
+                .get_vec_token(),
+            &liquidity_released.get_vec_token(),
+            &tx_id,
+        ))
+        .add_attribute("action", "remove_liquidity")
+        .add_attribute("sender", sender.to_sender_string())
+        .add_attribute("token_1_removed_liquidity", token_1_liquidity)
+        .add_attribute("token_2_removed_liquidity", token_2_liquidity)
+        .add_attribute("burn_lp", lp_allocation)
+        .set_data(acknowledgement))
 }

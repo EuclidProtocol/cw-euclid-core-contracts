@@ -6,17 +6,19 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::{add_liquidity, execute_swap, remove_liquidity};
+use crate::execute::{add_liquidity, execute_swap};
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
 };
 use crate::reply;
-use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
 use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use euclid::pool::{register_pool, update_fee, update_state, State};
+use euclid::pool::{
+    register_pool, remove_liquidity, update_fee, update_state, State, NEXT_SWAP_REPLY_ID,
+    VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
+};
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -131,7 +133,17 @@ pub fn execute(
             sender,
             lp_allocation,
             tx_id,
-        } => remove_liquidity(deps, env, info, sender, lp_allocation, tx_id),
+        } => remove_liquidity(
+            deps,
+            env,
+            info,
+            &STATE,
+            &BALANCES,
+            &CHAIN_LP_TOKENS,
+            sender,
+            lp_allocation,
+            tx_id,
+        ),
         ExecuteMsg::Swap {
             sender,
             asset_in,

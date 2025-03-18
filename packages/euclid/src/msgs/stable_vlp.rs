@@ -169,15 +169,6 @@ pub struct AllStablePoolsResponse {
 pub struct MigrateMsg {}
 
 #[cw_serde]
-pub struct VlpRemoveLiquidityResponse {
-    pub liquidity_released: PairWithAmount,
-    pub burn_lp_tokens: Uint128,
-    pub tx_id: String,
-    pub sender: CrossChainUser,
-    pub vlp_address: String,
-}
-
-#[cw_serde]
 pub struct VlpSwapResponse {
     pub sender: CrossChainUser,
     pub tx_id: String,

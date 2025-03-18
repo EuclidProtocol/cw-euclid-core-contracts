@@ -13,7 +13,7 @@ use euclid::{
     liquidity::AddLiquidityResponse,
     msgs::{
         virtual_balance::{ExecuteApprove, ExecuteTransfer},
-        vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
+        vlp::VlpSwapResponse,
     },
     swap::NextSwapVlp,
     token::{PairWithAmount, Token},
@@ -159,121 +159,6 @@ pub fn add_liquidity(
             TxType::AddLiquidity,
         ))
         .set_data(ack))
-}
-
-/// Removes liquidity from the VLP
-///
-/// # Arguments
-///
-/// * `deps` - The mutable dependencies for the contract execution.
-/// * `chain_id` - The chain id of the pool to remove liquidity from.
-/// * `token_1_liquidity` - The amount of token 1 to remove from the pool.
-/// * `token_2_liquidity` - The amount of token 2 to remove from the pool.
-///
-/// # Errors
-///
-/// Returns an error if the pool does not exist.
-///
-/// # Returns
-///
-/// Returns a response with the action and chain id attributes if successful.
-pub fn remove_liquidity(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: CrossChainUser,
-    lp_allocation: Uint128,
-    tx_id: String,
-) -> Result<Response, ContractError> {
-    // Get the pool for the chain_id provided
-    let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
-    let pair = state.pair.clone();
-
-    let mut total_reserve_1 = BALANCES.load(deps.storage, pair.token_1.clone())?;
-    let mut total_reserve_2 = BALANCES.load(deps.storage, pair.token_2.clone())?;
-
-    // Remove chain lp tokens from the sender, remove liquidity only works for a single chain remove liquidity
-    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
-    chain_lp_tokens = chain_lp_tokens.checked_sub(lp_allocation)?;
-    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
-
-    // Fetch allocated liquidity to LP tokens
-    let lp_tokens = state.total_lp_tokens;
-    let lp_share = Decimal::checked_from_ratio(lp_allocation, lp_tokens)
-        .map_err(|err| ContractError::new(&err.to_string()))?;
-
-    // Calculate tokens_1 to send
-    let token_1_liquidity = total_reserve_1.checked_mul_ceil(lp_share)?;
-    // Calculate tokens_2 to send
-    let token_2_liquidity = total_reserve_2.checked_mul_ceil(lp_share)?;
-
-    let liquidity_released = pair.get_pair_with_amount(token_1_liquidity, token_2_liquidity)?;
-
-    total_reserve_1 = total_reserve_1.checked_sub(token_1_liquidity)?;
-    total_reserve_2 = total_reserve_2.checked_sub(token_2_liquidity)?;
-
-    BALANCES.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
-
-    BALANCES.save(deps.storage, pair.token_2.clone(), &total_reserve_2)?;
-
-    state.total_lp_tokens = state.total_lp_tokens.checked_sub(lp_allocation)?;
-    STATE.save(deps.storage, &state)?;
-
-    // Prepare Liquidity Response
-    let liquidity_response = VlpRemoveLiquidityResponse {
-        burn_lp_tokens: lp_allocation,
-        //TODO
-        preferred_denom: None,
-        tx_id: tx_id.clone(),
-        sender: sender.clone(),
-        vlp_address: env.contract.address.to_string(),
-        liquidity_released: liquidity_released.clone(),
-    };
-
-    // Prepare acknowledgement
-    let acknowledgement = to_json_binary(&liquidity_response)?;
-
-    let vlp_cross_chain_struct = CrossChainUser {
-        address: env.contract.address.to_string(),
-        chain_uid: ChainUid::vsl_chain_uid()?,
-    };
-
-    let token_1_transfer_msg = pair.token_1.create_virtual_balance_transfer_msg(
-        state.virtual_balance.clone(),
-        token_1_liquidity,
-        vlp_cross_chain_struct.clone(),
-        sender.clone(),
-    )?;
-
-    let token_2_transfer_msg = pair.token_2.create_virtual_balance_transfer_msg(
-        state.virtual_balance,
-        token_2_liquidity,
-        vlp_cross_chain_struct,
-        sender.clone(),
-    )?;
-
-    Ok(Response::new()
-        .add_event(tx_event(
-            &tx_id,
-            &sender.to_sender_string(),
-            TxType::RemoveLiquidity,
-        ))
-        .add_message(token_1_transfer_msg)
-        .add_message(token_2_transfer_msg)
-        .add_event(liquidity_event(
-            &pair
-                .get_pair_with_amount(total_reserve_1, total_reserve_2)?
-                .get_vec_token(),
-            &liquidity_released.get_vec_token(),
-            &tx_id,
-        ))
-        .add_attribute("action", "remove_liquidity")
-        .add_attribute("sender", sender.to_sender_string())
-        .add_attribute("token_1_removed_liquidity", token_1_liquidity)
-        .add_attribute("token_2_removed_liquidity", token_2_liquidity)
-        .add_attribute("burn_lp", lp_allocation)
-        .set_data(acknowledgement))
 }
 
 #[allow(clippy::too_many_arguments)]
