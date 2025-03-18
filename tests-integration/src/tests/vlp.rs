@@ -9,6 +9,7 @@ use euclid::fee::DenomFees;
 use euclid::fee::Fee;
 use euclid::fee::TotalFees;
 use euclid::msgs::vlp::GetStateResponse;
+use euclid::pool::PoolConfig;
 use euclid::token::Pair;
 use euclid::token::Token;
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
@@ -97,6 +98,7 @@ fn test_proper_instantiation() {
         router: mock_router.addr().clone().into_string(),
         virtual_balance: mock_virtual_balance.addr().clone().into_string(),
         fee,
+        pool_config: PoolConfig::ConstantProduct {},
         total_fees_collected: TotalFees {
             lp_fees: DenomFees {
                 totals: HashMap::new(),
