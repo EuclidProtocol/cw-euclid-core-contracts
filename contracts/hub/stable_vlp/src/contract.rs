@@ -6,17 +6,17 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::{add_liquidity, execute_swap, register_pool, remove_liquidity};
+use crate::execute::{add_liquidity, execute_swap, remove_liquidity};
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
 };
+use crate::reply;
 use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
-use crate::state::{AMP_FACTOR, BALANCES, DEFAULT_AMP_FACTOR, STATE};
-use crate::{execute, reply};
+use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use euclid::pool::{update_fee, update_state, State};
+use euclid::pool::{register_pool, update_fee, update_state, State};
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -65,7 +65,17 @@ pub fn instantiate(
                     sender,
                     pair,
                     tx_id,
-                } => execute::register_pool(deps, env.clone(), info.clone(), sender, pair, tx_id),
+                } => register_pool(
+                    deps,
+                    env.clone(),
+                    info.clone(),
+                    &STATE,
+                    &CHAIN_LP_TOKENS,
+                    Some(&AMP_FACTOR),
+                    sender,
+                    pair,
+                    tx_id,
+                ),
                 _ => Err(ContractError::Unauthorized {}),
             })?;
 
@@ -87,7 +97,17 @@ pub fn execute(
             sender,
             pair,
             tx_id,
-        } => register_pool(deps, env, info, sender, pair, tx_id),
+        } => register_pool(
+            deps,
+            env,
+            info,
+            &STATE,
+            &CHAIN_LP_TOKENS,
+            Some(&AMP_FACTOR),
+            sender,
+            pair,
+            tx_id,
+        ),
         ExecuteMsg::UpdateFee {
             lp_fee_bps,
             euclid_fee_bps,

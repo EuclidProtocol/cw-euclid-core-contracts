@@ -18,73 +18,10 @@ use euclid::{
         stable_vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
         virtual_balance::ExecuteTransfer,
     },
-    pool::PoolCreationResponse,
     swap::NextSwapVlp,
-    token::{Pair, PairWithAmount, Token},
+    token::{PairWithAmount, Token},
     utils::math::Decimal256Ext,
 };
-
-/// Registers a new pool in the contract. Function called by Router Contract
-///
-/// # Arguments
-///
-/// * `deps` - The mutable dependencies for the contract execution.
-/// * `info` - The message info containing the sender and other information.
-/// * `pool` - The pool to be registered.
-///
-/// # Errors
-///
-/// Returns an error if the pool already exists.
-///
-/// # Returns
-///
-/// Returns a response with the action and pool chain attributes if successful.
-pub fn register_pool(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    sender: CrossChainUser,
-    pair: Pair,
-    tx_id: String,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
-
-    // Verify that chain pool does not already exist
-    ensure!(
-        !CHAIN_LP_TOKENS.has(deps.storage, sender.chain_uid.clone()),
-        ContractError::PoolAlreadyExists {}
-    );
-
-    // Check for token id
-    ensure!(
-        state.pair.get_tupple() == pair.get_tupple(),
-        ContractError::AssetDoesNotExist {}
-    );
-
-    // Store the pool in the map
-    CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
-
-    let ack = PoolCreationResponse {
-        vlp_contract: env.contract.address.to_string(),
-        tx_id: tx_id.clone(),
-        mint_lp_tokens: Uint128::zero(),
-        sender: sender.clone(),
-    };
-
-    Ok(Response::new()
-        .add_event(tx_event(
-            &tx_id,
-            &sender.to_sender_string(),
-            TxType::PoolCreation,
-        ))
-        .add_attribute("action", "register_pool")
-        .add_attribute("pool_chain", sender.chain_uid.to_string())
-        .add_attribute("amp_factor", AMP_FACTOR.load(deps.storage)?.to_string())
-        .add_attribute("pool_type", "stable")
-        .set_data(to_json_binary(&ack)?))
-}
 
 /// Adds liquidity to the VLP
 ///

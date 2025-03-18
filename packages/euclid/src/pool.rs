@@ -1,13 +1,13 @@
 use crate::{
-    chain::CrossChainUser,
+    chain::{ChainUid, CrossChainUser},
     error::ContractError,
-    events::simple_event,
+    events::{simple_event, tx_event, TxType},
     fee::{Fee, TotalFees, MAX_FEE_BPS},
     token::{Pair, PairWithDenomAndAmount, TokenWithDenom},
 };
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, DepsMut, MessageInfo, Response, Uint128, Uint64};
-use cw_storage_plus::Item;
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint128, Uint64};
+use cw_storage_plus::{Item, Map};
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
@@ -179,4 +179,60 @@ pub fn update_state(
     state_storage.save(deps.storage, &new_state)?;
 
     Ok(response)
+}
+
+pub fn register_pool(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    state_storage: &Item<State>,
+    chain_lp_tokens: &Map<ChainUid, Uint128>,
+    amp_factor_storage: Option<&Item<Uint64>>,
+    sender: CrossChainUser,
+    pair: Pair,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let state = state_storage.load(deps.storage)?;
+
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
+    // Verify that chain pool does not already exist
+    ensure!(
+        !chain_lp_tokens.has(deps.storage, sender.chain_uid.clone()),
+        ContractError::PoolAlreadyExists {}
+    );
+
+    // Check for token id
+    ensure!(
+        state.pair.get_tupple() == pair.get_tupple(),
+        ContractError::AssetDoesNotExist {}
+    );
+
+    // Store the pool in the map
+    chain_lp_tokens.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
+
+    let ack = PoolCreationResponse {
+        vlp_contract: env.contract.address.to_string(),
+        tx_id: tx_id.clone(),
+        mint_lp_tokens: Uint128::zero(),
+        sender: sender.clone(),
+    };
+    let mut res = Response::new();
+    if let Some(amp_factor_storage) = amp_factor_storage {
+        res = res.add_attribute(
+            "amp_factor",
+            amp_factor_storage.load(deps.storage)?.to_string(),
+        );
+    }
+
+    Ok(res
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::PoolCreation,
+        ))
+        .add_attribute("action", "register_pool")
+        .add_attribute("pool_chain", sender.chain_uid.to_string())
+        .add_attribute("pool_type", "stable")
+        .set_data(to_json_binary(&ack)?))
 }
