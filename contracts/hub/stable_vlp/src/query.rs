@@ -7,7 +7,7 @@ use euclid::msgs::stable_vlp::{
     AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
     StablePoolInfo, StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
 };
-use euclid::pool::MINIMUM_LIQUIDITY;
+use euclid::pool::{PoolConfig, MINIMUM_LIQUIDITY};
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
 use euclid::utils::math::Decimal256Ext;
@@ -129,7 +129,9 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,
         admin: state.admin,
-        amp_factor: AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR),
+        pool_config: PoolConfig::Stable {
+            amp_factor: AMP_FACTOR.may_load(deps.storage)?,
+        },
     })?)
 }
 
