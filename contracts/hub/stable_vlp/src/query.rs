@@ -13,8 +13,8 @@ use euclid::token::Token;
 use euclid::utils::math::Decimal256Ext;
 
 use crate::math::compute_swap;
-use crate::state::{State, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE};
-
+use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE};
+use euclid::pool::State;
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
     deps: Deps,

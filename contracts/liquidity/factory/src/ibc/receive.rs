@@ -168,7 +168,7 @@ fn execute_update_factory_channel(
 
 fn execute_release_escrow(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     amount: Uint128,
     recipient: CrossChainUserWithLimit,
     token: Token,

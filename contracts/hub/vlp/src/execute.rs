@@ -1,11 +1,17 @@
+use crate::{
+    query::{calculate_lp_allocation_for_liquidity, calculate_swap, extract_token_amount},
+    reply::NEXT_SWAP_REPLY_ID,
+    state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
+};
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
+use euclid::pool::State;
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::{Fee, MAX_FEE_BPS},
+    fee::Fee,
     liquidity::AddLiquidityResponse,
     msgs::{
         virtual_balance::{ExecuteApprove, ExecuteTransfer},
@@ -14,12 +20,6 @@ use euclid::{
     pool::PoolCreationResponse,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
-};
-
-use crate::{
-    query::{calculate_lp_allocation_for_liquidity, calculate_swap, extract_token_amount},
-    reply::NEXT_SWAP_REPLY_ID,
-    state::{self, State, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -591,35 +591,6 @@ pub fn execute_swap(
         .add_attribute("lp_fee", lp_fee)
         .add_attribute("receive_amount", receive_amount)
         .set_data(acknowledgement))
-}
-
-pub fn update_fee(
-    deps: DepsMut,
-    info: MessageInfo,
-    lp_fee_bps: Option<u64>,
-    euclid_fee_bps: Option<u64>,
-    recipient: Option<CrossChainUser>,
-) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-
-    state.fee.lp_fee_bps = lp_fee_bps.unwrap_or(state.fee.lp_fee_bps);
-    ensure!(
-        state.fee.lp_fee_bps.le(&MAX_FEE_BPS),
-        ContractError::new("LP Fee cannot exceed maximum limit")
-    );
-    state.fee.euclid_fee_bps = euclid_fee_bps.unwrap_or(state.fee.euclid_fee_bps);
-    ensure!(
-        state.fee.euclid_fee_bps.le(&MAX_FEE_BPS),
-        ContractError::new("Euclid Fee cannot exceed maximum limit")
-    );
-    state.fee.recipient = recipient.unwrap_or(state.fee.recipient);
-
-    STATE.save(deps.storage, &state)?;
-
-    Ok(Response::new()
-        .add_event(simple_event())
-        .add_attribute("action", "update_fee"))
 }
 
 pub fn update_state(

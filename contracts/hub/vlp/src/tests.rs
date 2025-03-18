@@ -3,13 +3,14 @@
 mod tests {
     use crate::contract::{execute, instantiate};
     use crate::query::calculate_lp_allocation_for_liquidity;
-    use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
+    use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins, DepsMut, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
     use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
+    use euclid::pool::State;
     use euclid::token::{Pair, Token};
     use std::collections::HashMap;
 

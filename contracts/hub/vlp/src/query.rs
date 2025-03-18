@@ -8,12 +8,12 @@ use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
 
+use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::msgs::vlp::{
     AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
     PoolInfo, PoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
 };
-
-use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
+use euclid::pool::State;
 
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
