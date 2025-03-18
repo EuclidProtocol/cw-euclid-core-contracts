@@ -6,13 +6,13 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::{add_liquidity, execute_swap, register_pool, remove_liquidity, update_state};
+use crate::execute::{add_liquidity, execute_swap, register_pool, remove_liquidity};
 use crate::reply::NEXT_SWAP_REPLY_ID;
 use crate::state::{BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use euclid::pool::{update_fee, State};
+use euclid::pool::{update_fee, update_state, State};
 
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
@@ -139,11 +139,14 @@ pub fn execute(
         } => update_state(
             deps,
             info,
+            &STATE,
+            None,
             router,
             virtual_balance,
             fee,
             last_updated,
             admin,
+            None,
         ),
     }
 }

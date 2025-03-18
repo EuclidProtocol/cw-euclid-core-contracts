@@ -116,3 +116,67 @@ pub fn update_fee(
         .add_attribute("action", "update_fee")
         .add_event(simple_event()))
 }
+
+pub fn update_state(
+    deps: DepsMut,
+    info: MessageInfo,
+    state_storage: &Item<State>,               // Reference to STATE
+    amp_factor_storage: Option<&Item<Uint64>>, // Optional reference to AMP_FACTOR
+    router: Option<String>,
+    virtual_balance: Option<String>,
+    fee: Option<Fee>,
+    last_updated: Option<u64>,
+    admin: Option<String>,
+    amp_factor: Option<Uint64>,
+) -> Result<Response, ContractError> {
+    let mut response = Response::new().add_attribute("action", "update_state");
+
+    let state = state_storage.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    // Validate and update router address
+    let verified_router = if let Some(router) = router {
+        deps.api.addr_validate(&router)?;
+        router
+    } else {
+        state.router
+    };
+
+    // Validate and update virtual balance address
+    let verified_virtual_balance = if let Some(virtual_balance) = virtual_balance {
+        deps.api.addr_validate(&virtual_balance)?;
+        virtual_balance
+    } else {
+        state.virtual_balance
+    };
+
+    // Validate and update admin address
+    let verified_admin = if let Some(admin) = admin {
+        deps.api.addr_validate(&admin)?;
+        admin
+    } else {
+        state.admin
+    };
+
+    if let Some(amp_factor) = amp_factor {
+        if let Some(storage) = amp_factor_storage {
+            storage.save(deps.storage, &amp_factor)?;
+            response = response.add_attribute("amp_factor_updated", amp_factor.to_string());
+        }
+    }
+
+    let new_state = State {
+        pair: state.pair,
+        router: verified_router,
+        virtual_balance: verified_virtual_balance,
+        fee: fee.unwrap_or(state.fee),
+        total_fees_collected: state.total_fees_collected,
+        last_updated: last_updated.unwrap_or(state.last_updated),
+        total_lp_tokens: state.total_lp_tokens,
+        admin: verified_admin,
+    };
+
+    state_storage.save(deps.storage, &new_state)?;
+
+    Ok(response)
+}

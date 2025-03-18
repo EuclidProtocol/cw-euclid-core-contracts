@@ -6,12 +6,10 @@ use crate::{
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
-use euclid::pool::State;
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
-    events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::Fee,
+    events::{liquidity_event, tx_event, TxType},
     liquidity::AddLiquidityResponse,
     msgs::{
         virtual_balance::{ExecuteApprove, ExecuteTransfer},
@@ -591,57 +589,4 @@ pub fn execute_swap(
         .add_attribute("lp_fee", lp_fee)
         .add_attribute("receive_amount", receive_amount)
         .set_data(acknowledgement))
-}
-
-pub fn update_state(
-    deps: DepsMut,
-    info: MessageInfo,
-    router: Option<String>,
-    virtual_balance: Option<String>,
-    fee: Option<Fee>,
-    last_updated: Option<u64>,
-    admin: Option<String>,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-    // Verify that the router is a valid address
-    let verified_router = if let Some(router) = router {
-        deps.api.addr_validate(&router)?;
-        router
-    } else {
-        state.router
-    };
-
-    // Verify that the virtual balance is a valid address
-    let verified_virtual_balance = if let Some(virtual_balance) = virtual_balance {
-        deps.api.addr_validate(&virtual_balance)?;
-        virtual_balance
-    } else {
-        state.virtual_balance
-    };
-
-    // Verify that the admin is a valid address
-    let verified_admin = if let Some(admin) = admin {
-        deps.api.addr_validate(&admin)?;
-        admin
-    } else {
-        state.admin
-    };
-
-    let new_state = State {
-        pair: state.pair,
-        router: verified_router,
-        virtual_balance: verified_virtual_balance,
-        fee: fee.unwrap_or(state.fee),
-        total_fees_collected: state.total_fees_collected,
-        last_updated: last_updated.unwrap_or(state.last_updated),
-        total_lp_tokens: state.total_lp_tokens,
-        admin: verified_admin,
-    };
-
-    STATE.save(deps.storage, &new_state)?;
-
-    Ok(Response::new()
-        .add_event(simple_event())
-        .add_attribute("action", "update_state"))
 }

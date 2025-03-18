@@ -6,7 +6,7 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::{add_liquidity, execute_swap, register_pool, remove_liquidity, update_state};
+use crate::execute::{add_liquidity, execute_swap, register_pool, remove_liquidity};
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
@@ -16,7 +16,7 @@ use crate::state::{AMP_FACTOR, BALANCES, DEFAULT_AMP_FACTOR, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use euclid::pool::{update_fee, State};
+use euclid::pool::{update_fee, update_state, State};
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -141,6 +141,8 @@ pub fn execute(
         } => update_state(
             deps,
             info,
+            &STATE,
+            Some(&AMP_FACTOR),
             router,
             virtual_balance,
             fee,
