@@ -10,6 +10,4 @@ pub const CHAIN_LP_TOKENS: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
 pub const BALANCES: Map<Token, Uint128> = Map::new("balances");
 
 // The amplification factor for the stableswap invariant, default is 1000
-pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
-// The amplification factor for the stableswap invariant, default is 1000
 pub const AMP_FACTOR: Item<Uint64> = Item::new("amp_factor");

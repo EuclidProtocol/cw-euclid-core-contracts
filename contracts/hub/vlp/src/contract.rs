@@ -9,11 +9,13 @@ use euclid::{
     error::ContractError,
     fee::{DenomFees, TotalFees},
     msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg},
-    pool::{add_liquidity, register_pool, remove_liquidity, update_fee, update_state, State},
+    pool::{
+        add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
+        State, SwapCalculationMethod,
+    },
 };
 
 use crate::{
-    execute::execute_swap,
     query::{
         query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
         query_total_fees_collected, query_total_fees_per_denom,
@@ -159,12 +161,16 @@ pub fn execute(
         } => execute_swap(
             deps,
             env,
+            &STATE,
+            &BALANCES,
+            None,
             sender,
             asset_in,
             amount_in,
             min_token_out,
             tx_id,
             next_swaps,
+            SwapCalculationMethod::Regular,
             test_fail,
         ),
         ExecuteMsg::UpdateState {

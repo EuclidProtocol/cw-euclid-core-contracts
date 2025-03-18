@@ -1,6 +1,6 @@
 use cosmwasm_std::{from_json, to_json_binary, DepsMut, Reply, Response, SubMsgResult};
 use cw_utils::parse_reply_execute_data;
-use euclid::{error::ContractError, msgs::vlp::VlpSwapResponse};
+use euclid::{error::ContractError, pool::VlpSwapResponse};
 
 pub const NEXT_SWAP_REPLY_ID: u64 = 1;
 

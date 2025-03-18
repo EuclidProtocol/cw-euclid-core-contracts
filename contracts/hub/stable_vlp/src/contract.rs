@@ -6,18 +6,17 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::execute_swap;
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
 };
 use crate::reply;
-use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE};
+use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::error::ContractError;
-use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
 use euclid::pool::{
-    add_liquidity, register_pool, remove_liquidity, update_fee, update_state, State,
-    NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
+    SwapCalculationMethod, NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
@@ -158,12 +157,16 @@ pub fn execute(
         } => execute_swap(
             deps,
             env,
+            &STATE,
+            &BALANCES,
+            Some(&AMP_FACTOR),
             sender,
             asset_in,
             amount_in,
             min_token_out,
             tx_id,
             next_swaps,
+            SwapCalculationMethod::Stable,
             test_fail,
         ),
         ExecuteMsg::UpdateState {

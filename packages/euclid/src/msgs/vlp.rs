@@ -1,5 +1,6 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
+    error::ContractError,
     fee::{Fee, TotalFees},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
@@ -163,10 +164,20 @@ pub struct AllPoolsResponse {
 #[cw_serde]
 pub struct MigrateMsg {}
 
-#[cw_serde]
-pub struct VlpSwapResponse {
-    pub sender: CrossChainUser,
-    pub tx_id: String,
-    pub asset_out: Token,
-    pub amount_out: Uint128,
+// Function to calculate the asset to be recieved after a swap
+pub fn calculate_swap(
+    swap_amount: Uint128,
+    reserve_in: Uint128,
+    reserve_out: Uint128,
+) -> Result<Uint128, ContractError> {
+    // Calculate the k constant product
+    let k = reserve_in.checked_mul(reserve_out)?;
+    // Calculate the new reserve of token 1
+    let new_reserve_in = reserve_in.checked_add(swap_amount)?;
+    // Calculate the new reserve of token 2
+    let new_reserve_out = k.checked_div(new_reserve_in)?;
+    // Calculate the amount of token 2 to be recieved
+    let token_2_recieved = reserve_out.checked_sub(new_reserve_out)?;
+
+    Ok(token_2_recieved)
 }

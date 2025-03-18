@@ -4,13 +4,14 @@ use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{
     AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
     StablePoolInfo, StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
+    DEFAULT_AMP_FACTOR,
 };
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
 use euclid::utils::math::Decimal256Ext;
 
 use crate::math::compute_swap;
-use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE};
+use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::pool::State;
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
