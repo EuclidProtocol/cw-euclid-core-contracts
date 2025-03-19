@@ -358,6 +358,7 @@ pub fn remove_liquidity(
 pub fn execute_swap(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     sender: CrossChainUser,
     asset_in: Token,
     amount_in: Uint128,
@@ -383,12 +384,20 @@ pub fn execute_swap(
     let mut token_in_reserve = BALANCES.load(deps.storage, asset_in.clone())?;
     let mut token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
 
+    let voucher_sender = if info.sender == state.router {
+        sender.clone()
+    } else {
+        CrossChainUser {
+            address: info.sender.to_string(),
+            chain_uid: ChainUid::vsl_chain_uid()?,
+        }
+    };
     // Swap needs approval to use voucher tokens
     let transfer_voucher_msg =
         euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount: amount_in,
             token_id: asset_in.to_string(),
-            from: sender.clone(),
+            from: voucher_sender.clone(),
             to: CrossChainUser {
                 address: env.contract.address.to_string(),
                 chain_uid: ChainUid::vsl_chain_uid()?,
