@@ -2,6 +2,7 @@ use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     fee::{Fee, TotalFees},
+    pool::PoolConfig,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
@@ -118,6 +119,7 @@ pub struct GetStateResponse {
     pub last_updated: u64,
     pub total_lp_tokens: Uint128,
     pub admin: String,
+    pub pool_config: PoolConfig,
 }
 
 #[cw_serde]

@@ -1,6 +1,7 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
+    pool::PoolConfig,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
@@ -98,10 +99,10 @@ pub enum QueryMsg {
 
     // Queries the pool information for a chain id
     #[returns(StablePoolResponse)]
-    StablePool { chain_uid: ChainUid },
+    Pool { chain_uid: ChainUid },
     // Query to get all pools
     #[returns(AllStablePoolsResponse)]
-    GetAllStablePools {},
+    GetAllPools {},
 }
 
 // We define a custom struct for each query response
@@ -122,7 +123,7 @@ pub struct GetStateResponse {
     pub last_updated: u64,
     pub total_lp_tokens: Uint128,
     pub admin: String,
-    pub amp_factor: Uint64,
+    pub pool_config: PoolConfig,
 }
 
 #[cw_serde]

@@ -4,7 +4,7 @@ use cosmwasm_std::{
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::fee::BPS_50_PERCENT;
-use euclid::pool::MINIMUM_LIQUIDITY;
+use euclid::pool::{PoolConfig, MINIMUM_LIQUIDITY};
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
 
@@ -123,6 +123,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,
         admin: state.admin,
+        pool_config: PoolConfig::ConstantProduct {},
     })?)
 }
 

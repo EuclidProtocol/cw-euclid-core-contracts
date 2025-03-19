@@ -204,9 +204,9 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
         QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps, denom),
-        QueryMsg::StablePool { chain_uid } => query_pool(deps, chain_uid),
+        QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
 
-        QueryMsg::GetAllStablePools {} => query_all_pools(deps),
+        QueryMsg::GetAllPools {} => query_all_pools(deps),
     }
 }
 
