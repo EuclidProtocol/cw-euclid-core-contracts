@@ -287,15 +287,13 @@ pub fn register_pool(
         mint_lp_tokens: Uint128::zero(),
         sender: sender.clone(),
     };
-    let mut res = Response::new();
-    if let Some(amp_factor_storage) = amp_factor_storage {
-        res = res.add_attribute(
-            "amp_factor",
-            amp_factor_storage.load(deps.storage)?.to_string(),
-        );
-    }
+    let pool_type = if amp_factor_storage.is_some() {
+        "stable"
+    } else {
+        "constant_product"
+    };
 
-    Ok(res
+    let mut response = Response::new()
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
@@ -303,8 +301,17 @@ pub fn register_pool(
         ))
         .add_attribute("action", "register_pool")
         .add_attribute("pool_chain", sender.chain_uid.to_string())
-        .add_attribute("pool_type", "stable")
-        .set_data(to_json_binary(&ack)?))
+        .add_attribute("pool_type", pool_type)
+        .set_data(to_json_binary(&ack)?);
+
+    if let Some(amp_factor_storage) = amp_factor_storage {
+        response = response.add_attribute(
+            "amp_factor",
+            amp_factor_storage.load(deps.storage)?.to_string(),
+        );
+    }
+
+    Ok(response)
 }
 
 pub fn remove_liquidity(
