@@ -199,8 +199,6 @@ pub fn update_state(
     admin: Option<String>,
     amp_factor: Option<Uint64>,
 ) -> Result<Response, ContractError> {
-    let mut response = Response::new().add_attribute("action", "update_state");
-
     let state = state_storage.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
@@ -228,13 +226,6 @@ pub fn update_state(
         state.admin
     };
 
-    if let Some(amp_factor) = amp_factor {
-        if let Some(storage) = amp_factor_storage {
-            storage.save(deps.storage, &amp_factor)?;
-            response = response.add_attribute("amp_factor_updated", amp_factor.to_string());
-        }
-    }
-
     let new_state = State {
         pair: state.pair,
         router: verified_router,
@@ -247,6 +238,12 @@ pub fn update_state(
     };
 
     state_storage.save(deps.storage, &new_state)?;
+
+    let mut response = Response::new().add_attribute("action", "update_state");
+    if let (Some(amp_factor), Some(storage)) = (amp_factor, amp_factor_storage) {
+        storage.save(deps.storage, &amp_factor)?;
+        response = response.add_attribute("amp_factor_updated", amp_factor.to_string());
+    }
 
     Ok(response)
 }
