@@ -123,6 +123,7 @@ pub fn execute(
         } => execute_swap(
             deps,
             env,
+            info,
             sender,
             asset_in,
             amount_in,
