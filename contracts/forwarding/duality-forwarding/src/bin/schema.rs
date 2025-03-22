@@ -1,8 +1,7 @@
 use cosmwasm_schema::{export_schema_with_title, schema_for, write_api};
 use forwarding::msgs::{
-    cw20::Cw20HookMsg,
-    euclid_receive::OsmosisEuclidReceiveHook,
-    osmosis::{ExecuteMsg, InstantiateMsg, QueryMsg},
+    duality::{ExecuteMsg, InstantiateMsg, QueryMsg},
+    euclid_receive::DualityEuclidReceiveHook,
 };
 use std::env::current_dir;
 
@@ -16,9 +15,8 @@ fn main() {
         query: QueryMsg,
     }
 
-    export_schema_with_title(&schema_for!(Cw20HookMsg), &out_dir, "cw20receive");
     export_schema_with_title(
-        &schema_for!(OsmosisEuclidReceiveHook),
+        &schema_for!(DualityEuclidReceiveHook),
         &out_dir,
         "euclid-receive",
     );
