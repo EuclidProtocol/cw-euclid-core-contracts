@@ -31,7 +31,7 @@ use crate::reply::{
     CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
     IBC_RECEIVE_REPLY_ID, RELEASE_ESCROW_REPLY_ID,
 };
-use crate::state::{State, STATE};
+use crate::state::{State, MOCK_RELAYER_ADDRESS, STATE};
 use crate::{ibc, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
@@ -58,6 +58,10 @@ pub fn instantiate(
             totals: HashMap::default(),
         },
     };
+
+    if let Some(mock_relayer_address) = msg.mock_relayer_address {
+        MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
+    }
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 

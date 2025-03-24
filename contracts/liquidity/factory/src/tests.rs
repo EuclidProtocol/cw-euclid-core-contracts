@@ -34,6 +34,7 @@ mod tests {
             escrow_code_id: 1,
             cw20_code_id: 2,
             is_native: true,
+            mock_relayer_address: None,
         };
         let info = mock_info("owner", &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()

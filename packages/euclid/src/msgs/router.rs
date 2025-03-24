@@ -314,20 +314,25 @@ pub enum RegisterFactoryChainType {
 #[cw_serde]
 pub struct RegisterFactoryChainNative {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainEvm {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainSolana {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainIbc {
     pub channel: String,
     pub timeout: Option<u64>,
+    pub factory_address: String,
+    pub factory_chain_id: String,
 }

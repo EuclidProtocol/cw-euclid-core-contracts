@@ -145,10 +145,16 @@ pub fn execute_cosmos_receive_acknowledgement(
     // Remove the existing request as its already relayed now
     COSMOS_PACKET_RELAY_MAP.remove(deps.storage, (chain_uid.clone(), sequence));
 
-    let chain_type = euclid::chain::ChainType::Ibc(IbcChain {
-        from_hub_channel: "".to_string(),
-        from_factory_channel: "".to_string(),
-    });
+    let maybe_chain_type = CHAIN_UID_TO_CHAIN.may_load(deps.storage, chain_uid.clone())?;
+
+    let chain_type =
+        maybe_chain_type
+            .clone()
+            .map(|c| c.chain_type)
+            .unwrap_or(euclid::chain::ChainType::Ibc(IbcChain {
+                from_hub_channel: "".to_string(),
+                from_factory_channel: "".to_string(),
+            }));
 
     let msg: HubIbcExecuteMsg = from_json(msg)?;
 
@@ -156,8 +162,10 @@ pub fn execute_cosmos_receive_acknowledgement(
     match msg {
         HubIbcExecuteMsg::RegisterFactory { .. } => {}
         _ => {
-            let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-            ensure!(chain.is_ibc(), ContractError::Unauthorized {});
+            ensure!(
+                maybe_chain_type.is_some() && maybe_chain_type.unwrap().is_ibc(),
+                ContractError::Unauthorized {}
+            );
         }
     }
 

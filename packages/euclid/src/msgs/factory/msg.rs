@@ -20,6 +20,7 @@ pub struct InstantiateMsg {
     pub escrow_code_id: u64,
     pub cw20_code_id: u64,
     pub is_native: bool,
+    pub mock_relayer_address: Option<String>,
 }
 
 #[cw_serde]

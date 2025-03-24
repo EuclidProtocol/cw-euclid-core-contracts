@@ -68,6 +68,7 @@ mod tests {
                     chain_info: euclid::msgs::router::RegisterFactoryChainType::Native(
                         RegisterFactoryChainNative {
                             factory_address: "factory".to_string(),
+                            factory_chain_id: "1".to_string(),
                         },
                     ),
                 },
@@ -79,6 +80,7 @@ mod tests {
                     chain_info: euclid::msgs::router::RegisterFactoryChainType::Native(
                         RegisterFactoryChainNative {
                             factory_address: "factory".to_string(),
+                            factory_chain_id: "1".to_string(),
                         },
                     ),
                     chain_uid: ChainUid::create("1".to_string()).unwrap(),
