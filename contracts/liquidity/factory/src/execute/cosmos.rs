@@ -18,7 +18,6 @@ use crate::{
     },
 };
 
-
 /**
  * Always run by contract itself to trigger send packet evnent and also increment sequence count
  */
