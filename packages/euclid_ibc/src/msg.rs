@@ -98,7 +98,7 @@ impl ChainIbcExecuteMsg {
         router_contract: String,
         chain_uid: ChainUid,
         chain_type: ChainType,
-        timeout: u64,
+        _timeout: u64,
     ) -> Result<SubMsg, ContractError> {
         match chain_type {
             ChainType::Native {} => {
