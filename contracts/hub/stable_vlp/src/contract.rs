@@ -157,6 +157,7 @@ pub fn execute(
         } => execute_swap(
             deps,
             env,
+            info,
             &STATE,
             &BALANCES,
             Some(&AMP_FACTOR),

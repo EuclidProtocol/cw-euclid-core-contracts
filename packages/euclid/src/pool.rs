@@ -562,6 +562,7 @@ pub enum SwapCalculationMethod {
 pub fn execute_swap(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     state_storage: &Item<State>,
     balances_storage: &Map<Token, Uint128>,
     amp_factor_storage: Option<&Item<Uint64>>,
@@ -591,12 +592,23 @@ pub fn execute_swap(
     let mut token_in_reserve = balances_storage.load(deps.storage, asset_in.clone())?;
     let mut token_out_reserve = balances_storage.load(deps.storage, asset_out.clone())?;
 
+    // If the sender is the router, use the sender as the voucher sender
+    // Otherwise, use the last contract caller as the voucher sender
+    let voucher_sender = if info.sender == state.router {
+        sender.clone()
+    } else {
+        CrossChainUser {
+            address: info.sender.to_string(),
+            chain_uid: ChainUid::vsl_chain_uid()?,
+        }
+    };
+
     // Swap needs approval to use voucher tokens
     let transfer_voucher_msg =
         crate::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount: amount_in,
             token_id: asset_in.to_string(),
-            from: sender.clone(),
+            from: voucher_sender.clone(),
             to: CrossChainUser {
                 address: env.contract.address.to_string(),
                 chain_uid: ChainUid::vsl_chain_uid()?,
