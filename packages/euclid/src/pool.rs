@@ -164,7 +164,10 @@ pub fn update_fee(
     recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
 
     state.fee.lp_fee_bps = lp_fee_bps.unwrap_or(state.fee.lp_fee_bps);
     ensure!(
@@ -200,7 +203,10 @@ pub fn update_state(
     amp_factor: Option<Uint64>,
 ) -> Result<Response, ContractError> {
     let state = state_storage.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
 
     // Validate and update router address
     let verified_router = if let Some(router) = router {
@@ -261,7 +267,10 @@ pub fn register_pool(
 ) -> Result<Response, ContractError> {
     let state = state_storage.load(deps.storage)?;
 
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
 
     // Verify that chain pool does not already exist
     ensure!(
@@ -324,7 +333,10 @@ pub fn remove_liquidity(
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
     let mut state = state_storage.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
     let pair = state.pair.clone();
 
     let mut total_reserve_1 = balances_storage.load(deps.storage, pair.token_1.clone())?;
@@ -430,7 +442,10 @@ pub fn add_liquidity(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
     let mut response = Response::new();
 
     // Ensure tokens are received by VLP
@@ -594,7 +609,7 @@ pub fn execute_swap(
 
     // If the sender is the router, use the sender as the voucher sender
     // Otherwise, use the last contract caller as the voucher sender
-    let voucher_sender = if info.sender == state.router {
+    let voucher_sender = if info.sender.as_str() == state.router {
         sender.clone()
     } else {
         CrossChainUser {

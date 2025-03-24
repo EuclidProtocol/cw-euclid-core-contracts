@@ -36,7 +36,7 @@ impl Decimal256Ext for Decimal256 {
             .checked_div(10u128.pow(self.decimal_places() - precision).into())?
             .try_into()
             .map_err(|o: ConversionOverflowError| {
-                StdError::generic_err(format!("Error converting {}", o.value))
+                StdError::generic_err(format!("Error converting {}", o.target_type))
             })
     }
 

@@ -46,7 +46,7 @@ pub fn execute_update_hub_channel(
     new_channel: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(info.sender.as_str() == state.admin, ContractError::Unauthorized {});
     let old_channel = HUB_CHANNEL.may_load(deps.storage)?;
     HUB_CHANNEL.save(deps.storage, &new_channel)?;
     let mut response = Response::new().add_attribute("method", "execute_update_hub_channel");

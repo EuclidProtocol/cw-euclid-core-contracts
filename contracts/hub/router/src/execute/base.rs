@@ -31,7 +31,10 @@ use crate::{
 
 pub fn execute_update_lock(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
 
     // Switch to opposite lock state
     state.locked = !state.locked;
@@ -50,7 +53,10 @@ pub fn execute_deregister_chain(
     chain: ChainUid,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
     let mut deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
 
     ensure!(
@@ -73,7 +79,10 @@ pub fn execute_reregister_chain(
     chain: ChainUid,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
     let mut deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
 
     ensure!(
@@ -117,7 +126,10 @@ pub fn execute_register_factory(
     );
 
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
 
     let response = Response::new()
         .add_event(tx_event(
@@ -181,7 +193,10 @@ pub fn execute_update_factory_channel(
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
 
     let chain_uid = chain_uid.validate()?.to_owned();
     let chain_info = CHAIN_UID_TO_CHAIN
@@ -479,7 +494,10 @@ pub fn execute_native_receive_callback(
     ensure!(chain.is_native(), ContractError::Unauthorized {});
 
     // Only registered factory contract can execute this message
-    ensure!(chain.factory == info.sender, ContractError::Unauthorized {});
+    ensure!(
+        chain.factory == info.sender.as_str(),
+        ContractError::Unauthorized {}
+    );
     receive::reusable_internal_call(deps, env, info, msg, chain_uid)
 }
 
@@ -495,7 +513,10 @@ pub fn execute_update_router_state(
     mock_relayer_address: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
 
     let verified_virtual_balance_address: Result<Option<Addr>, ContractError> =
         virtual_balance_address

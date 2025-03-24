@@ -14,7 +14,10 @@ pub fn execute_mint(
     msg: ExecuteMint,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -49,7 +52,10 @@ pub fn execute_burn(
     msg: ExecuteBurn,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
 
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -181,7 +187,10 @@ pub fn execute_update_state(
     admin: Option<Addr>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
 
     let verified_router = if let Some(ref router) = router {
         deps.api.addr_validate(router.as_str())?;

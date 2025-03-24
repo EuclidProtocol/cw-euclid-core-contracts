@@ -65,7 +65,7 @@ pub fn execute_solana_receive_packet(
     hash: String,
 ) -> Result<Response, ContractError> {
     ensure!(
-        info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        info.sender.as_str() == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
         ContractError::Unauthorized {}
     );
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
@@ -129,7 +129,7 @@ pub fn execute_solana_receive_acknowledgement(
     ack: Binary,
 ) -> Result<Response, ContractError> {
     ensure!(
-        info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        info.sender.as_str() == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
         ContractError::Unauthorized {}
     );
     let _existing_request =

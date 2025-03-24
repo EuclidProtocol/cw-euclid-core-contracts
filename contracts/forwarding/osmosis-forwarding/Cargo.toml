@@ -21,8 +21,7 @@ incremental = false
 overflow-checks = true
 
 [features]
-# for more explicit tests, cargo test --features=backtraces
-backtraces = ["cosmwasm-std/backtraces"]
+
 # use library feature to disable all instantiate/execute/query exports
 library = []
 
@@ -37,7 +36,7 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 cosmwasm-schema = { workspace = true }
 cosmwasm-std = { workspace = true, features = [
   "cosmwasm_1_2",
-  "ibc3",
+  
 ] }
 cw-storage-plus = { workspace = true }
 cw2 = { workspace = true }
