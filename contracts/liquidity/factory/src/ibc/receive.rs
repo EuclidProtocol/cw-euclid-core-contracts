@@ -52,7 +52,7 @@ pub fn ibc_packet_receive(
 }
 
 pub fn ibc_receive_internal_call(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     msg: IbcPacketReceiveMsg,
@@ -81,13 +81,13 @@ pub fn ibc_receive_internal_call(
 }
 
 pub fn reusable_internal_call(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     msg: HubIbcExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
         HubIbcExecuteMsg::RegisterFactory { chain_uid, tx_id } => {
-            execute_register_router(deps, env, chain_uid, tx_id)
+            execute_register_router(deps.branch(), env, chain_uid, tx_id)
         }
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
@@ -95,9 +95,9 @@ pub fn reusable_internal_call(
             tx_id,
             recipient,
             ..
-        } => execute_release_escrow(deps, env, amount, recipient, token, tx_id),
+        } => execute_release_escrow(deps.branch(), env, amount, recipient, token, tx_id),
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
-            execute_update_factory_channel(deps, env, chain_uid, tx_id)
+            execute_update_factory_channel(deps.branch(), env, chain_uid, tx_id)
         }
     }
 }

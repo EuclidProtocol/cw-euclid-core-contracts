@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Int256};
+use cosmwasm_std::{Addr, Binary, Int256};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
@@ -31,6 +31,8 @@ pub struct State {
 }
 
 pub const STATE: Item<State> = Item::new("state");
+pub const MOCK_RELAYER_ADDRESS: Item<String> = Item::new("mock_relayer_address");
+
 
 // Channel that connects factory to hub chain
 pub const HUB_CHANNEL: Item<String> = Item::new("hub_channel");
@@ -74,3 +76,10 @@ pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
     Map::new("pending_deposit_token");
 
 pub const FUNDS_INFO: Item<PairWithDenomAndAmount> = Item::new("funds_info");
+
+//COSMOS Relay sequence map
+pub const COSMOS_PACKET_RELAY_MAP: Map<u128, Binary> = Map::new("cosmos_packet_relay_map");
+
+//Cosmos Relay sequence count
+pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Item<u128> =
+    Item::new("cosmos_packet_relay_sequence_count");

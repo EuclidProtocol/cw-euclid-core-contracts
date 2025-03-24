@@ -1236,7 +1236,7 @@ pub fn execute_update_state(
 }
 
 pub fn execute_native_receive_callback(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     msg: Binary,

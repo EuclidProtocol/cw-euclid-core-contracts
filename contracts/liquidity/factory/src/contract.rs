@@ -10,6 +10,10 @@ use euclid::fee::DenomFees;
 use euclid::token::TokenType;
 use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
+use crate::execute::cosmos::{
+    execute_cosmos_receive_acknowledgement, execute_cosmos_receive_packet,
+    execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
+};
 use crate::execute::{
     add_liquidity_request, execute_deposit_token, execute_native_receive_callback,
     execute_request_deregister_denom, execute_request_pool_creation,
@@ -23,9 +27,9 @@ use crate::query::{
 };
 use crate::reply::{
     on_cw20_instantiate_reply, on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply,
-    on_ibc_receive_reply, on_release_escrow_reply, CW20_INSTANTIATE_REPLY_ID,
-    ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
-    RELEASE_ESCROW_REPLY_ID,
+    on_ibc_receive_reply, on_release_escrow_reply, COSMOS_RECEIVE_REPLY_ID,
+    CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
+    IBC_RECEIVE_REPLY_ID, RELEASE_ESCROW_REPLY_ID,
 };
 use crate::state::{State, STATE};
 use crate::{ibc, reply};
@@ -220,11 +224,28 @@ pub fn execute(
             ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, info, env, ack)
         }
         ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-            ibc::receive::ibc_receive_internal_call(deps, env, info, receive_msg)
+            ibc::receive::ibc_receive_internal_call(&mut deps, env, info, receive_msg)
         }
         ExecuteMsg::NativeReceiveCallback { msg } => {
-            execute_native_receive_callback(deps, env, info, msg)
+            execute_native_receive_callback(&mut deps, env, info, msg)
         }
+        // COMSOS ENTRY POINTS FOR RELAYER
+        ExecuteMsg::CosmosSendPacket { msg } => execute_cosmos_send_packet(deps, info, env, msg),
+        ExecuteMsg::CosmosReceivePacket {
+            msg,
+            sequence,
+            hash,
+        } => execute_cosmos_receive_packet(deps, info, env, msg, sequence, hash),
+
+        ExecuteMsg::CosmosReceivePacketInternalCallback { msg } => {
+            execute_cosmos_receive_packet_internal_callback(&mut deps, env, info, msg)
+        }
+        ExecuteMsg::CosmosReceiveAck {
+            msg,
+            sequence,
+            hash,
+            ack,
+        } => execute_cosmos_receive_acknowledgement(deps, info, env, msg, sequence, hash, ack),
     }
 }
 
@@ -264,6 +285,8 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         IBC_ACK_AND_TIMEOUT_REPLY_ID => on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => on_ibc_receive_reply(deps, msg),
         RELEASE_ESCROW_REPLY_ID => on_release_escrow_reply(deps, msg),
+        COSMOS_RECEIVE_REPLY_ID => reply::on_cosmos_receive_reply(deps, msg),
+
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

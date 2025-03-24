@@ -129,6 +129,36 @@ pub enum ExecuteMsg {
         hash: String,
         ack: Binary,
     },
+
+    // COSMOS REALYING MSGS
+    CosmosSendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    CosmosReceivePacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+    },
+
+    CosmosReceivePacketInternalCallback {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    CosmosReceiveAck {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+        ack: Binary,
+    },
 }
 
 #[cw_serde]
