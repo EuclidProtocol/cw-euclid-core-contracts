@@ -213,6 +213,7 @@ pub fn execute(
             escrow_code_id,
             cw20_code_id,
             is_native,
+            mock_relayer_address,
         } => execute_update_state(
             deps,
             info,
@@ -221,6 +222,7 @@ pub fn execute(
             escrow_code_id,
             cw20_code_id,
             is_native,
+            mock_relayer_address,
         ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),

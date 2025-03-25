@@ -33,7 +33,7 @@ use crate::{
     ibc::receive,
     query::get_chain_type,
     state::{
-        State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        State, HUB_CHANNEL, MOCK_RELAYER_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
         PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
         VLP_TO_CW20,
@@ -1194,6 +1194,7 @@ pub fn execute_update_state(
     escrow_code_id: Option<u64>,
     cw20_code_id: Option<u64>,
     is_native: Option<bool>,
+    mock_relayer_address: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -1211,6 +1212,10 @@ pub fn execute_update_state(
         is_native: is_native.unwrap_or(state.is_native),
         partner_fees_collected: state.partner_fees_collected,
     };
+
+    if let Some(mock_relayer_address) = mock_relayer_address {
+        MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
+    }
 
     STATE.save(deps.storage, &new_state)?;
 

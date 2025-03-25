@@ -81,6 +81,7 @@ pub enum ExecuteMsg {
         // CW20 Code ID
         cw20_code_id: Option<u64>,
         is_native: Option<bool>,
+        mock_relayer_address: Option<String>,
     },
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
@@ -236,7 +237,9 @@ pub struct PoolVlpResponse {
 }
 
 #[cw_serde]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub mock_relayer_address: Option<String>,
+}
 
 #[cw_serde]
 pub struct RegisterFactoryResponse {
