@@ -5,7 +5,7 @@ use cosmwasm_std::{
     IbcPacketTimeoutMsg, MessageInfo, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
 };
 use cosmwasm_std::{to_json_binary, IbcAcknowledgement};
-use euclid::chain::{Chain, ChainType, ChainUid, CrossChainUser};
+use euclid::chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit};
 use euclid::error::ContractError;
 use euclid::events::{tx_event, TxType};
 use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
@@ -88,10 +88,11 @@ pub fn reusable_internal_ack_call(
             token,
             tx_id,
             sender,
+            recipient,
             ..
         } => {
             let res = from_json(ack)?;
-            ibc_ack_release_escrow(deps, env, sender, amount, token, res, tx_id)?
+            ibc_ack_release_escrow(deps, env, sender, amount, token, res, recipient, tx_id)?
         }
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             let res = from_json(ack)?;
@@ -256,6 +257,7 @@ pub fn ibc_ack_release_escrow(
     amount: Uint128,
     token: Token,
     res: AcknowledgementMsg<ReleaseEscrowResponse>,
+    recipient: CrossChainUserWithLimit,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let response = Response::new().add_event(tx_event(
@@ -322,7 +324,7 @@ pub fn ibc_ack_release_escrow(
             });
 
             // Escrow release is failed, add the old escrow balance again
-            let escrow_key = ESCROW_BALANCES.key((token, sender.chain_uid));
+            let escrow_key = ESCROW_BALANCES.key((token, recipient.user.chain_uid));
             let new_balance = escrow_key.load(deps.storage)?.checked_add(amount)?;
             escrow_key.save(deps.storage, &new_balance)?;
 
