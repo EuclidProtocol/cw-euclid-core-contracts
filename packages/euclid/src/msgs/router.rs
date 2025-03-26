@@ -129,6 +129,36 @@ pub enum ExecuteMsg {
         hash: String,
         ack: Binary,
     },
+
+    // COSMOS REALYING MSGS
+    CosmosSendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    CosmosReceivePacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+    },
+
+    CosmosReceivePacketInternalCallback {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    CosmosReceiveAck {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+        ack: Binary,
+    },
 }
 
 #[cw_serde]
@@ -284,20 +314,25 @@ pub enum RegisterFactoryChainType {
 #[cw_serde]
 pub struct RegisterFactoryChainNative {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainEvm {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainSolana {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainIbc {
     pub channel: String,
     pub timeout: Option<u64>,
+    pub factory_address: String,
+    pub factory_chain_id: String,
 }

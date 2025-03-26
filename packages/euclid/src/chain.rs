@@ -172,6 +172,10 @@ impl Chain {
         matches!(self.chain_type, ChainType::Evm(_))
     }
 
+    pub fn is_ibc(&self) -> bool {
+        matches!(self.chain_type, ChainType::Ibc(_))
+    }
+
     pub fn is_solana(&self) -> bool {
         matches!(self.chain_type, ChainType::Solana(_))
     }
