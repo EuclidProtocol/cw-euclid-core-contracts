@@ -58,7 +58,7 @@ pub fn query_simulate_swap(
         Some((next_swap, forward_swaps)) => {
             let next_swap_response: GetSwapResponse = deps.querier.query_wasm_smart(
                 next_swap.vlp_address.clone(),
-                &euclid::msgs::vlp::QueryMsg::SimulateSwap {
+                &euclid::msgs::stable_vlp::QueryMsg::SimulateSwap {
                     asset: asset_out,
                     asset_amount: receive_amount.return_amount,
                     swaps: forward_swaps.to_vec(),
