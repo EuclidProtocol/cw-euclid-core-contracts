@@ -513,32 +513,27 @@ pub fn execute_swap(
     match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             // There are more swaps
-            let virtual_balance_transfer_msg =
-                euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
+            let virtual_balance_approve_msg =
+                euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
                     amount: swap_response.amount_out,
                     token_id: swap_response.asset_out.to_string(),
 
-                    from: CrossChainUser {
+                    owner: CrossChainUser {
                         address: env.contract.address.to_string(),
                         chain_uid: ChainUid::vsl_chain_uid()?,
                     },
 
-                    to: CrossChainUser {
+                    spender: CrossChainUser {
                         address: next_swap.vlp_address.clone(),
                         chain_uid: ChainUid::vsl_chain_uid()?,
                     },
                 });
 
-            let virtual_balance_transfer_msg = WasmMsg::Execute {
+            let virtual_balance_approve_msg = WasmMsg::Execute {
                 contract_addr: state.virtual_balance.clone(),
-                msg: to_json_binary(&virtual_balance_transfer_msg)?,
+                msg: to_json_binary(&virtual_balance_approve_msg)?,
                 funds: vec![],
             };
-
-            let virtual_balance_transfer_msg = SubMsg::reply_on_error(
-                virtual_balance_transfer_msg,
-                VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
-            );
 
             let next_swap_msg = euclid::msgs::vlp::ExecuteMsg::Swap {
                 sender: sender.clone(),
@@ -563,7 +558,7 @@ pub fn execute_swap(
             response = response
                 .add_attribute("swap_type", "forward_swap")
                 .add_attribute("forward_to", next_swap.vlp_address.clone())
-                .add_submessage(virtual_balance_transfer_msg)
+                .add_message(virtual_balance_approve_msg)
                 .add_submessage(next_swap_msg);
         }
         None => {
