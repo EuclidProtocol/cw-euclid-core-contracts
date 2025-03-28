@@ -513,8 +513,8 @@ pub fn execute_swap(
     match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             // There are more swaps
-            let virtual_balance_approve_msg =
-                euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
+            let virtual_balance_approve_msg = euclid::msgs::virtual_balance::ExecuteMsg::Approve(
+                euclid::msgs::virtual_balance::ExecuteApprove {
                     amount: swap_response.amount_out,
                     token_id: swap_response.asset_out.to_string(),
 
@@ -527,7 +527,8 @@ pub fn execute_swap(
                         address: next_swap.vlp_address.clone(),
                         chain_uid: ChainUid::vsl_chain_uid()?,
                     },
-                });
+                },
+            );
 
             let virtual_balance_approve_msg = WasmMsg::Execute {
                 contract_addr: state.virtual_balance.clone(),
