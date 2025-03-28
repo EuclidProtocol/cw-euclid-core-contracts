@@ -78,7 +78,7 @@ pub fn execute_cosmos_receive_packet(
     });
 
     let sub_msg = SubMsg::reply_always(internal_msg, COSMOS_RECEIVE_REPLY_ID);
-    let msg: Result<ChainIbcExecuteMsg, StdError> = from_json(&msg);
+    let msg: Result<HubIbcExecuteMsg, StdError> = from_json(&msg);
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
