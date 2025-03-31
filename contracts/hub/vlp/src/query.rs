@@ -65,6 +65,13 @@ pub fn query_simulate_swap(
         None => Ok(to_json_binary(&GetSwapResponse {
             amount_out: receive_amount,
             asset_out,
+            spread_amount: token_out_reserve
+                .checked_mul(swap_amount)
+                .unwrap_or(Uint128::zero())
+                .checked_div(token_in_reserve)
+                .unwrap_or(Uint128::zero())
+                .checked_sub(receive_amount)
+                .unwrap_or(Uint128::zero()),
         })?),
     };
     response
