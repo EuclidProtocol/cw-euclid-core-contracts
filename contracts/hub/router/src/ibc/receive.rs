@@ -341,14 +341,11 @@ fn execute_request_pool_creation(
                         })?
                         .to_string(),
                     pair: pair.clone(),
-                    fee: Fee {
-                        lp_fee_bps: 10,
-                        euclid_fee_bps: 10,
-                        recipient: CrossChainUser::new(
-                            ChainUid::vsl_chain_uid()?,
-                            state.admin.clone(),
-                        ),
-                    },
+                    fee: Fee::new(
+                        10,
+                        10,
+                        CrossChainUser::new(ChainUid::vsl_chain_uid()?, state.admin.clone()),
+                    ),
                     execute: Some(msgs::stable_vlp::ExecuteMsg::RegisterPool {
                         sender: sender.clone(),
                         pair: pair.clone(),
@@ -372,14 +369,11 @@ fn execute_request_pool_creation(
                         })?
                         .to_string(),
                     pair,
-                    fee: Fee {
-                        lp_fee_bps: 10,
-                        euclid_fee_bps: 10,
-                        recipient: CrossChainUser::new(
-                            ChainUid::vsl_chain_uid()?,
-                            state.admin.clone(),
-                        ),
-                    },
+                    fee: Fee::new(
+                        10,
+                        10,
+                        CrossChainUser::new(ChainUid::vsl_chain_uid()?, state.admin.clone()),
+                    ),
                     execute: Some(register_msg),
                     admin: state.admin.clone(),
                 })?,

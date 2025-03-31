@@ -21,14 +21,14 @@ mod tests {
                 token_1: Token::create("token1".to_string()).unwrap(),
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
-            fee: Fee {
-                lp_fee_bps: 1,
-                euclid_fee_bps: 1,
-                recipient: CrossChainUser::new(
+            fee: Fee::new(
+                1,
+                1,
+                CrossChainUser::new(
                     ChainUid::create("1".to_string()).unwrap(),
                     "addr".to_string(),
                 ),
-            },
+            ),
             execute: None,
             admin: "admin".to_string(),
             amp_factor: Some(Uint64::from(1000u64)),
@@ -49,14 +49,14 @@ mod tests {
             },
             router: "router".to_string(),
             virtual_balance: "virtual_balance".to_string(),
-            fee: Fee {
-                lp_fee_bps: 1,
-                euclid_fee_bps: 1,
-                recipient: CrossChainUser::new(
+            fee: Fee::new(
+                1,
+                1,
+                CrossChainUser::new(
                     ChainUid::create("1".to_string()).unwrap(),
                     "addr".to_string(),
                 ),
-            },
+            ),
             total_fees_collected: TotalFees {
                 lp_fees: DenomFees {
                     totals: HashMap::default(),
@@ -142,14 +142,14 @@ mod tests {
         let fee = STATE.load(&deps.storage).unwrap().fee;
         assert_eq!(
             fee,
-            Fee {
-                lp_fee_bps: 5,
-                euclid_fee_bps: 4,
-                recipient: CrossChainUser::new(
+            Fee::new(
+                5,
+                4,
+                CrossChainUser::new(
                     ChainUid::create("2".to_string()).unwrap(),
                     "addr_2".to_string(),
-                ),
-            }
+                )
+            )
         );
 
         // Exceed max bps
