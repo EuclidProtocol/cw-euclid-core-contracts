@@ -187,6 +187,7 @@ pub fn update_fee(
         .add_event(simple_event()))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_state(
     deps: DepsMut,
     info: MessageInfo,
@@ -248,6 +249,7 @@ pub fn update_state(
     Ok(response)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn register_pool(
     deps: DepsMut,
     env: Env,
@@ -311,6 +313,7 @@ pub fn register_pool(
     Ok(response)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn remove_liquidity(
     deps: DepsMut,
     env: Env,
@@ -417,6 +420,7 @@ pub fn remove_liquidity(
         .set_data(acknowledgement))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn add_liquidity(
     deps: DepsMut,
     env: Env,
