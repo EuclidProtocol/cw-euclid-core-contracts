@@ -792,10 +792,10 @@ fn test_create_pool_with_funds() {
                     test_fail: None,
                 }],
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
-                    user: CrossChainUser {
-                        address: sender.clone(),
-                        chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                    },
+                    user: CrossChainUser::new(
+                        ChainUid::create("nibiru".to_string()).unwrap(),
+                        sender.clone(),
+                    ),
                     limit: None,
                     preferred_denom: None,
                     refund_address: None,
@@ -852,10 +852,10 @@ fn test_create_pool_with_funds() {
     let virtual_balance_query: GetBalanceResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
             balance_key: BalanceKey {
-                cross_chain_user: CrossChainUser {
-                    address: sender.clone(),
-                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                },
+                cross_chain_user: CrossChainUser::new(
+                    ChainUid::create("nibiru".to_string()).unwrap(),
+                    sender.clone(),
+                ),
                 token_id: eucl_token.token.to_string(),
             },
         })
@@ -872,10 +872,10 @@ fn test_create_pool_with_funds() {
         .withdraw_virtual_balance(
             Uint128::new(50),
             vec![CrossChainUserWithLimit {
-                user: CrossChainUser {
-                    address: sender.clone(),
-                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                },
+                user: CrossChainUser::new(
+                    ChainUid::create("nibiru".to_string()).unwrap(),
+                    sender.clone(),
+                ),
                 limit: None,
                 preferred_denom: None,
                 refund_address: None,
@@ -889,10 +889,10 @@ fn test_create_pool_with_funds() {
     let virtual_balance_query: GetBalanceResponse = virtual_balance_nibiru
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
             balance_key: BalanceKey {
-                cross_chain_user: CrossChainUser {
-                    address: sender.clone(),
-                    chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                },
+                cross_chain_user: CrossChainUser::new(
+                    ChainUid::create("nibiru".to_string()).unwrap(),
+                    sender.clone(),
+                ),
                 token_id: eucl_token.token.to_string(),
             },
         })
@@ -2095,10 +2095,10 @@ fn test_swap_request() {
                     test_fail: None,
                 }],
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
-                    user: CrossChainUser {
-                        chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                        address: sender,
-                    },
+                    user: CrossChainUser::new(
+                        ChainUid::create("nibiru".to_string()).unwrap(),
+                        sender.clone(),
+                    ),
                     limit: None,
                     preferred_denom: None,
                     refund_address: None,
@@ -2683,10 +2683,10 @@ fn test_swap_request_fails_for_invalid_swap_route() {
             test_fail: None,
         }],
         vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
-            },
+            user: CrossChainUser::new(
+                ChainUid::create("nibiru".to_string()).unwrap(),
+                sender.clone(),
+            ),
             limit: None,
             preferred_denom: None,
             refund_address: None,
@@ -3233,10 +3233,10 @@ fn test_stable_pool() {
                 }],
                 cross_chain_addresses: vec![],
                 partner_fee: None,
-                sender: Some(CrossChainUser {
-                    chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
-                    address: Addr::unchecked("sender_for_all_chains").into_string(),
-                }),
+                sender: Some(CrossChainUser::new(
+                    ChainUid::create("osmosis".to_string()).unwrap(),
+                    Addr::unchecked("sender_for_all_chains").into_string(),
+                )),
                 meta: None,
             }),
             Some(&[coin(1000u128, "eucl")]),

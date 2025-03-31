@@ -344,10 +344,10 @@ fn execute_request_pool_creation(
                     fee: Fee {
                         lp_fee_bps: 10,
                         euclid_fee_bps: 10,
-                        recipient: CrossChainUser {
-                            address: state.admin.clone(),
-                            chain_uid: ChainUid::vsl_chain_uid()?,
-                        },
+                        recipient: CrossChainUser::new(
+                            ChainUid::vsl_chain_uid()?,
+                            state.admin.clone(),
+                        ),
                     },
                     execute: Some(msgs::stable_vlp::ExecuteMsg::RegisterPool {
                         sender: sender.clone(),
@@ -375,10 +375,10 @@ fn execute_request_pool_creation(
                     fee: Fee {
                         lp_fee_bps: 10,
                         euclid_fee_bps: 10,
-                        recipient: CrossChainUser {
-                            address: state.admin.clone(),
-                            chain_uid: ChainUid::vsl_chain_uid()?,
-                        },
+                        recipient: CrossChainUser::new(
+                            ChainUid::vsl_chain_uid()?,
+                            state.admin.clone(),
+                        ),
                     },
                     execute: Some(register_msg),
                     admin: state.admin.clone(),
@@ -544,10 +544,7 @@ pub fn ibc_execute_add_liquidity(
             euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
                 amount: token.amount,
                 token_id: token.token.to_string(),
-                spender: CrossChainUser {
-                    address: vlp_address.to_string(),
-                    chain_uid: ChainUid::vsl_chain_uid()?,
-                },
+                spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
                 owner: sender.clone(),
             });
 
@@ -717,10 +714,7 @@ fn ibc_execute_swap(
     let approve_voucher_msg = euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
         amount: msg.amount_in,
         token_id: msg.asset_in.token.to_string(),
-        spender: CrossChainUser {
-            address: first_swap.vlp_address.clone(),
-            chain_uid: ChainUid::vsl_chain_uid()?,
-        },
+        spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, first_swap.vlp_address.clone()),
         owner: sender.clone(),
     });
 

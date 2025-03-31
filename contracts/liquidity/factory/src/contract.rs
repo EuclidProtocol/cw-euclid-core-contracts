@@ -96,10 +96,7 @@ pub fn execute(
         ),
         ExecuteMsg::ExecuteSwapRequest(msg) => {
             let state = STATE.load(deps.storage)?;
-            let mut verified_sender = CrossChainUser {
-                address: info.sender.to_string(),
-                chain_uid: state.chain_uid,
-            };
+            let mut verified_sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
 
             // If token is not a voucher, verify custom sender and use it. Using custom sender is security issue if voucher is used
             if !msg.asset_in.token_type.is_voucher() {
@@ -139,10 +136,7 @@ pub fn execute(
             timeout,
         } => {
             let state = STATE.load(deps.storage)?;
-            let sender = CrossChainUser {
-                address: info.sender.to_string(),
-                chain_uid: state.chain_uid,
-            };
+            let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
 
             execute_deposit_token(
                 &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
