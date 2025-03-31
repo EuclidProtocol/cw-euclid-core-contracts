@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
     entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
@@ -44,12 +42,8 @@ pub fn instantiate(
         router: info.sender.to_string(),
         fee: msg.fee,
         total_fees_collected: TotalFees {
-            lp_fees: DenomFees {
-                totals: HashMap::default(),
-            },
-            euclid_fees: DenomFees {
-                totals: HashMap::default(),
-            },
+            lp_fees: DenomFees::new(None),
+            euclid_fees: DenomFees::new(None),
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),

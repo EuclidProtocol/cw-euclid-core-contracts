@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use std::collections::HashMap;
+
 
 use cosmwasm_std::{coin, Addr, Coin, Uint128};
 use cw20::Cw20Contract;
@@ -84,9 +84,7 @@ fn test_proper_instantiation() {
         is_native: true,
         cw20_code_id,
         escrow_code_id,
-        partner_fees_collected: DenomFees {
-            totals: HashMap::new(),
-        },
+        partner_fees_collected: DenomFees::new(None),
     };
     assert_eq!(state_response, expected_state_id);
 }

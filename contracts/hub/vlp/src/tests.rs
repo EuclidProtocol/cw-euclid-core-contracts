@@ -12,7 +12,6 @@ mod tests {
     use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
     use euclid::pool::State;
     use euclid::token::{Pair, Token};
-    use std::collections::HashMap;
 
     fn init(deps: DepsMut) -> Response {
         let msg = InstantiateMsg {
@@ -58,12 +57,8 @@ mod tests {
                 },
             },
             total_fees_collected: TotalFees {
-                lp_fees: DenomFees {
-                    totals: HashMap::default(),
-                },
-                euclid_fees: DenomFees {
-                    totals: HashMap::default(),
-                },
+                lp_fees: DenomFees::new(None),
+                euclid_fees: DenomFees::new(None),
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),

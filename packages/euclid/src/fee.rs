@@ -1,7 +1,8 @@
+use std::collections::HashMap;
+
 use crate::chain::CrossChainUser;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
-use std::collections::HashMap;
 
 pub const BPS_100_PERCENT: u64 = 10000;
 pub const BPS_50_PERCENT: u64 = 5000;
@@ -38,6 +39,13 @@ pub struct DenomFees {
 }
 
 impl DenomFees {
+    // Create a new DenomFees instance with optional initial values
+    pub fn new(initial_totals: Option<HashMap<String, Uint128>>) -> Self {
+        Self {
+            totals: initial_totals.unwrap_or_default(),
+        }
+    }
+
     // Add or update the total for a given denomination
     pub fn add_fee(&mut self, token: String, amount: Uint128) {
         self.totals

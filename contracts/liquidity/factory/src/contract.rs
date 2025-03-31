@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -50,9 +50,7 @@ pub fn instantiate(
         cw20_code_id: msg.cw20_code_id,
         chain_uid,
         is_native: msg.is_native,
-        partner_fees_collected: DenomFees {
-            totals: HashMap::default(),
-        },
+        partner_fees_collected: DenomFees::new(None),
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;

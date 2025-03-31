@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use std::collections::HashMap;
+
 
 use cosmwasm_std::coin;
 use cosmwasm_std::Uint128;
@@ -100,12 +100,8 @@ fn test_proper_instantiation() {
         fee,
         pool_config: PoolConfig::ConstantProduct {},
         total_fees_collected: TotalFees {
-            lp_fees: DenomFees {
-                totals: HashMap::new(),
-            },
-            euclid_fees: DenomFees {
-                totals: HashMap::new(),
-            },
+            lp_fees: DenomFees::new(None),
+            euclid_fees: DenomFees::new(None),
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
