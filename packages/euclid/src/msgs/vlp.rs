@@ -106,6 +106,7 @@ pub enum QueryMsg {
 pub struct GetSwapResponse {
     pub amount_out: Uint128,
     pub asset_out: Token,
+    pub spread_amount: Uint128,
 }
 
 #[cw_serde]

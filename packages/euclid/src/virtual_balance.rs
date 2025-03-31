@@ -27,10 +27,10 @@ impl BalanceKey {
         balance_key: SerializedBalanceKey,
     ) -> Result<Self, ContractError> {
         Ok(Self {
-            cross_chain_user: CrossChainUser {
-                chain_uid: balance_key.0.validate()?.clone(),
-                address: balance_key.1,
-            },
+            cross_chain_user: CrossChainUser::new(
+                balance_key.0.validate()?.clone(),
+                balance_key.1.clone(),
+            ),
             token_id: balance_key.2,
         })
     }

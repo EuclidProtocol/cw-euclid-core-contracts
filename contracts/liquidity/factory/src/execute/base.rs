@@ -82,10 +82,7 @@ pub fn execute_request_pool_creation(
     pair.validate()?;
 
     let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     let mut res = Response::new();
@@ -255,10 +252,7 @@ pub fn add_liquidity_request(
 
     // Check that slippage tolerance is between 1 and 100
     let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
@@ -598,10 +592,10 @@ pub fn execute_swap_request(
         swaps,
         tx_id: tx_id.clone(),
         cross_chain_addresses,
-        partner_fee_recipient: CrossChainUser {
-            address: partner_fee_recipient.to_string(),
-            chain_uid: state.chain_uid.clone(),
-        },
+        partner_fee_recipient: CrossChainUser::new(
+            state.chain_uid.clone(),
+            partner_fee_recipient.to_string(),
+        ),
         partner_fee_amount,
     })
     .to_msg(
@@ -748,10 +742,7 @@ pub fn receive_cw20(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let sender = CrossChainUser {
-        address: cw20_msg.sender,
-        chain_uid: state.chain_uid,
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), cw20_msg.sender);
 
     match from_json(&cw20_msg.msg)? {
         // Allow to swap using a CW20 hook message
@@ -935,10 +926,7 @@ pub fn execute_request_register_denom(
     let state = STATE.load(deps.storage)?;
     ensure!(state.admin == info.sender, ContractError::Unauthorized {});
 
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
@@ -1021,10 +1009,7 @@ pub fn execute_request_deregister_denom(
     let state = STATE.load(deps.storage)?;
     ensure!(state.admin == info.sender, ContractError::Unauthorized {});
 
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
@@ -1097,10 +1082,7 @@ pub fn execute_withdraw_virtual_balance(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
     let timeout = get_timeout(timeout)?;
 
@@ -1151,10 +1133,7 @@ pub fn execute_transfer_virtual_balance(
 
     let state = STATE.load(deps.storage)?;
 
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
     let timeout = get_timeout(timeout)?;
 

@@ -69,16 +69,9 @@ fn test_proper_instantiation() {
     )
     .unwrap();
     let chain_uid = ChainUid::create("1".to_string()).unwrap();
-    let recipient = CrossChainUser {
-        chain_uid,
-        address: "useraddr".to_string(),
-    };
+    let recipient = CrossChainUser::new(chain_uid, "useraddr".to_string());
 
-    let fee = Fee {
-        lp_fee_bps: 1,
-        euclid_fee_bps: 2,
-        recipient,
-    };
+    let fee = Fee::new(1, 2, recipient);
 
     let mock_vlp = MockVlp::instantiate(
         &mut vlp,
