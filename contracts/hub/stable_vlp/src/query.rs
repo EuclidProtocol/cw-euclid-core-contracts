@@ -4,9 +4,8 @@ use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{
     AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
     StablePoolInfo, StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
-    DEFAULT_AMP_FACTOR,
 };
-use euclid::pool::PoolConfig;
+use euclid::pool::{PoolConfig, DEFAULT_AMP_FACTOR};
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
 use euclid::utils::math::Decimal256Ext;

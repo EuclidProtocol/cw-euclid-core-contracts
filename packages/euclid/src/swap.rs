@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, IbcTimeout, Uint128};
 
 use crate::{
     chain::CrossChainUserWithLimit,
+    error::ContractError,
     token::{Token, TokenWithDenom},
 };
 
@@ -60,4 +61,22 @@ pub struct WithdrawResponse {
 pub struct TransferResponse {
     pub token: Token,
     pub tx_id: String,
+}
+
+// Function to calculate the asset to be recieved after a swap
+pub fn calculate_swap(
+    swap_amount: Uint128,
+    reserve_in: Uint128,
+    reserve_out: Uint128,
+) -> Result<Uint128, ContractError> {
+    // Calculate the k constant product
+    let k = reserve_in.checked_mul(reserve_out)?;
+    // Calculate the new reserve of token 1
+    let new_reserve_in = reserve_in.checked_add(swap_amount)?;
+    // Calculate the new reserve of token 2
+    let new_reserve_out = k.checked_div(new_reserve_in)?;
+    // Calculate the amount of token 2 to be recieved
+    let token_2_recieved = reserve_out.checked_sub(new_reserve_out)?;
+
+    Ok(token_2_recieved)
 }

@@ -11,10 +11,11 @@ use crate::query::{
 use crate::reply;
 use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::error::ContractError;
-use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
+use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use euclid::pool::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
-    SwapCalculationMethod, NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
+    SwapCalculationMethod, DEFAULT_AMP_FACTOR, NEXT_SWAP_REPLY_ID,
+    VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";

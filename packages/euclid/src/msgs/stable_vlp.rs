@@ -8,8 +8,7 @@ use crate::{
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Decimal256, Uint128, Uint64};
 use cw_asset::AssetInfo;
-// The amplification factor for the stableswap invariant, default is 1000
-pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
+
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,

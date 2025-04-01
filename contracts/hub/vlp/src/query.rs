@@ -1,19 +1,20 @@
 use cosmwasm_std::{
     ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Isqrt, Uint128,
 };
-use euclid::chain::ChainUid;
-use euclid::error::ContractError;
-use euclid::fee::BPS_50_PERCENT;
-use euclid::pool::{PoolConfig, MINIMUM_LIQUIDITY};
-use euclid::swap::NextSwapVlp;
-use euclid::token::{Pair, PairWithAmount, Token};
+use euclid::{
+    chain::ChainUid,
+    error::ContractError,
+    fee::BPS_50_PERCENT,
+    msgs::vlp::{
+        AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
+        PoolInfo, PoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
+    },
+    pool::{PoolConfig, State, MINIMUM_LIQUIDITY},
+    swap::{calculate_swap, NextSwapVlp},
+    token::{Pair, PairWithAmount, Token},
+};
 
 use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
-use euclid::msgs::vlp::{
-    calculate_swap, AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse,
-    GetSwapResponse, PoolInfo, PoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
-};
-use euclid::pool::State;
 
 // Function to simulate swap in a query
 pub fn query_simulate_swap(

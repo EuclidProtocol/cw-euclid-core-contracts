@@ -1,4 +1,3 @@
-use crate::msgs::stable_vlp::DEFAULT_AMP_FACTOR;
 use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
@@ -8,9 +7,9 @@ use crate::{
     msgs::{
         stable_vlp::compute_swap,
         virtual_balance::{ExecuteApprove, ExecuteTransfer},
-        vlp::calculate_swap,
+        vlp::VlpRemoveLiquidityResponse,
     },
-    swap::NextSwapVlp,
+    swap::{calculate_swap, NextSwapVlp},
     token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
     utils::math::Decimal256Ext,
 };
@@ -24,6 +23,9 @@ use cosmwasm_std::{
 use cw_storage_plus::{Item, Map};
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
+
+// The amplification factor for the stableswap invariant, default is 1000
+pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
 
 // Request to create pool saved in state to manage during acknowledgement
 #[cw_serde]
@@ -86,15 +88,6 @@ pub struct DeRegisterDenomResponse {}
 pub enum PoolConfig {
     Stable { amp_factor: Option<Uint64> },
     ConstantProduct {},
-}
-
-#[cw_serde]
-pub struct VlpRemoveLiquidityResponse {
-    pub liquidity_released: PairWithAmount,
-    pub burn_lp_tokens: Uint128,
-    pub tx_id: String,
-    pub sender: CrossChainUser,
-    pub vlp_address: String,
 }
 
 #[cw_serde]
@@ -559,7 +552,7 @@ pub fn add_liquidity(
 #[cw_serde]
 pub enum SwapCalculationMethod {
     Stable,
-    Regular,
+    ConstantProduct,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -648,7 +641,7 @@ pub fn execute_swap(
     let swap_amount = amount_in.checked_sub(total_fee)?;
 
     let receive_amount = match calculation_method {
-        SwapCalculationMethod::Stable {} => {
+        SwapCalculationMethod::Stable => {
             compute_swap(
                 &Decimal256::from_integer(amount_in),
                 &Decimal256::from_integer(token_in_reserve),
@@ -660,7 +653,7 @@ pub fn execute_swap(
             )?
             .return_amount
         }
-        SwapCalculationMethod::Regular => {
+        SwapCalculationMethod::ConstantProduct => {
             calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?
         }
     };

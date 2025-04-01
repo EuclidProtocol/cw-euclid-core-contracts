@@ -165,7 +165,7 @@ pub fn execute(
             min_token_out,
             tx_id,
             next_swaps,
-            SwapCalculationMethod::Regular,
+            SwapCalculationMethod::ConstantProduct,
             test_fail,
         ),
         ExecuteMsg::UpdateState {
