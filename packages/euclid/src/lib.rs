@@ -6,11 +6,12 @@ pub mod events;
 pub mod fee;
 pub mod liquidity;
 pub mod pool;
+pub mod pool_math;
+pub mod pool_queries;
 pub mod swap;
 pub mod timeout;
 pub mod token;
-pub mod virtual_balance;
-
 pub mod utils;
+pub mod virtual_balance;
 
 pub mod msgs;

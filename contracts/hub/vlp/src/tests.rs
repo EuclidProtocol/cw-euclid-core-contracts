@@ -2,7 +2,6 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate};
-    use crate::query::calculate_lp_allocation_for_liquidity;
     use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins, DepsMut, Response, Uint128};
@@ -11,6 +10,7 @@ mod tests {
     use euclid::fee::{DenomFees, Fee, TotalFees};
     use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
     use euclid::pool::State;
+    use euclid::pool_queries::calculate_lp_allocation_for_liquidity;
     use euclid::token::{Pair, Token};
 
     fn init(deps: DepsMut) -> Response {

@@ -1,0 +1,321 @@
+use crate::{
+    chain::ChainUid,
+    error::ContractError,
+    fee::BPS_50_PERCENT,
+    msgs::vlp::{
+        AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
+        PoolInfo, PoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
+    },
+    pool::{PoolConfig, State, MINIMUM_LIQUIDITY},
+    pool_math::compute_swap,
+    swap::{calculate_swap, NextSwapVlp},
+    token::{Pair, PairWithAmount, Token},
+    utils::math::Decimal256Ext,
+};
+use cosmwasm_std::{
+    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Isqrt, Uint128, Uint64,
+};
+use cw_storage_plus::Map;
+
+// Function to simulate swap in a query
+pub fn query_simulate_swap(
+    deps: Deps,
+    asset_in: Token,
+    amount_in: Uint128,
+    next_swaps: Vec<NextSwapVlp>,
+    state: State,
+    balances: &Map<Token, Uint128>,
+    amp_factor: Option<Uint64>,
+) -> Result<Binary, ContractError> {
+    // Ensure the input amount is non-zero
+    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
+
+    let pair = state.pair.clone();
+
+    // Ensure the asset is part of the pool pair
+    ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
+
+    // Load Fee values
+    let fee = state.fee;
+    let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
+    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
+
+    let total_fee = lp_fee.checked_add(euclid_fee)?;
+    let swap_amount = amount_in.checked_sub(total_fee)?;
+
+    let asset_out = state.pair.get_other_token(asset_in.clone());
+
+    let token_in_reserve = balances.load(deps.storage, asset_in)?;
+    let token_out_reserve = balances.load(deps.storage, asset_out.clone())?;
+
+    // Determine swap method based on pool configuration
+    let receive_amount = match amp_factor {
+        None => calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?,
+        Some(amp_factor) => {
+            let swap_result = compute_swap(
+                &Decimal256::from_integer(swap_amount),
+                &Decimal256::from_integer(token_in_reserve),
+                &Decimal256::from_integer(token_out_reserve),
+                amp_factor,
+            )?;
+            swap_result.return_amount
+        }
+    };
+
+    // Handle multi-hop swaps
+    let response = match next_swaps.split_first() {
+        Some((next_swap, forward_swaps)) => {
+            let next_swap_response: GetSwapResponse = deps.querier.query_wasm_smart(
+                next_swap.vlp_address.clone(),
+                &crate::msgs::vlp::QueryMsg::SimulateSwap {
+                    asset: asset_out,
+                    asset_amount: receive_amount,
+                    swaps: forward_swaps.to_vec(),
+                },
+            )?;
+            Ok(to_json_binary(&next_swap_response)?)
+        }
+        None => Ok(to_json_binary(&GetSwapResponse {
+            amount_out: receive_amount,
+            asset_out,
+            spread_amount: token_out_reserve
+                .checked_mul(swap_amount)
+                .unwrap_or(Uint128::zero())
+                .checked_div(token_in_reserve)
+                .unwrap_or(Uint128::zero())
+                .checked_sub(receive_amount)
+                .unwrap_or(Uint128::zero()),
+        })?),
+    };
+
+    response
+}
+
+// Function to query the total liquidity
+pub fn query_liquidity(
+    deps: Deps,
+    _env: Env,
+    state: State,
+    balances: &Map<Token, Uint128>,
+) -> Result<Binary, ContractError> {
+    let pair = state.pair.clone();
+    Ok(to_json_binary(&GetLiquidityResponse {
+        pair,
+        token_1_reserve: balances.load(deps.storage, state.pair.token_1)?,
+        token_2_reserve: balances.load(deps.storage, state.pair.token_2)?,
+        total_lp_tokens: state.total_lp_tokens,
+    })?)
+}
+
+// Function to query fee of the contract
+pub fn query_fee(state: State) -> Result<Binary, ContractError> {
+    Ok(to_json_binary(&FeeResponse { fee: state.fee })?)
+}
+
+// Function to query total fees collected of the contract
+pub fn query_total_fees_collected(state: State) -> Result<Binary, ContractError> {
+    Ok(to_json_binary(&TotalFeesResponse {
+        total_fees: state.total_fees_collected,
+    })?)
+}
+
+pub fn query_total_fees_per_denom(state: State, denom: String) -> Result<Binary, ContractError> {
+    let total_fees_collected = state.total_fees_collected;
+
+    let lp_fees = total_fees_collected.lp_fees.get_fee(denom.as_str());
+    let euclid_fees = total_fees_collected.euclid_fees.get_fee(denom.as_str());
+
+    Ok(to_json_binary(&TotalFeesPerDenomResponse {
+        lp_fees,
+        euclid_fees,
+    })?)
+}
+
+pub fn query_state(state: State) -> Result<Binary, ContractError> {
+    Ok(to_json_binary(&GetStateResponse {
+        pair: state.pair,
+        router: state.router,
+        virtual_balance: state.virtual_balance,
+        fee: state.fee,
+        total_fees_collected: state.total_fees_collected,
+        last_updated: state.last_updated,
+        total_lp_tokens: state.total_lp_tokens,
+        admin: state.admin,
+        pool_config: PoolConfig::ConstantProduct {},
+    })?)
+}
+
+// Function to query a Euclid Pool Information for this pair
+pub fn query_pool(
+    deps: Deps,
+    chain_uid: ChainUid,
+    state: State,
+    balances: &Map<Token, Uint128>,
+    chain_lp_tokens: &Map<ChainUid, Uint128>,
+) -> Result<Binary, ContractError> {
+    let chain_lp_tokens = chain_lp_tokens.load(deps.storage, chain_uid)?;
+
+    let reserve_1 = balances.load(deps.storage, state.pair.token_1.clone())?;
+
+    let reserve_2 = balances.load(deps.storage, state.pair.token_2.clone())?;
+
+    let pool = get_pool(&state, chain_lp_tokens, reserve_1, reserve_2)?;
+
+    Ok(to_json_binary(&pool)?)
+}
+// Function to query all Euclid Pool Information
+pub fn query_all_pools(
+    deps: Deps,
+    state: State,
+    balances: &Map<Token, Uint128>,
+    chain_lp_tokens: &Map<ChainUid, Uint128>,
+) -> Result<Binary, ContractError> {
+    let reserve_1 = balances.load(deps.storage, state.pair.token_1.clone())?;
+    let reserve_2 = balances.load(deps.storage, state.pair.token_2.clone())?;
+
+    let pools: Result<_, ContractError> = chain_lp_tokens
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .map(|item| {
+            let (chain_uid, chain_lp_tokens) = item?;
+            let pool = get_pool(&state, chain_lp_tokens, reserve_1, reserve_2)?;
+
+            Ok::<PoolInfo, ContractError>(PoolInfo { chain_uid, pool })
+        })
+        .collect();
+
+    Ok(to_json_binary(&AllPoolsResponse { pools: pools? })?)
+}
+
+fn get_pool(
+    state: &State,
+    chain_lp_tokens: Uint128,
+    reserve_1: Uint128,
+    reserve_2: Uint128,
+) -> Result<PoolResponse, ContractError> {
+    Ok(PoolResponse {
+        reserve_1: reserve_1
+            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+            .unwrap_or(Uint128::zero()),
+        reserve_2: reserve_2
+            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+            .unwrap_or(Uint128::zero()),
+        lp_shares: chain_lp_tokens,
+    })
+}
+
+pub fn calculate_lp_allocation(
+    token_1_amount: Uint128,
+    token_2_amount: Uint128,
+    total_liquidity_1: Uint128,
+    total_liquidity_2: Uint128,
+    total_lp_supply: Uint128,
+) -> Result<Uint128, ContractError> {
+    // IF LP supply is 0 use original function
+    if total_lp_supply.is_zero() {
+        let sq_root = Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?);
+        return Ok(sq_root.checked_sub(Uint128::new(MINIMUM_LIQUIDITY))?);
+    }
+
+    let lp_allocation = token_1_amount
+        .checked_multiply_ratio(total_lp_supply, total_liquidity_1)?
+        .min(token_2_amount.checked_multiply_ratio(total_lp_supply, total_liquidity_2)?);
+
+    Ok(lp_allocation)
+}
+
+// Function to assert slippage is tolerated during transaction
+pub fn assert_slippage_tolerance(
+    ratio: Decimal256,
+    pool_ratio: Decimal256,
+    slippage_tolerance_bps: u64,
+) -> Result<bool, ContractError> {
+    let slippage = ratio.abs_diff(pool_ratio).checked_div(pool_ratio)?;
+
+    let slippage_tolerance = Decimal256::bps(slippage_tolerance_bps);
+    ensure!(
+        slippage.le(&slippage_tolerance),
+        ContractError::LiquiditySlippageExceeded {
+            expected: slippage,
+            received: slippage_tolerance,
+        }
+    );
+    Ok(true)
+}
+
+/// Calculates the LP allocation for provided liquidity amounts
+///
+/// # Arguments
+///
+/// * `liquidity` - The pair of tokens with amounts being provided as liquidity
+/// * `pair` - The token pair configuration for the pool
+/// * `total_reserve_1` - Current total reserve of token 1
+/// * `total_reserve_2` - Current total reserve of token 2
+/// * `total_lp_tokens` - Total LP tokens currently in circulation
+/// * `slippage_tolerance_bps` - Slippage tolerance in basis points (optional)
+///
+/// # Returns
+///
+/// Returns the calculated LP allocation amount
+pub fn calculate_lp_allocation_for_liquidity(
+    token_1_liquidity: Uint128,
+    token_2_liquidity: Uint128,
+    total_reserve_1: Uint128,
+    total_reserve_2: Uint128,
+    total_lp_tokens: Uint128,
+    slippage_tolerance_bps: u64,
+) -> Result<Uint128, ContractError> {
+    // Verify that ratio of assets provided is equal to the ratio of assets in the pool
+    let ratio =
+        Decimal256::checked_from_ratio(token_1_liquidity, token_2_liquidity).map_err(|err| {
+            ContractError::Generic {
+                err: err.to_string(),
+            }
+        })?;
+
+    // Get liquidity ratio (current ratio of token reserves or provided ratio if first time)
+    let lq_ratio =
+        Decimal256::checked_from_ratio(total_reserve_1, total_reserve_2).unwrap_or(ratio);
+
+    // Check slippage if tolerance is provided
+    ensure!(
+        slippage_tolerance_bps.le(&BPS_50_PERCENT),
+        ContractError::InvalidSlippageTolerance {}
+    );
+    assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
+
+    // Calculate liquidity added share for LP provider from total liquidity
+    let lp_allocation = calculate_lp_allocation(
+        token_1_liquidity,
+        token_2_liquidity,
+        total_reserve_1,
+        total_reserve_2,
+        total_lp_tokens,
+    )?;
+
+    ensure!(
+        !lp_allocation.is_zero(),
+        ContractError::Generic {
+            err: "LP Allocation cannot be zero".to_string()
+        }
+    );
+
+    Ok(lp_allocation)
+}
+
+/// Extracts the token amount for a given token from a pair with amounts
+/// by matching it against a reference token
+pub fn extract_token_amount(liquidity: &PairWithAmount, pair: &Pair) -> (Uint128, Uint128) {
+    let token_1_liquidity = if liquidity.token_1.token == pair.token_1 {
+        liquidity.token_1.amount
+    } else {
+        liquidity.token_2.amount
+    };
+
+    let token_2_liquidity = if liquidity.token_2.token == pair.token_2 {
+        liquidity.token_2.amount
+    } else {
+        liquidity.token_1.amount
+    };
+
+    (token_1_liquidity, token_2_liquidity)
+}

@@ -5,16 +5,15 @@ use crate::{
     fee::{Fee, TotalFees, BPS_50_PERCENT, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
     msgs::{
-        stable_vlp::compute_swap,
         virtual_balance::{ExecuteApprove, ExecuteTransfer},
         vlp::VlpRemoveLiquidityResponse,
     },
+    pool_math::compute_swap,
     swap::{calculate_swap, NextSwapVlp},
     token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
     utils::math::Decimal256Ext,
 };
-pub const VIRTUAL_BALANCE_TRANSFER_REPLY_ID: u64 = 1;
-pub const NEXT_SWAP_REPLY_ID: u64 = 2;
+
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, Isqrt, MessageInfo, Response,
@@ -22,8 +21,10 @@ use cosmwasm_std::{
 };
 use cw_storage_plus::{Item, Map};
 
-pub const MINIMUM_LIQUIDITY: u128 = 1000;
+pub const VIRTUAL_BALANCE_TRANSFER_REPLY_ID: u64 = 1;
+pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 
+pub const MINIMUM_LIQUIDITY: u128 = 1000;
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
 

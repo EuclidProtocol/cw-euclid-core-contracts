@@ -11,13 +11,13 @@ use euclid::{
         add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
         State, SwapCalculationMethod,
     },
-};
-
-use crate::{
-    query::{
+    pool_queries::{
         query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
         query_total_fees_collected, query_total_fees_per_denom,
     },
+};
+
+use crate::{
     reply,
     reply::NEXT_SWAP_REPLY_ID,
     state::{BALANCES, CHAIN_LP_TOKENS, STATE},
@@ -191,20 +191,23 @@ pub fn execute(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+    let state = STATE.load(deps.storage)?;
     match msg {
-        QueryMsg::State {} => query_state(deps),
+        QueryMsg::State {} => query_state(state),
         QueryMsg::SimulateSwap {
             asset,
             asset_amount,
             swaps,
-        } => query_simulate_swap(deps, asset, asset_amount, swaps),
-        QueryMsg::Liquidity {} => query_liquidity(deps, env),
-        QueryMsg::Fee {} => query_fee(deps),
-        QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
-        QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps, denom),
-        QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
+        } => query_simulate_swap(deps, asset, asset_amount, swaps, state, &BALANCES, None),
+        QueryMsg::Liquidity {} => query_liquidity(deps, env, state, &BALANCES),
+        QueryMsg::Fee {} => query_fee(state),
+        QueryMsg::TotalFeesCollected {} => query_total_fees_collected(state),
+        QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(state, denom),
+        QueryMsg::Pool { chain_uid } => {
+            query_pool(deps, chain_uid, state, &BALANCES, &CHAIN_LP_TOKENS)
+        }
 
-        QueryMsg::GetAllPools {} => query_all_pools(deps),
+        QueryMsg::GetAllPools {} => query_all_pools(deps, state, &BALANCES, &CHAIN_LP_TOKENS),
     }
 }
 

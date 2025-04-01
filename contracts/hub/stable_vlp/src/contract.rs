@@ -4,10 +4,6 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::query::{
-    query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
-    query_total_fees_collected, query_total_fees_per_denom,
-};
 use crate::reply;
 use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::error::ContractError;
@@ -17,6 +13,11 @@ use euclid::pool::{
     SwapCalculationMethod, DEFAULT_AMP_FACTOR, NEXT_SWAP_REPLY_ID,
     VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
 };
+use euclid::pool_queries::{
+    query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
+    query_total_fees_collected, query_total_fees_per_denom,
+};
+
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -189,20 +190,32 @@ pub fn execute(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    let amp_factor = Some(AMP_FACTOR.load(deps.storage)?);
     match msg {
-        QueryMsg::State {} => query_state(deps),
+        QueryMsg::State {} => query_state(state),
         QueryMsg::SimulateSwap {
             asset,
             asset_amount,
             swaps,
-        } => query_simulate_swap(deps, asset, asset_amount, swaps),
-        QueryMsg::Liquidity {} => query_liquidity(deps, env),
-        QueryMsg::Fee {} => query_fee(deps),
-        QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
-        QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps, denom),
-        QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
+        } => query_simulate_swap(
+            deps,
+            asset,
+            asset_amount,
+            swaps,
+            state,
+            &BALANCES,
+            amp_factor,
+        ),
+        QueryMsg::Liquidity {} => query_liquidity(deps, env, state, &BALANCES),
+        QueryMsg::Fee {} => query_fee(state),
+        QueryMsg::TotalFeesCollected {} => query_total_fees_collected(state),
+        QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(state, denom),
+        QueryMsg::Pool { chain_uid } => {
+            query_pool(deps, chain_uid, state, &BALANCES, &CHAIN_LP_TOKENS)
+        }
 
-        QueryMsg::GetAllPools {} => query_all_pools(deps),
+        QueryMsg::GetAllPools {} => query_all_pools(deps, state, &BALANCES, &CHAIN_LP_TOKENS),
     }
 }
 
