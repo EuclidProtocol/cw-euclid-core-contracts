@@ -415,7 +415,6 @@ pub fn execute_swap(
         .lp_fees
         .add_fee(asset_in.to_string(), lp_fee);
 
-
     // Calcuate the sum of fees
     let total_fee = lp_fee.checked_add(euclid_fee)?;
 
