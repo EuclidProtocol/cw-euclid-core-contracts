@@ -1,9 +1,7 @@
 use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
-};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, SubMsg, Uint128, WasmMsg};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},

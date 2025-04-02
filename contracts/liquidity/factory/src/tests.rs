@@ -3,7 +3,6 @@
 mod tests {
     use crate::contract::{execute, instantiate};
     use crate::state::{State, HUB_CHANNEL, STATE};
-    
 
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{DepsMut, Response};

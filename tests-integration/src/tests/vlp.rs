@@ -1,6 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-
 use cosmwasm_std::coin;
 use cosmwasm_std::Uint128;
 use euclid::chain::ChainUid;

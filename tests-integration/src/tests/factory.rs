@@ -1,6 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-
 use cosmwasm_std::{coin, Addr, Coin, Uint128};
 use cw20::Cw20Contract;
 use cw_orch::prelude::{
