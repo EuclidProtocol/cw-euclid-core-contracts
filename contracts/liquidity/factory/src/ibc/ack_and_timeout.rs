@@ -287,13 +287,15 @@ fn ack_pool_creation(
                     }],
                     mint: lp_token_instantiate_data.mint,
                     marketing: lp_token_instantiate_data.marketing,
-                    vlp: data.vlp_contract,
+                    vlp: data.vlp_contract.clone(),
                     factory: env.contract.address,
                     token_pair: existing_req.pair_info.get_pair()?,
                 })?,
                 funds: vec![],
                 label: "cw20".to_string(),
             });
+            // Save lp shares against vlp address
+            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_contract, &data.mint_lp_tokens.into())?;
 
             Ok(res.add_submessage(SubMsg {
                 id: CW20_INSTANTIATE_REPLY_ID,
