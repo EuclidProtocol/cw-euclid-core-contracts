@@ -20,6 +20,7 @@ pub struct InstantiateMsg {
     pub escrow_code_id: u64,
     pub cw20_code_id: u64,
     pub is_native: bool,
+    pub mock_relayer_address: Option<String>,
 }
 
 #[cw_serde]
@@ -80,6 +81,7 @@ pub enum ExecuteMsg {
         // CW20 Code ID
         cw20_code_id: Option<u64>,
         is_native: Option<bool>,
+        mock_relayer_address: Option<String>,
     },
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
@@ -96,6 +98,32 @@ pub enum ExecuteMsg {
     },
     NativeReceiveCallback {
         msg: Binary,
+    },
+
+    // COSMOS RELAYER ENTRY POINTS
+    CosmosSendPacket {
+        msg: Binary,
+    },
+
+    CosmosReceivePacket {
+        msg: Binary,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+    },
+
+    CosmosReceivePacketInternalCallback {
+        msg: Binary,
+    },
+
+    CosmosReceiveAck {
+        msg: Binary,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+        ack: Binary,
     },
 }
 
@@ -209,7 +237,9 @@ pub struct PoolVlpResponse {
 }
 
 #[cw_serde]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub mock_relayer_address: Option<String>,
+}
 
 #[cw_serde]
 pub struct RegisterFactoryResponse {

@@ -5,7 +5,8 @@ use cosmwasm_std::{
 
 use euclid::{
     chain::{
-        Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, Limit, SolanaChain,
+        Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, IbcChain, Limit,
+        SolanaChain,
     },
     error::ContractError,
     events::{tx_event, TxType},
@@ -104,10 +105,7 @@ pub fn execute_register_factory(
     );
 
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
-    let sender = CrossChainUser {
-        chain_uid: vsl_chain_uid.clone(),
-        address: info.sender.to_string(),
-    };
+    let sender = CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string());
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
@@ -132,16 +130,16 @@ pub fn execute_register_factory(
     };
     match chain_info {
         RegisterFactoryChainType::Ibc(ibc_info) => {
-            let timeout = get_timeout(ibc_info.timeout)?;
-            let packet = IbcMsg::SendPacket {
-                channel_id: ibc_info.channel.clone(),
-                data: to_json_binary(&msg)?,
-                timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+            // Save chain info because this call will fail if the tx is not sucessful
+            let chain = Chain {
+                factory: ibc_info.factory_address,
+                factory_chain_id: ibc_info.factory_chain_id,
+                chain_type: euclid::chain::ChainType::Ibc(IbcChain {
+                    from_hub_channel: ibc_info.channel.clone(),
+                    from_factory_channel: "not_implemented".to_string(),
+                }),
             };
-            Ok(response
-                .add_attribute("channel", ibc_info.channel)
-                .add_attribute("timeout", timeout.to_string())
-                .add_message(CosmosMsg::Ibc(packet)))
+            Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
         }
         RegisterFactoryChainType::Native(native_info) => {
             // Save chain info because this call will fail if the tx is not sucessful
@@ -156,7 +154,7 @@ pub fn execute_register_factory(
             // Save chain info because this call will fail if the tx is not sucessful
             let chain = Chain {
                 factory: evm_info.factory_address,
-                factory_chain_id: env.block.chain_id.clone(),
+                factory_chain_id: evm_info.factory_chain_id,
                 chain_type: euclid::chain::ChainType::Evm(EvmChain {}),
             };
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
@@ -165,7 +163,7 @@ pub fn execute_register_factory(
             // Save chain info because this call will fail if the tx is not sucessful
             let chain = Chain {
                 factory: solana_info.factory_address,
-                factory_chain_id: env.block.chain_id.clone(),
+                factory_chain_id: solana_info.factory_chain_id,
                 chain_type: euclid::chain::ChainType::Solana(SolanaChain {}),
             };
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
@@ -195,10 +193,7 @@ pub fn execute_update_factory_channel(
     );
 
     let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
-    let sender = CrossChainUser {
-        chain_uid: vsl_chain_uid.clone(),
-        address: info.sender.to_string(),
-    };
+    let sender = CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string());
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
@@ -257,10 +252,7 @@ pub fn execute_withdraw_voucher(
             .map(|x| x.user)
             .collect(),
     )?;
-    let cross_chain_user = CrossChainUser {
-        chain_uid: ChainUid::vsl_chain_uid()?,
-        address: info.sender.to_string(),
-    };
+    let cross_chain_user = CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &cross_chain_user)?;
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),

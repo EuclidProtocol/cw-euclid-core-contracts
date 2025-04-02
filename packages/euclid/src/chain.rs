@@ -84,6 +84,10 @@ pub struct CrossChainUser {
 }
 
 impl CrossChainUser {
+    pub fn new(chain_uid: ChainUid, address: String) -> Self {
+        Self { chain_uid, address }
+    }
+
     pub fn to_sender_string(&self) -> String {
         format!(
             "{chain}:{address}",
@@ -170,6 +174,10 @@ impl Chain {
 
     pub fn is_evm(&self) -> bool {
         matches!(self.chain_type, ChainType::Evm(_))
+    }
+
+    pub fn is_ibc(&self) -> bool {
+        matches!(self.chain_type, ChainType::Ibc(_))
     }
 
     pub fn is_solana(&self) -> bool {

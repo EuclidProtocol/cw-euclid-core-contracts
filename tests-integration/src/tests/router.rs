@@ -1,7 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cosmwasm_std::Addr;
 use cw_orch::prelude::*;
-use cw_orch_interchain::types::IbcPacketOutcome;
 use escrow::EscrowContract;
 use euclid::chain::Chain;
 use euclid::chain::ChainUid;
@@ -22,6 +21,10 @@ use cw_orch_interchain::prelude::*;
 use cw_orch_interchain::InterchainEnv;
 use router::RouterContract;
 use virtual_balance::VirtualBalanceContract;
+
+use crate::helpers::relayer::relay_factory_router_factory;
+use crate::helpers::relayer::relay_router_ack_packet;
+use crate::helpers::relayer::relay_router_factory_router;
 
 #[test]
 fn test_register_factory() {
@@ -48,15 +51,17 @@ fn test_register_factory() {
 
     let virtual_balance_code_id = virtual_balance_osmo.code_id().unwrap();
     let router_contract = "contract0".to_string();
+    let juno_uid = ChainUid::create("junouid".to_string()).unwrap();
 
     factory_juno
         .instantiate(
             &FactoryInstantiateMsg {
                 router_contract,
-                chain_uid: ChainUid::create("junouid".to_string()).unwrap(),
+                chain_uid: juno_uid.clone(),
                 escrow_code_id: 1,
                 cw20_code_id: 2,
                 is_native: false,
+                mock_relayer_address: Some(factory_juno.environment().sender.to_string()),
             },
             None,
             None,
@@ -70,7 +75,7 @@ fn test_register_factory() {
                 constant_product_vlp_code_id: 3,
                 stable_vlp_code_id: 4,
                 virtual_balance_code_id,
-                mock_relayer_address: None,
+                mock_relayer_address: Some(router_osmo.environment().sender.to_string()),
             },
             None,
             None,
@@ -113,7 +118,6 @@ fn test_register_factory() {
         )
         .unwrap();
 
-    let juno_uid = ChainUid::create("junouid".to_string()).unwrap();
     let register_factory_request = router_osmo
         .execute(
             &euclid::msgs::router::ExecuteMsg::RegisterFactory {
@@ -122,6 +126,8 @@ fn test_register_factory() {
                     RegisterFactoryChainIbc {
                         channel: osmosis_channel.to_string(),
                         timeout: None,
+                        factory_address: factory_juno.address().unwrap().into_string(),
+                        factory_chain_id: factory_juno.environment().chain_id(),
                     },
                 ),
             },
@@ -129,18 +135,25 @@ fn test_register_factory() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", register_factory_request)
-        .unwrap();
+    relay_router_factory_router(
+        register_factory_request.events,
+        &factory_juno,
+        &juno_uid,
+        &router_osmo,
+    );
 
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    // let packet_lifetime = interchain
+    //     .await_packets("osmosis", register_factory_request)
+    //     .unwrap();
+
+    // // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    // if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    //     // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    // } else {
+    //     panic!("packet timed out");
+    //     // There was a decode error or the packet timed out
+    //     // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    // };
 
     let all_chains: AllChainResponse = router_osmo
         .query(&euclid::msgs::router::QueryMsg::GetAllChains {})
@@ -153,8 +166,8 @@ fn test_register_factory() {
                 factory_chain_id: "juno".to_string(),
                 factory: "contract0".to_string(),
                 chain_type: euclid::chain::ChainType::Ibc(IbcChain {
-                    from_hub_channel: "channel-0".to_string(),
-                    from_factory_channel: "channel-0".to_string(),
+                    from_hub_channel: "".to_string(),
+                    from_factory_channel: "".to_string(),
                 })
             },
             chain_uid: juno_uid

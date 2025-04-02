@@ -24,6 +24,16 @@ pub struct Fee {
     pub recipient: CrossChainUser,
 }
 
+impl Fee {
+    pub fn new(lp_fee_bps: u64, euclid_fee_bps: u64, recipient: CrossChainUser) -> Self {
+        Self {
+            lp_fee_bps,
+            euclid_fee_bps,
+            recipient,
+        }
+    }
+}
+
 #[cw_serde]
 pub struct TotalFees {
     // Fee for lp providers

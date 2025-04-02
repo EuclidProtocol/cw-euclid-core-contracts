@@ -66,3 +66,11 @@ pub const SOLANA_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
 //SOLANA Relay sequence count
 pub const SOLANA_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
     Map::new("solana_packet_relay_sequence_count");
+
+//COSMOS Relay sequence map
+pub const COSMOS_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
+    Map::new("cosmos_packet_relay_map");
+
+//Cosmos Relay sequence count
+pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
+    Map::new("cosmos_packet_relay_sequence_count");

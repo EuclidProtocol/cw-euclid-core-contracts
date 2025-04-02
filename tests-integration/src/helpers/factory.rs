@@ -15,23 +15,30 @@ use euclid::msgs::factory::{
 
 use cw_orch_interchain::InterchainEnv;
 use cw_orch_interchain::MockInterchainEnv;
+use euclid::msgs::router::QueryMsgFns;
 use euclid::pool::PoolConfig;
 use euclid::swap::NextSwapPair;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
 use euclid::token::{PairWithDenomAndAmount, Token};
 use factory::FactoryContract;
+use router::RouterContract;
+use vlp::VlpContract;
+
+use crate::helpers::relayer::relay_factory_router_factory;
 
 pub fn register_token(
-    interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
     token: TokenWithDenom,
 ) {
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
     let tx_response = factory.request_register_denom(token.clone(), None).unwrap();
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid);
 
-    let _ = interchain
-        .await_packets(factory.environment().chain_id().as_str(), tx_response)
-        .unwrap();
+    // let _ = interchain
+    //     .await_packets(factory.environment().chain_id().as_str(), tx_response)
+    //     .unwrap();
 
     let escrow_response = factory.get_escrow(token.token.to_string());
     assert!(escrow_response.is_ok(), "Escrow not registered");
@@ -74,6 +81,7 @@ pub fn faucet(
 pub fn create_pool(
     interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
     pool_config: PoolConfig,
@@ -106,18 +114,21 @@ pub fn create_pool(
             Some(&funds),
         )
         .unwrap();
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid);
 
-    let _ = interchain
-        .await_packets(factory.environment().chain_id().as_str(), tx_response)
-        .unwrap();
+    // let _ = interchain
+    //     .await_packets(factory.environment().chain_id().as_str(), tx_response)
+    //     .unwrap();
 
     let registered_pool = factory.get_vlp(pair_with_denom.get_pair().unwrap());
     assert!(registered_pool.is_ok(), "Pool not registered");
 }
 
 pub fn add_liquidity(
-    interchain: &MockInterchainEnv,
+    _interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
     timeout: Option<u64>,
@@ -134,14 +145,18 @@ pub fn add_liquidity(
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets(factory.environment().chain_id().as_str(), tx_response)
-        .unwrap();
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid);
+
+    // let _ = interchain
+    //     .await_packets(factory.environment().chain_id().as_str(), tx_response)
+    //     .unwrap();
 }
 
 pub fn swap_request(
     interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
     sender: Option<CrossChainUser>,
     asset_in: TokenWithDenom,
     amount_in: Uint128,
@@ -172,7 +187,10 @@ pub fn swap_request(
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets(factory.environment().chain_id().as_str(), tx_response)
-        .unwrap();
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid);
+
+    // let _ = interchain
+    //     .await_packets(factory.environment().chain_id().as_str(), tx_response)
+    //     .unwrap();
 }

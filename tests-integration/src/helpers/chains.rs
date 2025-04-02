@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cw20::Cw20Contract;
 use cw_orch::{mock::MockBase, prelude::*};
-use cw_orch_interchain::{InterchainEnv, MockInterchainEnv};
+use cw_orch_interchain::{IbcQueryHandler, InterchainEnv, MockInterchainEnv};
 use escrow::EscrowContract;
 use euclid::{
     chain::ChainUid,
@@ -18,6 +18,8 @@ use router::RouterContract;
 use stable_vlp::StableVlpContract;
 use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
+
+use crate::helpers::relayer::{relay_router_ack_packet, relay_router_send_packet};
 
 pub fn setup_factory(
     interchain: &MockInterchainEnv,
@@ -44,6 +46,7 @@ pub fn setup_factory(
                 escrow_code_id: escrow.code_id().unwrap(),
                 cw20_code_id: cw20.code_id().unwrap(),
                 is_native: false,
+                mock_relayer_address: Some(factory.environment().sender.to_string()),
             },
             None,
             None,
@@ -77,17 +80,22 @@ pub fn setup_factory(
             euclid::msgs::router::RegisterFactoryChainType::Ibc(RegisterFactoryChainIbc {
                 channel: router_channel.to_string(),
                 timeout: None,
+                factory_address: factory.address().unwrap().to_string(),
+                factory_chain_id: factory.environment().chain_id(),
             });
         let register_request = router
             .register_factory(chain_info, chain_uid.clone())
             .unwrap();
-        let _ = interchain
-            .await_packets(router_chain_id, register_request)
-            .unwrap();
+        let ack_events = relay_router_send_packet(register_request.events, &factory, &chain_uid);
+        relay_router_ack_packet(router, &chain_uid, ack_events);
+        // let _ = interchain
+        //     .await_packets(router_chain_id, register_request)
+        //     .unwrap();
     } else {
         let chain_info =
             euclid::msgs::router::RegisterFactoryChainType::Native(RegisterFactoryChainNative {
                 factory_address: factory.address().unwrap().to_string(),
+                factory_chain_id: factory.environment().chain_id(),
             });
         router
             .register_factory(chain_info, chain_uid.clone())
@@ -119,7 +127,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
                 constant_product_vlp_code_id: vlp.code_id().unwrap(),
                 stable_vlp_code_id: stable_vlp.code_id().unwrap(),
                 virtual_balance_code_id: virtual_balance.code_id().unwrap(),
-                mock_relayer_address: None,
+                mock_relayer_address: Some(router.environment().sender.to_string()),
             },
             None,
             None,
