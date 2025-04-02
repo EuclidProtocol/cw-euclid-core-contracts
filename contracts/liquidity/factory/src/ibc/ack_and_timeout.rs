@@ -190,7 +190,7 @@ fn ack_pool_creation(
     is_native: bool,
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
-    let req_key = (sender, tx_id.clone());
+    let req_key = (sender.clone(), tx_id.clone());
     let existing_req = PENDING_POOL_REQUESTS
         .may_load(deps.storage, req_key.clone())?
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
@@ -309,10 +309,25 @@ fn ack_pool_creation(
             if is_native {
                 return Err(ContractError::new(&err));
             }
+            // Refund tokens back to sender
+            let mut msgs: Vec<CosmosMsg> = Vec::new();
+            for token_info in existing_req.pair_info.get_vec_token_info() {
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
+                let msg = token_info.token_type.create_transfer_msg(
+                    token_info.amount,
+                    sender.to_string(),
+                    None,
+                    None,
+                )?;
+                msgs.push(msg);
+            }
             Ok(Response::new()
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "reject_pool_request")
-                .add_attribute("error", err.clone()))
+                .add_attribute("error", err.clone())
+                .add_messages(msgs))
         }
     }
 }
