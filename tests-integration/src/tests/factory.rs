@@ -3273,7 +3273,7 @@ fn test_stable_pool() {
                 token_2: Token::create("osmo".to_string()).unwrap(),
             },
             token_1_reserve: Uint128::new(10_999),
-            token_2_reserve: Uint128::new(9_009),
+            token_2_reserve: Uint128::new(9011),
             total_lp_tokens: Uint128::new(9000),
         }
     );
