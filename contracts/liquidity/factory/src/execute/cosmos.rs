@@ -132,7 +132,7 @@ pub fn execute_cosmos_receive_acknowledgement(
     // Remove the existing request as its already relayed now
     COSMOS_PACKET_RELAY_MAP.remove(deps.storage, sequence);
 
-    let chain_type = euclid::chain::ChainType::Ibc(IbcChain {
+    let _chain_type = euclid::chain::ChainType::Ibc(IbcChain {
         from_hub_channel: "".to_string(),
         from_factory_channel: "".to_string(),
     });

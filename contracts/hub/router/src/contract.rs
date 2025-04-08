@@ -40,7 +40,7 @@ use crate::reply::{
     SOLANA_RECEIVE_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
     VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESS, STATE};
+use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESSES, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -63,8 +63,8 @@ pub fn instantiate(
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    if let Some(mock_relayer_address) = msg.mock_relayer_address {
-        MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
+    if let Some(mock_relayer_addresses) = msg.mock_relayer_addresses {
+        MOCK_RELAYER_ADDRESSES.save(deps.storage, &mock_relayer_addresses)?;
     }
 
     STATE.save(deps.storage, &state)?;
@@ -168,7 +168,7 @@ pub fn execute(
                     stable_vlp_code_id,
                     virtual_balance_address,
                     locked,
-                    mock_relayer_address,
+                    mock_relayer_addresses,
                 } => execute_update_router_state(
                     deps,
                     info,
@@ -177,7 +177,7 @@ pub fn execute(
                     stable_vlp_code_id,
                     virtual_balance_address,
                     locked,
-                    mock_relayer_address,
+                    mock_relayer_addresses,
                 ),
                 ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
                     execute_evm_send_packet(deps, info, env, chain_uid, msg)

@@ -17,14 +17,11 @@ const _NATIVE_DENOM: &str = "native";
 const _IBC_DENOM_1: &str = "ibc/denom1";
 const _IBC_DENOM_2: &str = "ibc/denom2";
 const _SUPPLY: u128 = 1_000_000;
+use crate::helpers::relayer::relay_router_factory_router;
 use cw_orch_interchain::prelude::*;
 use cw_orch_interchain::InterchainEnv;
 use router::RouterContract;
 use virtual_balance::VirtualBalanceContract;
-
-use crate::helpers::relayer::relay_factory_router_factory;
-use crate::helpers::relayer::relay_router_ack_packet;
-use crate::helpers::relayer::relay_router_factory_router;
 
 #[test]
 fn test_register_factory() {
@@ -75,7 +72,7 @@ fn test_register_factory() {
                 constant_product_vlp_code_id: 3,
                 stable_vlp_code_id: 4,
                 virtual_balance_code_id,
-                mock_relayer_address: Some(router_osmo.environment().sender.to_string()),
+                mock_relayer_addresses: Some(vec![router_osmo.environment().sender.to_string()]),
             },
             None,
             None,

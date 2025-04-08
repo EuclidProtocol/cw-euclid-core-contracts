@@ -1,5 +1,5 @@
-use cosmwasm_std::{from_binary, from_json, Binary, Event};
-use cw_orch::{core::serde_json::from_str, mock::MockBase};
+use cosmwasm_std::{from_json, Binary, Event};
+use cw_orch::mock::MockBase;
 use euclid::{
     chain::ChainUid,
     msgs::{

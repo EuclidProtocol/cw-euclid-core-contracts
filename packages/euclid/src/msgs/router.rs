@@ -13,7 +13,7 @@ pub struct InstantiateMsg {
     pub stable_vlp_code_id: u64,
 
     pub virtual_balance_code_id: u64,
-    pub mock_relayer_address: Option<String>,
+    pub mock_relayer_addresses: Option<Vec<String>>,
 }
 
 #[cw_serde]
@@ -69,7 +69,7 @@ pub enum ExecuteMsg {
         stable_vlp_code_id: Option<u64>,
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
-        mock_relayer_address: Option<String>,
+        mock_relayer_addresses: Option<Vec<String>>,
     },
 
     EvmSendPacket {
