@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Isqrt, Uint128,
+    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Isqrt, Uint128, Uint256,
 };
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
@@ -191,14 +191,18 @@ pub fn calculate_swap(
     reserve_in: Uint128,
     reserve_out: Uint128,
 ) -> Result<Uint128, ContractError> {
+    let reserve_in = Uint256::from(reserve_in);
+    let reserve_out = Uint256::from(reserve_out);
     // Calculate the k constant product
     let k = reserve_in.checked_mul(reserve_out)?;
     // Calculate the new reserve of token 1
-    let new_reserve_in = reserve_in.checked_add(swap_amount)?;
+    let new_reserve_in = reserve_in.checked_add(swap_amount.into())?;
     // Calculate the new reserve of token 2
     let new_reserve_out = k.checked_div(new_reserve_in)?;
     // Calculate the amount of token 2 to be recieved
     let token_2_recieved = reserve_out.checked_sub(new_reserve_out)?;
+    let token_2_recieved =
+        Uint128::try_from(token_2_recieved).map_err(|_| ContractError::new("Overflow"))?;
 
     Ok(token_2_recieved)
 }
