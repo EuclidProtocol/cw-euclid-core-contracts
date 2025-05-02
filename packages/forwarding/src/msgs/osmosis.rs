@@ -1,7 +1,7 @@
+use super::common_old::{EuclidReceive, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 use cw20::Cw20ReceiveMsg;
-use euclid::{msgs::hook::EuclidReceive, token::TokenType};
 use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 use swaprouter::msg::Slippage as OsmosisSlippage;
 

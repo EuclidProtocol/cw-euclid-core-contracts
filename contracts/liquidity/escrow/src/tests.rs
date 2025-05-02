@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     coin, from_json,
-    testing::{mock_dependencies, mock_env, mock_info},
+    testing::{message_info, mock_dependencies, mock_env},
     to_json_binary, Addr, Coin, Uint128,
 };
 
@@ -18,7 +18,8 @@ use euclid::{
 
 fn init_escrow() {
     let mut deps = mock_dependencies();
-    let info = mock_info("creator", &[]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
     let env = mock_env();
 
     let msg = InstantiateMsg {
@@ -40,7 +41,8 @@ fn test_instantiation() {
 #[test]
 fn test_deposit_native() {
     let mut deps = mock_dependencies();
-    let info = mock_info("creator", &[]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
     let env = mock_env();
     let msg = InstantiateMsg {
         token_id: Token::create("eucl".to_string()).unwrap(),
@@ -57,22 +59,24 @@ fn test_deposit_native() {
     assert_eq!(err, ContractError::InsufficientDeposit {});
 
     // Unauthorized sender (address that instantiated the contract is set as factory, which is the only authorized address)
-    let info = mock_info("not_factory", &[coin(100_u128, "usdc")]);
+    let not_factory = deps.api.addr_make("not_factory");
+    let info = message_info(&not_factory, &[coin(100_u128, "usdc")]);
     let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
     assert_eq!(err, ContractError::Unauthorized {});
 
     // Send invalid denom
-    let info = mock_info("creator", &[coin(100_u128, "usdc")]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[coin(100_u128, "usdc")]);
     let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
     assert_eq!(err, ContractError::UnsupportedDenomination {});
 
     // Send zero amount
-    let info = mock_info("creator", &[coin(0_u128, "eucl")]);
+    let info = message_info(&creator, &[coin(0_u128, "eucl")]);
     let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
     assert_eq!(err, ContractError::InsufficientDeposit {});
 
     // Should work
-    let info = mock_info("creator", &[coin(10_u128, "eucl")]);
+    let info = message_info(&creator, &[coin(10_u128, "eucl")]);
     let _res = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap();
     let denom_to_amount = DENOM_TO_AMOUNT
         .load(&deps.storage, "native:eucl".to_string())
@@ -80,7 +84,7 @@ fn test_deposit_native() {
     let expected_denom_to_amount = Uint128::new(10);
     assert_eq!(denom_to_amount, expected_denom_to_amount);
     // Deposit more
-    let info = mock_info("creator", &[coin(10_u128, "eucl")]);
+    let info = message_info(&creator, &[coin(10_u128, "eucl")]);
     let _res = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap();
     let denom_to_amount = DENOM_TO_AMOUNT
         .load(&deps.storage, "native:eucl".to_string())
@@ -106,7 +110,8 @@ struct TestExecuteMsg {
 fn test_instantiate() {
     let mut deps = mock_dependencies();
     let env = mock_env();
-    let info = mock_info("creator", &[]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
 
     let test_cases = vec![
         TestInstantiateMsg {
@@ -142,7 +147,9 @@ fn test_instantiate() {
 fn test_execute_add_allowed_denom() {
     let mut deps = mock_dependencies();
     let env = mock_env();
-    let info = mock_info("creator", &[]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
+    let not_factory = deps.api.addr_make("not_factory");
 
     let instantiate_msg = InstantiateMsg {
         token_id: Token::create("token1".to_string()).unwrap(),
@@ -185,7 +192,7 @@ fn test_execute_add_allowed_denom() {
             deps.as_mut(),
             env.clone(),
             if test.name.contains("non-factory") {
-                mock_info("non-factory", &[])
+                message_info(&not_factory, &[])
             } else {
                 info.clone()
             },
@@ -210,7 +217,9 @@ fn test_execute_add_allowed_denom() {
 fn test_execute_disallow_denom() {
     let mut deps = mock_dependencies();
     let env = mock_env();
-    let info = mock_info("creator", &[]);
+    let creator = deps.api.addr_make("creator");
+    let not_factory = deps.api.addr_make("not_factory");
+    let info = message_info(&creator, &[]);
 
     let instantiate_msg = InstantiateMsg {
         token_id: Token::create("token1".to_string()).unwrap(),
@@ -255,7 +264,7 @@ fn test_execute_disallow_denom() {
             deps.as_mut(),
             env.clone(),
             if test.name.contains("non-factory") {
-                mock_info("non-factory", &[])
+                message_info(&not_factory, &[])
             } else {
                 info.clone()
             },
@@ -281,9 +290,10 @@ fn test_execute_withdraw() {
     let mut deps = mock_dependencies();
     let mut env = mock_env();
     env.block.chain_id = "chain-1".to_string();
-
-    let info = mock_info(
-        "factory",
+    let factory = deps.api.addr_make("factory");
+    let not_factory = deps.api.addr_make("not_factory");
+    let info = message_info(
+        &factory,
         &[Coin {
             denom: "denom1".to_string(),
             amount: Uint128::new(1000),
@@ -349,7 +359,7 @@ fn test_execute_withdraw() {
             deps.as_mut(),
             env.clone(),
             if test.name.contains("non-factory") {
-                mock_info("non-factory", &[])
+                message_info(&not_factory, &[])
             } else {
                 info.clone()
             },
@@ -377,7 +387,8 @@ fn test_query_token_id() {
     let mut deps = mock_dependencies();
 
     let env = mock_env();
-    let info = mock_info("creator", &[]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
 
     // Instantiate the contract with a sample token id
     let instantiate_msg = InstantiateMsg {
@@ -403,7 +414,8 @@ fn test_query_token_allowed() {
     let mut deps = mock_dependencies();
 
     let env = mock_env();
-    let info = mock_info("creator", &[]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
 
     // Instantiate the contract with a sample token and allowed denomination
     let instantiate_msg = InstantiateMsg {

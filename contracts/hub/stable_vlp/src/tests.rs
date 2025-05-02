@@ -1,22 +1,37 @@
 #[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
-    use crate::contract::{execute, instantiate};
-    use crate::math::compute_swap;
-    use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, Decimal256, DepsMut, Response, Uint128, Uint64};
-    use euclid::chain::{ChainUid, CrossChainUser};
-    use euclid::error::ContractError;
-    use euclid::fee::{DenomFees, Fee, TotalFees};
-    use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg};
-    use euclid::pool::State;
-    use euclid::token::{Pair, Token};
+    use crate::{
+        contract::{execute, instantiate},
+        math::compute_swap,
+        state::{BALANCES, CHAIN_LP_TOKENS, STATE},
+    };
+    use cosmwasm_std::{
+        coins,
+        testing::{message_info, mock_dependencies, mock_env, MockQuerier},
+        Decimal256, Response, Uint128, Uint64,
+    };
+    use euclid::{
+        chain::{ChainUid, CrossChainUser},
+        error::ContractError,
+        fee::{DenomFees, Fee, TotalFees},
+        msgs::stable_vlp::{ExecuteMsg, InstantiateMsg},
+        pool::State,
+        token::{Pair, Token},
+    };
     use std::collections::HashMap;
 
-    fn init(deps: DepsMut) -> Response {
+    fn init(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            MockQuerier,
+        >,
+    ) -> Response {
+        let router = deps.api.addr_make("router");
+        let admin = deps.api.addr_make("admin");
         let msg = InstantiateMsg {
-            router: "router".to_string(),
+            router: router.to_string(),
             virtual_balance: "virtual_balance".to_string(),
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
@@ -31,24 +46,27 @@ mod tests {
                 },
             },
             execute: None,
-            admin: "admin".to_string(),
+            admin: admin.to_string(),
             amp_factor: Some(Uint64::from(1000u64)),
         };
-        let info = mock_info("router", &[]);
-        instantiate(deps, mock_env(), info, msg).unwrap()
+
+        let info = message_info(&router, &[]);
+        instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
     }
 
     #[test]
     fn test_init() {
         let mut deps = mock_dependencies();
-        let res = init(deps.as_mut());
+        let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
+        let router = deps.api.addr_make("router");
+        let admin = deps.api.addr_make("admin");
         let expected_state = State {
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
-            router: "router".to_string(),
+            router: router.to_string(),
             virtual_balance: "virtual_balance".to_string(),
             fee: Fee {
                 lp_fee_bps: 1,
@@ -68,7 +86,7 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
-            admin: "admin".to_string(),
+            admin: admin.to_string(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -89,7 +107,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let env = mock_env();
 
-        init(deps.as_mut());
+        init(&mut deps);
 
         let sender = CrossChainUser {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
@@ -106,7 +124,8 @@ mod tests {
             pair,
             tx_id: "1".to_string(),
         };
-        let info = mock_info("router", &coins(1000, "earth"));
+        let router = deps.api.addr_make("router");
+        let info = message_info(&router, &coins(1000, "earth"));
 
         // Execute the register_pool function
         let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
@@ -122,7 +141,7 @@ mod tests {
     fn test_update_fee() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        init(deps.as_mut());
+        init(&mut deps);
 
         let msg = ExecuteMsg::UpdateFee {
             lp_fee_bps: Some(5),
@@ -132,12 +151,14 @@ mod tests {
                 address: "addr_2".to_string(),
             }),
         };
-        let info = mock_info("not_admin", &[]);
+        let not_admin = deps.api.addr_make("not_admin");
+        let info = message_info(&not_admin, &[]);
 
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
-        let info = mock_info("admin", &[]);
+        let admin = deps.api.addr_make("admin");
+        let info = message_info(&admin, &[]);
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         let fee = STATE.load(&deps.storage).unwrap().fee;

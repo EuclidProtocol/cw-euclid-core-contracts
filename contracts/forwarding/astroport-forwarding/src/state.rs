@@ -1,8 +1,8 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::Item;
-use euclid::token::TokenType;
 use forwarding::msgs::astroport::SwapMsg;
+use forwarding::msgs::common_old::TokenType;
 #[cw_serde]
 pub struct State {
     pub astro_router_address: Addr,

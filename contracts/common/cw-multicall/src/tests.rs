@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     from_json,
-    testing::{mock_dependencies, mock_dependencies_with_balances, mock_env, mock_info},
+    testing::{message_info, mock_dependencies, mock_dependencies_with_balances, mock_env},
     BalanceResponse, BankQuery, Coin, DepsMut, Env, MessageInfo,
 };
 use euclid_utils::msgs::multicall::{InstantiateMsg, MultiQuery, MultiQueryResponse, QueryMsg};
@@ -17,15 +17,17 @@ fn init_cw_multicall(deps: DepsMut, env: Env, info: MessageInfo) {
 fn test_instantiation() {
     let mut deps = mock_dependencies();
     let env = mock_env();
-    let info = mock_info("creator", &[]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
     init_cw_multicall(deps.as_mut(), env, info)
 }
 
 #[test]
 fn test_multiquery_call() {
-    let coin = Coin::new(10000, "test");
-    let info = mock_info("creator", &[]);
+    let coin = Coin::new(10000u128, "test");
     let mut deps = mock_dependencies_with_balances(&[("creator", &[coin.clone()])]);
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
     let env = mock_env();
 
     init_cw_multicall(deps.as_mut(), env.clone(), info);
@@ -61,10 +63,10 @@ fn test_multiquery_call() {
     assert_eq!(bank_response.err, None, "Successful Query");
 
     assert_eq!(
-        from_json::<BalanceResponse>(&bank_response.result.unwrap()).unwrap(),
-        BalanceResponse {
-            amount: coin.clone()
-        },
+        from_json::<BalanceResponse>(&bank_response.result.unwrap())
+            .unwrap()
+            .amount,
+        coin,
         "Balance is same as assignined coin balance"
     );
 
@@ -76,8 +78,7 @@ fn test_multiquery_call() {
     let raw_balance_response: BalanceResponse =
         from_json(raw_bank_response.result.unwrap()).unwrap();
     assert_eq!(
-        raw_balance_response,
-        BalanceResponse { amount: coin },
+        raw_balance_response.amount, coin,
         "Raw query balance is same as assigned coin balance"
     );
 }

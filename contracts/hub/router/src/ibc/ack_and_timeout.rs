@@ -150,7 +150,7 @@ pub fn ibc_ack_register_factory(
                 chain_type,
             };
             CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid.clone(), &chain_data)?;
-            if let ChainType::Ibc(ibc_info) = chain_data.chain_type {
+            if let ChainType::Ibc(ref ibc_info) = chain_data.chain_type {
                 CHANNEL_TO_CHAIN_UID.save(
                     deps.storage,
                     ibc_info.from_hub_channel.clone(),
@@ -190,6 +190,7 @@ pub fn ibc_ack_update_factory_channel(
         env.contract.address.as_str(),
         TxType::RegisterFactory,
     ));
+    println!("ibc_ack_update_factory_channel");
     match res {
         AcknowledgementMsg::Ok(data) => {
             let chain_data = Chain {

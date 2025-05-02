@@ -1,5 +1,5 @@
 use cosmwasm_std::{from_json, to_json_binary, DepsMut, Reply, Response, SubMsgResult};
-use cw_utils::parse_reply_execute_data;
+use cw_utils::parse_execute_response_data;
 use euclid::{error::ContractError, pool::VlpSwapResponse};
 
 pub const NEXT_SWAP_REPLY_ID: u64 = 1;
@@ -8,8 +8,12 @@ pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Contra
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            let data = result.msg_responses[0].value.as_slice();
+
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let swap_response: VlpSwapResponse = from_json(execute_data.data.unwrap_or_default())?;

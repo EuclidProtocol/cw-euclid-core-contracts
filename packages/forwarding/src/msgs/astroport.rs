@@ -1,8 +1,8 @@
+use super::common_old::{EuclidReceive, TokenType};
 use astroport::router::SwapOperation;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw20::Cw20ReceiveMsg;
-use euclid::{msgs::hook::EuclidReceive, token::TokenType};
 
 #[cw_serde]
 pub struct InstantiateMsg {

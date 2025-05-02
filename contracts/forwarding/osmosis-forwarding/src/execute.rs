@@ -3,11 +3,12 @@ use cosmwasm_std::{
     WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
-use euclid::{
-    error::ContractError, events::simple_event, msgs::hook::EuclidReceive, token::TokenType,
-};
 use forwarding::msgs::{
-    cw20::OsmosisCw20HookMsg, euclid_receive::OsmosisEuclidReceiveHook, osmosis::SwapMsg,
+    common_old::{simple_event, EuclidReceive, TokenType},
+    cw20::OsmosisCw20HookMsg,
+    errors_old::ContractError,
+    euclid_receive::OsmosisEuclidReceiveHook,
+    osmosis::SwapMsg,
 };
 use swaprouter::msg::ExecuteMsg as OsmosisExecuteMsg;
 

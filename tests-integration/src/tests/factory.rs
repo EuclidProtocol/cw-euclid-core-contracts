@@ -6,7 +6,7 @@ use cw20::Cw20Contract;
 use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload, Environment,
 };
-use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
+use cw_orch_interchain::{core::InterchainEnv, prelude::*};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::chain::CrossChainUser;
 use euclid::chain::CrossChainUserWithLimit;
@@ -93,27 +93,32 @@ fn test_proper_instantiation() {
 
 #[test]
 fn test_create_pool_with_funds() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let sender = Addr::unchecked("sender_for_all_chains");
+    let interchain = MockInterchainEnv::new(vec![
+        ("osmosis", &sender.to_string()),
+        ("nibiru", &sender.to_string()),
+    ]);
     let osmosis = interchain.get_chain("osmosis").unwrap();
     let nibiru = interchain.get_chain("nibiru").unwrap();
 
+    let osmosis_sender = osmosis.sender.clone();
+    let nibiru_sender = nibiru.sender.clone();
     osmosis
         .set_balance(
-            sender.clone(),
+            &osmosis_sender,
             vec![
-                Coin::new(100000000000000, "osmo"),
-                Coin::new(100000000000000, "eucl"),
+                Coin::new(100000000000000u128, "osmo"),
+                Coin::new(100000000000000u128, "eucl"),
             ],
         )
         .unwrap();
 
     nibiru
         .set_balance(
-            sender.clone(),
+            &nibiru_sender,
             vec![
-                Coin::new(100000000000000, "nibi"),
-                Coin::new(100000000000000, "eucl"),
+                Coin::new(100000000000000u128, "nibi"),
+                Coin::new(100000000000000u128, "eucl"),
             ],
         )
         .unwrap();
@@ -143,7 +148,7 @@ fn test_create_pool_with_funds() {
                 mock_relayer_address: None,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -157,7 +162,7 @@ fn test_create_pool_with_funds() {
                 is_native: false,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -190,7 +195,7 @@ fn test_create_pool_with_funds() {
                     },
                 ),
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -210,7 +215,7 @@ fn test_create_pool_with_funds() {
                 },
                 timeout: None,
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -235,7 +240,7 @@ fn test_create_pool_with_funds() {
             }],
         }
     );
-
+    println!("here1");
     // Test Create pool without funds
     let create_pool_with_funds_request = factory_osmosis.execute(
         &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
@@ -263,7 +268,7 @@ fn test_create_pool_with_funds() {
             lp_token_marketing: None,
             pool_config: PoolConfig::ConstantProduct {},
         },
-        None, // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
+        &[],
     );
     assert_eq!(
         ContractError::new("Amount cannot be zero"),
@@ -280,14 +285,14 @@ fn test_create_pool_with_funds() {
                 pair: PairWithDenomAndAmount {
                     token_1: TokenWithDenomAndAmount {
                         token: Token::create("eucl".to_string()).unwrap(),
-                        amount: Uint128::from(10_000u128),
+                        amount: Uint128::new(10_000u128),
                         token_type: euclid::token::TokenType::Native {
                             denom: "eucl".to_string(),
                         },
                     },
                     token_2: TokenWithDenomAndAmount {
                         token: Token::create("osmo".to_string()).unwrap(),
-                        amount: Uint128::from(100_000u128),
+                        amount: Uint128::new(100_000u128),
                         token_type: euclid::token::TokenType::Native {
                             denom: "osmo".to_string(),
                         },
@@ -301,16 +306,19 @@ fn test_create_pool_with_funds() {
                 lp_token_marketing: None,
                 pool_config: PoolConfig::ConstantProduct {},
             },
-            Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
+            &[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")],
         )
         .unwrap();
+
+    println!("here2");
 
     let packet_lifetime = interchain
         .await_packets("osmosis", create_pool_with_funds_request)
         .unwrap();
+    println!("here3");
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -334,6 +342,7 @@ fn test_create_pool_with_funds() {
             }],
         }
     );
+    println!("here4");
 
     let vlp_query: VlpResponse = router_nibiru
         .query(&euclid::msgs::router::QueryMsg::GetVlp {
@@ -353,6 +362,7 @@ fn test_create_pool_with_funds() {
         }
     );
 
+    println!("here4");
     // Got this address from the query above
     vlp_nibiru.set_address(&Addr::unchecked("contract2"));
 
@@ -429,7 +439,7 @@ fn test_create_pool_with_funds() {
                 slippage_tolerance_bps: 100, // 1% slippage tolerance
                 timeout: None,               // 10 minutes in seconds
             },
-            Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
+            &[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")],
         )
         .unwrap();
 
@@ -437,8 +447,9 @@ fn test_create_pool_with_funds() {
         .await_packets("osmosis", add_liquidity_request)
         .unwrap();
 
+    println!("here5");
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -460,6 +471,7 @@ fn test_create_pool_with_funds() {
             total_lp_tokens: Uint128::new(30622u128 * 2),
         }
     );
+    println!("here6");
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_osmosis
         .query(&euclid::msgs::escrow::QueryMsg::State {})
@@ -507,7 +519,7 @@ fn test_create_pool_with_funds() {
                 is_native: true,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -521,7 +533,7 @@ fn test_create_pool_with_funds() {
                     },
                 ),
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -536,7 +548,7 @@ fn test_create_pool_with_funds() {
                 },
                 timeout: None,
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -567,7 +579,7 @@ fn test_create_pool_with_funds() {
                 lp_token_marketing: None,
                 pool_config: PoolConfig::ConstantProduct {},
             },
-            Some(&[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")]),
+            &[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")],
         )
         .unwrap();
 
@@ -682,7 +694,7 @@ fn test_create_pool_with_funds() {
                 slippage_tolerance_bps: 100, // 1% slippage tolerance
                 timeout: None,               // 10 minutes in seconds
             },
-            Some(&[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")]),
+            &[coin(100_000u128, "nibi"), coin(10_000u128, "eucl")],
         )
         .unwrap();
 
@@ -726,6 +738,7 @@ fn test_create_pool_with_funds() {
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );
+    println!("here7");
     // Test swap
     let eucl_token = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -755,7 +768,7 @@ fn test_create_pool_with_funds() {
                 }],
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
                     user: CrossChainUser {
-                        address: sender.clone(),
+                        address: sender.to_string(),
                         chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
                     },
                     limit: None,
@@ -766,7 +779,7 @@ fn test_create_pool_with_funds() {
                 partner_fee: None,
                 meta: None,
             }),
-            Some(&[coin(1_000u128, "eucl")]),
+            &[coin(1_000u128, "eucl")],
         )
         .unwrap();
 
@@ -807,7 +820,7 @@ fn test_create_pool_with_funds() {
                 recipient: None,
                 timeout: None,
             },
-            Some(&[coin(100, "eucl")]),
+            &[coin(100, "eucl")],
         )
         .unwrap();
 
@@ -815,7 +828,7 @@ fn test_create_pool_with_funds() {
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
             balance_key: BalanceKey {
                 cross_chain_user: CrossChainUser {
-                    address: sender.clone(),
+                    address: nibiru_sender.to_string(),
                     chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
                 },
                 token_id: eucl_token.token.to_string(),
@@ -835,7 +848,7 @@ fn test_create_pool_with_funds() {
             Uint128::new(50),
             vec![CrossChainUserWithLimit {
                 user: CrossChainUser {
-                    address: sender.clone(),
+                    address: nibiru_sender.to_string(),
                     chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
                 },
                 limit: None,
@@ -852,7 +865,7 @@ fn test_create_pool_with_funds() {
         .query(&euclid::msgs::virtual_balance::QueryMsg::GetBalance {
             balance_key: BalanceKey {
                 cross_chain_user: CrossChainUser {
-                    address: sender.clone(),
+                    address: nibiru_sender.to_string(),
                     chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
                 },
                 token_id: eucl_token.token.to_string(),
@@ -869,27 +882,30 @@ fn test_create_pool_with_funds() {
 
 #[test]
 fn test_add_liquidity() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let sender = Addr::unchecked("sender_for_all_chains");
+    let interchain = MockInterchainEnv::new(vec![
+        ("osmosis", &sender.to_string()),
+        ("nibiru", &sender.to_string()),
+    ]);
     let osmosis = interchain.get_chain("osmosis").unwrap();
     let nibiru = interchain.get_chain("nibiru").unwrap();
 
     osmosis
         .set_balance(
-            sender.clone(),
+            &sender,
             vec![
-                Coin::new(100000000000000, "osmo"),
-                Coin::new(100000000000000, "eucl"),
+                Coin::new(100000000000000u128, "osmo"),
+                Coin::new(100000000000000u128, "eucl"),
             ],
         )
         .unwrap();
 
     nibiru
         .set_balance(
-            sender.clone(),
+            &sender,
             vec![
-                Coin::new(100000000000000, "nibi"),
-                Coin::new(100000000000000, "eucl"),
+                Coin::new(100000000000000u128, "nibi"),
+                Coin::new(100000000000000u128, "eucl"),
             ],
         )
         .unwrap();
@@ -917,7 +933,7 @@ fn test_add_liquidity() {
                 stable_vlp_code_id: 4,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -931,7 +947,7 @@ fn test_add_liquidity() {
                 is_native: false,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -964,7 +980,7 @@ fn test_add_liquidity() {
                     },
                 ),
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -984,7 +1000,7 @@ fn test_add_liquidity() {
                 },
                 timeout: None,
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -1038,7 +1054,7 @@ fn test_add_liquidity() {
                 lp_token_marketing: None,
                 pool_config: PoolConfig::ConstantProduct {},
             },
-            Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
+            &[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")],
         )
         .unwrap();
 
@@ -1047,7 +1063,7 @@ fn test_add_liquidity() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0] {
         println!("{:?}", ack_tx.tx_id.response.events);
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
@@ -1169,7 +1185,7 @@ fn test_add_liquidity() {
                 slippage_tolerance_bps: 100, // 1% slippage tolerance
                 timeout: None,               // 10 minutes in seconds
             },
-            Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
+            &[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")],
         )
         .unwrap();
 
@@ -1178,7 +1194,7 @@ fn test_add_liquidity() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -1722,27 +1738,30 @@ fn test_add_liquidity_with_invalid_timeout() {
 }
 #[test]
 fn test_swap_request() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let sender = Addr::unchecked("sender_for_all_chains");
+    let interchain = MockInterchainEnv::new(vec![
+        ("osmosis", &sender.to_string()),
+        ("nibiru", &sender.to_string()),
+    ]);
     let osmosis = interchain.get_chain("osmosis").unwrap();
     let nibiru = interchain.get_chain("nibiru").unwrap();
 
     osmosis
         .set_balance(
-            sender.clone(),
+            &sender,
             vec![
-                Coin::new(100000000000000, "osmo"),
-                Coin::new(100000000000000, "eucl"),
+                Coin::new(100000000000000u128, "osmo"),
+                Coin::new(100000000000000u128, "eucl"),
             ],
         )
         .unwrap();
 
     nibiru
         .set_balance(
-            sender.clone(),
+            &sender,
             vec![
-                Coin::new(100000000000000, "nibi"),
-                Coin::new(100000000000000, "eucl"),
+                Coin::new(100000000000000u128, "nibi"),
+                Coin::new(100000000000000u128, "eucl"),
             ],
         )
         .unwrap();
@@ -1770,7 +1789,7 @@ fn test_swap_request() {
                 stable_vlp_code_id: 4,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -1784,7 +1803,7 @@ fn test_swap_request() {
                 is_native: false,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -1817,7 +1836,7 @@ fn test_swap_request() {
                     },
                 ),
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -1837,7 +1856,7 @@ fn test_swap_request() {
                 },
                 timeout: None,
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -1891,7 +1910,7 @@ fn test_swap_request() {
                 lp_token_marketing: None,
                 pool_config: PoolConfig::ConstantProduct {},
             },
-            Some(&[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")]),
+            &[coin(100_000u128, "osmo"), coin(10_000u128, "eucl")],
         )
         .unwrap();
 
@@ -1900,7 +1919,7 @@ fn test_swap_request() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0] {
         println!("{:?}", ack_tx.tx_id.response.events);
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
@@ -2020,7 +2039,7 @@ fn test_swap_request() {
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
                     user: CrossChainUser {
                         chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                        address: sender,
+                        address: sender.to_string(),
                     },
                     limit: None,
                     preferred_denom: None,
@@ -2030,7 +2049,7 @@ fn test_swap_request() {
                 partner_fee: None,
                 meta: None,
             }),
-            Some(&[coin(100u128, "eucl")]),
+            &[coin(100u128, "eucl")],
         )
         .unwrap();
 
@@ -2039,7 +2058,7 @@ fn test_swap_request() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -2825,17 +2844,20 @@ fn test_swap_request_fails_with_timeout_greater_than_240s() {
 
 #[test]
 fn test_stable_pool() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let sender = Addr::unchecked("sender_for_all_chains");
+    let interchain = MockInterchainEnv::new(vec![
+        ("osmosis", &sender.to_string()),
+        ("nibiru", &sender.to_string()),
+    ]);
     let osmosis = interchain.get_chain("osmosis").unwrap();
     let nibiru = interchain.get_chain("nibiru").unwrap();
 
     osmosis
         .set_balance(
-            sender.clone(),
+            &sender,
             vec![
-                Coin::new(100000000000000, "osmo"),
-                Coin::new(100000000000000, "eucl"),
+                Coin::new(100000000000000u128, "osmo"),
+                Coin::new(100000000000000u128, "eucl"),
             ],
         )
         .unwrap();
@@ -2865,7 +2887,7 @@ fn test_stable_pool() {
                 mock_relayer_address: None,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -2879,7 +2901,7 @@ fn test_stable_pool() {
                 is_native: false,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -2912,7 +2934,7 @@ fn test_stable_pool() {
                     },
                 ),
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -2932,7 +2954,7 @@ fn test_stable_pool() {
                 },
                 timeout: None,
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -2986,7 +3008,7 @@ fn test_stable_pool() {
                 lp_token_marketing: None,
                 pool_config: PoolConfig::Stable { amp_factor: None },
             },
-            Some(&[coin(10_000u128, "osmo"), coin(10_000u128, "eucl")]),
+            &[coin(10_000u128, "osmo"), coin(10_000u128, "eucl")],
         )
         .unwrap();
 
@@ -2995,7 +3017,7 @@ fn test_stable_pool() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
 
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
@@ -3120,14 +3142,14 @@ fn test_stable_pool() {
                 }),
                 meta: None,
             }),
-            Some(&[coin(1000u128, "eucl")]),
+            &[coin(1000u128, "eucl")],
         )
         .unwrap();
 
     let packet_lifetime = interchain.await_packets("osmosis", swap_request).unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
 
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {

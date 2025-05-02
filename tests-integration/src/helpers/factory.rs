@@ -4,8 +4,6 @@ use cosmwasm_std::{coin, Uint128};
 use cw20::Cw20Contract;
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
-
-use cw_orch_interchain::IbcQueryHandler;
 use euclid::chain::{CrossChainUser, CrossChainUserWithLimit};
 use euclid::fee::PartnerFee;
 use euclid::msgs::cw20::ExecuteMsgFns;
@@ -13,8 +11,9 @@ use euclid::msgs::factory::{
     ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns,
 };
 
-use cw_orch_interchain::InterchainEnv;
-use cw_orch_interchain::MockInterchainEnv;
+use cw_orch_interchain::core::InterchainEnv;
+use cw_orch_interchain::prelude::IbcQueryHandler;
+use cw_orch_interchain::prelude::MockInterchainEnv;
 use euclid::pool::PoolConfig;
 use euclid::swap::NextSwapPair;
 use euclid::token::TokenType;
@@ -56,7 +55,7 @@ pub fn faucet(
     match token_type {
         TokenType::Native { denom } => {
             chain
-                .add_balance(address, vec![coin(amount, denom.clone())])
+                .add_balance(&Addr::unchecked(address), vec![coin(amount, denom.clone())])
                 .unwrap();
             // attach native token to the message
             funds.push(coin(amount, denom));
@@ -103,7 +102,7 @@ pub fn create_pool(
                 lp_token_marketing: None,
                 pool_config,
             },
-            Some(&funds),
+            &funds,
         )
         .unwrap();
 
@@ -130,7 +129,7 @@ pub fn add_liquidity(
                 slippage_tolerance_bps,
                 timeout,
             },
-            Some(&funds),
+            &funds,
         )
         .unwrap();
 
@@ -168,7 +167,7 @@ pub fn swap_request(
                 partner_fee,
                 meta,
             }),
-            Some(&funds),
+            &funds,
         )
         .unwrap();
 

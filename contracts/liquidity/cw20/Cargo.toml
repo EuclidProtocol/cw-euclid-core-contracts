@@ -51,7 +51,7 @@ schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
-cw-orch = "=0.24.1"
+cw-orch = "=0.28.0"
 
 [dev-dependencies]
 cw-multi-test = { workspace = true }

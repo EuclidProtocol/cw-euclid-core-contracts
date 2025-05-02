@@ -33,21 +33,17 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 """
 
 [dependencies]
-cosmwasm-schema = { workspace = true }
-cosmwasm-std = { workspace = true, features = [
-  "cosmwasm_1_2",
-  
-] }
-cw-storage-plus = { workspace = true }
-cw2 = { workspace = true }
-cw20 = { workspace = true }
+cosmwasm-schema = "=1.5.11"
+cosmwasm-std = "=1.5.11"
+cw-storage-plus = "=1.2.0"
+cw2 = "=1.1.2"
+cw20 = "=1.1.2"
 schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
-euclid = { workspace = true }
 forwarding = { workspace = true }
 cw-orch = "=0.24.1"
-cw-utils = { workspace = true }
+cw-utils = "=1.0.3"
 osmosis-std="0.16.2"
 swaprouter = { git = "https://github.com/osmosis-labs/osmosis", package = "swaprouter", tag = "v28.0.0", features = ["imported"] }
 

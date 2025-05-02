@@ -3,7 +3,7 @@ use crate::{
     state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_CW20},
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Reply, Response, SubMsgResult};
-use cw_utils::{parse_execute_response_data, parse_reply_instantiate_data};
+use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::error::ContractError;
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
 
@@ -17,8 +17,12 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            let data = result.data.unwrap_or_default();
+
             let instantiate_data: cw_utils::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                parse_instantiate_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
@@ -50,11 +54,17 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
 }
 
 pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    println!("cw20_instantiate_reply1");
+    println!("msg: {:?}", msg);
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            let data = result.data.unwrap_or_default();
+
             let instantiate_data: cw_utils::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                parse_instantiate_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
@@ -63,6 +73,7 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
                 from_json(instantiate_data.data.unwrap_or_default())?;
 
             VLP_TO_CW20.save(deps.storage, cw20_data.vlp, &cw20_address)?;
+            println!("cw20_instantiate_reply2");
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
                 .add_attribute("cw20", cw20_address))

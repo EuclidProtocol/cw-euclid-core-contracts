@@ -159,7 +159,10 @@ pub fn receive_cw20(
             let factory_address = STATE.load(deps.storage)?.factory_address;
             // Only the factory can call this function
             let sender = cw20_msg.sender;
-            ensure!(sender == factory_address, ContractError::Unauthorized {});
+            ensure!(
+                sender == factory_address.to_string(),
+                ContractError::Unauthorized {}
+            );
 
             let amount_sent = cw20_msg.amount;
             // TODO should this check be on the factory level? Or even before the factory

@@ -1,7 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cw20::Cw20Contract;
 use cw_orch::{mock::MockBase, prelude::*};
-use cw_orch_interchain::{InterchainEnv, MockInterchainEnv};
+use cw_orch_interchain::core::InterchainEnv;
+use cw_orch_interchain::mock::MockInterchainEnv;
 use escrow::EscrowContract;
 use euclid::{
     chain::ChainUid,
@@ -46,7 +47,7 @@ pub fn setup_factory(
                 is_native: false,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 
@@ -122,7 +123,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
                 mock_relayer_address: None,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 

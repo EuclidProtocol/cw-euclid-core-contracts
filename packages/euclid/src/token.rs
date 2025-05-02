@@ -131,7 +131,34 @@ pub struct Pair {
     pub token_1: Token,
     pub token_2: Token,
 }
-// forward_ref_partial_eq!(Pair, Pair);
+
+// Compare Token == &str
+impl PartialEq<&str> for Token {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+// Compare &str == Token
+impl PartialEq<Token> for &str {
+    fn eq(&self, other: &Token) -> bool {
+        *self == other.0
+    }
+}
+
+// Compare Token == String
+impl PartialEq<String> for Token {
+    fn eq(&self, other: &String) -> bool {
+        &self.0 == other
+    }
+}
+
+// Compare String == Token
+impl PartialEq<Token> for String {
+    fn eq(&self, other: &Token) -> bool {
+        self == &other.0
+    }
+}
 
 impl Pair {
     pub fn new(token_1: Token, token_2: Token) -> Result<Self, ContractError> {

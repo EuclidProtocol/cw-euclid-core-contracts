@@ -1,7 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cosmwasm_std::Addr;
 use cw_orch::prelude::*;
-use cw_orch_interchain::types::IbcPacketOutcome;
 use escrow::EscrowContract;
 use euclid::chain::Chain;
 use euclid::chain::ChainUid;
@@ -18,22 +17,25 @@ const _NATIVE_DENOM: &str = "native";
 const _IBC_DENOM_1: &str = "ibc/denom1";
 const _IBC_DENOM_2: &str = "ibc/denom2";
 const _SUPPLY: u128 = 1_000_000;
+use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::*;
-use cw_orch_interchain::InterchainEnv;
 use router::RouterContract;
 use virtual_balance::VirtualBalanceContract;
 
 #[test]
 fn test_register_factory() {
     // Here `juno-1` is the chain-id and `juno` is the address prefix for this chain
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = Addr::unchecked("sender_for_all_chains");
 
-    let interchain = MockInterchainEnv::new(vec![("juno", &sender), ("osmosis", &sender)]);
+    let interchain = MockInterchainEnv::new(vec![
+        ("juno", &sender.to_string()),
+        ("osmosis", &sender.to_string()),
+    ]);
 
     let juno = interchain.get_chain("juno").unwrap();
     let osmosis = interchain.get_chain("osmosis").unwrap();
 
-    juno.set_balance(sender.clone(), vec![Coin::new(100000000000000, "juno")])
+    juno.set_balance(&sender, vec![Coin::new(100000000000000u128, "juno")])
         .unwrap();
 
     let factory_juno = FactoryContract::new(juno.clone());
@@ -47,7 +49,20 @@ fn test_register_factory() {
     virtual_balance_osmo.upload().unwrap();
 
     let virtual_balance_code_id = virtual_balance_osmo.code_id().unwrap();
-    let router_contract = "contract0".to_string();
+
+    router_osmo
+        .instantiate(
+            &RouterInstantiateMsg {
+                constant_product_vlp_code_id: 3,
+                stable_vlp_code_id: 4,
+                virtual_balance_code_id,
+                mock_relayer_address: None,
+            },
+            None,
+            &[],
+        )
+        .unwrap();
+    let router_contract = router_osmo.addr_str().unwrap();
 
     factory_juno
         .instantiate(
@@ -59,23 +74,10 @@ fn test_register_factory() {
                 is_native: false,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
-    // Upload vbalance contract
-
-    router_osmo
-        .instantiate(
-            &RouterInstantiateMsg {
-                constant_product_vlp_code_id: 3,
-                stable_vlp_code_id: 4,
-                virtual_balance_code_id,
-                mock_relayer_address: None,
-            },
-            None,
-            None,
-        )
-        .unwrap();
+    let factory_contract = factory_juno.addr_str().unwrap();
 
     // Set up channel from juno to osmosis
     // let channel_receipt = interchain
@@ -109,7 +111,7 @@ fn test_register_factory() {
             &euclid::msgs::factory::ExecuteMsg::UpdateHubChannel {
                 new_channel: osmosis_channel.to_string(),
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -125,7 +127,7 @@ fn test_register_factory() {
                     },
                 ),
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -134,7 +136,7 @@ fn test_register_factory() {
         .unwrap();
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
     } else {
         panic!("packet timed out");
@@ -151,7 +153,7 @@ fn test_register_factory() {
         vec![ChainResponse {
             chain: Chain {
                 factory_chain_id: "juno".to_string(),
-                factory: "contract0".to_string(),
+                factory: factory_contract,
                 chain_type: euclid::chain::ChainType::Ibc(IbcChain {
                     from_hub_channel: "channel-0".to_string(),
                     from_factory_channel: "channel-0".to_string(),

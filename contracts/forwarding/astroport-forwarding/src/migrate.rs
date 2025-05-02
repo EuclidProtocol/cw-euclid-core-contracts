@@ -1,6 +1,6 @@
 use cosmwasm_std::{entry_point, DepsMut, Env, Response};
-use euclid::error::ContractError;
 use forwarding::msgs::astroport::MigrateMsg;
+use forwarding::msgs::errors_old::ContractError;
 
 /// This is the migrate entry point for the contract.
 /// Currently, it does not perform any migration logic and simply returns an empty response.
