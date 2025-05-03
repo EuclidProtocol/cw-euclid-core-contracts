@@ -98,10 +98,10 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
-            let data = result.msg_responses[0].value.as_slice();
+            let data = result.data.unwrap_or_default();
 
             let execute_data =
-                parse_execute_response_data(data).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let pool_creation_response: PoolCreationResponse =
@@ -185,10 +185,10 @@ pub fn on_remove_liquidity_reply(
 
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
-            let data = result.msg_responses[0].value.as_slice();
+            let data = result.data.unwrap_or_default();
 
             let execute_data =
-                parse_execute_response_data(data).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let vlp_liquidity_response: VlpRemoveLiquidityResponse =
@@ -248,10 +248,10 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
-            let data = result.msg_responses[0].value.as_slice();
+            let data = result.data.unwrap_or_default();
 
             let execute_data =
-                parse_execute_response_data(data).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let vlp_swap_response: VlpSwapResponse =

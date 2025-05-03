@@ -10,10 +10,10 @@ pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Contra
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
-            let data = result.msg_responses[0].value.as_slice();
+            let data = result.data.unwrap_or_default();
 
             let execute_data =
-                parse_execute_response_data(data).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let swap_response: VlpSwapResponse = from_json(execute_data.data.unwrap_or_default())?;

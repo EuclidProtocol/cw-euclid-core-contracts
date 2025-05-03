@@ -36,10 +36,11 @@ mod tests {
         let mut deps = mock_dependencies();
         let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
+        let router = deps.api.addr_make("router");
 
         let expected_state = State {
-            router: "router".to_string(),
-            admin: Addr::unchecked("router"),
+            router: router.to_string(),
+            admin: router.clone(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

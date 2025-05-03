@@ -21,6 +21,8 @@ mod tests {
             MockQuerier,
         >,
     ) -> Response {
+        let admin = deps.api.addr_make("admin");
+
         let msg = InstantiateMsg {
             router: "router".to_string(),
             virtual_balance: "virtual_balance".to_string(),
@@ -37,7 +39,7 @@ mod tests {
                 },
             },
             execute: None,
-            admin: "admin".to_string(),
+            admin: admin.to_string(),
         };
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -47,14 +49,16 @@ mod tests {
     #[test]
     fn test_init() {
         let mut deps = mock_dependencies();
+        let router = deps.api.addr_make("router");
         let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
+        let admin = deps.api.addr_make("admin");
         let expected_state = State {
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
-            router: "router".to_string(),
+            router: router.to_string(),
             virtual_balance: "virtual_balance".to_string(),
             fee: Fee {
                 lp_fee_bps: 1,
@@ -74,7 +78,7 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
-            admin: "admin".to_string(),
+            admin: admin.to_string(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

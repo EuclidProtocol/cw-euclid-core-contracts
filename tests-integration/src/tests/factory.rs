@@ -240,7 +240,6 @@ fn test_create_pool_with_funds() {
             }],
         }
     );
-    println!("here1");
     // Test Create pool without funds
     let create_pool_with_funds_request = factory_osmosis.execute(
         &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
@@ -310,12 +309,9 @@ fn test_create_pool_with_funds() {
         )
         .unwrap();
 
-    println!("here2");
-
     let packet_lifetime = interchain
         .await_packets("osmosis", create_pool_with_funds_request)
         .unwrap();
-    println!("here3");
 
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
     if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
@@ -342,7 +338,6 @@ fn test_create_pool_with_funds() {
             }],
         }
     );
-    println!("here4");
 
     let vlp_query: VlpResponse = router_nibiru
         .query(&euclid::msgs::router::QueryMsg::GetVlp {
@@ -362,7 +357,6 @@ fn test_create_pool_with_funds() {
         }
     );
 
-    println!("here4");
     // Got this address from the query above
     vlp_nibiru.set_address(&Addr::unchecked("contract2"));
 
@@ -447,7 +441,6 @@ fn test_create_pool_with_funds() {
         .await_packets("osmosis", add_liquidity_request)
         .unwrap();
 
-    println!("here5");
     // For testing a successful outcome of the first packet sent out in the tx, you can use:
     if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
         // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
@@ -471,7 +464,7 @@ fn test_create_pool_with_funds() {
             total_lp_tokens: Uint128::new(30622u128 * 2),
         }
     );
-    println!("here6");
+
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_osmosis
         .query(&euclid::msgs::escrow::QueryMsg::State {})
@@ -738,7 +731,6 @@ fn test_create_pool_with_funds() {
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );
-    println!("here7");
     // Test swap
     let eucl_token = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -890,9 +882,12 @@ fn test_add_liquidity() {
     let osmosis = interchain.get_chain("osmosis").unwrap();
     let nibiru = interchain.get_chain("nibiru").unwrap();
 
+    let osmosis_sender = osmosis.sender.clone();
+    let nibiru_sender = nibiru.sender.clone();
+
     osmosis
         .set_balance(
-            &sender,
+            &osmosis_sender,
             vec![
                 Coin::new(100000000000000u128, "osmo"),
                 Coin::new(100000000000000u128, "eucl"),
@@ -902,7 +897,7 @@ fn test_add_liquidity() {
 
     nibiru
         .set_balance(
-            &sender,
+            &nibiru_sender,
             vec![
                 Coin::new(100000000000000u128, "nibi"),
                 Coin::new(100000000000000u128, "eucl"),
@@ -1746,9 +1741,12 @@ fn test_swap_request() {
     let osmosis = interchain.get_chain("osmosis").unwrap();
     let nibiru = interchain.get_chain("nibiru").unwrap();
 
+    let osmosis_sender = osmosis.sender.clone();
+    let nibiru_sender = nibiru.sender.clone();
+
     osmosis
         .set_balance(
-            &sender,
+            &osmosis_sender,
             vec![
                 Coin::new(100000000000000u128, "osmo"),
                 Coin::new(100000000000000u128, "eucl"),
@@ -1758,7 +1756,7 @@ fn test_swap_request() {
 
     nibiru
         .set_balance(
-            &sender,
+            &nibiru_sender,
             vec![
                 Coin::new(100000000000000u128, "nibi"),
                 Coin::new(100000000000000u128, "eucl"),
@@ -2165,7 +2163,7 @@ fn test_swap_request_with_valid_partner_fee() {
         vec![CrossChainUserWithLimit {
             user: CrossChainUser {
                 chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
+                address: router_chain.sender.to_string(),
             },
             limit: None,
             preferred_denom: None,
@@ -2174,7 +2172,7 @@ fn test_swap_request_with_valid_partner_fee() {
         }],
         Some(PartnerFee {
             partner_fee_bps: 30,
-            recipient: sender,
+            recipient: router_chain.sender.to_string(),
         }),
         funds,
         None,
@@ -2852,9 +2850,11 @@ fn test_stable_pool() {
     let osmosis = interchain.get_chain("osmosis").unwrap();
     let nibiru = interchain.get_chain("nibiru").unwrap();
 
+    let osmosis_sender = osmosis.sender.clone();
+
     osmosis
         .set_balance(
-            &sender,
+            &osmosis_sender,
             vec![
                 Coin::new(100000000000000u128, "osmo"),
                 Coin::new(100000000000000u128, "eucl"),

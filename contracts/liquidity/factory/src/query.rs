@@ -81,16 +81,16 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     })?)
 }
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
-    let pools = PAIR_TO_VLP
-        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .flat_map(|item| -> Result<_, ContractError> {
-            let item = item?;
+    let pools: Vec<PoolVlpResponse> = PAIR_TO_VLP
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|item| {
+            let (pair_tokens, vlp) = item?;
             Ok(PoolVlpResponse {
-                pair: Pair::new(item.0 .0, item.0 .1)?,
-                vlp: item.1,
+                pair: Pair::new(pair_tokens.0, pair_tokens.1)?,
+                vlp,
             })
         })
-        .collect();
+        .collect::<Result<_, ContractError>>()?;
 
     to_json_binary(&AllPoolsResponse { pools }).map_err(Into::into)
 }

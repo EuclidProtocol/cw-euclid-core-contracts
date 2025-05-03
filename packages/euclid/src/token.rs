@@ -16,6 +16,17 @@ use crate::msgs::virtual_balance::ExecuteTransfer;
 #[cw_serde]
 pub struct Token(String);
 // forward_ref_partial_eq!(Token, Token);
+impl PartialEq<Token> for &Token {
+    fn eq(&self, other: &Token) -> bool {
+        **self == *other
+    }
+}
+
+impl PartialEq<&Token> for Token {
+    fn eq(&self, other: &&Token) -> bool {
+        *self == **other
+    }
+}
 
 // Implement Deref to allow easy access to the inner type
 impl Deref for Token {

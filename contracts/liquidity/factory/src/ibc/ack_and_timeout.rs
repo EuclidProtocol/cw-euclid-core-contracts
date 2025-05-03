@@ -197,7 +197,6 @@ fn ack_pool_creation(
 
     // Remove pool request from MAP
     PENDING_POOL_REQUESTS.remove(deps.storage, req_key);
-    println!("ack_pool_creation1");
 
     // Check whether res is an error or not
     match res {
@@ -206,12 +205,7 @@ fn ack_pool_creation(
             let state = STATE.load(deps.storage)?;
             let escrow_code_id = state.escrow_code_id;
             let cw20_code_id = state.cw20_code_id;
-            println!("ack_pool_creation2");
-            println!(
-                "existing_req.pair_info.get_pair()?.get_tupple(): {:?}",
-                existing_req.pair_info.get_pair()?.get_tupple()
-            );
-            println!("data.vlp_contract: {:?}", data.vlp_contract);
+
             PAIR_TO_VLP.save(
                 deps.storage,
                 existing_req.pair_info.get_pair()?.get_tupple(),
@@ -301,7 +295,6 @@ fn ack_pool_creation(
                 funds: vec![],
                 label: "cw20".to_string(),
             });
-            println!("ack_pool_creation3");
             Ok(res.add_submessage(SubMsg {
                 id: CW20_INSTANTIATE_REPLY_ID,
                 msg: init_cw20_msg,

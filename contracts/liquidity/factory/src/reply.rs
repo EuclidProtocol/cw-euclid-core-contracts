@@ -54,8 +54,6 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
 }
 
 pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    println!("cw20_instantiate_reply1");
-    println!("msg: {:?}", msg);
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
@@ -73,7 +71,7 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
                 from_json(instantiate_data.data.unwrap_or_default())?;
 
             VLP_TO_CW20.save(deps.storage, cw20_data.vlp, &cw20_address)?;
-            println!("cw20_instantiate_reply2");
+
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
                 .add_attribute("cw20", cw20_address))
