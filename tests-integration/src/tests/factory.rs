@@ -5,7 +5,7 @@ use cw20::Cw20Contract;
 use cw_orch::prelude::{
     ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload, Environment,
 };
-use cw_orch_interchain::{prelude::*, types::IbcPacketOutcome, InterchainEnv};
+use cw_orch_interchain::{prelude::*, InterchainEnv};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::chain::CrossChainUser;
 use euclid::chain::CrossChainUserWithLimit;
@@ -140,7 +140,7 @@ fn test_create_pool_with_funds() {
                 constant_product_vlp_code_id: 3,
                 stable_vlp_code_id: 4,
                 virtual_balance_code_id: 2,
-                mock_relayer_address: Some(nibiru.sender.to_string()),
+                mock_relayer_addresses: Some(vec![nibiru.sender.to_string()]),
             },
             None,
             None,
@@ -948,7 +948,7 @@ fn test_add_liquidity() {
             &euclid::msgs::router::InstantiateMsg {
                 constant_product_vlp_code_id: 3,
                 virtual_balance_code_id: 2,
-                mock_relayer_address: Some(router_nibiru.environment().sender.to_string()),
+                mock_relayer_addresses: Some(vec![router_nibiru.environment().sender.to_string()]),
                 stable_vlp_code_id: 4,
             },
             None,
@@ -1816,7 +1816,7 @@ fn test_swap_request() {
             &euclid::msgs::router::InstantiateMsg {
                 constant_product_vlp_code_id: 3,
                 virtual_balance_code_id: 2,
-                mock_relayer_address: Some(router_nibiru.environment().sender.to_string()),
+                mock_relayer_addresses: Some(vec![router_nibiru.environment().sender.to_string()]),
                 stable_vlp_code_id: 4,
             },
             None,
@@ -2952,7 +2952,7 @@ fn test_stable_pool() {
                 constant_product_vlp_code_id: vlp_nibiru.code_id().unwrap(),
                 stable_vlp_code_id: stable_vlp_nibiru.code_id().unwrap(),
                 virtual_balance_code_id: virtual_balance_nibiru.code_id().unwrap(),
-                mock_relayer_address: Some(router_nibiru.environment().sender.to_string()),
+                mock_relayer_addresses: Some(vec![router_nibiru.environment().sender.to_string()]),
             },
             None,
             None,
@@ -3270,7 +3270,8 @@ fn test_stable_pool() {
                 token_2: Token::create("osmo".to_string()).unwrap(),
             },
             token_1_reserve: Uint128::new(10_999),
-            token_2_reserve: Uint128::new(9_009),
+            //TODO used to expect 9011
+            token_2_reserve: Uint128::new(9009),
             total_lp_tokens: Uint128::new(9000),
         }
     );

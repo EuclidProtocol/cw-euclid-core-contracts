@@ -27,7 +27,7 @@ impl MockRouter {
             vlp_code_id,
             stable_vlp_code_id,
             virtual_balance_code_id,
-            Some(sender.to_string()),
+            Some(vec![sender.to_string()]),
         );
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid router", None);
 
@@ -65,13 +65,13 @@ pub fn mock_router_instantiate_msg(
     constant_product_vlp_code_id: u64,
     stable_vlp_code_id: u64,
     virtual_balance_code_id: u64,
-    mock_relayer_address: Option<String>,
+    mock_relayer_addresses: Option<Vec<String>>,
 ) -> InstantiateMsg {
     InstantiateMsg {
         constant_product_vlp_code_id,
         stable_vlp_code_id,
         virtual_balance_code_id,
-        mock_relayer_address,
+        mock_relayer_addresses,
     }
 }
 

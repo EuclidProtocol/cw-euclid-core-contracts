@@ -2,28 +2,24 @@
 
 use cosmwasm_std::{coin, Uint128};
 use cw20::Cw20Contract;
-use cw_orch::mock::MockBase;
-use cw_orch::prelude::*;
-
-use cw_orch_interchain::IbcQueryHandler;
-use euclid::chain::{CrossChainUser, CrossChainUserWithLimit};
-use euclid::fee::PartnerFee;
-use euclid::msgs::cw20::ExecuteMsgFns;
-use euclid::msgs::factory::{
-    ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns,
+use cw_orch::{mock::MockBase, prelude::*};
+use cw_orch_interchain::{IbcQueryHandler, InterchainEnv, MockInterchainEnv};
+use euclid::{
+    chain::{CrossChainUser, CrossChainUserWithLimit},
+    fee::PartnerFee,
+    msgs::{
+        cw20::ExecuteMsgFns,
+        factory::{
+            ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest,
+            QueryMsgFns as FactoryQueryMsgFns,
+        },
+    },
+    pool::PoolConfig,
+    swap::NextSwapPair,
+    token::{PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
 };
-
-use cw_orch_interchain::InterchainEnv;
-use cw_orch_interchain::MockInterchainEnv;
-use euclid::msgs::router::QueryMsgFns;
-use euclid::pool::PoolConfig;
-use euclid::swap::NextSwapPair;
-use euclid::token::TokenType;
-use euclid::token::TokenWithDenom;
-use euclid::token::{PairWithDenomAndAmount, Token};
 use factory::FactoryContract;
 use router::RouterContract;
-use vlp::VlpContract;
 
 use crate::helpers::relayer::relay_factory_router_factory;
 
@@ -154,7 +150,7 @@ pub fn add_liquidity(
 }
 
 pub fn swap_request(
-    interchain: &MockInterchainEnv,
+    _interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     sender: Option<CrossChainUser>,

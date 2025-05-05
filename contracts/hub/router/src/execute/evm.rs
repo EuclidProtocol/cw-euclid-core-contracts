@@ -19,7 +19,7 @@ use crate::{
     reply::EVM_RECEIVE_REPLY_ID,
     state::{
         CHAIN_UID_TO_CHAIN, EVM_PACKET_RELAY_MAP, EVM_PACKET_RELAY_SEQUENCE_COUNT,
-        MOCK_RELAYER_ADDRESS,
+        MOCK_RELAYER_ADDRESSES,
     },
 };
 
@@ -65,7 +65,9 @@ pub fn execute_evm_receive_packet(
     hash: String,
 ) -> Result<Response, ContractError> {
     ensure!(
-        info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        MOCK_RELAYER_ADDRESSES
+            .load(deps.storage)?
+            .contains(&info.sender.to_string()),
         ContractError::Unauthorized {}
     );
 
@@ -130,7 +132,9 @@ pub fn execute_evm_receive_acknowledgement(
     ack: Binary,
 ) -> Result<Response, ContractError> {
     ensure!(
-        info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        MOCK_RELAYER_ADDRESSES
+            .load(deps.storage)?
+            .contains(&info.sender.to_string()),
         ContractError::Unauthorized {}
     );
     let _existing_request =

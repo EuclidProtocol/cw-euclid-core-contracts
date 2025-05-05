@@ -127,7 +127,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
                 constant_product_vlp_code_id: vlp.code_id().unwrap(),
                 stable_vlp_code_id: stable_vlp.code_id().unwrap(),
                 virtual_balance_code_id: virtual_balance.code_id().unwrap(),
-                mock_relayer_address: Some(router.environment().sender.to_string()),
+                mock_relayer_addresses: Some(vec![router.environment().sender.to_string()]),
             },
             None,
             None,

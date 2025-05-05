@@ -1,6 +1,8 @@
 #[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::contract::{execute, instantiate};
     use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
@@ -306,6 +308,90 @@ mod tests {
         assert_eq!(
             response.spread_amount,
             Uint128::new(4),
+            "Spread amount is not correct"
+        );
+    }
+
+    #[test]
+    fn test_swap_with_large_reserve_ratio() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Setup test state
+        let pair = Pair {
+            token_1: Token::create("uatom".to_string()).unwrap(),
+            token_2: Token::create("uosmo".to_string()).unwrap(),
+        };
+
+        let state = State {
+            pair: pair.clone(),
+            router: "router".to_string(),
+            virtual_balance: "virtual".to_string(),
+            fee: Fee::new(
+                30,
+                0,
+                CrossChainUser::new(
+                    ChainUid::create("1".to_string()).unwrap(),
+                    "addr".to_string(),
+                ),
+            ),
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+            },
+            last_updated: env.block.time.seconds(),
+            total_lp_tokens: Uint128::new(1000),
+            admin: "admin".to_string(),
+        };
+
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        // Setup reserves with imbalanced ratio to create spread
+        let reserve_1 = Uint128::new(9971294131355738400);
+        let reserve_2 = Uint128::new(64769345018139098454);
+
+        BALANCES
+            .save(deps.as_mut().storage, pair.token_1.clone(), &reserve_1)
+            .unwrap();
+        BALANCES
+            .save(deps.as_mut().storage, pair.token_2.clone(), &reserve_2)
+            .unwrap();
+
+        // Simulate swap
+        let swap_amount = Uint128::new(100);
+        let state = STATE.load(&deps.storage).unwrap();
+        let response: GetSwapResponse = from_json(
+            query_simulate_swap(
+                deps.as_ref(),
+                pair.token_1,
+                swap_amount,
+                vec![],
+                state,
+                &BALANCES,
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        // Expected spread calculation:
+        // Initial price ratio = 1000/500 = 2
+        // Actual received = calculate_swap(97, 1000, 500) ≈ 46
+        // Ideal received = 100 * (500/1000) = 50
+        // Spread ≈ 50 - 46 = 4
+        assert_eq!(response.asset_out, pair.token_2);
+        assert_eq!(
+            response.amount_out,
+            Uint128::new(650),
+            "Amount out is not correct"
+        );
+        assert_eq!(
+            response.spread_amount,
+            Uint128::new(0),
             "Spread amount is not correct"
         );
     }

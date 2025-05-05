@@ -424,7 +424,7 @@ pub fn execute_swap(
     let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
 
     let receive_amount = compute_swap(
-        &Decimal256::from_integer(amount_in),
+        &Decimal256::from_integer(swap_amount),
         &Decimal256::from_integer(token_in_reserve),
         &Decimal256::from_integer(token_out_reserve),
         amp_factor,
