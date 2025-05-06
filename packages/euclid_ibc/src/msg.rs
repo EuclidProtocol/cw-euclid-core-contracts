@@ -1,9 +1,7 @@
 use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, SubMsg, Uint128, WasmMsg,
-};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, SubMsg, Uint128, WasmMsg};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},
@@ -98,7 +96,7 @@ impl ChainIbcExecuteMsg {
         router_contract: String,
         chain_uid: ChainUid,
         chain_type: ChainType,
-        timeout: u64,
+        _timeout: u64,
     ) -> Result<SubMsg, ContractError> {
         match chain_type {
             ChainType::Native {} => {
@@ -131,13 +129,25 @@ impl ChainIbcExecuteMsg {
                     count,
                 ))
             }
-            ChainType::Ibc(ibc_info) => {
-                let packet = IbcMsg::SendPacket {
-                    channel_id: ibc_info.from_factory_channel,
-                    data: to_json_binary(self)?,
-                    timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+            // ChainType::Ibc(ibc_info) => {
+            //     let packet = IbcMsg::SendPacket {
+            //         channel_id: ibc_info.from_factory_channel,
+            //         data: to_json_binary(self)?,
+            //         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+            //     };
+            //     Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
+            // }
+            // Temporary solution for cosmos relaying
+            ChainType::Ibc(_ibc_info) => {
+                let factory_internal_msg = factory::ExecuteMsg::CosmosSendPacket {
+                    msg: to_json_binary(self)?,
                 };
-                Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
+                // Trigger a Send Packet execute call to the same contract
+                Ok(SubMsg::new(WasmMsg::Execute {
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&factory_internal_msg)?,
+                    funds: vec![],
+                }))
             }
             _ => Err(ContractError::new("Unsupported chain type")),
         }
@@ -261,17 +271,32 @@ impl HubIbcExecuteMsg {
         env: &Env,
         chain_uid: ChainUid,
         chain: Chain,
-        timeout: u64,
+        _timeout: u64,
     ) -> Result<SubMsg, ContractError> {
         match chain.chain_type {
-            euclid::chain::ChainType::Ibc(ibc_info) => {
-                let packet = IbcMsg::SendPacket {
-                    channel_id: ibc_info.from_hub_channel,
-                    data: to_json_binary(self)?,
-                    timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+            // euclid::chain::ChainType::Ibc(ibc_info) => {
+            //     let packet = IbcMsg::SendPacket {
+            //         channel_id: ibc_info.from_hub_channel,
+            //         data: to_json_binary(self)?,
+            //         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+            //     };
+            //     Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
+            // }
+
+            // Temporary solution for cosmos chain speed
+            euclid::chain::ChainType::Ibc(_) => {
+                let router_internal_msg = router::ExecuteMsg::CosmosSendPacket {
+                    msg: to_json_binary(self)?,
+                    chain_uid,
                 };
-                Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
+                // Trigger a Send Packet execute call to the same contract
+                Ok(SubMsg::new(WasmMsg::Execute {
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&router_internal_msg)?,
+                    funds: vec![],
+                }))
             }
+
             euclid::chain::ChainType::Evm(_) => {
                 let router_internal_msg = router::ExecuteMsg::EvmSendPacket {
                     msg: to_json_binary(self)?,

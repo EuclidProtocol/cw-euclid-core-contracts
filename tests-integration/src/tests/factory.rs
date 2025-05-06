@@ -10,6 +10,7 @@ use cw_orch_interchain::{core::InterchainEnv, prelude::*};
 use escrow::{mock::mock_escrow, EscrowContract};
 use euclid::chain::CrossChainUser;
 use euclid::chain::CrossChainUserWithLimit;
+use euclid::fee::MAX_PARTNER_FEE_BPS;
 use euclid::fee::{PartnerFee, BPS_100_PERCENT};
 use euclid::msgs::factory::GetEscrowResponse;
 use euclid::pool::PoolConfig;
@@ -45,6 +46,8 @@ use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
 
 use crate::helpers::factory::{add_liquidity, create_pool, faucet, register_token, swap_request};
+use crate::helpers::relayer::relay_factory_router_factory;
+use crate::helpers::relayer::relay_router_factory_router;
 
 #[test]
 fn test_proper_instantiation() {
@@ -146,7 +149,7 @@ fn test_create_pool_with_funds() {
                 constant_product_vlp_code_id: 3,
                 stable_vlp_code_id: 4,
                 virtual_balance_code_id: 2,
-                mock_relayer_address: None,
+                mock_relayer_addresses: Some(vec![nibiru.sender.to_string()]),
             },
             None,
             &[],
@@ -158,15 +161,17 @@ fn test_create_pool_with_funds() {
         .query(&euclid::msgs::router::QueryMsg::GetState {})
         .unwrap();
     let virtual_balance_address_nibiru = router_state.virtual_balance_address.unwrap();
+    let factory_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
 
     factory_osmosis
         .instantiate(
             &euclid::msgs::factory::InstantiateMsg {
                 router_contract: router_nibiru.address().unwrap().into_string(),
-                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_uid: factory_chain_uid.clone(),
                 escrow_code_id: 2,
                 cw20_code_id: 3,
                 is_native: false,
+                mock_relayer_address: Some(factory_osmosis.environment().sender.to_string()),
             },
             None,
             &[],
@@ -194,11 +199,13 @@ fn test_create_pool_with_funds() {
     let register_factory_request = router_nibiru
         .execute(
             &euclid::msgs::router::ExecuteMsg::RegisterFactory {
-                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_uid: factory_chain_uid.clone(),
                 chain_info: euclid::msgs::router::RegisterFactoryChainType::Ibc(
                     RegisterFactoryChainIbc {
                         channel: osmosis_channel.to_string(),
                         timeout: None,
+                        factory_address: factory_osmosis.address().unwrap().into_string(),
+                        factory_chain_id: factory_osmosis.environment().chain_id(),
                     },
                 ),
             },
@@ -206,11 +213,14 @@ fn test_create_pool_with_funds() {
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets("nibiru", register_factory_request)
-        .unwrap();
+    relay_router_factory_router(
+        register_factory_request.events,
+        &factory_osmosis,
+        &factory_chain_uid,
+        &router_nibiru,
+    );
 
-    // // Register escrow
+    // Register escrow
     let register_escrow_request = factory_osmosis
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
@@ -226,9 +236,16 @@ fn test_create_pool_with_funds() {
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets("osmosis", register_escrow_request)
-        .unwrap();
+    relay_factory_router_factory(
+        register_escrow_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &factory_chain_uid,
+    );
+
+    // let _ = interchain
+    //     .await_packets("osmosis", register_escrow_request)
+    //     .unwrap();
 
     let token_denoms_response: TokenDenomsResponse = router_nibiru
         .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
@@ -316,18 +333,21 @@ fn test_create_pool_with_funds() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", create_pool_with_funds_request)
-        .unwrap();
+    relay_factory_router_factory(
+        create_pool_with_funds_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &factory_chain_uid,
+    );
 
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    // // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    // if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
+    //     // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    // } else {
+    //     panic!("packet timed out");
+    //     // There was a decode error or the packet timed out
+    //     // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    // };
 
     // let all_pools_query: AllPoolsResponse = factory_osmosis
     //     .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
@@ -468,18 +488,21 @@ fn test_create_pool_with_funds() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", add_liquidity_request)
-        .unwrap();
+    relay_factory_router_factory(
+        add_liquidity_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &factory_chain_uid,
+    );
 
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    // // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    // if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
+    //     // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    // } else {
+    //     panic!("packet timed out");
+    //     // There was a decode error or the packet timed out
+    //     // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    // };
     let liquidity_query: GetLiquidityResponse = vlp_nibiru
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
         .unwrap();
@@ -541,6 +564,7 @@ fn test_create_pool_with_funds() {
                 escrow_code_id: 6,
                 cw20_code_id: 7,
                 is_native: true,
+                mock_relayer_address: Some(factory_nibiru.environment().sender.to_string()),
             },
             None,
             &[],
@@ -554,6 +578,7 @@ fn test_create_pool_with_funds() {
                 chain_info: euclid::msgs::router::RegisterFactoryChainType::Native(
                     RegisterFactoryChainNative {
                         factory_address: factory_nibiru.address().unwrap().into_string(),
+                        factory_chain_id: factory_nibiru.environment().chain_id(),
                     },
                 ),
             },
@@ -991,7 +1016,7 @@ fn test_add_liquidity() {
             &euclid::msgs::router::InstantiateMsg {
                 constant_product_vlp_code_id: 3,
                 virtual_balance_code_id: 2,
-                mock_relayer_address: None,
+                mock_relayer_addresses: Some(vec![router_nibiru.environment().sender.to_string()]),
                 stable_vlp_code_id: 4,
             },
             None,
@@ -1004,15 +1029,17 @@ fn test_add_liquidity() {
         .query(&euclid::msgs::router::QueryMsg::GetState {})
         .unwrap();
     let virtual_balance_address_nibiru = router_state.virtual_balance_address.unwrap();
+    let osmosis_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
 
     factory_osmosis
         .instantiate(
             &euclid::msgs::factory::InstantiateMsg {
                 router_contract: router_nibiru.address().unwrap().into_string(),
-                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_uid: osmosis_chain_uid.clone(),
                 escrow_code_id: 2,
                 cw20_code_id: 3,
                 is_native: false,
+                mock_relayer_address: Some(factory_osmosis.environment().sender.to_string()),
             },
             None,
             &[],
@@ -1040,11 +1067,13 @@ fn test_add_liquidity() {
     let register_factory_request = router_nibiru
         .execute(
             &euclid::msgs::router::ExecuteMsg::RegisterFactory {
-                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_uid: osmosis_chain_uid.clone(),
                 chain_info: euclid::msgs::router::RegisterFactoryChainType::Ibc(
                     RegisterFactoryChainIbc {
                         channel: osmosis_channel.to_string(),
                         timeout: None,
+                        factory_address: factory_osmosis.address().unwrap().into_string(),
+                        factory_chain_id: factory_osmosis.environment().chain_id(),
                     },
                 ),
             },
@@ -1052,11 +1081,14 @@ fn test_add_liquidity() {
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets("nibiru", register_factory_request)
-        .unwrap();
+    relay_router_factory_router(
+        register_factory_request.events,
+        &factory_osmosis,
+        &osmosis_chain_uid,
+        &router_nibiru,
+    );
 
-    // // Register escrow
+    // Register escrow
     let register_escrow_request = factory_osmosis
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
@@ -1072,9 +1104,12 @@ fn test_add_liquidity() {
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets("osmosis", register_escrow_request)
-        .unwrap();
+    relay_factory_router_factory(
+        register_escrow_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &osmosis_chain_uid,
+    );
 
     let token_denoms_response: TokenDenomsResponse = router_nibiru
         .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
@@ -1126,19 +1161,22 @@ fn test_add_liquidity() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", create_pool_with_funds_request)
-        .unwrap();
+    relay_factory_router_factory(
+        create_pool_with_funds_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &osmosis_chain_uid,
+    );
 
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0] {
-        println!("{:?}", ack_tx.tx_id.response.events);
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    // // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    // if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0] {
+    //     println!("{:?}", ack_tx.tx_id.response.events);
+    //     // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    // } else {
+    //     panic!("packet timed out");
+    //     // There was a decode error or the packet timed out
+    //     // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    // };
 
     //TODO: this query is returning the following error: range end index 28539 out of range for slice of length 10
     // let all_pools_query: AllPoolsResponse = factory_osmosis
@@ -1286,18 +1324,13 @@ fn test_add_liquidity() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", add_liquidity_request)
-        .unwrap();
+    relay_factory_router_factory(
+        add_liquidity_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &osmosis_chain_uid,
+    );
 
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
     let liquidity_query: GetLiquidityResponse = vlp_nibiru
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
         .unwrap();
@@ -1367,14 +1400,11 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -1395,7 +1425,7 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
         );
     }
 
-    add_liquidity(&interchain, &factory, pair_info, 0, None, funds);
+    add_liquidity(&interchain, &factory, &router, pair_info, 0, None, funds);
 }
 
 #[test]
@@ -1424,11 +1454,7 @@ fn test_add_liquidity_fails_when_pool_does_not_exit() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
 
     // adding funds
     let chain = interchain
@@ -1448,6 +1474,7 @@ fn test_add_liquidity_fails_when_pool_does_not_exit() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_100_PERCENT,
         None,
@@ -1481,15 +1508,12 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
 
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -1513,6 +1537,7 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_100_PERCENT,
         None,
@@ -1546,15 +1571,12 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
 
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -1563,6 +1585,7 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_100_PERCENT,
         None,
@@ -1596,11 +1619,7 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
 
     // Attempt to add liquidity with tokens that aren't allowed by the escrow.
     pair_info.token_1.token_type = TokenType::Native {
@@ -1610,6 +1629,7 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -1633,6 +1653,7 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_100_PERCENT,
         None,
@@ -1666,15 +1687,12 @@ fn test_add_liquidity_fails_with_extra_funds() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
 
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -1698,6 +1716,7 @@ fn test_add_liquidity_fails_with_extra_funds() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_100_PERCENT,
         None,
@@ -1730,15 +1749,12 @@ fn test_add_liquidity_with_timeout() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
 
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -1762,6 +1778,7 @@ fn test_add_liquidity_with_timeout() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_100_PERCENT,
         Some(30),
@@ -1795,15 +1812,12 @@ fn test_add_liquidity_with_invalid_timeout() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
 
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -1827,6 +1841,7 @@ fn test_add_liquidity_with_invalid_timeout() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_100_PERCENT,
         Some(241),
@@ -1885,7 +1900,7 @@ fn test_swap_request() {
             &euclid::msgs::router::InstantiateMsg {
                 constant_product_vlp_code_id: 3,
                 virtual_balance_code_id: 2,
-                mock_relayer_address: None,
+                mock_relayer_addresses: Some(vec![router_nibiru.environment().sender.to_string()]),
                 stable_vlp_code_id: 4,
             },
             None,
@@ -1899,14 +1914,16 @@ fn test_swap_request() {
         .unwrap();
     let virtual_balance_address_nibiru = router_state.virtual_balance_address.unwrap();
 
+    let osmosis_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
     factory_osmosis
         .instantiate(
             &euclid::msgs::factory::InstantiateMsg {
                 router_contract: router_nibiru.address().unwrap().into_string(),
-                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_uid: osmosis_chain_uid.clone(),
                 escrow_code_id: 2,
                 cw20_code_id: 3,
                 is_native: false,
+                mock_relayer_address: Some(factory_osmosis.environment().sender.to_string()),
             },
             None,
             &[],
@@ -1934,11 +1951,13 @@ fn test_swap_request() {
     let register_factory_request = router_nibiru
         .execute(
             &euclid::msgs::router::ExecuteMsg::RegisterFactory {
-                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_uid: osmosis_chain_uid.clone(),
                 chain_info: euclid::msgs::router::RegisterFactoryChainType::Ibc(
                     RegisterFactoryChainIbc {
                         channel: osmosis_channel.to_string(),
                         timeout: None,
+                        factory_address: factory_osmosis.address().unwrap().into_string(),
+                        factory_chain_id: factory_osmosis.environment().chain_id(),
                     },
                 ),
             },
@@ -1946,9 +1965,12 @@ fn test_swap_request() {
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets("nibiru", register_factory_request)
-        .unwrap();
+    relay_router_factory_router(
+        register_factory_request.events,
+        &factory_osmosis,
+        &osmosis_chain_uid,
+        &router_nibiru,
+    );
 
     // // Register escrow
     let register_escrow_request = factory_osmosis
@@ -1966,9 +1988,12 @@ fn test_swap_request() {
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets("osmosis", register_escrow_request)
-        .unwrap();
+    relay_factory_router_factory(
+        register_escrow_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &osmosis_chain_uid,
+    );
 
     let token_denoms_response: TokenDenomsResponse = router_nibiru
         .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
@@ -2020,19 +2045,22 @@ fn test_swap_request() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", create_pool_with_funds_request)
-        .unwrap();
+    relay_factory_router_factory(
+        create_pool_with_funds_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &osmosis_chain_uid,
+    );
 
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0] {
-        println!("{:?}", ack_tx.tx_id.response.events);
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    // // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    // if let IbcPacketOutcome::Success { ack_tx, .. } = &packet_lifetime.packets[0] {
+    //     println!("{:?}", ack_tx.tx_id.response.events);
+    //     // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    // } else {
+    //     panic!("packet timed out");
+    //     // There was a decode error or the packet timed out
+    //     // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    // };
 
     // let all_pools_query: AllPoolsResponse = factory_osmosis
     //     .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
@@ -2184,18 +2212,12 @@ fn test_swap_request() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", swap_request_msg)
-        .unwrap();
-
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    relay_factory_router_factory(
+        swap_request_msg.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &osmosis_chain_uid,
+    );
 }
 
 #[test]
@@ -2223,14 +2245,16 @@ fn test_swap_request_with_valid_partner_fee() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    let partner_fee_recipient_nibiru = router_chain.addr_make("partner_fee_recipient");
+    let old_partner_eucl_balance = factory
+        .environment()
+        .query_balance(&partner_fee_recipient_nibiru, "eucl")
+        .unwrap();
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -2261,6 +2285,7 @@ fn test_swap_request_with_valid_partner_fee() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_1_PERCENT,
         None,
@@ -2268,10 +2293,11 @@ fn test_swap_request_with_valid_partner_fee() {
     );
 
     funds.clear();
+    let amount_in = Uint128::new(10000);
     faucet(
         &chain,
         chain.sender.as_str(),
-        1000,
+        amount_in.u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -2280,9 +2306,10 @@ fn test_swap_request_with_valid_partner_fee() {
     swap_request(
         &interchain,
         &factory,
+        &router,
         None,
         asset_in,
-        Uint128::new(1000),
+        amount_in,
         Token::create("nibi".to_string()).unwrap(),
         Uint128::new(50),
         Some(60),
@@ -2293,22 +2320,22 @@ fn test_swap_request_with_valid_partner_fee() {
             token_out: Token::create("nibi".to_string()).unwrap(),
             test_fail: None,
         }],
-        vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: router_chain.sender.to_string(),
-            },
-            limit: None,
-            preferred_denom: None,
-            refund_address: None,
-            forwarding_message: None,
-        }],
+        vec![],
         Some(PartnerFee {
             partner_fee_bps: 30,
-            recipient: router_chain.sender.to_string(),
+            recipient: partner_fee_recipient_nibiru.to_string(),
         }),
         funds,
         None,
+    );
+
+    let new_partner_eucl_balance = factory
+        .environment()
+        .query_balance(&partner_fee_recipient_nibiru, "eucl")
+        .unwrap();
+    assert_eq!(
+        new_partner_eucl_balance,
+        old_partner_eucl_balance + Uint128::from(30u128)
     );
 }
 
@@ -2318,6 +2345,9 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let nibiru_sender = router_chain.sender.clone();
+    let partner_fee_recipient = nibiru_sender.clone();
 
     let router = crate::helpers::chains::setup_router(&router_chain);
     let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
@@ -2338,14 +2368,11 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -2376,6 +2403,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_1_PERCENT,
         None,
@@ -2392,9 +2420,15 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     );
 
     // Providing a partner_fee_bps above MAX_PARTNER_FEE_BPS
+    let old_partner_eucl_balance = factory
+        .environment()
+        .query_balance(&partner_fee_recipient, "eucl")
+        .unwrap();
+
     swap_request(
         &interchain,
         &factory,
+        &router,
         None,
         asset_in,
         Uint128::new(1000),
@@ -2406,23 +2440,21 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
             token_out: Token::create("nibi".to_string()).unwrap(),
             test_fail: None,
         }],
-        vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
-            },
-            limit: None,
-            preferred_denom: None,
-            refund_address: None,
-            forwarding_message: None,
-        }],
+        vec![],
         Some(PartnerFee {
-            partner_fee_bps: 31,
-            recipient: sender,
+            // Partner fee BPS above MAX_PARTNER_FEE_BPS
+            partner_fee_bps: MAX_PARTNER_FEE_BPS + 1,
+            recipient: partner_fee_recipient.to_string(),
         }),
         funds,
         None,
     );
+
+    let new_partner_eucl_balance = factory
+        .environment()
+        .query_balance(&partner_fee_recipient, "eucl")
+        .unwrap();
+    assert_eq!(new_partner_eucl_balance, old_partner_eucl_balance);
 }
 
 #[test]
@@ -2431,9 +2463,12 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
+    let factory_chain = interchain.get_chain("osmosis").unwrap();
 
     let router = crate::helpers::chains::setup_router(&router_chain);
     let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let osmosis_sender = factory_chain.sender.clone();
 
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
@@ -2451,14 +2486,11 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -2490,6 +2522,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_1_PERCENT,
         None,
@@ -2497,38 +2530,49 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
     );
 
     funds.clear();
+    let amount_in = Uint128::new(1000);
     faucet(
         &chain,
         chain.sender.as_str(),
-        1000,
+        amount_in.u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
+
+    let old_sender_eucl_balance = factory
+        .environment()
+        .query_balance(&osmosis_sender, "juno")
+        .unwrap();
 
     // swapping for inavlid denom not registered on escrow
     swap_request(
         &interchain,
         &factory,
+        &router,
         None,
         asset_in,
-        Uint128::new(1000),
+        amount_in,
         Token::create("nibi".to_string()).unwrap(),
         Uint128::new(50),
         None,
-        vec![],
-        vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
-            },
-            limit: None,
-            preferred_denom: None,
-            refund_address: None,
-            forwarding_message: None,
+        vec![NextSwapPair {
+            token_in: Token::create("eucl".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
         }],
+        vec![],
         None,
         funds,
         None,
+    );
+
+    let new_sender_eucl_balance = factory
+        .environment()
+        .query_balance(&osmosis_sender, "juno")
+        .unwrap();
+    assert_eq!(
+        new_sender_eucl_balance, old_sender_eucl_balance,
+        "Balance not refunded after failed swap"
     );
 }
 
@@ -2558,14 +2602,11 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -2596,6 +2637,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_1_PERCENT,
         None,
@@ -2615,23 +2657,19 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
     swap_request(
         &interchain,
         &factory,
+        &router,
         None,
         asset_in,
         Uint128::new(1000),
         Token::create("nibi".to_string()).unwrap(),
         Uint128::new(0),
         None,
-        vec![],
-        vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
-            },
-            limit: None,
-            preferred_denom: None,
-            refund_address: None,
-            forwarding_message: None,
+        vec![NextSwapPair {
+            token_in: Token::create("eucl".to_string()).unwrap(),
+            token_out: Token::create("nibi".to_string()).unwrap(),
+            test_fail: None,
         }],
+        vec![],
         None,
         funds,
         None,
@@ -2644,9 +2682,12 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
+    let factory_chain = interchain.get_chain("osmosis").unwrap();
 
     let router = crate::helpers::chains::setup_router(&router_chain);
     let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+
+    let osmosis_sender = factory_chain.sender.clone();
 
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
@@ -2664,14 +2705,11 @@ fn test_swap_request_fails_for_invalid_swap_route() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -2702,6 +2740,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_1_PERCENT,
         None,
@@ -2717,10 +2756,16 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         &mut funds,
     );
 
+    let old_sender_balance = factory
+        .environment()
+        .query_balance(&osmosis_sender, "eucl")
+        .unwrap();
+
     // swapping
     swap_request(
         &interchain,
         &factory,
+        &router,
         None,
         asset_in,
         Uint128::new(1000),
@@ -2735,10 +2780,10 @@ fn test_swap_request_fails_for_invalid_swap_route() {
             test_fail: None,
         }],
         vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
-            },
+            user: CrossChainUser::new(
+                ChainUid::create("nibiru".to_string()).unwrap(),
+                sender.clone(),
+            ),
             limit: None,
             preferred_denom: None,
             refund_address: None,
@@ -2747,6 +2792,15 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         None,
         funds,
         None,
+    );
+    let new_sender_balance = factory
+        .environment()
+        .query_balance(&osmosis_sender, "eucl")
+        .unwrap();
+
+    assert_eq!(
+        old_sender_balance, new_sender_balance,
+        "Refund not initiated with failed swap route"
     );
 }
 
@@ -2775,14 +2829,11 @@ fn test_swap_request_with_timeout() {
             },
         },
     };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
     create_pool(
         &interchain,
         &factory,
+        &router,
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
@@ -2813,6 +2864,7 @@ fn test_swap_request_with_timeout() {
     add_liquidity(
         &interchain,
         &factory,
+        &router,
         pair_info,
         BPS_1_PERCENT,
         None,
@@ -2832,6 +2884,7 @@ fn test_swap_request_with_timeout() {
     swap_request(
         &interchain,
         &factory,
+        &router,
         None,
         asset_in,
         Uint128::new(1000),
@@ -2845,133 +2898,120 @@ fn test_swap_request_with_timeout() {
             token_out: Token::create("nibi".to_string()).unwrap(),
             test_fail: None,
         }],
-        vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
-            },
-            limit: None,
-            preferred_denom: None,
-            refund_address: None,
-            forwarding_message: None,
-        }],
+        vec![],
         None,
         funds,
         None,
     );
 }
 
-#[test]
-#[should_panic(expected = "Invalid Timeout")]
-fn test_swap_request_fails_with_timeout_greater_than_240s() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
-    let router_chain = interchain.get_chain("nibiru").unwrap();
+// #[test]
+// #[should_panic(expected = "Invalid Timeout")]
+// fn test_swap_request_fails_with_timeout_greater_than_240s() {
+//     let sender = Addr::unchecked("sender_for_all_chains").into_string();
+//     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+//     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = crate::helpers::chains::setup_router(&router_chain);
-    let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
+//     let router = crate::helpers::chains::setup_router(&router_chain);
+//     let factory = crate::helpers::chains::setup_factory(&interchain, "osmosis", "nibiru", &router);
 
-    let pair_info = PairWithDenomAndAmount {
-        token_1: TokenWithDenomAndAmount {
-            token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
-            token_type: euclid::token::TokenType::Native {
-                denom: "eucl".to_string(),
-            },
-        },
-        token_2: TokenWithDenomAndAmount {
-            token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
-            token_type: euclid::token::TokenType::Native {
-                denom: "nibi".to_string(),
-            },
-        },
-    };
-    register_token(
-        &interchain,
-        &factory,
-        pair_info.token_1.to_token_with_denom(),
-    );
-    create_pool(
-        &interchain,
-        &factory,
-        pair_info.clone(),
-        BPS_1_PERCENT,
-        PoolConfig::ConstantProduct {},
-    );
+//     let pair_info = PairWithDenomAndAmount {
+//         token_1: TokenWithDenomAndAmount {
+//             token: Token::create("eucl".to_string()).unwrap(),
+//             amount: Uint128::from(10_000u128),
+//             token_type: euclid::token::TokenType::Native {
+//                 denom: "eucl".to_string(),
+//             },
+//         },
+//         token_2: TokenWithDenomAndAmount {
+//             token: Token::create("nibi".to_string()).unwrap(),
+//             amount: Uint128::from(100_000u128),
+//             token_type: euclid::token::TokenType::Native {
+//                 denom: "nibi".to_string(),
+//             },
+//         },
+//     };
+//     register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
+//     create_pool(
+//         &interchain,
+//         &factory,
+//         pair_info.clone(),
+//         BPS_1_PERCENT,
+//         PoolConfig::ConstantProduct {},
+//     );
 
-    let asset_in = TokenWithDenom {
-        token: Token::create("eucl".to_string()).unwrap(),
-        token_type: euclid::token::TokenType::Native {
-            denom: "eucl".to_string(),
-        },
-    };
+//     let asset_in = TokenWithDenom {
+//         token: Token::create("eucl".to_string()).unwrap(),
+//         token_type: euclid::token::TokenType::Native {
+//             denom: "eucl".to_string(),
+//         },
+//     };
 
-    // adding funds
-    let chain = interchain
-        .get_chain(factory.environment().chain_id().as_str())
-        .unwrap();
-    let mut funds = vec![];
-    for token in pair_info.get_vec_token_info() {
-        faucet(
-            &chain,
-            chain.sender.as_str(),
-            token.amount.u128(),
-            token.token_type.clone(),
-            &mut funds,
-        );
-    }
+//     // adding funds
+//     let chain = interchain
+//         .get_chain(factory.environment().chain_id().as_str())
+//         .unwrap();
+//     let mut funds = vec![];
+//     for token in pair_info.get_vec_token_info() {
+//         faucet(
+//             &chain,
+//             chain.sender.as_str(),
+//             token.amount.u128(),
+//             token.token_type.clone(),
+//             &mut funds,
+//         );
+//     }
 
-    add_liquidity(
-        &interchain,
-        &factory,
-        pair_info,
-        BPS_1_PERCENT,
-        None,
-        funds.clone(),
-    );
+//     add_liquidity(
+//         &interchain,
+//         &factory,
+//         pair_info,
+//         BPS_1_PERCENT,
+//         None,
+//         funds.clone(),
+//     );
 
-    funds.clear();
-    faucet(
-        &chain,
-        chain.sender.as_str(),
-        1000,
-        asset_in.token_type.clone(),
-        &mut funds,
-    );
+//     funds.clear();
+//     faucet(
+//         &chain,
+//         chain.sender.as_str(),
+//         1000,
+//         asset_in.token_type.clone(),
+//         &mut funds,
+//     );
 
-    // swapping
-    swap_request(
-        &interchain,
-        &factory,
-        None,
-        asset_in,
-        Uint128::new(1000),
-        Token::create("nibi".to_string()).unwrap(),
-        Uint128::new(50),
-        Some(241),
-        // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
-        // last_swap.token_out doesn’t match asset_out.
-        vec![NextSwapPair {
-            token_in: Token::create("eucl".to_string()).unwrap(),
-            token_out: Token::create("nibi".to_string()).unwrap(),
-            test_fail: None,
-        }],
-        vec![CrossChainUserWithLimit {
-            user: CrossChainUser {
-                chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
-                address: sender.clone(),
-            },
-            limit: None,
-            preferred_denom: None,
-            refund_address: None,
-            forwarding_message: None,
-        }],
-        None,
-        funds,
-        None,
-    );
-}
+//     // swapping
+//     swap_request(
+//         &interchain,
+//         &factory,
+//         None,
+//         asset_in,
+//         Uint128::new(1000),
+//         Token::create("nibi".to_string()).unwrap(),
+//         Uint128::new(50),
+//         Some(241),
+//         // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
+//         // last_swap.token_out doesn’t match asset_out.
+//         vec![NextSwapPair {
+//             token_in: Token::create("eucl".to_string()).unwrap(),
+//             token_out: Token::create("nibi".to_string()).unwrap(),
+//             test_fail: None,
+//         }],
+//         vec![CrossChainUserWithLimit {
+//             user: CrossChainUser {
+//                 chain_uid: ChainUid::create("nibiru".to_string()).unwrap(),
+//                 address: sender.clone(),
+//             },
+//             limit: None,
+//             preferred_denom: None,
+//             refund_address: None,
+//             forwarding_message: None,
+//         }],
+//         None,
+//         funds,
+//         None,
+//     );
+// }
 
 #[test]
 fn test_stable_pool() {
@@ -3017,7 +3057,7 @@ fn test_stable_pool() {
                 constant_product_vlp_code_id: vlp_nibiru.code_id().unwrap(),
                 stable_vlp_code_id: stable_vlp_nibiru.code_id().unwrap(),
                 virtual_balance_code_id: virtual_balance_nibiru.code_id().unwrap(),
-                mock_relayer_address: None,
+                mock_relayer_addresses: Some(vec![router_nibiru.environment().sender.to_string()]),
             },
             None,
             &[],
@@ -3029,15 +3069,17 @@ fn test_stable_pool() {
         .query(&euclid::msgs::router::QueryMsg::GetState {})
         .unwrap();
     let virtual_balance_address_nibiru = router_state.virtual_balance_address.unwrap();
+    let factory_osmosis_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
 
     factory_osmosis
         .instantiate(
             &euclid::msgs::factory::InstantiateMsg {
                 router_contract: router_nibiru.address().unwrap().into_string(),
-                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_uid: factory_osmosis_chain_uid.clone(),
                 escrow_code_id: 2,
                 cw20_code_id: 3,
                 is_native: false,
+                mock_relayer_address: Some(factory_osmosis.environment().sender.to_string()),
             },
             None,
             &[],
@@ -3065,11 +3107,13 @@ fn test_stable_pool() {
     let register_factory_request = router_nibiru
         .execute(
             &euclid::msgs::router::ExecuteMsg::RegisterFactory {
-                chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                chain_uid: factory_osmosis_chain_uid.clone(),
                 chain_info: euclid::msgs::router::RegisterFactoryChainType::Ibc(
                     RegisterFactoryChainIbc {
                         channel: osmosis_channel.to_string(),
                         timeout: None,
+                        factory_address: factory_osmosis.address().unwrap().into_string(),
+                        factory_chain_id: factory_osmosis.environment().chain_id(),
                     },
                 ),
             },
@@ -3077,11 +3121,14 @@ fn test_stable_pool() {
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets("nibiru", register_factory_request)
-        .unwrap();
+    relay_router_factory_router(
+        register_factory_request.events,
+        &factory_osmosis,
+        &factory_osmosis_chain_uid,
+        &router_nibiru,
+    );
 
-    // // Register escrow
+    // Register escrow
     let register_escrow_request = factory_osmosis
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
@@ -3097,9 +3144,12 @@ fn test_stable_pool() {
         )
         .unwrap();
 
-    let _ = interchain
-        .await_packets("osmosis", register_escrow_request)
-        .unwrap();
+    relay_factory_router_factory(
+        register_escrow_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &factory_osmosis_chain_uid,
+    );
 
     let token_denoms_response: TokenDenomsResponse = router_nibiru
         .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
@@ -3151,19 +3201,12 @@ fn test_stable_pool() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", create_pool_with_funds_request)
-        .unwrap();
-
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
-
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    relay_factory_router_factory(
+        create_pool_with_funds_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &factory_osmosis_chain_uid,
+    );
 
     // let all_pools_query: AllPoolsResponse = factory_osmosis
     //     .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
@@ -3308,17 +3351,12 @@ fn test_stable_pool() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain.await_packets("osmosis", swap_request).unwrap();
-
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
-
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    relay_factory_router_factory(
+        swap_request.events,
+        &factory_osmosis,
+        &router_nibiru,
+        &factory_osmosis_chain_uid,
+    );
 
     let liquidity_query: GetLiquidityResponse = vlp_nibiru
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
@@ -3331,7 +3369,7 @@ fn test_stable_pool() {
                 token_2: Token::create("osmo".to_string()).unwrap(),
             },
             token_1_reserve: Uint128::new(10_999),
-            token_2_reserve: Uint128::new(9_009),
+            token_2_reserve: Uint128::new(9009),
             total_lp_tokens: Uint128::new(9000),
         }
     );

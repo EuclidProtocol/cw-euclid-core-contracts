@@ -128,10 +128,10 @@ mod tests {
 
         // Transfer //
 
-        let cross_chain_user_2 = CrossChainUser {
-            chain_uid: ChainUid::create("1".to_string()).unwrap(),
-            address: "cross_chain_user_address_2".to_string(),
-        };
+        let cross_chain_user_2 = CrossChainUser::new(
+            ChainUid::create("1".to_string()).unwrap(),
+            "cross_chain_user_address_2".to_string(),
+        );
 
         let balance_key_2 = BalanceKey {
             cross_chain_user: cross_chain_user_2.clone(),
@@ -174,18 +174,13 @@ mod tests {
         STATE.save(&mut deps.storage, &state).unwrap();
 
         // Setup users
-        let owner = CrossChainUser {
-            chain_uid: ChainUid::vsl_chain_uid().unwrap(),
-            address: "owner".to_string(),
-        };
-        let spender = CrossChainUser {
-            chain_uid: ChainUid::vsl_chain_uid().unwrap(),
-            address: "spender".to_string(),
-        };
-        let recipient = CrossChainUser {
-            chain_uid: ChainUid::create("1".to_string()).unwrap(),
-            address: "recipient".to_string(),
-        };
+        let owner = CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "owner".to_string());
+        let spender =
+            CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "spender".to_string());
+        let recipient = CrossChainUser::new(
+            ChainUid::create("1".to_string()).unwrap(),
+            "recipient".to_string(),
+        );
 
         // Mint tokens to owner
         let balance_key = BalanceKey {

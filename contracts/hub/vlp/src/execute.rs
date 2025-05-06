@@ -154,10 +154,7 @@ pub fn add_liquidity(
             state.virtual_balance.clone(),
             token.amount,
             sender.clone(),
-            CrossChainUser {
-                address: env.contract.address.to_string(),
-                chain_uid: ChainUid::vsl_chain_uid()?,
-            },
+            CrossChainUser::new(ChainUid::vsl_chain_uid()?, env.contract.address.to_string()),
         )?;
         response = response.add_message(virtual_balance_transfer_msg);
     }
@@ -297,10 +294,8 @@ pub fn remove_liquidity(
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
-    let vlp_cross_chain_struct = CrossChainUser {
-        address: env.contract.address.to_string(),
-        chain_uid: ChainUid::vsl_chain_uid()?,
-    };
+    let vlp_cross_chain_struct =
+        CrossChainUser::new(ChainUid::vsl_chain_uid()?, env.contract.address.to_string());
 
     let token_1_transfer_msg = pair.token_1.create_virtual_balance_transfer_msg(
         state.virtual_balance.clone(),
@@ -374,10 +369,7 @@ pub fn execute_swap(
     let voucher_sender = if info.sender.as_str() == state.router {
         sender.clone()
     } else {
-        CrossChainUser {
-            address: info.sender.to_string(),
-            chain_uid: ChainUid::vsl_chain_uid()?,
-        }
+        CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
     };
     // Swap needs approval to use voucher tokens
     let transfer_voucher_msg =
@@ -385,10 +377,7 @@ pub fn execute_swap(
             amount: amount_in,
             token_id: asset_in.to_string(),
             from: voucher_sender.clone(),
-            to: CrossChainUser {
-                address: env.contract.address.to_string(),
-                chain_uid: ChainUid::vsl_chain_uid()?,
-            },
+            to: CrossChainUser::new(ChainUid::vsl_chain_uid()?, env.contract.address.to_string()),
         });
 
     let transfer_voucher_msg = WasmMsg::Execute {
@@ -467,10 +456,10 @@ pub fn execute_swap(
                 token_id: asset_in.to_string(),
 
                 // Source Address
-                from: CrossChainUser {
-                    address: env.contract.address.to_string(),
-                    chain_uid: ChainUid::vsl_chain_uid()?,
-                },
+                from: CrossChainUser::new(
+                    ChainUid::vsl_chain_uid()?,
+                    env.contract.address.to_string(),
+                ),
 
                 // Destination Address
                 to: fee.recipient,
@@ -493,15 +482,15 @@ pub fn execute_swap(
                     amount: swap_response.amount_out,
                     token_id: swap_response.asset_out.to_string(),
 
-                    owner: CrossChainUser {
-                        address: env.contract.address.to_string(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
-                    },
+                    owner: CrossChainUser::new(
+                        ChainUid::vsl_chain_uid()?,
+                        env.contract.address.to_string(),
+                    ),
 
-                    spender: CrossChainUser {
-                        address: next_swap.vlp_address.clone(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
-                    },
+                    spender: CrossChainUser::new(
+                        ChainUid::vsl_chain_uid()?,
+                        next_swap.vlp_address.clone(),
+                    ),
                 });
 
             let virtual_balance_approve_msg = WasmMsg::Execute {
@@ -554,10 +543,10 @@ pub fn execute_swap(
                     token_id: swap_response.asset_out.to_string(),
 
                     // Source Address
-                    from: CrossChainUser {
-                        address: env.contract.address.to_string(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
-                    },
+                    from: CrossChainUser::new(
+                        ChainUid::vsl_chain_uid()?,
+                        env.contract.address.to_string(),
+                    ),
 
                     // Destination Address
                     to: sender.clone(),

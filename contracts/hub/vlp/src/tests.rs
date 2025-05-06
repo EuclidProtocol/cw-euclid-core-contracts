@@ -2,14 +2,14 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate};
-    use crate::query::calculate_lp_allocation_for_liquidity;
+    use crate::query::{calculate_lp_allocation_for_liquidity, query_simulate_swap};
     use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
-    use cosmwasm_std::{coins, Response, Uint128};
+    use cosmwasm_std::{coins, from_json, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
-    use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
+    use euclid::msgs::vlp::{ExecuteMsg, GetSwapResponse, InstantiateMsg};
     use euclid::pool::State;
     use euclid::token::{Pair, Token};
     use std::collections::HashMap;
@@ -30,14 +30,14 @@ mod tests {
                 token_1: Token::create("token1".to_string()).unwrap(),
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
-            fee: Fee {
-                lp_fee_bps: 1,
-                euclid_fee_bps: 1,
-                recipient: CrossChainUser {
-                    chain_uid: ChainUid::create("1".to_string()).unwrap(),
-                    address: "addr".to_string(),
-                },
-            },
+            fee: Fee::new(
+                1,
+                1,
+                CrossChainUser::new(
+                    ChainUid::create("1".to_string()).unwrap(),
+                    "addr".to_string(),
+                ),
+            ),
             execute: None,
             admin: admin.to_string(),
         };
@@ -60,14 +60,14 @@ mod tests {
             },
             router: router.to_string(),
             virtual_balance: "virtual_balance".to_string(),
-            fee: Fee {
-                lp_fee_bps: 1,
-                euclid_fee_bps: 1,
-                recipient: CrossChainUser {
-                    chain_uid: ChainUid::create("1".to_string()).unwrap(),
-                    address: "addr".to_string(),
-                },
-            },
+            fee: Fee::new(
+                1,
+                1,
+                CrossChainUser::new(
+                    ChainUid::create("1".to_string()).unwrap(),
+                    "addr".to_string(),
+                ),
+            ),
             total_fees_collected: TotalFees {
                 lp_fees: DenomFees {
                     totals: HashMap::default(),
@@ -101,10 +101,10 @@ mod tests {
 
         init(&mut deps);
 
-        let sender = CrossChainUser {
-            chain_uid: ChainUid::create("1".to_string()).unwrap(),
-            address: "sender_address".to_string(),
-        };
+        let sender = CrossChainUser::new(
+            ChainUid::create("1".to_string()).unwrap(),
+            "sender_address".to_string(),
+        );
 
         let pair = Pair {
             token_1: Token::create("token1".to_string()).unwrap(),
@@ -138,10 +138,10 @@ mod tests {
         let msg = ExecuteMsg::UpdateFee {
             lp_fee_bps: Some(5),
             euclid_fee_bps: Some(4),
-            recipient: Some(CrossChainUser {
-                chain_uid: ChainUid::create("2".to_string()).unwrap(),
-                address: "addr_2".to_string(),
-            }),
+            recipient: Some(CrossChainUser::new(
+                ChainUid::create("2".to_string()).unwrap(),
+                "addr_2".to_string(),
+            )),
         };
         let not_admin = deps.api.addr_make("not_admin");
         let info = message_info(&not_admin, &[]);
@@ -156,24 +156,24 @@ mod tests {
         let fee = STATE.load(&deps.storage).unwrap().fee;
         assert_eq!(
             fee,
-            Fee {
-                lp_fee_bps: 5,
-                euclid_fee_bps: 4,
-                recipient: CrossChainUser {
-                    chain_uid: ChainUid::create("2".to_string()).unwrap(),
-                    address: "addr_2".to_string(),
-                }
-            }
+            Fee::new(
+                5,
+                4,
+                CrossChainUser::new(
+                    ChainUid::create("2".to_string()).unwrap(),
+                    "addr_2".to_string(),
+                )
+            )
         );
 
         // Exceed max bps
         let msg = ExecuteMsg::UpdateFee {
             lp_fee_bps: Some(5000),
             euclid_fee_bps: Some(4),
-            recipient: Some(CrossChainUser {
-                chain_uid: ChainUid::create("2".to_string()).unwrap(),
-                address: "addr_2".to_string(),
-            }),
+            recipient: Some(CrossChainUser::new(
+                ChainUid::create("2".to_string()).unwrap(),
+                "addr_2".to_string(),
+            )),
         };
 
         let err = execute(deps.as_mut(), env.clone(), info.clone(), msg.clone()).unwrap_err();
@@ -185,10 +185,10 @@ mod tests {
         let msg = ExecuteMsg::UpdateFee {
             lp_fee_bps: Some(50),
             euclid_fee_bps: Some(4000),
-            recipient: Some(CrossChainUser {
-                chain_uid: ChainUid::create("2".to_string()).unwrap(),
-                address: "addr_2".to_string(),
-            }),
+            recipient: Some(CrossChainUser::new(
+                ChainUid::create("2".to_string()).unwrap(),
+                "addr_2".to_string(),
+            )),
         };
 
         let err = execute(deps.as_mut(), env.clone(), info.clone(), msg.clone()).unwrap_err();
@@ -247,5 +247,153 @@ mod tests {
             ContractError::LiquiditySlippageExceeded { .. } => (),
             _ => panic!("Expected slippage exceeded error, got {:?}", err),
         }
+    }
+
+    #[test]
+    fn test_simulate_swap_with_spread() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Setup test state
+        let pair = Pair {
+            token_1: Token::create("uatom".to_string()).unwrap(),
+            token_2: Token::create("uosmo".to_string()).unwrap(),
+        };
+
+        let state = State {
+            pair: pair.clone(),
+            router: "router".to_string(),
+            virtual_balance: "virtual".to_string(),
+            fee: Fee::new(
+                30,
+                0,
+                CrossChainUser::new(
+                    ChainUid::create("1".to_string()).unwrap(),
+                    "addr".to_string(),
+                ),
+            ),
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+            },
+            last_updated: env.block.time.seconds(),
+            total_lp_tokens: Uint128::new(1000),
+            admin: "admin".to_string(),
+        };
+
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        // Setup reserves with imbalanced ratio to create spread
+        let reserve_1 = Uint128::new(1000);
+        let reserve_2 = Uint128::new(500);
+
+        BALANCES
+            .save(deps.as_mut().storage, pair.token_1.clone(), &reserve_1)
+            .unwrap();
+        BALANCES
+            .save(deps.as_mut().storage, pair.token_2.clone(), &reserve_2)
+            .unwrap();
+
+        // Simulate swap
+        let swap_amount = Uint128::new(100);
+        let response: GetSwapResponse = from_json(
+            query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
+        )
+        .unwrap();
+
+        // Expected spread calculation:
+        // Initial price ratio = 1000/500 = 2
+        // Actual received = calculate_swap(97, 1000, 500) ≈ 46
+        // Ideal received = 100 * (500/1000) = 50
+        // Spread ≈ 50 - 46 = 4
+        assert_eq!(response.asset_out, pair.token_2);
+        assert_eq!(
+            response.amount_out,
+            Uint128::new(46),
+            "Amount out is not correct"
+        );
+        assert_eq!(
+            response.spread_amount,
+            Uint128::new(4),
+            "Spread amount is not correct"
+        );
+    }
+
+    #[test]
+    fn test_swap_with_large_reserve_ratio() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Setup test state
+        let pair = Pair {
+            token_1: Token::create("uatom".to_string()).unwrap(),
+            token_2: Token::create("uosmo".to_string()).unwrap(),
+        };
+
+        let state = State {
+            pair: pair.clone(),
+            router: "router".to_string(),
+            virtual_balance: "virtual".to_string(),
+            fee: Fee::new(
+                30,
+                0,
+                CrossChainUser::new(
+                    ChainUid::create("1".to_string()).unwrap(),
+                    "addr".to_string(),
+                ),
+            ),
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+            },
+            last_updated: env.block.time.seconds(),
+            total_lp_tokens: Uint128::new(1000),
+            admin: "admin".to_string(),
+        };
+
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        // Setup reserves with imbalanced ratio to create spread
+        let reserve_1 = Uint128::new(9971294131355738400);
+        let reserve_2 = Uint128::new(64769345018139098454);
+
+        BALANCES
+            .save(deps.as_mut().storage, pair.token_1.clone(), &reserve_1)
+            .unwrap();
+        BALANCES
+            .save(deps.as_mut().storage, pair.token_2.clone(), &reserve_2)
+            .unwrap();
+
+        // Simulate swap
+        let swap_amount = Uint128::new(100);
+        let response: GetSwapResponse = from_json(
+            query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
+        )
+        .unwrap();
+
+        // Expected spread calculation:
+        // Initial price ratio = 1000/500 = 2
+        // Actual received = calculate_swap(97, 1000, 500) ≈ 46
+        // Ideal received = 100 * (500/1000) = 50
+        // Spread ≈ 50 - 46 = 4
+        assert_eq!(response.asset_out, pair.token_2);
+        assert_eq!(
+            response.amount_out,
+            Uint128::new(650),
+            "Amount out is not correct"
+        );
+        assert_eq!(
+            response.spread_amount,
+            Uint128::new(0),
+            "Spread amount is not correct"
+        );
     }
 }

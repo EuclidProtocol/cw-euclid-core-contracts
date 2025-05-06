@@ -18,7 +18,7 @@ use crate::{
     ibc::{ack_and_timeout, receive},
     reply::SOLANA_RECEIVE_REPLY_ID,
     state::{
-        CHAIN_UID_TO_CHAIN, MOCK_RELAYER_ADDRESS, SOLANA_PACKET_RELAY_MAP,
+        CHAIN_UID_TO_CHAIN, MOCK_RELAYER_ADDRESSES, SOLANA_PACKET_RELAY_MAP,
         SOLANA_PACKET_RELAY_SEQUENCE_COUNT,
     },
 };
@@ -65,7 +65,9 @@ pub fn execute_solana_receive_packet(
     hash: String,
 ) -> Result<Response, ContractError> {
     ensure!(
-        info.sender.as_str() == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        MOCK_RELAYER_ADDRESSES
+            .load(deps.storage)?
+            .contains(&info.sender.to_string()),
         ContractError::Unauthorized {}
     );
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
@@ -129,7 +131,9 @@ pub fn execute_solana_receive_acknowledgement(
     ack: Binary,
 ) -> Result<Response, ContractError> {
     ensure!(
-        info.sender.as_str() == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        MOCK_RELAYER_ADDRESSES
+            .load(deps.storage)?
+            .contains(&info.sender.to_string()),
         ContractError::Unauthorized {}
     );
     let _existing_request =

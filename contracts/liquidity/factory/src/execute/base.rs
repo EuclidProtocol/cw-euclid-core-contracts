@@ -33,7 +33,7 @@ use crate::{
     ibc::receive,
     query::get_chain_type,
     state::{
-        State, HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        State, HUB_CHANNEL, MOCK_RELAYER_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
         PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
         VLP_TO_CW20,
@@ -86,10 +86,7 @@ pub fn execute_request_pool_creation(
     pair.validate()?;
 
     let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     let mut res = Response::new();
@@ -260,10 +257,7 @@ pub fn add_liquidity_request(
 
     // Check that slippage tolerance is between 1 and 100
     let state = STATE.load(deps.storage)?;
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
@@ -603,10 +597,10 @@ pub fn execute_swap_request(
         swaps,
         tx_id: tx_id.clone(),
         cross_chain_addresses,
-        partner_fee_recipient: CrossChainUser {
-            address: partner_fee_recipient.to_string(),
-            chain_uid: state.chain_uid.clone(),
-        },
+        partner_fee_recipient: CrossChainUser::new(
+            state.chain_uid.clone(),
+            partner_fee_recipient.to_string(),
+        ),
         partner_fee_amount,
     })
     .to_msg(
@@ -753,10 +747,7 @@ pub fn receive_cw20(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let sender = CrossChainUser {
-        address: cw20_msg.sender,
-        chain_uid: state.chain_uid,
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), cw20_msg.sender);
 
     match from_json(&cw20_msg.msg)? {
         // Allow to swap using a CW20 hook message
@@ -943,10 +934,7 @@ pub fn execute_request_register_denom(
         ContractError::Unauthorized {}
     );
 
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
@@ -1032,10 +1020,7 @@ pub fn execute_request_deregister_denom(
         ContractError::Unauthorized {}
     );
 
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
@@ -1108,10 +1093,7 @@ pub fn execute_withdraw_virtual_balance(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
     let timeout = get_timeout(timeout)?;
 
@@ -1162,10 +1144,7 @@ pub fn execute_transfer_virtual_balance(
 
     let state = STATE.load(deps.storage)?;
 
-    let sender = CrossChainUser {
-        address: info.sender.to_string(),
-        chain_uid: state.chain_uid.clone(),
-    };
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
     let timeout = get_timeout(timeout)?;
 
@@ -1205,6 +1184,7 @@ pub fn execute_update_state(
     escrow_code_id: Option<u64>,
     cw20_code_id: Option<u64>,
     is_native: Option<bool>,
+    mock_relayer_address: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -1222,6 +1202,10 @@ pub fn execute_update_state(
         is_native: is_native.unwrap_or(state.is_native),
         partner_fees_collected: state.partner_fees_collected,
     };
+
+    if let Some(mock_relayer_address) = mock_relayer_address {
+        MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
+    }
 
     STATE.save(deps.storage, &new_state)?;
 
@@ -1247,7 +1231,7 @@ pub fn execute_update_state(
 }
 
 pub fn execute_native_receive_callback(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
     msg: Binary,

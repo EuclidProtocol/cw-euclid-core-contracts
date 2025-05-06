@@ -20,6 +20,7 @@ cw20 = { path = "../contracts/liquidity/cw20" }
 
 #Other Crates
 euclid = { path = "../packages/euclid" }
+euclid-ibc = { path = "../packages/euclid_ibc" }
 
 
 #Cosmwasm Crates

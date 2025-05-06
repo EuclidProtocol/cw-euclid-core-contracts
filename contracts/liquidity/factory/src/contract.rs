@@ -10,6 +10,10 @@ use euclid::fee::DenomFees;
 use euclid::token::TokenType;
 use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
+use crate::execute::cosmos::{
+    execute_cosmos_receive_acknowledgement, execute_cosmos_receive_packet,
+    execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
+};
 use crate::execute::{
     add_liquidity_request, execute_deposit_token, execute_native_receive_callback,
     execute_request_deregister_denom, execute_request_pool_creation,
@@ -23,11 +27,11 @@ use crate::query::{
 };
 use crate::reply::{
     on_cw20_instantiate_reply, on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply,
-    on_ibc_receive_reply, on_release_escrow_reply, CW20_INSTANTIATE_REPLY_ID,
-    ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID,
-    RELEASE_ESCROW_REPLY_ID,
+    on_ibc_receive_reply, on_release_escrow_reply, COSMOS_RECEIVE_REPLY_ID,
+    CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
+    IBC_RECEIVE_REPLY_ID, RELEASE_ESCROW_REPLY_ID,
 };
-use crate::state::{State, STATE};
+use crate::state::{State, MOCK_RELAYER_ADDRESS, STATE};
 use crate::{ibc, reply};
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
@@ -54,6 +58,10 @@ pub fn instantiate(
             totals: HashMap::default(),
         },
     };
+
+    if let Some(mock_relayer_address) = msg.mock_relayer_address {
+        MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
+    }
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
@@ -88,10 +96,7 @@ pub fn execute(
         ),
         ExecuteMsg::ExecuteSwapRequest(msg) => {
             let state = STATE.load(deps.storage)?;
-            let mut verified_sender = CrossChainUser {
-                address: info.sender.to_string(),
-                chain_uid: state.chain_uid,
-            };
+            let mut verified_sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
 
             // If token is not a voucher, verify custom sender and use it. Using custom sender is security issue if voucher is used
             if !msg.asset_in.token_type.is_voucher() {
@@ -131,10 +136,7 @@ pub fn execute(
             timeout,
         } => {
             let state = STATE.load(deps.storage)?;
-            let sender = CrossChainUser {
-                address: info.sender.to_string(),
-                chain_uid: state.chain_uid,
-            };
+            let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
 
             execute_deposit_token(
                 &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
@@ -205,6 +207,7 @@ pub fn execute(
             escrow_code_id,
             cw20_code_id,
             is_native,
+            mock_relayer_address,
         } => execute_update_state(
             deps,
             info,
@@ -213,6 +216,7 @@ pub fn execute(
             escrow_code_id,
             cw20_code_id,
             is_native,
+            mock_relayer_address,
         ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
@@ -220,11 +224,28 @@ pub fn execute(
             ibc::ack_and_timeout::ibc_ack_packet_internal_call(deps, info, env, ack)
         }
         ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-            ibc::receive::ibc_receive_internal_call(deps, env, info, receive_msg)
+            ibc::receive::ibc_receive_internal_call(&mut deps, env, info, receive_msg)
         }
         ExecuteMsg::NativeReceiveCallback { msg } => {
-            execute_native_receive_callback(deps, env, info, msg)
+            execute_native_receive_callback(&mut deps, env, info, msg)
         }
+        // COMSOS ENTRY POINTS FOR RELAYER
+        ExecuteMsg::CosmosSendPacket { msg } => execute_cosmos_send_packet(deps, info, env, msg),
+        ExecuteMsg::CosmosReceivePacket {
+            msg,
+            sequence,
+            hash,
+        } => execute_cosmos_receive_packet(deps, info, env, msg, sequence, hash),
+
+        ExecuteMsg::CosmosReceivePacketInternalCallback { msg } => {
+            execute_cosmos_receive_packet_internal_callback(&mut deps, env, info, msg)
+        }
+        ExecuteMsg::CosmosReceiveAck {
+            msg,
+            sequence,
+            hash,
+            ack,
+        } => execute_cosmos_receive_acknowledgement(deps, info, env, msg, sequence, hash, ack),
     }
 }
 
@@ -264,6 +285,8 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         IBC_ACK_AND_TIMEOUT_REPLY_ID => on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => on_ibc_receive_reply(deps, msg),
         RELEASE_ESCROW_REPLY_ID => on_release_escrow_reply(deps, msg),
+        COSMOS_RECEIVE_REPLY_ID => reply::on_cosmos_receive_reply(deps, msg),
+
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

@@ -2,9 +2,9 @@ use crate::{
     ibc,
     state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_CW20},
 };
-use cosmwasm_std::{from_json, DepsMut, Env, Reply, Response, SubMsgResult};
+use cosmwasm_std::{from_json, DepsMut, Env, Event, Reply, Response, SubMsgResult};
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
-use euclid::error::ContractError;
+use euclid::{error::ContractError, events::simple_event};
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
 
 pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
@@ -12,6 +12,9 @@ pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
 pub const IBC_RECEIVE_REPLY_ID: u64 = 3;
 pub const CW20_INSTANTIATE_REPLY_ID: u64 = 4;
 pub const RELEASE_ESCROW_REPLY_ID: u64 = 5;
+
+pub const COSMOS_RECEIVE_REPLY_ID: u64 = 6;
+pub const COSMOS_ACK_AND_TIMEOUT_REPLY_ID: u64 = 7;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -180,6 +183,45 @@ pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 .unwrap_or_default();
             Ok(Response::new()
                 .add_attribute("reply_on_release_escrow_processing", "success")
+                .set_data(data))
+        }
+    }
+}
+
+pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => {
+            let euclid_event = simple_event().add_attribute("action", "cosmos-relay");
+
+            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
+                .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
+
+            Ok(Response::new()
+                .add_attribute("reply_on_cosmos_receive_processing", "error")
+                .add_attribute("error", err.clone())
+                .add_event(euclid_event)
+                .add_event(write_acknowledge_event))
+        }
+        SubMsgResult::Ok(res) => {
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+
+            let euclid_event =
+                simple_event().add_attribute("action", "cosmos-write-acknowledgement");
+
+            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
+                .add_attribute("ack", data.to_string());
+
+            Ok(Response::new()
+                .add_attribute("reply_on_cosmos_receive_processing", "success")
+                .add_event(euclid_event)
+                .add_event(write_acknowledge_event)
                 .set_data(data))
         }
     }

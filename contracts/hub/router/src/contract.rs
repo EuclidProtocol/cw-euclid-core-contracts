@@ -8,6 +8,10 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 use euclid_ibc::msg::HUB_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
+use crate::execute::cosmos::{
+    execute_cosmos_receive_acknowledgement, execute_cosmos_receive_packet,
+    execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
+};
 use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
     execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
@@ -31,11 +35,12 @@ use crate::query::{
     query_simulate_escrow_release, query_state, query_token_denoms, query_token_escrows, query_vlp,
 };
 use crate::reply::{
-    self, ADD_LIQUIDITY_REPLY_ID, EVM_RECEIVE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
-    IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SOLANA_RECEIVE_REPLY_ID, SWAP_REPLY_ID,
-    VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    self, ADD_LIQUIDITY_REPLY_ID, COSMOS_RECEIVE_REPLY_ID, EVM_RECEIVE_REPLY_ID,
+    IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID,
+    SOLANA_RECEIVE_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
+    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESS, STATE};
+use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESSES, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -58,8 +63,8 @@ pub fn instantiate(
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    if let Some(mock_relayer_address) = msg.mock_relayer_address {
-        MOCK_RELAYER_ADDRESS.save(deps.storage, &mock_relayer_address)?;
+    if let Some(mock_relayer_addresses) = msg.mock_relayer_addresses {
+        MOCK_RELAYER_ADDRESSES.save(deps.storage, &mock_relayer_addresses)?;
     }
 
     STATE.save(deps.storage, &state)?;
@@ -163,7 +168,7 @@ pub fn execute(
                     stable_vlp_code_id,
                     virtual_balance_address,
                     locked,
-                    mock_relayer_address,
+                    mock_relayer_addresses,
                 } => execute_update_router_state(
                     deps,
                     info,
@@ -172,7 +177,7 @@ pub fn execute(
                     stable_vlp_code_id,
                     virtual_balance_address,
                     locked,
-                    mock_relayer_address,
+                    mock_relayer_addresses,
                 ),
                 ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
                     execute_evm_send_packet(deps, info, env, chain_uid, msg)
@@ -221,6 +226,32 @@ pub fn execute(
                     hash,
                     ack,
                 } => execute_solana_receive_acknowledgement(
+                    deps, info, env, chain_uid, msg, sequence, hash, ack,
+                ),
+
+                // COMSOS ENTRY POINTS FOR RELAYER
+                ExecuteMsg::CosmosSendPacket { msg, chain_uid } => {
+                    execute_cosmos_send_packet(deps, info, env, chain_uid, msg)
+                }
+                ExecuteMsg::CosmosReceivePacket {
+                    msg,
+                    chain_uid,
+                    sequence,
+                    hash,
+                } => execute_cosmos_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
+
+                ExecuteMsg::CosmosReceivePacketInternalCallback { msg, chain_uid } => {
+                    execute_cosmos_receive_packet_internal_callback(
+                        &mut deps, env, info, msg, chain_uid,
+                    )
+                }
+                ExecuteMsg::CosmosReceiveAck {
+                    msg,
+                    chain_uid,
+                    sequence,
+                    hash,
+                    ack,
+                } => execute_cosmos_receive_acknowledgement(
                     deps, info, env, chain_uid, msg, sequence, hash, ack,
                 ),
 
@@ -278,6 +309,8 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         EVM_RECEIVE_REPLY_ID => reply::on_evm_receive_reply(deps, msg),
 
         SOLANA_RECEIVE_REPLY_ID => reply::on_solana_receive_reply(deps, msg),
+
+        COSMOS_RECEIVE_REPLY_ID => reply::on_cosmos_receive_reply(deps, msg),
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",

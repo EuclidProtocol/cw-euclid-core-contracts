@@ -13,7 +13,7 @@ pub struct InstantiateMsg {
     pub stable_vlp_code_id: u64,
 
     pub virtual_balance_code_id: u64,
-    pub mock_relayer_address: Option<String>,
+    pub mock_relayer_addresses: Option<Vec<String>>,
 }
 
 #[cw_serde]
@@ -69,7 +69,7 @@ pub enum ExecuteMsg {
         stable_vlp_code_id: Option<u64>,
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
-        mock_relayer_address: Option<String>,
+        mock_relayer_addresses: Option<Vec<String>>,
     },
 
     EvmSendPacket {
@@ -121,6 +121,36 @@ pub enum ExecuteMsg {
     },
 
     SolanaReceiveAck {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+        ack: Binary,
+    },
+
+    // COSMOS REALYING MSGS
+    CosmosSendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    CosmosReceivePacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+        // Store sequence of packet relayed so we don't relay same sequence again
+        sequence: u128,
+        // Continous hash of the packet to make sure its linked to the same source flow
+        hash: String,
+    },
+
+    CosmosReceivePacketInternalCallback {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    CosmosReceiveAck {
         msg: Binary,
         chain_uid: ChainUid,
         // Store sequence of packet relayed so we don't relay same sequence again
@@ -284,20 +314,25 @@ pub enum RegisterFactoryChainType {
 #[cw_serde]
 pub struct RegisterFactoryChainNative {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainEvm {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainSolana {
     pub factory_address: String,
+    pub factory_chain_id: String,
 }
 
 #[cw_serde]
 pub struct RegisterFactoryChainIbc {
     pub channel: String,
     pub timeout: Option<u64>,
+    pub factory_address: String,
+    pub factory_chain_id: String,
 }

@@ -83,6 +83,7 @@ pub fn mock_factory_instantiate_msg(
         escrow_code_id,
         cw20_code_id,
         is_native,
+        mock_relayer_address: None,
     }
 }
 

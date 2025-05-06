@@ -22,7 +22,7 @@ pub struct State {
 
 pub const STATE: Item<State> = Item::new("state");
 
-pub const MOCK_RELAYER_ADDRESS: Item<String> = Item::new("mock_relayer_address");
+pub const MOCK_RELAYER_ADDRESSES: Item<Vec<String>> = Item::new("mock_relayer_addresses");
 
 // Convert it to multi index map?
 pub const VLPS: Map<(Token, Token), String> = Map::new("vlps");
@@ -66,3 +66,11 @@ pub const SOLANA_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
 //SOLANA Relay sequence count
 pub const SOLANA_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
     Map::new("solana_packet_relay_sequence_count");
+
+//COSMOS Relay sequence map
+pub const COSMOS_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
+    Map::new("cosmos_packet_relay_map");
+
+//Cosmos Relay sequence count
+pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
+    Map::new("cosmos_packet_relay_sequence_count");

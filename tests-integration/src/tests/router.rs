@@ -17,6 +17,7 @@ const _NATIVE_DENOM: &str = "native";
 const _IBC_DENOM_1: &str = "ibc/denom1";
 const _IBC_DENOM_2: &str = "ibc/denom2";
 const _SUPPLY: u128 = 1_000_000;
+use crate::helpers::relayer::relay_router_factory_router;
 use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::*;
 use router::RouterContract;
@@ -25,17 +26,16 @@ use virtual_balance::VirtualBalanceContract;
 #[test]
 fn test_register_factory() {
     // Here `juno-1` is the chain-id and `juno` is the address prefix for this chain
-    let sender = Addr::unchecked("sender_for_all_chains");
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
 
-    let interchain = MockInterchainEnv::new(vec![
-        ("juno", &sender.to_string()),
-        ("osmosis", &sender.to_string()),
-    ]);
+    let interchain = MockInterchainEnv::new(vec![("juno", &sender), ("osmosis", &sender)]);
 
     let juno = interchain.get_chain("juno").unwrap();
     let osmosis = interchain.get_chain("osmosis").unwrap();
 
-    juno.set_balance(&sender, vec![Coin::new(100000000000000u128, "juno")])
+    let juno_sender = juno.sender.clone();
+
+    juno.set_balance(&juno_sender, vec![Coin::new(100000000000000u128, "juno")])
         .unwrap();
 
     let factory_juno = FactoryContract::new(juno.clone());
@@ -49,6 +49,24 @@ fn test_register_factory() {
     virtual_balance_osmo.upload().unwrap();
 
     let virtual_balance_code_id = virtual_balance_osmo.code_id().unwrap();
+    let router_contract = "contract0".to_string();
+    let juno_uid = ChainUid::create("junouid".to_string()).unwrap();
+
+    factory_juno
+        .instantiate(
+            &FactoryInstantiateMsg {
+                router_contract,
+                chain_uid: juno_uid.clone(),
+                escrow_code_id: 1,
+                cw20_code_id: 2,
+                is_native: false,
+                mock_relayer_address: Some(factory_juno.environment().sender.to_string()),
+            },
+            None,
+            &[],
+        )
+        .unwrap();
+    // Upload vbalance contract
 
     router_osmo
         .instantiate(
@@ -56,28 +74,12 @@ fn test_register_factory() {
                 constant_product_vlp_code_id: 3,
                 stable_vlp_code_id: 4,
                 virtual_balance_code_id,
-                mock_relayer_address: None,
+                mock_relayer_addresses: Some(vec![router_osmo.environment().sender.to_string()]),
             },
             None,
             &[],
         )
         .unwrap();
-    let router_contract = router_osmo.addr_str().unwrap();
-
-    factory_juno
-        .instantiate(
-            &FactoryInstantiateMsg {
-                router_contract,
-                chain_uid: ChainUid::create("junouid".to_string()).unwrap(),
-                escrow_code_id: 1,
-                cw20_code_id: 2,
-                is_native: false,
-            },
-            None,
-            &[],
-        )
-        .unwrap();
-    let factory_contract = factory_juno.addr_str().unwrap();
 
     // Set up channel from juno to osmosis
     // let channel_receipt = interchain
@@ -115,7 +117,6 @@ fn test_register_factory() {
         )
         .unwrap();
 
-    let juno_uid = ChainUid::create("junouid".to_string()).unwrap();
     let register_factory_request = router_osmo
         .execute(
             &euclid::msgs::router::ExecuteMsg::RegisterFactory {
@@ -124,6 +125,8 @@ fn test_register_factory() {
                     RegisterFactoryChainIbc {
                         channel: osmosis_channel.to_string(),
                         timeout: None,
+                        factory_address: factory_juno.address().unwrap().into_string(),
+                        factory_chain_id: factory_juno.environment().chain_id(),
                     },
                 ),
             },
@@ -131,18 +134,25 @@ fn test_register_factory() {
         )
         .unwrap();
 
-    let packet_lifetime = interchain
-        .await_packets("osmosis", register_factory_request)
-        .unwrap();
+    relay_router_factory_router(
+        register_factory_request.events,
+        &factory_juno,
+        &juno_uid,
+        &router_osmo,
+    );
 
-    // For testing a successful outcome of the first packet sent out in the tx, you can use:
-    if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0] {
-        // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
-    } else {
-        panic!("packet timed out");
-        // There was a decode error or the packet timed out
-        // Else the packet timed-out, you may have a relayer error or something is wrong in your application
-    };
+    // let packet_lifetime = interchain
+    //     .await_packets("osmosis", register_factory_request)
+    //     .unwrap();
+
+    // // For testing a successful outcome of the first packet sent out in the tx, you can use:
+    // if let IbcPacketOutcome::Success { .. } = &packet_lifetime.packets[0].outcome {
+    //     // Packet has been successfully acknowledged and decoded, the transaction has gone through correctly
+    // } else {
+    //     panic!("packet timed out");
+    //     // There was a decode error or the packet timed out
+    //     // Else the packet timed-out, you may have a relayer error or something is wrong in your application
+    // };
 
     let all_chains: AllChainResponse = router_osmo
         .query(&euclid::msgs::router::QueryMsg::GetAllChains {})
@@ -153,10 +163,10 @@ fn test_register_factory() {
         vec![ChainResponse {
             chain: Chain {
                 factory_chain_id: "juno".to_string(),
-                factory: factory_contract,
+                factory: factory_juno.address().unwrap().into_string(),
                 chain_type: euclid::chain::ChainType::Ibc(IbcChain {
-                    from_hub_channel: "channel-0".to_string(),
-                    from_factory_channel: "channel-0".to_string(),
+                    from_hub_channel: "".to_string(),
+                    from_factory_channel: "".to_string(),
                 })
             },
             chain_uid: juno_uid

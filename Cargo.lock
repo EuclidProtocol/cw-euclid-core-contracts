@@ -3638,6 +3638,7 @@ dependencies = [
  "cw20 0.2.1",
  "escrow",
  "euclid",
+ "euclid-ibc",
  "factory",
  "ibc-relayer-types 0.32.0",
  "itertools 0.10.5",

@@ -163,7 +163,7 @@ pub fn execute_transfer(
         .add_attribute("transfer_amount", msg.amount)
         .add_attribute("from", format!("{sender_balance_key:?}"))
         .add_attribute("to", format!("{receiver_balance_key:?}"))
-        .add_attribute("burn_token_id", msg.token_id);
+        .add_attribute("token_id", msg.token_id);
 
     if allowance.amount.ge(&msg.amount) {
         let mut new_allowance = allowance;

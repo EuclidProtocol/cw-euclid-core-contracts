@@ -22,7 +22,7 @@ mod tests {
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
-            mock_relayer_address: None,
+            mock_relayer_addresses: None,
         };
         instantiate(deps, mock_env(), info, msg).unwrap()
     }
@@ -58,7 +58,7 @@ mod tests {
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
-            mock_relayer_address: None,
+            mock_relayer_addresses: None,
         };
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
@@ -70,6 +70,7 @@ mod tests {
                     chain_info: euclid::msgs::router::RegisterFactoryChainType::Native(
                         RegisterFactoryChainNative {
                             factory_address: "factory".to_string(),
+                            factory_chain_id: "1".to_string(),
                         },
                     ),
                 },
@@ -81,6 +82,7 @@ mod tests {
                     chain_info: euclid::msgs::router::RegisterFactoryChainType::Native(
                         RegisterFactoryChainNative {
                             factory_address: "factory".to_string(),
+                            factory_chain_id: "1".to_string(),
                         },
                     ),
                     chain_uid: ChainUid::create("1".to_string()).unwrap(),
@@ -214,7 +216,7 @@ mod tests {
             stable_vlp_code_id: Some(0),
             virtual_balance_address: Some(new_virtual_balance_address.clone()),
             locked: Some(true),
-            mock_relayer_address: Some(new_mock_relayer_address.to_string()),
+            mock_relayer_addresses: Some(vec![new_mock_relayer_address.to_string()]),
         };
         let not_owner = deps.api.addr_make("not_owner");
         let info = message_info(&not_owner, &[]);
