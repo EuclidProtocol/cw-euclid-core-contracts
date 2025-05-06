@@ -1241,6 +1241,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "euclid-relayer"
+version = "0.2.1"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-orch",
+ "cw-storage-plus 1.2.0",
+ "cw-utils 1.0.3",
+ "cw2 1.1.2",
+ "euclid",
+ "mock",
+ "relayer",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "euclid-utils"
 version = "0.1.0"
 dependencies = [
@@ -2282,6 +2301,22 @@ name = "relative-path"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
+
+[[package]]
+name = "relayer"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-orch",
+ "cw-storage-plus 1.2.0",
+ "cw20 1.1.2",
+ "euclid",
+ "k256",
+ "schemars",
+ "serde",
+ "sha2 0.10.8",
+]
 
 [[package]]
 name = "rfc6979"
