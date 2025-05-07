@@ -1,14 +1,30 @@
-use cosmwasm_std::{from_json, Binary, Event};
-use cw_orch::mock::MockBase;
+use std::str::FromStr;
+
+use cosmwasm_std::{from_json, to_json_binary, to_json_string, Addr, Binary, Event};
+use cw_orch::{
+    mock::{cw_multi_test::App, MockBase},
+    prelude::{ContractInstance, Environment},
+};
 use euclid::{
     chain::ChainUid,
     msgs::{
-        factory::ExecuteMsgFns as FactoryExecuteFns, router::ExecuteMsgFns as RouterExecuteFns,
+        factory::{ExecuteMsgFns as FactoryExecuteFns, QueryMsgFns},
+        router::{ExecuteMsgFns as RouterExecuteFns, QueryMsgFns as RouterQueryFns},
     },
 };
 use euclid_ibc::msg::ChainIbcExecuteMsg;
+use euclid_relayer::RelayerContract;
 use factory::FactoryContract;
+use k256::{ecdsa::SigningKey, elliptic_curve::NonZeroScalar};
+use relayer::{
+    verify::{MsgSignData, MsgSignDataMsg, MsgSignDataValue},
+    ExecuteMsgFns as RelayerExecuteFns, MetaTransaction, MetaTransactionData,
+    QueryMsgFns as RelayerQueryFns, UpdateAdminMsg,
+};
 use router::RouterContract;
+use sha2::{digest::Update, Digest, Sha256};
+
+use crate::helpers::chains::get_relayer;
 
 pub fn relay_factory_send_packet(
     events: Vec<Event>,
@@ -44,9 +60,29 @@ pub fn relay_factory_send_packet(
             .find(|attr| attr.key == "hash")
             .unwrap();
 
-        let response = router
-            .cosmos_receive_packet(chain_uid.clone(), hash.value.clone(), msg_binary, sequence)
-            .unwrap();
+        let relayer_address = router
+            .query_relayer_addresses()
+            .unwrap()
+            .relayer_addresses
+            .first()
+            .unwrap()
+            .clone();
+        println!("relay_factory_send_packet: {:?}", relayer_address);
+        let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
+        let call_data = euclid::msgs::router::ExecuteMsg::CosmosReceivePacket {
+            msg: msg_binary,
+            chain_uid: chain_uid.clone(),
+            sequence,
+            hash: hash.value.clone(),
+        };
+        let signed_data = sign_relay_messsage(
+            to_json_binary(&call_data).unwrap(),
+            router.address().unwrap(),
+            sequence.to_string(),
+            &router.environment().app.borrow(),
+        );
+
+        let response = relayer.execute_meta_transaction(signed_data).unwrap();
 
         responses.extend(response.events);
     }
@@ -98,10 +134,26 @@ pub fn relay_router_send_packet(
         if chain_uid.value != factory_chain_uid.to_string() {
             continue;
         }
+        let relayer_address = factory.get_relayer().unwrap();
+        let relayer = get_relayer(
+            factory.environment(),
+            &Addr::unchecked(relayer_address.relayer_address),
+        );
 
-        let response = factory
-            .cosmos_receive_packet(hash.value.clone(), msg_binary, sequence)
-            .unwrap();
+        let call_data = euclid::msgs::factory::ExecuteMsg::CosmosReceivePacket {
+            msg: msg_binary,
+            sequence,
+            hash: hash.value.clone(),
+        };
+
+        let signed_data = sign_relay_messsage(
+            to_json_binary(&call_data).unwrap(),
+            factory.address().unwrap(),
+            sequence.to_string(),
+            &factory.environment().app.borrow(),
+        );
+
+        let response = relayer.execute_meta_transaction(signed_data).unwrap();
 
         responses.extend(response.events);
     }
@@ -167,9 +219,27 @@ pub fn relay_factory_ack_packet(
             continue;
         }
 
-        let response = factory
-            .cosmos_receive_ack(ack_binary, hash.value.clone(), msg_binary, sequence)
-            .unwrap();
+        let relayer_address = factory.get_relayer().unwrap();
+        let relayer = get_relayer(
+            factory.environment(),
+            &Addr::unchecked(relayer_address.relayer_address),
+        );
+
+        let call_data = euclid::msgs::factory::ExecuteMsg::CosmosReceiveAck {
+            msg: msg_binary,
+            sequence,
+            hash: hash.value.clone(),
+            ack: ack_binary,
+        };
+
+        let signed_data = sign_relay_messsage(
+            to_json_binary(&call_data).unwrap(),
+            factory.address().unwrap(),
+            sequence.to_string(),
+            &factory.environment().app.borrow(),
+        );
+
+        let response = relayer.execute_meta_transaction(signed_data).unwrap();
 
         responses.extend(response.events);
     }
@@ -218,15 +288,31 @@ pub fn relay_router_ack_packet(
 
         let ack_binary = Binary::from_base64(ack.value.as_str()).unwrap();
 
-        let response = router
-            .cosmos_receive_ack(
-                ack_binary,
-                chain_uid.clone(),
-                hash.value.clone(),
-                msg_binary,
-                sequence,
-            )
-            .unwrap();
+        let relayer_address = router
+            .query_relayer_addresses()
+            .unwrap()
+            .relayer_addresses
+            .first()
+            .unwrap()
+            .clone();
+        let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
+
+        let call_data = euclid::msgs::router::ExecuteMsg::CosmosReceiveAck {
+            msg: msg_binary,
+            chain_uid: chain_uid.clone(),
+            sequence,
+            hash: hash.value.clone(),
+            ack: ack_binary,
+        };
+
+        let signed_data = sign_relay_messsage(
+            to_json_binary(&call_data).unwrap(),
+            router.address().unwrap(),
+            sequence.to_string(),
+            &router.environment().app.borrow(),
+        );
+
+        let response = relayer.execute_meta_transaction(signed_data).unwrap();
 
         responses.extend(response.events);
     }
@@ -251,4 +337,42 @@ pub fn relay_router_factory_router(
 ) {
     let ack_events = relay_router_send_packet(send_events, factory, factory_chain_uid);
     relay_router_ack_packet(router, factory_chain_uid, ack_events);
+}
+
+pub fn get_signer_key() -> SigningKey {
+    let pk = "2268A9118C1681EC6A649F01886995DE55E90C7E71B0BC5E409C551B92FF7369";
+    let scalar = NonZeroScalar::from_str(pk).unwrap();
+    SigningKey::from(scalar)
+}
+
+pub fn sign_relay_messsage(
+    call_data: Binary,
+    target: Addr,
+    nonce: String,
+    app: &App,
+) -> MetaTransaction {
+    let meta_tx_data = MetaTransactionData {
+        call_data,
+        expiry: app.block_info().time.plus_seconds(60).seconds(),
+        nonce,
+        target,
+    };
+
+    let msg = MsgSignDataMsg::new(MsgSignDataValue::new(
+        to_json_binary(&meta_tx_data).unwrap(),
+        format!("relayer_{}", app.block_info().chain_id),
+    ));
+    let msg = MsgSignData::new(vec![msg]);
+    let msg = to_json_string(&msg).unwrap();
+    let message_digest = Sha256::new().chain(msg.as_bytes());
+
+    let secret_key = get_signer_key();
+    let signature = secret_key
+        .sign_digest_recoverable(message_digest)
+        .unwrap()
+        .0;
+    MetaTransaction {
+        data: meta_tx_data,
+        signature: Binary::from(signature.to_vec()),
+    }
 }

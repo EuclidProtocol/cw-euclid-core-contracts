@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint256};
+use cosmwasm_std::{Addr, Binary};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -34,11 +34,16 @@ pub struct State {
 
 #[cw_serde]
 pub struct MetaTransaction {
+    pub data: MetaTransactionData,
+    pub signature: Binary,
+}
+
+#[cw_serde]
+pub struct MetaTransactionData {
     pub target: Addr,
     pub call_data: Binary,
-    pub expiry: Uint256,
+    pub expiry: u64,
     pub nonce: String,
-    pub signature: Binary,
 }
 
 #[cw_serde]

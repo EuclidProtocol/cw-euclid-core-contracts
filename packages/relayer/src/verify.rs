@@ -76,39 +76,52 @@ pub fn msg_to_sign_data(msg: Binary, signer: String) -> MsgSignData {
 
 pub fn verify_signature(
     deps: Deps,
-    message: String,
-    signature: &[u8],
-    pubkey: &[u8],
+    message: &str,
+    signature: &Binary,
+    pubkey: &Binary,
 ) -> Result<bool, ContractError> {
-    let message_hash: [u8; 32] = Sha256::digest(message.as_bytes()).into();
+    let message_hash: [u8; 32] = Sha256::digest(message).into();
+    let signature_bytes = signature.as_slice();
+    let pubkey_bytes = pubkey.as_slice();
     deps.api
-        .secp256k1_verify(&message_hash, signature, pubkey)
+        .secp256k1_verify(&message_hash, signature_bytes, pubkey_bytes)
         .map_err(|err| ContractError::new(&err.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     use cosmwasm_std::{testing::mock_dependencies, to_json_string, Binary};
-    use k256::{ecdsa::SigningKey, elliptic_curve::rand_core::OsRng};
+    use k256::{ecdsa::SigningKey, elliptic_curve::NonZeroScalar};
     use sha2::{digest::Update, Digest, Sha256};
 
-    fn sign_messsage(msg: &str) -> (Vec<u8>, Vec<u8>) {
+    fn get_signer_key() -> SigningKey {
+        let pk = "2268A9118C1681EC6A649F01886995DE55E90C7E71B0BC5E409C551B92FF7369";
+        let scalar = NonZeroScalar::from_str(pk).unwrap();
+
+        SigningKey::from(scalar)
+    }
+
+    fn sign_messsage(msg: &str) -> (Binary, Binary) {
         let message_digest = Sha256::new().chain(msg.as_bytes());
 
-        let secret_key = SigningKey::random(&mut OsRng);
+        let secret_key = get_signer_key();
         let signature = secret_key
             .sign_digest_recoverable(message_digest)
             .unwrap()
             .0;
         (
-            signature.to_vec(),
-            secret_key
-                .verifying_key()
-                .to_encoded_point(false)
-                .as_bytes()
-                .to_vec(),
+            Binary::from(signature.to_vec()),
+            Binary::from(
+                secret_key
+                    .verifying_key()
+                    .to_encoded_point(false)
+                    .as_bytes()
+                    .to_vec(),
+            ),
         )
     }
 
@@ -121,9 +134,7 @@ mod tests {
         // verifying
         let deps = mock_dependencies();
 
-        assert!(
-            verify_signature(deps.as_ref(), msg.clone(), &signature, &public_key_bytes).unwrap()
-        );
+        assert!(verify_signature(deps.as_ref(), &msg, &signature, &public_key_bytes).unwrap());
     }
     #[test]
     fn test_verify_signature_external() {
@@ -137,6 +148,6 @@ mod tests {
 
         let deps = mock_dependencies();
 
-        assert!(verify_signature(deps.as_ref(), msg_str, &signature, &public_key_bytes,).unwrap());
+        assert!(verify_signature(deps.as_ref(), &msg_str, &signature, &public_key_bytes,).unwrap());
     }
 }

@@ -1,4 +1,7 @@
-use cosmwasm_std::{ensure, to_json_string, DepsMut, Env, MessageInfo, Response, Uint128, WasmMsg};
+use cosmwasm_std::{
+    ensure, to_json_binary, to_json_string, DepsMut, Env, MessageInfo, Response, Timestamp,
+    Uint128, WasmMsg,
+};
 use euclid::error::ContractError;
 use relayer::{
     msgs::{MetaTransaction, UpdateAdminMsg, UpdateStateMsg},
@@ -63,15 +66,21 @@ pub fn execute_execute_meta_transaction(
     // Save the nonce
     NONCES.save(
         deps.storage,
-        msg.nonce.clone(),
+        msg.data.nonce.clone(),
         &Uint128::from(env.block.height),
     )?;
+
+    // Ensure the timestamp is not exceeded
+    ensure!(
+        env.block.time <= Timestamp::from_seconds(msg.data.expiry),
+        ContractError::new("Timestamp limit exceeded")
+    );
 
     let state = STATE.load(deps.storage)?;
 
     // Create signed data and verify signature against it
     let signed_data_msg = MsgSignDataMsg::new(MsgSignDataValue::new(
-        msg.call_data.clone(),
+        to_json_binary(&msg.data)?,
         state.relayer_address.clone(),
     ));
     let signed_data = MsgSignData::new(vec![signed_data_msg]);
@@ -79,21 +88,21 @@ pub fn execute_execute_meta_transaction(
 
     let verified = verify_signature(
         deps.as_ref(),
-        signed_data,
-        msg.signature.as_slice(),
+        &signed_data,
+        &msg.signature,
         &state.relayer_pubkey,
     )?;
 
     ensure!(verified, ContractError::new("Invalid signature"));
 
     let relay_msg = WasmMsg::Execute {
-        contract_addr: msg.target.to_string(),
-        msg: msg.call_data,
+        contract_addr: msg.data.target.to_string(),
+        msg: msg.data.call_data,
         funds: vec![],
     };
 
     Ok(Response::new()
         .add_message(relay_msg)
-        .add_attribute("relayer_nonce", msg.nonce)
-        .add_attribute("relayer_target", msg.target))
+        .add_attribute("relayer_nonce", msg.data.nonce)
+        .add_attribute("relayer_target", msg.data.target))
 }

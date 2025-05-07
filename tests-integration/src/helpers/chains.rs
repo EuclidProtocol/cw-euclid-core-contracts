@@ -1,18 +1,20 @@
 #![cfg(not(target_arch = "wasm32"))]
+use cosmwasm_std::Binary;
 use cw20::Cw20Contract;
-use cw_orch::{mock::MockBase, prelude::*};
+use cw_orch::{contract::Contract, mock::MockBase, prelude::*};
 use cw_orch_interchain::{IbcQueryHandler, InterchainEnv, MockInterchainEnv};
 use escrow::EscrowContract;
 use euclid::{
     chain::ChainUid,
     msgs::{
-        factory::ExecuteMsgFns as FactoryExecuteMsgFns,
+        factory::{ExecuteMsgFns as FactoryExecuteMsgFns, QueryMsgFns as FactoryQueryMsgFns},
         router::{
-            ExecuteMsgFns as RouterExecuteMsgFns, QueryMsgFns, RegisterFactoryChainIbc,
-            RegisterFactoryChainNative,
+            ExecuteMsgFns as RouterExecuteMsgFns, QueryMsgFns as RouterQueryMsgFns,
+            RegisterFactoryChainIbc, RegisterFactoryChainNative,
         },
     },
 };
+use euclid_relayer::RelayerContract;
 use factory::FactoryContract;
 use router::RouterContract;
 use stable_vlp::StableVlpContract;
@@ -20,6 +22,8 @@ use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
 
 use crate::helpers::relayer::{relay_router_ack_packet, relay_router_send_packet};
+
+use super::relayer::get_signer_key;
 
 pub fn setup_factory(
     interchain: &MockInterchainEnv,
@@ -33,10 +37,13 @@ pub fn setup_factory(
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let cw20 = Cw20Contract::new(chain.clone());
+    let relayer = setup_relayer(&chain);
 
     factory.upload().unwrap();
     escrow.upload().unwrap();
     cw20.upload().unwrap();
+
+    let is_native = router_chain_id == factory_chain_id;
 
     factory
         .instantiate(
@@ -45,15 +52,15 @@ pub fn setup_factory(
                 chain_uid: chain_uid.clone(),
                 escrow_code_id: escrow.code_id().unwrap(),
                 cw20_code_id: cw20.code_id().unwrap(),
-                is_native: false,
-                mock_relayer_address: Some(factory.environment().sender.to_string()),
+                is_native,
+                mock_relayer_address: Some(relayer.address().unwrap().to_string()),
             },
             None,
             None,
         )
         .unwrap();
 
-    if router_chain_id != factory_chain_id {
+    if !is_native {
         // Set up channel from osmosis to nibiru
         let channel_receipt = interchain
             .create_contract_channel(&factory, router, "counter-1", None)
@@ -97,6 +104,7 @@ pub fn setup_factory(
                 factory_address: factory.address().unwrap().to_string(),
                 factory_chain_id: factory.environment().chain_id(),
             });
+        factory.update_hub_channel("channel-0".to_string()).unwrap();
         router
             .register_factory(chain_info, chain_uid.clone())
             .unwrap();
@@ -116,6 +124,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
     let virtual_balance = VirtualBalanceContract::new(chain.clone());
     let vlp = VlpContract::new(chain.clone());
     let stable_vlp = StableVlpContract::new(chain.clone());
+    let relayer = setup_relayer(chain);
 
     router.upload().unwrap();
     virtual_balance.upload().unwrap();
@@ -127,7 +136,7 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
                 constant_product_vlp_code_id: vlp.code_id().unwrap(),
                 stable_vlp_code_id: stable_vlp.code_id().unwrap(),
                 virtual_balance_code_id: virtual_balance.code_id().unwrap(),
-                mock_relayer_addresses: Some(vec![router.environment().sender.to_string()]),
+                mock_relayer_addresses: Some(vec![relayer.address().unwrap().to_string()]),
             },
             None,
             None,
@@ -135,4 +144,97 @@ pub fn setup_router(chain: &MockBase) -> RouterContract<MockBase> {
         .unwrap();
 
     router
+}
+
+pub fn setup_relayer(chain: &MockBase) -> RelayerContract<MockBase> {
+    let relayer = RelayerContract::new(chain.clone());
+    let signer_key = get_signer_key();
+
+    let pubkey = signer_key
+        .verifying_key()
+        .to_encoded_point(false)
+        .as_bytes()
+        .to_vec();
+
+    let pubkey_binary = Binary::from(pubkey);
+
+    relayer.upload().unwrap();
+
+    relayer
+        .instantiate(
+            &relayer::msgs::InstantiateMsg {
+                relayer_pubkey: pubkey_binary,
+                relayer_address: format!("relayer_{}", chain.chain_id()),
+            },
+            Some(&chain.sender),
+            None,
+        )
+        .unwrap();
+
+    relayer
+}
+
+pub fn get_vlp(chain: &MockBase, address: &Addr) -> VlpContract<MockBase> {
+    let mut vlp = VlpContract::new(chain.clone());
+    vlp.as_instance_mut().id = format!("vlp_{}", address);
+    vlp.set_address(address);
+    vlp
+}
+
+pub fn get_stable_vlp(chain: &MockBase, address: &Addr) -> StableVlpContract<MockBase> {
+    let mut stable_vlp = StableVlpContract::new(chain.clone());
+    stable_vlp.as_instance_mut().id = format!("stable_vlp_{}", address);
+    stable_vlp.set_address(address);
+    stable_vlp
+}
+
+pub fn get_virtual_balance(chain: &MockBase, address: &Addr) -> VirtualBalanceContract<MockBase> {
+    let mut virtual_balance = VirtualBalanceContract::new(chain.clone());
+    virtual_balance.as_instance_mut().id = format!("virtual_balance_{}", address);
+    virtual_balance.set_address(address);
+    virtual_balance
+}
+
+pub fn get_cw20(chain: &MockBase, address: &Addr) -> Cw20Contract<MockBase> {
+    let mut cw20 = Cw20Contract::new(chain.clone());
+    cw20.as_instance_mut().id = format!("cw20_{}", address);
+    cw20.set_address(address);
+    cw20
+}
+
+pub fn get_escrow(factory: &FactoryContract<MockBase>, token: &str) -> EscrowContract<MockBase> {
+    let escrow_address = factory.get_escrow(token).unwrap();
+    let escrow_address = escrow_address.escrow_address.unwrap();
+    println!("Token: {:?} Escrow address: {:?}", token, escrow_address);
+    // Create a new escrow contract instance
+    let mut escrow = EscrowContract::new(factory.environment().clone());
+    escrow.as_instance_mut().id = format!("escrow_{}", escrow_address);
+    escrow.set_address(&escrow_address);
+    escrow
+}
+
+pub fn get_factory(chain: &MockBase, address: &Addr) -> FactoryContract<MockBase> {
+    let mut factory = FactoryContract::new(chain.clone());
+    factory.as_instance_mut().id = format!("factory_{}", address);
+    factory.set_address(address);
+    factory
+}
+
+pub fn get_router(chain: &MockBase, address: &Addr) -> RouterContract<MockBase> {
+    let mut router = RouterContract::new(chain.clone());
+    router.as_instance_mut().id = format!("router_{}", address);
+    router.set_address(address);
+    router
+}
+
+pub fn get_relayer(chain: &MockBase, address: &Addr) -> RelayerContract<MockBase> {
+    println!(
+        "Fetching relayer for chain: {:?} address: {:?}",
+        chain.chain_id(),
+        address
+    );
+    let mut relayer = RelayerContract::new(chain.clone());
+    relayer.as_instance_mut().id = format!("relayer_{}", address);
+    relayer.set_address(address);
+    relayer
 }

@@ -6,16 +6,16 @@ use euclid::{
     msgs::factory::{
         AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
         GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
-        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
-        PoolVlpResponse, StateResponse,
+        GetRelayerResponse, GetVlpResponse, PartnerFeesCollectedPerDenomResponse,
+        PartnerFeesCollectedResponse, PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
 };
 
 use crate::state::{
-    HUB_CHANNEL, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-    STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+    HUB_CHANNEL, MOCK_RELAYER_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
 };
 
 // Returns the VLP address
@@ -180,4 +180,11 @@ pub fn get_chain_type(deps: Deps) -> Result<ChainType, ContractError> {
             from_factory_channel: channel,
         }))
     }
+}
+
+pub fn query_relayer(deps: Deps) -> Result<Binary, ContractError> {
+    let relayer = MOCK_RELAYER_ADDRESS.load(deps.storage)?;
+    Ok(to_json_binary(&GetRelayerResponse {
+        relayer_address: relayer.to_string(),
+    })?)
 }
