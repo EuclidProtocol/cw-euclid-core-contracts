@@ -60,8 +60,8 @@ pub fn execute_execute_meta_transaction(
 ) -> Result<Response, ContractError> {
     // Ensure the nonce is not used
     ensure!(
-        !NONCES.has(deps.storage, info.sender.to_string()),
-        ContractError::new("Nonce already used")
+        !NONCES.has(deps.storage, msg.data.nonce.clone()),
+        ContractError::new(format!("Nonce already used: {}", msg.data.nonce).as_str())
     );
     // Save the nonce
     NONCES.save(
@@ -104,5 +104,6 @@ pub fn execute_execute_meta_transaction(
     Ok(Response::new()
         .add_message(relay_msg)
         .add_attribute("relayer_nonce", msg.data.nonce)
-        .add_attribute("relayer_target", msg.data.target))
+        .add_attribute("relayer_target", msg.data.target)
+        .add_attribute("relayer_sender", info.sender.to_string()))
 }

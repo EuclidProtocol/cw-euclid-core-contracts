@@ -2,24 +2,20 @@ use std::str::FromStr;
 
 use cosmwasm_std::{from_json, to_json_binary, to_json_string, Addr, Binary, Event};
 use cw_orch::{
+    core::CwEnvError,
     mock::{cw_multi_test::App, MockBase},
     prelude::{ContractInstance, Environment},
 };
 use euclid::{
     chain::ChainUid,
-    msgs::{
-        factory::{ExecuteMsgFns as FactoryExecuteFns, QueryMsgFns},
-        router::{ExecuteMsgFns as RouterExecuteFns, QueryMsgFns as RouterQueryFns},
-    },
+    msgs::{factory::QueryMsgFns, router::QueryMsgFns as RouterQueryFns},
 };
 use euclid_ibc::msg::ChainIbcExecuteMsg;
-use euclid_relayer::RelayerContract;
 use factory::FactoryContract;
 use k256::{ecdsa::SigningKey, elliptic_curve::NonZeroScalar};
 use relayer::{
     verify::{MsgSignData, MsgSignDataMsg, MsgSignDataValue},
     ExecuteMsgFns as RelayerExecuteFns, MetaTransaction, MetaTransactionData,
-    QueryMsgFns as RelayerQueryFns, UpdateAdminMsg,
 };
 use router::RouterContract;
 use sha2::{digest::Update, Digest, Sha256};
@@ -30,7 +26,7 @@ pub fn relay_factory_send_packet(
     events: Vec<Event>,
     router: &RouterContract<MockBase>,
     chain_uid: &ChainUid,
-) -> Vec<Event> {
+) -> Result<Vec<Event>, CwEnvError> {
     let mut responses = Vec::new();
 
     let send_packet_events = events
@@ -78,23 +74,23 @@ pub fn relay_factory_send_packet(
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             router.address().unwrap(),
-            sequence.to_string(),
+            format!("{}-{}-receive", sequence, **chain_uid),
             &router.environment().app.borrow(),
         );
 
-        let response = relayer.execute_meta_transaction(signed_data).unwrap();
+        let response = relayer.execute_meta_transaction(signed_data)?;
 
         responses.extend(response.events);
     }
 
-    responses
+    Ok(responses)
 }
 
 pub fn relay_router_send_packet(
     events: Vec<Event>,
     factory: &FactoryContract<MockBase>,
     factory_chain_uid: &ChainUid,
-) -> Vec<Event> {
+) -> Result<Vec<Event>, CwEnvError> {
     let mut responses = Vec::new();
 
     let send_packet_events = events
@@ -149,22 +145,22 @@ pub fn relay_router_send_packet(
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             factory.address().unwrap(),
-            sequence.to_string(),
+            format!("{}-receive", sequence),
             &factory.environment().app.borrow(),
         );
 
-        let response = relayer.execute_meta_transaction(signed_data).unwrap();
+        let response = relayer.execute_meta_transaction(signed_data)?;
 
         responses.extend(response.events);
     }
-    responses
+    Ok(responses)
 }
 
 pub fn relay_factory_ack_packet(
     factory: &FactoryContract<MockBase>,
     factory_chain_uid: &ChainUid,
     events: Vec<Event>,
-) -> Vec<Event> {
+) -> Result<Vec<Event>, CwEnvError> {
     let mut responses = Vec::new();
 
     let write_ack_events = events
@@ -235,22 +231,22 @@ pub fn relay_factory_ack_packet(
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             factory.address().unwrap(),
-            sequence.to_string(),
+            format!("{}-ack", sequence),
             &factory.environment().app.borrow(),
         );
 
-        let response = relayer.execute_meta_transaction(signed_data).unwrap();
+        let response = relayer.execute_meta_transaction(signed_data)?;
 
         responses.extend(response.events);
     }
-    responses
+    Ok(responses)
 }
 
 pub fn relay_router_ack_packet(
     router: &RouterContract<MockBase>,
     chain_uid: &ChainUid,
     events: Vec<Event>,
-) -> Vec<Event> {
+) -> Result<Vec<Event>, CwEnvError> {
     let mut responses = Vec::new();
 
     let write_ack_events = events
@@ -308,15 +304,15 @@ pub fn relay_router_ack_packet(
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             router.address().unwrap(),
-            sequence.to_string(),
+            format!("{}-{}-ack", sequence, **chain_uid),
             &router.environment().app.borrow(),
         );
 
-        let response = relayer.execute_meta_transaction(signed_data).unwrap();
+        let response = relayer.execute_meta_transaction(signed_data)?;
 
         responses.extend(response.events);
     }
-    responses
+    Ok(responses)
 }
 
 pub fn relay_factory_router_factory(
@@ -324,9 +320,10 @@ pub fn relay_factory_router_factory(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     factory_chain_uid: &ChainUid,
-) {
-    let ack_events = relay_factory_send_packet(send_events, router, factory_chain_uid);
-    relay_factory_ack_packet(factory, factory_chain_uid, ack_events);
+) -> Result<(), CwEnvError> {
+    let ack_events = relay_factory_send_packet(send_events, router, factory_chain_uid)?;
+    relay_factory_ack_packet(factory, factory_chain_uid, ack_events)?;
+    Ok(())
 }
 
 pub fn relay_router_factory_router(
@@ -334,9 +331,10 @@ pub fn relay_router_factory_router(
     factory: &FactoryContract<MockBase>,
     factory_chain_uid: &ChainUid,
     router: &RouterContract<MockBase>,
-) {
-    let ack_events = relay_router_send_packet(send_events, factory, factory_chain_uid);
-    relay_router_ack_packet(router, factory_chain_uid, ack_events);
+) -> Result<(), CwEnvError> {
+    let ack_events = relay_router_send_packet(send_events, factory, factory_chain_uid)?;
+    relay_router_ack_packet(router, factory_chain_uid, ack_events)?;
+    Ok(())
 }
 
 pub fn get_signer_key() -> SigningKey {
