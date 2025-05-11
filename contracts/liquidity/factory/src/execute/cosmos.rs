@@ -65,6 +65,9 @@ pub fn execute_cosmos_receive_packet(
         ContractError::Unauthorized {}
     );
 
+    let receive_packet_event =
+        Event::new("euclid-cosmos-receive-packet").add_attribute("sequence", sequence.to_string());
+
     let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
         .add_attribute("msg", msg.to_string())
         .add_attribute("sequence", sequence.to_string())
@@ -88,6 +91,7 @@ pub fn execute_cosmos_receive_packet(
         .add_attribute("method", "cosmos_packet_receive")
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
+        .add_event(receive_packet_event)
         .add_event(write_acknowledge_event)
         .add_submessage(sub_msg))
 }

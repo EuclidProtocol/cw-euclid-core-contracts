@@ -472,7 +472,7 @@ pub fn execute_native_receive_callback(
 
     // Only registered factory contract can execute this message
     ensure!(chain.factory == info.sender, ContractError::Unauthorized {});
-    receive::reusable_internal_call(deps, env, info, msg, chain_uid)
+    receive::reusable_internal_call(deps, env, info, msg, chain_uid, None)
 }
 
 #[allow(clippy::too_many_arguments)]

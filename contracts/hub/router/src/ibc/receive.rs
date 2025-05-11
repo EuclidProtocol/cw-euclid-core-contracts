@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Event, IbcPacketReceiveMsg,
     IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -38,7 +38,8 @@ use crate::{
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
-        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS, VLPS,
+        PENDING_REMOVE_LIQUIDITY, PROCESSED_PACKET_SEQUENCE, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS,
+        VLPS,
     },
 };
 
@@ -91,7 +92,7 @@ pub fn ibc_receive_internal_call(
         ContractError::Unauthorized {}
     );
     let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
-    reusable_internal_call(deps, env, info, msg, chain_uid)
+    reusable_internal_call(deps, env, info, msg, chain_uid, None)
 }
 
 pub fn reusable_internal_call(
@@ -100,6 +101,7 @@ pub fn reusable_internal_call(
     _info: MessageInfo,
     msg: ChainIbcExecuteMsg,
     chain_uid: ChainUid,
+    sequence: Option<u128>,
 ) -> Result<Response, ContractError> {
     let locked = STATE.load(deps.storage)?.locked;
     ensure!(!locked, ContractError::ContractLocked {});
@@ -112,7 +114,28 @@ pub fn reusable_internal_call(
         ContractError::DeregisteredChain {}
     );
     let tx_id = msg.get_tx_id();
-    let response = match msg {
+
+    let mut receive_packet_event = None;
+
+    // Only add event if sequence is present, sequence is not present for native calls
+    if let Some(sequence) = sequence {
+        let processed_sequence_key = PROCESSED_PACKET_SEQUENCE.key((chain_uid.clone(), sequence));
+        ensure!(
+            processed_sequence_key.has(deps.storage) == false,
+            ContractError::Generic {
+                err: "Processed sequence already exists".to_string()
+            }
+        );
+        // Save the processed sequence to avoid duplicate events
+        processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+        receive_packet_event = Some(
+            Event::new("euclid-hub-receive-packet")
+                .add_attribute("chain_uid", chain_uid.to_string())
+                .add_attribute("sequence", sequence.to_string()),
+        );
+    }
+
+    let mut response = match msg {
         ChainIbcExecuteMsg::RequestPoolCreation {
             pair,
             sender,
@@ -225,7 +248,11 @@ pub fn reusable_internal_call(
             ibc_execute_deposit_token(deps.branch(), env, msg)?
         }
     };
-    let response = response.add_attribute("tx_id", tx_id);
+    response = response.add_attribute("tx_id", tx_id);
+    // Add receive packet event if it exists
+    if let Some(event) = receive_packet_event {
+        response = response.add_event(event);
+    }
     Ok(response)
 }
 

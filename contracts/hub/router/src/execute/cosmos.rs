@@ -74,6 +74,10 @@ pub fn execute_cosmos_receive_packet(
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     ensure!(chain.is_ibc(), ContractError::Unauthorized {});
 
+    let receive_packet_event = Event::new("euclid-cosmos-receive-packet")
+        .add_attribute("sequence", sequence.to_string())
+        .add_attribute("chain_uid", chain_uid.to_string());
+
     let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
         .add_attribute("msg", msg.to_string())
         .add_attribute("chain_uid", chain_uid.to_string())
@@ -83,6 +87,7 @@ pub fn execute_cosmos_receive_packet(
     let internal_msg = ExecuteMsg::CosmosReceivePacketInternalCallback {
         msg: msg.clone(),
         chain_uid: chain_uid.clone(),
+        sequence: sequence,
     };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
@@ -102,6 +107,7 @@ pub fn execute_cosmos_receive_packet(
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
         .add_event(write_acknowledge_event)
+        .add_event(receive_packet_event)
         .add_submessage(sub_msg))
 }
 
@@ -111,13 +117,14 @@ pub fn execute_cosmos_receive_packet_internal_callback(
     info: MessageInfo,
     msg: Binary,
     chain_uid: ChainUid,
+    sequence: u128,
 ) -> Result<Response, ContractError> {
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
     );
     let msg: ChainIbcExecuteMsg = from_json(msg)?;
-    receive::reusable_internal_call(deps, env, info, msg, chain_uid)
+    receive::reusable_internal_call(deps, env, info, msg, chain_uid, Some(sequence))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -173,5 +180,13 @@ pub fn execute_cosmos_receive_acknowledgement(
         }
     }
 
-    ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)
+    let response = ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)?;
+
+    let response = response.add_event(
+        Event::new("euclid-hub-receive-acknowledgement")
+            .add_attribute("chain_uid", chain_uid.to_string())
+            .add_attribute("sequence", sequence.to_string()),
+    );
+
+    Ok(response)
 }

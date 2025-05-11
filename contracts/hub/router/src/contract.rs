@@ -190,11 +190,13 @@ pub fn execute(
                     hash,
                 } => execute_evm_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
 
-                ExecuteMsg::EvmReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_evm_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
-                }
+                ExecuteMsg::EvmReceivePacketInternalCallback {
+                    msg,
+                    chain_uid,
+                    sequence,
+                } => execute_evm_receive_packet_internal_callback(
+                    &mut deps, env, info, msg, chain_uid, sequence,
+                ),
                 ExecuteMsg::EvmReceiveAck {
                     msg,
                     chain_uid,
@@ -215,11 +217,13 @@ pub fn execute(
                     hash,
                 } => execute_solana_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
 
-                ExecuteMsg::SolanaReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_solana_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
-                }
+                ExecuteMsg::SolanaReceivePacketInternalCallback {
+                    msg,
+                    chain_uid,
+                    sequence,
+                } => execute_solana_receive_packet_internal_callback(
+                    &mut deps, env, info, msg, chain_uid, sequence,
+                ),
                 ExecuteMsg::SolanaReceiveAck {
                     msg,
                     chain_uid,
@@ -241,11 +245,13 @@ pub fn execute(
                     hash,
                 } => execute_cosmos_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
 
-                ExecuteMsg::CosmosReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_cosmos_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
-                }
+                ExecuteMsg::CosmosReceivePacketInternalCallback {
+                    msg,
+                    chain_uid,
+                    sequence,
+                } => execute_cosmos_receive_packet_internal_callback(
+                    &mut deps, env, info, msg, chain_uid, sequence,
+                ),
                 ExecuteMsg::CosmosReceiveAck {
                     msg,
                     chain_uid,

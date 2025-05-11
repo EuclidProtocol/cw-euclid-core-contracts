@@ -74,3 +74,6 @@ pub const COSMOS_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
 //Cosmos Relay sequence count
 pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
     Map::new("cosmos_packet_relay_sequence_count");
+
+pub const PROCESSED_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
+    Map::new("processed_packet_sequence");
