@@ -371,7 +371,7 @@ pub fn sign_relay_messsage(
         .unwrap()
         .0;
     MetaTransaction {
-        data: meta_tx_data,
+        data: msg,
         signature: Binary::from(signature.to_vec()),
     }
 }

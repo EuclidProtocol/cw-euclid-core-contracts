@@ -144,5 +144,11 @@ pub fn execute_cosmos_receive_acknowledgement(
     let msg: ChainIbcExecuteMsg = from_json(msg)?;
     let state = STATE.load(deps.storage)?;
 
-    ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, state.is_native)
+    let response =
+        ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, state.is_native)?;
+    let ack_event = Event::new("euclid-receive-acknowledgement")
+        .add_attribute("sequence", sequence.to_string());
+    let response = response.add_event(ack_event);
+
+    Ok(response)
 }

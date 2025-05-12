@@ -34,7 +34,7 @@ pub struct State {
 
 #[cw_serde]
 pub struct MetaTransaction {
-    pub data: MetaTransactionData,
+    pub data: String,
     pub signature: Binary,
 }
 
