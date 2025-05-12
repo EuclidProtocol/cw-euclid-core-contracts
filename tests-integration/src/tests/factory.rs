@@ -398,14 +398,14 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let factory_chain = interchain.get_chain(factory_chain_id).unwrap();
     let router_chain = interchain.get_chain(router_chain_id).unwrap();
 
-    let token_a_id: String = format!("token.a");
+    let token_a_id: String = "token.a".to_string();
     let token_a = TokenWithDenom {
         token: Token::create(token_a_id.clone()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_a_id.clone(),
         },
     };
-    let token_b_id: String = format!("token.b");
+    let token_b_id: String = "token.b".to_string();
     let token_b = TokenWithDenom {
         token: Token::create(token_b_id.clone()).unwrap(),
         token_type: euclid::token::TokenType::Native {

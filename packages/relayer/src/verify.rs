@@ -33,6 +33,12 @@ pub struct MsgSignDataFee {
     pub gas: Uint128,
 }
 
+impl Default for MsgSignDataFee {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MsgSignDataFee {
     pub fn new() -> Self {
         Self {
@@ -94,11 +100,8 @@ mod tests {
 
     use super::*;
 
-    use cosmwasm_std::{testing::mock_dependencies, to_json_binary, to_json_string, Binary};
-    use k256::{
-        ecdsa::{signature::SignerMut, SigningKey},
-        elliptic_curve::NonZeroScalar,
-    };
+    use cosmwasm_std::{testing::mock_dependencies, Binary};
+    use k256::{ecdsa::SigningKey, elliptic_curve::NonZeroScalar};
     use sha2::{digest::Update, Digest, Sha256};
 
     fn get_signer_key() -> (SigningKey, Binary) {
@@ -126,10 +129,7 @@ mod tests {
             .sign_digest_recoverable(message_digest)
             .unwrap()
             .0;
-        (
-            Binary::from(signature.to_vec()),
-            Binary::from(public_key_bytes),
-        )
+        (Binary::from(signature.to_vec()), public_key_bytes)
     }
 
     #[test]
@@ -152,6 +152,6 @@ mod tests {
 
         let deps = mock_dependencies();
 
-        assert!(verify_signature(deps.as_ref(), &msg_str, &signature, &pub_key,).unwrap());
+        assert!(verify_signature(deps.as_ref(), msg_str, &signature, &pub_key,).unwrap());
     }
 }

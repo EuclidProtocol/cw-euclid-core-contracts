@@ -1,11 +1,10 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, to_json_string, Binary, DepsMut, Env, MessageInfo, Response,
-    Timestamp, Uint128, WasmMsg,
+    ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128, WasmMsg,
 };
 use euclid::error::ContractError;
 use relayer::{
     msgs::{MetaTransaction, UpdateAdminMsg, UpdateStateMsg},
-    verify::{verify_signature, MsgSignData, MsgSignDataMsg, MsgSignDataValue},
+    verify::{verify_signature, MsgSignData},
     MetaTransactionData,
 };
 
