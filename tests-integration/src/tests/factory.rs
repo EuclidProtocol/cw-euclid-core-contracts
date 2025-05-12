@@ -1,55 +1,34 @@
 #![cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 
-use cosmwasm_std::Uint64;
-use cosmwasm_std::{coin, Addr, Coin, Uint128};
-use cw20::Cw20Contract;
-use cw_orch::prelude::{
-    ContractInstance, CwOrchExecute, CwOrchInstantiate, CwOrchQuery, CwOrchUpload, Environment,
-};
+use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint64};
+use cw_orch::prelude::{ContractInstance, CwOrchExecute, CwOrchQuery, Environment};
 use cw_orch_interchain::{prelude::*, InterchainEnv};
-use escrow::{mock::mock_escrow, EscrowContract};
-use euclid::chain::CrossChainUser;
-use euclid::chain::CrossChainUserWithLimit;
-use euclid::fee::MAX_PARTNER_FEE_BPS;
-use euclid::fee::{PartnerFee, BPS_100_PERCENT};
-use euclid::msgs::router::QueryMsgFns;
-use euclid::pool::PoolConfig;
-use euclid::swap::NextSwapPair;
-use euclid::token::TokenType;
+use escrow::mock::mock_escrow;
 use euclid::{
-    chain::ChainUid,
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
-    fee::{DenomFees, BPS_1_PERCENT},
+    fee::{DenomFees, PartnerFee, BPS_100_PERCENT, BPS_1_PERCENT, MAX_PARTNER_FEE_BPS},
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
-        factory::{
-            AllPoolsResponse, ExecuteMsgFns, ExecuteSwapRequest, PoolVlpResponse, StateResponse,
-        },
-        router::{RegisterFactoryChainIbc, TokenDenom, TokenDenomsResponse, VlpResponse},
-        virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns,
+        factory::{AllPoolsResponse, ExecuteSwapRequest, StateResponse},
+        router::{QueryMsgFns, TokenDenom, TokenDenomsResponse, VlpResponse},
         vlp::GetLiquidityResponse,
     },
-    token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
+    pool::PoolConfig,
+    swap::NextSwapPair,
+    token::{
+        Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
+    },
 };
-use factory::{
-    mock::{mock_factory, MockFactory},
-    FactoryContract,
-};
+use factory::mock::{mock_factory, MockFactory};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
-use router::RouterContract;
-use stable_vlp::StableVlpContract;
-use virtual_balance::VirtualBalanceContract;
-use vlp::VlpContract;
 
-use crate::helpers::chains::get_escrow;
-use crate::helpers::chains::get_virtual_balance;
-use crate::helpers::chains::get_vlp;
-use crate::helpers::chains::setup_factory;
-use crate::helpers::chains::setup_router;
-use crate::helpers::factory::{add_liquidity, create_pool, faucet, register_token, swap_request};
-use crate::helpers::relayer::relay_factory_router_factory;
-use crate::helpers::relayer::relay_router_factory_router;
+use crate::helpers::{
+    chains::{get_escrow, get_virtual_balance, get_vlp, setup_factory, setup_router},
+    factory::{add_liquidity, create_pool, faucet, register_token, swap_request},
+    relayer::relay_factory_router_factory,
+};
 
 #[test]
 fn test_proper_instantiation() {
@@ -144,7 +123,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
 
     let router_contract = setup_router(&router).unwrap();
     let router_state = router_contract.get_state().unwrap();
-    let virtual_balance_router =
+    let _virtual_balance_router =
         get_virtual_balance(&router, &router_state.virtual_balance_address.unwrap());
 
     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
@@ -455,7 +434,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .unwrap();
 
     let router_contract = setup_router(&router_chain).unwrap();
-    let router_state = router_contract.get_state().unwrap();
+    let _router_state = router_contract.get_state().unwrap();
 
     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let factory_contract = setup_factory(
@@ -748,8 +727,8 @@ fn test_add_liquidity_fails_when_pool_does_not_exit() {
             },
         },
     };
-    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
-    register_token(&factory, &router, pair_info.token_2.to_token_with_denom());
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
+    register_token(&factory, &router, pair_info.token_2.to_token_with_denom()).unwrap();
 
     // adding funds
     let chain = interchain
@@ -869,7 +848,7 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
             },
         },
     };
-    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
 
     create_pool(
         &interchain,
@@ -1340,7 +1319,7 @@ fn test_swap_request_with_valid_partner_fee() {
         .environment()
         .query_balance(partner_fee_recipient.clone(), "eucl")
         .unwrap();
-    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
         &interchain,
         &factory,
@@ -1348,7 +1327,8 @@ fn test_swap_request_with_valid_partner_fee() {
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
-    );
+    )
+    .unwrap();
 
     let asset_in = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -1380,7 +1360,8 @@ fn test_swap_request_with_valid_partner_fee() {
         BPS_1_PERCENT,
         None,
         funds.clone(),
-    );
+    )
+    .unwrap();
 
     funds.clear();
     let amount_in = Uint128::new(10000);
@@ -1456,7 +1437,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
             },
         },
     };
-    register_token(&factory, &router, pair_info.token_1.to_token_with_denom());
+    register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
         &interchain,
         &factory,
@@ -1464,7 +1445,8 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         pair_info.clone(),
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
-    );
+    )
+    .unwrap();
 
     let asset_in = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
@@ -1496,7 +1478,8 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         BPS_1_PERCENT,
         None,
         funds.clone(),
-    );
+    )
+    .unwrap();
 
     funds.clear();
     faucet(

@@ -87,7 +87,7 @@ pub fn execute_cosmos_receive_packet(
     let internal_msg = ExecuteMsg::CosmosReceivePacketInternalCallback {
         msg: msg.clone(),
         chain_uid: chain_uid.clone(),
-        sequence: sequence,
+        sequence,
     };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),

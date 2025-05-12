@@ -121,7 +121,7 @@ pub fn reusable_internal_call(
     if let Some(sequence) = sequence {
         let processed_sequence_key = PROCESSED_PACKET_SEQUENCE.key((chain_uid.clone(), sequence));
         ensure!(
-            processed_sequence_key.has(deps.storage) == false,
+            !processed_sequence_key.has(deps.storage),
             ContractError::Generic {
                 err: "Processed sequence already exists".to_string()
             }

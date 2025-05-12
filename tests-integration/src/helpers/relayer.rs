@@ -326,6 +326,7 @@ pub fn relay_factory_router_factory(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn relay_router_factory_router(
     send_events: Vec<Event>,
     factory: &FactoryContract<MockBase>,

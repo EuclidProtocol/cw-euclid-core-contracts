@@ -172,6 +172,7 @@ pub fn get_vlp(chain: &MockBase, address: &Addr) -> VlpContract<MockBase> {
     vlp
 }
 
+#[allow(dead_code)]
 pub fn get_stable_vlp(chain: &MockBase, address: &Addr) -> StableVlpContract<MockBase> {
     let mut stable_vlp = StableVlpContract::new(chain.clone());
     stable_vlp.as_instance_mut().id = format!("stable_vlp_{}", address);
@@ -186,6 +187,7 @@ pub fn get_virtual_balance(chain: &MockBase, address: &Addr) -> VirtualBalanceCo
     virtual_balance
 }
 
+#[allow(dead_code)]
 pub fn get_cw20(chain: &MockBase, address: &Addr) -> Cw20Contract<MockBase> {
     let mut cw20 = Cw20Contract::new(chain.clone());
     cw20.as_instance_mut().id = format!("cw20_{}", address);
@@ -204,6 +206,7 @@ pub fn get_escrow(factory: &FactoryContract<MockBase>, token: &str) -> EscrowCon
     escrow
 }
 
+#[allow(dead_code)]
 pub fn get_factory(chain: &MockBase, address: &Addr) -> FactoryContract<MockBase> {
     let mut factory = FactoryContract::new(chain.clone());
     factory.as_instance_mut().id = format!("factory_{}", address);
@@ -211,6 +214,7 @@ pub fn get_factory(chain: &MockBase, address: &Addr) -> FactoryContract<MockBase
     factory
 }
 
+#[allow(dead_code)]
 pub fn get_router(chain: &MockBase, address: &Addr) -> RouterContract<MockBase> {
     let mut router = RouterContract::new(chain.clone());
     router.as_instance_mut().id = format!("router_{}", address);

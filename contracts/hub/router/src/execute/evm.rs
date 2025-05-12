@@ -83,7 +83,7 @@ pub fn execute_evm_receive_packet(
     let internal_msg = ExecuteMsg::EvmReceivePacketInternalCallback {
         msg: msg.clone(),
         chain_uid: chain_uid.clone(),
-        sequence: sequence,
+        sequence,
     };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
