@@ -5,12 +5,14 @@ use cosmwasm_std::{Addr, Binary};
 pub struct InstantiateMsg {
     pub relayer_pubkey: Binary,
     pub relayer_address: String,
+    pub authorized_addresses: Vec<Addr>,
 }
 
 #[cw_serde]
 #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     ExecuteMetaTransaction(MetaTransaction),
+    ExecuteAuthorizedTransaction(AuthorizedTransaction),
     UpdateState(UpdateStateMsg),
     UpdateAdmin(UpdateAdminMsg),
 }
@@ -47,9 +49,17 @@ pub struct MetaTransactionData {
 }
 
 #[cw_serde]
+pub struct AuthorizedTransaction {
+    pub target: Addr,
+    pub call_data: Binary,
+    pub nonce: String,
+}
+
+#[cw_serde]
 pub struct UpdateStateMsg {
     pub relayer_pubkey: Option<Binary>,
     pub relayer_address: Option<String>,
+    pub authorized_addresses: Option<Vec<Addr>>,
 }
 
 #[cw_serde]

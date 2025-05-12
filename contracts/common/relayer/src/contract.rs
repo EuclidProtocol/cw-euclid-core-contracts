@@ -7,9 +7,12 @@ use euclid::error::ContractError;
 use relayer::msgs::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 use crate::{
-    execute::{execute_execute_meta_transaction, execute_update_admin, execute_update_state},
+    execute::{
+        execute_execute_authorized_transaction, execute_execute_meta_transaction,
+        execute_update_admin, execute_update_state,
+    },
     query::{get_state, nonce_relayed},
-    state::STATE,
+    state::{AUTHORIZED_ADDRESSES, STATE},
 };
 
 // version info for migration info
@@ -30,6 +33,7 @@ pub fn instantiate(
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    AUTHORIZED_ADDRESSES.save(deps.storage, &msg.authorized_addresses)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("relayer_address", msg.relayer_address))
@@ -45,6 +49,9 @@ pub fn execute(
     match msg {
         ExecuteMsg::ExecuteMetaTransaction(msg) => {
             execute_execute_meta_transaction(&mut deps, &env, &info, msg)
+        }
+        ExecuteMsg::ExecuteAuthorizedTransaction(msg) => {
+            execute_execute_authorized_transaction(&mut deps, &env, &info, msg)
         }
         ExecuteMsg::UpdateState(msg) => execute_update_state(&mut deps, &info, msg),
         ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),

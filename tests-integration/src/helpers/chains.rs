@@ -157,6 +157,7 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
         &relayer::msgs::InstantiateMsg {
             relayer_pubkey: pubkey_binary,
             relayer_address: format!("relayer_{}", chain.chain_id()),
+            authorized_addresses: vec![],
         },
         Some(&chain.sender),
         None,

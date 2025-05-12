@@ -1,14 +1,15 @@
 use cosmwasm_std::{
-    ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128,
+    WasmMsg,
 };
 use euclid::error::ContractError;
 use relayer::{
     msgs::{MetaTransaction, UpdateAdminMsg, UpdateStateMsg},
     verify::{verify_signature, MsgSignData},
-    MetaTransactionData,
+    AuthorizedTransaction, MetaTransactionData,
 };
 
-use crate::state::{NONCES, STATE};
+use crate::state::{AUTHORIZED_ADDRESSES, NONCES, STATE};
 
 pub fn execute_update_state(
     deps: &mut DepsMut,
@@ -30,6 +31,12 @@ pub fn execute_update_state(
             .add_attribute("relayer_address_old_value", state.relayer_address.clone())
             .add_attribute("relayer_address_new_value", relayer_address);
     }
+
+    if let Some(authorized_addresses) = msg.authorized_addresses {
+        AUTHORIZED_ADDRESSES.save(deps.storage, &authorized_addresses)?;
+        response = response.add_attribute("updated_authorized_addresses", "true");
+    }
+
     STATE.save(deps.storage, &state)?;
     Ok(response)
 }
@@ -115,5 +122,41 @@ pub fn execute_execute_meta_transaction(
         .add_message(relay_msg)
         .add_attribute("relayer_nonce", meta_transaction.nonce)
         .add_attribute("relayer_target", meta_transaction.target)
+        .add_attribute("relayer_sender", info.sender.to_string()))
+}
+
+pub fn execute_execute_authorized_transaction(
+    deps: &mut DepsMut,
+    env: &Env,
+    info: &MessageInfo,
+    msg: AuthorizedTransaction,
+) -> Result<Response, ContractError> {
+    let authorized_addresses = AUTHORIZED_ADDRESSES.load(deps.storage).unwrap_or_default();
+    ensure!(
+        authorized_addresses.contains(&info.sender),
+        ContractError::Unauthorized {}
+    );
+    // Ensure the nonce is not used
+    ensure!(
+        !NONCES.has(deps.storage, msg.nonce.clone()),
+        ContractError::new(format!("Nonce already used: {}", msg.nonce).as_str())
+    );
+    // Save the nonce
+    NONCES.save(
+        deps.storage,
+        msg.nonce.clone(),
+        &Uint128::from(env.block.height),
+    )?;
+
+    let relay_msg = WasmMsg::Execute {
+        contract_addr: msg.target.to_string(),
+        msg: msg.call_data,
+        funds: vec![],
+    };
+
+    Ok(Response::new()
+        .add_message(relay_msg)
+        .add_attribute("relayer_nonce", msg.nonce)
+        .add_attribute("relayer_target", msg.target)
         .add_attribute("relayer_sender", info.sender.to_string()))
 }
