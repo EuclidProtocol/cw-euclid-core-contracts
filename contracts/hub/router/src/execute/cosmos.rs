@@ -74,7 +74,6 @@ pub fn execute_cosmos_receive_packet(
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     ensure!(chain.is_ibc(), ContractError::Unauthorized {});
 
-
     let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
         .add_attribute("msg", msg.to_string())
         .add_attribute("chain_uid", chain_uid.to_string())
