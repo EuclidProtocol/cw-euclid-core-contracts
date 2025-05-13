@@ -2,7 +2,7 @@ use std::ops::Add;
 
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo,
-    Response, StdError, SubMsg, WasmMsg,
+    Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{chain::IbcChain, error::ContractError, msgs::factory::ExecuteMsg};
 use euclid_ibc::{
@@ -14,7 +14,8 @@ use crate::{
     ibc::{ack_and_timeout, receive},
     reply::COSMOS_RECEIVE_REPLY_ID,
     state::{
-        COSMOS_PACKET_RELAY_MAP, COSMOS_PACKET_RELAY_SEQUENCE_COUNT, MOCK_RELAYER_ADDRESS, STATE,
+        COSMOS_PACKET_RELAY_MAP, COSMOS_PACKET_RELAY_SEQUENCE_COUNT, MOCK_RELAYER_ADDRESS,
+        PROCESSED_PACKET_SEQUENCE, STATE,
     },
 };
 
@@ -64,6 +65,16 @@ pub fn execute_cosmos_receive_packet(
         info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
         ContractError::Unauthorized {}
     );
+
+    let processed_sequence_key = PROCESSED_PACKET_SEQUENCE.key(sequence);
+    ensure!(
+        !processed_sequence_key.has(deps.storage),
+        ContractError::Generic {
+            err: "Processed sequence already exists".to_string()
+        }
+    );
+    // Save the processed sequence to avoid duplicate events
+    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
 
     let receive_packet_event =
         Event::new("euclid-cosmos-receive-packet").add_attribute("sequence", sequence.to_string());
