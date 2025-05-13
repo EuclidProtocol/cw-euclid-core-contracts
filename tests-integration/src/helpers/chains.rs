@@ -151,6 +151,8 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
 
     let pubkey_binary = Binary::from(pubkey);
 
+    print!("Pubkey {:?}", pubkey_binary);
+
     relayer.upload().unwrap();
 
     relayer.instantiate(
