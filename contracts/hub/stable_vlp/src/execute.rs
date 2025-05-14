@@ -653,6 +653,7 @@ pub fn update_fee(
         .add_attribute("action", "update_fee"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_state(
     deps: DepsMut,
     info: MessageInfo,

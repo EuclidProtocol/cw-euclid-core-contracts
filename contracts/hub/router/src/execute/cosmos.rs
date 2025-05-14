@@ -2,7 +2,7 @@ use std::ops::Add;
 
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo,
-    Response, StdError, SubMsg, WasmMsg,
+    Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, IbcChain},
@@ -19,7 +19,7 @@ use crate::{
     reply::COSMOS_RECEIVE_REPLY_ID,
     state::{
         CHAIN_UID_TO_CHAIN, COSMOS_PACKET_RELAY_MAP, COSMOS_PACKET_RELAY_SEQUENCE_COUNT,
-        MOCK_RELAYER_ADDRESSES,
+        MOCK_RELAYER_ADDRESSES, PROCESSED_PACKET_SEQUENCE,
     },
 };
 
@@ -74,6 +74,20 @@ pub fn execute_cosmos_receive_packet(
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     ensure!(chain.is_ibc(), ContractError::Unauthorized {});
 
+    // Only add event if sequence is present, sequence is not present for native calls
+    let processed_sequence_key = PROCESSED_PACKET_SEQUENCE.key((chain_uid.clone(), sequence));
+    ensure!(
+        !processed_sequence_key.has(deps.storage),
+        ContractError::Generic {
+            err: "Processed sequence already exists".to_string()
+        }
+    );
+    // Save the processed sequence to avoid duplicate events
+    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+    let receive_packet_event = Event::new("euclid-hub-receive-packet")
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("sequence", sequence.to_string());
+
     let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
         .add_attribute("msg", msg.to_string())
         .add_attribute("chain_uid", chain_uid.to_string())
@@ -102,6 +116,7 @@ pub fn execute_cosmos_receive_packet(
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
         .add_event(write_acknowledge_event)
+        .add_event(receive_packet_event)
         .add_submessage(sub_msg))
 }
 
@@ -173,5 +188,13 @@ pub fn execute_cosmos_receive_acknowledgement(
         }
     }
 
-    ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)
+    let response = ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)?;
+
+    let response = response.add_event(
+        Event::new("euclid-hub-receive-acknowledgement")
+            .add_attribute("chain_uid", chain_uid.to_string())
+            .add_attribute("sequence", sequence.to_string()),
+    );
+
+    Ok(response)
 }

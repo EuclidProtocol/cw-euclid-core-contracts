@@ -10,12 +10,14 @@ pub struct State {
 }
 
 #[cw_serde]
+
 pub struct InstantiateMsg {
     pub router: Addr,
     pub admin: Option<Addr>,
 }
 
 #[cw_serde]
+#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     Mint(ExecuteMint),
     Transfer(ExecuteTransfer),
@@ -63,8 +65,7 @@ pub struct ExecuteApprove {
 pub struct MigrateMsg {}
 
 #[cw_serde]
-#[derive(QueryResponses)]
-
+#[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(GetStateResponse)]

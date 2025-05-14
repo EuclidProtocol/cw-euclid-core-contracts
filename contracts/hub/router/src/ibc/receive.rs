@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Event, IbcPacketReceiveMsg,
     IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -38,7 +38,8 @@ use crate::{
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
-        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS, VLPS,
+        PENDING_REMOVE_LIQUIDITY, PROCESSED_PACKET_SEQUENCE, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS,
+        VLPS,
     },
 };
 
@@ -112,7 +113,8 @@ pub fn reusable_internal_call(
         ContractError::DeregisteredChain {}
     );
     let tx_id = msg.get_tx_id();
-    let response = match msg {
+
+    let mut response = match msg {
         ChainIbcExecuteMsg::RequestPoolCreation {
             pair,
             sender,
@@ -225,7 +227,8 @@ pub fn reusable_internal_call(
             ibc_execute_deposit_token(deps.branch(), env, msg)?
         }
     };
-    let response = response.add_attribute("tx_id", tx_id);
+    response = response.add_attribute("tx_id", tx_id);
+
     Ok(response)
 }
 

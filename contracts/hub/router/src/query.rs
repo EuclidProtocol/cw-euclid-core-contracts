@@ -5,16 +5,18 @@ use euclid::{
     error::ContractError,
     msgs::router::{
         AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-        EscrowResponse, QuerySimulateSwap, SimulateEscrowReleaseResponse, SimulateSwapResponse,
-        StateResponse, TokenDenomsResponse, TokenEscrowChainResponse, TokenEscrowsResponse,
-        VlpResponse,
+        EscrowResponse, QuerySimulateSwap, RelayerAddressesResponse, SimulateEscrowReleaseResponse,
+        SimulateSwapResponse, StateResponse, TokenDenomsResponse, TokenEscrowChainResponse,
+        TokenEscrowsResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
     utils::pagination::{Pagination, DEFAULT_PAGINATION_LIMIT, DEFAULT_PAGINATION_SKIP},
 };
 
-use crate::state::{CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, STATE, TOKEN_DENOMS, VLPS};
+use crate::state::{
+    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS, VLPS,
+};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -333,4 +335,11 @@ pub fn verify_cross_chain_addresses(
         );
     }
     Ok(())
+}
+
+pub fn query_relayer_addresses(deps: Deps) -> Result<Binary, ContractError> {
+    let relayer_addresses = MOCK_RELAYER_ADDRESSES.load(deps.storage)?;
+    Ok(to_json_binary(&RelayerAddressesResponse {
+        relayer_addresses,
+    })?)
 }
