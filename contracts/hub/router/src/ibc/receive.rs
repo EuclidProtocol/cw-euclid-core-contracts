@@ -92,7 +92,7 @@ pub fn ibc_receive_internal_call(
         ContractError::Unauthorized {}
     );
     let msg: ChainIbcExecuteMsg = from_json(msg.packet.data)?;
-    reusable_internal_call(deps, env, info, msg, chain_uid, None)
+    reusable_internal_call(deps, env, info, msg, chain_uid)
 }
 
 pub fn reusable_internal_call(
@@ -101,7 +101,6 @@ pub fn reusable_internal_call(
     _info: MessageInfo,
     msg: ChainIbcExecuteMsg,
     chain_uid: ChainUid,
-    sequence: Option<u128>,
 ) -> Result<Response, ContractError> {
     let locked = STATE.load(deps.storage)?.locked;
     ensure!(!locked, ContractError::ContractLocked {});
@@ -114,26 +113,6 @@ pub fn reusable_internal_call(
         ContractError::DeregisteredChain {}
     );
     let tx_id = msg.get_tx_id();
-
-    let mut receive_packet_event = None;
-
-    // Only add event if sequence is present, sequence is not present for native calls
-    if let Some(sequence) = sequence {
-        let processed_sequence_key = PROCESSED_PACKET_SEQUENCE.key((chain_uid.clone(), sequence));
-        ensure!(
-            !processed_sequence_key.has(deps.storage),
-            ContractError::Generic {
-                err: "Processed sequence already exists".to_string()
-            }
-        );
-        // Save the processed sequence to avoid duplicate events
-        processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
-        receive_packet_event = Some(
-            Event::new("euclid-hub-receive-packet")
-                .add_attribute("chain_uid", chain_uid.to_string())
-                .add_attribute("sequence", sequence.to_string()),
-        );
-    }
 
     let mut response = match msg {
         ChainIbcExecuteMsg::RequestPoolCreation {
@@ -249,10 +228,7 @@ pub fn reusable_internal_call(
         }
     };
     response = response.add_attribute("tx_id", tx_id);
-    // Add receive packet event if it exists
-    if let Some(event) = receive_packet_event {
-        response = response.add_event(event);
-    }
+
     Ok(response)
 }
 

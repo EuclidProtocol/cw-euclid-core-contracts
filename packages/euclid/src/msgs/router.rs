@@ -89,7 +89,6 @@ pub enum ExecuteMsg {
     EvmReceivePacketInternalCallback {
         msg: Binary,
         chain_uid: ChainUid,
-        sequence: u128,
     },
 
     EvmReceiveAck {
@@ -119,7 +118,6 @@ pub enum ExecuteMsg {
     SolanaReceivePacketInternalCallback {
         msg: Binary,
         chain_uid: ChainUid,
-        sequence: u128,
     },
 
     SolanaReceiveAck {
@@ -150,7 +148,6 @@ pub enum ExecuteMsg {
     CosmosReceivePacketInternalCallback {
         msg: Binary,
         chain_uid: ChainUid,
-        sequence: u128,
     },
 
     CosmosReceiveAck {

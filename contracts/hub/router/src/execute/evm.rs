@@ -2,7 +2,7 @@ use std::ops::Add;
 
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo,
-    Response, StdError, SubMsg, WasmMsg,
+    Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, EvmChain},
@@ -19,7 +19,7 @@ use crate::{
     reply::EVM_RECEIVE_REPLY_ID,
     state::{
         CHAIN_UID_TO_CHAIN, EVM_PACKET_RELAY_MAP, EVM_PACKET_RELAY_SEQUENCE_COUNT,
-        MOCK_RELAYER_ADDRESSES,
+        MOCK_RELAYER_ADDRESSES, PROCESSED_PACKET_SEQUENCE,
     },
 };
 
@@ -74,6 +74,18 @@ pub fn execute_evm_receive_packet(
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     ensure!(chain.is_evm(), ContractError::Unauthorized {});
 
+    let processed_sequence_key = PROCESSED_PACKET_SEQUENCE.key((chain_uid.clone(), sequence));
+    ensure!(
+        !processed_sequence_key.has(deps.storage),
+        ContractError::Generic {
+            err: "Processed sequence already exists".to_string()
+        }
+    );
+    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+    let receive_packet_event = Event::new("euclid-hub-receive-packet")
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("sequence", sequence.to_string());
+
     let write_acknowledge_event = Event::new("euclid-evm-write-acknowledgement")
         .add_attribute("msg", msg.to_string())
         .add_attribute("chain_uid", chain_uid.to_string())
@@ -83,7 +95,6 @@ pub fn execute_evm_receive_packet(
     let internal_msg = ExecuteMsg::EvmReceivePacketInternalCallback {
         msg: msg.clone(),
         chain_uid: chain_uid.clone(),
-        sequence,
     };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
@@ -103,6 +114,7 @@ pub fn execute_evm_receive_packet(
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
         .add_event(write_acknowledge_event)
+        .add_event(receive_packet_event)
         .add_submessage(sub_msg))
 }
 
@@ -112,14 +124,13 @@ pub fn execute_evm_receive_packet_internal_callback(
     info: MessageInfo,
     msg: Binary,
     chain_uid: ChainUid,
-    sequence: u128,
 ) -> Result<Response, ContractError> {
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
     );
     let msg: ChainIbcExecuteMsg = from_json(msg)?;
-    receive::reusable_internal_call(deps, env, info, msg, chain_uid, Some(sequence))
+    receive::reusable_internal_call(deps, env, info, msg, chain_uid)
 }
 
 #[allow(clippy::too_many_arguments)]
