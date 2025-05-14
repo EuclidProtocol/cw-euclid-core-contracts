@@ -29,8 +29,11 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct State {
+    // Public key of the off chain relayer wallet used to sign meta transactions
     pub relayer_pubkey: Binary,
+    // Address of the on chain relayer wallet used to sign authorized transactions
     pub relayer_address: String,
+
     pub admin: Addr,
 }
 
