@@ -27,26 +27,22 @@ pub fn register_token(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     token: TokenWithDenom,
-) {
+) -> Result<(), CwOrchError> {
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    let tx_response = factory.request_register_denom(token.clone(), None).unwrap();
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid);
+    let tx_response = factory.request_register_denom(token.clone(), None)?;
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 
-    // let _ = interchain
-    //     .await_packets(factory.environment().chain_id().as_str(), tx_response)
-    //     .unwrap();
-
-    let escrow_response = factory.get_escrow(token.token.to_string());
-    assert!(escrow_response.is_ok(), "Escrow not registered");
+    let escrow_response = factory.get_escrow(token.token.to_string())?;
 
     assert!(
         escrow_response
-            .unwrap()
             .denoms
             .iter()
             .any(|d| d == &token.token_type),
         "Escrow found but denom not registered"
     );
+
+    Ok(())
 }
 
 pub fn faucet(
@@ -81,7 +77,7 @@ pub fn create_pool(
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
     pool_config: PoolConfig,
-) {
+) -> Result<(), CwOrchError> {
     let chain = interchain
         .get_chain(factory.environment().chain_id().as_str())
         .unwrap();
@@ -95,30 +91,25 @@ pub fn create_pool(
             &mut funds,
         );
     }
-    let tx_response = factory
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
-                pair: pair_with_denom.clone(),
-                slippage_tolerance_bps,
-                timeout: None,
-                lp_token_name: "LPNAME".to_string(),
-                lp_token_symbol: "LPSYMBOL".to_string(),
-                lp_token_decimal: 6,
-                lp_token_marketing: None,
-                pool_config,
-            },
-            Some(&funds),
-        )
-        .unwrap();
+    let tx_response = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
+            pair: pair_with_denom.clone(),
+            slippage_tolerance_bps,
+            timeout: None,
+            lp_token_name: "LPNAME".to_string(),
+            lp_token_symbol: "LPSYMBOL".to_string(),
+            lp_token_decimal: 6,
+            lp_token_marketing: None,
+            pool_config,
+        },
+        Some(&funds),
+    )?;
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid);
-
-    // let _ = interchain
-    //     .await_packets(factory.environment().chain_id().as_str(), tx_response)
-    //     .unwrap();
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 
     let registered_pool = factory.get_vlp(pair_with_denom.get_pair().unwrap());
     assert!(registered_pool.is_ok(), "Pool not registered");
+    Ok(())
 }
 
 pub fn add_liquidity(
@@ -129,24 +120,20 @@ pub fn add_liquidity(
     slippage_tolerance_bps: u64,
     timeout: Option<u64>,
     funds: Vec<Coin>,
-) {
-    let tx_response = factory
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
-                pair_info: pair_with_denom.clone(),
-                slippage_tolerance_bps,
-                timeout,
-            },
-            Some(&funds),
-        )
-        .unwrap();
+) -> Result<(), CwOrchError> {
+    let tx_response = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
+            pair_info: pair_with_denom.clone(),
+            slippage_tolerance_bps,
+            timeout,
+        },
+        Some(&funds),
+    )?;
 
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid);
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 
-    // let _ = interchain
-    //     .await_packets(factory.environment().chain_id().as_str(), tx_response)
-    //     .unwrap();
+    Ok(())
 }
 
 pub fn swap_request(
@@ -164,29 +151,25 @@ pub fn swap_request(
     partner_fee: Option<PartnerFee>,
     funds: Vec<Coin>,
     meta: Option<String>,
-) {
-    let tx_response = factory
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
-                sender,
-                asset_in,
-                amount_in,
-                asset_out,
-                min_amount_out,
-                timeout,
-                swaps,
-                cross_chain_addresses,
-                partner_fee,
-                meta,
-            }),
-            Some(&funds),
-        )
-        .unwrap();
+) -> Result<(), CwOrchError> {
+    let tx_response = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            sender,
+            asset_in,
+            amount_in,
+            asset_out,
+            min_amount_out,
+            timeout,
+            swaps,
+            cross_chain_addresses,
+            partner_fee,
+            meta,
+        }),
+        Some(&funds),
+    )?;
 
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid);
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 
-    // let _ = interchain
-    //     .await_packets(factory.environment().chain_id().as_str(), tx_response)
-    //     .unwrap();
+    Ok(())
 }

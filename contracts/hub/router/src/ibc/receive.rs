@@ -112,7 +112,8 @@ pub fn reusable_internal_call(
         ContractError::DeregisteredChain {}
     );
     let tx_id = msg.get_tx_id();
-    let response = match msg {
+
+    let mut response = match msg {
         ChainIbcExecuteMsg::RequestPoolCreation {
             pair,
             sender,
@@ -225,7 +226,8 @@ pub fn reusable_internal_call(
             ibc_execute_deposit_token(deps.branch(), env, msg)?
         }
     };
-    let response = response.add_attribute("tx_id", tx_id);
+    response = response.add_attribute("tx_id", tx_id);
+
     Ok(response)
 }
 

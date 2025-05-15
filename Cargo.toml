@@ -27,6 +27,7 @@ euclid = { path = "./packages/euclid" }
 euclid-ibc = { path = "./packages/euclid_ibc" }
 euclid-utils = { path = "./packages/euclid_utils" }
 forwarding = { path = "./packages/forwarding" }
+relayer = { path = "./packages/relayer" }
 
 cosmwasm-std = "1.5.3"
 cosmwasm-schema = "1.5.0"

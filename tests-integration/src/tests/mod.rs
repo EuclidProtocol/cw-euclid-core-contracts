@@ -2,6 +2,5 @@
 
 mod escrow;
 mod factory;
-mod router;
 mod virtual_balance;
 mod vlp;

@@ -16,11 +16,12 @@ stable_vlp = { path = "../contracts/hub/stable_vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }
 cw20 = { path = "../contracts/liquidity/cw20" }
-
+euclid-relayer = { path = "../contracts/common/euclid-relayer" }
 
 #Other Crates
 euclid = { path = "../packages/euclid" }
 euclid-ibc = { path = "../packages/euclid_ibc" }
+relayer = { path = "../packages/relayer" }
 
 
 #Cosmwasm Crates
@@ -39,6 +40,8 @@ anyhow = "1.0.79"
 # cw-pause-once = { git = "https://github.com/public-awesome/ics721.git" }
 # cw721-rate-limited-proxy = { git = "https://github.com/0xekez/cw721-proxy.git" }
 
+sha2 = "0.10.8"
+k256 = "0.13.4"
 
 # [[test]]
 # name = "cw721"
