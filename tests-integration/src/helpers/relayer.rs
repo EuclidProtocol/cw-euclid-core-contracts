@@ -338,10 +338,19 @@ pub fn relay_router_factory_router(
     Ok(())
 }
 
-pub fn get_signer_key() -> SigningKey {
+pub fn get_signer_key() -> (SigningKey, Binary) {
     let pk = "2268A9118C1681EC6A649F01886995DE55E90C7E71B0BC5E409C551B92FF7369";
     let scalar = NonZeroScalar::from_str(pk).unwrap();
-    SigningKey::from(scalar)
+
+    let signer_key = SigningKey::from(scalar);
+    let pubkey = signer_key
+        .verifying_key()
+        .to_encoded_point(false)
+        .as_bytes()
+        .to_vec();
+
+    let pubkey_binary = Binary::from(pubkey);
+    (signer_key, pubkey_binary)
 }
 
 pub fn sign_relay_messsage(
@@ -365,7 +374,7 @@ pub fn sign_relay_messsage(
     let msg = to_json_string(&msg).unwrap();
     let message_digest = Sha256::new().chain(msg.as_bytes());
 
-    let secret_key = get_signer_key();
+    let (secret_key, _) = get_signer_key();
     let signature = secret_key
         .sign_digest_recoverable(message_digest)
         .unwrap()

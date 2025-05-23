@@ -2,5 +2,6 @@
 
 mod escrow;
 mod factory;
+mod claimer;
 mod virtual_balance;
 mod vlp;

@@ -355,6 +355,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "claimer"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-orch",
+ "cw-storage-plus 1.2.0",
+ "cw-utils 1.0.3",
+ "cw2 1.1.2",
+ "euclid",
+ "mock",
+ "relayer",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2963,6 +2982,7 @@ name = "tests-integration"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "claimer",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-multi-test",

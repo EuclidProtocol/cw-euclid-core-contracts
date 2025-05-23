@@ -13,15 +13,20 @@ use euclid::{
             ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest,
             QueryMsgFns as FactoryQueryMsgFns,
         },
+        router::QueryMsgFns,
+        virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns,
     },
     pool::PoolConfig,
     swap::NextSwapPair,
     token::{PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    virtual_balance::BalanceKey,
 };
 use factory::FactoryContract;
 use router::RouterContract;
 
 use crate::helpers::relayer::relay_factory_router_factory;
+
+use super::chains::get_virtual_balance;
 
 pub fn register_token(
     factory: &FactoryContract<MockBase>,
@@ -42,6 +47,58 @@ pub fn register_token(
         "Escrow found but denom not registered"
     );
 
+    Ok(())
+}
+
+pub fn deposit_token(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    token: TokenWithDenom,
+    amount: Uint128,
+    recipient: Option<CrossChainUser>,
+) -> Result<(), CwOrchError> {
+    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address.unwrap();
+    let virtual_balance_contract =
+        get_virtual_balance(router.environment(), &virtual_balance_address);
+
+    let actual_recipient = recipient.clone().unwrap_or(CrossChainUser::new(
+        factory.get_state().unwrap().chain_uid,
+        factory.environment().sender.to_string(),
+    ));
+
+    let old_balance = virtual_balance_contract.get_balance(BalanceKey {
+        cross_chain_user: actual_recipient.clone(),
+        token_id: token.token.to_string(),
+    })?;
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    let mut funds = vec![];
+    faucet(
+        factory.environment(),
+        factory.environment().sender.as_str(),
+        amount.u128(),
+        token.token_type.clone(),
+        &mut funds,
+    );
+    let tx_response = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::DepositToken {
+            asset_in: token.clone(),
+            amount_in: amount,
+            timeout: None,
+            recipient,
+        },
+        Some(&funds),
+    )?;
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+
+    let new_balance = virtual_balance_contract.get_balance(BalanceKey {
+        cross_chain_user: actual_recipient,
+        token_id: token.token.to_string(),
+    })?;
+
+    assert!(
+        new_balance.amount.u128() == old_balance.amount.u128() + amount.u128(),
+        "Virtual balance not deposited"
+    );
     Ok(())
 }
 
