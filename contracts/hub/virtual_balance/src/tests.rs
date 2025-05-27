@@ -58,6 +58,7 @@ mod tests {
         let msg = ExecuteMsg::Mint(ExecuteMint {
             amount: Uint128::new(10_u128),
             balance_key: balance_key.clone(),
+            forward_msg: None,
         });
 
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
@@ -78,6 +79,7 @@ mod tests {
         let msg = ExecuteMsg::Mint(ExecuteMint {
             amount: Uint128::zero(),
             balance_key: balance_key.clone(),
+            forward_msg: None,
         });
 
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
@@ -129,8 +131,10 @@ mod tests {
         let msg = ExecuteMsg::Transfer(ExecuteTransfer {
             amount: Uint128::new(2_u128),
             token_id: "token1".to_string(),
-            from: cross_chain_user,
+            sender: Some(cross_chain_user),
             to: cross_chain_user_2,
+            from: None,
+            msg: None,
         });
 
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
@@ -178,6 +182,7 @@ mod tests {
         let mint_msg = ExecuteMsg::Mint(ExecuteMint {
             amount: Uint128::new(20),
             balance_key: balance_key.clone(),
+            forward_msg: None,
         });
         let info = MessageInfo {
             sender: router.clone(),
@@ -212,14 +217,33 @@ mod tests {
         let transfer_msg = ExecuteMsg::Transfer(ExecuteTransfer {
             amount: Uint128::new(5),
             token_id: "eucl".to_string(),
-            from: owner.clone(),
+            from: Some(owner.clone()),
             to: recipient.clone(),
+            sender: None,
+            msg: None,
         });
         let info = MessageInfo {
             sender: Addr::unchecked(spender.address.clone()),
             funds: vec![],
         };
         execute(deps.as_mut(), env.clone(), info, transfer_msg).unwrap();
+
+        // Spender transfers tokens to recipient
+        let transfer_msg = ExecuteMsg::Transfer(ExecuteTransfer {
+            amount: Uint128::new(5),
+            token_id: "eucl".to_string(),
+            from: Some(owner.clone()),
+            to: recipient.clone(),
+            sender: Some(spender.clone()),
+            msg: None,
+        });
+        let info = MessageInfo {
+            sender: Addr::unchecked(spender.address.clone()),
+            funds: vec![],
+        };
+        // Unauthorized error as only router can set pseudo sender
+        let err = execute(deps.as_mut(), env.clone(), info, transfer_msg).unwrap_err();
+        assert_eq!(ContractError::Unauthorized {}, err);
 
         // Verify balances after transfer
         let owner_balance = BALANCES

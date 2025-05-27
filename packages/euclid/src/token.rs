@@ -10,6 +10,7 @@ use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::chain::CrossChainUser;
 use crate::error::ContractError;
+use crate::msgs::hook::VirtualBalanceReceive;
 use crate::msgs::virtual_balance::ExecuteTransfer;
 
 // Token asset that represents an identifier for a token
@@ -57,14 +58,21 @@ impl Token {
         &self,
         virtual_balance_address: String,
         amount: Uint128,
-        from: CrossChainUser,
+        // Only router should be able to set the sender
+        sender: Option<CrossChainUser>,
         to: CrossChainUser,
+        // From will trigger allowance
+        from: Option<CrossChainUser>,
+        // Msg will trigger send variant of transfer
+        msg: Option<Binary>,
     ) -> Result<WasmMsg, ContractError> {
         let transfer_msg = crate::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount,
+            sender,
             token_id: self.0.clone(),
-            from,
             to,
+            from,
+            msg,
         });
 
         let transfer_msg = WasmMsg::Execute {

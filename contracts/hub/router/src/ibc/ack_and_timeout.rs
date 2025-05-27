@@ -316,6 +316,7 @@ pub fn ibc_ack_release_escrow(
             let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
                 amount,
                 balance_key: balance_key.clone(),
+                forward_msg: None,
             });
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: virtual_balance_address.into_string(),

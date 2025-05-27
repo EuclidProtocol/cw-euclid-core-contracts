@@ -39,19 +39,19 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    mut deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Mint(msg) => execute_mint(deps, info, msg),
-        ExecuteMsg::Burn(msg) => execute_burn(deps, info, msg),
-        ExecuteMsg::Transfer(msg) => execute_transfer(deps, info, msg),
+        ExecuteMsg::Mint(msg) => execute_mint(deps.branch(), info, msg),
+        ExecuteMsg::Burn(msg) => execute_burn(deps.branch(), info, msg),
+        ExecuteMsg::Transfer(msg) => execute_transfer(&mut deps, info, msg),
         ExecuteMsg::UpdateState { router, admin } => {
-            execute_update_state(deps, info, router, admin)
+            execute_update_state(deps.branch(), info, router, admin)
         }
-        ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
+        ExecuteMsg::Approve(msg) => execute_approve(deps.branch(), info, msg),
     }
 }
 

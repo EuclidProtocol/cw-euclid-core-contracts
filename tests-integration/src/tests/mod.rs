@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+mod claimer;
 mod escrow;
 mod factory;
-mod claimer;
 mod virtual_balance;
 mod vlp;

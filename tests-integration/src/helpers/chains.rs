@@ -163,6 +163,7 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
 
 pub fn setup_claimer(
     factory: &FactoryContract<MockBase>,
+    vcoin_address: &VirtualBalanceContract<MockBase>,
 ) -> Result<ClaimerContract<MockBase>, CwOrchError> {
     let chain = factory.environment().clone();
     let claimer = ClaimerContract::new(chain.clone());
@@ -170,6 +171,7 @@ pub fn setup_claimer(
     claimer.instantiate(
         &euclid::msgs::claimer::InstantiateMsg {
             factory_address: factory.address().unwrap(),
+            vcoin_address: vcoin_address.address().unwrap(),
         },
         None,
         None,

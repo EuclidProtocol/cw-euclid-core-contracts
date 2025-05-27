@@ -7,7 +7,7 @@ use euclid::error::ContractError;
 use euclid::msgs::claimer::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 use euclid::msgs::factory;
 
-use crate::execute::{execute_claim_voucher, execute_create_voucher_claim};
+use crate::execute::{execute_claim_voucher, execute_virtual_balance_receive};
 use crate::query::{get_claim, get_sender_claims, get_user_claims};
 use crate::{execute::execute_update_admin, query::get_state, state::STATE};
 
@@ -37,6 +37,7 @@ pub fn instantiate(
     );
     let state = State {
         factory_address: msg.factory_address.clone(),
+        vcoin_address: msg.vcoin_address.clone(),
         chain_uid: factory_state.chain_uid,
         admin: info.sender,
     };
@@ -44,6 +45,7 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("chain_uid", state.chain_uid.to_string())
+        .add_attribute("vcoin_address", msg.vcoin_address.to_string())
         .add_attribute("factory_address", msg.factory_address.to_string()))
 }
 
@@ -56,8 +58,8 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::ClaimVoucher(msg) => execute_claim_voucher(&mut deps, &info, msg),
-        ExecuteMsg::CreateVoucherClaim(msg) => {
-            execute_create_voucher_claim(&mut deps, &env, &info, msg)
+        ExecuteMsg::VirtualBalanceReceive(msg) => {
+            execute_virtual_balance_receive(&mut deps, &env, &info, msg)
         }
         ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
     }

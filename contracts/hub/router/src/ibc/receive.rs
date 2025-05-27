@@ -524,6 +524,7 @@ pub fn ibc_execute_add_liquidity(
                         cross_chain_user: sender.clone(),
                         token_id: token.token.to_string(),
                     },
+                    forward_msg: None,
                 });
 
             let mint_virtual_balance_msg = WasmMsg::Execute {
@@ -696,6 +697,7 @@ fn ibc_execute_swap(
                     cross_chain_user: sender.clone(),
                     token_id: msg.asset_in.token.to_string(),
                 },
+                forward_msg: None,
             });
 
         let mint_virtual_balance_msg = WasmMsg::Execute {
@@ -732,8 +734,10 @@ fn ibc_execute_swap(
             euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: msg.partner_fee_amount,
                 token_id: msg.asset_in.token.to_string(),
-                from: sender.clone(),
+                sender: Some(sender.clone()),
                 to: msg.partner_fee_recipient.clone(),
+                from: None,
+                msg: None,
             });
 
         let transfer_voucher_msg = WasmMsg::Execute {
@@ -824,6 +828,7 @@ fn ibc_execute_deposit_token(
                 cross_chain_user: msg.recipient,
                 token_id: msg.asset_in.token.to_string(),
             },
+            forward_msg: msg.msg,
         }))?,
         funds: vec![],
     });
@@ -878,8 +883,10 @@ fn ibc_execute_transfer_virtual_balance(
         euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount: msg.amount,
             token_id: msg.token.to_string(),
-            from: msg.clone().sender,
+            sender: Some(msg.clone().sender),
             to: msg.recipient_address,
+            from: msg.from,
+            msg: msg.msg,
         });
 
     let transfer_voucher_msg = WasmMsg::Execute {

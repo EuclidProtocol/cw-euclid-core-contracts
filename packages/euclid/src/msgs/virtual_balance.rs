@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{chain::CrossChainUser, virtual_balance::BalanceKey};
 
@@ -33,6 +33,7 @@ pub enum ExecuteMsg {
 pub struct ExecuteMint {
     pub amount: Uint128,
     pub balance_key: BalanceKey,
+    pub forward_msg: Option<Binary>,
 }
 
 #[cw_serde]
@@ -40,11 +41,13 @@ pub struct ExecuteTransfer {
     pub amount: Uint128,
     pub token_id: String,
 
-    // Source Address
-    pub from: CrossChainUser,
+    // Only router can set sender
+    pub sender: Option<CrossChainUser>,
 
     // Destination Address
     pub to: CrossChainUser,
+    pub from: Option<CrossChainUser>,
+    pub msg: Option<Binary>,
 }
 
 #[cw_serde]

@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{coin, Uint128};
+use cosmwasm_std::{coin, Binary, Uint128};
 use cw20::Cw20Contract;
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::{IbcQueryHandler, InterchainEnv, MockInterchainEnv};
@@ -56,6 +56,7 @@ pub fn deposit_token(
     token: TokenWithDenom,
     amount: Uint128,
     recipient: Option<CrossChainUser>,
+    msg: Option<Binary>,
 ) -> Result<(), CwOrchError> {
     let virtual_balance_address = router.get_state().unwrap().virtual_balance_address.unwrap();
     let virtual_balance_contract =
@@ -85,6 +86,7 @@ pub fn deposit_token(
             amount_in: amount,
             timeout: None,
             recipient,
+            msg,
         },
         Some(&funds),
     )?;
@@ -97,7 +99,10 @@ pub fn deposit_token(
 
     assert!(
         new_balance.amount.u128() == old_balance.amount.u128() + amount.u128(),
-        "Virtual balance not deposited"
+        "Virtual balance not deposited properly, old balance: {}, new balance: {}, amount: {}",
+        old_balance.amount.u128(),
+        new_balance.amount.u128(),
+        amount.u128()
     );
     Ok(())
 }

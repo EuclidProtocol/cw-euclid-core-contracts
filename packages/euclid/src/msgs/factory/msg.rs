@@ -2,7 +2,7 @@ use crate::{
     chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    msgs::hook::EuclidReceive,
+    msgs::hook::{EuclidReceive, VirtualBalanceReceive},
     pool::PoolConfig,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
@@ -63,6 +63,10 @@ pub enum ExecuteMsg {
         token: Token,
         amount: Uint128,
         recipient_address: CrossChainUser,
+        // In user has approval for a transfer, behaves like cw20 allowance
+        from: Option<CrossChainUser>,
+        // Msg that we want to trigger with transfer, behaves like cw20 send
+        msg: Option<Binary>,
         timeout: Option<u64>,
     },
     DepositToken {
@@ -70,6 +74,7 @@ pub enum ExecuteMsg {
         amount_in: Uint128,
         timeout: Option<u64>,
         recipient: Option<CrossChainUser>,
+        msg: Option<Binary>,
     },
     UpdateFactoryState {
         // The Router Contract Address on the Virtual Settlement Layer

@@ -16,7 +16,7 @@ use euclid::{
             cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook, ExecuteMsg,
             ExecuteSwapRequest,
         },
-        hook::EuclidReceive,
+        hook::{EuclidReceive, VirtualBalanceReceive},
     },
     pool::{DenomRegisterDeregisterRequest, PoolConfig, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
@@ -629,6 +629,7 @@ pub fn execute_deposit_token(
     amount_in: Uint128,
     timeout: Option<u64>,
     recipient: Option<CrossChainUser>,
+    msg: Option<Binary>,
 ) -> Result<Response, ContractError> {
     ensure!(
         !asset_in.token_type.is_voucher(),
@@ -709,6 +710,7 @@ pub fn execute_deposit_token(
             amount_in,
             tx_id: tx_id.clone(),
             recipient,
+            msg,
         })
         .to_msg(
             deps,
@@ -802,6 +804,7 @@ pub fn receive_cw20(
             token,
             recipient,
             timeout,
+            msg,
         } => {
             let contract_adr = info.sender.clone();
 
@@ -812,7 +815,7 @@ pub fn receive_cw20(
 
             // ensure that the contract address is the same as the asset contract address
             execute_deposit_token(
-                &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
+                &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient, msg,
             )
         }
         FactoryCw20HookMsg::EuclidReceive(euclid_receive) => {
@@ -1123,6 +1126,8 @@ pub fn execute_transfer_virtual_balance(
     token: Token,
     amount: Uint128,
     recipient_address: CrossChainUser,
+    from: Option<CrossChainUser>,
+    msg: Option<Binary>,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     // The transfer amount should be greater than zero
@@ -1143,6 +1148,8 @@ pub fn execute_transfer_virtual_balance(
         token,
         amount,
         recipient_address,
+        from,
+        msg,
         tx_id: tx_id.clone(),
         timeout: Some(timeout),
     })

@@ -1,12 +1,17 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, WasmMsg,
+    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint128, WasmMsg,
 };
 use euclid::{
     chain::CrossChainUser,
     error::ContractError,
-    msgs::claimer::{
-        Claim, ClaimVoucherData, CreateVoucherClaim, SignedTransaction, UpdateAdminMsg,
+    msgs::{
+        claimer::{
+            Claim, ClaimVoucherData, CreateVoucherClaim, SignedTransaction, UpdateAdminMsg,
+            VirtualBalanceReceiveHookMsg,
+        },
+        hook::VirtualBalanceReceive,
     },
+    token::Token,
 };
 use relayer::verify::{verify_signature, MsgSignData};
 
@@ -30,31 +35,36 @@ pub fn execute_update_admin(
         .add_attribute("new_admin", msg.new_admin.to_string()))
 }
 
-pub fn execute_create_voucher_claim(
+pub fn execute_virtual_balance_receive(
     deps: &mut DepsMut,
-    env: &Env,
+    _env: &Env,
     info: &MessageInfo,
-    msg: CreateVoucherClaim,
+    transfer_msg: VirtualBalanceReceive,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender == state.vcoin_address,
+        ContractError::new("Invalid vcoin address")
+    );
 
-    // Transfer tokens to contract to verify user has enough funds
-    let transfer_vcoin_msg = euclid::msgs::factory::ExecuteMsg::TransferVirtualBalance {
-        token: msg.token.clone(),
-        amount: msg.amount,
-        recipient_address: CrossChainUser::new(state.chain_uid, env.contract.address.to_string()),
-        timeout: None,
-    };
-
-    let transfer_vcoin_msg = WasmMsg::Execute {
-        contract_addr: state.factory_address.to_string(),
-        msg: to_json_binary(&transfer_vcoin_msg)?,
-        funds: vec![],
-    };
-
-    let mut response = Response::new();
-    response = response.add_message(transfer_vcoin_msg);
-
+    let claim_msg: VirtualBalanceReceiveHookMsg = from_json(transfer_msg.msg.clone())?;
+    match claim_msg {
+        VirtualBalanceReceiveHookMsg::CreateVoucherClaim(msg) => execute_create_voucher_claim(
+            deps,
+            &transfer_msg.sender,
+            Token::create(transfer_msg.token_id)?,
+            transfer_msg.amount,
+            msg,
+        ),
+    }
+}
+pub fn execute_create_voucher_claim(
+    deps: &mut DepsMut,
+    sender: &CrossChainUser,
+    token: Token,
+    amount: Uint128,
+    msg: CreateVoucherClaim,
+) -> Result<Response, ContractError> {
     // Lets create a claim
     let claim_id = CLAIM_ID.load(deps.storage).unwrap_or(0u128); // Get latest claim id
     CLAIM_ID.save(
@@ -66,20 +76,20 @@ pub fn execute_create_voucher_claim(
 
     // Save claim
     let claim = Claim {
-        token: msg.token.clone(),
-        amount: msg.amount,
+        token: token.clone(),
+        amount,
         claimer_pubkey: msg.claimer_pubkey.clone(),
-        sender: info.sender.to_string(),
+        sender: sender.clone(),
     };
     CLAIMS.save(deps.storage, claim_id, &claim)?;
 
     // Save sender claims
     let mut sender_claims = SENDER_CLAIMS
-        .load(deps.storage, info.sender.to_string())
+        .load(deps.storage, sender.to_sender_string())
         .unwrap_or_default();
 
     sender_claims.push(claim_id);
-    SENDER_CLAIMS.save(deps.storage, info.sender.to_string(), &sender_claims)?;
+    SENDER_CLAIMS.save(deps.storage, sender.to_sender_string(), &sender_claims)?;
 
     // Save user claims
     let mut user_claims = USER_CLAIMS
@@ -89,7 +99,12 @@ pub fn execute_create_voucher_claim(
     user_claims.push(claim_id);
     USER_CLAIMS.save(deps.storage, msg.claimer_pubkey.to_string(), &user_claims)?;
 
-    Ok(response)
+    Ok(Response::new()
+        .add_attribute("create_claim", claim_id.to_string())
+        .add_attribute("sender", sender.to_sender_string())
+        .add_attribute("token", token.to_string())
+        .add_attribute("claimer_pubkey", msg.claimer_pubkey.to_string())
+        .add_attribute("amount", amount.to_string()))
 }
 
 pub fn execute_claim_voucher(
@@ -129,6 +144,8 @@ pub fn execute_claim_voucher(
         amount: claim.amount,
         recipient_address: claim_msg.recipient.clone(),
         timeout: None,
+        from: None,
+        msg: None,
     };
 
     let transfer_vcoin_msg = WasmMsg::Execute {
@@ -143,9 +160,13 @@ pub fn execute_claim_voucher(
     // Not sure about these blocks as it will increase gas fee for user who is claiming if sender has too many claim messages
 
     // Remove claim from sender claims
-    let mut sender_claims = SENDER_CLAIMS.load(deps.storage, claim.sender.clone())?;
+    let mut sender_claims = SENDER_CLAIMS.load(deps.storage, claim.sender.to_sender_string())?;
     sender_claims.retain(|id| *id != claim_msg.claim_id);
-    SENDER_CLAIMS.save(deps.storage, claim.sender.clone(), &sender_claims)?;
+    SENDER_CLAIMS.save(
+        deps.storage,
+        claim.sender.to_sender_string(),
+        &sender_claims,
+    )?;
 
     // Remove claim from user claims
     let mut user_claims = USER_CLAIMS.load(deps.storage, claim.claimer_pubkey.to_string())?;
@@ -154,11 +175,7 @@ pub fn execute_claim_voucher(
 
     Ok(Response::new()
         .add_message(transfer_vcoin_msg)
-        .add_attribute("claim_id", claim_msg.claim_id.to_string())
-        .add_attribute("sender", claim.sender)
+        .add_attribute("execute_claim", claim_msg.claim_id.to_string())
         .add_attribute("recipient", claim_msg.recipient.to_sender_string())
-        .add_attribute("token", claim.token.to_string())
-        .add_attribute("claimer_pubkey", claim.claimer_pubkey.to_string())
-        .add_attribute("claim_msg_sender", info.sender.to_string())
-        .add_attribute("amount", claim.amount.to_string()))
+        .add_attribute("claim_msg_sender", info.sender.to_string()))
 }
