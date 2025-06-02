@@ -41,6 +41,7 @@ fn test_proper_instantiation() {
         mock_router.addr().clone(),
         mock_router.addr().clone(),
         None,
+        None,
     );
 
     let token_id_response =
@@ -49,6 +50,7 @@ fn test_proper_instantiation() {
         state: State {
             router: mock_router.addr().clone().into_string(),
             admin: mock_router.addr().to_owned(),
+            migration_contract: String::default(),
         },
     };
     assert_eq!(token_id_response, expected_token_id);

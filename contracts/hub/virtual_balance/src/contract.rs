@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
 use crate::execute::{
@@ -31,6 +31,7 @@ pub fn instantiate(
     let state = State {
         router: info.sender.to_string(),
         admin: msg.admin.unwrap_or(info.sender),
+        migration_contract: msg.migration_contract,
     };
 
     STATE.save(deps.storage, &state)?;
@@ -52,9 +53,11 @@ pub fn execute(
         ExecuteMsg::Mint(msg) => execute_mint(deps, info, msg),
         ExecuteMsg::Burn(msg) => execute_burn(deps, info, msg),
         ExecuteMsg::Transfer(msg) => execute_transfer(deps, info, msg),
-        ExecuteMsg::UpdateState { router, admin } => {
-            execute_update_state(deps, info, router, admin)
-        }
+        ExecuteMsg::UpdateState {
+            router,
+            admin,
+            migration_contract,
+        } => execute_update_state(deps, info, router, admin, migration_contract),
         ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
         ExecuteMsg::MigrateVBalance(msg) => execute_migrate_vbalance(deps, info, msg),
     }
@@ -63,13 +66,17 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::GetState {} => query_state(deps),
+        QueryMsg::GetState {} => to_json_binary(&query_state(deps)?).map_err(ContractError::from),
         QueryMsg::GetBalance { balance_key } => query_balance(deps, balance_key),
         QueryMsg::GetUserBalances { user } => {
             query_user_balances(deps, user.chain_uid, user.address)
         }
-        QueryMsg::GetAllBalances {} => query_balances(deps),
-        QueryMsg::GetAllAllowances {} => query_allowances(deps),
+        QueryMsg::GetAllBalances {} => {
+            to_json_binary(&query_balances(deps)?).map_err(ContractError::from)
+        }
+        QueryMsg::GetAllAllowances {} => {
+            to_json_binary(&query_allowances(deps)?).map_err(ContractError::from)
+        }
         QueryMsg::GetMigrateData {} => query_migrate_data(deps),
     }
 }

@@ -19,6 +19,7 @@ mod tests {
         let msg = InstantiateMsg {
             router: Addr::unchecked("router"),
             admin: None,
+            migration_contract: String::default(),
         };
         let info = mock_info("router", &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -33,6 +34,7 @@ mod tests {
         let expected_state = State {
             router: "router".to_string(),
             admin: Addr::unchecked("router"),
+            migration_contract: String::default(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -158,6 +160,7 @@ mod tests {
         let state = State {
             router: router.to_string(),
             admin: admin.clone(),
+            migration_contract: String::default(),
         };
         STATE.save(&mut deps.storage, &state).unwrap();
 

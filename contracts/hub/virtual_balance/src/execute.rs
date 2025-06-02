@@ -182,6 +182,7 @@ pub fn execute_update_state(
     info: MessageInfo,
     router: Option<String>,
     admin: Option<Addr>,
+    migration_contract: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
@@ -200,9 +201,17 @@ pub fn execute_update_state(
         state.admin
     };
 
+    let verified_migration_contract = if let Some(ref migration_contract) = migration_contract {
+        deps.api.addr_validate(migration_contract.as_str())?;
+        migration_contract.clone()
+    } else {
+        state.migration_contract
+    };
+
     let new_state = State {
         router: verified_router,
         admin: verified_admin,
+        migration_contract: verified_migration_contract,
     };
 
     STATE.save(deps.storage, &new_state)?;
@@ -271,7 +280,10 @@ pub fn execute_migrate_vbalance(
     msg: VBalanceMigrateMsg,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender == state.migration_contract,
+        ContractError::Unauthorized {}
+    );
 
     STATE.save(deps.storage, &msg.state.state)?;
     for (key, value) in msg.balances.balances {

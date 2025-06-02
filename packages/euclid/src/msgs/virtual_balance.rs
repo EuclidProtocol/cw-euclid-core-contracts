@@ -10,6 +10,7 @@ use crate::{
 pub struct State {
     pub router: String,
     pub admin: Addr,
+    pub migration_contract: String,
 }
 
 #[cw_serde]
@@ -17,6 +18,7 @@ pub struct State {
 pub struct InstantiateMsg {
     pub router: Addr,
     pub admin: Option<Addr>,
+    pub migration_contract: String,
 }
 
 #[cw_serde]
@@ -28,6 +30,7 @@ pub enum ExecuteMsg {
     UpdateState {
         router: Option<String>,
         admin: Option<Addr>,
+        migration_contract: Option<String>,
     },
     Approve(ExecuteApprove),
     MigrateVBalance(VBalanceMigrateMsg),

@@ -20,8 +20,9 @@ impl MockVirtualBalance {
         sender: Addr,
         router: Addr,
         admin: Option<Addr>,
+        migration_contract: Option<String>,
     ) -> Self {
-        let msg = mock_virtual_balance_instantiate_msg(router, admin);
+        let msg = mock_virtual_balance_instantiate_msg(router, admin, migration_contract);
         let res =
             app.instantiate_contract(code_id, sender, &msg, &[], "Euclid virtual_balance", None);
 
@@ -49,8 +50,16 @@ pub fn mock_virtual_balance() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
-pub fn mock_virtual_balance_instantiate_msg(router: Addr, admin: Option<Addr>) -> InstantiateMsg {
-    InstantiateMsg { router, admin }
+pub fn mock_virtual_balance_instantiate_msg(
+    router: Addr,
+    admin: Option<Addr>,
+    migration_contract: Option<String>,
+) -> InstantiateMsg {
+    InstantiateMsg {
+        router,
+        admin,
+        migration_contract: migration_contract.unwrap_or_default(),
+    }
 }
 
 pub fn mock_query_get_state() -> QueryMsg {

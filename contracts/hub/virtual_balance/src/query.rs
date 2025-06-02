@@ -1,4 +1,4 @@
-use cosmwasm_std::{from_json, to_json_binary, Binary, Deps, Uint128};
+use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
@@ -11,9 +11,9 @@ use euclid::{
 
 use crate::state::{ALLOWANCES, BALANCES, STATE};
 
-pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
+pub fn query_state(deps: Deps) -> Result<GetStateResponse, ContractError> {
     let state = STATE.load(deps.storage)?;
-    Ok(to_json_binary(&GetStateResponse { state })?)
+    Ok(GetStateResponse { state })
 }
 
 pub fn query_balance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, ContractError> {
@@ -48,7 +48,7 @@ pub fn query_user_balances(
     })?)
 }
 
-pub fn query_balances(deps: Deps) -> Result<Binary, ContractError> {
+pub fn query_balances(deps: Deps) -> Result<AllBalancesResponse, ContractError> {
     let keys = BALANCES.keys(deps.storage, None, None, cosmwasm_std::Order::Ascending);
     let mut key_value = Vec::new();
     for key in keys {
@@ -57,12 +57,12 @@ pub fn query_balances(deps: Deps) -> Result<Binary, ContractError> {
         key_value.push((key, value));
     }
 
-    Ok(to_json_binary(&AllBalancesResponse {
+    Ok(AllBalancesResponse {
         balances: key_value,
-    })?)
+    })
 }
 
-pub fn query_allowances(deps: Deps) -> Result<Binary, ContractError> {
+pub fn query_allowances(deps: Deps) -> Result<AllAllowancesResponse, ContractError> {
     let keys = ALLOWANCES.keys(deps.storage, None, None, cosmwasm_std::Order::Ascending);
     let mut key_value = Vec::new();
     for key in keys {
@@ -70,15 +70,15 @@ pub fn query_allowances(deps: Deps) -> Result<Binary, ContractError> {
         let value = ALLOWANCES.load(deps.storage, key.clone())?;
         key_value.push((key, value));
     }
-    Ok(to_json_binary(&AllAllowancesResponse {
+    Ok(AllAllowancesResponse {
         allowances: key_value,
-    })?)
+    })
 }
 
 pub fn query_migrate_data(deps: Deps) -> Result<Binary, ContractError> {
-    let state = from_json(&query_state(deps)?)?;
-    let balances = from_json(&query_balances(deps)?)?;
-    let allowances = from_json(&query_allowances(deps)?)?;
+    let state = query_state(deps)?;
+    let balances = query_balances(deps)?;
+    let allowances = query_allowances(deps)?;
     Ok(to_json_binary(&VBalanceMigrateMsg {
         state,
         balances,

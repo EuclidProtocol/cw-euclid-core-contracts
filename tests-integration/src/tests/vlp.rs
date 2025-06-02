@@ -61,6 +61,7 @@ fn test_proper_instantiation() {
         mock_router.addr().clone(),
         mock_router.addr().clone(),
         None,
+        None,
     );
 
     let pair = Pair::new(

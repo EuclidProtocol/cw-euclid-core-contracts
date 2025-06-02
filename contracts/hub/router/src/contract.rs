@@ -73,6 +73,7 @@ pub fn instantiate(
     let virtual_balance_instantiate_msg = euclid::msgs::virtual_balance::InstantiateMsg {
         router: env.contract.address.clone(),
         admin: Some(info.sender.clone()),
+        migration_contract: String::default(),
     };
     let virtual_balance_instantiate_msg = WasmMsg::Instantiate {
         admin: Some(info.sender.to_string()),
