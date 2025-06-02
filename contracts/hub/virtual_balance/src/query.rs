@@ -1,14 +1,15 @@
-use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
+use cosmwasm_std::{from_json, to_json_binary, Binary, Deps, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
     msgs::virtual_balance::{
-        GetBalanceResponse, GetStateResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
+        AllAllowancesResponse, AllBalancesResponse, GetBalanceResponse, GetStateResponse,
+        GetUserBalancesResponse, GetUserBalancesResponseItem, VBalanceMigrateMsg,
     },
     virtual_balance::BalanceKey,
 };
 
-use crate::state::{BALANCES, STATE};
+use crate::state::{ALLOWANCES, BALANCES, STATE};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -44,5 +45,43 @@ pub fn query_user_balances(
 
     Ok(to_json_binary(&GetUserBalancesResponse {
         balances: balances?,
+    })?)
+}
+
+pub fn query_balances(deps: Deps) -> Result<Binary, ContractError> {
+    let keys = BALANCES.keys(deps.storage, None, None, cosmwasm_std::Order::Ascending);
+    let mut key_value = Vec::new();
+    for key in keys {
+        let key = key?;
+        let value = BALANCES.load(deps.storage, key.clone())?;
+        key_value.push((key, value));
+    }
+
+    Ok(to_json_binary(&AllBalancesResponse {
+        balances: key_value,
+    })?)
+}
+
+pub fn query_allowances(deps: Deps) -> Result<Binary, ContractError> {
+    let keys = ALLOWANCES.keys(deps.storage, None, None, cosmwasm_std::Order::Ascending);
+    let mut key_value = Vec::new();
+    for key in keys {
+        let key = key?;
+        let value = ALLOWANCES.load(deps.storage, key.clone())?;
+        key_value.push((key, value));
+    }
+    Ok(to_json_binary(&AllAllowancesResponse {
+        allowances: key_value,
+    })?)
+}
+
+pub fn query_migrate_data(deps: Deps) -> Result<Binary, ContractError> {
+    let state = from_json(&query_state(deps)?)?;
+    let balances = from_json(&query_balances(deps)?)?;
+    let allowances = from_json(&query_allowances(deps)?)?;
+    Ok(to_json_binary(&VBalanceMigrateMsg {
+        state,
+        balances,
+        allowances,
     })?)
 }

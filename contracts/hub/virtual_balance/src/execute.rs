@@ -2,11 +2,14 @@ use cosmwasm_std::{ensure, Addr, DepsMut, MessageInfo, Response, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
-    msgs::virtual_balance::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
+    msgs::virtual_balance::{
+        Allowance, ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State,
+        VBalanceMigrateMsg,
+    },
     virtual_balance::BalanceKey,
 };
 
-use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
+use crate::state::{ALLOWANCES, BALANCES, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -260,4 +263,22 @@ pub fn execute_approve(
         .add_attribute("approve_token_id", msg.token_id)
         .add_attribute("approve_spender", msg.spender.to_sender_string())
         .add_attribute("approve_owner", msg.owner.to_sender_string()))
+}
+
+pub fn execute_migrate_vbalance(
+    deps: DepsMut,
+    info: MessageInfo,
+    msg: VBalanceMigrateMsg,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    STATE.save(deps.storage, &msg.state.state)?;
+    for (key, value) in msg.balances.balances {
+        BALANCES.save(deps.storage, key, &value)?;
+    }
+    for (key, value) in msg.allowances.allowances {
+        ALLOWANCES.save(deps.storage, key, &value)?;
+    }
+    Ok(Response::new().add_attribute("action", "execute_migrate_vbalance"))
 }

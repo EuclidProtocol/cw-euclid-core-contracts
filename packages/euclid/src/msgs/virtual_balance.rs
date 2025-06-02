@@ -1,7 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 
-use crate::{chain::CrossChainUser, virtual_balance::BalanceKey};
+use crate::{
+    chain::{ChainUid, CrossChainUser},
+    virtual_balance::BalanceKey,
+};
 
 #[cw_serde]
 pub struct State {
@@ -27,6 +30,7 @@ pub enum ExecuteMsg {
         admin: Option<Addr>,
     },
     Approve(ExecuteApprove),
+    MigrateVBalance(VBalanceMigrateMsg),
 }
 
 #[cw_serde]
@@ -78,6 +82,16 @@ pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(GetUserBalancesResponse)]
     GetUserBalances { user: CrossChainUser },
+
+    // Query to simulate a swap for the asset
+    #[returns(AllBalancesResponse)]
+    GetAllBalances {},
+
+    #[returns(AllAllowancesResponse)]
+    GetAllAllowances {},
+
+    #[returns(VBalanceMigrateMsg)]
+    GetMigrateData {},
 }
 
 // We define a custom struct for each query response
@@ -100,4 +114,27 @@ pub struct GetUserBalancesResponse {
 pub struct GetUserBalancesResponseItem {
     pub amount: Uint128,
     pub token_id: String,
+}
+
+#[cw_serde]
+pub struct AllBalancesResponse {
+    pub balances: Vec<((ChainUid, String, String), Uint128)>,
+}
+
+#[cw_serde]
+pub struct Allowance {
+    pub spender: CrossChainUser,
+    pub amount: Uint128,
+}
+
+#[cw_serde]
+pub struct AllAllowancesResponse {
+    pub allowances: Vec<((ChainUid, String, String), Allowance)>,
+}
+
+#[cw_serde]
+pub struct VBalanceMigrateMsg {
+    pub state: GetStateResponse,
+    pub balances: AllBalancesResponse,
+    pub allowances: AllAllowancesResponse,
 }

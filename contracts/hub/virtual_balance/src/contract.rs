@@ -4,9 +4,13 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
 use crate::execute::{
-    execute_approve, execute_burn, execute_mint, execute_transfer, execute_update_state,
+    execute_approve, execute_burn, execute_migrate_vbalance, execute_mint, execute_transfer,
+    execute_update_state,
 };
-use crate::query::{query_balance, query_state, query_user_balances};
+use crate::query::{
+    query_allowances, query_balance, query_balances, query_migrate_data, query_state,
+    query_user_balances,
+};
 use crate::state::STATE;
 use euclid::error::ContractError;
 use euclid::msgs::virtual_balance::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
@@ -52,6 +56,7 @@ pub fn execute(
             execute_update_state(deps, info, router, admin)
         }
         ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
+        ExecuteMsg::MigrateVBalance(msg) => execute_migrate_vbalance(deps, info, msg),
     }
 }
 
@@ -63,5 +68,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetUserBalances { user } => {
             query_user_balances(deps, user.chain_uid, user.address)
         }
+        QueryMsg::GetAllBalances {} => query_balances(deps),
+        QueryMsg::GetAllAllowances {} => query_allowances(deps),
+        QueryMsg::GetMigrateData {} => query_migrate_data(deps),
     }
 }
