@@ -16,6 +16,7 @@ use euclid::{
 };
 use euclid_relayer::RelayerContract;
 use factory::FactoryContract;
+use migration::MigrationContract;
 use router::RouterContract;
 use stable_vlp::StableVlpContract;
 use virtual_balance::VirtualBalanceContract;
@@ -118,12 +119,14 @@ pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrch
     let virtual_balance = VirtualBalanceContract::new(chain.clone());
     let vlp = VlpContract::new(chain.clone());
     let stable_vlp = StableVlpContract::new(chain.clone());
+    let migration = MigrationContract::new(chain.clone());
     let relayer = setup_relayer(chain)?;
 
     router.upload().unwrap();
     virtual_balance.upload().unwrap();
     vlp.upload().unwrap();
     stable_vlp.upload().unwrap();
+    migration.upload().unwrap();
 
     router.instantiate(
         &euclid::msgs::router::InstantiateMsg {

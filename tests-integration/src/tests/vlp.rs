@@ -28,7 +28,7 @@ const _SUPPLY: u128 = 1_000_000;
 #[test]
 fn test_proper_instantiation() {
     let mut vlp = mock_app(None);
-    let andr = MockEuclidBuilder::new(&mut vlp, "admin")
+    let eucl = MockEuclidBuilder::new(&mut vlp, "admin")
         .with_wallets(vec![
             ("owner", vec![coin(1000, "eucl")]),
             ("recipient1", vec![]),
@@ -40,7 +40,7 @@ fn test_proper_instantiation() {
             ("virtual_balance", mock_virtual_balance()),
         ])
         .build(&mut vlp);
-    let owner = andr.get_wallet("owner");
+    let owner = eucl.get_wallet("owner");
 
     let vlp_code_id = 1;
     let router_code_id = 2;

@@ -9,7 +9,7 @@ use virtual_balance::mock::{mock_virtual_balance, MockVirtualBalance};
 #[test]
 fn test_proper_instantiation() {
     let mut virtual_balance = mock_app(None);
-    let andr = MockEuclidBuilder::new(&mut virtual_balance, "admin")
+    let eucl = MockEuclidBuilder::new(&mut virtual_balance, "admin")
         .with_wallets(vec![
             ("owner", vec![coin(1000, "eucl")]),
             ("recipient1", vec![]),
@@ -20,7 +20,7 @@ fn test_proper_instantiation() {
             ("router", mock_router()),
         ])
         .build(&mut virtual_balance);
-    let owner = andr.get_wallet("owner");
+    let owner = eucl.get_wallet("owner");
 
     let virtual_balance_code_id = 1;
     let router_code_id = 2;

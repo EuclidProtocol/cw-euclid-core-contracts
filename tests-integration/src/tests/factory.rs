@@ -33,7 +33,7 @@ use crate::helpers::{
 #[test]
 fn test_proper_instantiation() {
     let mut factory = mock_app(None);
-    let andr = MockEuclidBuilder::new(&mut factory, "admin")
+    let eucl = MockEuclidBuilder::new(&mut factory, "admin")
         .with_wallets(vec![
             ("owner", vec![coin(1000, "eucl")]),
             ("recipient1", vec![]),
@@ -41,7 +41,7 @@ fn test_proper_instantiation() {
         ])
         .with_contracts(vec![("escrow", mock_escrow()), ("factory", mock_factory())])
         .build(&mut factory);
-    let owner = andr.get_wallet("owner");
+    let owner = eucl.get_wallet("owner");
 
     let escrow_code_id = 1;
     let factory_code_id = 2;
@@ -122,6 +122,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         .unwrap();
 
     let router_contract = setup_router(&router).unwrap();
+
     let router_state = router_contract.get_state().unwrap();
     let _virtual_balance_router =
         get_virtual_balance(&router, &router_state.virtual_balance_address.unwrap());

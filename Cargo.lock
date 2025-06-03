@@ -2997,6 +2997,7 @@ dependencies = [
  "ibc-relayer-types",
  "itertools 0.10.5",
  "k256",
+ "migration",
  "mock",
  "relayer",
  "router",

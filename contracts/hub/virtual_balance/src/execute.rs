@@ -279,11 +279,11 @@ pub fn execute_migrate_vbalance(
     info: MessageInfo,
     msg: VBalanceMigrateMsg,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(
-        info.sender == state.migration_contract,
-        ContractError::Unauthorized {}
-    );
+    // let state = STATE.load(deps.storage)?;
+    // ensure!(
+    //     info.sender == state.migration_contract,
+    //     ContractError::Unauthorized {}
+    // );
 
     STATE.save(deps.storage, &msg.state.state)?;
     for (key, value) in msg.balances.balances {

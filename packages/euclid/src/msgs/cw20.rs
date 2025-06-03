@@ -180,11 +180,8 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
-    //NOTE: Balance is included in andr_query
     /// Returns the current balance of the given address, 0 if unset.
     /// Return type: BalanceResponse.
-    // #[returns(BalanceResponse)]
-    // Balance { address: AndrAddr },
     /// Returns metadata on the contract - name, decimals, supply, etc.
     /// Return type: TokenInfoResponse.
     #[returns(cw20::TokenInfoResponse)]
