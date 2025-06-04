@@ -299,6 +299,16 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::MigrateAllChainUidToChain {} => Ok(to_json_binary(
             &query::query_migrate_all_chain_uid_to_chain(deps)?,
         )?),
+        QueryMsg::MigrateAllChannelToChainUid {} => Ok(to_json_binary(
+            &query::query_migrate_all_channel_to_chain_uid(deps)?,
+        )?),
+        QueryMsg::MigrateAllDeregisteredChains {} => Ok(to_json_binary(
+            &query::query_migrate_all_deregistered_chains(deps)?,
+        )?),
+        QueryMsg::MigrateAllFundsInfo {} => {
+            Ok(to_json_binary(&query::query_migrate_all_funds_info(deps)?)?)
+        }
+        QueryMsg::GetMigrateData {} => Ok(to_json_binary(&query::query_migrate_data(deps)?)?),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

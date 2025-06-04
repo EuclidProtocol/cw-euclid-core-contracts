@@ -6,10 +6,11 @@ use euclid::{
     generate_query_all,
     msgs::router::{
         AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-        EscrowResponse, MigrateAllChainUidToChainResponse, MigrateAllEscrowBalancesResponse,
-        MigrateAllTokenDenomsResponse, MigrateAllTokenVlpsResponse, MigrateAllVlpsResponse,
-        QuerySimulateSwap, RelayerAddressesResponse, SimulateEscrowReleaseResponse,
-        SimulateSwapResponse, StateResponse, TokenDenom, TokenDenomsResponse,
+        EscrowResponse, MigrateAllChainUidToChainResponse, MigrateAllChannelToChainUidResponse,
+        MigrateAllDeregisteredChainsResponse, MigrateAllEscrowBalancesResponse,
+        MigrateAllFundsInfoResponse, MigrateAllTokenDenomsResponse, MigrateAllTokenVlpsResponse,
+        MigrateAllVlpsResponse, MigrateDataResponse, QuerySimulateSwap, RelayerAddressesResponse,
+        SimulateEscrowReleaseResponse, SimulateSwapResponse, StateResponse, TokenDenomsResponse,
         TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
@@ -18,8 +19,8 @@ use euclid::{
 };
 
 use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS, TOKEN_VLPS,
-    VLPS,
+    CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
+    MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS, TOKEN_VLPS, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -350,31 +351,14 @@ pub fn query_relayer_addresses(deps: Deps) -> Result<Binary, ContractError> {
 
 // Migrate queries //
 
-pub fn query_migrate_all_vlps(deps: Deps) -> Result<MigrateAllVlpsResponse, ContractError> {
-    let keys = VLPS.keys(deps.storage, None, None, Order::Ascending);
-    let mut key_value = Vec::new();
-    for key in keys {
-        let key = key?;
-        let value = VLPS.load(deps.storage, key.clone())?;
-        key_value.push((key, value));
-    }
-    Ok(MigrateAllVlpsResponse { vlps: key_value })
-}
+generate_query_all!(query_migrate_all_vlps, VLPS, MigrateAllVlpsResponse, vlps);
 
-pub fn query_migrate_all_token_vlps(
-    deps: Deps,
-) -> Result<MigrateAllTokenVlpsResponse, ContractError> {
-    let keys = TOKEN_VLPS.keys(deps.storage, None, None, Order::Ascending);
-    let mut key_value = Vec::new();
-    for key in keys {
-        let key = key?;
-        let value = TOKEN_VLPS.load(deps.storage, key.clone())?;
-        key_value.push((key.clone(), value));
-    }
-    Ok(MigrateAllTokenVlpsResponse {
-        token_vlps: key_value,
-    })
-}
+generate_query_all!(
+    query_migrate_all_token_vlps,
+    TOKEN_VLPS,
+    MigrateAllTokenVlpsResponse,
+    token_vlps
+);
 
 generate_query_all!(
     query_migrate_all_token_denoms,
@@ -383,32 +367,60 @@ generate_query_all!(
     token_denoms
 );
 
-pub fn query_migrate_all_escrow_balances(
+generate_query_all!(
+    query_migrate_all_escrow_balances,
+    ESCROW_BALANCES,
+    MigrateAllEscrowBalancesResponse,
+    escrow_balances
+);
+
+generate_query_all!(
+    query_migrate_all_chain_uid_to_chain,
+    CHAIN_UID_TO_CHAIN,
+    MigrateAllChainUidToChainResponse,
+    chain_uid_to_chain
+);
+
+generate_query_all!(
+    query_migrate_all_channel_to_chain_uid,
+    CHANNEL_TO_CHAIN_UID,
+    MigrateAllChannelToChainUidResponse,
+    channel_to_chain_uid
+);
+
+pub fn query_migrate_all_deregistered_chains(
     deps: Deps,
-) -> Result<MigrateAllEscrowBalancesResponse, ContractError> {
-    let keys = ESCROW_BALANCES.keys(deps.storage, None, None, Order::Ascending);
-    let mut key_value = Vec::new();
-    for key in keys {
-        let key = key?;
-        let value = ESCROW_BALANCES.load(deps.storage, key.clone())?;
-        key_value.push((key.clone(), value));
-    }
-    Ok(MigrateAllEscrowBalancesResponse {
-        escrow_balances: key_value,
+) -> Result<MigrateAllDeregisteredChainsResponse, ContractError> {
+    let deregistered_chains = DEREGISTERED_CHAINS.load(deps.storage)?;
+    Ok(MigrateAllDeregisteredChainsResponse {
+        deregistered_chains,
     })
 }
 
-pub fn query_migrate_all_chain_uid_to_chain(
+pub fn query_migrate_all_funds_info(
     deps: Deps,
-) -> Result<MigrateAllChainUidToChainResponse, ContractError> {
-    let keys = CHAIN_UID_TO_CHAIN.keys(deps.storage, None, None, Order::Ascending);
-    let mut key_value = Vec::new();
-    for key in keys {
-        let key = key?;
-        let value = CHAIN_UID_TO_CHAIN.load(deps.storage, key.clone())?;
-        key_value.push((key.clone(), value));
-    }
-    Ok(MigrateAllChainUidToChainResponse {
-        chain_uid_to_chain: key_value,
+) -> Result<MigrateAllFundsInfoResponse, ContractError> {
+    let funds_info = FUNDS_INFO.load(deps.storage)?;
+    Ok(MigrateAllFundsInfoResponse { funds_info })
+}
+
+pub fn query_migrate_data(deps: Deps) -> Result<MigrateDataResponse, ContractError> {
+    let all_vlps = query_migrate_all_vlps(deps)?;
+    let all_token_vlps = query_migrate_all_token_vlps(deps)?;
+    let all_token_denoms = query_migrate_all_token_denoms(deps)?;
+    let all_escrow_balances = query_migrate_all_escrow_balances(deps)?;
+    let all_chain_uid_to_chain = query_migrate_all_chain_uid_to_chain(deps)?;
+    let all_channel_to_chain_uid = query_migrate_all_channel_to_chain_uid(deps)?;
+    let all_deregistered_chains = query_migrate_all_deregistered_chains(deps)?;
+    let all_funds_info = query_migrate_all_funds_info(deps)?;
+    Ok(MigrateDataResponse {
+        all_vlps,
+        all_token_vlps,
+        all_token_denoms,
+        all_escrow_balances,
+        all_chain_uid_to_chain,
+        all_channel_to_chain_uid,
+        all_deregistered_chains,
+        all_funds_info,
     })
 }

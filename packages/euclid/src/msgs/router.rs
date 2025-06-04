@@ -1,17 +1,15 @@
-use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
-
 use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     swap::NextSwapPair,
-    token::{Pair, Token, TokenType},
+    token::{Pair, PairWithDenomAndAmount, Token, TokenType},
     utils::pagination::Pagination,
 };
+use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 #[cw_serde]
 pub struct InstantiateMsg {
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
-
     pub virtual_balance_code_id: u64,
     pub mock_relayer_addresses: Option<Vec<String>>,
 }
@@ -218,6 +216,56 @@ pub enum QueryMsg {
 
     #[returns(MigrateAllChainUidToChainResponse)]
     MigrateAllChainUidToChain {},
+
+    #[returns(MigrateAllChannelToChainUidResponse)]
+    MigrateAllChannelToChainUid {},
+
+    #[returns(MigrateAllDeregisteredChainsResponse)]
+    MigrateAllDeregisteredChains {},
+    // TODO: commented for now to avoid circular dependency with euclid_ibc
+    // #[returns(MigrateAllSwapIdsToMsgResponse)]
+    // MigrateAllSwapIdsToMsg {},
+
+    // TODO: PENDING_REMOVE_LIQUIDITY, also has circular dependency with euclid_ibc
+    // #[returns(MigrateAllPendingRemoveLiquidityResponse)]
+    // MigrateAllPendingRemoveLiquidity {},
+    #[returns(MigrateAllFundsInfoResponse)]
+    MigrateAllFundsInfo {},
+
+    #[returns(MigrateDataResponse)]
+    GetMigrateData {},
+}
+
+#[cw_serde]
+pub struct MigrateDataResponse {
+    pub all_vlps: MigrateAllVlpsResponse,
+    pub all_token_vlps: MigrateAllTokenVlpsResponse,
+    pub all_token_denoms: MigrateAllTokenDenomsResponse,
+    pub all_escrow_balances: MigrateAllEscrowBalancesResponse,
+    pub all_chain_uid_to_chain: MigrateAllChainUidToChainResponse,
+    pub all_channel_to_chain_uid: MigrateAllChannelToChainUidResponse,
+    pub all_deregistered_chains: MigrateAllDeregisteredChainsResponse,
+    pub all_funds_info: MigrateAllFundsInfoResponse,
+}
+
+#[cw_serde]
+pub struct MigrateAllFundsInfoResponse {
+    pub funds_info: (PairWithDenomAndAmount, u64),
+}
+
+// #[cw_serde]
+// pub struct MigrateAllSwapIdsToMsgResponse {
+//     pub swap_ids_to_msg: Vec<((ChainUid, String, String), ChainIbcSwapExecuteMsg)>,
+// }
+
+#[cw_serde]
+pub struct MigrateAllDeregisteredChainsResponse {
+    pub deregistered_chains: Vec<ChainUid>,
+}
+
+#[cw_serde]
+pub struct MigrateAllChannelToChainUidResponse {
+    pub channel_to_chain_uid: Vec<(String, ChainUid)>,
 }
 
 #[cw_serde]
