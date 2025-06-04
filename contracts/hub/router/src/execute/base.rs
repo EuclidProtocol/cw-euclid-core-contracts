@@ -2,7 +2,6 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
     MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
-
 use euclid::{
     chain::{
         Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, IbcChain, Limit,
@@ -11,7 +10,7 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
-        router::{ExecuteMsg, RegisterFactoryChainType},
+        router::{ExecuteMsg, RegisterFactoryChainType, State},
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
@@ -25,7 +24,7 @@ use crate::{
     ibc::receive,
     query::verify_cross_chain_addresses,
     state::{
-        State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
         MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS,
     },
 };

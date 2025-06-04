@@ -1,29 +1,16 @@
 #![cfg(not(target_arch = "wasm32"))]
-use std::collections::HashMap;
-
-use cosmwasm_std::coin;
-use cosmwasm_std::Uint128;
-use euclid::chain::ChainUid;
-use euclid::chain::CrossChainUser;
-use euclid::fee::DenomFees;
-use euclid::fee::Fee;
-use euclid::fee::TotalFees;
-use euclid::msgs::vlp::GetStateResponse;
-use euclid::pool::PoolConfig;
-use euclid::token::Pair;
-use euclid::token::Token;
+use cosmwasm_std::{coin, Uint128};
+use euclid::{
+    chain::{ChainUid, CrossChainUser},
+    fee::{DenomFees, Fee, TotalFees},
+    msgs::vlp::{GetStateResponse, State},
+    token::{Pair, Token},
+};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
-use router::mock::mock_router;
-use router::mock::MockRouter;
-use virtual_balance::mock::mock_virtual_balance;
-use virtual_balance::mock::MockVirtualBalance;
+use router::mock::{mock_router, MockRouter};
+use std::collections::HashMap;
+use virtual_balance::mock::{mock_virtual_balance, MockVirtualBalance};
 use vlp::mock::{mock_vlp, MockVlp};
-
-const _USER: &str = "user";
-const _NATIVE_DENOM: &str = "native";
-const _IBC_DENOM_1: &str = "ibc/denom1";
-const _IBC_DENOM_2: &str = "ibc/denom2";
-const _SUPPLY: u128 = 1_000_000;
 
 #[test]
 fn test_proper_instantiation() {
@@ -88,22 +75,23 @@ fn test_proper_instantiation() {
 
     let token_id_response = MockVlp::query_state(&mock_vlp, &vlp);
     let expected_token_id = GetStateResponse {
-        pair,
-        router: mock_router.addr().clone().into_string(),
-        virtual_balance: mock_virtual_balance.addr().clone().into_string(),
-        fee,
-        pool_config: PoolConfig::ConstantProduct {},
-        total_fees_collected: TotalFees {
-            lp_fees: DenomFees {
-                totals: HashMap::new(),
+        state: State {
+            pair,
+            router: mock_router.addr().clone().into_string(),
+            virtual_balance: mock_virtual_balance.addr().clone().into_string(),
+            fee,
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::new(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::new(),
+                },
             },
-            euclid_fees: DenomFees {
-                totals: HashMap::new(),
-            },
+            last_updated: 0,
+            total_lp_tokens: Uint128::zero(),
+            admin: "admin".to_string(),
         },
-        last_updated: 0,
-        total_lp_tokens: Uint128::zero(),
-        admin: "admin".to_string(),
     };
     assert_eq!(token_id_response, expected_token_id);
 }

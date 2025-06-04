@@ -1,7 +1,6 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
-    pool::PoolConfig,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token, TokenType},
 };
@@ -64,6 +63,9 @@ pub enum ExecuteMsg {
         last_updated: Option<u64>,
         admin: Option<String>,
     },
+    MigrateVLP {
+        migrate_msg: VlpMigrateMsg,
+    },
 }
 
 #[cw_serde]
@@ -99,6 +101,22 @@ pub enum QueryMsg {
     // Query to get all pools
     #[returns(AllPoolsResponse)]
     GetAllPools {},
+    #[returns(AllChainLpTokensResponse)]
+    GetAllChainLpTokens {},
+    #[returns(VlpMigrateMsg)]
+    GetMigrateData {},
+}
+
+#[cw_serde]
+pub struct VlpMigrateMsg {
+    pub state: GetStateResponse,
+    pub chain_lp_tokens: AllChainLpTokensResponse,
+    pub balances: AllBalancesResponse,
+}
+
+#[cw_serde]
+pub struct AllChainLpTokensResponse {
+    pub chain_lp_tokens: Vec<(ChainUid, Uint128)>,
 }
 
 // We define a custom struct for each query response
@@ -110,16 +128,27 @@ pub struct GetSwapResponse {
 }
 
 #[cw_serde]
-pub struct GetStateResponse {
+pub struct State {
+    // Token Pair Info
     pub pair: Pair,
+    // Router Contract
     pub router: String,
+    // Virtual Coin Contract
     pub virtual_balance: String,
+    // Fee per swap for each transaction
     pub fee: Fee,
+    // Total lp and euclid fees collected
     pub total_fees_collected: TotalFees,
+    // The last timestamp where the balances for each token have been updated
     pub last_updated: u64,
+    // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
     pub admin: String,
-    pub pool_config: PoolConfig,
+}
+
+#[cw_serde]
+pub struct GetStateResponse {
+    pub state: State,
 }
 
 #[cw_serde]
@@ -161,6 +190,11 @@ pub struct PoolInfo {
 #[cw_serde]
 pub struct AllPoolsResponse {
     pub pools: Vec<PoolInfo>,
+}
+
+#[cw_serde]
+pub struct AllBalancesResponse {
+    pub balances: Vec<(Token, Uint128)>,
 }
 
 #[cw_serde]

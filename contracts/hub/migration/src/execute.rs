@@ -1,23 +1,11 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, Decimal, Decimal256, DepsMut, Env, IbcTimeout, MessageInfo,
-    Response, SubMsg, Uint128, Uint64, WasmMsg,
+    ensure, to_json_binary, CosmosMsg, DepsMut, Env, IbcTimeout, MessageInfo, Response,
 };
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
     error::ContractError,
-    events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::{Fee, BPS_50_PERCENT, MAX_FEE_BPS},
-    liquidity::AddLiquidityResponse,
-    msgs::{
-        migrator::IbcExecuteMsg,
-        stable_vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
-        virtual_balance::{ExecuteTransfer, VBalanceMigrateMsg},
-    },
-    pool::PoolCreationResponse,
-    swap::NextSwapVlp,
+    events::simple_event,
+    msgs::{migrator::IbcExecuteMsg, virtual_balance::VBalanceMigrateMsg, vlp::VlpMigrateMsg},
     timeout::get_timeout,
-    token::{Pair, PairWithAmount, Token},
-    utils::math::Decimal256Ext,
 };
 
 use crate::state::{State, STATE};
@@ -28,11 +16,9 @@ pub fn update_state(
     info: MessageInfo,
     router: Option<String>,
     virtual_balance: Option<String>,
+    vlp: Option<String>,
     admin: Option<String>,
 ) -> Result<Response, ContractError> {
-    let mut response = Response::new()
-        .add_attribute("action", "update_state")
-        .add_event(simple_event());
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     // Verify that the router is a valid address
@@ -51,6 +37,14 @@ pub fn update_state(
         state.virtual_balance
     };
 
+    // Verify that the vlp is a valid address
+    let verified_vlp = if let Some(vlp) = vlp {
+        deps.api.addr_validate(&vlp)?;
+        vlp
+    } else {
+        state.vlp
+    };
+
     // Verify that the admin is a valid address
     let verified_admin = if let Some(admin) = admin {
         deps.api.addr_validate(&admin)?;
@@ -62,11 +56,14 @@ pub fn update_state(
     let new_state = State {
         router: verified_router,
         virtual_balance: verified_virtual_balance,
+        vlp: verified_vlp,
         admin: verified_admin,
     };
 
     STATE.save(deps.storage, &new_state)?;
-
+    let response = Response::new()
+        .add_attribute("action", "update_state")
+        .add_event(simple_event());
     Ok(response)
 }
 
@@ -75,22 +72,59 @@ pub fn migrate_vbalance(
     env: Env,
     info: MessageInfo,
     vbalance_address: String,
+    router_address: String,
     channel_id: String,
     timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     let vbalance_query_msg = euclid::msgs::virtual_balance::QueryMsg::GetMigrateData {};
-    let vbalance_query_response: VBalanceMigrateMsg = deps.querier.query(
+    let mut vbalance_query_response: VBalanceMigrateMsg = deps.querier.query(
         &cosmwasm_std::QueryRequest::Wasm(cosmwasm_std::WasmQuery::Smart {
             contract_addr: state.virtual_balance,
             msg: to_json_binary(&vbalance_query_msg)?,
         }),
     )?;
+    vbalance_query_response.state.state.router = router_address;
 
     let data = IbcExecuteMsg::MigrateVBalance {
         migrate_msg: vbalance_query_response,
         vbalance_address,
+    };
+    let timeout = get_timeout(timeout)?;
+
+    let ibc_packet = CosmosMsg::Ibc(cosmwasm_std::IbcMsg::SendPacket {
+        channel_id,
+        data: to_json_binary(&data)?,
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+    });
+    Ok(Response::new().add_message(ibc_packet))
+}
+pub fn migrate_vlp(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    virtual_balance_address: String,
+    router_address: String,
+    vlp_address: String,
+    channel_id: String,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let vlp_query_msg = euclid::msgs::vlp::QueryMsg::GetMigrateData {};
+    let mut vlp_query_response: VlpMigrateMsg = deps.querier.query(
+        &cosmwasm_std::QueryRequest::Wasm(cosmwasm_std::WasmQuery::Smart {
+            contract_addr: state.vlp,
+            msg: to_json_binary(&vlp_query_msg)?,
+        }),
+    )?;
+    vlp_query_response.state.state.router = router_address;
+    vlp_query_response.state.state.virtual_balance = virtual_balance_address.clone();
+
+    let data = IbcExecuteMsg::MigrateVLP {
+        migrate_msg: vlp_query_response,
+        vlp_address,
     };
     let timeout = get_timeout(timeout)?;
 

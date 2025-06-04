@@ -4,16 +4,19 @@ use cosmwasm_std::{
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::fee::BPS_50_PERCENT;
-use euclid::pool::{PoolConfig, MINIMUM_LIQUIDITY};
+use euclid::generate_query_all;
+use euclid::msgs::vlp::AllBalancesResponse;
+use euclid::pool::MINIMUM_LIQUIDITY;
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
 
 use euclid::msgs::vlp::{
-    AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
-    PoolInfo, PoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
+    AllChainLpTokensResponse, AllPoolsResponse, FeeResponse, GetLiquidityResponse,
+    GetStateResponse, GetSwapResponse, PoolInfo, PoolResponse, State, TotalFeesPerDenomResponse,
+    TotalFeesResponse, VlpMigrateMsg,
 };
 
-use crate::state::{State, BALANCES, CHAIN_LP_TOKENS, STATE};
+use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
 
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
@@ -119,19 +122,9 @@ pub fn query_total_fees_per_denom(deps: Deps, denom: String) -> Result<Binary, C
     })?)
 }
 
-pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
+pub fn query_state(deps: Deps) -> Result<GetStateResponse, ContractError> {
     let state = STATE.load(deps.storage)?;
-    Ok(to_json_binary(&GetStateResponse {
-        pair: state.pair,
-        router: state.router,
-        virtual_balance: state.virtual_balance,
-        fee: state.fee,
-        total_fees_collected: state.total_fees_collected,
-        last_updated: state.last_updated,
-        total_lp_tokens: state.total_lp_tokens,
-        admin: state.admin,
-        pool_config: PoolConfig::ConstantProduct {},
-    })?)
+    Ok(GetStateResponse { state })
 }
 
 // Function to query a Euclid Pool Information for this pair
@@ -149,7 +142,7 @@ pub fn query_pool(deps: Deps, chain_uid: ChainUid) -> Result<Binary, ContractErr
     Ok(to_json_binary(&pool)?)
 }
 // Function to query all Euclid Pool Information
-pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
+pub fn query_all_pools(deps: Deps) -> Result<AllPoolsResponse, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     let reserve_1 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
@@ -166,7 +159,27 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
         })
         .collect();
 
-    Ok(to_json_binary(&AllPoolsResponse { pools: pools? })?)
+    Ok(AllPoolsResponse { pools: pools? })
+}
+
+generate_query_all!(query_all_balances, BALANCES, AllBalancesResponse, balances);
+
+generate_query_all!(
+    query_all_chain_lp_tokens,
+    CHAIN_LP_TOKENS,
+    AllChainLpTokensResponse,
+    chain_lp_tokens
+);
+
+pub fn query_migrate_data(deps: Deps) -> Result<VlpMigrateMsg, ContractError> {
+    let state = query_state(deps)?;
+    let chain_lp_tokens = query_all_chain_lp_tokens(deps)?;
+    let balances = query_all_balances(deps)?;
+    Ok(VlpMigrateMsg {
+        state,
+        chain_lp_tokens,
+        balances,
+    })
 }
 
 fn get_pool(

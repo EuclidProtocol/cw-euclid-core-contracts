@@ -3,22 +3,10 @@ use cosmwasm_std::{Addr, Binary, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
-    msgs::router::TokenDenom,
+    msgs::router::{State, TokenDenom},
     token::{PairWithDenomAndAmount, Token},
 };
 use euclid_ibc::msg::{ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg};
-
-#[cw_serde]
-pub struct State {
-    // Contract admin
-    pub admin: String,
-    // Pool Code ID
-    pub constant_product_vlp_code_id: u64,
-    // Stable Pool Code ID
-    pub stable_vlp_code_id: u64,
-    pub virtual_balance_address: Option<Addr>,
-    pub locked: bool,
-}
 
 pub const STATE: Item<State> = Item::new("state");
 

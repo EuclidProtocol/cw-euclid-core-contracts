@@ -2,22 +2,26 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
+use cosmwasm_std::{
+    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
+};
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
 use crate::execute::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
+    add_liquidity, execute_swap, migrate_vlp, register_pool, remove_liquidity, update_fee,
+    update_state,
 };
 use crate::reply::NEXT_SWAP_REPLY_ID;
-use crate::state::{State, BALANCES, STATE};
+use crate::state::{BALANCES, STATE};
 use crate::{execute, reply};
 use euclid::error::ContractError;
-use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 use crate::query::{
-    query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
-    query_total_fees_collected, query_total_fees_per_denom,
+    query_all_chain_lp_tokens, query_all_pools, query_fee, query_liquidity, query_migrate_data,
+    query_pool, query_simulate_swap, query_state, query_total_fees_collected,
+    query_total_fees_per_denom,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
@@ -147,13 +151,14 @@ pub fn execute(
             last_updated,
             admin,
         ),
+        ExecuteMsg::MigrateVLP { migrate_msg } => migrate_vlp(deps, info, migrate_msg),
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::State {} => query_state(deps),
+        QueryMsg::State {} => to_json_binary(&query_state(deps)?).map_err(ContractError::from),
         QueryMsg::SimulateSwap {
             asset,
             asset_amount,
@@ -164,8 +169,15 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
         QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps, denom),
         QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
-
-        QueryMsg::GetAllPools {} => query_all_pools(deps),
+        QueryMsg::GetAllPools {} => {
+            to_json_binary(&query_all_pools(deps)?).map_err(ContractError::from)
+        }
+        QueryMsg::GetAllChainLpTokens {} => {
+            to_json_binary(&query_all_chain_lp_tokens(deps)?).map_err(ContractError::from)
+        }
+        QueryMsg::GetMigrateData {} => {
+            to_json_binary(&query_migrate_data(deps)?).map_err(ContractError::from)
+        }
     }
 }
 

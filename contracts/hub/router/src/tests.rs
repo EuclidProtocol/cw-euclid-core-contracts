@@ -3,12 +3,12 @@
 mod tests {
     #[cfg(test)]
     use crate::contract::{execute, instantiate};
-    use crate::state::{State, CHAIN_UID_TO_CHAIN, STATE};
+    use crate::state::{CHAIN_UID_TO_CHAIN, STATE};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{from_json, Addr, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Response};
     use euclid::chain::{Chain, ChainUid, IbcChain};
     use euclid::error::ContractError;
-    use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, RegisterFactoryChainNative};
+    use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, RegisterFactoryChainNative, State};
     use euclid_ibc::msg::HubIbcExecuteMsg;
 
     struct TestExecuteMsg {

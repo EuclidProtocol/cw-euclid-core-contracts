@@ -202,7 +202,61 @@ pub enum QueryMsg {
 
     #[returns(RelayerAddressesResponse)]
     QueryRelayerAddresses {},
+
+    // Migrate queries //
+    #[returns(MigrateAllVlpsResponse)]
+    MigrateAllVlps {},
+
+    #[returns(MigrateAllTokenVlpsResponse)]
+    MigrateAllTokenVlps {},
+
+    #[returns(MigrateAllTokenDenomsResponse)]
+    MigrateAllTokenDenoms {},
+
+    #[returns(MigrateAllEscrowBalancesResponse)]
+    MigrateAllEscrowBalances {},
+
+    #[returns(MigrateAllChainUidToChainResponse)]
+    MigrateAllChainUidToChain {},
 }
+
+#[cw_serde]
+pub struct MigrateAllChainUidToChainResponse {
+    pub chain_uid_to_chain: Vec<(ChainUid, Chain)>,
+}
+
+#[cw_serde]
+pub struct MigrateAllEscrowBalancesResponse {
+    pub escrow_balances: Vec<((Token, ChainUid), Uint128)>,
+}
+
+#[cw_serde]
+pub struct MigrateAllTokenDenomsResponse {
+    pub token_denoms: Vec<(Token, Vec<TokenDenom>)>,
+}
+
+#[cw_serde]
+pub struct MigrateAllTokenVlpsResponse {
+    pub token_vlps: Vec<(Token, Vec<String>)>,
+}
+
+#[cw_serde]
+pub struct MigrateAllVlpsResponse {
+    pub vlps: Vec<((Token, Token), String)>,
+}
+
+#[cw_serde]
+pub struct State {
+    // Contract admin
+    pub admin: String,
+    // Pool Code ID
+    pub constant_product_vlp_code_id: u64,
+    // Stable Pool Code ID
+    pub stable_vlp_code_id: u64,
+    pub virtual_balance_address: Option<Addr>,
+    pub locked: bool,
+}
+
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct MigrateMsg {

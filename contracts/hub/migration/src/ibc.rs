@@ -1,14 +1,14 @@
 // use crate::ack::{make_ack_fail, make_ack_success};
-use crate::execute;
-// use crate::state::{CHAIN_TO_CHANNEL, CHANNEL_TO_CHAIN, KERNEL_ADDRESSES, REFUND_DATA};
+
+// use crate::state::{CHAIN_TO_CHANNEL, CHANNEL_TO_CHAIN,  REFUND_DATA};
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Empty, Env,
-    Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
-    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Never, SubMsg, WasmMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Ibc3ChannelOpenResponse,
+    IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
+    IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Never,
+    SubMsg, WasmMsg,
 };
 use euclid::{error::ContractError, msgs::migrator::IbcExecuteMsg};
 
@@ -125,11 +125,10 @@ pub fn ibc_packet_ack(
     Ok(IbcBasicResponse::new())
 }
 pub fn do_ibc_packet_receive(
-    mut deps: DepsMut,
-    env: Env,
+    _deps: DepsMut,
+    _env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let channel = msg.clone().packet.dest.channel_id;
     let packet_msg: IbcExecuteMsg = from_json(&msg.packet.data)?;
 
     match packet_msg {
@@ -148,12 +147,26 @@ pub fn do_ibc_packet_receive(
 
             Ok(IbcReceiveResponse::new().add_submessage(msg))
         }
+        IbcExecuteMsg::MigrateVLP {
+            vlp_address,
+            migrate_msg,
+        } => {
+            let vlp_execute_msg = euclid::msgs::vlp::ExecuteMsg::MigrateVLP { migrate_msg };
+
+            let msg = SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: vlp_address,
+                msg: to_json_binary(&vlp_execute_msg)?,
+                funds: vec![],
+            }));
+
+            Ok(IbcReceiveResponse::new().add_submessage(msg))
+        }
     }
 }
 
 pub fn validate_order_and_version(
     channel: &IbcChannel,
-    counterparty_version: Option<&str>,
+    _counterparty_version: Option<&str>,
 ) -> Result<Option<Ibc3ChannelOpenResponse>, ContractError> {
     // We expect an unordered channel here. Ordered channels have the
     // property that if a message is lost the entire channel will stop

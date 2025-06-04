@@ -2,6 +2,7 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
+    generate_query_all,
     msgs::virtual_balance::{
         AllAllowancesResponse, AllBalancesResponse, GetBalanceResponse, GetStateResponse,
         GetUserBalancesResponse, GetUserBalancesResponseItem, VBalanceMigrateMsg,
@@ -48,32 +49,14 @@ pub fn query_user_balances(
     })?)
 }
 
-pub fn query_balances(deps: Deps) -> Result<AllBalancesResponse, ContractError> {
-    let keys = BALANCES.keys(deps.storage, None, None, cosmwasm_std::Order::Ascending);
-    let mut key_value = Vec::new();
-    for key in keys {
-        let key = key?;
-        let value = BALANCES.load(deps.storage, key.clone())?;
-        key_value.push((key, value));
-    }
+generate_query_all!(query_balances, BALANCES, AllBalancesResponse, balances);
 
-    Ok(AllBalancesResponse {
-        balances: key_value,
-    })
-}
-
-pub fn query_allowances(deps: Deps) -> Result<AllAllowancesResponse, ContractError> {
-    let keys = ALLOWANCES.keys(deps.storage, None, None, cosmwasm_std::Order::Ascending);
-    let mut key_value = Vec::new();
-    for key in keys {
-        let key = key?;
-        let value = ALLOWANCES.load(deps.storage, key.clone())?;
-        key_value.push((key, value));
-    }
-    Ok(AllAllowancesResponse {
-        allowances: key_value,
-    })
-}
+generate_query_all!(
+    query_allowances,
+    ALLOWANCES,
+    AllAllowancesResponse,
+    allowances
+);
 
 pub fn query_migrate_data(deps: Deps) -> Result<Binary, ContractError> {
     let state = query_state(deps)?;

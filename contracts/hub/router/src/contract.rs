@@ -32,6 +32,7 @@ use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
     self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
+    query_migrate_all_token_denoms, query_migrate_all_token_vlps, query_migrate_all_vlps,
     query_relayer_addresses, query_simulate_escrow_release, query_state, query_token_denoms,
     query_token_escrows, query_vlp,
 };
@@ -41,8 +42,8 @@ use crate::reply::{
     SOLANA_RECEIVE_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
     VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESSES, STATE};
-use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::state::{DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESSES, STATE};
+use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:router";
@@ -284,6 +285,20 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
         QueryMsg::QueryTokenDenoms { token } => query_token_denoms(deps, token),
         QueryMsg::QueryRelayerAddresses {} => query_relayer_addresses(deps),
+        // For migration section //
+        QueryMsg::MigrateAllVlps {} => Ok(to_json_binary(&query_migrate_all_vlps(deps)?)?),
+        QueryMsg::MigrateAllTokenVlps {} => {
+            Ok(to_json_binary(&query_migrate_all_token_vlps(deps)?)?)
+        }
+        QueryMsg::MigrateAllTokenDenoms {} => {
+            Ok(to_json_binary(&query_migrate_all_token_denoms(deps)?)?)
+        }
+        QueryMsg::MigrateAllEscrowBalances {} => Ok(to_json_binary(
+            &query::query_migrate_all_escrow_balances(deps)?,
+        )?),
+        QueryMsg::MigrateAllChainUidToChain {} => Ok(to_json_binary(
+            &query::query_migrate_all_chain_uid_to_chain(deps)?,
+        )?),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

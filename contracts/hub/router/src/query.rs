@@ -3,11 +3,14 @@ use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
     chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
     error::ContractError,
+    generate_query_all,
     msgs::router::{
         AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-        EscrowResponse, QuerySimulateSwap, RelayerAddressesResponse, SimulateEscrowReleaseResponse,
-        SimulateSwapResponse, StateResponse, TokenDenomsResponse, TokenEscrowChainResponse,
-        TokenEscrowsResponse, VlpResponse,
+        EscrowResponse, MigrateAllChainUidToChainResponse, MigrateAllEscrowBalancesResponse,
+        MigrateAllTokenDenomsResponse, MigrateAllTokenVlpsResponse, MigrateAllVlpsResponse,
+        QuerySimulateSwap, RelayerAddressesResponse, SimulateEscrowReleaseResponse,
+        SimulateSwapResponse, StateResponse, TokenDenom, TokenDenomsResponse,
+        TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -15,7 +18,8 @@ use euclid::{
 };
 
 use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS, VLPS,
+    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS, TOKEN_VLPS,
+    VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -342,4 +346,69 @@ pub fn query_relayer_addresses(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&RelayerAddressesResponse {
         relayer_addresses,
     })?)
+}
+
+// Migrate queries //
+
+pub fn query_migrate_all_vlps(deps: Deps) -> Result<MigrateAllVlpsResponse, ContractError> {
+    let keys = VLPS.keys(deps.storage, None, None, Order::Ascending);
+    let mut key_value = Vec::new();
+    for key in keys {
+        let key = key?;
+        let value = VLPS.load(deps.storage, key.clone())?;
+        key_value.push((key, value));
+    }
+    Ok(MigrateAllVlpsResponse { vlps: key_value })
+}
+
+pub fn query_migrate_all_token_vlps(
+    deps: Deps,
+) -> Result<MigrateAllTokenVlpsResponse, ContractError> {
+    let keys = TOKEN_VLPS.keys(deps.storage, None, None, Order::Ascending);
+    let mut key_value = Vec::new();
+    for key in keys {
+        let key = key?;
+        let value = TOKEN_VLPS.load(deps.storage, key.clone())?;
+        key_value.push((key.clone(), value));
+    }
+    Ok(MigrateAllTokenVlpsResponse {
+        token_vlps: key_value,
+    })
+}
+
+generate_query_all!(
+    query_migrate_all_token_denoms,
+    TOKEN_DENOMS,
+    MigrateAllTokenDenomsResponse,
+    token_denoms
+);
+
+pub fn query_migrate_all_escrow_balances(
+    deps: Deps,
+) -> Result<MigrateAllEscrowBalancesResponse, ContractError> {
+    let keys = ESCROW_BALANCES.keys(deps.storage, None, None, Order::Ascending);
+    let mut key_value = Vec::new();
+    for key in keys {
+        let key = key?;
+        let value = ESCROW_BALANCES.load(deps.storage, key.clone())?;
+        key_value.push((key.clone(), value));
+    }
+    Ok(MigrateAllEscrowBalancesResponse {
+        escrow_balances: key_value,
+    })
+}
+
+pub fn query_migrate_all_chain_uid_to_chain(
+    deps: Deps,
+) -> Result<MigrateAllChainUidToChainResponse, ContractError> {
+    let keys = CHAIN_UID_TO_CHAIN.keys(deps.storage, None, None, Order::Ascending);
+    let mut key_value = Vec::new();
+    for key in keys {
+        let key = key?;
+        let value = CHAIN_UID_TO_CHAIN.load(deps.storage, key.clone())?;
+        key_value.push((key.clone(), value));
+    }
+    Ok(MigrateAllChainUidToChainResponse {
+        chain_uid_to_chain: key_value,
+    })
 }

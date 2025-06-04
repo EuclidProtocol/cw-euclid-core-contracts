@@ -1,6 +1,13 @@
+use crate::{
+    query::{calculate_lp_allocation_for_liquidity, calculate_swap, extract_token_amount},
+    reply::NEXT_SWAP_REPLY_ID,
+    state::{self, BALANCES, CHAIN_LP_TOKENS, STATE},
+};
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
+use euclid::msgs::vlp::State;
+use euclid::msgs::vlp::VlpMigrateMsg;
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
@@ -14,12 +21,6 @@ use euclid::{
     pool::PoolCreationResponse,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
-};
-
-use crate::{
-    query::{calculate_lp_allocation_for_liquidity, calculate_swap, extract_token_amount},
-    reply::NEXT_SWAP_REPLY_ID,
-    state::{self, State, BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 
 /// Registers a new pool in the contract. Function called by Router Contract
@@ -673,4 +674,26 @@ pub fn update_state(
     Ok(Response::new()
         .add_event(simple_event())
         .add_attribute("action", "update_state"))
+}
+
+pub fn migrate_vlp(
+    deps: DepsMut,
+    info: MessageInfo,
+    msg: VlpMigrateMsg,
+) -> Result<Response, ContractError> {
+    //TODO: add validation check
+    // let state = STATE.load(deps.storage)?;
+    // ensure!(
+    //     info.sender == state.migration_contract,
+    //     ContractError::Unauthorized {}
+    // );
+
+    STATE.save(deps.storage, &msg.state.state)?;
+    for (key, value) in msg.balances.balances {
+        BALANCES.save(deps.storage, key, &value)?;
+    }
+    for (key, value) in msg.chain_lp_tokens.chain_lp_tokens {
+        CHAIN_LP_TOKENS.save(deps.storage, key, &value)?;
+    }
+    Ok(Response::new().add_attribute("action", "execute_migrate_vbalance"))
 }

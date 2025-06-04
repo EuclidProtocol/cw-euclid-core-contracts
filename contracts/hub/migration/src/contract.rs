@@ -1,16 +1,13 @@
-use std::collections::HashMap;
-
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response};
 use cw2::set_contract_version;
-use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::{migrate_vbalance, update_state};
+use crate::execute::{migrate_vbalance, migrate_vlp, update_state};
 use crate::query::query_state;
+use crate::reply;
 use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
 use crate::state::{State, STATE};
-use crate::{execute, reply};
 use euclid::error::ContractError;
 use euclid::msgs::migrator::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
@@ -28,6 +25,7 @@ pub fn instantiate(
     let state = State {
         virtual_balance: msg.virtual_balance,
         router: info.sender.to_string(),
+        vlp: msg.vlp,
         admin: msg.admin,
     };
 
@@ -51,18 +49,44 @@ pub fn execute(
         ExecuteMsg::UpdateState {
             router,
             virtual_balance,
+            vlp,
             admin,
-        } => update_state(deps, info, router, virtual_balance, admin),
+        } => update_state(deps, info, router, virtual_balance, vlp, admin),
         ExecuteMsg::MigrateVBalance {
+            vbalance_address,
+            router_address,
+            channel_id,
+            timeout,
+        } => migrate_vbalance(
+            deps,
+            env,
+            info,
+            vbalance_address,
+            router_address,
+            channel_id,
+            timeout,
+        ),
+        ExecuteMsg::MigrateVLP {
+            vlp_address,
+            router_address,
             vbalance_address,
             channel_id,
             timeout,
-        } => migrate_vbalance(deps, env, info, vbalance_address, channel_id, timeout),
+        } => migrate_vlp(
+            deps,
+            env,
+            info,
+            vbalance_address,
+            router_address,
+            vlp_address,
+            channel_id,
+            timeout,
+        ),
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::State {} => query_state(deps),
     }
