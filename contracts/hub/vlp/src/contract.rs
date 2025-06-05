@@ -53,6 +53,7 @@ pub fn instantiate(
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
         admin: msg.admin,
+        migration_contract: msg.migration_contract,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -142,6 +143,7 @@ pub fn execute(
             fee,
             last_updated,
             admin,
+            migration_contract,
         } => update_state(
             deps,
             info,
@@ -150,6 +152,7 @@ pub fn execute(
             fee,
             last_updated,
             admin,
+            migration_contract,
         ),
         ExecuteMsg::MigrateVLP { migrate_msg } => migrate_vlp(deps, info, migrate_msg),
     }

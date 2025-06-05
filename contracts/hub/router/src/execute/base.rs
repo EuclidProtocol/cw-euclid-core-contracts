@@ -10,7 +10,7 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
-        router::{ExecuteMsg, RegisterFactoryChainType, State},
+        router::{ExecuteMsg, RegisterFactoryChainType, RouterMigrateMsg, State},
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
@@ -24,8 +24,8 @@ use crate::{
     ibc::receive,
     query::verify_cross_chain_addresses,
     state::{
-        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS,
+        CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
+        MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS, TOKEN_VLPS, VLPS,
     },
 };
 
@@ -484,6 +484,7 @@ pub fn execute_update_router_state(
     virtual_balance_address: Option<Addr>,
     locked: Option<bool>,
     mock_relayer_addresses: Option<Vec<String>>,
+    migrate_contract: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
@@ -503,6 +504,14 @@ pub fn execute_update_router_state(
         state.admin
     };
 
+    let verified_migrate_contract = if migrate_contract.is_empty() {
+        state.migrate_contract
+    } else {
+        deps.api
+            .addr_validate(migrate_contract.as_str())?
+            .to_string()
+    };
+
     let state = State {
         admin: verified_admin,
         constant_product_vlp_code_id: constant_product_vlp_code_id
@@ -510,6 +519,7 @@ pub fn execute_update_router_state(
         stable_vlp_code_id: stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id),
         virtual_balance_address: verified_virtual_balance_address?,
         locked: locked.unwrap_or(state.locked),
+        migrate_contract: verified_migrate_contract,
     };
 
     STATE.save(deps.storage, &state)?;
@@ -548,4 +558,45 @@ pub fn execute_update_router_state(
             "locked",
             locked.map_or("unchanged".to_string(), |locked_val| locked_val.to_string()),
         ))
+}
+
+pub fn execute_migrate_router(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    migrate_msg: RouterMigrateMsg,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender == state.migrate_contract,
+        ContractError::Unauthorized {}
+    );
+    for vlp in migrate_msg.all_vlps.vlps {
+        VLPS.save(deps.storage, vlp.0, &vlp.1)?;
+    }
+    for token_vlp in migrate_msg.all_token_vlps.token_vlps {
+        TOKEN_VLPS.save(deps.storage, token_vlp.0, &token_vlp.1)?;
+    }
+    for token_denom in migrate_msg.all_token_denoms.token_denoms {
+        TOKEN_DENOMS.save(deps.storage, token_denom.0, &token_denom.1)?;
+    }
+    for escrow_balance in migrate_msg.all_escrow_balances.escrow_balances {
+        ESCROW_BALANCES.save(deps.storage, escrow_balance.0, &escrow_balance.1)?;
+    }
+    for chain_uid_to_chain in migrate_msg.all_chain_uid_to_chain.chain_uid_to_chain {
+        CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid_to_chain.0, &chain_uid_to_chain.1)?;
+    }
+    for channel_to_chain_uid in migrate_msg.all_channel_to_chain_uid.channel_to_chain_uid {
+        CHANNEL_TO_CHAIN_UID.save(
+            deps.storage,
+            channel_to_chain_uid.0,
+            &channel_to_chain_uid.1,
+        )?;
+    }
+    DEREGISTERED_CHAINS.save(
+        deps.storage,
+        &migrate_msg.all_deregistered_chains.deregistered_chains,
+    )?;
+    // FUNDS_INFO.save(deps.storage, &migrate_msg.all_funds_info.funds_info)?;
+    Ok(Response::new().add_attribute("method", "migrate_router"))
 }

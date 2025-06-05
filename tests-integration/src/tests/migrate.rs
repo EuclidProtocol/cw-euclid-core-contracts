@@ -5,6 +5,7 @@ use cw_orch::prelude::{ContractInstance, CwOrchExecute, CwOrchQuery};
 use cw_orch::prelude::{CwOrchInstantiate, CwOrchUpload};
 use cw_orch_interchain::{prelude::*, InterchainEnv};
 use euclid::fee::Fee;
+use euclid::msgs::router::RouterMigrateMsg;
 use euclid::msgs::virtual_balance::VBalanceMigrateMsg;
 use euclid::msgs::vlp::VlpMigrateMsg;
 use euclid::{
@@ -22,11 +23,13 @@ use rstest::rstest;
 enum MigrationKind {
     VBalance,
     VLP,
+    Router,
 }
 
 #[rstest]
 #[case(MigrationKind::VBalance)]
 #[case(MigrationKind::VLP)]
+#[case(MigrationKind::Router)]
 fn test_migrate(#[case] kind: MigrationKind) {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![
@@ -70,6 +73,7 @@ fn test_migrate(#[case] kind: MigrationKind) {
                 ),
                 execute: None,
                 admin: sender.clone(),
+                migration_contract: "migration_contract".to_string(),
             },
             None,
             None,
@@ -81,7 +85,7 @@ fn test_migrate(#[case] kind: MigrationKind) {
     migration
         .instantiate(
             &euclid::msgs::migrator::InstantiateMsg {
-                router: router_nibiru.address().unwrap().to_string(),
+                router: router_nibiru.addr_str().unwrap(),
                 virtual_balance: vbalance_nibiru.address().unwrap().to_string(),
                 vlp: vlp_nibiru
                     .as_ref()
@@ -96,7 +100,35 @@ fn test_migrate(#[case] kind: MigrationKind) {
     // HUB SETUP
     let router_hub = setup_router(&hub).unwrap();
     let hub_state = router_hub.get_state().unwrap();
+
+    println!("migration: {:?}", migration.address().unwrap());
+    // Add migrate contract to nibiru router
+    router_hub
+        .execute(
+            &euclid::msgs::router::ExecuteMsg::UpdateRouterState {
+                migrate_contract: Some(migration.addr_str().unwrap()),
+                admin: None,
+                vlp_code_id: None,
+                stable_vlp_code_id: None,
+                virtual_balance_address: None,
+                locked: None,
+                mock_relayer_addresses: None,
+            },
+            None,
+        )
+        .unwrap();
     let vbalance_hub = get_virtual_balance(&hub, &hub_state.virtual_balance_address.unwrap());
+    // Add migrate contract to hub virtual balance
+    vbalance_hub
+        .execute(
+            &euclid::msgs::virtual_balance::ExecuteMsg::UpdateState {
+                router: None,
+                admin: None,
+                migration_contract: Some(migration.addr_str().unwrap()),
+            },
+            None,
+        )
+        .unwrap();
 
     let mut vlp_hub = None;
     if let MigrationKind::VLP = kind {
@@ -121,6 +153,7 @@ fn test_migrate(#[case] kind: MigrationKind) {
                 ),
                 execute: None,
                 admin: sender.clone(),
+                migration_contract: migration.addr_str().unwrap(),
             },
             None,
             None,
@@ -197,6 +230,39 @@ fn test_migrate(#[case] kind: MigrationKind) {
 
             let after: VlpMigrateMsg = vlp_hub
                 .query(&euclid::msgs::vlp::QueryMsg::GetMigrateData {})
+                .unwrap();
+
+            assert_ne!(before, after);
+        }
+        MigrationKind::Router => {
+            // Modify the nibiru router's state
+            router_nibiru
+                .execute(
+                    &euclid::msgs::router::ExecuteMsg::DeregisterChain {
+                        chain: ChainUid::create("ethereum".to_string()).unwrap(),
+                    },
+                    None,
+                )
+                .unwrap();
+
+            let before: RouterMigrateMsg = router_hub
+                .query(&euclid::msgs::router::QueryMsg::GetMigrateData {})
+                .unwrap();
+
+            let msg = euclid::msgs::migrator::ExecuteMsg::MigrateRouter {
+                vbalance_address: vbalance_hub.address().unwrap().to_string(),
+                router_address: router_hub.address().unwrap().to_string(),
+                vlp_address: vlp_hub
+                    .as_ref()
+                    .map_or(String::default(), |v| v.addr_str().unwrap()),
+                channel_id: channel_id.to_string(),
+                timeout: None,
+            };
+            let request = migration.execute(&msg, None).unwrap();
+            let _ = interchain.await_packets("nibiru", request).unwrap();
+
+            let after: RouterMigrateMsg = router_hub
+                .query(&euclid::msgs::router::QueryMsg::GetMigrateData {})
                 .unwrap();
 
             assert_ne!(before, after);

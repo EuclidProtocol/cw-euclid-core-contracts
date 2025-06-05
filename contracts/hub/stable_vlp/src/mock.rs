@@ -26,8 +26,17 @@ impl MockStableVlp {
         fee: Fee,
         execute: Option<ExecuteMsg>,
         admin: String,
+        migration_contract: String,
     ) -> Self {
-        let msg = mock_vlp_instantiate_msg(router, virtual_balance, pair, fee, execute, admin);
+        let msg = mock_vlp_instantiate_msg(
+            router,
+            virtual_balance,
+            pair,
+            fee,
+            execute,
+            admin,
+            migration_contract,
+        );
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid vlp", None);
 
         Self(res.unwrap())
@@ -61,6 +70,7 @@ pub fn mock_vlp_instantiate_msg(
     fee: Fee,
     execute: Option<ExecuteMsg>,
     admin: String,
+    migration_contract: String,
 ) -> InstantiateMsg {
     InstantiateMsg {
         router,
@@ -69,6 +79,7 @@ pub fn mock_vlp_instantiate_msg(
         fee,
         execute,
         admin,
+        migration_contract,
     }
 }
 

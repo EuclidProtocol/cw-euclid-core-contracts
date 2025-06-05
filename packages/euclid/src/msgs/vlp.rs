@@ -15,6 +15,7 @@ pub struct InstantiateMsg {
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
     pub admin: String,
+    pub migration_contract: String,
 }
 
 #[cw_serde]
@@ -62,6 +63,7 @@ pub enum ExecuteMsg {
         // The last timestamp where the balances for each token have been updated
         last_updated: Option<u64>,
         admin: Option<String>,
+        migration_contract: Option<String>,
     },
     MigrateVLP {
         migrate_msg: VlpMigrateMsg,
@@ -144,6 +146,7 @@ pub struct State {
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
     pub admin: String,
+    pub migration_contract: String,
 }
 
 #[cw_serde]

@@ -379,6 +379,7 @@ fn execute_request_pool_creation(
                     ),
                     execute: Some(register_msg),
                     admin: state.admin.clone(),
+                    migration_contract: state.migrate_contract.clone(),
                 })?,
                 funds: vec![],
                 label: "Constant Product VLP".to_string(),

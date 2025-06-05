@@ -9,7 +9,7 @@ use euclid::{
         EscrowResponse, MigrateAllChainUidToChainResponse, MigrateAllChannelToChainUidResponse,
         MigrateAllDeregisteredChainsResponse, MigrateAllEscrowBalancesResponse,
         MigrateAllFundsInfoResponse, MigrateAllTokenDenomsResponse, MigrateAllTokenVlpsResponse,
-        MigrateAllVlpsResponse, MigrateDataResponse, QuerySimulateSwap, RelayerAddressesResponse,
+        MigrateAllVlpsResponse, QuerySimulateSwap, RelayerAddressesResponse, RouterMigrateMsg,
         SimulateEscrowReleaseResponse, SimulateSwapResponse, StateResponse, TokenDenomsResponse,
         TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
     },
@@ -404,7 +404,7 @@ pub fn query_migrate_all_funds_info(
     Ok(MigrateAllFundsInfoResponse { funds_info })
 }
 
-pub fn query_migrate_data(deps: Deps) -> Result<MigrateDataResponse, ContractError> {
+pub fn query_migrate_data(deps: Deps) -> Result<RouterMigrateMsg, ContractError> {
     let all_vlps = query_migrate_all_vlps(deps)?;
     let all_token_vlps = query_migrate_all_token_vlps(deps)?;
     let all_token_denoms = query_migrate_all_token_denoms(deps)?;
@@ -412,8 +412,8 @@ pub fn query_migrate_data(deps: Deps) -> Result<MigrateDataResponse, ContractErr
     let all_chain_uid_to_chain = query_migrate_all_chain_uid_to_chain(deps)?;
     let all_channel_to_chain_uid = query_migrate_all_channel_to_chain_uid(deps)?;
     let all_deregistered_chains = query_migrate_all_deregistered_chains(deps)?;
-    let all_funds_info = query_migrate_all_funds_info(deps)?;
-    Ok(MigrateDataResponse {
+    // let all_funds_info = query_migrate_all_funds_info(deps)?;
+    Ok(RouterMigrateMsg {
         all_vlps,
         all_token_vlps,
         all_token_denoms,
@@ -421,6 +421,6 @@ pub fn query_migrate_data(deps: Deps) -> Result<MigrateDataResponse, ContractErr
         all_chain_uid_to_chain,
         all_channel_to_chain_uid,
         all_deregistered_chains,
-        all_funds_info,
+        // all_funds_info,
     })
 }

@@ -33,6 +33,7 @@ fn test_proper_instantiation() {
         vlp_code_id,
         0,
         virtual_balance_code_id,
+        "".to_string(),
     );
 
     let mock_virtual_balance = MockVirtualBalance::instantiate(

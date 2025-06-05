@@ -31,6 +31,7 @@ mod tests {
             ),
             execute: None,
             admin: "admin".to_string(),
+            migration_contract: "migration_contract".to_string(),
         };
         let info = mock_info("router", &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -67,6 +68,7 @@ mod tests {
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
             admin: "admin".to_string(),
+            migration_contract: "migration_contract".to_string(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -268,6 +270,7 @@ mod tests {
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
             admin: "admin".to_string(),
+            migration_contract: "migration_contract".to_string(),
         };
 
         STATE.save(deps.as_mut().storage, &state).unwrap();
@@ -342,6 +345,7 @@ mod tests {
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
             admin: "admin".to_string(),
+            migration_contract: "migration_contract".to_string(),
         };
 
         STATE.save(deps.as_mut().storage, &state).unwrap();

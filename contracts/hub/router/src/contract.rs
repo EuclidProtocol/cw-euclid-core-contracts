@@ -13,9 +13,10 @@ use crate::execute::cosmos::{
     execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
 };
 use crate::execute::{
-    execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
-    execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
-    execute_update_lock, execute_update_router_state, execute_withdraw_voucher,
+    execute_deregister_chain, execute_migrate_router, execute_native_receive_callback,
+    execute_register_factory, execute_release_escrow, execute_reregister_chain,
+    execute_update_factory_channel, execute_update_lock, execute_update_router_state,
+    execute_withdraw_voucher,
 };
 
 use crate::execute::evm::{
@@ -62,6 +63,7 @@ pub fn instantiate(
         admin: info.sender.to_string(),
         virtual_balance_address: None,
         locked: false,
+        migrate_contract: msg.migrate_contract,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
@@ -172,6 +174,7 @@ pub fn execute(
                     virtual_balance_address,
                     locked,
                     mock_relayer_addresses,
+                    migrate_contract,
                 } => execute_update_router_state(
                     deps,
                     info,
@@ -181,6 +184,7 @@ pub fn execute(
                     virtual_balance_address,
                     locked,
                     mock_relayer_addresses,
+                    migrate_contract.unwrap_or_default(),
                 ),
                 ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
                     execute_evm_send_packet(deps, info, env, chain_uid, msg)
@@ -257,6 +261,10 @@ pub fn execute(
                 } => execute_cosmos_receive_acknowledgement(
                     deps, info, env, chain_uid, msg, sequence, hash, ack,
                 ),
+
+                ExecuteMsg::MigrateRouter { migrate_msg } => {
+                    execute_migrate_router(deps, env, info, migrate_msg)
+                }
 
                 _ => Err(ContractError::UnreachableCode {}),
             }

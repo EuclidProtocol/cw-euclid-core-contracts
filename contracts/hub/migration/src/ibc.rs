@@ -161,6 +161,21 @@ pub fn do_ibc_packet_receive(
 
             Ok(IbcReceiveResponse::new().add_submessage(msg))
         }
+        IbcExecuteMsg::MigrateRouter {
+            router_address,
+            migrate_msg,
+        } => {
+            let router_execute_msg =
+                euclid::msgs::router::ExecuteMsg::MigrateRouter { migrate_msg };
+
+            let msg = SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: router_address,
+                msg: to_json_binary(&router_execute_msg)?,
+                funds: vec![],
+            }));
+
+            Ok(IbcReceiveResponse::new().add_submessage(msg))
+        }
     }
 }
 

@@ -40,6 +40,7 @@ fn test_proper_instantiation() {
         vlp_code_id,
         0,
         virtual_balance_code_id,
+        "".to_string(),
     );
 
     let mock_virtual_balance = MockVirtualBalance::instantiate(
@@ -71,6 +72,7 @@ fn test_proper_instantiation() {
         fee.clone(),
         None,
         "admin".to_string(),
+        "migration_contract".to_string(),
     );
 
     let token_id_response = MockVlp::query_state(&mock_vlp, &vlp);
@@ -91,6 +93,7 @@ fn test_proper_instantiation() {
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
             admin: "admin".to_string(),
+            migration_contract: "migration_contract".to_string(),
         },
     };
     assert_eq!(token_id_response, expected_token_id);

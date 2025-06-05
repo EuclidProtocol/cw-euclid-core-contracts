@@ -12,6 +12,7 @@ pub struct InstantiateMsg {
     pub stable_vlp_code_id: u64,
     pub virtual_balance_code_id: u64,
     pub mock_relayer_addresses: Option<Vec<String>>,
+    pub migrate_contract: String,
 }
 
 #[cw_serde]
@@ -68,6 +69,7 @@ pub enum ExecuteMsg {
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
         mock_relayer_addresses: Option<Vec<String>>,
+        migrate_contract: Option<String>,
     },
 
     EvmSendPacket {
@@ -157,6 +159,11 @@ pub enum ExecuteMsg {
         hash: String,
         ack: Binary,
     },
+
+    // MIGRATE //
+    MigrateRouter {
+        migrate_msg: RouterMigrateMsg,
+    },
 }
 
 #[cw_serde]
@@ -232,12 +239,12 @@ pub enum QueryMsg {
     #[returns(MigrateAllFundsInfoResponse)]
     MigrateAllFundsInfo {},
 
-    #[returns(MigrateDataResponse)]
+    #[returns(RouterMigrateMsg)]
     GetMigrateData {},
 }
 
 #[cw_serde]
-pub struct MigrateDataResponse {
+pub struct RouterMigrateMsg {
     pub all_vlps: MigrateAllVlpsResponse,
     pub all_token_vlps: MigrateAllTokenVlpsResponse,
     pub all_token_denoms: MigrateAllTokenDenomsResponse,
@@ -245,7 +252,7 @@ pub struct MigrateDataResponse {
     pub all_chain_uid_to_chain: MigrateAllChainUidToChainResponse,
     pub all_channel_to_chain_uid: MigrateAllChannelToChainUidResponse,
     pub all_deregistered_chains: MigrateAllDeregisteredChainsResponse,
-    pub all_funds_info: MigrateAllFundsInfoResponse,
+    // pub all_funds_info: MigrateAllFundsInfoResponse,
 }
 
 #[cw_serde]
@@ -303,6 +310,7 @@ pub struct State {
     pub stable_vlp_code_id: u64,
     pub virtual_balance_address: Option<Addr>,
     pub locked: bool,
+    pub migrate_contract: String,
 }
 
 // We define a custom struct for each query response

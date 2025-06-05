@@ -4,7 +4,10 @@ use cosmwasm_std::{
 use euclid::{
     error::ContractError,
     events::simple_event,
-    msgs::{migrator::IbcExecuteMsg, virtual_balance::VBalanceMigrateMsg, vlp::VlpMigrateMsg},
+    msgs::{
+        migrator::IbcExecuteMsg, router::RouterMigrateMsg, virtual_balance::VBalanceMigrateMsg,
+        vlp::VlpMigrateMsg,
+    },
     timeout::get_timeout,
 };
 
@@ -125,6 +128,40 @@ pub fn migrate_vlp(
     let data = IbcExecuteMsg::MigrateVLP {
         migrate_msg: vlp_query_response,
         vlp_address,
+    };
+    let timeout = get_timeout(timeout)?;
+
+    let ibc_packet = CosmosMsg::Ibc(cosmwasm_std::IbcMsg::SendPacket {
+        channel_id,
+        data: to_json_binary(&data)?,
+        timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
+    });
+    Ok(Response::new().add_message(ibc_packet))
+}
+
+pub fn migrate_router(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    virtual_balance_address: String,
+    router_address: String,
+    vlp_address: String,
+    channel_id: String,
+    timeout: Option<u64>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let router_query_msg = euclid::msgs::router::QueryMsg::GetMigrateData {};
+    let mut router_query_response: RouterMigrateMsg = deps.querier.query(
+        &cosmwasm_std::QueryRequest::Wasm(cosmwasm_std::WasmQuery::Smart {
+            contract_addr: state.router,
+            msg: to_json_binary(&router_query_msg)?,
+        }),
+    )?;
+
+    let data = IbcExecuteMsg::MigrateRouter {
+        migrate_msg: router_query_response,
+        router_address,
     };
     let timeout = get_timeout(timeout)?;
 

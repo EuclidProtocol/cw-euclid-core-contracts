@@ -1,3 +1,5 @@
+use crate::msgs::router::RouterMigrateMsg;
+
 use super::{virtual_balance::VBalanceMigrateMsg, vlp::VlpMigrateMsg};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 
@@ -24,7 +26,13 @@ pub enum ExecuteMsg {
         channel_id: String,
         timeout: Option<u64>,
     },
-
+    MigrateRouter {
+        vbalance_address: String,
+        router_address: String,
+        vlp_address: String,
+        channel_id: String,
+        timeout: Option<u64>,
+    },
     UpdateState {
         router: Option<String>,
         virtual_balance: Option<String>,
@@ -42,6 +50,10 @@ pub enum IbcExecuteMsg {
     MigrateVLP {
         vlp_address: String,
         migrate_msg: VlpMigrateMsg,
+    },
+    MigrateRouter {
+        router_address: String,
+        migrate_msg: RouterMigrateMsg,
     },
 }
 

@@ -3,7 +3,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response};
 use cw2::set_contract_version;
 
-use crate::execute::{migrate_vbalance, migrate_vlp, update_state};
+use crate::execute::{migrate_router, migrate_vbalance, migrate_vlp, update_state};
 use crate::query::query_state;
 use crate::reply;
 use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
@@ -24,7 +24,7 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     let state = State {
         virtual_balance: msg.virtual_balance,
-        router: info.sender.to_string(),
+        router: msg.router,
         vlp: msg.vlp,
         admin: msg.admin,
     };
@@ -73,6 +73,22 @@ pub fn execute(
             channel_id,
             timeout,
         } => migrate_vlp(
+            deps,
+            env,
+            info,
+            vbalance_address,
+            router_address,
+            vlp_address,
+            channel_id,
+            timeout,
+        ),
+        ExecuteMsg::MigrateRouter {
+            vbalance_address,
+            router_address,
+            vlp_address,
+            channel_id,
+            timeout,
+        } => migrate_router(
             deps,
             env,
             info,

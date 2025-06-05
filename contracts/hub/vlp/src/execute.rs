@@ -631,6 +631,7 @@ pub fn update_state(
     fee: Option<Fee>,
     last_updated: Option<u64>,
     admin: Option<String>,
+    migration_contract: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
@@ -658,6 +659,13 @@ pub fn update_state(
         state.admin
     };
 
+    let verified_migration_contract = if let Some(migration_contract) = migration_contract {
+        deps.api.addr_validate(&migration_contract)?;
+        migration_contract
+    } else {
+        state.migration_contract
+    };
+
     let new_state = State {
         pair: state.pair,
         router: verified_router,
@@ -667,6 +675,7 @@ pub fn update_state(
         last_updated: last_updated.unwrap_or(state.last_updated),
         total_lp_tokens: state.total_lp_tokens,
         admin: verified_admin,
+        migration_contract: verified_migration_contract,
     };
 
     STATE.save(deps.storage, &new_state)?;
@@ -681,12 +690,11 @@ pub fn migrate_vlp(
     info: MessageInfo,
     msg: VlpMigrateMsg,
 ) -> Result<Response, ContractError> {
-    //TODO: add validation check
-    // let state = STATE.load(deps.storage)?;
-    // ensure!(
-    //     info.sender == state.migration_contract,
-    //     ContractError::Unauthorized {}
-    // );
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender == state.migration_contract,
+        ContractError::Unauthorized {}
+    );
 
     STATE.save(deps.storage, &msg.state.state)?;
     for (key, value) in msg.balances.balances {
