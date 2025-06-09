@@ -23,7 +23,8 @@ use crate::execute::{
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
-    pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
+    pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_relayer,
+    query_state,
 };
 use crate::reply::{
     on_cw20_instantiate_reply, on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply,
@@ -267,6 +268,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
+        QueryMsg::GetRelayer {} => query_relayer(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

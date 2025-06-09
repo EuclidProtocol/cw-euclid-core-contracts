@@ -42,7 +42,7 @@ schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 forwarding = { workspace = true }
-cw-orch = "=0.24.1"
+cw-orch = { workspace = true }
 cw-utils = "=1.0.3"
 osmosis-std="0.16.2"
 swaprouter = { git = "https://github.com/osmosis-labs/osmosis", package = "swaprouter", tag = "v28.0.0", features = ["imported"] }

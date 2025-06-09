@@ -43,7 +43,7 @@ serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 #euclid = { workspace = true }
 forwarding = { workspace = true }
-cw-orch = "=0.24.1"
+cw-orch = { workspace = true }
 astroport = { git = "https://github.com/astroport-fi/astroport-core", branch = "main" }
 cw-utils = "=1.0.3"
 

@@ -52,7 +52,7 @@ serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
 euclid-ibc = { workspace = true }
-cw-orch = "=0.28.0"
+cw-orch = { workspace = true }
 
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

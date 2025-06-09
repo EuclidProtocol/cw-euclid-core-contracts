@@ -199,6 +199,9 @@ pub enum QueryMsg {
 
     #[returns(TokenDenomsResponse)]
     QueryTokenDenoms { token: Token },
+
+    #[returns(RelayerAddressesResponse)]
+    QueryRelayerAddresses {},
 }
 // We define a custom struct for each query response
 #[cw_serde]
@@ -301,6 +304,11 @@ pub struct TokenDenom {
 #[cw_serde]
 pub struct TokenDenomsResponse {
     pub denoms: Vec<TokenDenom>,
+}
+
+#[cw_serde]
+pub struct RelayerAddressesResponse {
+    pub relayer_addresses: Vec<String>,
 }
 
 #[cw_serde]

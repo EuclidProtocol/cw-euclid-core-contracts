@@ -27,6 +27,7 @@ euclid = { path = "./packages/euclid" }
 euclid-ibc = { path = "./packages/euclid_ibc" }
 euclid-utils = { path = "./packages/euclid_utils" }
 forwarding = { path = "./packages/forwarding" }
+relayer = { path = "./packages/relayer" }
 
 cosmwasm-std = "2.2.2"
 cosmwasm-schema = "2.2.2"
@@ -41,7 +42,5 @@ thiserror = { version = "1.0.49" }
 itertools = "0.10"
 
 mock = { path = "./packages/mock" }
-cw-multi-test = { version = "2.3.2", features = [
-    "cosmwasm_1_2",
-    "cosmwasm_1_1",
-] }
+cw-multi-test = { version = "2.4.0"}
+cw-orch = "0.28.0"

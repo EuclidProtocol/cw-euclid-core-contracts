@@ -184,6 +184,9 @@ pub enum QueryMsg {
 
     #[returns(GetEscrowResponse)]
     GetEscrow { token_id: String },
+
+    #[returns(GetRelayerResponse)]
+    GetRelayer {},
 }
 
 #[cw_serde]
@@ -280,4 +283,9 @@ pub struct GetPendingRemoveLiquidityResponse {
 #[cw_serde]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>, // Assuming pool addresses are strings
+}
+
+#[cw_serde]
+pub struct GetRelayerResponse {
+    pub relayer_address: String,
 }

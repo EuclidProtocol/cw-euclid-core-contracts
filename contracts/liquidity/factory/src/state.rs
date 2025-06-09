@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Int256};
+use cosmwasm_std::{Addr, Binary, Int256, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
@@ -82,3 +82,5 @@ pub const COSMOS_PACKET_RELAY_MAP: Map<u128, Binary> = Map::new("cosmos_packet_r
 //Cosmos Relay sequence count
 pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Item<u128> =
     Item::new("cosmos_packet_relay_sequence_count");
+
+pub const PROCESSED_PACKET_SEQUENCE: Map<u128, Uint128> = Map::new("processed_packet_sequence");

@@ -15,3 +15,4 @@ impl<Chain> Uploadable for VlpContract<Chain> {
         )
     }
 }
+ 
