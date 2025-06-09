@@ -38,12 +38,7 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 
 [dependencies]
 cosmwasm-schema = { workspace = true }
-cosmwasm-std = { workspace = true, features = [
-  "cosmwasm_1_2",
-  # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
-  # "cosmwasm_1_4",
-  
-] }
+cosmwasm-std = { workspace = true, features = ["stargate"] }
 cw-storage-plus = { workspace = true }
 cw-utils = { workspace = true }
 cw2 = { workspace = true }
