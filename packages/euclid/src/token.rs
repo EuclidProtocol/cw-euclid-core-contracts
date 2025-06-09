@@ -49,7 +49,7 @@ impl Token {
     }
 
     pub fn exists(&self, pair: Pair) -> bool {
-        self == &pair.token_1 || self == &pair.token_2
+        self == pair.token_1 || self == pair.token_2
     }
     pub fn validate(&self) -> Result<&Self, ContractError> {
         ensure!(!self.is_empty(), ContractError::InvalidTokenID {});

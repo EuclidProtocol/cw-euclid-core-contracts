@@ -1,6 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128,
-    WasmMsg,
+    ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128, WasmMsg,
 };
 use euclid::error::ContractError;
 use relayer::{

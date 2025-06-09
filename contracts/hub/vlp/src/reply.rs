@@ -10,6 +10,7 @@ pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Contra
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
             let execute_data =

@@ -22,6 +22,7 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
             let instantiate_data: cw_utils::MsgInstantiateContractResponse =
@@ -62,6 +63,7 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
             let instantiate_data: cw_utils::MsgInstantiateContractResponse =
@@ -88,6 +90,7 @@ pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
             .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
             .add_attribute("error", err)),
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -110,6 +113,7 @@ pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
             .add_attribute("error", err.clone())
             .set_data(make_ack_fail(err)?)),
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -147,6 +151,7 @@ pub fn on_reply_native_ibc_wrapper_call(
                 .add_attribute("err", err))
         }
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -173,6 +178,7 @@ pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
             err: err.to_string(),
         }),
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -203,6 +209,7 @@ pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 .add_event(write_acknowledge_event))
         }
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
