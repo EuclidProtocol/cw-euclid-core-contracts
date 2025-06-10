@@ -467,7 +467,6 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         &factory_chain_uid,
     )
     .unwrap();
-    println!("here1");
 
     let token_denoms_response: TokenDenomsResponse = router_contract
         .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
@@ -507,7 +506,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             ],
         )
         .unwrap();
-    println!("here2");
+
     relay_factory_router_factory(
         create_pool_with_funds_request.events,
         &factory_contract,
@@ -515,12 +514,12 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         &factory_chain_uid,
     )
     .unwrap();
-    println!("here3");
+
     // This is causing the test to fail with the following error: range end index 29818 out of range for slice of length 16
     // let all_pools_query: AllPoolsResponse = factory_contract
     //     .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
     //     .unwrap();
-    // println!("here6");
+
     // for pool in all_pools_query.pools {
     //     assert_eq!(
     //         pool.pair,
@@ -601,7 +600,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             ],
         )
         .unwrap();
-    println!("here4");
+
     relay_factory_router_factory(
         add_liquidity_request.events,
         &factory_contract,
@@ -609,7 +608,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         &factory_chain_uid,
     )
     .unwrap();
-    println!("here5");
+
     let liquidity_query: GetLiquidityResponse = vlp_contract
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
         .unwrap();
