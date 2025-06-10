@@ -72,7 +72,7 @@ pub fn instantiate(
                     info.clone(),
                     &STATE,
                     &CHAIN_LP_TOKENS,
-                    Some(&AMP_FACTOR),
+                    Some(amp_factor),
                     sender,
                     pair,
                     tx_id,
@@ -98,17 +98,20 @@ pub fn execute(
             sender,
             pair,
             tx_id,
-        } => register_pool(
-            deps,
-            env,
-            info,
-            &STATE,
-            &CHAIN_LP_TOKENS,
-            Some(&AMP_FACTOR),
-            sender,
-            pair,
-            tx_id,
-        ),
+        } => {
+            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
+            register_pool(
+                deps,
+                env,
+                info,
+                &STATE,
+                &CHAIN_LP_TOKENS,
+                Some(amp_factor),
+                sender,
+                pair,
+                tx_id,
+            )
+        }
         ExecuteMsg::UpdateFee {
             lp_fee_bps,
             euclid_fee_bps,
@@ -154,22 +157,24 @@ pub fn execute(
             tx_id,
             next_swaps,
             test_fail,
-        } => execute_swap(
-            deps,
-            env,
-            info,
-            &STATE,
-            &BALANCES,
-            Some(&AMP_FACTOR),
-            sender,
-            asset_in,
-            amount_in,
-            min_token_out,
-            tx_id,
-            next_swaps,
-            SwapCalculationMethod::Stable,
-            test_fail,
-        ),
+        } => {
+            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
+            execute_swap(
+                deps,
+                env,
+                info,
+                &STATE,
+                &BALANCES,
+                sender,
+                asset_in,
+                amount_in,
+                min_token_out,
+                tx_id,
+                next_swaps,
+                SwapCalculationMethod::Stable(amp_factor),
+                test_fail,
+            )
+        }
         ExecuteMsg::UpdateState {
             router,
             virtual_balance,

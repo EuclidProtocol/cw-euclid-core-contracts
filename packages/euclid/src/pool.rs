@@ -1,4 +1,3 @@
-use crate::msgs::stable_vlp::DEFAULT_AMP_FACTOR;
 use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
@@ -8,7 +7,6 @@ use crate::{
     msgs::{
         stable_vlp::compute_swap,
         virtual_balance::{ExecuteApprove, ExecuteTransfer},
-        vlp::calculate_swap,
     },
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
@@ -19,7 +17,7 @@ pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, Isqrt, MessageInfo, Response,
-    SubMsg, Uint128, Uint64, WasmMsg,
+    SubMsg, Uint128, Uint256, Uint64, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 
@@ -114,6 +112,28 @@ pub struct State {
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
     pub admin: String,
+}
+
+// Function to calculate the asset to be recieved after a swap
+pub fn calculate_swap(
+    swap_amount: Uint128,
+    reserve_in: Uint128,
+    reserve_out: Uint128,
+) -> Result<Uint128, ContractError> {
+    let reserve_in = Uint256::from(reserve_in);
+    let reserve_out = Uint256::from(reserve_out);
+    // Calculate the k constant product
+    let k = reserve_in.checked_mul(reserve_out)?;
+    // Calculate the new reserve of token 1
+    let new_reserve_in = reserve_in.checked_add(swap_amount.into())?;
+    // Calculate the new reserve of token 2
+    let new_reserve_out = k.checked_div(new_reserve_in)?;
+    // Calculate the amount of token 2 to be recieved
+    let token_2_recieved = reserve_out.checked_sub(new_reserve_out)?;
+    let token_2_recieved =
+        Uint128::try_from(token_2_recieved).map_err(|_| ContractError::new("Overflow"))?;
+
+    Ok(token_2_recieved)
 }
 
 pub fn calculate_lp_allocation(
@@ -262,7 +282,7 @@ pub fn register_pool(
     info: MessageInfo,
     state_storage: &Item<State>,
     chain_lp_tokens: &Map<ChainUid, Uint128>,
-    amp_factor_storage: Option<&Item<Uint64>>,
+    amp_factor: Option<Uint64>,
     sender: CrossChainUser,
     pair: Pair,
     tx_id: String,
@@ -295,7 +315,7 @@ pub fn register_pool(
         mint_lp_tokens: Uint128::zero(),
         sender: sender.clone(),
     };
-    let pool_type = if amp_factor_storage.is_some() {
+    let pool_type = if amp_factor.is_some() {
         "stable"
     } else {
         "constant_product"
@@ -312,11 +332,8 @@ pub fn register_pool(
         .add_attribute("pool_type", pool_type)
         .set_data(to_json_binary(&ack)?);
 
-    if let Some(amp_factor_storage) = amp_factor_storage {
-        response = response.add_attribute(
-            "amp_factor",
-            amp_factor_storage.load(deps.storage)?.to_string(),
-        );
+    if let Some(amp_factor) = amp_factor {
+        response = response.add_attribute("amp_factor", amp_factor.to_string());
     }
 
     Ok(response)
@@ -573,7 +590,7 @@ pub fn add_liquidity(
 
 #[cw_serde]
 pub enum SwapCalculationMethod {
-    Stable,
+    Stable(Uint64),
     Regular,
 }
 
@@ -584,7 +601,6 @@ pub fn execute_swap(
     info: MessageInfo,
     state_storage: &Item<State>,
     balances_storage: &Map<Token, Uint128>,
-    amp_factor_storage: Option<&Item<Uint64>>,
     sender: CrossChainUser,
     asset_in: Token,
     amount_in: Uint128,
@@ -663,15 +679,12 @@ pub fn execute_swap(
     let swap_amount = amount_in.checked_sub(total_fee)?;
 
     let receive_amount = match calculation_method {
-        SwapCalculationMethod::Stable => {
+        SwapCalculationMethod::Stable(amp_factor) => {
             compute_swap(
                 &Decimal256::from_integer(amount_in),
                 &Decimal256::from_integer(token_in_reserve),
                 &Decimal256::from_integer(token_out_reserve),
-                amp_factor_storage
-                    .unwrap()
-                    .load(deps.storage)
-                    .unwrap_or(DEFAULT_AMP_FACTOR),
+                amp_factor,
             )?
             .return_amount
         }

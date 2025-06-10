@@ -164,7 +164,6 @@ pub fn execute(
             info,
             &STATE,
             &BALANCES,
-            None,
             sender,
             asset_in,
             amount_in,
