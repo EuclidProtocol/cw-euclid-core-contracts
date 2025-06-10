@@ -245,6 +245,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
     )
     .unwrap();
 
+    // This is causing the test to fail with the following error: range end index 29818 out of range for slice of length 16
     // let all_pools_query: AllPoolsResponse = factory_contract
     //     .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
     //     .unwrap();
