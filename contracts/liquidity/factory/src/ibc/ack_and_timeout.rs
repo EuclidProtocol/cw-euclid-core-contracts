@@ -208,7 +208,10 @@ fn ack_pool_creation(
 
             PAIR_TO_VLP.save(
                 deps.storage,
-                existing_req.pair_info.get_pair()?.get_tupple(),
+                (
+                    existing_req.pair_info.get_pair()?.token_1.to_string(),
+                    existing_req.pair_info.get_pair()?.token_2.to_string(),
+                ),
                 &data.vlp_contract.clone(),
             )?;
             // Prepare response

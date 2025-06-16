@@ -325,7 +325,7 @@ pub fn ibc_ack_release_escrow(
             });
 
             // Escrow release is failed, add the old escrow balance again
-            let escrow_key = ESCROW_BALANCES.key((token, recipient.user.chain_uid));
+            let escrow_key = ESCROW_BALANCES.key((token.to_string(), recipient.user.chain_uid));
             let new_balance = escrow_key.load(deps.storage)?.checked_add(amount)?;
             escrow_key.save(deps.storage, &new_balance)?;
 

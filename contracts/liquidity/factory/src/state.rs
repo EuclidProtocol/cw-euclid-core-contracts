@@ -37,7 +37,7 @@ pub const MOCK_RELAYER_ADDRESS: Item<String> = Item::new("mock_relayer_address")
 pub const HUB_CHANNEL: Item<String> = Item::new("hub_channel");
 
 // Map Pair to vlp address
-pub const PAIR_TO_VLP: Map<(Token, Token), String> = Map::new("pair_to_vlp");
+pub const PAIR_TO_VLP: Map<(String, String), String> = Map::new("pair_to_vlp");
 
 // Map vlp to LP Allocations
 pub const VLP_TO_LP_SHARES: Map<String, Int256> = Map::new("vlp_to_lp_shares");

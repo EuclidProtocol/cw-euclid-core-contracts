@@ -10,8 +10,11 @@ use euclid::{
     fee::{DenomFees, PartnerFee, BPS_100_PERCENT, BPS_1_PERCENT, MAX_PARTNER_FEE_BPS},
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
-        factory::{ExecuteSwapRequest, StateResponse},
-        router::{QueryMsgFns, TokenDenom, TokenDenomsResponse, VlpResponse},
+        factory::{AllPoolsResponse, ExecuteSwapRequest, StateResponse},
+        router::{
+            AllEscrowsResponse, AllVlpResponse, QueryMsgFns, TokenDenom, TokenDenomsResponse,
+            VlpResponse,
+        },
         vlp::GetLiquidityResponse,
     },
     pool::PoolConfig,
@@ -19,6 +22,7 @@ use euclid::{
     token::{
         Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
     },
+    utils::pagination::Pagination,
 };
 use factory::mock::{mock_factory, MockFactory};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
@@ -125,6 +129,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
 
     let router_contract = setup_router(&router).unwrap();
     let router_state = router_contract.get_state().unwrap();
+
     let _virtual_balance_router =
         get_virtual_balance(&router, &router_state.virtual_balance_address.unwrap());
 
@@ -245,17 +250,16 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
     )
     .unwrap();
 
-    // This is causing the test to fail with the following error: range end index 29818 out of range for slice of length 16
-    // let all_pools_query: AllPoolsResponse = factory_contract
-    //     .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
-    //     .unwrap();
+    let all_pools_query: AllPoolsResponse = factory_contract
+        .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
+        .unwrap();
 
-    // for pool in all_pools_query.pools {
-    //     assert_eq!(
-    //         pool.pair,
-    //         Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap()
-    //     );
-    // }
+    for pool in all_pools_query.pools {
+        assert_eq!(
+            pool.pair,
+            Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap()
+        );
+    }
 
     let vlp_query: VlpResponse = router_contract
         .query(&euclid::msgs::router::QueryMsg::GetVlp {
@@ -379,6 +383,18 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );
+
+    let _resp: AllEscrowsResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::QueryAllEscrows {
+            pagination: Pagination::new(None, None, None, None),
+        })
+        .unwrap();
+
+    let _resp: AllVlpResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::GetAllVlps {
+            pagination: Pagination::new(None, None, None, None),
+        })
+        .unwrap();
 }
 
 #[test]
@@ -516,17 +532,16 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     )
     .unwrap();
 
-    // This is causing the test to fail with the following error: range end index 29818 out of range for slice of length 16
-    // let all_pools_query: AllPoolsResponse = factory_contract
-    //     .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
-    //     .unwrap();
+    let all_pools_query: AllPoolsResponse = factory_contract
+        .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
+        .unwrap();
 
-    // for pool in all_pools_query.pools {
-    //     assert_eq!(
-    //         pool.pair,
-    //         Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap()
-    //     );
-    // }
+    for pool in all_pools_query.pools {
+        assert_eq!(
+            pool.pair,
+            Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap()
+        );
+    }
 
     let vlp_query: VlpResponse = router_contract
         .query(&euclid::msgs::router::QueryMsg::GetVlp {

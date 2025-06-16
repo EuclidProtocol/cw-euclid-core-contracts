@@ -172,7 +172,10 @@ pub fn execute_request_pool_creation(
         ContractError::TxAlreadyExist {}
     );
     ensure!(
-        !PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
+        !PAIR_TO_VLP.has(
+            deps.storage,
+            (pair.token_1.to_string(), pair.token_2.to_string())
+        ),
         ContractError::PoolAlreadyExists {}
     );
 
@@ -270,7 +273,10 @@ pub fn add_liquidity_request(
         ContractError::TxAlreadyExist {}
     );
     ensure!(
-        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
+        PAIR_TO_VLP.has(
+            deps.storage,
+            (pair.token_1.to_string(), pair.token_2.to_string())
+        ),
         ContractError::PoolDoesNotExist {}
     );
 
@@ -398,13 +404,19 @@ pub fn remove_liquidity_request(
         ContractError::TxAlreadyExist {}
     );
 
-    let vlp = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
+    let vlp = PAIR_TO_VLP.load(
+        deps.storage,
+        (pair.token_1.to_string(), pair.token_2.to_string()),
+    )?;
     let cw20 = VLP_TO_CW20.load(deps.storage, vlp)?;
 
     ensure!(cw20 == info.sender, ContractError::Unauthorized {});
 
     ensure!(
-        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
+        PAIR_TO_VLP.has(
+            deps.storage,
+            (pair.token_1.to_string(), pair.token_2.to_string())
+        ),
         ContractError::PoolDoesNotExist {}
     );
 

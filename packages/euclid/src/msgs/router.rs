@@ -173,9 +173,7 @@ pub enum QueryMsg {
     #[returns(VlpResponse)]
     GetVlp { pair: Pair },
     #[returns(AllVlpResponse)]
-    GetAllVlps {
-        pagination: Pagination<(Token, Token)>,
-    },
+    GetAllVlps { pagination: Pagination<String> },
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
 
@@ -192,7 +190,7 @@ pub enum QueryMsg {
         pagination: Pagination<ChainUid>,
     },
     #[returns(AllEscrowsResponse)]
-    QueryAllEscrows { pagination: Pagination<Token> },
+    QueryAllEscrows { pagination: Pagination<String> },
 
     #[returns(AllTokensResponse)]
     QueryAllTokens { pagination: Pagination<Token> },

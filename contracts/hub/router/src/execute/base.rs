@@ -365,8 +365,10 @@ pub fn execute_release_escrow(
             );
         }
 
-        let escrow_key =
-            ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
+        let escrow_key = ESCROW_BALANCES.key((
+            token.to_string(),
+            cross_chain_address.user.chain_uid.clone(),
+        ));
         let escrow_balance = escrow_key
             .may_load(deps.storage)?
             .unwrap_or(Uint128::zero());

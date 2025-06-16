@@ -29,10 +29,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     })?)
 }
 
-pub fn query_all_vlps(
-    deps: Deps,
-    pagination: Pagination<(Token, Token)>,
-) -> Result<Binary, ContractError> {
+pub fn query_all_vlps(deps: Deps, pagination: Pagination<String>) -> Result<Binary, ContractError> {
     let Pagination {
         min: start,
         max: end,
@@ -40,19 +37,19 @@ pub fn query_all_vlps(
         limit,
     } = pagination;
 
-    let start = start.map(Bound::inclusive);
-    let end = end.map(Bound::exclusive);
+    let start = start.map(PrefixBound::inclusive);
+    let end = end.map(PrefixBound::exclusive);
 
     let vlps: Result<_, ContractError> = VLPS
-        .range(deps.storage, start, end, Order::Ascending)
+        .prefix_range(deps.storage, start, end, Order::Ascending)
         .skip(skip.unwrap_or(0) as usize)
         .take(limit.unwrap_or(10) as usize)
         .map(|v| {
             let v = v?;
             Ok(VlpResponse {
                 vlp: v.1,
-                token_1: v.0 .0,
-                token_2: v.0 .1,
+                token_1: Token::create(v.0 .0)?,
+                token_2: Token::create(v.0 .1)?,
             })
         })
         .collect();
@@ -62,7 +59,7 @@ pub fn query_all_vlps(
 
 pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let key = pair.get_tupple();
-    let vlp = VLPS.load(deps.storage, key.clone())?;
+    let vlp = VLPS.load(deps.storage, (key.0.to_string(), key.1.to_string()))?;
 
     Ok(to_json_binary(&VlpResponse {
         vlp,
@@ -154,8 +151,10 @@ pub fn query_simulate_escrow_release(
     let mut remaining_withdraw_amount = amount;
 
     for cross_chain_address in cross_chain_addresses.into_iter() {
-        let escrow_key =
-            ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
+        let escrow_key = ESCROW_BALANCES.key((
+            token.to_string(),
+            cross_chain_address.user.chain_uid.clone(),
+        ));
 
         let escrow_balance = escrow_key.may_load(deps.storage)?.unwrap_or_default();
 
@@ -215,7 +214,10 @@ pub fn validate_swap_pairs(
         .iter()
         .map(|swap| -> Result<_, ContractError> {
             let pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
-            let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
+            let vlp_address = VLPS.load(
+                deps.storage,
+                (pair.token_1.to_string(), pair.token_2.to_string()),
+            )?;
             Ok(NextSwapVlp {
                 vlp_address,
                 test_fail: swap.test_fail,
@@ -241,7 +243,7 @@ pub fn query_token_escrows(
     let end = end.map(Bound::exclusive);
 
     let chains: Result<_, ContractError> = ESCROW_BALANCES
-        .prefix(token)
+        .prefix(token.to_string())
         .range(deps.storage, start, end, Order::Ascending)
         .skip(skip.unwrap_or(0) as usize)
         .take(limit.unwrap_or(10) as usize)
@@ -259,7 +261,7 @@ pub fn query_token_escrows(
 
 pub fn query_all_escrows(
     deps: Deps,
-    pagination: Pagination<Token>,
+    pagination: Pagination<String>,
 ) -> Result<Binary, ContractError> {
     let Pagination {
         min: start,
@@ -277,7 +279,7 @@ pub fn query_all_escrows(
         .map(|v| {
             let v = v?;
             Ok(EscrowResponse {
-                token: v.0 .0,
+                token: Token::create(v.0 .0)?,
                 chain_uid: v.0 .1,
                 balance: v.1,
             })

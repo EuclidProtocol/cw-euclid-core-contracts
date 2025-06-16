@@ -20,7 +20,10 @@ use crate::state::{
 
 // Returns the VLP address
 pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
-    let vlp_address = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
+    let vlp_address = PAIR_TO_VLP.load(
+        deps.storage,
+        (pair.token_1.to_string(), pair.token_2.to_string()),
+    )?;
     Ok(to_json_binary(&GetVlpResponse { vlp_address })?)
 }
 
@@ -86,7 +89,7 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
         .map(|item| {
             let (pair_tokens, vlp) = item?;
             Ok(PoolVlpResponse {
-                pair: Pair::new(pair_tokens.0, pair_tokens.1)?,
+                pair: Pair::new(Token::create(pair_tokens.0)?, Token::create(pair_tokens.1)?)?,
                 vlp,
             })
         })
