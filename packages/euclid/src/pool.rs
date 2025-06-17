@@ -12,8 +12,8 @@ use crate::{
     token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
     utils::math::Decimal256Ext,
 };
-pub const VIRTUAL_BALANCE_TRANSFER_REPLY_ID: u64 = 1;
 pub const NEXT_SWAP_REPLY_ID: u64 = 2;
+
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, Isqrt, MessageInfo, Response,
@@ -426,14 +426,8 @@ pub fn remove_liquidity(
             &sender.to_sender_string(),
             TxType::RemoveLiquidity,
         ))
-        .add_submessage(SubMsg::reply_always(
-            token_1_transfer_msg,
-            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
-        ))
-        .add_submessage(SubMsg::reply_always(
-            token_2_transfer_msg,
-            VIRTUAL_BALANCE_TRANSFER_REPLY_ID,
-        ))
+        .add_message(token_1_transfer_msg)
+        .add_message(token_2_transfer_msg)
         .add_event(liquidity_event(
             &pair
                 .get_pair_with_amount(total_reserve_1, total_reserve_2)?

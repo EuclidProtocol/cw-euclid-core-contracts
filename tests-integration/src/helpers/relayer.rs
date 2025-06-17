@@ -320,10 +320,10 @@ pub fn relay_factory_router_factory(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     factory_chain_uid: &ChainUid,
-) -> Result<(), CwEnvError> {
+) -> Result<Vec<Event>, CwEnvError> {
     let ack_events = relay_factory_send_packet(send_events, router, factory_chain_uid)?;
-    relay_factory_ack_packet(factory, factory_chain_uid, ack_events)?;
-    Ok(())
+    relay_factory_ack_packet(factory, factory_chain_uid, ack_events.clone())?;
+    Ok(ack_events)
 }
 
 #[allow(dead_code)]

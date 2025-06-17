@@ -11,7 +11,7 @@ use euclid::{
     msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg},
     pool::{
         add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
-        State, SwapCalculationMethod,
+        State, SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
     },
 };
 
@@ -21,7 +21,6 @@ use crate::{
         query_total_fees_collected, query_total_fees_per_denom,
     },
     reply,
-    reply::NEXT_SWAP_REPLY_ID,
     state::{BALANCES, CHAIN_LP_TOKENS, STATE},
 };
 // version info for migration info

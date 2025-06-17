@@ -152,8 +152,6 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
 
     let pubkey_binary = Binary::from(pubkey);
 
-    print!("Pubkey {:?}", pubkey_binary);
-
     relayer.upload().unwrap();
 
     relayer.instantiate(
@@ -227,11 +225,6 @@ pub fn get_router(chain: &MockBase, address: &Addr) -> RouterContract<MockBase> 
 }
 
 pub fn get_relayer(chain: &MockBase, address: &Addr) -> RelayerContract<MockBase> {
-    println!(
-        "Fetching relayer for chain: {:?} address: {:?}",
-        chain.chain_id(),
-        address
-    );
     let mut relayer = RelayerContract::new(chain.clone());
     relayer.as_instance_mut().id = format!("relayer_{}", address);
     relayer.set_address(address);
