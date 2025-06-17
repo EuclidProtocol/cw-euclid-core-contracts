@@ -29,7 +29,10 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     })?)
 }
 
-pub fn query_all_vlps(deps: Deps, pagination: Pagination<String>) -> Result<Binary, ContractError> {
+pub fn query_all_vlps(
+    deps: Deps,
+    pagination: Pagination<(String, String)>,
+) -> Result<Binary, ContractError> {
     let Pagination {
         min: start,
         max: end,
@@ -37,11 +40,11 @@ pub fn query_all_vlps(deps: Deps, pagination: Pagination<String>) -> Result<Bina
         limit,
     } = pagination;
 
-    let start = start.map(PrefixBound::inclusive);
-    let end = end.map(PrefixBound::exclusive);
+    let start = start.map(Bound::inclusive);
+    let end = end.map(Bound::exclusive);
 
     let vlps: Result<_, ContractError> = VLPS
-        .prefix_range(deps.storage, start, end, Order::Ascending)
+        .range(deps.storage, start, end, Order::Ascending)
         .skip(skip.unwrap_or(0) as usize)
         .take(limit.unwrap_or(10) as usize)
         .map(|v| {
@@ -63,8 +66,8 @@ pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
 
     Ok(to_json_binary(&VlpResponse {
         vlp,
-        token_1: key.0,
-        token_2: key.1,
+        token_1: Token::create(key.0)?,
+        token_2: Token::create(key.1)?,
     })?)
 }
 
@@ -214,10 +217,7 @@ pub fn validate_swap_pairs(
         .iter()
         .map(|swap| -> Result<_, ContractError> {
             let pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
-            let vlp_address = VLPS.load(
-                deps.storage,
-                (pair.token_1.to_string(), pair.token_2.to_string()),
-            )?;
+            let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
             Ok(NextSwapVlp {
                 vlp_address,
                 test_fail: swap.test_fail,

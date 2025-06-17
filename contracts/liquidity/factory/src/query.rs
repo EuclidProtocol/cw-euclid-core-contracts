@@ -20,10 +20,7 @@ use crate::state::{
 
 // Returns the VLP address
 pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
-    let vlp_address = PAIR_TO_VLP.load(
-        deps.storage,
-        (pair.token_1.to_string(), pair.token_2.to_string()),
-    )?;
+    let vlp_address = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
     Ok(to_json_binary(&GetVlpResponse { vlp_address })?)
 }
 

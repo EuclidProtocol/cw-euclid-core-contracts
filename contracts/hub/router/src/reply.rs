@@ -69,14 +69,7 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 key.save(deps.storage, &existing_vlps)?;
             }
 
-            VLPS.save(
-                deps.storage,
-                (
-                    liquidity.pair.token_1.to_string(),
-                    liquidity.pair.token_2.to_string(),
-                ),
-                &vlp_address,
-            )?;
+            VLPS.save(deps.storage, liquidity.pair.get_tupple(), &vlp_address)?;
             let pool_creation_response = from_json::<PoolCreationResponse>(
                 instantiate_data.data.clone().unwrap_or_default(),
             )?;

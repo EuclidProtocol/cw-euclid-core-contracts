@@ -320,10 +320,7 @@ fn execute_request_pool_creation(
         tx_id: tx_id.clone(),
     };
 
-    let vlp = VLPS.may_load(
-        deps.storage,
-        (pair.token_1.to_string(), pair.token_2.to_string()),
-    )?;
+    let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
 
     // If VLP exists, register pool on it, otherwise create new VLP contract
     if let Some(vlp_addr) = vlp {
@@ -490,13 +487,7 @@ pub fn ibc_execute_add_liquidity(
     slippage_tolerance_bps: u64,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    let vlp_address = VLPS.load(
-        deps.storage,
-        (
-            pair.token_1.token.to_string(),
-            pair.token_2.token.to_string(),
-        ),
-    )?;
+    let vlp_address = VLPS.load(deps.storage, pair.get_pair()?.get_tupple())?;
 
     let mut response = Response::new().add_event(
         tx_event(&tx_id, &sender.to_sender_string(), TxType::AddLiquidity)
@@ -586,10 +577,7 @@ fn ibc_execute_remove_liquidity(
     _env: Env,
     msg: ChainIbcRemoveLiquidityExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let vlp_address = VLPS.load(
-        deps.storage,
-        (msg.pair.token_1.to_string(), msg.pair.token_2.to_string()),
-    )?;
+    let vlp_address = VLPS.load(deps.storage, msg.pair.get_tupple())?;
     let response = Response::new()
         .add_event(tx_event(
             &msg.tx_id,

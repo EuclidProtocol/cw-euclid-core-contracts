@@ -173,7 +173,9 @@ pub enum QueryMsg {
     #[returns(VlpResponse)]
     GetVlp { pair: Pair },
     #[returns(AllVlpResponse)]
-    GetAllVlps { pagination: Pagination<String> },
+    GetAllVlps {
+        pagination: Pagination<(String, String)>,
+    },
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
 

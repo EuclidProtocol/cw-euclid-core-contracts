@@ -207,11 +207,11 @@ impl Pair {
         }
     }
 
-    pub fn get_tupple(&self) -> (Token, Token) {
+    pub fn get_tupple(&self) -> (String, String) {
         if self.token_1.le(&self.token_2.to_string()) {
-            (self.token_1.clone(), self.token_2.clone())
+            (self.token_1.to_string(), self.token_2.to_string())
         } else {
-            (self.token_2.clone(), self.token_1.clone())
+            (self.token_2.to_string(), self.token_1.to_string())
         }
     }
 
