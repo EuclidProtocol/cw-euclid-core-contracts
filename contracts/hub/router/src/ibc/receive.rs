@@ -676,6 +676,24 @@ fn ibc_execute_swap(
         err: "Swaps cannot be empty".to_string(),
     })?;
 
+    let simulate_swap_msg = euclid::msgs::vlp::QueryMsg::SimulateSwap {
+        asset: msg.asset_in.token.clone(),
+        asset_amount: msg.amount_in,
+        swaps: next_swaps.to_vec(),
+    };
+
+    let simulate_swap_res: euclid::pool::GetSwapResponse = deps
+        .querier
+        .query_wasm_smart(first_swap.vlp_address.clone(), &simulate_swap_msg)?;
+
+    ensure!(
+        simulate_swap_res.amount_out.ge(&msg.min_amount_out),
+        ContractError::SlippageExceeded {
+            amount: simulate_swap_res.amount_out,
+            min_amount_out: msg.min_amount_out,
+        }
+    );
+
     // Mint voucher token in escrow balance if it is not a voucher token
     if !msg.asset_in.token_type.is_voucher() {
         let token_escrow_key = (msg.asset_in.token.to_string(), sender.chain_uid.clone());

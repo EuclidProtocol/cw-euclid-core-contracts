@@ -129,7 +129,7 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
         swaps: next_swaps.to_vec(),
     };
 
-    let simulate_res: euclid::msgs::vlp::GetSwapResponse = deps
+    let simulate_res: euclid::pool::GetSwapResponse = deps
         .querier
         .query_wasm_smart(first_swap.vlp_address.clone(), &simulate_msg)?;
 

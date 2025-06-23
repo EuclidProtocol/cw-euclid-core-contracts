@@ -4,14 +4,16 @@ use cosmwasm_std::{
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::fee::BPS_50_PERCENT;
-use euclid::pool::{calculate_swap, PoolConfig, MINIMUM_LIQUIDITY};
+use euclid::pool::{
+    simulate_swap, GetSwapResponse, PoolConfig, SwapCalculationMethod, MINIMUM_LIQUIDITY,
+};
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
 
 use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::msgs::vlp::{
-    AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
-    PoolInfo, PoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
+    AllPoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, PoolInfo, PoolResponse,
+    TotalFeesPerDenomResponse, TotalFeesResponse,
 };
 use euclid::pool::State;
 
@@ -32,47 +34,28 @@ pub fn query_simulate_swap(
     // asset should match either token
     ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
 
-    // Get Fee from the state
-    let fee = state.clone().fee;
+    let swap_response = simulate_swap(
+        deps,
+        &STATE,
+        &BALANCES,
+        asset_in,
+        amount_in,
+        SwapCalculationMethod::Regular,
+    )?;
 
-    let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
-    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
-
-    // Calcuate the sum of fees
-    let total_fee = lp_fee.checked_add(euclid_fee)?;
-
-    // Calculate the amount of asset to be swapped
-    let swap_amount = amount_in.checked_sub(total_fee)?;
-
-    let asset_out = state.pair.get_other_token(asset_in.clone());
-
-    let token_in_reserve = BALANCES.load(deps.storage, asset_in)?;
-    let token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
-
-    let receive_amount = calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?;
     let response = match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             let next_swap_response: GetSwapResponse = deps.querier.query_wasm_smart(
                 next_swap.vlp_address.clone(),
                 &euclid::msgs::vlp::QueryMsg::SimulateSwap {
-                    asset: asset_out,
-                    asset_amount: receive_amount,
+                    asset: swap_response.asset_out,
+                    asset_amount: swap_response.amount_out,
                     swaps: forward_swaps.to_vec(),
                 },
             )?;
             Ok(to_json_binary(&next_swap_response)?)
         }
-        None => Ok(to_json_binary(&GetSwapResponse {
-            amount_out: receive_amount,
-            asset_out,
-            spread_amount: token_out_reserve
-                .checked_mul(swap_amount)
-                .unwrap_or(Uint128::zero())
-                .checked_div(token_in_reserve)
-                .unwrap_or(Uint128::zero())
-                .checked_sub(receive_amount)
-                .unwrap_or(Uint128::zero()),
-        })?),
+        None => Ok(to_json_binary(&swap_response)?),
     };
     response
 }

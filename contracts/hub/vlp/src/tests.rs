@@ -9,8 +9,8 @@ mod tests {
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
-    use euclid::msgs::vlp::{ExecuteMsg, GetSwapResponse, InstantiateMsg};
-    use euclid::pool::State;
+    use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
+    use euclid::pool::{GetSwapResponse, State};
     use euclid::token::{Pair, Token};
     use std::collections::HashMap;
 
@@ -373,7 +373,7 @@ mod tests {
             .unwrap();
 
         // Simulate swap
-        let swap_amount = Uint128::new(100);
+        let swap_amount = Uint128::new(10000000000000000);
         let response: GetSwapResponse = from_json(
             query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
         )
@@ -387,12 +387,12 @@ mod tests {
         assert_eq!(response.asset_out, pair.token_2);
         assert_eq!(
             response.amount_out,
-            Uint128::new(650),
+            Uint128::new(64696251029190591),
             "Amount out is not correct"
         );
         assert_eq!(
             response.spread_amount,
-            Uint128::new(0),
+            Uint128::new(64687854381176),
             "Spread amount is not correct"
         );
     }

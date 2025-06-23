@@ -1475,13 +1475,26 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
 }
 
 #[test]
-fn test_swap_request_with_valid_partner_fee() {
+fn test_swap_request_with_valid_partner_fee_ibc() {
+    run_swap_request_with_valid_partner_fee("osmosis", "nibiru");
+}
+
+#[test]
+fn test_swap_request_with_valid_partner_fee_native() {
+    run_swap_request_with_valid_partner_fee("nibiru", "nibiru");
+}
+
+fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_id: &str) {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
-    let router_chain = interchain.get_chain("nibiru").unwrap();
+    let mut chains = vec![(factory_chain_id, sender.as_str())];
+    if factory_chain_id != router_chain_id {
+        chains.push((router_chain_id, sender.as_str()));
+    }
+    let interchain = MockInterchainEnv::new(chains);
+    let router_chain = interchain.get_chain(router_chain_id).unwrap();
 
     let router = setup_router(&router_chain).unwrap();
-    let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
+    let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {

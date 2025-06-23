@@ -1,7 +1,6 @@
+use crate::utils::math::Decimal256Ext;
+use crate::{error::ContractError, pool::SwapResult};
 use cosmwasm_std::{Decimal256, StdError, StdResult, Uint128, Uint64};
-use euclid::error::ContractError;
-use euclid::msgs::stable_vlp::SwapResult;
-use euclid::utils::math::Decimal256Ext;
 /// N = 2
 pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
 pub const AMP_PRECISION: u64 = 100;
@@ -10,7 +9,7 @@ const ITERATIONS: u8 = 64;
 /// 1e-6
 pub const TOL: Decimal256 = Decimal256::raw(1000000000000);
 
-pub(crate) fn compute_swap(
+pub fn compute_stable_swap(
     offer_asset: &Decimal256,
     offer_pool: &Decimal256,
     ask_pool: &Decimal256,

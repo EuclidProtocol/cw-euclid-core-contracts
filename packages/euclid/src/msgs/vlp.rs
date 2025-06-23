@@ -1,7 +1,7 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
-    pool::PoolConfig,
+    pool::{GetSwapResponse, PoolConfig},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
@@ -102,13 +102,6 @@ pub enum QueryMsg {
 }
 
 // We define a custom struct for each query response
-#[cw_serde]
-pub struct GetSwapResponse {
-    pub amount_out: Uint128,
-    pub asset_out: Token,
-    pub spread_amount: Uint128,
-}
-
 #[cw_serde]
 pub struct GetStateResponse {
     pub pair: Pair,

@@ -3,7 +3,6 @@
 mod tests {
     use crate::{
         contract::{execute, instantiate},
-        math::compute_swap,
         state::{BALANCES, CHAIN_LP_TOKENS, STATE},
     };
     use cosmwasm_std::{
@@ -16,7 +15,7 @@ mod tests {
         error::ContractError,
         fee::{DenomFees, Fee, TotalFees},
         msgs::stable_vlp::{ExecuteMsg, InstantiateMsg},
-        pool::State,
+        pool::{stable_math::compute_stable_swap, State},
         token::{Pair, Token},
     };
     use std::collections::HashMap;
@@ -213,7 +212,8 @@ mod tests {
         let offer_pool = Decimal256::from_ratio(1000u128, 1u128);
         let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
         println!("offer_asset in decimal: {:?}", offer_asset);
-        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
+        let result =
+            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
         println!("result: {:?}", result);
 
         // For stable swap with equal pools, return amount should be very close to offer amount
@@ -229,7 +229,8 @@ mod tests {
         let offer_pool = Decimal256::from_ratio(2000u128, 1u128);
         let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
 
-        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(100)).unwrap();
+        let result =
+            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(100)).unwrap();
 
         // When pools are imbalanced, spread should be higher
         assert_eq!(result.return_amount, Uint128::new(67));
@@ -243,7 +244,8 @@ mod tests {
         let offer_pool = Decimal256::from_ratio(1000000u128, 1u128);
         let ask_pool = Decimal256::from_ratio(1000000u128, 1u128);
 
-        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
+        let result =
+            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
 
         // Small amounts should have minimal spread
         assert_eq!(result.return_amount, Uint128::new(1));
@@ -257,7 +259,8 @@ mod tests {
         let offer_pool = Decimal256::from_ratio(2000u128, 1u128);
         let ask_pool = Decimal256::from_ratio(2000u128, 1u128);
 
-        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
+        let result =
+            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
 
         // Large swaps should have higher spread due to impact on pool balance
         assert_eq!(result.return_amount, Uint128::new(946u128));
@@ -271,7 +274,8 @@ mod tests {
         let offer_pool = Decimal256::from_ratio(10000u128, 1u128);
         let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
 
-        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
+        let result =
+            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
 
         // Highly imbalanced pools should result in higher spread
         assert_eq!(result.return_amount, Uint128::new(47u128));
@@ -285,7 +289,8 @@ mod tests {
         let offer_pool = Decimal256::from_ratio(1000000000000000000u128, 1u128);
         let ask_pool = Decimal256::from_ratio(1000000000000000000u128, 1u128);
 
-        let result = compute_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
+        let result =
+            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
 
         // Highly imbalanced pools should result in higher spread
         assert_eq!(result.return_amount, Uint128::new(820871215252207999));

@@ -4,10 +4,8 @@ use crate::{
     events::{liquidity_event, simple_event, tx_event, TxType},
     fee::{Fee, TotalFees, BPS_50_PERCENT, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
-    msgs::{
-        stable_vlp::compute_swap,
-        virtual_balance::{ExecuteApprove, ExecuteTransfer},
-    },
+    msgs::virtual_balance::{ExecuteApprove, ExecuteTransfer},
+    pool::stable_math::compute_stable_swap,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
     utils::math::Decimal256Ext,
@@ -16,8 +14,8 @@ pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal, Decimal256, DepsMut, Env, Isqrt, MessageInfo, Response,
-    SubMsg, Uint128, Uint256, Uint64, WasmMsg,
+    ensure, to_json_binary, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo, Response,
+    SubMsg, Uint128, Uint512, Uint64, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 
@@ -114,26 +112,49 @@ pub struct State {
     pub admin: String,
 }
 
+#[cw_serde]
+pub struct SwapResult {
+    pub return_amount: Uint128,
+    pub spread_amount: Uint128,
+}
+
 // Function to calculate the asset to be recieved after a swap
-pub fn calculate_swap(
+pub fn calculate_cp_swap(
     swap_amount: Uint128,
     reserve_in: Uint128,
     reserve_out: Uint128,
-) -> Result<Uint128, ContractError> {
-    let reserve_in = Uint256::from(reserve_in);
-    let reserve_out = Uint256::from(reserve_out);
+) -> Result<SwapResult, ContractError> {
+    let reserve_in = Uint512::from(reserve_in);
+    let reserve_out = Uint512::from(reserve_out);
     // Calculate the k constant product
     let k = reserve_in.checked_mul(reserve_out)?;
     // Calculate the new reserve of token 1
     let new_reserve_in = reserve_in.checked_add(swap_amount.into())?;
     // Calculate the new reserve of token 2
     let new_reserve_out = k.checked_div(new_reserve_in)?;
+
     // Calculate the amount of token 2 to be recieved
     let token_2_recieved = reserve_out.checked_sub(new_reserve_out)?;
-    let token_2_recieved =
+    let mut token_2_recieved =
         Uint128::try_from(token_2_recieved).map_err(|_| ContractError::new("Overflow"))?;
 
-    Ok(token_2_recieved)
+    let ideal_return_amount = reserve_out
+        .checked_mul(swap_amount.into())?
+        .checked_div(reserve_in)?;
+    let ideal_return_amount =
+        Uint128::try_from(ideal_return_amount).map_err(|_| ContractError::new("Overflow"))?;
+
+    if ideal_return_amount < token_2_recieved {
+        // If ideal return amount is less than actual return amount, then set the spread amount to 0 and return the ideal return amount as the return amount
+        // This is to prevent the spread amount from being negative which was caused due to precision loss in the calculation
+        token_2_recieved = ideal_return_amount;
+    }
+    let spread_amount = ideal_return_amount.checked_sub(token_2_recieved)?;
+
+    Ok(SwapResult {
+        return_amount: token_2_recieved,
+        spread_amount,
+    })
 }
 
 pub fn calculate_lp_allocation(
@@ -588,6 +609,77 @@ pub enum SwapCalculationMethod {
     Regular,
 }
 
+#[cw_serde]
+pub struct PreSwapResponse {
+    pub lp_fee: Uint128,
+    pub euclid_fee: Uint128,
+    pub swap_amount: Uint128,
+    pub receive_amount: Uint128,
+    pub asset_out: Token,
+    pub spread_amount: Uint128,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn pre_swap(
+    deps: &Deps,
+    state_storage: &Item<State>,
+    balances_storage: &Map<Token, Uint128>,
+    asset_in: &Token,
+    amount_in: Uint128,
+    calculation_method: SwapCalculationMethod,
+    test_fail: Option<bool>,
+) -> Result<PreSwapResponse, ContractError> {
+    ensure!(
+        !test_fail.unwrap_or(false),
+        ContractError::new("Force fail flag")
+    );
+    // Verify that the asset amount is non-zero
+    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
+
+    let state = state_storage.load(deps.storage)?;
+
+    let pair = state.pair.clone();
+
+    ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
+    let asset_out = state.pair.get_other_token(asset_in.clone());
+
+    let token_in_reserve = balances_storage.load(deps.storage, asset_in.clone())?;
+    let token_out_reserve = balances_storage.load(deps.storage, asset_out.clone())?;
+
+    // Get Fee from the state
+    let fee = state.clone().fee;
+
+    let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
+    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
+
+    let swap_amount = amount_in.checked_sub(lp_fee.checked_add(euclid_fee)?)?;
+
+    let (receive_amount, spread_amount) = match calculation_method {
+        SwapCalculationMethod::Stable(amp_factor) => {
+            let swap_result = compute_stable_swap(
+                &Decimal256::from_integer(amount_in),
+                &Decimal256::from_integer(token_in_reserve),
+                &Decimal256::from_integer(token_out_reserve),
+                amp_factor,
+            )?;
+            (swap_result.return_amount, swap_result.spread_amount)
+        }
+        SwapCalculationMethod::Regular => {
+            let swap_result = calculate_cp_swap(swap_amount, token_in_reserve, token_out_reserve)?;
+            (swap_result.return_amount, swap_result.spread_amount)
+        }
+    };
+
+    Ok(PreSwapResponse {
+        lp_fee,
+        euclid_fee,
+        swap_amount,
+        receive_amount,
+        asset_out,
+        spread_amount,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn execute_swap(
     deps: DepsMut,
@@ -604,22 +696,7 @@ pub fn execute_swap(
     calculation_method: SwapCalculationMethod,
     test_fail: Option<bool>,
 ) -> Result<Response, ContractError> {
-    ensure!(
-        !test_fail.unwrap_or(false),
-        ContractError::new("Force fail flag")
-    );
-    // Verify that the asset amount is non-zero
-    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
-
     let mut state = state_storage.load(deps.storage)?;
-
-    let pair = state.pair.clone();
-
-    ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
-    let asset_out = state.pair.get_other_token(asset_in.clone());
-
-    let mut token_in_reserve = balances_storage.load(deps.storage, asset_in.clone())?;
-    let mut token_out_reserve = balances_storage.load(deps.storage, asset_out.clone())?;
 
     // If the sender is the router, use the sender as the voucher sender
     // Otherwise, use the last contract caller as the voucher sender
@@ -654,11 +731,22 @@ pub fn execute_swap(
     // Should reject full execution if failed
     response = response.add_message(transfer_voucher_msg);
 
-    // Get Fee from the state
-    let fee = state.clone().fee;
-
-    let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
-    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
+    let PreSwapResponse {
+        lp_fee,
+        euclid_fee,
+        swap_amount,
+        receive_amount,
+        asset_out,
+        spread_amount,
+    } = pre_swap(
+        &deps.as_ref(),
+        state_storage,
+        balances_storage,
+        &asset_in,
+        amount_in,
+        calculation_method,
+        test_fail,
+    )?;
 
     // Add the lp fee to total fees
     state
@@ -669,24 +757,6 @@ pub fn execute_swap(
     // Calcuate the sum of fees
     let total_fee = lp_fee.checked_add(euclid_fee)?;
 
-    // Calculate the amount of asset to be swapped
-    let swap_amount = amount_in.checked_sub(total_fee)?;
-
-    let receive_amount = match calculation_method {
-        SwapCalculationMethod::Stable(amp_factor) => {
-            compute_swap(
-                &Decimal256::from_integer(amount_in),
-                &Decimal256::from_integer(token_in_reserve),
-                &Decimal256::from_integer(token_out_reserve),
-                amp_factor,
-            )?
-            .return_amount
-        }
-        SwapCalculationMethod::Regular => {
-            calculate_swap(swap_amount, token_in_reserve, token_out_reserve)?
-        }
-    };
-
     // Verify that the receive amount is greater than 0 to be eligible for any swap
     ensure!(
         !receive_amount.is_zero(),
@@ -695,6 +765,9 @@ pub fn execute_swap(
             min_amount_out: min_token_out,
         }
     );
+
+    let mut token_in_reserve = balances_storage.load(deps.storage, asset_in.clone())?;
+    let mut token_out_reserve = balances_storage.load(deps.storage, asset_out.clone())?;
 
     token_in_reserve = token_in_reserve
         .checked_add(swap_amount)?
@@ -721,6 +794,8 @@ pub fn execute_swap(
     let acknowledgement = to_json_binary(&swap_response)?;
 
     if !euclid_fee.is_zero() {
+        // Get Fee from the state
+        let fee = state.clone().fee;
         // Add the euclid fee to total fees
         state
             .total_fees_collected
@@ -867,5 +942,42 @@ pub fn execute_swap(
         .add_attribute("euclid_fee", euclid_fee)
         .add_attribute("lp_fee", lp_fee)
         .add_attribute("receive_amount", receive_amount)
+        .add_attribute("spread_amount", spread_amount)
         .set_data(acknowledgement))
+}
+
+#[cw_serde]
+pub struct GetSwapResponse {
+    pub amount_out: Uint128,
+    pub asset_out: Token,
+    pub spread_amount: Uint128,
+    pub lp_fee: Uint128,
+    pub euclid_fee: Uint128,
+}
+
+pub fn simulate_swap(
+    deps: Deps,
+    state_storage: &Item<State>,
+    balances_storage: &Map<Token, Uint128>,
+    asset_in: Token,
+    amount_in: Uint128,
+    calculation_method: SwapCalculationMethod,
+) -> Result<GetSwapResponse, ContractError> {
+    let pre_swap_response = pre_swap(
+        &deps,
+        state_storage,
+        balances_storage,
+        &asset_in,
+        amount_in,
+        calculation_method,
+        None,
+    )?;
+
+    Ok(GetSwapResponse {
+        amount_out: pre_swap_response.receive_amount,
+        asset_out: pre_swap_response.asset_out,
+        spread_amount: pre_swap_response.spread_amount,
+        lp_fee: pre_swap_response.lp_fee,
+        euclid_fee: pre_swap_response.euclid_fee,
+    })
 }
