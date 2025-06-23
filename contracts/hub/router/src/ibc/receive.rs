@@ -676,6 +676,7 @@ fn ibc_execute_swap(
         err: "Swaps cannot be empty".to_string(),
     })?;
 
+    // Simulation increases gas, ideally this can be resolved but we are still getting codespace wasm errors so this is added as a temporary fix for better error messages
     let simulate_swap_msg = euclid::msgs::vlp::QueryMsg::SimulateSwap {
         asset: msg.asset_in.token.clone(),
         asset_amount: msg.amount_in,
