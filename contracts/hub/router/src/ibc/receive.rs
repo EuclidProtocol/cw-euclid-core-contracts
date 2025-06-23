@@ -728,6 +728,29 @@ fn ibc_execute_swap(
         response = response.add_message(mint_virtual_balance_msg);
     }
 
+    if msg.asset_in.token_type.is_voucher() {
+        let user_voucher_balance_msg = euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+            balance_key: BalanceKey {
+                cross_chain_user: sender.clone(),
+                token_id: msg.asset_in.token.to_string(),
+            },
+        };
+
+        let user_voucher_balance_res: euclid::msgs::virtual_balance::GetBalanceResponse =
+            deps.querier.query_wasm_smart(
+                virtual_balance_address.to_string(),
+                &user_voucher_balance_msg,
+            )?;
+
+        ensure!(
+            user_voucher_balance_res.amount.ge(&msg.amount_in),
+            ContractError::InsufficientAmount {
+                min_amount: msg.amount_in,
+                amount: user_voucher_balance_res.amount,
+            }
+        );
+    }
+
     let approve_voucher_msg = euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
         amount: msg.amount_in,
         token_id: msg.asset_in.token.to_string(),
