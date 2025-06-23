@@ -6,18 +6,17 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uin
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
-};
-use crate::reply::{NEXT_SWAP_REPLY_ID, VIRTUAL_BALANCE_TRANSFER_REPLY_ID};
-use crate::state::{State, AMP_FACTOR, BALANCES, DEFAULT_AMP_FACTOR, STATE};
-use crate::{execute, reply};
-use euclid::error::ContractError;
-use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg};
-
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
+};
+use crate::reply;
+use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
+use euclid::error::ContractError;
+use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
+use euclid::pool::{
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
+    SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
@@ -67,7 +66,17 @@ pub fn instantiate(
                     sender,
                     pair,
                     tx_id,
-                } => execute::register_pool(deps, env.clone(), info.clone(), sender, pair, tx_id),
+                } => register_pool(
+                    deps,
+                    env.clone(),
+                    info.clone(),
+                    &STATE,
+                    &CHAIN_LP_TOKENS,
+                    Some(amp_factor),
+                    sender,
+                    pair,
+                    tx_id,
+                ),
                 _ => Err(ContractError::Unauthorized {}),
             })?;
 
@@ -89,12 +98,25 @@ pub fn execute(
             sender,
             pair,
             tx_id,
-        } => register_pool(deps, env, info, sender, pair, tx_id),
+        } => {
+            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
+            register_pool(
+                deps,
+                env,
+                info,
+                &STATE,
+                &CHAIN_LP_TOKENS,
+                Some(amp_factor),
+                sender,
+                pair,
+                tx_id,
+            )
+        }
         ExecuteMsg::UpdateFee {
             lp_fee_bps,
             euclid_fee_bps,
             recipient,
-        } => update_fee(deps, info, lp_fee_bps, euclid_fee_bps, recipient),
+        } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
         ExecuteMsg::AddLiquidity {
             sender,
             tx_id,
@@ -104,6 +126,9 @@ pub fn execute(
             deps,
             env,
             info,
+            &STATE,
+            &BALANCES,
+            &CHAIN_LP_TOKENS,
             sender,
             liquidity,
             slippage_tolerance_bps,
@@ -113,7 +138,17 @@ pub fn execute(
             sender,
             lp_allocation,
             tx_id,
-        } => remove_liquidity(deps, env, info, sender, lp_allocation, tx_id),
+        } => remove_liquidity(
+            deps,
+            env,
+            info,
+            &STATE,
+            &BALANCES,
+            &CHAIN_LP_TOKENS,
+            sender,
+            lp_allocation,
+            tx_id,
+        ),
         ExecuteMsg::Swap {
             sender,
             asset_in,
@@ -122,18 +157,24 @@ pub fn execute(
             tx_id,
             next_swaps,
             test_fail,
-        } => execute_swap(
-            deps,
-            env,
-            info,
-            sender,
-            asset_in,
-            amount_in,
-            min_token_out,
-            tx_id,
-            next_swaps,
-            test_fail,
-        ),
+        } => {
+            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
+            execute_swap(
+                deps,
+                env,
+                info,
+                &STATE,
+                &BALANCES,
+                sender,
+                asset_in,
+                amount_in,
+                min_token_out,
+                tx_id,
+                next_swaps,
+                SwapCalculationMethod::Stable(amp_factor),
+                test_fail,
+            )
+        }
         ExecuteMsg::UpdateState {
             router,
             virtual_balance,
@@ -144,6 +185,8 @@ pub fn execute(
         } => update_state(
             deps,
             info,
+            &STATE,
+            Some(&AMP_FACTOR),
             router,
             virtual_balance,
             fee,
@@ -176,7 +219,6 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        VIRTUAL_BALANCE_TRANSFER_REPLY_ID => reply::on_virtual_balance_transfer_reply(deps, msg),
         NEXT_SWAP_REPLY_ID => reply::on_next_swap_reply(deps, msg),
 
         id => Err(ContractError::Generic {

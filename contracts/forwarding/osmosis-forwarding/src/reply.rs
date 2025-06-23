@@ -2,7 +2,8 @@ use crate::state::{ForwardingState, FORWARDING_STATE};
 use cosmwasm_std::{
     ensure, to_json_binary, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult,
 };
-use euclid::{error::ContractError, msgs::hook::EuclidReceiverMsg, token::TokenType};
+use forwarding::msgs::common_old::{EuclidReceiverMsg, TokenType};
+use forwarding::msgs::errors_old::ContractError;
 use swaprouter::msg::Slippage as OsmosisSlippage;
 
 pub const OSMO_SWAP_REPLY_ID: u64 = 1;

@@ -11,8 +11,8 @@ const _NATIVE_DENOM: &str = "native";
 const _IBC_DENOM_1: &str = "ibc/denom1";
 const _IBC_DENOM_2: &str = "ibc/denom2";
 const _SUPPLY: u128 = 1_000_000;
+use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::*;
-use cw_orch_interchain::InterchainEnv;
 
 #[test]
 fn test_escrow() {
@@ -39,7 +39,7 @@ fn test_escrow() {
                 allowed_denom: None,
             },
             None,
-            None,
+            &[],
         )
         .unwrap();
 

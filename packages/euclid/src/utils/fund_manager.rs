@@ -88,26 +88,27 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
+        let fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         assert_eq!(fund_manager.get("atom"), Uint128::new(100));
     }
 
     #[test]
     fn test_duplicate_funds() {
-        let fund_manager = FundManager::new(&[Coin::new(100, "atom"), Coin::new(200, "atom")]);
+        let fund_manager =
+            FundManager::new(&[Coin::new(100u128, "atom"), Coin::new(200u128, "atom")]);
         assert_eq!(fund_manager.get("atom"), Uint128::new(300));
     }
 
     #[test]
     fn test_use_fund() {
-        let mut fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
+        let mut fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         assert_eq!(fund_manager.use_fund(Uint128::new(50), "atom"), Ok(()));
         assert_eq!(fund_manager.get("atom"), Uint128::new(50));
     }
 
     #[test]
     fn test_use_fund_insufficient() {
-        let mut fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
+        let mut fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         assert_eq!(
             fund_manager.use_fund(Uint128::new(150), "atom"),
             Err(ContractError::InsufficientFunds {})
@@ -116,13 +117,13 @@ mod tests {
 
     #[test]
     fn test_validate_non_zero_funds() {
-        let fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
+        let fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         assert_eq!(fund_manager.validate_non_zero_funds(), Ok(()));
     }
 
     #[test]
     fn test_validate_non_zero_funds_empty() {
-        let fund_manager = FundManager::new(&[Coin::new(0, "atom")]);
+        let fund_manager = FundManager::new(&[Coin::new(0u128, "atom")]);
         assert_eq!(
             fund_manager.validate_non_zero_funds(),
             Err(ContractError::new("Funds cannot be zero"))
@@ -137,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_funds_are_not_empty() {
-        let fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
+        let fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         assert_eq!(
             fund_manager.validate_funds_are_empty(),
             Err(ContractError::new("Funds should be empty"))
@@ -146,14 +147,14 @@ mod tests {
 
     #[test]
     fn test_validate_funds_are_empty_after_use() {
-        let mut fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
+        let mut fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         fund_manager.use_fund(Uint128::new(100), "atom").unwrap();
         assert_eq!(fund_manager.validate_funds_are_empty(), Ok(()));
     }
 
     #[test]
     fn test_insufficient_funds() {
-        let mut fund_manager = FundManager::new(&[Coin::new(100, "atom")]);
+        let mut fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         assert_eq!(
             fund_manager.use_fund(Uint128::new(150), "atom"),
             Err(ContractError::InsufficientFunds {})

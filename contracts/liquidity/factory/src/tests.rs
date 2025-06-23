@@ -5,7 +5,7 @@ mod tests {
     use crate::state::{State, HUB_CHANNEL, STATE};
     use std::collections::HashMap;
 
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{DepsMut, Response};
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
@@ -27,7 +27,13 @@ mod tests {
         STATE.save(deps.storage, &state).unwrap();
     }
 
-    fn init(deps: DepsMut) -> Response {
+    fn init(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            MockQuerier,
+        >,
+    ) -> Response {
         let msg = InstantiateMsg {
             router_contract: "router".to_string(),
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
@@ -36,18 +42,20 @@ mod tests {
             is_native: true,
             mock_relayer_address: None,
         };
-        let info = mock_info("owner", &[]);
-        instantiate(deps, mock_env(), info, msg).unwrap()
+        let owner = deps.api.addr_make("owner");
+        let info = message_info(&owner, &[]);
+        instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
     }
 
     #[test]
     fn test_init() {
         let mut deps = mock_dependencies();
-        let res = init(deps.as_mut());
+        let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
+        let owner = deps.api.addr_make("owner");
         let expected_state = State {
             router_contract: "router".to_string(),
-            admin: "owner".to_string(),
+            admin: owner.to_string(),
             escrow_code_id: 1,
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             cw20_code_id: 2,
@@ -63,8 +71,9 @@ mod tests {
     fn test_update_hub_channel() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("not_owner", &[]);
-        init(deps.as_mut());
+        let not_owner = deps.api.addr_make("not_owner");
+        let info = message_info(&not_owner, &[]);
+        init(&mut deps);
 
         HUB_CHANNEL
             .save(deps.as_mut().storage, &"1".to_string())
@@ -76,7 +85,8 @@ mod tests {
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
-        let info = mock_info("owner", &[]);
+        let owner = deps.api.addr_make("owner");
+        let info = message_info(&owner, &[]);
         let _res = execute(deps.as_mut(), env, info, msg).unwrap();
 
         assert_eq!(HUB_CHANNEL.load(&deps.storage).unwrap(), "2".to_string());

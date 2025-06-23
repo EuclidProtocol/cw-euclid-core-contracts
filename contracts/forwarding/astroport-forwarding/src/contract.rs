@@ -5,7 +5,8 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
 
 use cw2::set_contract_version;
-use euclid::{error::ContractError, token::TokenType};
+use forwarding::msgs::common_old::TokenType;
+use forwarding::msgs::errors_old::ContractError;
 
 use crate::{
     execute::{execute_cw20_receive, receive_euclid_native, swap},

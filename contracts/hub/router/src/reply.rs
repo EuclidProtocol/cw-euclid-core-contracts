@@ -2,19 +2,13 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Event, Reply, Response, SubMsg,
     SubMsgResult, WasmMsg,
 };
-use cw_utils::{
-    parse_execute_response_data, parse_reply_execute_data, parse_reply_instantiate_data,
-};
+use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::{
     error::ContractError,
     events::simple_event,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
-    msgs::{
-        self,
-        router::ExecuteMsg,
-        vlp::{VlpRemoveLiquidityResponse, VlpSwapResponse},
-    },
-    pool::PoolCreationResponse,
+    msgs::{self, router::ExecuteMsg},
+    pool::{PoolCreationResponse, VlpRemoveLiquidityResponse, VlpSwapResponse},
     swap::SwapResponse,
 };
 use euclid_ibc::{
@@ -52,8 +46,13 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::InstantiateError { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
             let instantiate_data =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                parse_instantiate_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
@@ -70,11 +69,7 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 key.save(deps.storage, &existing_vlps)?;
             }
 
-            VLPS.save(
-                deps.storage,
-                (liquidity.pair.token_1, liquidity.pair.token_2),
-                &vlp_address,
-            )?;
+            VLPS.save(deps.storage, liquidity.pair.get_tupple(), &vlp_address)?;
             let pool_creation_response = from_json::<PoolCreationResponse>(
                 instantiate_data.data.clone().unwrap_or_default(),
             )?;
@@ -101,8 +96,13 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let pool_creation_response: PoolCreationResponse =
@@ -135,8 +135,13 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let liquidity_response: AddLiquidityResponse =
@@ -180,8 +185,13 @@ pub fn on_remove_liquidity_reply(
         SubMsgResult::Ok(..) => {
             let mut response = Response::new().add_attribute("action", "reply_remove_liquidity");
 
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let vlp_liquidity_response: VlpRemoveLiquidityResponse =
@@ -239,8 +249,13 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
             let execute_data =
-                parse_reply_execute_data(msg).map_err(|res| ContractError::Generic {
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
             let vlp_swap_response: VlpSwapResponse =
@@ -313,8 +328,13 @@ pub fn on_virtual_balance_instantiate_reply(
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
             let instantiate_data =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                parse_instantiate_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
@@ -336,6 +356,7 @@ pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
             .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
             .add_attribute("error", err)),
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -358,6 +379,7 @@ pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
             .add_attribute("error", err.clone())
             .set_data(make_ack_fail(err)?)),
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -396,6 +418,7 @@ pub fn on_reply_native_ibc_wrapper_call(
                 .add_attribute("err", err))
         }
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -431,6 +454,7 @@ pub fn on_evm_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
                 .add_event(write_acknowledge_event))
         }
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -469,6 +493,7 @@ pub fn on_solana_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 .add_event(write_acknowledge_event))
         }
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -508,6 +533,7 @@ pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 .add_event(write_acknowledge_event))
         }
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {

@@ -13,7 +13,7 @@ pub fn execute_update_state(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
-        state.factory_address == info.sender.into_string(),
+        state.factory_address.to_string() == info.sender.to_string(),
         ContractError::Unauthorized {}
     );
 

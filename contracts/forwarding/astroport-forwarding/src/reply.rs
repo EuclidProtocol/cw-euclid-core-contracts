@@ -1,5 +1,6 @@
 use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Reply, Response, SubMsgResult};
-use euclid::{error::ContractError, msgs::hook::EuclidReceiverMsg};
+use forwarding::msgs::common_old::EuclidReceiverMsg;
+use forwarding::msgs::errors_old::ContractError;
 
 use crate::state::{ForwardingState, FORWARDING_STATE};
 

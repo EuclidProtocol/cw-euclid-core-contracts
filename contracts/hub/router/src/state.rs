@@ -25,7 +25,7 @@ pub const STATE: Item<State> = Item::new("state");
 pub const MOCK_RELAYER_ADDRESSES: Item<Vec<String>> = Item::new("mock_relayer_addresses");
 
 // Convert it to multi index map?
-pub const VLPS: Map<(Token, Token), String> = Map::new("vlps");
+pub const VLPS: Map<(String, String), String> = Map::new("vlps");
 
 // Store all tokens in a map for easy access
 pub const TOKEN_VLPS: Map<Token, Vec<String>> = Map::new("token_vlps");
@@ -34,7 +34,7 @@ pub const TOKEN_VLPS: Map<Token, Vec<String>> = Map::new("token_vlps");
 pub const TOKEN_DENOMS: Map<Token, Vec<TokenDenom>> = Map::new("token_denoms");
 
 // Token escrow balance on each chain
-pub const ESCROW_BALANCES: Map<(Token, ChainUid), Uint128> = Map::new("escrow_balances");
+pub const ESCROW_BALANCES: Map<(String, ChainUid), Uint128> = Map::new("escrow_balances");
 
 pub const CHAIN_UID_TO_CHAIN: Map<ChainUid, Chain> = Map::new("chain_uid_to_chain");
 pub const CHANNEL_TO_CHAIN_UID: Map<String, ChainUid> = Map::new("channel_to_chain_uid");

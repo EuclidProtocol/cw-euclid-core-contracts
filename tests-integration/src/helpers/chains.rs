@@ -2,7 +2,8 @@
 use cosmwasm_std::Binary;
 use cw20::Cw20Contract;
 use cw_orch::{mock::MockBase, prelude::*};
-use cw_orch_interchain::{IbcQueryHandler, InterchainEnv, MockInterchainEnv};
+use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
+use cw_orch_interchain::mock::MockInterchainEnv;
 use escrow::EscrowContract;
 use euclid::{
     chain::ChainUid,
@@ -55,7 +56,7 @@ pub fn setup_factory(
             mock_relayer_address: Some(relayer.address().unwrap().to_string()),
         },
         None,
-        None,
+        &[],
     )?;
 
     if !is_native {
@@ -133,7 +134,7 @@ pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrch
             mock_relayer_addresses: Some(vec![relayer.address().unwrap().to_string()]),
         },
         None,
-        None,
+        &[],
     )?;
 
     Ok(router)
@@ -151,8 +152,6 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
 
     let pubkey_binary = Binary::from(pubkey);
 
-    print!("Pubkey {:?}", pubkey_binary);
-
     relayer.upload().unwrap();
 
     relayer.instantiate(
@@ -162,7 +161,7 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
             authorized_addresses: vec![],
         },
         Some(&chain.sender),
-        None,
+        &[],
     )?;
 
     Ok(relayer)
@@ -226,11 +225,6 @@ pub fn get_router(chain: &MockBase, address: &Addr) -> RouterContract<MockBase> 
 }
 
 pub fn get_relayer(chain: &MockBase, address: &Addr) -> RelayerContract<MockBase> {
-    println!(
-        "Fetching relayer for chain: {:?} address: {:?}",
-        chain.chain_id(),
-        address
-    );
     let mut relayer = RelayerContract::new(chain.clone());
     relayer.as_instance_mut().id = format!("relayer_{}", address);
     relayer.set_address(address);

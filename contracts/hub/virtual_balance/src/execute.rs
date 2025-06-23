@@ -14,7 +14,10 @@ pub fn execute_mint(
     msg: ExecuteMint,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -49,7 +52,10 @@ pub fn execute_burn(
     msg: ExecuteBurn,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
 
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -105,9 +111,10 @@ pub fn execute_transfer(
 
     // Router can send on behalf of anyone, or any user can transfer his own funds, or if allowance is set and greater than amount
     ensure!(
-        state.router == info.sender
-            || (allowance.spender.address == info.sender && allowance.amount.ge(&msg.amount))
-            || (sender_balance_key.cross_chain_user.address == info.sender
+        state.router == info.sender.to_string()
+            || (allowance.spender.address == info.sender.to_string()
+                && allowance.amount.ge(&msg.amount))
+            || (sender_balance_key.cross_chain_user.address == info.sender.to_string()
                 && sender_balance_key.cross_chain_user.chain_uid == ChainUid::vsl_chain_uid()?),
         ContractError::Unauthorized {}
     );
@@ -181,7 +188,10 @@ pub fn execute_update_state(
     admin: Option<Addr>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.to_string() == state.admin.to_string(),
+        ContractError::Unauthorized {}
+    );
 
     let verified_router = if let Some(ref router) = router {
         deps.api.addr_validate(router.as_str())?;
@@ -236,8 +246,9 @@ pub fn execute_approve(
 
     // Router can send on behalf of anyone, or any user can transfer his own funds
     ensure!(
-        state.router == info.sender
-            || (msg.owner.address == info.sender && msg.owner.chain_uid == vsl_chain_uid),
+        state.router == info.sender.to_string()
+            || (msg.owner.address == info.sender.to_string()
+                && msg.owner.chain_uid == vsl_chain_uid),
         ContractError::Unauthorized {}
     );
 

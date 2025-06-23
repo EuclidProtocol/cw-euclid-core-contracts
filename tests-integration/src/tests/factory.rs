@@ -1,9 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
-use std::collections::HashMap;
-
 use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint64};
 use cw_orch::prelude::{ContractInstance, CwOrchExecute, CwOrchQuery, Environment};
-use cw_orch_interchain::{prelude::*, InterchainEnv};
+use cw_orch_interchain::core::InterchainEnv;
+use cw_orch_interchain::prelude::*;
 use escrow::mock::mock_escrow;
 use euclid::{
     chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
@@ -12,7 +11,10 @@ use euclid::{
     msgs::{
         escrow::StateResponse as EscrowStateResponse,
         factory::{AllPoolsResponse, ExecuteSwapRequest, StateResponse},
-        router::{QueryMsgFns, TokenDenom, TokenDenomsResponse, VlpResponse},
+        router::{
+            AllEscrowsResponse, AllVlpResponse, QueryMsgFns, TokenDenom, TokenDenomsResponse,
+            VlpResponse,
+        },
         vlp::GetLiquidityResponse,
     },
     pool::PoolConfig,
@@ -20,14 +22,16 @@ use euclid::{
     token::{
         Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
     },
+    utils::pagination::Pagination,
 };
 use factory::mock::{mock_factory, MockFactory};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
+use std::collections::HashMap;
 
 use crate::helpers::{
     chains::{get_escrow, get_virtual_balance, get_vlp, setup_factory, setup_router},
     factory::{add_liquidity, create_pool, faucet, register_token, swap_request},
-    relayer::relay_factory_router_factory,
+    relayer::{relay_factory_router_factory, relay_router_factory_router},
 };
 
 #[test]
@@ -101,28 +105,31 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
     println!("token_a: {:?}", token_a_id);
     println!("token_b: {:?}", token_b_id);
 
+    let sender = factory.addr_make("sender_for_all_chains");
+
     router
         .set_balance(
-            sender.clone(),
+            &Addr::unchecked(sender.clone()),
             vec![
-                Coin::new(100000000000000, token_a_id.clone()),
-                Coin::new(100000000000000, token_b_id.clone()),
+                Coin::new(100000000000000u128, token_a_id.clone()),
+                Coin::new(100000000000000u128, token_b_id.clone()),
             ],
         )
         .unwrap();
 
     factory
         .set_balance(
-            sender.clone(),
+            &Addr::unchecked(sender.clone()),
             vec![
-                Coin::new(100000000000000, token_b_id.clone()),
-                Coin::new(100000000000000, token_a_id.clone()),
+                Coin::new(100000000000000u128, token_b_id.clone()),
+                Coin::new(100000000000000u128, token_a_id.clone()),
             ],
         )
         .unwrap();
 
     let router_contract = setup_router(&router).unwrap();
     let router_state = router_contract.get_state().unwrap();
+
     let _virtual_balance_router =
         get_virtual_balance(&router, &router_state.virtual_balance_address.unwrap());
 
@@ -153,7 +160,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
                 token: token_a.clone(),
                 timeout: None,
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -202,7 +209,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             lp_token_marketing: None,
             pool_config: PoolConfig::ConstantProduct {},
         },
-        None, // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
+        &[], // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
     );
     assert_eq!(
         ContractError::new("Amount cannot be zero"),
@@ -228,10 +235,10 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
                 lp_token_marketing: None,
                 pool_config: PoolConfig::ConstantProduct {},
             },
-            Some(&[
+            &[
                 coin(10_000u128, token_a.token.to_string()),
                 coin(100_000u128, token_b.token.to_string()),
-            ]),
+            ],
         )
         .unwrap();
 
@@ -322,10 +329,10 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
                 slippage_tolerance_bps: 100, // 1% slippage tolerance
                 timeout: None,               // 10 minutes in seconds
             },
-            Some(&[
+            &[
                 coin(10_000u128, token_a.token.to_string()),
                 coin(100_000u128, token_b.token.to_string()),
-            ]),
+            ],
         )
         .unwrap();
 
@@ -376,6 +383,18 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );
+
+    let _resp: AllEscrowsResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::QueryAllEscrows {
+            pagination: Pagination::new(None, None, None, None),
+        })
+        .unwrap();
+
+    let _resp: AllVlpResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::GetAllVlps {
+            pagination: Pagination::new(None, None, None, None),
+        })
+        .unwrap();
 }
 
 #[test]
@@ -413,22 +432,24 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         },
     };
 
+    let sender = factory_chain.addr_make("sender_for_all_chains");
+    println!("the sender is: {:?}", sender);
     factory_chain
         .set_balance(
-            sender.clone(),
+            &Addr::unchecked(sender.clone()),
             vec![
-                Coin::new(100000000000000, token_a_id.clone()),
-                Coin::new(100000000000000, token_b_id.clone()),
+                Coin::new(100000000000000u128, token_a_id.clone()),
+                Coin::new(100000000000000u128, token_b_id.clone()),
             ],
         )
         .unwrap();
 
     router_chain
         .set_balance(
-            sender.clone(),
+            &Addr::unchecked(sender.clone()),
             vec![
-                Coin::new(100000000000000, token_a_id.clone()),
-                Coin::new(100000000000000, token_b_id.clone()),
+                Coin::new(100000000000000u128, token_a_id.clone()),
+                Coin::new(100000000000000u128, token_b_id.clone()),
             ],
         )
         .unwrap();
@@ -452,7 +473,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
                 token: token_a.clone(),
                 timeout: None,
             },
-            None,
+            &[],
         )
         .unwrap();
 
@@ -496,10 +517,10 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
                 lp_token_marketing: None,
                 pool_config: PoolConfig::ConstantProduct {},
             },
-            Some(&[
+            &[
                 coin(100_000u128, token_b.token.to_string()),
                 coin(10_000u128, token_a.token.to_string()),
-            ]),
+            ],
         )
         .unwrap();
 
@@ -589,10 +610,10 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
                 slippage_tolerance_bps: 100, // 1% slippage tolerance
                 timeout: None,               // 10 minutes in seconds
             },
-            Some(&[
+            &[
                 coin(100_000u128, token_b.token.to_string()),
                 coin(10_000u128, token_a.token.to_string()),
-            ]),
+            ],
         )
         .unwrap();
 
@@ -1143,7 +1164,7 @@ fn test_swap_request_ibc() {
 
 #[test]
 fn test_swap_request_native() {
-    run_test_swap_request("nibiru", "osmosis");
+    run_test_swap_request("nibiru", "nibiru");
 }
 
 fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
@@ -1175,6 +1196,7 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
         },
     };
     let mut funds = vec![];
+    let sender = factory_chain.addr_make("sender_for_all_chains");
     for token in [token_a.clone(), token_b.clone()] {
         faucet(
             &factory_chain,
@@ -1267,7 +1289,7 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
                     test_fail: None,
                 }],
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
-                    user: CrossChainUser::new(factory_chain_uid.clone(), sender.clone()),
+                    user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
                     limit: None,
                     preferred_denom: None,
                     refund_address: None,
@@ -1276,7 +1298,7 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
                 partner_fee: None,
                 meta: None,
             }),
-            Some(&[coin(100u128, token_a.token.to_string())]),
+            &[coin(100u128, token_a.token.to_string())],
         )
         .unwrap();
 
@@ -1290,14 +1312,189 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
 }
 
 #[test]
-fn test_swap_request_with_valid_partner_fee() {
+fn test_multi_hop_swap_request_ibc() {
+    run_test_multi_hop_swap_request("osmosis", "nibiru");
+}
+
+#[test]
+fn test_multi_hop_swap_request_native() {
+    run_test_multi_hop_swap_request("nibiru", "nibiru");
+}
+
+fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str) {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let partner_fee_recipient = Addr::unchecked("partner_fee_recipient").into_string();
-    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
-    let router_chain = interchain.get_chain("nibiru").unwrap();
+    let mut chains = vec![(factory_chain_id, sender.as_str())];
+    if factory_chain_id != router_chain_id {
+        chains.push((router_chain_id, sender.as_str()));
+    }
+    let interchain = MockInterchainEnv::new(chains);
+    let factory_chain = interchain.get_chain(factory_chain_id).unwrap();
+    let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
+    let router_chain = interchain.get_chain(router_chain_id).unwrap();
+    let router = setup_router(&router_chain).unwrap();
+
+    let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+
+    let token_a = Token::create("token.a".to_string()).unwrap();
+    let token_a = TokenWithDenom {
+        token: token_a.clone(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_a.to_string(),
+        },
+    };
+    let token_b = Token::create("token.b".to_string()).unwrap();
+    let token_b = TokenWithDenom {
+        token: token_b.clone(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_b.to_string(),
+        },
+    };
+    let token_c = Token::create("token.c".to_string()).unwrap();
+    let token_c = TokenWithDenom {
+        token: token_c.clone(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_c.to_string(),
+        },
+    };
+    let mut funds = vec![];
+    let sender = factory_chain.addr_make("sender_for_all_chains");
+    for token in [token_a.clone(), token_b.clone(), token_c.clone()] {
+        faucet(
+            &factory_chain,
+            sender.as_str(),
+            100_000_000_000u128,
+            token.token_type,
+            &mut funds,
+        );
+    }
+
+    register_token(&factory, &router, token_a.clone()).unwrap();
+    register_token(&factory, &router, token_b.clone()).unwrap();
+    register_token(&factory, &router, token_c.clone()).unwrap();
+
+    let pools = vec![
+        (token_a.clone(), token_b.clone()),
+        (token_b.clone(), token_c.clone()),
+    ];
+
+    for (token_in, token_out) in pools {
+        create_pool(
+            &interchain,
+            &factory,
+            &router,
+            PairWithDenomAndAmount {
+                token_1: token_in.with_amount(Uint128::from(10_000u128)),
+                token_2: token_out.with_amount(Uint128::from(100_000u128)),
+            },
+            BPS_1_PERCENT,
+            PoolConfig::ConstantProduct {},
+        )
+        .unwrap();
+
+        let vlp_query = router
+            .get_vlp(Pair::new(token_in.token.clone(), token_out.token.clone()).unwrap())
+            .unwrap();
+
+        let vlp_contract = get_vlp(&router_chain, &Addr::unchecked(vlp_query.vlp));
+
+        let liquidity_query: GetLiquidityResponse = vlp_contract
+            .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
+            .unwrap();
+        assert_eq!(
+            liquidity_query,
+            GetLiquidityResponse {
+                pair: Pair {
+                    token_1: token_in.token.clone(),
+                    token_2: token_out.token.clone(),
+                },
+                token_1_reserve: Uint128::new(10_000),
+                token_2_reserve: Uint128::new(100_000),
+                total_lp_tokens: Uint128::new(30622),
+            }
+        );
+    }
+
+    let random_user = factory_chain.addr_make("random_user");
+
+    let swap_request_msg = factory
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+                sender: None,
+                asset_in: token_a.clone(),
+                amount_in: Uint128::new(100),
+                asset_out: token_c.token.clone(),
+                min_amount_out: Uint128::new(50),
+                timeout: None,
+                swaps: vec![
+                    NextSwapPair {
+                        token_in: token_a.token.clone(),
+                        token_out: token_b.token.clone(),
+                        test_fail: None,
+                    },
+                    NextSwapPair {
+                        token_in: token_b.token.clone(),
+                        token_out: token_c.token.clone(),
+                        test_fail: None,
+                    },
+                ],
+                cross_chain_addresses: vec![CrossChainUserWithLimit {
+                    user: CrossChainUser::new(factory_chain_uid.clone(), random_user.to_string()),
+                    limit: None,
+                    preferred_denom: None,
+                    refund_address: None,
+                    forwarding_message: None,
+                }],
+                partner_fee: None,
+                meta: None,
+            }),
+            &[coin(100u128, token_a.token.to_string())],
+        )
+        .unwrap();
+
+    let received_events = relay_factory_router_factory(
+        swap_request_msg.events,
+        &factory,
+        &router,
+        &factory_chain_uid,
+    )
+    .unwrap();
+
+    relay_router_factory_router(received_events, &factory, &factory_chain_uid, &router).unwrap();
+
+    let random_user_balance = factory_chain
+        .query_balance(
+            &Addr::unchecked(random_user.to_string()),
+            token_c.token.to_string().as_str(),
+        )
+        .unwrap();
+    assert!(
+        random_user_balance > Uint128::new(0),
+        "Random user balance is {}",
+        random_user_balance
+    );
+}
+
+#[test]
+fn test_swap_request_with_valid_partner_fee_ibc() {
+    run_swap_request_with_valid_partner_fee("osmosis", "nibiru");
+}
+
+#[test]
+fn test_swap_request_with_valid_partner_fee_native() {
+    run_swap_request_with_valid_partner_fee("nibiru", "nibiru");
+}
+
+fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_id: &str) {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let mut chains = vec![(factory_chain_id, sender.as_str())];
+    if factory_chain_id != router_chain_id {
+        chains.push((router_chain_id, sender.as_str()));
+    }
+    let interchain = MockInterchainEnv::new(chains);
+    let router_chain = interchain.get_chain(router_chain_id).unwrap();
 
     let router = setup_router(&router_chain).unwrap();
-    let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
+    let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
@@ -1315,9 +1512,13 @@ fn test_swap_request_with_valid_partner_fee() {
             },
         },
     };
+    let partner_fee_recipient = factory
+        .environment()
+        .addr_make("partner_fee_recipient")
+        .into_string();
     let old_partner_eucl_balance = factory
         .environment()
-        .query_balance(partner_fee_recipient.clone(), "eucl")
+        .query_balance(&Addr::unchecked(partner_fee_recipient.clone()), "eucl")
         .unwrap();
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
@@ -1403,7 +1604,7 @@ fn test_swap_request_with_valid_partner_fee() {
 
     let new_partner_eucl_balance = factory
         .environment()
-        .query_balance(partner_fee_recipient.clone(), "eucl")
+        .query_balance(&Addr::unchecked(partner_fee_recipient.clone()), "eucl")
         .unwrap();
     assert_eq!(
         new_partner_eucl_balance,
@@ -1491,10 +1692,14 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     );
 
     // Providing a partner_fee_bps above MAX_PARTNER_FEE_BPS
-    let partner_fee_recipient = Addr::unchecked("partner_fee_recipient").into_string();
+    let partner_fee_recipient = factory
+        .environment()
+        .addr_make("partner_fee_recipient")
+        .into_string();
+
     let old_partner_eucl_balance = factory
         .environment()
-        .query_balance(partner_fee_recipient.clone(), "eucl")
+        .query_balance(&Addr::unchecked(partner_fee_recipient.clone()), "eucl")
         .unwrap();
 
     swap_request(
@@ -1525,7 +1730,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
 
     let new_partner_eucl_balance = factory
         .environment()
-        .query_balance(partner_fee_recipient.clone(), "eucl")
+        .query_balance(&Addr::unchecked(partner_fee_recipient.clone()), "eucl")
         .unwrap();
     assert_eq!(new_partner_eucl_balance, old_partner_eucl_balance);
 }
@@ -1610,10 +1815,10 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         asset_in.token_type.clone(),
         &mut funds,
     );
-
+    let sender = factory.environment().addr_make("sender_for_all_chains");
     let old_sender_eucl_balance = factory
         .environment()
-        .query_balance(sender.clone(), "juno")
+        .query_balance(&Addr::unchecked(sender.clone()), "juno")
         .unwrap();
 
     // swapping for inavlid denom not registered on escrow
@@ -1641,7 +1846,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
 
     let new_sender_eucl_balance = factory
         .environment()
-        .query_balance(sender.clone(), "juno")
+        .query_balance(&Addr::unchecked(sender.clone()), "juno")
         .unwrap();
     assert_eq!(
         new_sender_eucl_balance, old_sender_eucl_balance,
@@ -1831,9 +2036,10 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         &mut funds,
     );
 
+    let sender = factory.environment().addr_make("sender_for_all_chains");
     let old_sender_balance = factory
         .environment()
-        .query_balance(sender.clone(), "eucl")
+        .query_balance(&Addr::unchecked(sender.clone()), "eucl")
         .unwrap();
 
     // swapping
@@ -1857,7 +2063,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         vec![CrossChainUserWithLimit {
             user: CrossChainUser::new(
                 ChainUid::create("nibiru".to_string()).unwrap(),
-                sender.clone(),
+                sender.to_string(),
             ),
             limit: None,
             preferred_denom: None,
@@ -1871,7 +2077,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     .unwrap();
     let new_sender_balance = factory
         .environment()
-        .query_balance(sender.clone(), "eucl")
+        .query_balance(&Addr::unchecked(sender.clone()), "eucl")
         .unwrap();
 
     assert_eq!(
@@ -2131,6 +2337,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
         },
     };
     let mut funds = vec![];
+    let sender = router_chain.addr_make("sender_for_all_chains");
     for token in [token_a.clone(), token_b.clone()] {
         faucet(
             &factory_chain,
@@ -2225,7 +2432,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
                     test_fail: None,
                 }],
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
-                    user: CrossChainUser::new(factory_chain_uid.clone(), sender.clone()),
+                    user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
                     limit: None,
                     preferred_denom: None,
                     refund_address: None,
@@ -2234,7 +2441,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
                 partner_fee: None,
                 meta: None,
             }),
-            Some(&[coin(100u128, token_a.token.to_string())]),
+            &[coin(100u128, token_a.token.to_string())],
         )
         .unwrap();
 

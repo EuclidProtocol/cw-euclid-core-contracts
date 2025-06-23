@@ -1,20 +1,16 @@
-use cosmwasm_std::{
-    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Isqrt, Uint128,
-};
+use cosmwasm_std::{to_json_binary, Binary, Deps, Env, Uint128};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{
-    AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, GetSwapResponse,
-    StablePoolInfo, StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse,
+    AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, StablePoolInfo,
+    StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse, DEFAULT_AMP_FACTOR,
 };
-use euclid::pool::{PoolConfig, MINIMUM_LIQUIDITY};
+use euclid::pool::{simulate_swap, GetSwapResponse, PoolConfig, SwapCalculationMethod};
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
-use euclid::utils::math::Decimal256Ext;
 
-use crate::math::compute_swap;
-use crate::state::{State, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, DEFAULT_AMP_FACTOR, STATE};
-
+use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
+use euclid::pool::State;
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
     deps: Deps,
@@ -22,56 +18,27 @@ pub fn query_simulate_swap(
     amount_in: Uint128,
     next_swaps: Vec<NextSwapVlp>,
 ) -> Result<Binary, ContractError> {
-    // Verify that the asset amount is non-zero
-    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
-
-    let state = STATE.load(deps.storage)?;
-
-    let pair = state.pair.clone();
-
-    // asset should match either token
-    ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
-
-    // Get Fee from the state
-    let fee = state.clone().fee;
-
-    let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
-    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
-
-    // Calcuate the sum of fees
-    let total_fee = lp_fee.checked_add(euclid_fee)?;
-
-    // Calculate the amount of asset to be swapped
-    let swap_amount = amount_in.checked_sub(total_fee)?;
-
-    let asset_out = state.pair.get_other_token(asset_in.clone());
-
-    let token_in_reserve = BALANCES.load(deps.storage, asset_in)?;
-    let token_out_reserve = BALANCES.load(deps.storage, asset_out.clone())?;
-    let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
-    let receive_amount = compute_swap(
-        &Decimal256::from_integer(swap_amount),
-        &Decimal256::from_integer(token_in_reserve),
-        &Decimal256::from_integer(token_out_reserve),
-        amp_factor,
+    let swap_response = simulate_swap(
+        deps,
+        &STATE,
+        &BALANCES,
+        asset_in,
+        amount_in,
+        SwapCalculationMethod::Stable(AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR)),
     )?;
     let response = match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
             let next_swap_response: GetSwapResponse = deps.querier.query_wasm_smart(
                 next_swap.vlp_address.clone(),
                 &euclid::msgs::vlp::QueryMsg::SimulateSwap {
-                    asset: asset_out,
-                    asset_amount: receive_amount.return_amount,
+                    asset: swap_response.asset_out,
+                    asset_amount: swap_response.amount_out,
                     swaps: forward_swaps.to_vec(),
                 },
             )?;
             Ok(to_json_binary(&next_swap_response)?)
         }
-        None => Ok(to_json_binary(&GetSwapResponse {
-            amount_out: receive_amount.return_amount,
-            asset_out,
-            spread_amount: receive_amount.spread_amount,
-        })?),
+        None => Ok(to_json_binary(&swap_response)?),
     };
     response
 }
@@ -185,43 +152,4 @@ fn get_pool(
             .unwrap_or(Uint128::zero()),
         lp_shares: chain_lp_tokens,
     })
-}
-
-pub fn calculate_lp_allocation(
-    token_1_amount: Uint128,
-    token_2_amount: Uint128,
-    total_liquidity_1: Uint128,
-    total_liquidity_2: Uint128,
-    total_lp_supply: Uint128,
-) -> Result<Uint128, ContractError> {
-    // IF LP supply is 0 use original function
-    if total_lp_supply.is_zero() {
-        let sq_root = Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?);
-        return Ok(sq_root.checked_sub(Uint128::new(MINIMUM_LIQUIDITY))?);
-    }
-
-    let lp_allocation = token_1_amount
-        .checked_multiply_ratio(total_lp_supply, total_liquidity_1)?
-        .min(token_2_amount.checked_multiply_ratio(total_lp_supply, total_liquidity_2)?);
-
-    Ok(lp_allocation)
-}
-
-// Function to assert slippage is tolerated during transaction
-pub fn assert_slippage_tolerance(
-    ratio: Decimal256,
-    pool_ratio: Decimal256,
-    slippage_tolerance_bps: u64,
-) -> Result<bool, ContractError> {
-    let slippage = ratio.abs_diff(pool_ratio).checked_div(pool_ratio)?;
-
-    let slippage_tolerance = Decimal256::bps(slippage_tolerance_bps);
-    ensure!(
-        slippage.le(&slippage_tolerance),
-        ContractError::LiquiditySlippageExceeded {
-            expected: slippage,
-            received: slippage_tolerance,
-        }
-    );
-    Ok(true)
 }

@@ -5,8 +5,8 @@ mod tests {
     use crate::contract::{execute, instantiate};
     use crate::state::{ALLOWANCES, BALANCES, STATE};
 
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{Addr, DepsMut, MessageInfo, Response, Uint128};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
+    use cosmwasm_std::{Addr, MessageInfo, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
     use euclid::error::ContractError;
     use euclid::msgs::virtual_balance::{
@@ -15,24 +15,32 @@ mod tests {
     };
     use euclid::virtual_balance::BalanceKey;
 
-    fn init(deps: DepsMut) -> Response {
+    fn init(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            MockQuerier,
+        >,
+    ) -> Response {
         let msg = InstantiateMsg {
             router: Addr::unchecked("router"),
             admin: None,
         };
-        let info = mock_info("router", &[]);
-        instantiate(deps, mock_env(), info, msg).unwrap()
+        let router = deps.api.addr_make("router");
+        let info = message_info(&router, &[]);
+        instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
     }
 
     #[test]
     fn test_init() {
         let mut deps = mock_dependencies();
-        let res = init(deps.as_mut());
+        let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
+        let router = deps.api.addr_make("router");
 
         let expected_state = State {
-            router: "router".to_string(),
-            admin: Addr::unchecked("router"),
+            router: router.to_string(),
+            admin: router.clone(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -42,14 +50,15 @@ mod tests {
     fn test_mint_burn_transfer() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        init(deps.as_mut());
+        init(&mut deps);
 
         // Unauthorized sender
-        let info = mock_info("not_router", &[]);
-        let cross_chain_user = CrossChainUser::new(
-            ChainUid::create("1".to_string()).unwrap(),
-            "cross_chain_user_address".to_string(),
-        );
+        let not_router = deps.api.addr_make("not_router");
+        let info = message_info(&not_router, &[]);
+        let cross_chain_user = CrossChainUser {
+            chain_uid: ChainUid::create("1".to_string()).unwrap(),
+            address: "cross_chain_user_address".to_string(),
+        };
         let balance_key = BalanceKey {
             cross_chain_user: cross_chain_user.clone(),
             token_id: "token1".to_string(),
@@ -63,7 +72,8 @@ mod tests {
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
         assert_eq!(ContractError::Unauthorized {}, err);
 
-        let info = mock_info("router", &[]);
+        let router = deps.api.addr_make("router");
+        let info = message_info(&router, &[]);
 
         let _res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
@@ -91,11 +101,13 @@ mod tests {
         });
 
         // Unauthorized sender
-        let info = mock_info("not_router", &[]);
+        let not_router = deps.api.addr_make("not_router");
+        let info = message_info(&not_router, &[]);
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
         assert_eq!(ContractError::Unauthorized {}, err);
 
-        let info = mock_info("router", &[]);
+        let router = deps.api.addr_make("router");
+        let info = message_info(&router, &[]);
         let _res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         let expected_snapshot_balance = Uint128::new(5_u128);
