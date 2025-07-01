@@ -1,4 +1,4 @@
-pub mod pool;
+pub mod pool_functions;
 pub mod stable_math;
 
-pub use pool::*;
+pub use pool_functions::*;
