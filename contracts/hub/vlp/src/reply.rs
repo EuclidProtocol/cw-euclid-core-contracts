@@ -1,10 +1,14 @@
 use cosmwasm_std::{from_json, to_json_binary, DepsMut, Reply, Response, SubMsgResult};
 use cw_utils::parse_execute_response_data;
 use euclid::{error::ContractError, pool::VlpSwapResponse};
+use function_name::named;
 
+#[named]
 pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Err(_err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+        }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();

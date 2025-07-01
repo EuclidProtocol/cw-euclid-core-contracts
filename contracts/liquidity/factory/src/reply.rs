@@ -6,6 +6,7 @@ use cosmwasm_std::{from_json, DepsMut, Env, Event, Reply, Response, SubMsgResult
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::{error::ContractError, events::simple_event};
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
+use function_name::named;
 
 pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
 pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
@@ -172,10 +173,11 @@ pub fn on_reply_native_ibc_wrapper_call(
     }
 }
 
+#[named]
 pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic {
-            err: err.to_string(),
+        SubMsgResult::Err(_err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
         }),
         SubMsgResult::Ok(res) => {
             #[allow(deprecated)]

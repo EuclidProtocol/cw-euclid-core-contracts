@@ -1,6 +1,4 @@
-use cosmwasm_std::{
-    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Isqrt, Uint128,
-};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Decimal256, Deps, Env, Isqrt, Uint128};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::fee::BPS_50_PERCENT;

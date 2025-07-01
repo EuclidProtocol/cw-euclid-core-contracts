@@ -35,6 +35,9 @@ pub enum ContractError {
     #[error("Error - {err}")]
     Generic { err: String },
 
+    #[error("Action - {action}")]
+    Reply { action: String },
+
     #[error("Unreachable Code")]
     UnreachableCode {},
 
