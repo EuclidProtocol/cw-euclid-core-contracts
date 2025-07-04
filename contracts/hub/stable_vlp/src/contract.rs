@@ -11,7 +11,7 @@ use crate::query::{
     query_total_fees_collected, query_total_fees_per_denom,
 };
 use crate::reply;
-use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
+use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
 use euclid::pool::{
@@ -129,6 +129,7 @@ pub fn execute(
             &STATE,
             &BALANCES,
             &CHAIN_LP_TOKENS,
+            &COLLATERAL_LP_TOKENS,
             sender,
             liquidity,
             slippage_tolerance_bps,

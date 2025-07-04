@@ -11,3 +11,5 @@ pub const BALANCES: Map<Token, Uint128> = Map::new("balances");
 
 // The amplification factor for the stableswap invariant, default is 1000
 pub const AMP_FACTOR: Item<Uint64> = Item::new("amp_factor");
+
+pub const COLLATERAL_LP_TOKENS: Item<Uint128> = Item::new("collateral_lp_tokens");

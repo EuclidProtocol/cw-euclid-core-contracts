@@ -5,7 +5,9 @@ use euclid::msgs::stable_vlp::{
     AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, StablePoolInfo,
     StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse, DEFAULT_AMP_FACTOR,
 };
-use euclid::pool::{simulate_swap, GetSwapResponse, PoolConfig, SwapCalculationMethod};
+use euclid::pool::{
+    calculate_amount_from_shares, simulate_swap, GetSwapResponse, PoolConfig, SwapCalculationMethod,
+};
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
 
@@ -144,11 +146,9 @@ fn get_pool(
     reserve_2: Uint128,
 ) -> Result<StablePoolResponse, ContractError> {
     Ok(StablePoolResponse {
-        reserve_1: reserve_1
-            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+        reserve_1: calculate_amount_from_shares(reserve_1, chain_lp_tokens, state.total_lp_tokens)
             .unwrap_or(Uint128::zero()),
-        reserve_2: reserve_2
-            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+        reserve_2: calculate_amount_from_shares(reserve_2, chain_lp_tokens, state.total_lp_tokens)
             .unwrap_or(Uint128::zero()),
         lp_shares: chain_lp_tokens,
     })

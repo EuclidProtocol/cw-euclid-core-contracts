@@ -1,7 +1,9 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Decimal256, Deps, Env, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Env, Uint128};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
-use euclid::pool::{simulate_swap, GetSwapResponse, PoolConfig, SwapCalculationMethod};
+use euclid::pool::{
+    calculate_amount_from_shares, simulate_swap, GetSwapResponse, PoolConfig, SwapCalculationMethod,
+};
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
 
@@ -154,33 +156,12 @@ fn get_pool(
     reserve_2: Uint128,
 ) -> Result<PoolResponse, ContractError> {
     Ok(PoolResponse {
-        reserve_1: reserve_1
-            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+        reserve_1: calculate_amount_from_shares(reserve_1, chain_lp_tokens, state.total_lp_tokens)
             .unwrap_or(Uint128::zero()),
-        reserve_2: reserve_2
-            .checked_multiply_ratio(chain_lp_tokens, state.total_lp_tokens)
+        reserve_2: calculate_amount_from_shares(reserve_2, chain_lp_tokens, state.total_lp_tokens)
             .unwrap_or(Uint128::zero()),
         lp_shares: chain_lp_tokens,
     })
-}
-
-// Function to assert slippage is tolerated during transaction
-pub fn assert_slippage_tolerance(
-    ratio: Decimal256,
-    pool_ratio: Decimal256,
-    slippage_tolerance_bps: u64,
-) -> Result<bool, ContractError> {
-    let slippage = ratio.abs_diff(pool_ratio).checked_div(pool_ratio)?;
-
-    let slippage_tolerance = Decimal256::bps(slippage_tolerance_bps);
-    ensure!(
-        slippage.le(&slippage_tolerance),
-        ContractError::LiquiditySlippageExceeded {
-            expected: slippage,
-            received: slippage_tolerance,
-        }
-    );
-    Ok(true)
 }
 
 /// Extracts the token amount for a given token from a pair with amounts
