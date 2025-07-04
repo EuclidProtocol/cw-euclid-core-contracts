@@ -8,10 +8,10 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// This is the migrate entry point for the contract.
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(deps: &mut DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+pub fn migrate(mut deps: DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     let mut version = get_contract_version(deps.storage)?;
     let response = match version.version.as_str() {
-        "0.2.1" => migrate_v0_2_1_to_v0_2_2(deps, env),
+        "0.2.1" => migrate_v0_2_1_to_v0_2_2(&mut deps, env),
         _ => Ok(Response::default()),
     }?;
 
