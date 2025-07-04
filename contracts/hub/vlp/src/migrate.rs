@@ -1,5 +1,5 @@
 use cosmwasm_std::{entry_point, DepsMut, Env, Response, Uint128};
-use cw2::{get_contract_version, set_contract_version, CONTRACT};
+use cw2::{get_contract_version, set_contract_version};
 use euclid::{error::ContractError, msgs::vlp::MigrateMsg, pool::MINIMUM_LIQUIDITY};
 
 use crate::state::{COLLATERAL_LP_TOKENS, STATE};
@@ -40,8 +40,6 @@ fn migrate_patch_v0_2_2_to_v0_2_2(
     deps: &mut DepsMut,
     _env: Env,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    STATE.save(deps.storage, &state)?;
     let collateral_lp_tokens = COLLATERAL_LP_TOKENS.may_load(deps.storage)?;
     if collateral_lp_tokens.is_none() {
         COLLATERAL_LP_TOKENS.save(deps.storage, &Uint128::from(MINIMUM_LIQUIDITY))?;

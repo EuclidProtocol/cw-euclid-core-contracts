@@ -41,8 +41,6 @@ fn migrate_patch_v0_2_2_to_v0_2_2(
     deps: &mut DepsMut,
     _env: Env,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    STATE.save(deps.storage, &state)?;
     let collateral_lp_tokens = COLLATERAL_LP_TOKENS.may_load(deps.storage)?;
     if collateral_lp_tokens.is_none() {
         COLLATERAL_LP_TOKENS.save(deps.storage, &Uint128::from(MINIMUM_LIQUIDITY))?;
