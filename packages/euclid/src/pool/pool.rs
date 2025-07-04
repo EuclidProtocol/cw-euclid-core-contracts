@@ -562,9 +562,10 @@ pub fn add_liquidity(
         state.total_lp_tokens,
     )?;
 
+    let is_new_pool = state.total_lp_tokens.is_zero();
     state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
 
-    let lp_allocation = if state.total_lp_tokens.is_zero() {
+    let lp_allocation = if is_new_pool {
         collateral_lp_tokens_storage.save(deps.storage, &Uint128::from(MINIMUM_LIQUIDITY))?;
         lp_allocation.checked_sub(Uint128::from(MINIMUM_LIQUIDITY))?
     } else {
