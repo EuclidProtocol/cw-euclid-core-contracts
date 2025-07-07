@@ -6,8 +6,9 @@ use function_name::named;
 #[named]
 pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(_err) => Err(ContractError::Reply {
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
+            err,
         }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();

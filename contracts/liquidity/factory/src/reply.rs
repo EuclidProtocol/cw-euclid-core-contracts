@@ -176,8 +176,9 @@ pub fn on_reply_native_ibc_wrapper_call(
 #[named]
 pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(_err) => Err(ContractError::Reply {
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
+            err,
         }),
         SubMsgResult::Ok(res) => {
             #[allow(deprecated)]
