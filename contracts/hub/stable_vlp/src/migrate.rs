@@ -22,7 +22,7 @@ pub fn migrate(mut deps: DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response
     Ok(response)
 }
 
-// Migrate v0.2.0 to 0.2.1 with token denoms
+// Migrate v0.2.0 to 0.2.2
 fn migrate_v0_2_0_to_v0_2_2(deps: &mut DepsMut, _env: Env) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
     state.total_lp_tokens = state
@@ -36,7 +36,7 @@ fn migrate_v0_2_0_to_v0_2_2(deps: &mut DepsMut, _env: Env) -> Result<Response, C
         .add_attribute("collateral_lp_tokens", MINIMUM_LIQUIDITY.to_string()))
 }
 
-// Migrate patch v0.2.2 to 0.2.2 with token denoms
+// Migrate patch v0.2.2 to 0.2.2
 fn migrate_patch_v0_2_2_to_v0_2_2(
     deps: &mut DepsMut,
     _env: Env,
