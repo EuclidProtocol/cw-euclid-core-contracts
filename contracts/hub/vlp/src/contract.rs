@@ -21,7 +21,7 @@ use crate::{
         query_total_fees_collected, query_total_fees_per_denom,
     },
     reply,
-    state::{BALANCES, CHAIN_LP_TOKENS, STATE},
+    state::{BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE},
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:vlp";
@@ -129,6 +129,7 @@ pub fn execute(
             &STATE,
             &BALANCES,
             &CHAIN_LP_TOKENS,
+            &COLLATERAL_LP_TOKENS,
             sender,
             liquidity,
             slippage_tolerance_bps,

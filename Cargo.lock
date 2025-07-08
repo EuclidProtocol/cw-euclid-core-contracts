@@ -3260,7 +3260,7 @@ dependencies = [
 
 [[package]]
 name = "stable_vlp"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -3820,7 +3820,7 @@ dependencies = [
 
 [[package]]
 name = "vlp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",

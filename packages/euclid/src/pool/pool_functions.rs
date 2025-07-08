@@ -164,17 +164,29 @@ pub fn calculate_lp_allocation(
     total_liquidity_2: Uint128,
     total_lp_supply: Uint128,
 ) -> Result<Uint128, ContractError> {
+    let token_1_amount = Uint512::from(token_1_amount);
+    let token_2_amount = Uint512::from(token_2_amount);
+    let total_liquidity_1 = Uint512::from(total_liquidity_1);
+    let total_liquidity_2 = Uint512::from(total_liquidity_2);
+    let total_lp_supply = Uint512::from(total_lp_supply);
+
     // IF LP supply is 0 use original function
     if total_lp_supply.is_zero() {
-        let sq_root = Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?);
-        return Ok(sq_root.checked_sub(Uint128::new(MINIMUM_LIQUIDITY))?);
+        let sq_root = Uint128::try_from(Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?))
+            .map_err(|_| ContractError::new("Overflow total supply"))?;
+        return Ok(sq_root);
     }
 
     let lp_allocation = token_1_amount
-        .checked_multiply_ratio(total_lp_supply, total_liquidity_1)?
-        .min(token_2_amount.checked_multiply_ratio(total_lp_supply, total_liquidity_2)?);
+        .checked_mul(total_lp_supply)?
+        .checked_div(total_liquidity_1)?
+        .min(
+            token_2_amount
+                .checked_mul(total_lp_supply)?
+                .checked_div(total_liquidity_2)?,
+        );
 
-    Ok(lp_allocation)
+    Uint128::try_from(lp_allocation).map_err(|_| ContractError::new("Overflow lp allocation"))
 }
 
 // Function to assert slippage is tolerated during transaction
@@ -472,6 +484,7 @@ pub fn add_liquidity(
     state_storage: &Item<State>,
     balances_storage: &Map<Token, Uint128>,
     chain_lp_tokens_storage: &Map<ChainUid, Uint128>,
+    collateral_lp_tokens_storage: &Item<Uint128>,
     sender: CrossChainUser,
     liquidity: PairWithAmount,
     slippage_tolerance_bps: u64,
@@ -549,6 +562,16 @@ pub fn add_liquidity(
         state.total_lp_tokens,
     )?;
 
+    let is_new_pool = state.total_lp_tokens.is_zero();
+    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
+
+    let lp_allocation = if is_new_pool {
+        collateral_lp_tokens_storage.save(deps.storage, &Uint128::from(MINIMUM_LIQUIDITY))?;
+        lp_allocation.checked_sub(Uint128::from(MINIMUM_LIQUIDITY))?
+    } else {
+        lp_allocation
+    };
+
     ensure!(
         !lp_allocation.is_zero(),
         ContractError::Generic {
@@ -563,7 +586,6 @@ pub fn add_liquidity(
     total_reserve_1 = total_reserve_1.checked_add(token_1_liquidity)?;
     total_reserve_2 = total_reserve_2.checked_add(token_2_liquidity)?;
 
-    state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
     state_storage.save(deps.storage, &state)?;
 
     balances_storage.save(deps.storage, pair.token_1.clone(), &total_reserve_1)?;
@@ -980,4 +1002,13 @@ pub fn simulate_swap(
         lp_fee: pre_swap_response.lp_fee,
         euclid_fee: pre_swap_response.euclid_fee,
     })
+}
+
+pub fn calculate_amount_from_shares(
+    reserve: Uint128,
+    shares: Uint128,
+    total_shares: Uint128,
+) -> Result<Uint128, ContractError> {
+    let amount = reserve.checked_multiply_ratio(shares, total_shares)?;
+    Ok(amount)
 }

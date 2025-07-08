@@ -283,7 +283,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             },
             token_1_reserve: Uint128::new(10_000),
             token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(30622),
+            total_lp_tokens: Uint128::new(31622),
         }
     );
 
@@ -356,7 +356,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             },
             token_1_reserve: Uint128::new(10_000u128 * 2),
             token_2_reserve: Uint128::new(100_000u128 * 2),
-            total_lp_tokens: Uint128::new(30622u128 * 2),
+            total_lp_tokens: Uint128::new(31622u128 * 2),
         }
     );
     // Euclid escrow contract
@@ -565,7 +565,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             },
             token_1_reserve: Uint128::new(10_000),
             token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(30622),
+            total_lp_tokens: Uint128::new(31622),
         }
     );
 
@@ -637,7 +637,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             },
             token_1_reserve: Uint128::new(10_000u128 * 2),
             token_2_reserve: Uint128::new(100_000u128 * 2),
-            total_lp_tokens: Uint128::new(30622u128 * 2),
+            total_lp_tokens: Uint128::new(31622u128 * 2),
         }
     );
     // Euclid escrow contract
@@ -1241,7 +1241,7 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
             },
             token_1_reserve: Uint128::new(10_000),
             token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(30622),
+            total_lp_tokens: Uint128::new(31622),
         }
     );
 
@@ -1409,7 +1409,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
                 },
                 token_1_reserve: Uint128::new(10_000),
                 token_2_reserve: Uint128::new(100_000),
-                total_lp_tokens: Uint128::new(30622),
+                total_lp_tokens: Uint128::new(31622),
             }
         );
     }
@@ -2384,7 +2384,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
             },
             token_1_reserve: Uint128::new(10_000),
             token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(30622),
+            total_lp_tokens: Uint128::new(31622),
         }
     );
 
