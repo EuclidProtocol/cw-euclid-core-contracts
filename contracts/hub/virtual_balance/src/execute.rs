@@ -61,14 +61,20 @@ pub fn execute_burn(
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
-
-    let old_balance = BALANCES
-        .may_load(deps.storage, key.clone())?
-        .unwrap_or(Uint128::zero());
+    let old_balance =
+        BALANCES
+            .may_load(deps.storage, key.clone())?
+            .ok_or(ContractError::BalanceNotFound {
+                key: format!("{:?}", key),
+            })?;
 
     let new_balance = old_balance.checked_sub(msg.amount)?;
 
-    BALANCES.save(deps.storage, key, &new_balance)?;
+    if new_balance.is_zero() {
+        BALANCES.remove(deps.storage, key);
+    } else {
+        BALANCES.save(deps.storage, key, &new_balance)?;
+    }
 
     Ok(Response::new()
         .add_attribute("action", "execute_burn")
