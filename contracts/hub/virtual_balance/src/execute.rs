@@ -149,7 +149,11 @@ pub fn execute_transfer(
     );
 
     let sender_new_balance = sender_old_balance.checked_sub(msg.amount)?;
-    BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
+    if sender_new_balance.is_zero() {
+        BALANCES.remove(deps.storage, sender_key);
+    } else {
+        BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
+    }
 
     let receiver_balance_key = BalanceKey {
         token_id: msg.token_id.clone(),

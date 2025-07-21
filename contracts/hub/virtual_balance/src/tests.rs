@@ -243,7 +243,7 @@ mod tests {
         assert_eq!(owner_balance, Uint128::new(15));
 
         let recipient_key = BalanceKey {
-            cross_chain_user: recipient,
+            cross_chain_user: recipient.clone(),
             token_id: "eucl".to_string(),
         };
         let recipient_balance = BALANCES
@@ -253,5 +253,63 @@ mod tests {
             )
             .unwrap();
         assert_eq!(recipient_balance, Uint128::new(5));
+
+        // Check spender's allowance
+        let spender_allowance = ALLOWANCES
+            .load(
+                &deps.storage,
+                balance_key.clone().to_serialized_balance_key(),
+            )
+            .unwrap();
+        assert_eq!(spender_allowance.amount, Uint128::new(5));
+
+        // Spender transfers his remaining tokens to recipient
+        let transfer_msg = ExecuteMsg::Transfer(ExecuteTransfer {
+            amount: Uint128::new(5),
+            token_id: "eucl".to_string(),
+            from: owner.clone(),
+            to: recipient.clone(),
+        });
+        let info = MessageInfo {
+            sender: Addr::unchecked(spender.address.clone()),
+            funds: vec![],
+        };
+        execute(deps.as_mut(), env.clone(), info, transfer_msg).unwrap();
+
+        // Check that spender's the allowance has been removed
+        let _spender_allowance = ALLOWANCES
+            .load(
+                &deps.storage,
+                balance_key.clone().to_serialized_balance_key(),
+            )
+            .unwrap_err();
+
+        // Check recipient's balance
+        let recipient_balance = BALANCES
+            .load(
+                &deps.storage,
+                recipient_key.clone().to_serialized_balance_key(),
+            )
+            .unwrap();
+        assert_eq!(recipient_balance, Uint128::new(10));
+
+        // Burn the recipient's remaining balance
+        let burn_msg = ExecuteMsg::Burn(ExecuteBurn {
+            amount: recipient_balance,
+            balance_key: recipient_key.clone(),
+        });
+        let info = MessageInfo {
+            sender: Addr::unchecked(router.clone()),
+            funds: vec![],
+        };
+        execute(deps.as_mut(), env.clone(), info, burn_msg).unwrap();
+
+        // Check that recipient's balance has been removed
+        let _recipient_balance = BALANCES
+            .load(
+                &deps.storage,
+                recipient_key.clone().to_serialized_balance_key(),
+            )
+            .unwrap_err();
     }
 }
