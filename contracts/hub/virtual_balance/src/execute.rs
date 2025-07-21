@@ -168,11 +168,18 @@ pub fn execute_transfer(
     if allowance.amount.ge(&msg.amount) {
         let mut new_allowance = allowance;
         new_allowance.amount = new_allowance.amount.checked_sub(msg.amount)?;
-        ALLOWANCES.save(
-            deps.storage,
-            sender_balance_key.clone().to_serialized_balance_key(),
-            &new_allowance,
-        )?;
+        if new_allowance.amount.is_zero() {
+            ALLOWANCES.remove(
+                deps.storage,
+                sender_balance_key.clone().to_serialized_balance_key(),
+            );
+        } else {
+            ALLOWANCES.save(
+                deps.storage,
+                sender_balance_key.clone().to_serialized_balance_key(),
+                &new_allowance,
+            )?;
+        }
         response = response
             .add_attribute("allowance_used", msg.amount)
             .add_attribute("new_allowance", new_allowance.amount);
@@ -256,6 +263,8 @@ pub fn execute_approve(
         token_id: msg.token_id.clone(),
         cross_chain_user: msg.owner.clone(),
     };
+
+    ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
     ALLOWANCES.save(
         deps.storage,
         key.to_serialized_balance_key(),
