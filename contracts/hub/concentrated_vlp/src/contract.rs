@@ -1,0 +1,251 @@
+use std::collections::HashMap;
+
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
+use cw2::set_contract_version;
+use euclid::fee::{DenomFees, TotalFees};
+
+use crate::query::{
+    query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
+    query_total_fees_collected, query_total_fees_per_denom,
+};
+use crate::reply;
+use crate::state::{Config, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE};
+use euclid::error::ContractError;
+use euclid::msgs::concentrated_vlp::{
+    ExecuteMsg, InstantiateMsg, PairInfo, QueryMsg, DEFAULT_AMP_FACTOR,
+};
+use euclid::pool::{
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
+    SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
+};
+// version info for migration info
+const CONTRACT_NAME: &str = "crates.io:concentrated_vlp";
+const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn instantiate(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: InstantiateMsg,
+) -> Result<Response, ContractError> {
+    // Validate token pair
+    msg.pair.validate()?;
+
+    let state = State {
+        pair: msg.pair,
+        virtual_balance: msg.virtual_balance,
+        router: info.sender.to_string(),
+        fee: msg.fee,
+        total_fees_collected: TotalFees {
+            lp_fees: DenomFees {
+                totals: HashMap::default(),
+            },
+            euclid_fees: DenomFees {
+                totals: HashMap::default(),
+            },
+        },
+        last_updated: 0,
+        total_lp_tokens: Uint128::zero(),
+        admin: msg.admin,
+    };
+
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    STATE.save(deps.storage, &state)?;
+
+    BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
+
+    let amp_factor = msg.amp_factor.unwrap_or(DEFAULT_AMP_FACTOR);
+    AMP_FACTOR.save(deps.storage, &amp_factor)?;
+
+    let response =
+        msg.execute
+            .map_or(Ok(Response::default()), |execute_msg| match execute_msg {
+                ExecuteMsg::RegisterPool {
+                    sender,
+                    pair,
+                    tx_id,
+                } => register_pool(
+                    deps,
+                    env.clone(),
+                    info.clone(),
+                    &STATE,
+                    &CHAIN_LP_TOKENS,
+                    Some(amp_factor),
+                    sender,
+                    pair,
+                    tx_id,
+                ),
+                _ => Err(ContractError::Unauthorized {}),
+            })?;
+
+    // Concentrated VLP Config
+
+    // let config = Config {
+    //     pair_info: PairInfo {
+    //         contract_addr: env.contract.address.clone(),
+    //         liquidity_token: "".to_owned(),
+    //         asset_infos: msg.asset_infos.clone(),
+    //         pair_type: msg.pair_type,
+    //     },
+    //     factory_addr: msg.factory_addr,
+    //     block_time_last: env.block.time.seconds(),
+    //     cumulative_prices,
+    //     pool_params,
+    //     pool_state,
+    //     owner: None,
+    //     track_asset_balances: params.track_asset_balances.unwrap_or_default(),
+    //     // fee_share: None,
+    //     tracker_addr: None,
+    // };
+
+    Ok(response
+        .add_attribute("method", "instantiate")
+        .add_attribute("vlp_address", env.contract.address.to_string())
+        .add_attribute("owner", info.sender))
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
+    match msg {
+        ExecuteMsg::RegisterPool {
+            sender,
+            pair,
+            tx_id,
+        } => {
+            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
+            register_pool(
+                deps,
+                env,
+                info,
+                &STATE,
+                &CHAIN_LP_TOKENS,
+                Some(amp_factor),
+                sender,
+                pair,
+                tx_id,
+            )
+        }
+        ExecuteMsg::UpdateFee {
+            lp_fee_bps,
+            euclid_fee_bps,
+            recipient,
+        } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
+        ExecuteMsg::AddLiquidity {
+            sender,
+            tx_id,
+            slippage_tolerance_bps,
+            liquidity,
+        } => add_liquidity(
+            deps,
+            env,
+            info,
+            &STATE,
+            &BALANCES,
+            &CHAIN_LP_TOKENS,
+            &COLLATERAL_LP_TOKENS,
+            sender,
+            liquidity,
+            slippage_tolerance_bps,
+            tx_id,
+        ),
+        ExecuteMsg::RemoveLiquidity {
+            sender,
+            lp_allocation,
+            tx_id,
+        } => remove_liquidity(
+            deps,
+            env,
+            info,
+            &STATE,
+            &BALANCES,
+            &CHAIN_LP_TOKENS,
+            sender,
+            lp_allocation,
+            tx_id,
+        ),
+        ExecuteMsg::Swap {
+            sender,
+            asset_in,
+            amount_in,
+            min_token_out,
+            tx_id,
+            next_swaps,
+            test_fail,
+        } => {
+            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
+            execute_swap(
+                deps,
+                env,
+                info,
+                &STATE,
+                &BALANCES,
+                sender,
+                asset_in,
+                amount_in,
+                min_token_out,
+                tx_id,
+                next_swaps,
+                SwapCalculationMethod::Stable(amp_factor),
+                test_fail,
+            )
+        }
+        ExecuteMsg::UpdateState {
+            router,
+            virtual_balance,
+            fee,
+            last_updated,
+            admin,
+            amp_factor,
+        } => update_state(
+            deps,
+            info,
+            &STATE,
+            Some(&AMP_FACTOR),
+            router,
+            virtual_balance,
+            fee,
+            last_updated,
+            admin,
+            amp_factor,
+        ),
+    }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+    match msg {
+        QueryMsg::State {} => query_state(deps),
+        QueryMsg::SimulateSwap {
+            asset,
+            asset_amount,
+            swaps,
+        } => query_simulate_swap(deps, asset, asset_amount, swaps),
+        QueryMsg::Liquidity {} => query_liquidity(deps, env),
+        QueryMsg::Fee {} => query_fee(deps),
+        QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
+        QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps, denom),
+        QueryMsg::Pool { chain_uid } => query_pool(deps, chain_uid),
+
+        QueryMsg::GetAllPools {} => query_all_pools(deps),
+    }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        NEXT_SWAP_REPLY_ID => reply::on_next_swap_reply(deps, msg),
+
+        id => Err(ContractError::Generic {
+            err: format!("Unknown reply id: {id}"),
+        }),
+    }
+}

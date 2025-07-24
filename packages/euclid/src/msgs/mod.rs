@@ -1,3 +1,4 @@
+pub mod concentrated_vlp;
 pub mod cw20;
 pub mod escrow;
 pub mod factory;
