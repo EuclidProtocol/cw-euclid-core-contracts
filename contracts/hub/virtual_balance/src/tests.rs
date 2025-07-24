@@ -3,7 +3,7 @@
 mod tests {
 
     use crate::contract::{execute, instantiate};
-    use crate::state::{ALLOWANCES, BALANCES, STATE};
+    use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, MessageInfo, Response, Uint128};
@@ -311,5 +311,117 @@ mod tests {
                 recipient_key.clone().to_serialized_balance_key(),
             )
             .unwrap_err();
+    }
+
+    #[test]
+    fn test_remove_zero_state_values() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let router = Addr::unchecked("router");
+        let admin = Addr::unchecked("admin");
+
+        // Save initial state
+        STATE
+            .save(
+                &mut deps.storage,
+                &State {
+                    router: router.to_string(),
+                    admin: admin.clone(),
+                },
+            )
+            .unwrap();
+
+        // Helper to create BalanceKey
+        let key = |user: &str| {
+            BalanceKey {
+                cross_chain_user: CrossChainUser::new(
+                    ChainUid::vsl_chain_uid().unwrap(),
+                    user.to_string(),
+                ),
+                token_id: "eucl".to_string(),
+            }
+            .to_serialized_balance_key()
+        };
+
+        // Helper to execute remove
+        let remove_zeros = |deps: &mut cosmwasm_std::OwnedDeps<_, _, _>| {
+            execute(
+                deps.as_mut(),
+                env.clone(),
+                MessageInfo {
+                    sender: router.clone(),
+                    funds: vec![],
+                },
+                ExecuteMsg::RemoveZeroStateValues {},
+            )
+            .unwrap();
+        };
+
+        // Save allowances
+        ALLOWANCES
+            .save(
+                &mut deps.storage,
+                key("spender"),
+                &Allowance {
+                    amount: Uint128::new(10),
+                    spender: CrossChainUser::new(
+                        ChainUid::vsl_chain_uid().unwrap(),
+                        "spender".to_string(),
+                    ),
+                },
+            )
+            .unwrap();
+
+        ALLOWANCES
+            .save(
+                &mut deps.storage,
+                key("spender2"),
+                &Allowance {
+                    amount: Uint128::zero(),
+                    spender: CrossChainUser::new(
+                        ChainUid::vsl_chain_uid().unwrap(),
+                        "spender2".to_string(),
+                    ),
+                },
+            )
+            .unwrap();
+
+        // Assert initial state
+        assert_eq!(
+            ALLOWANCES
+                .load(&deps.storage, key("spender"))
+                .unwrap()
+                .amount,
+            Uint128::new(10)
+        );
+        assert_eq!(
+            ALLOWANCES
+                .load(&deps.storage, key("spender2"))
+                .unwrap()
+                .amount,
+            Uint128::zero()
+        );
+
+        // Remove zero allowances
+        remove_zeros(&mut deps);
+
+        // Assert zero was removed, non-zero remains
+        assert!(ALLOWANCES.load(&deps.storage, key("spender2")).is_err());
+        assert!(ALLOWANCES.load(&deps.storage, key("spender")).is_ok());
+
+        // Save balances
+        BALANCES
+            .save(&mut deps.storage, key("owner"), &Uint128::zero())
+            .unwrap();
+        BALANCES
+            .save(&mut deps.storage, key("owner2"), &Uint128::new(10))
+            .unwrap();
+
+        // Remove zero balances
+        remove_zeros(&mut deps);
+
+        // Assert zero was removed, non-zero remains
+        assert!(BALANCES.load(&deps.storage, key("owner")).is_err());
+        assert!(BALANCES.load(&deps.storage, key("owner2")).is_ok());
     }
 }
