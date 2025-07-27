@@ -31,9 +31,9 @@ cw-storage-plus = { workspace = true }
 itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
 cw-utils = { workspace = true }
-cw-orch = "=0.24.1"
-cw-orch-interchain = "=0.3.0"
-ibc-relayer-types = "=0.25.1"
+cw-orch = { workspace = true }
+cw-orch-interchain = "0.9.0"
+ibc-relayer-types = "0.32.1"
 
 anyhow = "1.0.79"
 

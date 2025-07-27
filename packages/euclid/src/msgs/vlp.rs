@@ -1,9 +1,9 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
-    pool::PoolConfig,
+    pool::{GetSwapResponse, PoolConfig},
     swap::NextSwapVlp,
-    token::{Pair, PairWithAmount, Token, TokenType},
+    token::{Pair, PairWithAmount, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
@@ -103,13 +103,6 @@ pub enum QueryMsg {
 
 // We define a custom struct for each query response
 #[cw_serde]
-pub struct GetSwapResponse {
-    pub amount_out: Uint128,
-    pub asset_out: Token,
-    pub spread_amount: Uint128,
-}
-
-#[cw_serde]
 pub struct GetStateResponse {
     pub pair: Pair,
     pub router: String,
@@ -165,21 +158,3 @@ pub struct AllPoolsResponse {
 
 #[cw_serde]
 pub struct MigrateMsg {}
-
-#[cw_serde]
-pub struct VlpRemoveLiquidityResponse {
-    pub liquidity_released: PairWithAmount,
-    pub preferred_denom: Option<TokenType>,
-    pub burn_lp_tokens: Uint128,
-    pub tx_id: String,
-    pub sender: CrossChainUser,
-    pub vlp_address: String,
-}
-
-#[cw_serde]
-pub struct VlpSwapResponse {
-    pub sender: CrossChainUser,
-    pub tx_id: String,
-    pub asset_out: Token,
-    pub amount_out: Uint128,
-}

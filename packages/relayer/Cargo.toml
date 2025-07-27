@@ -24,7 +24,7 @@ euclid = { workspace = true }
 
 sha2 = "0.10.8"
 
-cw-orch = "=0.24.1"
+cw-orch = { workspace = true }
 
 [dev-dependencies]
 k256 = "0.13.4"

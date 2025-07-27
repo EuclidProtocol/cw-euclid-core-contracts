@@ -62,7 +62,7 @@ pub fn execute_cosmos_receive_packet(
     hash: String,
 ) -> Result<Response, ContractError> {
     ensure!(
-        info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        info.sender.to_string() == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
         ContractError::Unauthorized {}
     );
 
@@ -133,7 +133,7 @@ pub fn execute_cosmos_receive_acknowledgement(
     ack: Binary,
 ) -> Result<Response, ContractError> {
     ensure!(
-        info.sender == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
+        info.sender.to_string() == MOCK_RELAYER_ADDRESS.load(deps.storage)?,
         ContractError::Unauthorized {}
     );
     let _existing_request = COSMOS_PACKET_RELAY_MAP.load(deps.storage, sequence)?;

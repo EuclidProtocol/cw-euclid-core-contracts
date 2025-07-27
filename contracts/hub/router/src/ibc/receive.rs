@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Event, IbcPacketReceiveMsg,
+    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
     IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -38,8 +38,7 @@ use crate::{
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
-        PENDING_REMOVE_LIQUIDITY, PROCESSED_PACKET_SEQUENCE, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS,
-        VLPS,
+        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS, VLPS,
     },
 };
 
@@ -64,11 +63,12 @@ pub fn ibc_packet_receive(
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
 
-    Ok(IbcReceiveResponse::new()
-        .add_attribute("method", "ibc_packet_receive")
-        .add_attribute("tx_id", tx_id)
-        .set_ack(make_ack_fail("deafult_fail".to_string())?)
-        .add_submessage(sub_msg))
+    Ok(
+        IbcReceiveResponse::new(make_ack_fail("deafult_fail".to_string())?)
+            .add_attribute("method", "ibc_packet_receive")
+            .add_attribute("tx_id", tx_id)
+            .add_submessage(sub_msg),
+    )
 }
 
 pub fn ibc_receive_internal_call(
@@ -396,6 +396,7 @@ fn execute_register_denom(
     token: TokenWithDenom,
     tx_id: String,
 ) -> Result<Response, ContractError> {
+    println!("execute_register_denom");
     token.token.validate()?;
 
     let mut token_denoms = TOKEN_DENOMS
@@ -412,7 +413,7 @@ fn execute_register_denom(
         chain_uid: sender.chain_uid.clone(),
         token_type: token.token_type.clone(),
     });
-
+    println!("token key: {:?}", token.token);
     TOKEN_DENOMS.save(deps.storage, token.token.clone(), &token_denoms)?;
 
     let ack: AcknowledgementMsg<RegisterDenomResponse> =
@@ -505,7 +506,7 @@ pub fn ibc_execute_add_liquidity(
         // Mint if not voucher token
         if !token.token_type.is_voucher() {
             // Increase Escrow balance
-            let token_escrow_key = (token.token.clone(), sender.chain_uid.clone());
+            let token_escrow_key = (token.token.to_string(), sender.chain_uid.clone());
             let token_escrow_balance = ESCROW_BALANCES
                 .may_load(deps.storage, token_escrow_key.clone())?
                 .unwrap_or(Uint128::zero());
@@ -676,9 +677,28 @@ fn ibc_execute_swap(
         err: "Swaps cannot be empty".to_string(),
     })?;
 
+    // Simulation increases gas, ideally this can be resolved but we are still getting codespace wasm errors so this is added as a temporary fix for better error messages
+    let simulate_swap_msg = euclid::msgs::vlp::QueryMsg::SimulateSwap {
+        asset: msg.asset_in.token.clone(),
+        asset_amount: msg.amount_in,
+        swaps: next_swaps.to_vec(),
+    };
+
+    let simulate_swap_res: euclid::pool::GetSwapResponse = deps
+        .querier
+        .query_wasm_smart(first_swap.vlp_address.clone(), &simulate_swap_msg)?;
+
+    ensure!(
+        simulate_swap_res.amount_out.ge(&msg.min_amount_out),
+        ContractError::SlippageExceeded {
+            amount: simulate_swap_res.amount_out,
+            min_amount_out: msg.min_amount_out,
+        }
+    );
+
     // Mint voucher token in escrow balance if it is not a voucher token
     if !msg.asset_in.token_type.is_voucher() {
-        let token_escrow_key = (msg.asset_in.token.clone(), sender.chain_uid.clone());
+        let token_escrow_key = (msg.asset_in.token.to_string(), sender.chain_uid.clone());
         let token_escrow_balance = ESCROW_BALANCES
             .may_load(deps.storage, token_escrow_key.clone())?
             .unwrap_or(Uint128::zero());
@@ -708,6 +728,29 @@ fn ibc_execute_swap(
 
         // Should reject full execution if failed
         response = response.add_message(mint_virtual_balance_msg);
+    }
+
+    if msg.asset_in.token_type.is_voucher() {
+        let user_voucher_balance_msg = euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+            balance_key: BalanceKey {
+                cross_chain_user: sender.clone(),
+                token_id: msg.asset_in.token.to_string(),
+            },
+        };
+
+        let user_voucher_balance_res: euclid::msgs::virtual_balance::GetBalanceResponse =
+            deps.querier.query_wasm_smart(
+                virtual_balance_address.to_string(),
+                &user_voucher_balance_msg,
+            )?;
+
+        ensure!(
+            user_voucher_balance_res.amount.ge(&msg.amount_in),
+            ContractError::InsufficientAmount {
+                min_amount: msg.amount_in,
+                amount: user_voucher_balance_res.amount,
+            }
+        );
     }
 
     let approve_voucher_msg = euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
@@ -796,7 +839,7 @@ fn ibc_execute_deposit_token(
     let sender = msg.clone().sender;
 
     // Add token 1 in escrow balance
-    let token_escrow_key = (msg.asset_in.token.clone(), sender.chain_uid.clone());
+    let token_escrow_key = (msg.asset_in.token.to_string(), sender.chain_uid.clone());
     let token_escrow_balance = ESCROW_BALANCES
         .may_load(deps.storage, token_escrow_key.clone())?
         .unwrap_or(Uint128::zero());

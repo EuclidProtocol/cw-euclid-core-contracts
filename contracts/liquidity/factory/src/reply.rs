@@ -3,7 +3,7 @@ use crate::{
     state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_CW20},
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Event, Reply, Response, SubMsgResult};
-use cw_utils::{parse_execute_response_data, parse_reply_instantiate_data};
+use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::{error::ContractError, events::simple_event};
 use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
 
@@ -20,8 +20,13 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
             let instantiate_data: cw_utils::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                parse_instantiate_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
@@ -56,8 +61,13 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
             let instantiate_data: cw_utils::MsgInstantiateContractResponse =
-                parse_reply_instantiate_data(msg).map_err(|res| ContractError::Generic {
+                parse_instantiate_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
 
@@ -66,6 +76,7 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
                 from_json(instantiate_data.data.unwrap_or_default())?;
 
             VLP_TO_CW20.save(deps.storage, cw20_data.vlp, &cw20_address)?;
+
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
                 .add_attribute("cw20", cw20_address))
@@ -79,6 +90,7 @@ pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
             .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
             .add_attribute("error", err)),
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -101,6 +113,7 @@ pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Cont
             .add_attribute("error", err.clone())
             .set_data(make_ack_fail(err)?)),
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -138,6 +151,7 @@ pub fn on_reply_native_ibc_wrapper_call(
                 .add_attribute("err", err))
         }
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -164,6 +178,7 @@ pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
             err: err.to_string(),
         }),
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {
@@ -194,6 +209,7 @@ pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 .add_event(write_acknowledge_event))
         }
         SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
             let data = res
                 .data
                 .map(|data| {

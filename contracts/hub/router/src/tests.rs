@@ -4,8 +4,8 @@ mod tests {
     #[cfg(test)]
     use crate::contract::{execute, instantiate};
     use crate::state::{State, CHAIN_UID_TO_CHAIN, STATE};
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{from_json, Addr, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Response};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
+    use cosmwasm_std::{from_json, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Response};
     use euclid::chain::{Chain, ChainUid, IbcChain};
     use euclid::error::ContractError;
     use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, RegisterFactoryChainNative};
@@ -30,11 +30,11 @@ mod tests {
     #[test]
     fn test_instantiate() {
         let mut deps = mock_dependencies();
-
-        let info = mock_info("owner", &[]);
+        let creator = deps.api.addr_make("creator");
+        let info = message_info(&creator, &[]);
         init(deps.as_mut(), info);
         let expected_state = State {
-            admin: "owner".to_string(),
+            admin: creator.to_string(),
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
             virtual_balance_address: None,
@@ -49,7 +49,9 @@ mod tests {
     fn test_execute_register_factory() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("creator", &[]);
+        let creator = deps.api.addr_make("creator");
+        let non_admin = deps.api.addr_make("non-admin");
+        let info = message_info(&creator, &[]);
 
         // Instantiate the contract first
         let msg = InstantiateMsg {
@@ -94,7 +96,7 @@ mod tests {
                 deps.as_mut(),
                 env.clone(),
                 if test.name.contains("non-admin") {
-                    mock_info("non-admin", &[])
+                    message_info(&non_admin, &[])
                 } else {
                     info.clone()
                 },
@@ -141,17 +143,19 @@ mod tests {
     fn test_update_lock() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("owner", &[]);
+        let owner = deps.api.addr_make("owner");
+        let info = message_info(&owner, &[]);
         init(deps.as_mut(), info);
 
         // Unauthorized
         let msg = ExecuteMsg::UpdateLock {};
-        let info = mock_info("not_owner", &[]);
+        let not_owner = deps.api.addr_make("not_owner");
+        let info = message_info(&not_owner, &[]);
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
         // works
-        let info = mock_info("owner", &[]);
+        let info = message_info(&owner, &[]);
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         let state = STATE.load(deps.as_ref().storage).unwrap();
@@ -166,7 +170,7 @@ mod tests {
         assert_eq!(err, ContractError::ContractLocked {});
 
         // Test unlock
-        let info = mock_info("owner", &[]);
+        let info = message_info(&owner, &[]);
         let msg = ExecuteMsg::UpdateLock {};
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
         let state = STATE.load(deps.as_ref().storage).unwrap();
@@ -198,31 +202,36 @@ mod tests {
     fn test_update_router_state() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("owner", &[]);
+        let owner = deps.api.addr_make("owner");
+        let info = message_info(&owner, &[]);
         init(deps.as_mut(), info);
+        let new_admin = deps.api.addr_make("new_admin");
+        let new_virtual_balance_address = deps.api.addr_make("new_virtual_balance_address");
+        let new_mock_relayer_address = deps.api.addr_make("new_mock_relayer_address");
 
         // Unauthorized
         let msg = ExecuteMsg::UpdateRouterState {
-            admin: Some("new_admin".to_string()),
+            admin: Some(new_admin.to_string()),
             vlp_code_id: Some(1),
             stable_vlp_code_id: Some(0),
-            virtual_balance_address: Some(Addr::unchecked("new_virtual_balance_address")),
+            virtual_balance_address: Some(new_virtual_balance_address.clone()),
             locked: Some(true),
-            mock_relayer_addresses: Some(vec!["new_mock_relayer_address".to_string()]),
+            mock_relayer_addresses: Some(vec![new_mock_relayer_address.to_string()]),
         };
-        let info = mock_info("not_owner", &[]);
+        let not_owner = deps.api.addr_make("not_owner");
+        let info = message_info(&not_owner, &[]);
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
         // Works
-        let info = mock_info("owner", &[]);
+        let info = message_info(&owner, &[]);
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
         let state = STATE.load(deps.as_ref().storage).unwrap();
-        assert_eq!(state.admin, "new_admin".to_string());
+        assert_eq!(state.admin, new_admin.to_string());
         assert_eq!(state.constant_product_vlp_code_id, 1);
         assert_eq!(
             state.virtual_balance_address,
-            Some(Addr::unchecked("new_virtual_balance_address"))
+            Some(new_virtual_balance_address.clone())
         );
         assert!(state.locked);
     }

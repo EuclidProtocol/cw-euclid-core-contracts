@@ -17,7 +17,7 @@ pub struct InstantiateMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::ExecuteFns)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
     ReregisterChain {
         chain: ChainUid,
@@ -174,7 +174,7 @@ pub enum QueryMsg {
     GetVlp { pair: Pair },
     #[returns(AllVlpResponse)]
     GetAllVlps {
-        pagination: Pagination<(Token, Token)>,
+        pagination: Pagination<(String, String)>,
     },
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
@@ -192,7 +192,7 @@ pub enum QueryMsg {
         pagination: Pagination<ChainUid>,
     },
     #[returns(AllEscrowsResponse)]
-    QueryAllEscrows { pagination: Pagination<Token> },
+    QueryAllEscrows { pagination: Pagination<String> },
 
     #[returns(AllTokensResponse)]
     QueryAllTokens { pagination: Pagination<Token> },

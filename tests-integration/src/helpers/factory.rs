@@ -2,25 +2,23 @@
 
 use cosmwasm_std::{coin, Binary, Uint128};
 use cw20::Cw20Contract;
-use cw_orch::{mock::MockBase, prelude::*};
-use cw_orch_interchain::{IbcQueryHandler, InterchainEnv, MockInterchainEnv};
-use euclid::{
-    chain::{CrossChainUser, CrossChainUserWithLimit},
-    fee::PartnerFee,
-    msgs::{
-        cw20::ExecuteMsgFns,
-        factory::{
-            ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest,
-            QueryMsgFns as FactoryQueryMsgFns,
-        },
-        router::QueryMsgFns,
-        virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns,
-    },
-    pool::PoolConfig,
-    swap::NextSwapPair,
-    token::{PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
-    virtual_balance::BalanceKey,
+use cw_orch::mock::MockBase;
+use cw_orch::prelude::*;
+use euclid::chain::{CrossChainUser, CrossChainUserWithLimit};
+use euclid::fee::PartnerFee;
+use euclid::msgs::cw20::ExecuteMsgFns;
+use euclid::msgs::factory::{
+    ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns,
 };
+
+use cw_orch_interchain::core::InterchainEnv;
+use cw_orch_interchain::prelude::IbcQueryHandler;
+use cw_orch_interchain::prelude::MockInterchainEnv;
+use euclid::pool::PoolConfig;
+use euclid::swap::NextSwapPair;
+use euclid::token::TokenType;
+use euclid::token::TokenWithDenom;
+use euclid::token::{PairWithDenomAndAmount, Token};
 use factory::FactoryContract;
 use router::RouterContract;
 
@@ -117,7 +115,7 @@ pub fn faucet(
     match token_type {
         TokenType::Native { denom } => {
             chain
-                .add_balance(address, vec![coin(amount, denom.clone())])
+                .add_balance(&Addr::unchecked(address), vec![coin(amount, denom.clone())])
                 .unwrap();
             // attach native token to the message
             funds.push(coin(amount, denom));
@@ -164,7 +162,7 @@ pub fn create_pool(
             lp_token_marketing: None,
             pool_config,
         },
-        Some(&funds),
+        &funds,
     )?;
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
@@ -189,7 +187,7 @@ pub fn add_liquidity(
             slippage_tolerance_bps,
             timeout,
         },
-        Some(&funds),
+        &funds,
     )?;
 
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
@@ -227,7 +225,7 @@ pub fn swap_request(
             partner_fee,
             meta,
         }),
-        Some(&funds),
+        &funds,
     )?;
 
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;

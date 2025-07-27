@@ -46,7 +46,10 @@ pub fn execute_update_hub_channel(
     new_channel: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
     let old_channel = HUB_CHANNEL.may_load(deps.storage)?;
     HUB_CHANNEL.save(deps.storage, &new_channel)?;
     let mut response = Response::new().add_attribute("method", "execute_update_hub_channel");
@@ -79,6 +82,7 @@ pub fn execute_request_pool_creation(
     );
 
     let pair = pair_with_denom_and_amount.get_pair()?;
+
     pair.validate()?;
 
     let state = STATE.load(deps.storage)?;
@@ -96,6 +100,7 @@ pub fn execute_request_pool_creation(
     let mut one_token_already_exists = false;
     // Do an early check for tokens escrow so that if it exists, it should allow the denom that we are sending
     let tokens = pair_with_denom_and_amount.get_vec_token_info();
+
     for token in tokens {
         // Validate token id
         token.token.validate()?;
@@ -511,7 +516,7 @@ pub fn execute_swap_request(
         }
         TokenType::Smart { contract_address } => {
             ensure!(
-                info.sender == *contract_address,
+                info.sender.to_string() == *contract_address,
                 ContractError::Unauthorized {}
             );
         }
@@ -674,7 +679,7 @@ pub fn execute_deposit_token(
         }
         TokenType::Smart { contract_address } => {
             ensure!(
-                info.sender == *contract_address,
+                info.sender.to_string() == *contract_address,
                 ContractError::Unauthorized {}
             );
         }
@@ -762,7 +767,7 @@ pub fn receive_cw20(
 
             // ensure that contract address is same as asset being swapped
             ensure!(
-                contract_adr == asset_in.token_type.get_smart_contract_address()?,
+                contract_adr.to_string() == asset_in.token_type.get_smart_contract_address()?,
                 ContractError::AssetDoesNotExist {}
             );
 
@@ -890,7 +895,7 @@ pub fn receive_euclid_cw20(
             partner_fee,
         } => {
             ensure!(
-                info.sender == asset_in.token_type.get_smart_contract_address()?,
+                info.sender.to_string() == asset_in.token_type.get_smart_contract_address()?,
                 ContractError::Unauthorized {}
             );
             let response = execute_swap_request(
@@ -927,7 +932,10 @@ pub fn execute_request_register_denom(
     );
 
     let state = STATE.load(deps.storage)?;
-    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+    ensure!(
+        state.admin == info.sender.to_string(),
+        ContractError::Unauthorized {}
+    );
 
     let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
@@ -1010,7 +1018,10 @@ pub fn execute_request_deregister_denom(
     );
 
     let state = STATE.load(deps.storage)?;
-    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+    ensure!(
+        state.admin == info.sender.to_string(),
+        ContractError::Unauthorized {}
+    );
 
     let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
@@ -1240,7 +1251,7 @@ pub fn execute_native_receive_callback(
 
     // Only router contract can execute this message
     ensure!(
-        state.router_contract == info.sender,
+        state.router_contract == info.sender.to_string(),
         ContractError::Unauthorized {}
     );
     receive::reusable_internal_call(deps, env, msg)

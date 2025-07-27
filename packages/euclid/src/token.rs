@@ -3,8 +3,8 @@ use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    coin, ensure, forward_ref_partial_eq, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg,
-    Deps, StdError, StdResult, Uint128, WasmMsg,
+    coin, ensure, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, StdError,
+    StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
@@ -16,7 +16,18 @@ use crate::msgs::virtual_balance::ExecuteTransfer;
 // Token asset that represents an identifier for a token
 #[cw_serde]
 pub struct Token(String);
-forward_ref_partial_eq!(Token, Token);
+// forward_ref_partial_eq!(Token, Token);
+impl PartialEq<Token> for &Token {
+    fn eq(&self, other: &Token) -> bool {
+        **self == *other
+    }
+}
+
+impl PartialEq<&Token> for Token {
+    fn eq(&self, other: &&Token) -> bool {
+        *self == **other
+    }
+}
 
 // Implement Deref to allow easy access to the inner type
 impl Deref for Token {
@@ -118,6 +129,7 @@ impl Prefixer<'_> for Token {
 
 impl KeyDeserialize for Token {
     type Output = Token;
+    const KEY_ELEMS: u16 = 42;
 
     #[inline(always)]
     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
@@ -138,7 +150,34 @@ pub struct Pair {
     pub token_1: Token,
     pub token_2: Token,
 }
-forward_ref_partial_eq!(Pair, Pair);
+
+// Compare Token == &str
+impl PartialEq<&str> for Token {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+// Compare &str == Token
+impl PartialEq<Token> for &str {
+    fn eq(&self, other: &Token) -> bool {
+        *self == other.0
+    }
+}
+
+// Compare Token == String
+impl PartialEq<String> for Token {
+    fn eq(&self, other: &String) -> bool {
+        &self.0 == other
+    }
+}
+
+// Compare String == Token
+impl PartialEq<Token> for String {
+    fn eq(&self, other: &Token) -> bool {
+        self == &other.0
+    }
+}
 
 impl Pair {
     pub fn new(token_1: Token, token_2: Token) -> Result<Self, ContractError> {
@@ -176,11 +215,11 @@ impl Pair {
         }
     }
 
-    pub fn get_tupple(&self) -> (Token, Token) {
+    pub fn get_tupple(&self) -> (String, String) {
         if self.token_1.le(&self.token_2.to_string()) {
-            (self.token_1.clone(), self.token_2.clone())
+            (self.token_1.to_string(), self.token_2.to_string())
         } else {
-            (self.token_2.clone(), self.token_1.clone())
+            (self.token_2.to_string(), self.token_1.to_string())
         }
     }
 
@@ -233,6 +272,7 @@ fn parse_length(value: &[u8]) -> StdResult<usize> {
 
 impl KeyDeserialize for Pair {
     type Output = Pair;
+    const KEY_ELEMS: u16 = 42;
 
     #[inline(always)]
     fn from_vec(mut value: Vec<u8>) -> StdResult<Self::Output> {

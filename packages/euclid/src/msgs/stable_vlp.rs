@@ -1,14 +1,15 @@
 use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
-    pool::PoolConfig,
+    pool::{GetSwapResponse, PoolConfig},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Decimal256, Uint128, Uint64};
 use cw_asset::AssetInfo;
-
+// The amplification factor for the stableswap invariant, default is 1000
+pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
@@ -104,14 +105,6 @@ pub enum QueryMsg {
     GetAllPools {},
 }
 
-// We define a custom struct for each query response
-#[cw_serde]
-pub struct GetSwapResponse {
-    pub amount_out: Uint128,
-    pub asset_out: Token,
-    pub spread_amount: Uint128,
-}
-
 #[cw_serde]
 pub struct GetStateResponse {
     pub pair: Pair,
@@ -168,30 +161,6 @@ pub struct AllStablePoolsResponse {
 
 #[cw_serde]
 pub struct MigrateMsg {}
-
-#[cw_serde]
-pub struct VlpRemoveLiquidityResponse {
-    pub liquidity_released: PairWithAmount,
-    pub burn_lp_tokens: Uint128,
-    pub tx_id: String,
-    pub sender: CrossChainUser,
-    pub vlp_address: String,
-}
-
-#[cw_serde]
-pub struct VlpSwapResponse {
-    pub sender: CrossChainUser,
-    pub tx_id: String,
-    pub asset_out: Token,
-    pub amount_out: Uint128,
-}
-
-/// Structure for internal use which represents swap result.
-#[cw_serde]
-pub struct SwapResult {
-    pub return_amount: Uint128,
-    pub spread_amount: Uint128,
-}
 
 /// This struct describes a Terra asset as decimal.
 #[cw_serde]

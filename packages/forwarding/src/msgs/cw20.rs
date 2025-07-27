@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
-use euclid::msgs::hook::EuclidReceive;
 
 use super::astroport::SwapMsg;
+use super::common_old::EuclidReceive;
 use super::osmosis::SwapMsg as OsmosisSwapMsg;
 
 #[cw_serde]

@@ -1,5 +1,5 @@
 use cosmwasm_std::{entry_point, DepsMut, Env, Response};
-use euclid::error::ContractError;
+use forwarding::msgs::errors_old::ContractError;
 use forwarding::msgs::osmosis::MigrateMsg;
 
 /// This is the migrate entry point for the contract.

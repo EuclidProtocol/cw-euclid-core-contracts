@@ -268,6 +268,7 @@ fn ack_pool_creation(
                             msg: init_msg,
                             gas_limit: None,
                             reply_on: ReplyOn::Always,
+                            payload: Binary::default(),
                         });
                     }
                 }
@@ -302,6 +303,7 @@ fn ack_pool_creation(
                 msg: init_cw20_msg,
                 gas_limit: None,
                 reply_on: ReplyOn::Always,
+                payload: Binary::default(),
             }))
         }
 
@@ -394,6 +396,7 @@ fn ack_register_denom(
                         msg: init_msg,
                         gas_limit: None,
                         reply_on: ReplyOn::Always,
+                        payload: Binary::default(),
                     });
             }
 

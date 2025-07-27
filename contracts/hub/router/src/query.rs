@@ -31,7 +31,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
 
 pub fn query_all_vlps(
     deps: Deps,
-    pagination: Pagination<(Token, Token)>,
+    pagination: Pagination<(String, String)>,
 ) -> Result<Binary, ContractError> {
     let Pagination {
         min: start,
@@ -51,8 +51,8 @@ pub fn query_all_vlps(
             let v = v?;
             Ok(VlpResponse {
                 vlp: v.1,
-                token_1: v.0 .0,
-                token_2: v.0 .1,
+                token_1: Token::create(v.0 .0)?,
+                token_2: Token::create(v.0 .1)?,
             })
         })
         .collect();
@@ -62,12 +62,12 @@ pub fn query_all_vlps(
 
 pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let key = pair.get_tupple();
-    let vlp = VLPS.load(deps.storage, key.clone())?;
+    let vlp = VLPS.load(deps.storage, (key.0.to_string(), key.1.to_string()))?;
 
     Ok(to_json_binary(&VlpResponse {
         vlp,
-        token_1: key.0,
-        token_2: key.1,
+        token_1: Token::create(key.0)?,
+        token_2: Token::create(key.1)?,
     })?)
 }
 
@@ -129,7 +129,7 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
         swaps: next_swaps.to_vec(),
     };
 
-    let simulate_res: euclid::msgs::vlp::GetSwapResponse = deps
+    let simulate_res: euclid::pool::GetSwapResponse = deps
         .querier
         .query_wasm_smart(first_swap.vlp_address.clone(), &simulate_msg)?;
 
@@ -154,8 +154,10 @@ pub fn query_simulate_escrow_release(
     let mut remaining_withdraw_amount = amount;
 
     for cross_chain_address in cross_chain_addresses.into_iter() {
-        let escrow_key =
-            ESCROW_BALANCES.key((token.clone(), cross_chain_address.user.chain_uid.clone()));
+        let escrow_key = ESCROW_BALANCES.key((
+            token.to_string(),
+            cross_chain_address.user.chain_uid.clone(),
+        ));
 
         let escrow_balance = escrow_key.may_load(deps.storage)?.unwrap_or_default();
 
@@ -241,7 +243,7 @@ pub fn query_token_escrows(
     let end = end.map(Bound::exclusive);
 
     let chains: Result<_, ContractError> = ESCROW_BALANCES
-        .prefix(token)
+        .prefix(token.to_string())
         .range(deps.storage, start, end, Order::Ascending)
         .skip(skip.unwrap_or(0) as usize)
         .take(limit.unwrap_or(10) as usize)
@@ -259,7 +261,7 @@ pub fn query_token_escrows(
 
 pub fn query_all_escrows(
     deps: Deps,
-    pagination: Pagination<Token>,
+    pagination: Pagination<String>,
 ) -> Result<Binary, ContractError> {
     let Pagination {
         min: start,
@@ -277,7 +279,7 @@ pub fn query_all_escrows(
         .map(|v| {
             let v = v?;
             Ok(EscrowResponse {
-                token: v.0 .0,
+                token: Token::create(v.0 .0)?,
                 chain_uid: v.0 .1,
                 balance: v.1,
             })
@@ -311,6 +313,12 @@ pub fn query_all_tokens(
 }
 
 pub fn query_token_denoms(deps: Deps, token: Token) -> Result<Binary, ContractError> {
+    ensure!(
+        !TOKEN_DENOMS.is_empty(deps.storage),
+        ContractError::Generic {
+            err: "Token denoms are not registered".to_string()
+        }
+    );
     let denoms = TOKEN_DENOMS.load(deps.storage, token)?;
     Ok(to_json_binary(&TokenDenomsResponse { denoms })?)
 }

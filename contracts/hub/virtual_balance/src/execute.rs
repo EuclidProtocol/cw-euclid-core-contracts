@@ -17,7 +17,10 @@ pub fn execute_mint(
     msg: ExecuteMint,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -69,7 +72,10 @@ pub fn execute_burn(
     msg: ExecuteBurn,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.as_str() == state.router,
+        ContractError::Unauthorized {}
+    );
 
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -258,7 +264,10 @@ pub fn execute_update_state(
     admin: Option<Addr>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender.to_string() == state.admin.to_string(),
+        ContractError::Unauthorized {}
+    );
 
     let verified_router = if let Some(ref router) = router {
         deps.api.addr_validate(router.as_str())?;
@@ -313,7 +322,15 @@ pub fn execute_approve(
     };
 
     // Ensure that spender and owner are not the same
-    ensure!(spender != owner, ContractError::SameAddress {});
+    ensure!(msg.spender != msg.owner, ContractError::SameAddress {});
+
+    // Router can send on behalf of anyone, or any user can transfer his own funds
+    ensure!(
+        state.router == info.sender.to_string()
+            || (msg.owner.address == info.sender.to_string()
+                && msg.owner.chain_uid == vsl_chain_uid),
+        ContractError::Unauthorized {}
+    );
 
     let key = BalanceKey {
         token_id: msg.token_id.clone(),
