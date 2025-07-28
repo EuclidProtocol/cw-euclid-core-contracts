@@ -1,6 +1,10 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint64};
-use cw_orch::prelude::{ContractInstance, CwOrchExecute, CwOrchQuery, Environment};
+use cw_orch::{
+    core::CwEnvError,
+    mock::MockBase,
+    prelude::{ContractInstance, CwOrchExecute, CwOrchQuery, Environment},
+};
 use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::*;
 use escrow::mock::mock_escrow;
@@ -24,8 +28,12 @@ use euclid::{
     },
     utils::pagination::Pagination,
 };
-use factory::mock::{mock_factory, MockFactory};
+use factory::{
+    mock::{mock_factory, MockFactory},
+    FactoryContract,
+};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
+use router::RouterContract;
 use std::collections::HashMap;
 
 use crate::helpers::{
@@ -695,7 +703,6 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
     };
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -807,7 +814,6 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
 
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -872,7 +878,6 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
 
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -922,7 +927,6 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
 
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -992,7 +996,6 @@ fn test_add_liquidity_fails_with_extra_funds() {
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
 
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -1056,7 +1059,6 @@ fn test_add_liquidity_with_timeout() {
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
 
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -1121,7 +1123,6 @@ fn test_add_liquidity_with_invalid_timeout() {
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
 
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -1168,18 +1169,36 @@ fn test_swap_request_native() {
 }
 
 fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
-    let mut chains = vec![(factory_chain_id, sender.as_str())];
+    let sender = "sender_for_all_chains";
+    let mut chains = vec![(factory_chain_id, sender)];
     if factory_chain_id != router_chain_id {
-        chains.push((router_chain_id, sender.as_str()));
+        chains.push((router_chain_id, sender));
     }
     let interchain = MockInterchainEnv::new(chains);
-    let factory_chain = interchain.get_chain(factory_chain_id).unwrap();
-    let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let router_chain = interchain.get_chain(router_chain_id).unwrap();
     let router = setup_router(&router_chain).unwrap();
 
     let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+    run_test_swap_request_reusable(sender, &factory, &router, None).unwrap();
+}
+
+pub struct SwapTestReusableOutput {
+    pub token_in: TokenWithDenom,
+    pub token_out: TokenWithDenom,
+    pub amount_in: Uint128,
+}
+
+pub fn run_test_swap_request_reusable(
+    sender: &str,
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    cross_chain_addresses: Option<Vec<CrossChainUserWithLimit>>,
+) -> Result<SwapTestReusableOutput, CwEnvError> {
+    let factory_chain = factory.environment();
+    let router_chain = router.environment();
+
+    let factory_chain_id = factory_chain.chain_id();
+    let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
 
     let token_a = Token::create("token.a".to_string()).unwrap();
     let token_a = TokenWithDenom {
@@ -1196,7 +1215,7 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
         },
     };
     let mut funds = vec![];
-    let sender = factory_chain.addr_make("sender_for_all_chains");
+    let sender = factory_chain.addr_make(sender);
     for token in [token_a.clone(), token_b.clone()] {
         faucet(
             &factory_chain,
@@ -1207,31 +1226,30 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
         );
     }
 
-    register_token(&factory, &router, token_a.clone()).unwrap();
-    register_token(&factory, &router, token_b.clone()).unwrap();
+    register_token(factory, router, token_a.clone())?;
+    register_token(factory, router, token_b.clone())?;
+
+    let pool_token_1 = token_a.with_amount(Uint128::from(10_000_000_000u128));
+    let pool_token_2 = token_b.with_amount(Uint128::from(100_000_000_000u128));
 
     create_pool(
-        &interchain,
-        &factory,
-        &router,
+        factory,
+        router,
         PairWithDenomAndAmount {
-            token_1: token_a.with_amount(Uint128::from(10_000u128)),
-            token_2: token_b.with_amount(Uint128::from(100_000u128)),
+            token_1: pool_token_1.clone(),
+            token_2: pool_token_2.clone(),
         },
         BPS_1_PERCENT,
         PoolConfig::ConstantProduct {},
-    )
-    .unwrap();
+    )?;
 
-    let vlp_query = router
-        .get_vlp(Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap())
-        .unwrap();
+    let vlp_query =
+        router.get_vlp(Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap())?;
 
-    let vlp_contract = get_vlp(&router_chain, &Addr::unchecked(vlp_query.vlp));
+    let vlp_contract = get_vlp(router_chain, &Addr::unchecked(vlp_query.vlp));
 
-    let liquidity_query: GetLiquidityResponse = vlp_contract
-        .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
-        .unwrap();
+    let liquidity_query: GetLiquidityResponse =
+        vlp_contract.query(&euclid::msgs::vlp::QueryMsg::Liquidity {})?;
     assert_eq!(
         liquidity_query,
         GetLiquidityResponse {
@@ -1239,76 +1257,75 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
                 token_1: token_a.token.clone(),
                 token_2: token_b.token.clone(),
             },
-            token_1_reserve: Uint128::new(10_000),
-            token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(31622),
+            token_1_reserve: pool_token_1.amount,
+            token_2_reserve: pool_token_2.amount,
+            total_lp_tokens: Uint128::new(31_622_776_601),
         }
     );
 
-    let escrow_token_a = get_escrow(&factory, token_a.token.to_string().as_str());
-    let escrow_token_b = get_escrow(&factory, token_b.token.to_string().as_str());
+    let escrow_token_a = get_escrow(factory, token_a.token.to_string().as_str());
+    let escrow_token_b = get_escrow(factory, token_b.token.to_string().as_str());
 
     // Osmo escrow contract
-    let escrow_query: EscrowStateResponse = escrow_token_a
-        .query(&euclid::msgs::escrow::QueryMsg::State {})
-        .unwrap();
+    let escrow_query: EscrowStateResponse =
+        escrow_token_a.query(&euclid::msgs::escrow::QueryMsg::State {})?;
     assert_eq!(
         escrow_query,
         EscrowStateResponse {
             token: token_a.token.clone(),
             factory_address: factory.address().unwrap(),
-            total_amount: Uint128::from(10_000u128),
+            total_amount: pool_token_1.amount,
         }
     );
 
     // This is the escrow for the Euclid token
-    let escrow_query: EscrowStateResponse = escrow_token_b
-        .query(&euclid::msgs::escrow::QueryMsg::State {})
-        .unwrap();
+    let escrow_query: EscrowStateResponse =
+        escrow_token_b.query(&euclid::msgs::escrow::QueryMsg::State {})?;
     assert_eq!(
         escrow_query,
         EscrowStateResponse {
             token: token_b.token.clone(),
             factory_address: factory.address().unwrap(),
-            total_amount: Uint128::from(100_000u128),
+            total_amount: pool_token_2.amount,
         }
     );
 
-    let swap_request_msg = factory
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
-                sender: None,
-                asset_in: token_a.clone(),
-                amount_in: Uint128::new(100),
-                asset_out: token_b.token.clone(),
-                min_amount_out: Uint128::new(50),
-                timeout: None,
-                swaps: vec![NextSwapPair {
-                    token_in: token_a.token.clone(),
-                    token_out: token_b.token.clone(),
-                    test_fail: None,
-                }],
-                cross_chain_addresses: vec![CrossChainUserWithLimit {
-                    user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
-                    limit: None,
-                    preferred_denom: None,
-                    refund_address: None,
-                    forwarding_message: None,
-                }],
-                partner_fee: None,
-                meta: None,
-            }),
-            &[coin(100u128, token_a.token.to_string())],
-        )
-        .unwrap();
+    let amount_in = Uint128::new(1_000_000);
 
-    relay_factory_router_factory(
-        swap_request_msg.events,
-        &factory,
-        &router,
-        &factory_chain_uid,
-    )
-    .unwrap();
+    let swap_request_msg = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            sender: None,
+            asset_in: token_a.clone(),
+            amount_in,
+            asset_out: token_b.token.clone(),
+            min_amount_out: Uint128::new(50),
+            timeout: None,
+            swaps: vec![NextSwapPair {
+                token_in: token_a.token.clone(),
+                token_out: token_b.token.clone(),
+                test_fail: None,
+            }],
+            cross_chain_addresses: cross_chain_addresses.unwrap_or(vec![CrossChainUserWithLimit {
+                user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
+                limit: None,
+                preferred_denom: None,
+                refund_address: None,
+                forwarding_message: None,
+                vcoin_msg: None,
+            }]),
+            partner_fee: None,
+            meta: None,
+        }),
+        &[coin(amount_in.u128(), token_a.token.to_string())],
+    )?;
+
+    relay_factory_router_factory(swap_request_msg.events, factory, router, &factory_chain_uid)?;
+
+    Ok(SwapTestReusableOutput {
+        token_in: token_a,
+        token_out: token_b,
+        amount_in,
+    })
 }
 
 #[test]
@@ -1379,7 +1396,6 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
 
     for (token_in, token_out) in pools {
         create_pool(
-            &interchain,
             &factory,
             &router,
             PairWithDenomAndAmount {
@@ -1443,6 +1459,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
                     preferred_denom: None,
                     refund_address: None,
                     forwarding_message: None,
+                    vcoin_msg: None,
                 }],
                 partner_fee: None,
                 meta: None,
@@ -1522,7 +1539,6 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
         .unwrap();
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -1640,7 +1656,6 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     };
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -1763,7 +1778,6 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
     };
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -1882,7 +1896,6 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
     };
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -1985,7 +1998,6 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     };
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -2069,6 +2081,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
             preferred_denom: None,
             refund_address: None,
             forwarding_message: None,
+            vcoin_msg: None,
         }],
         None,
         funds,
@@ -2113,7 +2126,6 @@ fn test_swap_request_with_timeout() {
     };
     register_token(&factory, &router, pair_info.token_1.to_token_with_denom()).unwrap();
     create_pool(
-        &interchain,
         &factory,
         &router,
         pair_info.clone(),
@@ -2352,7 +2364,6 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
     register_token(&factory, &router, token_b.clone()).unwrap();
 
     create_pool(
-        &interchain,
         &factory,
         &router,
         PairWithDenomAndAmount {
@@ -2437,6 +2448,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
                     preferred_denom: None,
                     refund_address: None,
                     forwarding_message: None,
+                    vcoin_msg: None,
                 }],
                 partner_fee: None,
                 meta: None,

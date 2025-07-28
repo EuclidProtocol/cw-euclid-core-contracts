@@ -108,6 +108,52 @@ pub fn deposit_token(
     Ok(())
 }
 
+pub fn transfer_token_vcoin(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    token: Token,
+    amount: Uint128,
+    recipient: CrossChainUser,
+    msg: Option<Binary>,
+) -> Result<(), CwOrchError> {
+    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address.unwrap();
+    let virtual_balance_contract =
+        get_virtual_balance(router.environment(), &virtual_balance_address);
+
+    let old_balance = virtual_balance_contract.get_balance(BalanceKey {
+        cross_chain_user: recipient.clone(),
+        token_id: token.to_string(),
+    })?;
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+
+    let tx_response = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::TransferVirtualBalance {
+            token: token.clone(),
+            amount,
+            recipient_address: recipient.clone(),
+            timeout: None,
+            from: None,
+            msg,
+        },
+        &[],
+    )?;
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+
+    let new_balance = virtual_balance_contract.get_balance(BalanceKey {
+        cross_chain_user: recipient,
+        token_id: token.to_string(),
+    })?;
+
+    assert!(
+        new_balance.amount.u128() == old_balance.amount.u128() + amount.u128(),
+        "Virtual balance not deposited properly, old balance: {}, new balance: {}, amount: {}",
+        old_balance.amount.u128(),
+        new_balance.amount.u128(),
+        amount.u128()
+    );
+    Ok(())
+}
+
 pub fn faucet(
     chain: &MockBase,
     address: &str,
@@ -134,16 +180,13 @@ pub fn faucet(
 }
 
 pub fn create_pool(
-    interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
     pool_config: PoolConfig,
 ) -> Result<(), CwOrchError> {
-    let chain = interchain
-        .get_chain(factory.environment().chain_id().as_str())
-        .unwrap();
+    let chain = factory.environment();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(

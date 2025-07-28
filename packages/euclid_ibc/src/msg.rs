@@ -6,7 +6,7 @@ use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
-    msgs::{factory, hook::VirtualBalanceReceive, router},
+    msgs::{factory, router},
     pool::PoolConfig,
     swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},

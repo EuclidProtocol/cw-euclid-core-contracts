@@ -4,13 +4,16 @@ use cosmwasm_std::{to_json_binary, Addr, Uint128};
 use cw_orch::prelude::*;
 use cw_orch_interchain::{core::InterchainEnv, prelude::*};
 
-use crate::helpers::{
-    chains::{get_virtual_balance, setup_claimer, setup_factory, setup_router},
-    factory::{deposit_token, register_token},
-    relayer::get_signer_key,
+use crate::{
+    helpers::{
+        chains::{get_virtual_balance, setup_claimer, setup_factory, setup_router},
+        factory::{deposit_token, register_token, transfer_token_vcoin},
+        relayer::get_signer_key,
+    },
+    tests::factory::run_test_swap_request_reusable,
 };
 use euclid::{
-    chain::CrossChainUser,
+    chain::{CrossChainUser, CrossChainUserWithLimit, Limit},
     msgs::{
         claimer::{
             CreateVoucherClaim, ExecuteMsgFns as ClaimerExecuteMsgFns,
@@ -107,5 +110,120 @@ fn test_create_claim() {
     let claim = claimer.get_claim(claim_id).unwrap();
     assert_eq!(claim.amount.u128(), amount_to_distribute.u128());
     assert_eq!(claim.token, token.token);
+    assert_eq!(claim.claimer_pubkey, pubkey_binary);
+}
+
+#[test]
+fn test_create_claim_using_vcoin_transfer() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = setup_router(&router_chain).unwrap();
+    let osmosis_factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
+    let nibiru_factory = setup_factory(&interchain, "nibiru", "nibiru", &router).unwrap();
+    let vcoin_address = get_virtual_balance(
+        &router_chain,
+        &router.get_state().unwrap().virtual_balance_address.unwrap(),
+    );
+    let claimer = setup_claimer(&nibiru_factory, &vcoin_address).unwrap();
+
+    let token = TokenWithDenom {
+        token: Token::create("eucl".to_string()).unwrap(),
+        token_type: TokenType::Native {
+            denom: "eucl".to_string(),
+        },
+    };
+    register_token(&osmosis_factory, &router, token.clone()).unwrap();
+    let amount_to_distribute = Uint128::from(10_000u128);
+    let (_, pubkey_binary) = get_signer_key();
+    let claim_obj = euclid::msgs::claimer::VirtualBalanceReceiveHookMsg::CreateVoucherClaim(
+        CreateVoucherClaim {
+            claimer_pubkey: pubkey_binary.clone(),
+        },
+    );
+
+    // Deposit vouchers
+    deposit_token(
+        &osmosis_factory,
+        &router,
+        token.clone(),
+        amount_to_distribute,
+        None,
+        None,
+    )
+    .unwrap();
+
+    // Transfer vouchers
+    transfer_token_vcoin(
+        &osmosis_factory,
+        &router,
+        token.token.clone(),
+        amount_to_distribute,
+        CrossChainUser::new(
+            nibiru_factory.get_state().unwrap().chain_uid,
+            claimer.address().unwrap().to_string(),
+        ),
+        // None,
+        Some(to_json_binary(&claim_obj).unwrap()),
+    )
+    .unwrap();
+
+    let claim_ids = claimer.get_user_claims(pubkey_binary.clone()).unwrap();
+    assert_eq!(claim_ids.len(), 1);
+    let claim_id = claim_ids[0];
+    let claim = claimer.get_claim(claim_id).unwrap();
+    assert_eq!(claim.amount.u128(), amount_to_distribute.u128());
+    assert_eq!(claim.token, token.token);
+    assert_eq!(claim.claimer_pubkey, pubkey_binary);
+}
+
+#[test]
+fn test_create_claim_using_swap() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = setup_router(&router_chain).unwrap();
+    let osmosis_factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
+    let nibiru_factory = setup_factory(&interchain, "nibiru", "nibiru", &router).unwrap();
+    let vcoin_address = get_virtual_balance(
+        &router_chain,
+        &router.get_state().unwrap().virtual_balance_address.unwrap(),
+    );
+    let claimer = setup_claimer(&nibiru_factory, &vcoin_address).unwrap();
+    let (_, pubkey_binary) = get_signer_key();
+    let claim_obj = euclid::msgs::claimer::VirtualBalanceReceiveHookMsg::CreateVoucherClaim(
+        CreateVoucherClaim {
+            claimer_pubkey: pubkey_binary.clone(),
+        },
+    );
+    let amount_to_distribute = Uint128::from(100u128);
+
+    let cross_chain_address = vec![CrossChainUserWithLimit {
+        user: CrossChainUser::new(
+            nibiru_factory.get_state().unwrap().chain_uid,
+            claimer.address().unwrap().to_string(),
+        ),
+        limit: Some(Limit::Equal(amount_to_distribute)),
+        preferred_denom: None,
+        refund_address: None,
+        forwarding_message: None,
+        vcoin_msg: Some(to_json_binary(&claim_obj).unwrap()),
+    }];
+    let swap_test_output = run_test_swap_request_reusable(
+        sender.as_str(),
+        &nibiru_factory,
+        &router,
+        Some(cross_chain_address),
+    )
+    .unwrap();
+
+    let claim_ids = claimer.get_user_claims(pubkey_binary.clone()).unwrap();
+    assert_eq!(claim_ids.len(), 1);
+    let claim_id = claim_ids[0];
+    let claim = claimer.get_claim(claim_id).unwrap();
+    assert_eq!(claim.amount.u128(), amount_to_distribute.u128());
+    assert_eq!(claim.token, swap_test_output.token_out.token);
     assert_eq!(claim.claimer_pubkey, pubkey_binary);
 }

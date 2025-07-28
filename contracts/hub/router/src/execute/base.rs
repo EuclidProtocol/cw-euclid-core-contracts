@@ -340,17 +340,27 @@ pub fn execute_release_escrow(
 
     let timeout = get_timeout(timeout)?;
     let mut release_msgs: Vec<SubMsg> = vec![];
+    let mut vcoin_transfer_msgs: Vec<SubMsg> = vec![];
 
     let mut cross_chain_addresses_iterator = cross_chain_addresses.into_iter().peekable();
     let mut remaining_withdraw_amount = amount;
     let token_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
 
     let mut transfer_amount = Uint128::zero();
+    let mut vcoin_transfer_amount = Uint128::zero();
+
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
             .next()
             .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
+
+        // Ensure that only one of vcoin_msg or forwarding_message is provided
+        ensure!(
+            !(cross_chain_address.vcoin_msg.is_some()
+                && cross_chain_address.forwarding_message.is_some()),
+            ContractError::new("Exactly one of vcoin_msg or forwarding_message must be provided")
+        );
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
 
@@ -373,8 +383,14 @@ pub fn execute_release_escrow(
             .may_load(deps.storage)?
             .unwrap_or(Uint128::zero());
 
-        let mut release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
+        let max_balance_available_balance = if cross_chain_address.vcoin_msg.is_some() {
+            remaining_withdraw_amount
+        } else {
             escrow_balance
+        };
+
+        let mut release_amount = if remaining_withdraw_amount.ge(&max_balance_available_balance) {
+            max_balance_available_balance
         } else {
             remaining_withdraw_amount
         };
@@ -409,26 +425,47 @@ pub fn execute_release_escrow(
             continue;
         }
 
-        escrow_key.save(deps.storage, &escrow_balance.checked_sub(release_amount)?)?;
+        // If its not a vcoin transfer, we release escrow so decrease escrow balance
+        if cross_chain_address.vcoin_msg.is_none() {
+            escrow_key.save(deps.storage, &escrow_balance.checked_sub(release_amount)?)?;
+            transfer_amount = transfer_amount.checked_add(release_amount)?;
+            // Prepare IBC Release Message
+            let send_msg = HubIbcExecuteMsg::ReleaseEscrow {
+                sender: sender.clone(),
+                amount: release_amount,
+                recipient: cross_chain_address.clone(),
+                token: token.clone(),
+                // We can't use same tx id because it might conflict with pending requests on receiving chain
+                tx_id: generate_tx(deps.branch(), &env, &sender)?,
+            }
+            .to_msg(
+                deps,
+                &env,
+                cross_chain_address.user.chain_uid.clone(),
+                chain,
+                timeout,
+            )?;
+            release_msgs.push(send_msg);
+        } else {
+            vcoin_transfer_amount = vcoin_transfer_amount.checked_add(release_amount)?;
+            let transfer_voucher_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(
+                euclid::msgs::virtual_balance::ExecuteTransfer {
+                    amount: release_amount,
+                    token_id: token.to_string(),
+                    sender: Some(sender.clone()),
+                    to: cross_chain_address.user.clone(),
+                    from: None,
+                    msg: cross_chain_address.vcoin_msg.clone(),
+                },
+            );
 
-        transfer_amount = transfer_amount.checked_add(release_amount)?;
-
-        // Prepare IBC Release Message
-        let send_msg = HubIbcExecuteMsg::ReleaseEscrow {
-            sender: sender.clone(),
-            amount: release_amount,
-            recipient: cross_chain_address.clone(),
-            token: token.clone(),
-            // We can't use same tx id because it might conflict with pending requests on receiving chain
-            tx_id: generate_tx(deps.branch(), &env, &sender)?,
+            let transfer_voucher_msg = WasmMsg::Execute {
+                contract_addr: virtual_balance_address.clone(),
+                msg: to_json_binary(&transfer_voucher_msg)?,
+                funds: vec![],
+            };
+            vcoin_transfer_msgs.push(SubMsg::new(transfer_voucher_msg));
         }
-        .to_msg(
-            deps,
-            &env,
-            cross_chain_address.user.chain_uid.clone(),
-            chain,
-            timeout,
-        )?;
 
         response = response.add_attribute(
             format!(
@@ -440,11 +477,13 @@ pub fn execute_release_escrow(
         );
 
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(release_amount)?;
-        release_msgs.push(send_msg);
     }
 
     ensure!(
-        transfer_amount.checked_add(remaining_withdraw_amount)? == amount,
+        transfer_amount
+            .checked_add(remaining_withdraw_amount)?
+            .checked_add(vcoin_transfer_amount)?
+            == amount,
         ContractError::new("Amount mismatch after transfer calculations")
     );
 
@@ -471,7 +510,8 @@ pub fn execute_release_escrow(
         .add_attribute("token", token.to_string())
         .add_attribute("release_expected", amount)
         .add_attribute("release_initiated", transfer_amount)
-        .add_submessages(release_msgs))
+        .add_submessages(release_msgs)
+        .add_submessages(vcoin_transfer_msgs))
 }
 
 pub fn execute_native_receive_callback(

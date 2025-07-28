@@ -1,10 +1,14 @@
 use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, StdError, StdResult, Uint128};
+use cosmwasm_std::{ensure, Binary, StdError, StdResult, Uint128};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
-use crate::{error::ContractError, msgs::hook::EuclidReceive, token::TokenType};
+use crate::{
+    error::ContractError,
+    msgs::hook::{EuclidReceive, VirtualBalanceReceive},
+    token::TokenType,
+};
 
 #[cw_serde]
 #[derive(PartialOrd)]
@@ -114,6 +118,7 @@ impl CrossChainUser {
         preferred_denom: Option<TokenType>,
         refund_address: Option<String>,
         forwarding_message: Option<EuclidReceive>,
+        vcoin_msg: Option<Binary>,
     ) -> CrossChainUserWithLimit {
         CrossChainUserWithLimit {
             user: self,
@@ -121,6 +126,7 @@ impl CrossChainUser {
             preferred_denom,
             refund_address,
             forwarding_message,
+            vcoin_msg,
         }
     }
 }
@@ -138,7 +144,10 @@ pub struct CrossChainUserWithLimit {
     pub limit: Option<Limit>,
     pub preferred_denom: Option<TokenType>,
     pub refund_address: Option<String>,
+    // Forward message to be executed on the destination chain
     pub forwarding_message: Option<EuclidReceive>,
+    // Vcoin Transfer Message to be executed. If this message is provided, escrow release will be skipped.
+    pub vcoin_msg: Option<Binary>,
 }
 
 #[cw_serde]
