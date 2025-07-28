@@ -1,8 +1,8 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128, Uint64};
 use cw_asset::AssetInfo;
-use cw_storage_plus::{Item, Map};
-use euclid::msgs::concentrated_vlp::{PairInfo, PoolParams, PoolState};
+use cw_storage_plus::{Item, Map, SnapshotMap};
+use euclid::msgs::concentrated_vlp::{FeeShareConfig, PairInfo, PoolParams, PoolState};
 use euclid::pool::State;
 use euclid::{chain::ChainUid, token::Token};
 
@@ -20,6 +20,13 @@ pub const COLLATERAL_LP_TOKENS: Item<Uint128> = Item::new("collateral_lp_tokens"
 /// Concentrated VLP Config
 /// Stores pool parameters and state.
 pub const CONFIG: Item<Config> = Item::new("config");
+/// Stores asset balances to query them later at any block height
+pub const CONCENTRATED_BALANCES: SnapshotMap<&AssetInfo, Uint128> = SnapshotMap::new(
+    "balances",
+    "balances_check",
+    "balances_change",
+    cw_storage_plus::Strategy::EveryBlock,
+);
 /// This structure stores the concentrated pair parameters.
 #[cw_serde]
 pub struct Config {
@@ -39,8 +46,8 @@ pub struct Config {
     pub owner: Option<Addr>,
     /// Whether asset balances are tracked over blocks or not.
     pub track_asset_balances: bool,
-    // /// The config for swap fee sharing
-    // pub fee_share: Option<FeeShareConfig>,
+    /// The config for swap fee sharing
+    pub fee_share: Option<FeeShareConfig>,
     /// The tracker contract address
     pub tracker_addr: Option<Addr>,
 }

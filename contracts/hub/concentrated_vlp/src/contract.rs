@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128};
+use cosmwasm_std::{
+    from_json, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
+};
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
@@ -11,10 +13,14 @@ use crate::query::{
     query_total_fees_collected, query_total_fees_per_denom,
 };
 use crate::reply;
-use crate::state::{Config, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE};
+use crate::state::{
+    Config, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, CONCENTRATED_BALANCES,
+    CONFIG, STATE,
+};
 use euclid::error::ContractError;
 use euclid::msgs::concentrated_vlp::{
-    ExecuteMsg, InstantiateMsg, PairInfo, QueryMsg, DEFAULT_AMP_FACTOR,
+    AmpGamma, ConcentratedPoolParams, ExecuteMsg, InstantiateMsg, PairInfo, PoolParams, PoolState,
+    PriceState, QueryMsg, DEFAULT_AMP_FACTOR,
 };
 use euclid::pool::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
@@ -26,7 +32,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
@@ -69,7 +75,7 @@ pub fn instantiate(
                     pair,
                     tx_id,
                 } => register_pool(
-                    deps,
+                    deps.branch(),
                     env.clone(),
                     info.clone(),
                     &STATE,
@@ -83,24 +89,82 @@ pub fn instantiate(
             })?;
 
     // Concentrated VLP Config
+    let factory_addr = deps.api.addr_validate(&msg.factory_addr)?;
 
-    // let config = Config {
-    //     pair_info: PairInfo {
-    //         contract_addr: env.contract.address.clone(),
-    //         liquidity_token: "".to_owned(),
-    //         asset_infos: msg.asset_infos.clone(),
-    //         pair_type: msg.pair_type,
-    //     },
-    //     factory_addr: msg.factory_addr,
-    //     block_time_last: env.block.time.seconds(),
-    //     cumulative_prices,
-    //     pool_params,
-    //     pool_state,
-    //     owner: None,
-    //     track_asset_balances: params.track_asset_balances.unwrap_or_default(),
-    //     // fee_share: None,
-    //     tracker_addr: None,
-    // };
+    // Initializing cumulative prices
+    let cumulative_prices = vec![
+        (
+            msg.asset_infos[0].clone(),
+            msg.asset_infos[1].clone(),
+            Uint128::zero(),
+        ),
+        (
+            msg.asset_infos[1].clone(),
+            msg.asset_infos[0].clone(),
+            Uint128::zero(),
+        ),
+    ];
+
+    let params: ConcentratedPoolParams =
+        from_json(msg.init_params.ok_or(ContractError::Generic {
+            err: "InitParamsNotFound".to_string(),
+        })?)?;
+
+    let pool_params = PoolParams {
+        mid_fee: params.mid_fee,
+        out_fee: params.out_fee,
+        fee_gamma: params.fee_gamma,
+        repeg_profit_threshold: params.repeg_profit_threshold,
+        min_price_scale_delta: params.min_price_scale_delta,
+        ma_half_time: params.ma_half_time,
+        allowed_xcp_profit_drop: params.allowed_xcp_profit_drop.unwrap_or_default(),
+        xcp_profit_losses_threshold: params.xcp_profit_losses_threshold.unwrap_or_default(),
+    };
+
+    let pool_state = PoolState {
+        initial: AmpGamma::default(),
+        future: AmpGamma {
+            amp: params.amp,
+            gamma: params.gamma,
+        },
+        future_time: env.block.time.seconds(),
+        initial_time: 0,
+        price_state: PriceState {
+            oracle_price: params.price_scale.into(),
+            last_price: params.price_scale.into(),
+            price_scale: params.price_scale.into(),
+            last_price_update: env.block.time.seconds(),
+            xcp_profit: Decimal256::zero(),
+            xcp_profit_real: Decimal256::zero(),
+            xcp_profit_losses: Decimal256::zero(),
+        },
+    };
+
+    let config = Config {
+        pair_info: PairInfo {
+            contract_addr: env.contract.address.clone(),
+            liquidity_token: "".to_owned(),
+            asset_infos: msg.asset_infos.clone(),
+            pair_type: msg.pair_type,
+        },
+        factory_addr,
+        block_time_last: env.block.time.seconds(),
+        cumulative_prices,
+        pool_params,
+        pool_state,
+        owner: None,
+        track_asset_balances: params.track_asset_balances.unwrap_or_default(),
+        fee_share: None,
+        tracker_addr: None,
+    };
+
+    if config.track_asset_balances {
+        for asset in &config.pair_info.asset_infos {
+            CONCENTRATED_BALANCES.save(deps.storage, asset, &Uint128::zero(), env.block.height)?;
+        }
+    }
+
+    CONFIG.save(deps.storage, &config)?;
 
     Ok(response
         .add_attribute("method", "instantiate")
