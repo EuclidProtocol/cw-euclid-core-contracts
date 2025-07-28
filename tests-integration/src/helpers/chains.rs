@@ -173,7 +173,7 @@ pub fn setup_claimer(
             vcoin_address: vcoin_address.address().unwrap(),
         },
         None,
-        None,
+        &[],
     )?;
     Ok(claimer)
 }

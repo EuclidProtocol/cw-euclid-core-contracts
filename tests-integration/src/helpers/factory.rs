@@ -14,11 +14,14 @@ use euclid::msgs::factory::{
 use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::IbcQueryHandler;
 use cw_orch_interchain::prelude::MockInterchainEnv;
+use euclid::msgs::router::QueryMsgFns;
+use euclid::msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::pool::PoolConfig;
 use euclid::swap::NextSwapPair;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
 use euclid::token::{PairWithDenomAndAmount, Token};
+use euclid::virtual_balance::BalanceKey;
 use factory::FactoryContract;
 use router::RouterContract;
 
@@ -86,7 +89,7 @@ pub fn deposit_token(
             recipient,
             msg,
         },
-        Some(&funds),
+        &funds,
     )?;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 

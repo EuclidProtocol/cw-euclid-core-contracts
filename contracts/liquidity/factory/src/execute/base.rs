@@ -16,7 +16,7 @@ use euclid::{
             cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook, ExecuteMsg,
             ExecuteSwapRequest,
         },
-        hook::{EuclidReceive, VirtualBalanceReceive},
+        hook::EuclidReceive,
     },
     pool::{DenomRegisterDeregisterRequest, PoolConfig, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},

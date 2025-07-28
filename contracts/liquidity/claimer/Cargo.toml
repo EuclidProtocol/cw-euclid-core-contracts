@@ -21,8 +21,6 @@ incremental = false
 overflow-checks = true
 
 [features]
-# for more explicit tests, cargo test --features=backtraces
-backtraces = ["cosmwasm-std/backtraces"]
 # use library feature to disable all instantiate/execute/query exports
 library = []
 
@@ -35,18 +33,13 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 
 [dependencies]
 cosmwasm-schema = { workspace = true }
-cosmwasm-std = { workspace = true, features = [
-  "cosmwasm_1_2",
-  # Enable this if you only deploy to chains that have CosmWasm 1.4 or higher
-  # "cosmwasm_1_4",
-  "ibc3",
-] }
+cosmwasm-std = { workspace = true, features = [] }
 cw2 = { workspace = true }
 cw-storage-plus = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
-cw-orch = "=0.24.1"
+cw-orch = { workspace = true }
 cw-utils = { workspace = true }
 euclid = { workspace = true }
 relayer = { workspace = true }

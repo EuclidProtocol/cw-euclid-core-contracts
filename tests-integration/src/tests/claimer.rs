@@ -2,7 +2,7 @@
 
 use cosmwasm_std::{to_json_binary, Addr, Uint128};
 use cw_orch::prelude::*;
-use cw_orch_interchain::{prelude::*, InterchainEnv};
+use cw_orch_interchain::{core::InterchainEnv, prelude::*};
 
 use crate::helpers::{
     chains::{get_virtual_balance, setup_claimer, setup_factory, setup_router},

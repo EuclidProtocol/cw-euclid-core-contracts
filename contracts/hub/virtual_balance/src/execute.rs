@@ -114,7 +114,10 @@ pub fn execute_transfer(
 
     let sender = if let Some(sender) = msg.sender {
         // Only  router can set pseudo sender
-        ensure!(info.sender == state.router, ContractError::Unauthorized {});
+        ensure!(
+            info.sender.to_string() == state.router,
+            ContractError::Unauthorized {}
+        );
         sender
     } else {
         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
@@ -315,14 +318,14 @@ pub fn execute_approve(
 
     // If router is approving, then owner is the owner
     // If user is approving, then owner is the user from info.sender and vsl chain
-    let owner = if info.sender == state.router {
-        msg.owner
+    let owner = if info.sender.to_string() == state.router {
+        msg.owner.clone()
     } else {
-        CrossChainUser::new(vsl_chain_uid, info.sender.to_string())
+        CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string())
     };
 
     // Ensure that spender and owner are not the same
-    ensure!(msg.spender != msg.owner, ContractError::SameAddress {});
+    ensure!(spender != owner, ContractError::SameAddress {});
 
     // Router can send on behalf of anyone, or any user can transfer his own funds
     ensure!(
