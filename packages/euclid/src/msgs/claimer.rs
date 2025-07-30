@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
     chain::{ChainUid, CrossChainUser},
+    msgs::hook::EuclidReceive,
     token::Token,
 };
 
@@ -32,17 +33,24 @@ pub enum VirtualBalanceReceiveHookMsg {
 pub enum QueryMsg {
     #[returns(State)]
     GetState {},
-    #[returns(Vec<u128>)]
-    GetSenderClaims { sender: String },
-    #[returns(Vec<u128>)]
-    GetUserClaims { pub_key: Binary },
+    #[returns(Vec<(u128, Claim)>)]
+    GetSenderClaims {
+        sender: CrossChainUser,
+        limit: u64,
+        offset: u64,
+    },
+    #[returns(Vec<(u128, Claim)>)]
+    GetUserClaims {
+        pub_key: Binary,
+        limit: u64,
+        offset: u64,
+    },
     #[returns(Claim)]
     GetClaim { claim_id: u128 },
 }
 
 #[cw_serde]
 pub struct State {
-    // Address of the virtual balance contract
     pub factory_address: Addr,
     pub vcoin_address: Addr,
     pub chain_uid: ChainUid,
@@ -59,6 +67,8 @@ pub struct SignedTransaction {
 pub struct ClaimVoucherData {
     pub claim_id: u128,
     pub recipient: CrossChainUser,
+    pub release_funds: bool,
+    pub release_msg: Option<EuclidReceive>,
 }
 
 #[cw_serde]

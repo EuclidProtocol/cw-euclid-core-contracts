@@ -67,7 +67,6 @@ mod tests {
         let msg = ExecuteMsg::Mint(ExecuteMint {
             amount: Uint128::new(10_u128),
             balance_key: balance_key.clone(),
-            forward_msg: None,
         });
 
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
@@ -89,7 +88,6 @@ mod tests {
         let msg = ExecuteMsg::Mint(ExecuteMint {
             amount: Uint128::zero(),
             balance_key: balance_key.clone(),
-            forward_msg: None,
         });
 
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
@@ -194,7 +192,6 @@ mod tests {
         let mint_msg = ExecuteMsg::Mint(ExecuteMint {
             amount: Uint128::new(20),
             balance_key: balance_key.clone(),
-            forward_msg: None,
         });
         let info = MessageInfo {
             sender: router.clone(),
@@ -255,7 +252,12 @@ mod tests {
         };
         // Unauthorized error as only router can set pseudo sender
         let err = execute(deps.as_mut(), env.clone(), info, transfer_msg).unwrap_err();
-        assert_eq!(ContractError::Unauthorized {}, err);
+        assert_eq!(
+            ContractError::UnauthorizedWithMsg {
+                msg: "Only router can set pseudo sender".to_string()
+            },
+            err
+        );
 
         // Verify balances after transfer
         let owner_balance = BALANCES

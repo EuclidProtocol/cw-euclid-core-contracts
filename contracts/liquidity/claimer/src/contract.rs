@@ -12,7 +12,7 @@ use crate::query::{get_claim, get_sender_claims, get_user_claims};
 use crate::{execute::execute_update_admin, query::get_state, state::STATE};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:euclid-relayer";
+const CONTRACT_NAME: &str = "crates.io:euclid-claimer";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -69,12 +69,20 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => Ok(to_json_binary(&get_state(&deps)?)?),
-        QueryMsg::GetSenderClaims { sender } => {
-            Ok(to_json_binary(&get_sender_claims(&deps, sender)?)?)
-        }
-        QueryMsg::GetUserClaims { pub_key } => {
-            Ok(to_json_binary(&get_user_claims(&deps, pub_key)?)?)
-        }
+        QueryMsg::GetSenderClaims {
+            sender,
+            limit,
+            offset,
+        } => Ok(to_json_binary(&get_sender_claims(
+            &deps, sender, limit, offset,
+        )?)?),
+        QueryMsg::GetUserClaims {
+            pub_key,
+            limit,
+            offset,
+        } => Ok(to_json_binary(&get_user_claims(
+            &deps, pub_key, limit, offset,
+        )?)?),
         QueryMsg::GetClaim { claim_id } => Ok(to_json_binary(&get_claim(&deps, claim_id)?)?),
     }
 }

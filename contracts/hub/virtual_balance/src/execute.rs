@@ -34,7 +34,7 @@ pub fn execute_mint(
 
     BALANCES.save(deps.storage, key, &new_balance)?;
 
-    let mut response = Response::new()
+    let response = Response::new()
         .add_attribute("action", "execute_mint")
         .add_attribute("mint_amount", msg.amount)
         .add_attribute(
@@ -48,21 +48,6 @@ pub fn execute_mint(
         .add_attribute("mint_token_id", msg.balance_key.token_id.clone())
         .add_attribute("new_balance", new_balance);
 
-    // If there was a forward message, then we need to send it to the receiver
-    if let Some(forward_msg) = msg.forward_msg {
-        let virtual_balance_receive = VirtualBalanceReceive {
-            sender: msg.balance_key.cross_chain_user.clone(),
-            amount: msg.amount,
-            token_id: msg.balance_key.token_id.clone(),
-            msg: forward_msg,
-        };
-        let execute_msg = WasmMsg::Execute {
-            contract_addr: msg.balance_key.cross_chain_user.address,
-            msg: virtual_balance_receive.to_receiver_msg()?,
-            funds: vec![],
-        };
-        response = response.add_message(execute_msg);
-    }
     Ok(response)
 }
 
@@ -108,46 +93,58 @@ pub fn execute_burn(
 pub fn execute_transfer(
     deps: &mut DepsMut,
     info: MessageInfo,
-    msg: ExecuteTransfer,
+    transfer_msg: ExecuteTransfer,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let sender = if let Some(sender) = msg.sender {
-        // Only  router can set pseudo sender
+    let sender = if let Some(sender) = transfer_msg.sender {
         ensure!(
             info.sender.to_string() == state.router,
-            ContractError::Unauthorized {}
+            ContractError::UnauthorizedWithMsg {
+                msg: "Only router can set pseudo sender".to_string(),
+            }
         );
         sender
     } else {
         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
     };
 
-    let mut response = if let Some(from) = msg.from {
-        let attributes = _deduct_allowance(deps, &sender, &from, msg.amount, &msg.token_id)?;
-        let transfer_response =
-            _transfer(deps, from, msg.to.clone(), msg.amount, msg.token_id.clone())?;
+    let mut response = if let Some(from) = transfer_msg.from {
+        let attributes = _deduct_allowance(
+            deps,
+            &sender,
+            &from,
+            transfer_msg.amount,
+            &transfer_msg.token_id,
+        )?;
+        let transfer_response = _transfer(
+            deps,
+            from,
+            transfer_msg.to.clone(),
+            transfer_msg.amount,
+            transfer_msg.token_id.clone(),
+        )?;
         transfer_response.add_attributes(attributes)
     } else {
         _transfer(
             deps,
             sender.clone(),
-            msg.to.clone(),
-            msg.amount,
-            msg.token_id.clone(),
+            transfer_msg.to.clone(),
+            transfer_msg.amount,
+            transfer_msg.token_id.clone(),
         )?
     };
 
-    if let Some(forward_msg) = msg.msg {
+    if let Some(forward_msg) = transfer_msg.msg {
         let forward_msg = VirtualBalanceReceive {
             sender,
-            amount: msg.amount,
-            token_id: msg.token_id.clone(),
+            amount: transfer_msg.amount,
+            token_id: transfer_msg.token_id.clone(),
             msg: forward_msg,
         };
         // Send message to receiver. Caution should be take to not trigger a message with wrong chain uid as chain uid is not verified here.
         let euclid_receive = WasmMsg::Execute {
-            contract_addr: msg.to.address,
+            contract_addr: transfer_msg.to.address,
             msg: forward_msg.to_receiver_msg()?,
             funds: vec![],
         };
@@ -225,11 +222,9 @@ fn _deduct_allowance(
         token_id: token_id.to_string(),
         cross_chain_user: from.clone(),
     };
+    let serialized_balance_key = sender_balance_key.clone().to_serialized_balance_key();
     let mut allowance = ALLOWANCES
-        .load(
-            deps.storage,
-            sender_balance_key.clone().to_serialized_balance_key(),
-        )
+        .load(deps.storage, serialized_balance_key.clone())
         .unwrap_or(Allowance {
             amount: Uint128::zero(),
             spender: from.clone(),
@@ -248,11 +243,7 @@ fn _deduct_allowance(
     );
 
     allowance.amount = allowance.amount.checked_sub(amount)?;
-    ALLOWANCES.save(
-        deps.storage,
-        sender_balance_key.to_serialized_balance_key(),
-        &allowance,
-    )?;
+    ALLOWANCES.save(deps.storage, serialized_balance_key, &allowance)?;
 
     Ok(vec![
         Attribute::new("allowance_used", amount),

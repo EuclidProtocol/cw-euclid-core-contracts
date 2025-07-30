@@ -63,7 +63,7 @@ pub enum ExecuteMsg {
         token: Token,
         amount: Uint128,
         recipient_address: CrossChainUser,
-        // In user has approval for a transfer, behaves like cw20 allowance
+        // If user has approval for transfer, they can set the address to transfer from (Behaves like cw20 allowance)
         from: Option<CrossChainUser>,
         // Msg that we want to trigger with transfer, behaves like cw20 send
         msg: Option<Binary>,

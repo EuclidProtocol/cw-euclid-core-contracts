@@ -187,8 +187,8 @@ pub fn relay_factory_ack_packet(
         let sequence = str::parse::<u128>(sequence.value.as_str()).unwrap();
 
         let msg_enum = from_json::<ChainIbcExecuteMsg>(msg_binary.as_slice()).unwrap();
-        println!("relay_factory_ack_packet: {:?}", msg_enum);
-        println!("relay_factory_ack_packet: {:?}", sequence);
+        println!("relay_factory_ack_packet msg: {:?}", msg_enum);
+        println!("relay_factory_ack_packet sequence: {:?}", sequence);
 
         let hash = events[0]
             .attributes
@@ -227,6 +227,8 @@ pub fn relay_factory_ack_packet(
             hash: hash.value.clone(),
             ack: ack_binary,
         };
+
+        println!("relay_factory_ack_packet ack: {:?}", ack.value);
 
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),

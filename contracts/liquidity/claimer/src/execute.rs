@@ -2,7 +2,7 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::CrossChainUser,
+    chain::{CrossChainUser, CrossChainUserWithLimit},
     error::ContractError,
     msgs::{
         claimer::{
@@ -15,7 +15,7 @@ use euclid::{
 };
 use relayer::verify::{verify_signature, MsgSignData};
 
-use crate::state::{CLAIMS, CLAIM_ID, SENDER_CLAIMS, STATE, USER_CLAIMS};
+use crate::state::{CLAIMS, CLAIM_ID, STATE};
 
 pub fn execute_update_admin(
     deps: &mut DepsMut,
@@ -83,22 +83,6 @@ pub fn execute_create_voucher_claim(
     };
     CLAIMS.save(deps.storage, claim_id, &claim)?;
 
-    // Save sender claims
-    let mut sender_claims = SENDER_CLAIMS
-        .load(deps.storage, sender.to_sender_string())
-        .unwrap_or_default();
-
-    sender_claims.push(claim_id);
-    SENDER_CLAIMS.save(deps.storage, sender.to_sender_string(), &sender_claims)?;
-
-    // Save user claims
-    let mut user_claims = USER_CLAIMS
-        .load(deps.storage, msg.claimer_pubkey.to_string())
-        .unwrap_or_default();
-
-    user_claims.push(claim_id);
-    USER_CLAIMS.save(deps.storage, msg.claimer_pubkey.to_string(), &user_claims)?;
-
     Ok(Response::new()
         .add_attribute("create_claim", claim_id.to_string())
         .add_attribute("sender", sender.to_sender_string())
@@ -134,48 +118,51 @@ pub fn execute_claim_voucher(
 
     let state = STATE.load(deps.storage)?;
 
-    ensure!(
-        claim_msg.recipient.chain_uid == state.chain_uid,
-        ContractError::new("Only same chain recipient is allowed")
-    );
+    let mut response = Response::new()
+        .add_attribute("execute_claim", claim_msg.claim_id.to_string())
+        .add_attribute("recipient", claim_msg.recipient.to_sender_string())
+        .add_attribute("claim_msg_sender", info.sender.to_string());
 
-    let transfer_vcoin_msg = euclid::msgs::factory::ExecuteMsg::TransferVirtualBalance {
-        token: claim.token.clone(),
-        amount: claim.amount,
-        recipient_address: claim_msg.recipient.clone(),
-        timeout: None,
-        from: None,
-        msg: None,
-    };
-
-    let transfer_vcoin_msg = WasmMsg::Execute {
-        contract_addr: state.factory_address.to_string(),
-        msg: to_json_binary(&transfer_vcoin_msg)?,
-        funds: vec![],
-    };
+    if claim_msg.release_funds {
+        let release_funds_msg = euclid::msgs::factory::ExecuteMsg::WithdrawVirtualBalance {
+            token: claim.token.clone(),
+            amount: claim.amount,
+            cross_chain_addresses: vec![CrossChainUserWithLimit {
+                user: claim_msg.recipient.clone(),
+                preferred_denom: None,
+                refund_address: None,
+                forwarding_message: claim_msg.release_msg,
+                unsafe_refund_voucher_to_recipient: Some(true),
+                vcoin_msg: None,
+                limit: Some(euclid::chain::Limit::Equal(claim.amount)),
+            }],
+            timeout: None,
+        };
+        let release_funds_msg = WasmMsg::Execute {
+            contract_addr: state.factory_address.to_string(),
+            msg: to_json_binary(&release_funds_msg)?,
+            funds: vec![],
+        };
+        response = response.add_message(release_funds_msg);
+    } else {
+        let transfer_vcoin_msg = euclid::msgs::factory::ExecuteMsg::TransferVirtualBalance {
+            token: claim.token.clone(),
+            amount: claim.amount,
+            recipient_address: claim_msg.recipient.clone(),
+            from: None,
+            msg: None,
+            timeout: None,
+        };
+        let transfer_vcoin_msg = WasmMsg::Execute {
+            contract_addr: state.factory_address.to_string(),
+            msg: to_json_binary(&transfer_vcoin_msg)?,
+            funds: vec![],
+        };
+        response = response.add_message(transfer_vcoin_msg);
+    }
 
     // Remove claim from claims
     CLAIMS.remove(deps.storage, claim_msg.claim_id);
 
-    // Not sure about these blocks as it will increase gas fee for user who is claiming if sender has too many claim messages
-
-    // Remove claim from sender claims
-    let mut sender_claims = SENDER_CLAIMS.load(deps.storage, claim.sender.to_sender_string())?;
-    sender_claims.retain(|id| *id != claim_msg.claim_id);
-    SENDER_CLAIMS.save(
-        deps.storage,
-        claim.sender.to_sender_string(),
-        &sender_claims,
-    )?;
-
-    // Remove claim from user claims
-    let mut user_claims = USER_CLAIMS.load(deps.storage, claim.claimer_pubkey.to_string())?;
-    user_claims.retain(|id| *id != claim_msg.claim_id);
-    USER_CLAIMS.save(deps.storage, claim.claimer_pubkey.to_string(), &user_claims)?;
-
-    Ok(Response::new()
-        .add_message(transfer_vcoin_msg)
-        .add_attribute("execute_claim", claim_msg.claim_id.to_string())
-        .add_attribute("recipient", claim_msg.recipient.to_sender_string())
-        .add_attribute("claim_msg_sender", info.sender.to_string()))
+    Ok(response)
 }

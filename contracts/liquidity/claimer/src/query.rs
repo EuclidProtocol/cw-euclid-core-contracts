@@ -1,23 +1,58 @@
-use cosmwasm_std::{Binary, Deps};
+use cosmwasm_std::{Binary, Deps, Order};
 use euclid::{
+    chain::CrossChainUser,
     error::ContractError,
     msgs::claimer::{Claim, State},
 };
 
-use crate::state::{CLAIMS, SENDER_CLAIMS, STATE, USER_CLAIMS};
+use crate::state::{CLAIMS, STATE};
 
 pub fn get_state(deps: &Deps) -> Result<State, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(state)
 }
 
-pub fn get_sender_claims(deps: &Deps, sender: String) -> Result<Vec<u128>, ContractError> {
-    let sender_claims = SENDER_CLAIMS.load(deps.storage, sender)?;
+pub fn get_sender_claims(
+    deps: &Deps,
+    sender: CrossChainUser,
+    limit: u64,
+    offset: u64,
+) -> Result<Vec<(u128, Claim)>, ContractError> {
+    let sender_claims = CLAIMS
+        .range(deps.storage, None, None, Order::Ascending)
+        .filter(|claim| {
+            if let Ok(claim) = claim {
+                claim.1.sender == sender
+            } else {
+                false
+            }
+        })
+        .take(limit as usize)
+        .skip(offset as usize)
+        .flatten()
+        .collect::<Vec<_>>();
     Ok(sender_claims)
 }
 
-pub fn get_user_claims(deps: &Deps, pub_key: Binary) -> Result<Vec<u128>, ContractError> {
-    let user_claims = USER_CLAIMS.load(deps.storage, pub_key.to_string())?;
+pub fn get_user_claims(
+    deps: &Deps,
+    pub_key: Binary,
+    limit: u64,
+    offset: u64,
+) -> Result<Vec<(u128, Claim)>, ContractError> {
+    let user_claims = CLAIMS
+        .range(deps.storage, None, None, Order::Ascending)
+        .filter(|claim| {
+            if let Ok(claim) = claim {
+                claim.1.claimer_pubkey == pub_key
+            } else {
+                false
+            }
+        })
+        .take(limit as usize)
+        .skip(offset as usize)
+        .flatten()
+        .collect::<Vec<_>>();
     Ok(user_claims)
 }
 

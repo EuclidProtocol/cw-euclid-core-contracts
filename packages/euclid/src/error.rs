@@ -41,6 +41,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Unauthorized: {msg}")]
+    UnauthorizedWithMsg { msg: String },
+
     #[error("Tx already exist")]
     TxAlreadyExist {},
 

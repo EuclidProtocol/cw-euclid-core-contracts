@@ -309,15 +309,23 @@ pub fn ibc_ack_release_escrow(
                 },
             )?;
 
+            let refund_recipient = if recipient
+                .unsafe_refund_voucher_to_recipient
+                .unwrap_or(false)
+            {
+                recipient.user.clone()
+            } else {
+                sender.clone()
+            };
+
             let balance_key = BalanceKey {
-                cross_chain_user: sender.clone(),
+                cross_chain_user: refund_recipient.clone(),
                 token_id: token.to_string(),
             };
             // Escrow release failed, mint tokens again for the original cross chain sender
             let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
                 amount,
                 balance_key: balance_key.clone(),
-                forward_msg: None,
             });
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: virtual_balance_address.into_string(),

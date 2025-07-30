@@ -33,7 +33,6 @@ pub enum ExecuteMsg {
 pub struct ExecuteMint {
     pub amount: Uint128,
     pub balance_key: BalanceKey,
-    pub forward_msg: Option<Binary>,
 }
 
 #[cw_serde]
