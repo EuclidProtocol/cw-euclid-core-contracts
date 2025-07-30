@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, Addr, DepsMut, MessageInfo, Response, Uint128};
+use cosmwasm_std::{ensure, Addr, DepsMut, MessageInfo, Order, Response, Uint128};
 use euclid::{
     chain::ChainUid,
     error::ContractError,
@@ -61,14 +61,20 @@ pub fn execute_burn(
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
-
-    let old_balance = BALANCES
-        .may_load(deps.storage, key.clone())?
-        .unwrap_or(Uint128::zero());
+    let old_balance =
+        BALANCES
+            .may_load(deps.storage, key.clone())?
+            .ok_or(ContractError::BalanceNotFound {
+                key: format!("{:?}", key),
+            })?;
 
     let new_balance = old_balance.checked_sub(msg.amount)?;
 
-    BALANCES.save(deps.storage, key, &new_balance)?;
+    if new_balance.is_zero() {
+        BALANCES.remove(deps.storage, key);
+    } else {
+        BALANCES.save(deps.storage, key, &new_balance)?;
+    }
 
     Ok(Response::new()
         .add_attribute("action", "execute_burn")
@@ -143,7 +149,11 @@ pub fn execute_transfer(
     );
 
     let sender_new_balance = sender_old_balance.checked_sub(msg.amount)?;
-    BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
+    if sender_new_balance.is_zero() {
+        BALANCES.remove(deps.storage, sender_key);
+    } else {
+        BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
+    }
 
     let receiver_balance_key = BalanceKey {
         token_id: msg.token_id.clone(),
@@ -168,11 +178,18 @@ pub fn execute_transfer(
     if allowance.amount.ge(&msg.amount) {
         let mut new_allowance = allowance;
         new_allowance.amount = new_allowance.amount.checked_sub(msg.amount)?;
-        ALLOWANCES.save(
-            deps.storage,
-            sender_balance_key.clone().to_serialized_balance_key(),
-            &new_allowance,
-        )?;
+        if new_allowance.amount.is_zero() {
+            ALLOWANCES.remove(
+                deps.storage,
+                sender_balance_key.clone().to_serialized_balance_key(),
+            );
+        } else {
+            ALLOWANCES.save(
+                deps.storage,
+                sender_balance_key.clone().to_serialized_balance_key(),
+                &new_allowance,
+            )?;
+        }
         response = response
             .add_attribute("allowance_used", msg.amount)
             .add_attribute("new_allowance", new_allowance.amount);
@@ -256,6 +273,8 @@ pub fn execute_approve(
         token_id: msg.token_id.clone(),
         cross_chain_user: msg.owner.clone(),
     };
+
+    ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
     ALLOWANCES.save(
         deps.storage,
         key.to_serialized_balance_key(),
@@ -271,4 +290,43 @@ pub fn execute_approve(
         .add_attribute("approve_token_id", msg.token_id)
         .add_attribute("approve_spender", msg.spender.to_sender_string())
         .add_attribute("approve_owner", msg.owner.to_sender_string()))
+}
+
+pub fn execute_remove_zero_state_values(
+    deps: DepsMut,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    // Sender should either be router or admin
+    ensure!(
+        state.router == info.sender.to_string() || (state.admin == info.sender),
+        ContractError::Unauthorized {}
+    );
+
+    // Remove Allowances with a value of zero
+    let allowance_keys: Vec<_> = ALLOWANCES
+        .keys(deps.storage, None, None, Order::Ascending)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for key in allowance_keys {
+        let allowance = ALLOWANCES.load(deps.storage, key.clone())?;
+        if allowance.amount.is_zero() {
+            ALLOWANCES.remove(deps.storage, key);
+        }
+    }
+
+    // Remove Balances with a value of zero
+    let balance_keys: Vec<_> = BALANCES
+        .keys(deps.storage, None, None, Order::Ascending)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for key in balance_keys {
+        let balance = BALANCES.load(deps.storage, key.clone())?;
+        if balance.is_zero() {
+            BALANCES.remove(deps.storage, key);
+        }
+    }
+
+    Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
 }
