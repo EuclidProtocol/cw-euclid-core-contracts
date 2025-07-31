@@ -4,7 +4,8 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
 use crate::execute::{
-    execute_approve, execute_burn, execute_mint, execute_transfer, execute_update_state,
+    execute_approve, execute_burn, execute_mint, execute_remove_zero_state_values,
+    execute_transfer, execute_update_state,
 };
 use crate::query::{query_balance, query_state, query_user_balances};
 use crate::state::STATE;
@@ -52,6 +53,7 @@ pub fn execute(
             execute_update_state(deps, info, router, admin)
         }
         ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
+        ExecuteMsg::RemoveZeroStateValues {} => execute_remove_zero_state_values(deps, info),
     }
 }
 
