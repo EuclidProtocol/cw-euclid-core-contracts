@@ -380,7 +380,10 @@ mod tests {
                     sender: router.clone(),
                     funds: vec![],
                 },
-                ExecuteMsg::RemoveZeroStateValues {},
+                ExecuteMsg::RemoveZeroStateValues {
+                    start_after: None,
+                    limit: None,
+                },
             )
             .unwrap();
         };

@@ -1,7 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
 
-use crate::{chain::CrossChainUser, virtual_balance::BalanceKey};
+use crate::{
+    chain::CrossChainUser,
+    virtual_balance::{BalanceKey, SerializedBalanceKey},
+};
 
 #[cw_serde]
 pub struct State {
@@ -26,7 +29,10 @@ pub enum ExecuteMsg {
         router: Option<String>,
         admin: Option<Addr>,
     },
-    RemoveZeroStateValues {},
+    RemoveZeroStateValues {
+        start_after: Option<SerializedBalanceKey>,
+        limit: Option<u32>,
+    },
     Approve(ExecuteApprove),
 }
 
