@@ -293,8 +293,10 @@ mod tests {
         let transfer_msg = ExecuteMsg::Transfer(ExecuteTransfer {
             amount: Uint128::new(5),
             token_id: "eucl".to_string(),
-            from: owner.clone(),
+            from: Some(owner.clone()),
             to: recipient.clone(),
+            sender: None,
+            msg: None,
         });
         let info = MessageInfo {
             sender: Addr::unchecked(spender.address.clone()),

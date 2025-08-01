@@ -113,7 +113,7 @@ pub fn relay_router_send_packet(
             .unwrap();
 
         let sequence = str::parse::<u128>(sequence.value.as_str()).unwrap();
-        println!("relay_router_send_packet: {:?}", sequence);
+        println!("relay_router_send_packet sequence: {:?}", sequence);
         let hash = event
             .attributes
             .iter()
@@ -128,6 +128,10 @@ pub fn relay_router_send_packet(
 
         // If this send packet was not meant for the current factory, skip it
         if chain_uid.value != factory_chain_uid.to_string() {
+            println!(
+                "relay_router_send_packet: skipping packet for chain_uid: {:?}",
+                chain_uid.value
+            );
             continue;
         }
         let relayer_address = factory.get_relayer().unwrap();
@@ -334,10 +338,10 @@ pub fn relay_router_factory_router(
     factory: &FactoryContract<MockBase>,
     factory_chain_uid: &ChainUid,
     router: &RouterContract<MockBase>,
-) -> Result<(), CwEnvError> {
+) -> Result<Vec<Event>, CwEnvError> {
     let ack_events = relay_router_send_packet(send_events, factory, factory_chain_uid)?;
-    relay_router_ack_packet(router, factory_chain_uid, ack_events)?;
-    Ok(())
+    relay_router_ack_packet(router, factory_chain_uid, ack_events.clone())?;
+    Ok(ack_events)
 }
 
 pub fn get_signer_key() -> (SigningKey, Binary) {

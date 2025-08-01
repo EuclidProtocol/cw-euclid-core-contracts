@@ -1,4 +1,6 @@
-use cosmwasm_std::{ensure, Addr, Attribute, DepsMut, MessageInfo, Order, Response, Uint128, WasmMsg};
+use cosmwasm_std::{
+    ensure, Addr, Attribute, DepsMut, MessageInfo, Order, Response, Uint128, WasmMsg,
+};
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
@@ -253,7 +255,11 @@ fn _deduct_allowance(
     );
 
     allowance.amount = allowance.amount.checked_sub(amount)?;
-    ALLOWANCES.save(deps.storage, serialized_balance_key, &allowance)?;
+    if allowance.amount.is_zero() {
+        ALLOWANCES.remove(deps.storage, serialized_balance_key);
+    } else {
+        ALLOWANCES.save(deps.storage, serialized_balance_key, &allowance)?;
+    }
 
     Ok(vec![
         Attribute::new("allowance_used", amount),
