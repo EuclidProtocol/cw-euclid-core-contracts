@@ -26,7 +26,9 @@ pub enum ExecuteMsg {
         router: Option<String>,
         admin: Option<Addr>,
     },
-    RemoveZeroStateValues {},
+    RemoveZeroStateValues {
+        limit: Option<u32>,
+    },
     Approve(ExecuteApprove),
 }
 

@@ -295,6 +295,7 @@ pub fn execute_approve(
 pub fn execute_remove_zero_state_values(
     deps: DepsMut,
     info: MessageInfo,
+    limit: Option<u32>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -305,27 +306,40 @@ pub fn execute_remove_zero_state_values(
     );
 
     // Remove Allowances with a value of zero
-    let allowance_keys: Vec<_> = ALLOWANCES
-        .keys(deps.storage, None, None, Order::Ascending)
-        .collect::<Result<Vec<_>, _>>()?;
+    let limit = limit.unwrap_or(u32::MAX) as usize;
+    let allowance_keys_to_remove: Vec<_> = ALLOWANCES
+        .range(deps.storage, None, None, Order::Ascending)
+        .take(limit)
+        .filter_map(|result| {
+            let (key, allowance) = result.ok()?;
+            if allowance.amount.is_zero() {
+                Some(key)
+            } else {
+                None
+            }
+        })
+        .collect();
 
-    for key in allowance_keys {
-        let allowance = ALLOWANCES.load(deps.storage, key.clone())?;
-        if allowance.amount.is_zero() {
-            ALLOWANCES.remove(deps.storage, key);
-        }
+    for key in allowance_keys_to_remove {
+        ALLOWANCES.remove(deps.storage, key);
     }
 
     // Remove Balances with a value of zero
-    let balance_keys: Vec<_> = BALANCES
-        .keys(deps.storage, None, None, Order::Ascending)
-        .collect::<Result<Vec<_>, _>>()?;
+    let balances_keys_to_remove: Vec<_> = BALANCES
+        .range(deps.storage, None, None, Order::Ascending)
+        .take(limit)
+        .filter_map(|result| {
+            let (key, balance) = result.ok()?;
+            if balance.is_zero() {
+                Some(key)
+            } else {
+                None
+            }
+        })
+        .collect();
 
-    for key in balance_keys {
-        let balance = BALANCES.load(deps.storage, key.clone())?;
-        if balance.is_zero() {
-            BALANCES.remove(deps.storage, key);
-        }
+    for key in balances_keys_to_remove {
+        BALANCES.remove(deps.storage, key);
     }
 
     Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
