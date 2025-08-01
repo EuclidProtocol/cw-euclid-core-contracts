@@ -377,7 +377,7 @@ mod tests {
                 deps.as_mut(),
                 env.clone(),
                 MessageInfo {
-                    sender: router.clone(),
+                    sender: admin.clone(),
                     funds: vec![],
                 },
                 ExecuteMsg::RemoveZeroStateValues {
