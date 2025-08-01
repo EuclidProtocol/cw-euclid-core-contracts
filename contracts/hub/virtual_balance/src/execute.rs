@@ -300,12 +300,7 @@ pub fn execute_remove_zero_state_values(
     limit: Option<u32>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-
-    // Sender should either be router or admin
-    ensure!(
-        state.router == info.sender.to_string() || (state.admin == info.sender),
-        ContractError::Unauthorized {}
-    );
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
 
     // Remove Allowances with a value of zero
     let limit = limit.unwrap_or(u32::MAX) as usize;
