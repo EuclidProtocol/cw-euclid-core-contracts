@@ -1,9 +1,10 @@
 use cosmwasm_std::{ensure, Addr, DepsMut, MessageInfo, Order, Response, Uint128};
+use cw_storage_plus::Bound;
 use euclid::{
     chain::ChainUid,
     error::ContractError,
     msgs::virtual_balance::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
-    virtual_balance::BalanceKey,
+    virtual_balance::{BalanceKey, SerializedBalanceKey},
 };
 
 use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
@@ -295,6 +296,7 @@ pub fn execute_approve(
 pub fn execute_remove_zero_state_values(
     deps: DepsMut,
     info: MessageInfo,
+    start_after: Option<SerializedBalanceKey>,
     limit: Option<u32>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -307,8 +309,9 @@ pub fn execute_remove_zero_state_values(
 
     // Remove Allowances with a value of zero
     let limit = limit.unwrap_or(u32::MAX) as usize;
+    let start = start_after.map(Bound::exclusive);
     let allowance_keys_to_remove: Vec<_> = ALLOWANCES
-        .range(deps.storage, None, None, Order::Ascending)
+        .range(deps.storage, start.clone(), None, Order::Ascending)
         .take(limit)
         .filter_map(|result| {
             let (key, allowance) = result.ok()?;
@@ -326,7 +329,7 @@ pub fn execute_remove_zero_state_values(
 
     // Remove Balances with a value of zero
     let balances_keys_to_remove: Vec<_> = BALANCES
-        .range(deps.storage, None, None, Order::Ascending)
+        .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
         .filter_map(|result| {
             let (key, balance) = result.ok()?;

@@ -53,8 +53,8 @@ pub fn execute(
             execute_update_state(deps, info, router, admin)
         }
         ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
-        ExecuteMsg::RemoveZeroStateValues { limit } => {
-            execute_remove_zero_state_values(deps, info, limit)
+        ExecuteMsg::RemoveZeroStateValues { start_after, limit } => {
+            execute_remove_zero_state_values(deps, info, start_after, limit)
         }
     }
 }
