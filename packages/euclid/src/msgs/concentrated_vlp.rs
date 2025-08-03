@@ -11,9 +11,12 @@ pub use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as ProtoCoin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{
     Addr, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg, CustomQuery,
-    Decimal, Decimal256, Fraction, QuerierWrapper, StdError, StdResult, Uint128, Uint256, Uint64,
+    Decimal, Decimal256, Env, Fraction, QuerierWrapper, StdError, StdResult, Uint128, Uint256,
+    Uint64,
 };
-use cw_asset::{Asset, AssetInfo};
+
+use cw20::{BalanceResponse as Cw20BalanceResponse, Cw20QueryMsg};
+use cw_asset::{Asset, AssetInfo, AssetInfoBase};
 use prost::Message;
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
@@ -233,6 +236,37 @@ pub struct PairInfo {
     pub pair_type: PairType,
 }
 
+pub trait AssetInfoExt {
+    fn query_pool<C>(
+        &self,
+        querier: &QuerierWrapper<C>,
+        pool_addr: impl Into<String>,
+    ) -> StdResult<Uint128>
+    where
+        C: CustomQuery;
+}
+
+impl AssetInfoExt for AssetInfo {
+    fn query_pool<C>(
+        &self,
+        querier: &QuerierWrapper<C>,
+        pool_addr: impl Into<String>,
+    ) -> StdResult<Uint128>
+    where
+        C: CustomQuery,
+    {
+        let pool_addr = pool_addr.into();
+
+        match self {
+            AssetInfo::Cw20(contract_addr) => {
+                query_token_balance(querier, contract_addr, &pool_addr)
+            }
+            AssetInfo::Native(denom) => query_balance(querier, &pool_addr, denom),
+            _ => Err(StdError::generic_err("Invalid asset info")),
+        }
+    }
+}
+
 impl PairInfo {
     /// Returns the balance for each asset in the pool.
     ///
@@ -253,32 +287,76 @@ impl PairInfo {
             })
             .collect()
     }
+
+    /// Returns the balance for each asset in the pool in decimal.
+    ///
+    /// * **contract_addr** is pair's pool address.
+    pub fn query_pools_decimal(
+        &self,
+        querier: &QuerierWrapper,
+        contract_addr: impl Into<String>,
+        factory_addr: &Addr,
+    ) -> StdResult<Vec<DecimalAsset>> {
+        let contract_addr = contract_addr.into();
+        self.asset_infos
+            .iter()
+            .map(|asset_info| {
+                Ok(DecimalAsset {
+                    info: asset_info.clone(),
+                    amount: Decimal256::from_atomics(
+                        asset_info.query_pool(querier, &contract_addr)?,
+                        asset_info.decimals(querier, factory_addr)?.into(),
+                    )
+                    .map_err(|_| StdError::generic_err("Decimal256RangeExceeded"))?,
+                })
+            })
+            .collect()
+    }
 }
-//     /// Returns the balance for each asset in the pool in decimal.
-//     ///
-//     /// * **contract_addr** is pair's pool address.
-//     pub fn query_pools_decimal(
-//         &self,
-//         querier: &QuerierWrapper,
-//         contract_addr: impl Into<String>,
-//         factory_addr: &Addr,
-//     ) -> StdResult<Vec<DecimalAsset>> {
-//         let contract_addr = contract_addr.into();
-//         self.asset_infos
-//             .iter()
-//             .map(|asset_info| {
-//                 Ok(DecimalAsset {
-//                     info: asset_info.clone(),
-//                     amount: Decimal256::from_atomics(
-//                         asset_info.query_pool(querier, &contract_addr)?,
-//                         asset_info.decimals(querier, factory_addr)?.into(),
-//                     )
-//                     .map_err(|_| StdError::generic_err("Decimal256RangeExceeded"))?,
-//                 })
-//             })
-//             .collect()
-//     }
-// }
+
+/// Returns a token balance for an account.
+///
+/// * **contract_addr** token contract for which we return a balance.
+///
+/// * **account_addr** account address for which we return a balance.
+pub fn query_token_balance<C>(
+    querier: &QuerierWrapper<C>,
+    contract_addr: impl Into<String>,
+    account_addr: impl Into<String>,
+) -> StdResult<Uint128>
+where
+    C: CustomQuery,
+{
+    // load balance from the token contract
+    let resp: Cw20BalanceResponse = querier
+        .query_wasm_smart(
+            contract_addr,
+            &Cw20QueryMsg::Balance {
+                address: account_addr.into(),
+            },
+        )
+        .unwrap_or_else(|_| Cw20BalanceResponse {
+            balance: Uint128::zero(),
+        });
+
+    Ok(resp.balance)
+}
+
+/// Returns a native token's balance for a specific account.
+///
+/// * **denom** specifies the denomination used to return the balance (e.g uluna).
+pub fn query_balance<C>(
+    querier: &QuerierWrapper<C>,
+    account_addr: impl Into<String>,
+    denom: impl Into<String>,
+) -> StdResult<Uint128>
+where
+    C: CustomQuery,
+{
+    querier
+        .query_balance(account_addr, denom)
+        .map(|coin| coin.amount)
+}
 
 /// This structure stores the pool parameters which may be adjusted via the `update_pool_params`.
 #[cw_serde]
@@ -336,6 +414,32 @@ pub struct PoolState {
     pub initial_time: u64,
     /// Current price state
     pub price_state: PriceState,
+}
+
+impl PoolState {
+    /// Calculates current amp and gamma.
+    /// This function handles parameters upgrade as well as downgrade.
+    /// If block time >= self.future_time then it returns self.future parameters.
+    pub fn get_amp_gamma(&self, env: &Env) -> AmpGamma {
+        let block_time = env.block.time.seconds();
+        if block_time < self.future_time {
+            let total = Decimal::new((self.future_time - self.initial_time).into());
+            let passed = Decimal::new((block_time - self.initial_time).into());
+            let left = total - passed;
+
+            // A1 = A0 + (A1 - A0) * (block_time - t_init) / (t_end - t_init) -> simplified to:
+            // A1 = ( A0 * (t_end - block_time) + A1 * (block_time - t_init) ) / (t_end - t_init)
+            let amp = (self.initial.amp * left + self.future.amp * passed) / total;
+            let gamma = (self.initial.gamma * left + self.future.gamma * passed) / total;
+
+            AmpGamma { amp, gamma }
+        } else {
+            AmpGamma {
+                amp: self.future.amp,
+                gamma: self.future.gamma,
+            }
+        }
+    }
 }
 
 /// Internal structure which stores the price state.

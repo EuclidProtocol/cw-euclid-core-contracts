@@ -9,7 +9,9 @@ use euclid::{error::ContractError, msgs::concentrated_vlp::query_native_supply};
 /// Minimum initial LP share
 pub const MINIMUM_LIQUIDITY_AMOUNT: Uint128 = Uint128::new(1_000);
 use crate::{
-    state::{accumulate_prices, mint_liquidity_token_message, CONCENTRATED_BALANCES, CONFIG},
+    state::{
+        accumulate_prices, mint_liquidity_token_message, query_pools, CONCENTRATED_BALANCES, CONFIG,
+    },
     utils::calculate_shares,
 };
 
