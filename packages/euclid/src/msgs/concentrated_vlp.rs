@@ -8,8 +8,11 @@ use crate::{
     token::{Pair, PairWithAmount, Token},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Decimal, Decimal256, Uint128, Uint64};
+use cosmwasm_std::{
+    Addr, Binary, CosmosMsg, CustomMsg, Decimal, Decimal256, StdError, Uint128, Uint64,
+};
 use cw_asset::AssetInfo;
+use prost::Message;
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
 #[cw_serde]
@@ -398,4 +401,85 @@ pub struct FeeShareConfig {
     pub bps: u16,
     /// The share is sent to this address on every swap
     pub recipient: Addr,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgCreateDenom {
+    #[prost(string, tag = "1")]
+    pub sender: ::prost::alloc::string::String,
+    /// subdenom can be up to 44 "alphanumeric" characters long.
+    #[prost(string, tag = "2")]
+    pub subdenom: ::prost::alloc::string::String,
+}
+
+impl MsgCreateDenom {
+    #[cfg(not(feature = "injective"))]
+    pub const TYPE_URL: &'static str = "/osmosis.tokenfactory.v1beta1.MsgCreateDenom";
+    #[cfg(feature = "injective")]
+    pub const TYPE_URL: &'static str = "/injective.tokenfactory.v1beta1.MsgCreateDenom";
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgCreateDenomResponse {
+    #[prost(string, tag = "1")]
+    pub new_token_denom: ::prost::alloc::string::String,
+}
+
+impl MsgCreateDenomResponse {
+    pub fn to_proto_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        self.encode(&mut buf).unwrap();
+        buf
+    }
+}
+
+impl From<MsgCreateDenomResponse> for Binary {
+    fn from(msg: MsgCreateDenomResponse) -> Self {
+        Binary::from(msg.to_proto_bytes())
+    }
+}
+
+impl TryFrom<Binary> for MsgCreateDenomResponse {
+    type Error = StdError;
+    fn try_from(binary: Binary) -> Result<Self, Self::Error> {
+        Self::decode(binary.as_slice()).map_err(|e| {
+            StdError::generic_err(
+                format!(
+                    "MsgCreateDenomResponse Unable to decode binary: \n  - base64: {}\n  - bytes array: {:?}\n\n{:?}",
+                    binary,
+                    binary.to_vec(),
+                    e
+                ),
+            )
+        })
+    }
+}
+
+// impl TryFrom<Binary> for MsgCreateDenom {
+//     type Error = StdError;
+//     fn try_from(binary: Binary) -> Result<Self, Self::Error> {
+//         Self::decode(binary.as_slice()).map_err(|e| {
+//             StdError::generic_err(format!(
+//                 "MsgCreateDenom Unable to decode binary: \n  - base64: {}\n  - bytes array: {:?}\n\n{:?}",
+//                 binary,
+//                 binary.to_vec(),
+//                 e
+//             ))
+//         })
+//     }
+// }
+
+pub fn tf_create_denom_msg<T>(sender: impl Into<String>, denom: impl Into<String>) -> CosmosMsg<T>
+where
+    T: CustomMsg,
+{
+    let create_denom_msg = MsgCreateDenom {
+        sender: sender.into(),
+        subdenom: denom.into(),
+    };
+
+    CosmosMsg::Stargate {
+        type_url: MsgCreateDenom::TYPE_URL.to_string(),
+        value: Binary::from(create_denom_msg.encode_to_vec()),
+    }
 }

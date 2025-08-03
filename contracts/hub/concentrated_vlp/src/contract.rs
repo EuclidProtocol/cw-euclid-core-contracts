@@ -3,7 +3,8 @@ use std::collections::HashMap;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
+    from_json, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
+    SubMsg, SubMsgResponse, SubMsgResult, Uint128,
 };
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
@@ -19,8 +20,9 @@ use crate::state::{
 };
 use euclid::error::ContractError;
 use euclid::msgs::concentrated_vlp::{
-    AmpGamma, ConcentratedPoolParams, ExecuteMsg, InstantiateMsg, PairInfo, PoolParams, PoolState,
-    PriceState, QueryMsg, DEFAULT_AMP_FACTOR,
+    tf_create_denom_msg, AmpGamma, ConcentratedPoolParams, ExecuteMsg, InstantiateMsg,
+    MsgCreateDenomResponse, PairInfo, PoolParams, PoolState, PriceState, QueryMsg,
+    DEFAULT_AMP_FACTOR,
 };
 use euclid::pool::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
@@ -166,7 +168,13 @@ pub fn instantiate(
 
     CONFIG.save(deps.storage, &config)?;
 
+    let create_denom_msg = SubMsg::reply_on_success(
+        tf_create_denom_msg(env.contract.address.to_string(), "lp_subdenom"),
+        1,
+    );
+
     Ok(response
+        .add_submessage(create_denom_msg)
         .add_attribute("method", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
         .add_attribute("owner", info.sender))
@@ -306,7 +314,65 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        NEXT_SWAP_REPLY_ID => reply::on_next_swap_reply(deps, msg),
+        1 => {
+            if let SubMsgResult::Ok(SubMsgResponse { data: Some(b), .. }) = msg.result {
+                let MsgCreateDenomResponse { new_token_denom } =
+                    b.try_into().map_err(|_| ContractError::Generic {
+                        err: "Failed to parse MsgCreateDenomResponse".to_string(),
+                    })?;
+                let config = CONFIG.load(deps.storage)?;
+
+                let tracking = config.track_asset_balances;
+                let mut sub_msgs = vec![];
+
+                #[cfg(feature = "injective")]
+                let tracking = false;
+
+                // if tracking {
+                //     let factory_config =
+                //         query_factory_config(&deps.querier, config.factory_addr.clone())?;
+                //     let tracker_config = query_tracker_config(&deps.querier, config.factory_addr)?;
+                //     // Instantiate tracking contract
+                //     let sub_msg: Vec<SubMsg> = vec![SubMsg::reply_on_success(
+                //         WasmMsg::Instantiate {
+                //             admin: Some(factory_config.owner.to_string()),
+                //             code_id: tracker_config.code_id,
+                //             msg: to_json_binary(&tokenfactory_tracker::InstantiateMsg {
+                //                 tokenfactory_module_address: tracker_config
+                //                     .token_factory_addr
+                //                     .to_string(),
+                //                 tracked_denom: new_token_denom.clone(),
+                //                 track_over_seconds: false,
+                //             })?,
+                //             funds: vec![],
+                //             label: format!("{new_token_denom} tracking contract"),
+                //         },
+                //         ReplyIds::InstantiateTrackingContract as u64,
+                //     )];
+
+                //     sub_msgs.extend(sub_msg);
+                // }
+
+                CONFIG.update(deps.storage, |mut config| {
+                    if !config.pair_info.liquidity_token.is_empty() {
+                        return Err(StdError::generic_err(
+                            "Liquidity token is already set in the config",
+                        ));
+                    }
+
+                    config.pair_info.liquidity_token = new_token_denom.clone();
+                    Ok(config)
+                })?;
+
+                Ok(Response::new()
+                    .add_submessages(sub_msgs)
+                    .add_attribute("lp_denom", new_token_denom))
+            } else {
+                Err(ContractError::Generic {
+                    err: "Failed to parse MsgCreateDenomResponse".to_string(),
+                })
+            }
+        }
 
         id => Err(ContractError::Generic {
             err: format!("Unknown reply id: {id}"),
