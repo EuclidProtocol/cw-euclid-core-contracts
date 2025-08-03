@@ -7,14 +7,18 @@ use crate::{
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
+pub use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as ProtoCoin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{
-    Addr, Binary, CosmosMsg, CustomMsg, Decimal, Decimal256, StdError, Uint128, Uint64,
+    Addr, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg, CustomQuery,
+    Decimal, Decimal256, Fraction, QuerierWrapper, StdError, StdResult, Uint128, Uint256, Uint64,
 };
-use cw_asset::AssetInfo;
+use cw_asset::{Asset, AssetInfo};
 use prost::Message;
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
+pub const TYPE_URL: &'static str = "/osmosis.tokenfactory.v1beta1.MsgMint";
+
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router: String,
@@ -229,29 +233,27 @@ pub struct PairInfo {
     pub pair_type: PairType,
 }
 
-// impl PairInfo {
-//     /// Returns the balance for each asset in the pool.
-//     ///
-//     /// * **contract_addr** is pair's pool address.
-//     pub fn query_pools<C>(
-//         &self,
-//         querier: &QuerierWrapper<C>,
-//         contract_addr: impl Into<String>,
-//     ) -> StdResult<Vec<Asset>>
-//     where
-//         C: CustomQuery,
-//     {
-//         let contract_addr = contract_addr.into();
-//         self.asset_infos
-//             .iter()
-//             .map(|asset_info| {
-//                 Ok(Asset {
-//                     info: asset_info.clone(),
-//                     amount: asset_info.query_pool(querier, &contract_addr)?,
-//                 })
-//             })
-//             .collect()
-//     }
+impl PairInfo {
+    /// Returns the balance for each asset in the pool.
+    ///
+    /// * **contract_addr** is pair's pool address.
+    pub fn query_pools(
+        &self,
+        querier: &QuerierWrapper,
+        contract_addr: impl Into<String>,
+    ) -> StdResult<Vec<Asset>> {
+        let contract_addr = contract_addr.into();
+        self.asset_infos
+            .iter()
+            .map(|asset_info| {
+                Ok(Asset {
+                    info: asset_info.clone(),
+                    amount: asset_info.query_balance(querier, &contract_addr).unwrap(),
+                })
+            })
+            .collect()
+    }
+}
 //     /// Returns the balance for each asset in the pool in decimal.
 //     ///
 //     /// * **contract_addr** is pair's pool address.
@@ -481,5 +483,163 @@ where
     CosmosMsg::Stargate {
         type_url: MsgCreateDenom::TYPE_URL.to_string(),
         value: Binary::from(create_denom_msg.encode_to_vec()),
+    }
+}
+
+/// Returns the total supply of a native token.
+///
+/// * **denom** specifies the denomination used to return the supply (e.g uatom).
+pub fn query_native_supply<C>(
+    querier: &QuerierWrapper<C>,
+    denom: impl Into<String>,
+) -> StdResult<Uint128>
+where
+    C: CustomQuery,
+{
+    querier.query_supply(denom).map(|res| res.amount)
+}
+
+/// Trait extension for Decimal256 to work with token precisions more accurately.
+pub trait Decimal256Ext {
+    fn to_uint256(&self) -> Uint256;
+
+    fn to_uint128_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint128>;
+
+    fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256>;
+
+    fn from_integer(i: impl Into<Uint256>) -> Self;
+
+    fn checked_multiply_ratio(
+        &self,
+        numerator: Decimal256,
+        denominator: Decimal256,
+    ) -> StdResult<Decimal256>;
+
+    fn with_precision(
+        value: impl Into<Uint256>,
+        precision: impl Into<u32>,
+    ) -> StdResult<Decimal256>;
+}
+
+impl Decimal256Ext for Decimal256 {
+    fn to_uint256(&self) -> Uint256 {
+        self.numerator() / self.denominator()
+    }
+
+    fn to_uint128_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint128> {
+        let value = self.atomics();
+        let precision = precision.into();
+
+        value
+            .checked_div(10u128.pow(self.decimal_places() - precision).into())?
+            .try_into()
+            .map_err(|o: ConversionOverflowError| {
+                StdError::generic_err(format!("Error converting "))
+            })
+    }
+
+    fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256> {
+        let value = self.atomics();
+        let precision = precision.into();
+
+        value
+            .checked_div(10u128.pow(self.decimal_places() - precision).into())
+            .map_err(|_| StdError::generic_err("DivideByZeroError"))
+    }
+
+    fn from_integer(i: impl Into<Uint256>) -> Self {
+        Decimal256::from_ratio(i.into(), 1u8)
+    }
+
+    fn checked_multiply_ratio(
+        &self,
+        numerator: Decimal256,
+        denominator: Decimal256,
+    ) -> StdResult<Decimal256> {
+        Ok(Decimal256::new(
+            self.atomics()
+                .checked_multiply_ratio(numerator.atomics(), denominator.atomics())
+                .map_err(|_| StdError::generic_err("CheckedMultiplyRatioError"))?,
+        ))
+    }
+
+    fn with_precision(
+        value: impl Into<Uint256>,
+        precision: impl Into<u32>,
+    ) -> StdResult<Decimal256> {
+        Decimal256::from_atomics(value, precision.into())
+            .map_err(|_| StdError::generic_err("Decimal256 range exceeded"))
+    }
+}
+
+#[cfg(not(feature = "injective"))]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgMint {
+    #[prost(string, tag = "1")]
+    pub sender: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub amount: ::core::option::Option<cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
+    #[prost(string, tag = "3")]
+    pub mint_to_address: ::prost::alloc::string::String,
+}
+
+impl MsgMint {
+    #[cfg(not(feature = "injective"))]
+    pub const TYPE_URL: &'static str = "/osmosis.tokenfactory.v1beta1.MsgMint";
+    // #[cfg(feature = "injective")]
+    // pub const TYPE_URL: &'static str = "/injective.tokenfactory.v1beta1.MsgMint";
+}
+
+pub fn tf_mint_msg(
+    sender: impl Into<String>,
+    coin: Coin,
+    receiver: impl Into<String>,
+) -> Vec<CosmosMsg> {
+    let sender_addr: String = sender.into();
+    let receiver_addr: String = receiver.into();
+
+    // #[cfg(not(feature = "injective"))]
+    let mint_msg = MsgMint {
+        sender: sender_addr.clone(),
+        amount: Some(ProtoCoin {
+            denom: coin.denom.to_string(),
+            amount: coin.amount.to_string(),
+        }),
+        mint_to_address: receiver_addr.clone(),
+    };
+
+    // #[cfg(feature = "injective")]
+    // let mint_msg = MsgMint {
+    //     sender: sender_addr.clone(),
+    //     amount: Some(ProtoCoin {
+    //         denom: coin.denom.to_string(),
+    //         amount: coin.amount.to_string(),
+    //     }),
+    // };
+
+    // #[cfg(not(feature = "injective"))]
+    // return vec![CosmosMsg::Stargate {
+    //     type_url: MsgMint::TYPE_URL.to_string(),
+    //     value: Binary::from(mint_msg.encode_to_vec()),
+    // }];
+
+    // #[cfg(feature = "injective")]
+    if sender_addr == receiver_addr {
+        vec![CosmosMsg::Stargate {
+            type_url: MsgMint::TYPE_URL.to_string(),
+            value: Binary::from(mint_msg.encode_to_vec()),
+        }]
+    } else {
+        vec![
+            CosmosMsg::Stargate {
+                type_url: MsgMint::TYPE_URL.to_string(),
+                value: Binary::from(mint_msg.encode_to_vec()),
+            },
+            BankMsg::Send {
+                to_address: receiver_addr,
+                amount: vec![coin],
+            }
+            .into(),
+        ]
     }
 }

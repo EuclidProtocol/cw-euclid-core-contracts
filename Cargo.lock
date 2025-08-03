@@ -1580,6 +1580,7 @@ name = "euclid"
 version = "0.2.1"
 dependencies = [
  "anyhow",
+ "cosmos-sdk-proto 0.19.0",
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
  "cw-asset 4.0.0",
