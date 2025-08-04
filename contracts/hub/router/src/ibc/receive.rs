@@ -775,8 +775,10 @@ fn ibc_execute_swap(
             euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: msg.partner_fee_amount,
                 token_id: msg.asset_in.token.to_string(),
-                from: sender.clone(),
+                sender: Some(sender.clone()),
                 to: msg.partner_fee_recipient.clone(),
+                from: None,
+                msg: None,
             });
 
         let transfer_voucher_msg = WasmMsg::Execute {
@@ -858,20 +860,22 @@ fn ibc_execute_deposit_token(
         .virtual_balance_address
         .map_or_else(|| Err(ContractError::EmptyVirtualBalanceAddress {}), Ok)?;
 
+    let virtual_balance_address = virtual_balance_address.into_string();
+
     // Send mint msg to virtual balance
     let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: virtual_balance_address.into_string(),
+        contract_addr: virtual_balance_address.clone(),
         msg: to_json_binary(&VirtualBalanceMsg::Mint(ExecuteMint {
             amount: msg.amount_in,
             balance_key: BalanceKey {
-                cross_chain_user: msg.recipient,
+                cross_chain_user: msg.sender.clone(),
                 token_id: msg.asset_in.token.to_string(),
             },
         }))?,
         funds: vec![],
     });
 
-    Ok(Response::new()
+    let mut response = Response::new()
         .add_submessage(SubMsg::new(mint_msg))
         .add_attribute("action", "reply_deposit_token")
         .add_attribute(
@@ -902,8 +906,26 @@ fn ibc_execute_deposit_token(
                 denom = msg.asset_in.token_type.get_key()
             ),
             new_escrow_balance,
-        )
-        .set_data(to_json_binary(&ack)?))
+        );
+
+    if msg.recipient != msg.sender {
+        let transfer_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: virtual_balance_address,
+            msg: to_json_binary(&VirtualBalanceMsg::Transfer(ExecuteTransfer {
+                amount: msg.amount_in,
+                token_id: msg.asset_in.token.to_string(),
+                sender: Some(msg.sender.clone()),
+                to: msg.recipient,
+                from: None,
+                msg: msg.msg,
+            }))?,
+            funds: vec![],
+        });
+
+        response = response.add_submessage(SubMsg::new(transfer_msg));
+    }
+
+    Ok(response.set_data(to_json_binary(&ack)?))
 }
 
 fn ibc_execute_transfer_virtual_balance(
@@ -921,8 +943,10 @@ fn ibc_execute_transfer_virtual_balance(
         euclid::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount: msg.amount,
             token_id: msg.token.to_string(),
-            from: msg.clone().sender,
+            sender: Some(msg.clone().sender),
             to: msg.recipient_address,
+            from: msg.from,
+            msg: msg.msg,
         });
 
     let transfer_voucher_msg = WasmMsg::Execute {

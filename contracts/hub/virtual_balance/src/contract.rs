@@ -40,7 +40,7 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    mut deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
@@ -48,7 +48,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::Mint(msg) => execute_mint(deps, info, msg),
         ExecuteMsg::Burn(msg) => execute_burn(deps, info, msg),
-        ExecuteMsg::Transfer(msg) => execute_transfer(deps, info, msg),
+        ExecuteMsg::Transfer(msg) => execute_transfer(&mut deps, info, msg),
         ExecuteMsg::UpdateState { router, admin } => {
             execute_update_state(deps, info, router, admin)
         }

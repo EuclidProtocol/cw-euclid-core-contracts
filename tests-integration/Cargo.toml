@@ -17,6 +17,7 @@ escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }
 cw20 = { path = "../contracts/liquidity/cw20" }
 euclid-relayer = { path = "../contracts/common/euclid-relayer" }
+claimer = { path = "../contracts/liquidity/claimer" }
 
 #Other Crates
 euclid = { path = "../packages/euclid" }

@@ -135,12 +135,13 @@ pub fn execute(
             asset_in,
             recipient,
             timeout,
+            msg,
         } => {
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
 
             execute_deposit_token(
-                &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient,
+                &mut deps, env, info, sender, asset_in, amount_in, timeout, recipient, msg,
             )
         }
         ExecuteMsg::UpdateHubChannel { new_channel } => {
@@ -192,6 +193,8 @@ pub fn execute(
             token,
             amount,
             recipient_address,
+            from,
+            msg,
             timeout,
         } => execute_transfer_virtual_balance(
             &mut deps,
@@ -200,6 +203,8 @@ pub fn execute(
             token,
             amount,
             recipient_address,
+            from,
+            msg,
             timeout,
         ),
         ExecuteMsg::UpdateFactoryState {
