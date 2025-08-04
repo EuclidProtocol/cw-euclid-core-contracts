@@ -9,6 +9,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
+use crate::execute::provide_liquidity;
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
@@ -213,22 +214,20 @@ pub fn execute(
             recipient,
         } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
         ExecuteMsg::AddLiquidity {
-            sender,
-            tx_id,
-            slippage_tolerance_bps,
-            liquidity,
-        } => add_liquidity(
+            assets,
+            slippage_tolerance,
+            auto_stake,
+            receiver,
+            min_lp_to_receive,
+        } => provide_liquidity(
             deps,
             env,
             info,
-            &STATE,
-            &BALANCES,
-            &CHAIN_LP_TOKENS,
-            &COLLATERAL_LP_TOKENS,
-            sender,
-            liquidity,
-            slippage_tolerance_bps,
-            tx_id,
+            assets,
+            slippage_tolerance,
+            auto_stake,
+            receiver,
+            min_lp_to_receive,
         ),
         ExecuteMsg::RemoveLiquidity {
             sender,

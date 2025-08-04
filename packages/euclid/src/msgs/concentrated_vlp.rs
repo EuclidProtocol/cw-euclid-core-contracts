@@ -73,10 +73,11 @@ pub enum ExecuteMsg {
         test_fail: Option<bool>,
     },
     AddLiquidity {
-        sender: CrossChainUser,
-        tx_id: String,
-        liquidity: PairWithAmount,
-        slippage_tolerance_bps: u64,
+        assets: Vec<Asset>,
+        slippage_tolerance: Option<Decimal>,
+        auto_stake: Option<bool>,
+        receiver: Option<String>,
+        min_lp_to_receive: Option<Uint128>,
     },
     RemoveLiquidity {
         sender: CrossChainUser,
