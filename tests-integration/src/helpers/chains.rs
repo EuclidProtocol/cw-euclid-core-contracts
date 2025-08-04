@@ -1,4 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
+use claimer::ClaimerContract;
 use cosmwasm_std::Binary;
 use cw20::Cw20Contract;
 use cw_orch::{mock::MockBase, prelude::*};
@@ -142,15 +143,7 @@ pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrch
 
 pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOrchError> {
     let relayer = RelayerContract::new(chain.clone());
-    let signer_key = get_signer_key();
-
-    let pubkey = signer_key
-        .verifying_key()
-        .to_encoded_point(false)
-        .as_bytes()
-        .to_vec();
-
-    let pubkey_binary = Binary::from(pubkey);
+    let (_, pubkey_binary) = get_signer_key();
 
     relayer.upload().unwrap();
 
@@ -165,6 +158,24 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
     )?;
 
     Ok(relayer)
+}
+
+pub fn setup_claimer(
+    factory: &FactoryContract<MockBase>,
+    vcoin_address: &VirtualBalanceContract<MockBase>,
+) -> Result<ClaimerContract<MockBase>, CwOrchError> {
+    let chain = factory.environment().clone();
+    let claimer = ClaimerContract::new(chain.clone());
+    claimer.upload().unwrap();
+    claimer.instantiate(
+        &euclid::msgs::claimer::InstantiateMsg {
+            factory_address: factory.address().unwrap(),
+            vcoin_address: vcoin_address.address().unwrap(),
+        },
+        None,
+        &[],
+    )?;
+    Ok(claimer)
 }
 
 pub fn get_vlp(chain: &MockBase, address: &Addr) -> VlpContract<MockBase> {
@@ -229,4 +240,11 @@ pub fn get_relayer(chain: &MockBase, address: &Addr) -> RelayerContract<MockBase
     relayer.as_instance_mut().id = format!("relayer_{}", address);
     relayer.set_address(address);
     relayer
+}
+
+pub fn get_claimer(chain: &MockBase, address: &Addr) -> ClaimerContract<MockBase> {
+    let mut claimer = ClaimerContract::new(chain.clone());
+    claimer.as_instance_mut().id = format!("claimer_{}", address);
+    claimer.set_address(address);
+    claimer
 }

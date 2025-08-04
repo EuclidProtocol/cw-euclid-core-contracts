@@ -1,7 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 
-use crate::{chain::CrossChainUser, virtual_balance::BalanceKey};
+use crate::{
+    chain::CrossChainUser,
+    virtual_balance::{BalanceKey, SerializedBalanceKey},
+};
 
 #[cw_serde]
 pub struct State {
@@ -26,6 +29,10 @@ pub enum ExecuteMsg {
         router: Option<String>,
         admin: Option<Addr>,
     },
+    RemoveZeroStateValues {
+        start_after: Option<SerializedBalanceKey>,
+        limit: Option<u32>,
+    },
     Approve(ExecuteApprove),
 }
 
@@ -40,11 +47,14 @@ pub struct ExecuteTransfer {
     pub amount: Uint128,
     pub token_id: String,
 
-    // Source Address
-    pub from: CrossChainUser,
+    // Only router can set sender
+    pub sender: Option<CrossChainUser>,
 
     // Destination Address
     pub to: CrossChainUser,
+    // In case of approvals, the sender can set from
+    pub from: Option<CrossChainUser>,
+    pub msg: Option<Binary>,
 }
 
 #[cw_serde]

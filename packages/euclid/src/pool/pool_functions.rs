@@ -442,15 +442,19 @@ pub fn remove_liquidity(
     let token_1_transfer_msg = pair.token_1.create_virtual_balance_transfer_msg(
         state.virtual_balance.clone(),
         token_1_liquidity,
-        vlp_cross_chain_struct.clone(),
+        None,
         sender.clone(),
+        None,
+        None,
     )?;
 
     let token_2_transfer_msg = pair.token_2.create_virtual_balance_transfer_msg(
         state.virtual_balance,
         token_2_liquidity,
-        vlp_cross_chain_struct,
+        None,
         sender.clone(),
+        None,
+        None,
     )?;
 
     Ok(Response::new()
@@ -503,11 +507,14 @@ pub fn add_liquidity(
         let virtual_balance_transfer_msg = token.token.create_virtual_balance_transfer_msg(
             state.virtual_balance.clone(),
             token.amount,
-            sender.clone(),
+            None,
             CrossChainUser {
                 address: env.contract.address.to_string(),
                 chain_uid: ChainUid::vsl_chain_uid()?,
             },
+            // We have approval to use voucher tokens on behalf of sender
+            Some(sender.clone()),
+            None,
         )?;
         response = response.add_message(virtual_balance_transfer_msg);
     }
@@ -736,11 +743,13 @@ pub fn execute_swap(
         crate::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
             amount: amount_in,
             token_id: asset_in.to_string(),
-            from: voucher_sender.clone(),
+            from: Some(voucher_sender.clone()),
             to: CrossChainUser {
                 address: env.contract.address.to_string(),
                 chain_uid: ChainUid::vsl_chain_uid()?,
             },
+            sender: None,
+            msg: None,
         });
 
     let transfer_voucher_msg = WasmMsg::Execute {
@@ -828,15 +837,10 @@ pub fn execute_swap(
             crate::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
                 amount: euclid_fee,
                 token_id: asset_in.to_string(),
-
-                // Source Address
-                from: CrossChainUser {
-                    address: env.contract.address.to_string(),
-                    chain_uid: ChainUid::vsl_chain_uid()?,
-                },
-
-                // Destination Address
                 to: fee.recipient,
+                from: None,
+                sender: None,
+                msg: None,
             });
 
         let euclid_fee_transfer_msg = WasmMsg::Execute {
@@ -916,14 +920,11 @@ pub fn execute_swap(
                     amount: swap_response.amount_out,
                     token_id: swap_response.asset_out.to_string(),
 
-                    // Source Address
-                    from: CrossChainUser {
-                        address: env.contract.address.to_string(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
-                    },
-
                     // Destination Address
                     to: sender.clone(),
+                    sender: None,
+                    from: None,
+                    msg: None,
                 });
 
             let virtual_balance_transfer_msg = WasmMsg::Execute {

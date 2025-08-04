@@ -113,7 +113,7 @@ pub fn relay_router_send_packet(
             .unwrap();
 
         let sequence = str::parse::<u128>(sequence.value.as_str()).unwrap();
-        println!("relay_router_send_packet: {:?}", sequence);
+        println!("relay_router_send_packet sequence: {:?}", sequence);
         let hash = event
             .attributes
             .iter()
@@ -128,6 +128,10 @@ pub fn relay_router_send_packet(
 
         // If this send packet was not meant for the current factory, skip it
         if chain_uid.value != factory_chain_uid.to_string() {
+            println!(
+                "relay_router_send_packet: skipping packet for chain_uid: {:?}",
+                chain_uid.value
+            );
             continue;
         }
         let relayer_address = factory.get_relayer().unwrap();
@@ -187,8 +191,8 @@ pub fn relay_factory_ack_packet(
         let sequence = str::parse::<u128>(sequence.value.as_str()).unwrap();
 
         let msg_enum = from_json::<ChainIbcExecuteMsg>(msg_binary.as_slice()).unwrap();
-        println!("relay_factory_ack_packet: {:?}", msg_enum);
-        println!("relay_factory_ack_packet: {:?}", sequence);
+        println!("relay_factory_ack_packet msg: {:?}", msg_enum);
+        println!("relay_factory_ack_packet sequence: {:?}", sequence);
 
         let hash = events[0]
             .attributes
@@ -227,6 +231,8 @@ pub fn relay_factory_ack_packet(
             hash: hash.value.clone(),
             ack: ack_binary,
         };
+
+        println!("relay_factory_ack_packet ack: {:?}", ack.value);
 
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
@@ -332,16 +338,25 @@ pub fn relay_router_factory_router(
     factory: &FactoryContract<MockBase>,
     factory_chain_uid: &ChainUid,
     router: &RouterContract<MockBase>,
-) -> Result<(), CwEnvError> {
+) -> Result<Vec<Event>, CwEnvError> {
     let ack_events = relay_router_send_packet(send_events, factory, factory_chain_uid)?;
-    relay_router_ack_packet(router, factory_chain_uid, ack_events)?;
-    Ok(())
+    relay_router_ack_packet(router, factory_chain_uid, ack_events.clone())?;
+    Ok(ack_events)
 }
 
-pub fn get_signer_key() -> SigningKey {
+pub fn get_signer_key() -> (SigningKey, Binary) {
     let pk = "2268A9118C1681EC6A649F01886995DE55E90C7E71B0BC5E409C551B92FF7369";
     let scalar = NonZeroScalar::from_str(pk).unwrap();
-    SigningKey::from(scalar)
+
+    let signer_key = SigningKey::from(scalar);
+    let pubkey = signer_key
+        .verifying_key()
+        .to_encoded_point(false)
+        .as_bytes()
+        .to_vec();
+
+    let pubkey_binary = Binary::from(pubkey);
+    (signer_key, pubkey_binary)
 }
 
 pub fn sign_relay_messsage(
@@ -365,7 +380,7 @@ pub fn sign_relay_messsage(
     let msg = to_json_string(&msg).unwrap();
     let message_digest = Sha256::new().chain(msg.as_bytes());
 
-    let secret_key = get_signer_key();
+    let (secret_key, _) = get_signer_key();
     let signature = secret_key
         .sign_digest_recoverable(message_digest)
         .unwrap()

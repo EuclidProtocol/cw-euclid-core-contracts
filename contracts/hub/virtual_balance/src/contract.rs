@@ -4,7 +4,8 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
 use crate::execute::{
-    execute_approve, execute_burn, execute_mint, execute_transfer, execute_update_state,
+    execute_approve, execute_burn, execute_mint, execute_remove_zero_state_values,
+    execute_transfer, execute_update_state,
 };
 use crate::query::{query_balance, query_state, query_user_balances};
 use crate::state::STATE;
@@ -39,7 +40,7 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut,
+    mut deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
@@ -47,11 +48,14 @@ pub fn execute(
     match msg {
         ExecuteMsg::Mint(msg) => execute_mint(deps, info, msg),
         ExecuteMsg::Burn(msg) => execute_burn(deps, info, msg),
-        ExecuteMsg::Transfer(msg) => execute_transfer(deps, info, msg),
+        ExecuteMsg::Transfer(msg) => execute_transfer(&mut deps, info, msg),
         ExecuteMsg::UpdateState { router, admin } => {
             execute_update_state(deps, info, router, admin)
         }
         ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
+        ExecuteMsg::RemoveZeroStateValues { start_after, limit } => {
+            execute_remove_zero_state_values(deps, info, start_after, limit)
+        }
     }
 }
 

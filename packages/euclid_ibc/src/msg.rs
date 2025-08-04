@@ -1,7 +1,7 @@
 use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, Binary, DepsMut, Env, SubMsg, Uint128, WasmMsg};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},
@@ -209,6 +209,8 @@ pub struct ChainIbcTransferExecuteMsg {
     pub token: Token,
     pub amount: Uint128,
     pub recipient_address: CrossChainUser,
+    pub from: Option<CrossChainUser>,
+    pub msg: Option<Binary>,
     // Unique per tx
     pub tx_id: String,
     pub timeout: Option<u64>,
@@ -222,6 +224,7 @@ pub struct ChainIbcDepositTokenExecuteMsg {
     pub asset_in: TokenWithDenom,
     pub amount_in: Uint128,
     pub recipient: CrossChainUser,
+    pub msg: Option<Binary>,
     // Unique per tx
     pub tx_id: String,
 }

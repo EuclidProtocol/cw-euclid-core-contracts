@@ -44,6 +44,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Unauthorized: {msg}")]
+    UnauthorizedWithMsg { msg: String },
+
     #[error("Tx already exist")]
     TxAlreadyExist {},
 
@@ -265,6 +268,9 @@ pub enum ContractError {
 
     #[error("Unsupported Euclid Receive Message")]
     UnsupportedEuclidReceiveMessage {},
+
+    #[error("Balance not found for key: {key}")]
+    BalanceNotFound { key: String },
 }
 
 impl ContractError {
