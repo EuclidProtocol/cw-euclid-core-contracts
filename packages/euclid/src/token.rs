@@ -10,7 +10,6 @@ use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::chain::CrossChainUser;
 use crate::error::ContractError;
-use crate::msgs::hook::VirtualBalanceReceive;
 use crate::msgs::virtual_balance::ExecuteTransfer;
 
 // Token asset that represents an identifier for a token

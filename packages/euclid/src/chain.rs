@@ -4,11 +4,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{ensure, Binary, StdError, StdResult, Uint128};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
-use crate::{
-    error::ContractError,
-    msgs::hook::{EuclidReceive, VirtualBalanceReceive},
-    token::TokenType,
-};
+use crate::{error::ContractError, msgs::hook::EuclidReceive, token::TokenType};
 
 #[cw_serde]
 #[derive(PartialOrd)]

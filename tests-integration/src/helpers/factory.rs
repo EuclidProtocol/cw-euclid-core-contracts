@@ -11,8 +11,6 @@ use euclid::msgs::factory::{
     ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns,
 };
 
-use cw_orch_interchain::core::InterchainEnv;
-use cw_orch_interchain::prelude::IbcQueryHandler;
 use cw_orch_interchain::prelude::MockInterchainEnv;
 use euclid::msgs::router::QueryMsgFns;
 use euclid::msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns;

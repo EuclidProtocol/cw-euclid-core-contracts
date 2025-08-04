@@ -1189,9 +1189,9 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
 }
 
 pub struct SwapTestReusableOutput {
-    pub token_in: TokenWithDenom,
+    // pub token_in: TokenWithDenom,
     pub token_out: TokenWithDenom,
-    pub amount_in: Uint128,
+    // pub amount_in: Uint128,
 }
 
 pub fn run_test_swap_request_reusable(
@@ -1329,9 +1329,9 @@ pub fn run_test_swap_request_reusable(
     relay_factory_router_factory(swap_request_msg.events, factory, router, &factory_chain_uid)?;
 
     Ok(SwapTestReusableOutput {
-        token_in: token_a,
+        // token_in: token_a,
         token_out: token_b,
-        amount_in,
+        // amount_in,
     })
 }
 
