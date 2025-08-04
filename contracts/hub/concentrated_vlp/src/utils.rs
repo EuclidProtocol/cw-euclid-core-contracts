@@ -18,13 +18,19 @@
 //         .try_for_each(|asset_info| asset_info.check(api))
 //         .map_err(Into::into)
 // }
-
-use cosmwasm_std::{Decimal, Decimal256, Env, SignedDecimal256, StdError, StdResult, Uint128};
+use crate::math::{calc_d, get_xcp, SignedDecimal256};
+use cosmwasm_std::{Decimal, Decimal256, Deps, Env, StdError, StdResult, Uint128};
+use cw_asset::Asset;
 use euclid::error::ContractError;
-use euclid::msgs::concentrated_vlp::{AmpGamma, DecimalAsset, PoolParams};
+use euclid::msgs::concentrated_vlp::{
+    AmpGamma, DecimalAsset, DecimalToInteger, IntegerToDecimal, PoolParams, PriceState,
+};
 use euclid::pool::State;
 use euclid::utils::math::Decimal256Ext;
 use euclid::{chain::ChainUid, token::Token};
+use itertools::Itertools;
+/// 2.0
+pub const TWO: Decimal256 = Decimal256::raw(2000000000000000000);
 /// 1e-5
 pub const TOL: Decimal256 = Decimal256::raw(10000000000000);
 /// Number of coins. (2.0)
@@ -38,8 +44,13 @@ pub const MAX_ITER: usize = 64;
 /// Min safe trading size (0.00001) to calculate a price. This value considers
 /// amount in decimal form with respective token precision.
 pub const MIN_TRADE_SIZE: Decimal256 = Decimal256::raw(10000000000000);
+/// 0.05
+pub const DEFAULT_SLIPPAGE: Decimal256 = Decimal256::raw(50000000000000000);
+/// 0.5
+pub const MAX_ALLOWED_SLIPPAGE: Decimal256 = Decimal256::raw(500000000000000000);
+use crate::contract::LP_TOKEN_PRECISION;
 use crate::execute::MINIMUM_LIQUIDITY_AMOUNT;
-use crate::state::Config;
+use crate::state::{Config, Precisions};
 
 pub(crate) fn calculate_shares(
     env: &Env,
@@ -102,8 +113,8 @@ pub(crate) fn calculate_shares(
         new_xp[1] * share_ratio / config.pool_state.price_state.price_scale,
     ];
     let assets_diff = [
-        deposits[0].diff(balanced_share[0]),
-        deposits[1].diff(balanced_share[1]),
+        deposits[0].abs_diff(balanced_share[0]),
+        deposits[1].abs_diff(balanced_share[1]),
     ];
 
     let mut slippage = Decimal256::zero();
@@ -127,87 +138,45 @@ pub(crate) fn calculate_shares(
         )?;
     }
 
-    Ok((share.to_uint(LP_TOKEN_PRECISION)?, slippage))
+    Ok((
+        share
+            .to_uint(LP_TOKEN_PRECISION)
+            .map_err(|_| ContractError::Generic {
+                err: "Conversion overflow".to_string(),
+            })?,
+        slippage,
+    ))
 }
 
-/// Calculate D invariant based on known pool volumes.
-///
-/// * **xs** - internal representation of pool volumes.
-/// * **amp_gamma** - an object which represents current Amp and Gamma parameters.
-pub fn calc_d(xs: &[Decimal256], amp_gamma: &AmpGamma) -> StdResult<Decimal256> {
-    newton_d(xs, amp_gamma.amp.into(), amp_gamma.gamma.into())
-}
-pub(crate) fn newton_d(
-    x: &[Decimal256],
-    a: Decimal256,
-    gamma: Decimal256,
-) -> StdResult<Decimal256> {
-    let mut d_prev: SignedDecimal256 = (N * geometric_mean(x)).into();
-    let x = x.iter().map(SignedDecimal256::from).collect::<Vec<_>>();
-
-    for _ in 0..MAX_ITER {
-        let d = d_prev - f(d_prev, &x, a, gamma) / df_dd(d_prev, &x, a, gamma);
-        if d.diff(d_prev) <= TOL {
-            return d.try_into();
-        }
-        d_prev = d;
+/// This is an internal function that enforces slippage tolerance for provides. Returns actual slippage.
+pub fn assert_slippage_tolerance(
+    deposits: &[Decimal256],
+    actual_share: Decimal256,
+    price_state: &PriceState,
+    slippage_tolerance: Option<Decimal>,
+) -> Result<Decimal256, ContractError> {
+    let slippage_tolerance = slippage_tolerance
+        .map(Into::into)
+        .unwrap_or(DEFAULT_SLIPPAGE);
+    if slippage_tolerance > MAX_ALLOWED_SLIPPAGE {
+        return Err(ContractError::Generic {
+            err: "Allowed spread assertion".to_string(),
+        });
     }
 
-    Err(StdError::generic_err("newton_d is not converging"))
-}
-pub fn geometric_mean(x: &[Decimal256]) -> Decimal256 {
-    (x[0] * x[1]).sqrt()
-}
-/// df/dD
-pub(crate) fn df_dd(
-    d: SignedDecimal256,
-    x: &[SignedDecimal256],
-    a: Decimal256,
-    gamma: Decimal256,
-) -> SignedDecimal256 {
-    let a_gamma_pow_2 = a * gamma.pow(2); // A * gamma^2
-    let gamma_plus_1 = gamma + Decimal256::one();
-    let d_pow_n = d.pow(2);
-    let prod_n_n = x[0] * x[1] * N_POW2;
-    let sum = x[0] + x[1];
+    let deposit_value = deposits[0] + deposits[1] * price_state.price_scale;
+    let lp_expected = (deposit_value / TWO * deposit_value / (TWO * price_state.price_scale))
+        .sqrt()
+        / price_state.xcp_profit_real;
+    let slippage = lp_expected.saturating_sub(actual_share) / lp_expected;
 
-    let k0 = prod_n_n / d_pow_n;
-    let k0_prime = -SignedDecimal256::from(N) * prod_n_n;
+    if slippage > slippage_tolerance {
+        return Err(ContractError::Generic {
+            err: "Max spread assertion".to_string(),
+        });
+    }
 
-    let gamma_one_k0 = gamma_plus_1 - k0; // gamma + 1 - K0
-
-    let k = a_gamma_pow_2 * k0 / (gamma_plus_1 - k0).pow(2);
-    let k_prime_numerator = PADDING * a_gamma_pow_2 * k0_prime * (gamma_plus_1 + k0);
-    let k_prime_denominator = PADDING * d.pow(3) * gamma_one_k0 * gamma_one_k0 * gamma_one_k0;
-
-    k_prime_numerator * d * sum / k_prime_denominator + k * sum
-        - k_prime_numerator * d_pow_n / k_prime_denominator
-        - N * k * d
-        - d / N
-}
-
-pub(crate) fn f(
-    d: SignedDecimal256,
-    x: &[SignedDecimal256],
-    a: Decimal256,
-    gamma: Decimal256,
-) -> SignedDecimal256 {
-    let mul = x[0] * x[1];
-    let d_pow2 = d.pow(2);
-
-    let prod_n_n = mul * N_POW2;
-    let k = a * gamma.pow(2) * prod_n_n
-        / ((gamma + Decimal256::one() - prod_n_n / d_pow2).pow(2) * d_pow2);
-
-    d * (x[0] + x[1]) * k + mul - k * d_pow2 - d_pow2 / N_POW2
-}
-
-/// Get current XCP.
-/// * **d** - internal D invariant.
-/// * **price_scale** - x_0/x_1 exchange rate.
-pub fn get_xcp(d: Decimal256, price_scale: Decimal256) -> Decimal256 {
-    let xs = [d / N, d / (N * price_scale)];
-    geometric_mean(&xs)
+    Ok(slippage)
 }
 
 /// Calculate provide fee applied on the amount of LP tokens. Only charged for imbalanced provide.
@@ -222,4 +191,61 @@ pub fn calc_provide_fee(
     let avg = sum / N;
 
     deposits[0].abs_diff(avg) * params.fee(xp) / sum
+}
+
+pub(crate) fn get_assets_with_precision(
+    deps: Deps,
+    config: &Config,
+    assets: &mut Vec<Asset>,
+    pools: Vec<DecimalAsset>,
+    precisions: &Precisions,
+) -> Result<Vec<Decimal256>, ContractError> {
+    // if !check_pair_registered(
+    //     deps.querier,
+    //     &config.factory_addr,
+    //     &config.pair_info.asset_infos,
+    // )? {
+    //     return Err(ContractError::Generic {
+    //         err: "Pair is not registered".to_string(),
+    //     });
+    // }
+
+    match assets.len() {
+        0 => {
+            return Err(StdError::generic_err("Nothing to provide").into());
+        }
+        1 => {
+            // Append omitted asset with explicit zero amount
+            let (given_ind, _) = config
+                .pair_info
+                .asset_infos
+                .iter()
+                .find_position(|pool| *pool == &assets[0].info)
+                .ok_or_else(|| ContractError::Generic {
+                    err: "Invalid asset".to_string(),
+                })?;
+            assets.push(Asset {
+                info: config.pair_info.asset_infos[1 ^ given_ind].clone(),
+                amount: Uint128::zero(),
+            });
+        }
+        2 => {}
+        _ => {
+            return Err(ContractError::Generic {
+                err: "Invalid number of assets".to_string(),
+            });
+        }
+    }
+
+    // check_assets(deps.api, assets)?;
+
+    if pools[0].info == assets[1].info {
+        assets.swap(0, 1);
+    }
+
+    // precisions.get_precision() also validates that the asset belongs to the pool
+    Ok(vec![
+        Decimal256::with_precision(assets[0].amount, precisions.get_precision(&assets[0].info)?)?,
+        Decimal256::with_precision(assets[1].amount, precisions.get_precision(&assets[1].info)?)?,
+    ])
 }

@@ -1,18 +1,23 @@
 // Concentrated VLP
 
 use cosmwasm_std::{
-    attr, ensure, wasm_execute, CosmosMsg, Decimal, Decimal256, DepsMut, Env, MessageInfo,
+    attr, ensure, wasm_execute, Addr, CosmosMsg, Decimal, Decimal256, DepsMut, Env, MessageInfo,
     Response, Uint128, Uint256,
 };
+use cw20::Cw20ExecuteMsg;
 use cw_asset::{Asset, AssetInfo};
-use euclid::{error::ContractError, msgs::concentrated_vlp::query_native_supply};
+use euclid::{
+    error::ContractError,
+    msgs::concentrated_vlp::{query_native_supply, DecimalToInteger},
+};
 /// Minimum initial LP share
 pub const MINIMUM_LIQUIDITY_AMOUNT: Uint128 = Uint128::new(1_000);
 use crate::{
     state::{
-        accumulate_prices, mint_liquidity_token_message, query_pools, CONCENTRATED_BALANCES, CONFIG,
+        accumulate_prices, mint_liquidity_token_message, query_pools, Precisions,
+        CONCENTRATED_BALANCES, CONFIG,
     },
-    utils::calculate_shares,
+    utils::{calculate_shares, get_assets_with_precision},
 };
 
 /// Provides liquidity in the pair with the specified input parameters.
@@ -47,7 +52,7 @@ pub fn provide_liquidity(
         &config.pair_info.liquidity_token,
     )?));
 
-    // let precisions = Precisions::new(deps.storage)?;
+    let precisions = Precisions::new(deps.storage)?;
 
     let mut pools = query_pools(deps.querier, &env.contract.address, &config, &precisions)?;
 
@@ -61,8 +66,8 @@ pub fn provide_liquidity(
         &precisions,
     )?;
 
-    info.funds
-        .assert_coins_properly_sent(&assets, &config.pair_info.asset_infos)?;
+    // info.funds
+    //     .assert_coins_properly_sent(&assets, &config.pair_info.asset_infos)?;
 
     let mut messages = vec![];
     for (i, pool) in pools.iter_mut().enumerate() {
@@ -76,7 +81,10 @@ pub fn provide_liquidity(
                             owner: info.sender.to_string(),
                             recipient: env.contract.address.to_string(),
                             amount: deposits[i]
-                                .to_uint(precisions.get_precision(&assets[i].info)?)?,
+                                .to_uint(precisions.get_precision(&assets[i].info)?)
+                                .map_err(|_| ContractError::Generic {
+                                    err: "Conversion overflow".to_string(),
+                                })?,
                         },
                         vec![],
                     )?))
@@ -87,6 +95,7 @@ pub fn provide_liquidity(
                 // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
                 pool.amount = pool.amount.checked_sub(deposits[i])?;
             }
+            _ => {}
         }
     }
 
@@ -113,17 +122,19 @@ pub fn provide_liquidity(
     let min_amount_lp = min_lp_to_receive.unwrap_or_default();
     ensure!(
         share_uint128 >= min_amount_lp,
-        ContractError::ProvideSlippageViolation(share_uint128, min_amount_lp,)
+        ContractError::Generic {
+            err: "Provide slippage violation".to_string(),
+        }
     );
 
     // Mint LP tokens for the sender or for the receiver (if set)
-    let receiver = addr_opt_validate(deps.api, &receiver)?.unwrap_or_else(|| info.sender.clone());
+    let receiver = receiver.unwrap_or_else(|| info.sender.clone().into_string());
     let auto_stake = auto_stake.unwrap_or(false);
     messages.extend(mint_liquidity_token_message(
         deps.querier,
         &config,
         &env.contract.address,
-        &receiver,
+        &Addr::unchecked(receiver.clone()),
         share_uint128,
         auto_stake,
     )?);
@@ -136,7 +147,10 @@ pub fn provide_liquidity(
                 &pool
                     .amount
                     .checked_add(deposits[i])?
-                    .to_uint(precisions.get_precision(&pool.info)?)?,
+                    .to_uint(precisions.get_precision(&pool.info)?)
+                    .map_err(|_| ContractError::Generic {
+                        err: "Conversion overflow".to_string(),
+                    })?,
                 env.block.height,
             )?;
         }

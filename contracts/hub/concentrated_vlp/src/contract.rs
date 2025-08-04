@@ -15,19 +15,20 @@ use crate::query::{
 };
 use crate::reply;
 use crate::state::{
-    Config, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, CONCENTRATED_BALANCES,
-    CONFIG, STATE,
+    Config, PairInfo, PoolState, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
+    CONCENTRATED_BALANCES, CONFIG, STATE,
 };
 use euclid::error::ContractError;
 use euclid::msgs::concentrated_vlp::{
     tf_create_denom_msg, AmpGamma, ConcentratedPoolParams, ExecuteMsg, InstantiateMsg,
-    MsgCreateDenomResponse, PairInfo, PoolParams, PoolState, PriceState, QueryMsg,
-    DEFAULT_AMP_FACTOR,
+    MsgCreateDenomResponse, PoolParams, PriceState, QueryMsg, DEFAULT_AMP_FACTOR,
 };
 use euclid::pool::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
     SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
 };
+/// An LP token's precision.
+pub(crate) const LP_TOKEN_PRECISION: u8 = 6;
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:concentrated_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -10,9 +10,9 @@ use crate::{
 pub use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as ProtoCoin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{
-    Addr, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg, CustomQuery,
-    Decimal, Decimal256, Env, Fraction, QuerierWrapper, StdError, StdResult, Uint128, Uint256,
-    Uint64,
+    ensure, Addr, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg,
+    CustomQuery, Decimal, Decimal256, Env, Fraction, QuerierWrapper, StdError, StdResult, Uint128,
+    Uint256, Uint64,
 };
 
 use cw20::{BalanceResponse as Cw20BalanceResponse, Cw20QueryMsg};
@@ -21,6 +21,10 @@ use prost::Message;
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
 pub const TYPE_URL: &'static str = "/osmosis.tokenfactory.v1beta1.MsgMint";
+/// Defines fee tolerance. If k coefficient is small enough then k = 0. (0.001)
+pub const FEE_TOL: Decimal256 = Decimal256::raw(1000000000000000);
+/// N ^ 2
+pub const N_POW2: Decimal256 = Decimal256::raw(4000000000000000000);
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -223,97 +227,6 @@ impl Display for PairType {
     }
 }
 
-/// This structure stores the main parameters for an Astroport pair
-#[cw_serde]
-pub struct PairInfo {
-    /// Asset information for the assets in the pool
-    pub asset_infos: Vec<AssetInfo>,
-    /// Pair contract address
-    pub contract_addr: Addr,
-    /// Pair LP token denom
-    pub liquidity_token: String,
-    /// The pool type (xyk, stableswap etc) available in [`PairType`]
-    pub pair_type: PairType,
-}
-
-pub trait AssetInfoExt {
-    fn query_pool<C>(
-        &self,
-        querier: &QuerierWrapper<C>,
-        pool_addr: impl Into<String>,
-    ) -> StdResult<Uint128>
-    where
-        C: CustomQuery;
-}
-
-impl AssetInfoExt for AssetInfo {
-    fn query_pool<C>(
-        &self,
-        querier: &QuerierWrapper<C>,
-        pool_addr: impl Into<String>,
-    ) -> StdResult<Uint128>
-    where
-        C: CustomQuery,
-    {
-        let pool_addr = pool_addr.into();
-
-        match self {
-            AssetInfo::Cw20(contract_addr) => {
-                query_token_balance(querier, contract_addr, &pool_addr)
-            }
-            AssetInfo::Native(denom) => query_balance(querier, &pool_addr, denom),
-            _ => Err(StdError::generic_err("Invalid asset info")),
-        }
-    }
-}
-
-impl PairInfo {
-    /// Returns the balance for each asset in the pool.
-    ///
-    /// * **contract_addr** is pair's pool address.
-    pub fn query_pools(
-        &self,
-        querier: &QuerierWrapper,
-        contract_addr: impl Into<String>,
-    ) -> StdResult<Vec<Asset>> {
-        let contract_addr = contract_addr.into();
-        self.asset_infos
-            .iter()
-            .map(|asset_info| {
-                Ok(Asset {
-                    info: asset_info.clone(),
-                    amount: asset_info.query_balance(querier, &contract_addr).unwrap(),
-                })
-            })
-            .collect()
-    }
-
-    /// Returns the balance for each asset in the pool in decimal.
-    ///
-    /// * **contract_addr** is pair's pool address.
-    pub fn query_pools_decimal(
-        &self,
-        querier: &QuerierWrapper,
-        contract_addr: impl Into<String>,
-        factory_addr: &Addr,
-    ) -> StdResult<Vec<DecimalAsset>> {
-        let contract_addr = contract_addr.into();
-        self.asset_infos
-            .iter()
-            .map(|asset_info| {
-                Ok(DecimalAsset {
-                    info: asset_info.clone(),
-                    amount: Decimal256::from_atomics(
-                        asset_info.query_pool(querier, &contract_addr)?,
-                        asset_info.decimals(querier, factory_addr)?.into(),
-                    )
-                    .map_err(|_| StdError::generic_err("Decimal256RangeExceeded"))?,
-                })
-            })
-            .collect()
-    }
-}
-
 /// Returns a token balance for an account.
 ///
 /// * **contract_addr** token contract for which we return a balance.
@@ -383,6 +296,22 @@ pub struct PoolParams {
     pub xcp_profit_losses_threshold: Decimal,
 }
 
+impl PoolParams {
+    pub fn fee(&self, xp: &[Decimal256]) -> Decimal256 {
+        let fee_gamma: Decimal256 = self.fee_gamma.into();
+        let sum = xp[0] + xp[1];
+        let mut k = xp[0] * xp[1] * N_POW2 / sum.pow(2);
+        k = fee_gamma / (fee_gamma + Decimal256::one() - k);
+
+        if k <= FEE_TOL {
+            k = Decimal256::zero()
+        }
+
+        k * Decimal256::from(self.mid_fee)
+            + (Decimal256::one() - k) * Decimal256::from(self.out_fee)
+    }
+}
+
 /// Structure which stores Amp and Gamma.
 #[cw_serde]
 #[derive(Default, Copy)]
@@ -400,47 +329,6 @@ pub struct AmpGamma {
 //         Ok(AmpGamma { amp, gamma })
 //     }
 // }
-
-/// Internal structure which stores the pool's state.
-#[cw_serde]
-pub struct PoolState {
-    /// Initial Amp and Gamma
-    pub initial: AmpGamma,
-    /// Future Amp and Gamma
-    pub future: AmpGamma,
-    /// Timestamp when Amp and Gamma should become equal to self.future
-    pub future_time: u64,
-    /// Timestamp when Amp and Gamma started being changed
-    pub initial_time: u64,
-    /// Current price state
-    pub price_state: PriceState,
-}
-
-impl PoolState {
-    /// Calculates current amp and gamma.
-    /// This function handles parameters upgrade as well as downgrade.
-    /// If block time >= self.future_time then it returns self.future parameters.
-    pub fn get_amp_gamma(&self, env: &Env) -> AmpGamma {
-        let block_time = env.block.time.seconds();
-        if block_time < self.future_time {
-            let total = Decimal::new((self.future_time - self.initial_time).into());
-            let passed = Decimal::new((block_time - self.initial_time).into());
-            let left = total - passed;
-
-            // A1 = A0 + (A1 - A0) * (block_time - t_init) / (t_end - t_init) -> simplified to:
-            // A1 = ( A0 * (t_end - block_time) + A1 * (block_time - t_init) ) / (t_end - t_init)
-            let amp = (self.initial.amp * left + self.future.amp * passed) / total;
-            let gamma = (self.initial.gamma * left + self.future.gamma * passed) / total;
-
-            AmpGamma { amp, gamma }
-        } else {
-            AmpGamma {
-                amp: self.future.amp,
-                gamma: self.future.gamma,
-            }
-        }
-    }
-}
 
 /// Internal structure which stores the price state.
 /// This structure cannot be updated via update_config.
@@ -747,3 +635,28 @@ pub fn tf_mint_msg(
         ]
     }
 }
+
+pub trait DecimalToInteger<T> {
+    fn to_uint(self, precision: impl Into<u32>) -> Result<T, ConversionOverflowError>;
+}
+
+impl DecimalToInteger<Uint128> for Decimal256 {
+    fn to_uint(self, precision: impl Into<u32>) -> Result<Uint128, ConversionOverflowError> {
+        let multiplier = Uint256::from(10u8).pow(precision.into());
+        (multiplier * self.numerator() / self.denominator()).try_into()
+    }
+}
+pub trait IntegerToDecimal
+where
+    Self: Copy + Into<Uint128> + Into<Uint256>,
+{
+    fn to_decimal(self) -> Decimal {
+        Decimal::from_ratio(self, 1u8)
+    }
+
+    fn to_decimal256(self, precision: impl Into<u32>) -> StdResult<Decimal256> {
+        Decimal256::with_precision(self, precision)
+    }
+}
+impl IntegerToDecimal for u64 {}
+impl IntegerToDecimal for Uint128 {}
