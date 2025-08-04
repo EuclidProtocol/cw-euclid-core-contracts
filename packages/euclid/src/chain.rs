@@ -146,6 +146,7 @@ pub struct CrossChainUserWithLimit {
     pub limit: Option<Limit>,
     pub preferred_denom: Option<TokenType>,
     pub refund_address: Option<String>,
+    // Refund to recipient if release fails, default: false and it will return to original sender (Use this with caution as there is no validation check for wrong addresses)
     pub unsafe_refund_voucher_to_recipient: Option<bool>,
     // Forward message to be executed on the destination chain
     pub forwarding_message: Option<EuclidReceive>,
