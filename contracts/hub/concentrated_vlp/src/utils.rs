@@ -18,12 +18,17 @@
 //         .try_for_each(|asset_info| asset_info.check(api))
 //         .map_err(Into::into)
 // }
-use crate::math::{calc_d, get_xcp, SignedDecimal256};
-use cosmwasm_std::{Decimal, Decimal256, Deps, Env, StdError, StdResult, Uint128};
+use crate::math::{
+    calc_d, calc_y, get_xcp, safe_sma_buffer_not_full, safe_sma_calculation, SignedDecimal256,
+};
+use cosmwasm_std::{
+    Decimal, Decimal256, Deps, Env, Fraction, StdError, StdResult, Storage, Uint128,
+};
 use cw_asset::Asset;
 use euclid::error::ContractError;
 use euclid::msgs::concentrated_vlp::{
-    AmpGamma, DecimalAsset, DecimalToInteger, IntegerToDecimal, PoolParams, PriceState,
+    AmpGamma, BufferManager, DecimalAsset, DecimalToInteger, IntegerToDecimal, Observation,
+    PoolParams, PrecommitObservation, PriceState,
 };
 use euclid::pool::State;
 use euclid::utils::math::Decimal256Ext;
@@ -35,6 +40,8 @@ pub const TWO: Decimal256 = Decimal256::raw(2000000000000000000);
 pub const TOL: Decimal256 = Decimal256::raw(10000000000000);
 /// Number of coins. (2.0)
 pub const N: Decimal256 = Decimal256::raw(2000000000000000000);
+/// Percentage of 1st pool volume used as offer amount to forecast last price (0.01% or 0.0001).
+pub const OFFER_PERCENT: Decimal256 = Decimal256::raw(100000000000000);
 /// Internal constant to increase calculation accuracy.
 const PADDING: Decimal256 = Decimal256::raw(1e36 as u128);
 /// N ^ 2
@@ -50,7 +57,7 @@ pub const DEFAULT_SLIPPAGE: Decimal256 = Decimal256::raw(50000000000000000);
 pub const MAX_ALLOWED_SLIPPAGE: Decimal256 = Decimal256::raw(500000000000000000);
 use crate::contract::LP_TOKEN_PRECISION;
 use crate::execute::MINIMUM_LIQUIDITY_AMOUNT;
-use crate::state::{Config, Precisions};
+use crate::state::{Config, Precisions, OBSERVATIONS};
 
 pub(crate) fn calculate_shares(
     env: &Env,
@@ -248,4 +255,223 @@ pub(crate) fn get_assets_with_precision(
         Decimal256::with_precision(assets[0].amount, precisions.get_precision(&assets[0].info)?)?,
         Decimal256::with_precision(assets[1].amount, precisions.get_precision(&assets[1].info)?)?,
     ])
+}
+/// Checks whether it possible to make a swap or not.
+pub fn before_swap_check(pools: &[DecimalAsset], offer_amount: Decimal256) -> StdResult<()> {
+    if offer_amount.is_zero() {
+        return Err(StdError::generic_err("Swap amount must not be zero"));
+    }
+    if pools.iter().any(|a| a.amount.is_zero()) {
+        return Err(StdError::generic_err("One of the pools is empty"));
+    }
+
+    Ok(())
+}
+
+/// Performs swap simulation to calculate a price.
+pub fn calc_last_prices(xs: &[Decimal256], config: &Config, env: &Env) -> StdResult<Decimal256> {
+    let mut offer_amount = Decimal256::one().min(xs[0] * OFFER_PERCENT);
+    if offer_amount.is_zero() {
+        offer_amount = Decimal256::raw(1u128);
+    }
+
+    let last_price = compute_swap(
+        xs,
+        offer_amount,
+        1,
+        config,
+        env,
+        Decimal256::zero(),
+        Decimal256::zero(),
+    )?
+    .calc_last_price(offer_amount, 0);
+
+    Ok(last_price)
+}
+
+/// Calculate swap result.
+pub fn compute_swap(
+    xs: &[Decimal256],
+    offer_amount: Decimal256,
+    ask_ind: usize,
+    config: &Config,
+    env: &Env,
+    maker_fee_share: Decimal256,
+    share_fee_share: Decimal256,
+) -> StdResult<SwapResult> {
+    let offer_ind = 1 ^ ask_ind;
+
+    let mut ixs = xs.to_vec();
+    ixs[1] *= config.pool_state.price_state.price_scale;
+
+    let amp_gamma = config.pool_state.get_amp_gamma(env);
+    let d = calc_d(&ixs, &amp_gamma)?;
+
+    if offer_ind == 1 {
+        ixs[offer_ind] += offer_amount * config.pool_state.price_state.price_scale;
+    } else {
+        ixs[offer_ind] += offer_amount;
+    }
+
+    let new_y = calc_y(&ixs, d, &amp_gamma, ask_ind)?;
+    let mut dy = ixs[ask_ind] - new_y;
+    ixs[ask_ind] = new_y;
+
+    // Derive spread using oracle price
+    let spread_fee = if ask_ind == 1 {
+        dy /= config.pool_state.price_state.price_scale;
+        (offer_amount / config.pool_state.price_state.oracle_price).saturating_sub(dy)
+    } else {
+        (offer_amount * config.pool_state.price_state.oracle_price).saturating_sub(dy)
+    };
+
+    let fee_rate = config.pool_params.fee(&ixs);
+    let total_fee = fee_rate * dy;
+    dy -= total_fee;
+
+    let share_fee = total_fee * share_fee_share;
+
+    Ok(SwapResult {
+        dy,
+        spread_fee,
+        maker_fee: (total_fee - share_fee) * maker_fee_share,
+        share_fee,
+        total_fee,
+    })
+}
+
+/// This structure is for internal use only. Represents swap's result.
+#[derive(Debug)]
+pub struct SwapResult {
+    pub dy: Decimal256,
+    pub spread_fee: Decimal256,
+    pub maker_fee: Decimal256,
+    pub share_fee: Decimal256,
+    pub total_fee: Decimal256,
+}
+
+impl SwapResult {
+    /// Calculates **last price** for PCL repeg algo
+    pub fn calc_last_price(&self, offer_amount: Decimal256, offer_ind: usize) -> Decimal256 {
+        if offer_ind == 0 {
+            offer_amount / (self.dy + self.maker_fee + self.share_fee)
+        } else {
+            (self.dy + self.maker_fee + self.share_fee) / offer_amount
+        }
+    }
+}
+
+use crate::math::AbsDiff;
+
+/// If `belief_price` and `max_spread` are both specified, we compute a new spread,
+/// otherwise we just use the swap spread to check `max_spread`.
+///
+/// * **belief_price** belief price used in the swap.
+///
+/// * **max_spread** max spread allowed so that the swap can be executed successfuly.
+///
+/// * **offer_amount** amount of assets to swap.
+///
+/// * **return_amount** amount of assets  a user wants to receive from the swap.
+///
+/// * **spread_amount** spread used in the swap.
+pub fn assert_max_spread(
+    belief_price: Option<Decimal>,
+    max_spread: Option<Decimal>,
+    offer_amount: Uint128,
+    return_amount: Uint128,
+    spread_amount: Uint128,
+) -> Result<(), ContractError> {
+    let max_spread = max_spread.map(Decimal256::from).unwrap_or(DEFAULT_SLIPPAGE);
+    if max_spread > MAX_ALLOWED_SLIPPAGE {
+        return Err(ContractError::Generic {
+            err: "Allowed spread assertion".to_string(),
+        });
+    }
+
+    if let Some(belief_price) = belief_price {
+        let expected_return = offer_amount
+            * belief_price
+                .inv()
+                .ok_or_else(|| {
+                    StdError::generic_err("Invalid belief_price. Check the input values.")
+                })?
+                .to_uint_floor(); // not sure if this should be floor or ceiling
+
+        let spread_amount = expected_return.saturating_sub(return_amount);
+
+        if return_amount < expected_return
+            && Decimal256::from_ratio(spread_amount, expected_return) > max_spread
+        {
+            return Err(ContractError::Generic {
+                err: "Max spread assertion".to_string(),
+            });
+        }
+    } else if Decimal256::from_ratio(spread_amount, return_amount + spread_amount) > max_spread {
+        return Err(ContractError::Generic {
+            err: "Max spread assertion".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+/// Calculate and save price moving average
+pub fn accumulate_swap_sizes(storage: &mut dyn Storage, env: &Env) -> Result<(), ContractError> {
+    if let Some(PrecommitObservation {
+        base_amount,
+        quote_amount,
+        precommit_ts,
+    }) = PrecommitObservation::may_load(storage)?
+    {
+        let mut buffer = BufferManager::new(storage, OBSERVATIONS)?;
+        let observed_price = Decimal::from_ratio(base_amount, quote_amount);
+
+        let new_observation;
+        if let Some(last_obs) = buffer.read_last(storage)? {
+            // Skip saving observation if it has been already saved
+            if last_obs.ts < precommit_ts {
+                // Since this is circular buffer the next index contains the oldest value
+                let count = buffer.capacity();
+                if let Some(oldest_obs) = buffer.read_single(storage, buffer.head() + 1)? {
+                    let price_sma = safe_sma_calculation(
+                        last_obs.price_sma,
+                        oldest_obs.price,
+                        count,
+                        observed_price,
+                    )?;
+                    new_observation = Observation {
+                        ts: precommit_ts,
+                        price: observed_price,
+                        price_sma,
+                    };
+                } else {
+                    // Buffer is not full yet
+                    let count = buffer.head();
+                    let price_sma =
+                        safe_sma_buffer_not_full(last_obs.price_sma, count, observed_price)?;
+                    new_observation = Observation {
+                        ts: precommit_ts,
+                        price: observed_price,
+                        price_sma,
+                    };
+                }
+
+                buffer.instant_push(storage, &new_observation)?
+            }
+        } else {
+            // Buffer is empty
+            if env.block.time.seconds() > precommit_ts {
+                new_observation = Observation {
+                    ts: precommit_ts,
+                    price: observed_price,
+                    price_sma: observed_price,
+                };
+
+                buffer.instant_push(storage, &new_observation)?
+            }
+        }
+    }
+
+    Ok(())
 }

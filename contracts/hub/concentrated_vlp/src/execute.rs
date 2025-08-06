@@ -8,17 +8,29 @@ use cw20::Cw20ExecuteMsg;
 use cw_asset::{Asset, AssetInfo};
 use euclid::{
     error::ContractError,
-    msgs::concentrated_vlp::{query_native_supply, DecimalToInteger},
+    msgs::concentrated_vlp::{
+        query_fee_info, query_native_supply, DecimalToInteger, IntegerToDecimal,
+        PrecommitObservation,
+    },
 };
+use itertools::Itertools;
 /// Minimum initial LP share
 pub const MINIMUM_LIQUIDITY_AMOUNT: Uint128 = Uint128::new(1_000);
 use crate::{
     state::{
-        accumulate_prices, mint_liquidity_token_message, query_pools, Precisions,
-        CONCENTRATED_BALANCES, CONFIG,
+        accumulate_prices, mint_liquidity_token_message, query_pools, AssetExt, AssetInfoExt,
+        Precisions, CONCENTRATED_BALANCES, CONFIG,
     },
-    utils::{calculate_shares, get_assets_with_precision},
+    utils::{
+        accumulate_swap_sizes, assert_max_spread, before_swap_check, calc_last_prices,
+        calculate_shares, compute_swap, get_assets_with_precision,
+    },
 };
+/// An LP token's precision.
+pub(crate) const LP_TOKEN_PRECISION: u8 = 6;
+/// Min safe trading size (0.00001) to calculate a price. This value considers
+/// amount in decimal form with respective token precision.
+pub const MIN_TRADE_SIZE: Decimal256 = Decimal256::raw(10000000000000);
 
 /// Provides liquidity in the pair with the specified input parameters.
 ///
@@ -170,4 +182,221 @@ pub fn provide_liquidity(
     ];
 
     Ok(Response::new().add_messages(messages).add_attributes(attrs))
+}
+
+/// Performs an swap operation with the specified parameters. The trader must approve the
+/// pool contract to transfer offer assets from their wallet.
+///
+/// * **sender** is the sender of the swap operation.
+///
+/// * **offer_asset** proposed asset for swapping.
+///
+/// * **belief_price** is used to calculate the maximum swap spread.
+///
+/// * **max_spread** sets the maximum spread of the swap operation.
+///
+/// * **to** sets the recipient of the swap operation.
+pub fn swap(
+    deps: DepsMut,
+    env: Env,
+    sender: Addr,
+    offer_asset: Asset,
+    belief_price: Option<Decimal>,
+    max_spread: Option<Decimal>,
+    to: Option<Addr>,
+) -> Result<Response, ContractError> {
+    let precisions = Precisions::new(deps.storage)?;
+    let offer_asset_prec = precisions.get_precision(&offer_asset.info)?;
+    let offer_asset_dec = offer_asset.to_decimal_asset(offer_asset_prec)?;
+    let mut config = CONFIG.load(deps.storage)?;
+
+    let mut pools = query_pools(deps.querier, &env.contract.address, &config, &precisions)?;
+
+    let (offer_ind, _) = pools
+        .iter()
+        .find_position(|asset| asset.info == offer_asset_dec.info)
+        .ok_or(ContractError::Generic {
+            err: "Invalid asset".to_string(),
+        })?;
+    let ask_ind = 1 ^ offer_ind;
+    let ask_asset_prec = precisions.get_precision(&pools[ask_ind].info)?;
+
+    pools[offer_ind].amount -= offer_asset_dec.amount;
+
+    before_swap_check(&pools, offer_asset_dec.amount)?;
+
+    let mut xs = pools.iter().map(|asset| asset.amount).collect_vec();
+    let old_real_price = calc_last_prices(&xs, &config, &env)?;
+
+    // Get fee info from the factory
+    let fee_info = query_fee_info(
+        &deps.querier,
+        &config.factory_addr,
+        config.pair_info.pair_type.clone(),
+    )?;
+    let mut maker_fee_share = Decimal256::zero();
+    if fee_info.fee_address.is_some() {
+        maker_fee_share = fee_info.maker_fee_rate.into();
+    }
+    // If this pool is configured to share fees
+    let mut share_fee_share = Decimal256::zero();
+    if let Some(fee_share) = config.fee_share.clone() {
+        share_fee_share = Decimal256::from_ratio(fee_share.bps, 10000u16);
+    }
+
+    let swap_result = compute_swap(
+        &xs,
+        offer_asset_dec.amount,
+        ask_ind,
+        &config,
+        &env,
+        maker_fee_share,
+        share_fee_share,
+    )?;
+    xs[offer_ind] += offer_asset_dec.amount;
+    xs[ask_ind] -= swap_result.dy + swap_result.maker_fee + swap_result.share_fee;
+
+    let return_amount =
+        swap_result
+            .dy
+            .to_uint(ask_asset_prec)
+            .map_err(|_| ContractError::Generic {
+                err: "Conversion overflow".to_string(),
+            })?;
+    let spread_amount = swap_result
+        .spread_fee
+        .to_uint(ask_asset_prec)
+        .map_err(|_| ContractError::Generic {
+            err: "Conversion overflow".to_string(),
+        })?;
+    assert_max_spread(
+        belief_price,
+        max_spread,
+        offer_asset.amount,
+        return_amount,
+        spread_amount,
+    )?;
+
+    let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?
+        .to_decimal256(LP_TOKEN_PRECISION)?;
+
+    // Skip very small trade sizes which could significantly mess up the price due to rounding errors,
+    // especially if token precisions are 18.
+    if (swap_result.dy + swap_result.maker_fee + swap_result.share_fee) >= MIN_TRADE_SIZE
+        && offer_asset_dec.amount >= MIN_TRADE_SIZE
+    {
+        let last_price = swap_result.calc_last_price(offer_asset_dec.amount, offer_ind);
+
+        // update_price() works only with internal representation
+        xs[1] *= config.pool_state.price_state.price_scale;
+        config
+            .pool_state
+            .update_price(&config.pool_params, &env, total_share, &xs, last_price)?;
+    }
+
+    let receiver = to.unwrap_or_else(|| sender.clone());
+
+    let mut messages = vec![Asset {
+        info: pools[ask_ind].info.clone(),
+        amount: return_amount,
+    }
+    .into_msg(&receiver)?];
+
+    // Send the shared fee
+    let mut fee_share_amount = Uint128::zero();
+    if let Some(fee_share) = config.fee_share.clone() {
+        fee_share_amount =
+            swap_result
+                .share_fee
+                .to_uint(ask_asset_prec)
+                .map_err(|_| ContractError::Generic {
+                    err: "Conversion overflow".to_string(),
+                })?;
+        if !fee_share_amount.is_zero() {
+            let fee = pools[ask_ind].info.with_balance(fee_share_amount);
+            messages.push(fee.into_msg(fee_share.recipient)?);
+        }
+    }
+
+    // Send the maker fee
+    let mut maker_fee = Uint128::zero();
+    if let Some(fee_address) = fee_info.fee_address {
+        maker_fee =
+            swap_result
+                .maker_fee
+                .to_uint(ask_asset_prec)
+                .map_err(|_| ContractError::Generic {
+                    err: "Conversion overflow".to_string(),
+                })?;
+        if !maker_fee.is_zero() {
+            let fee = pools[ask_ind].info.with_balance(maker_fee);
+            messages.push(fee.into_msg(fee_address)?);
+        }
+    }
+
+    accumulate_prices(&env, &mut config, old_real_price);
+
+    // Store observation from precommit data
+    accumulate_swap_sizes(deps.storage, &env)?;
+
+    // Store time series data in precommit observation.
+    // Skipping small unsafe values which can seriously mess oracle price due to rounding errors.
+    // This data will be reflected in observations in the next action.
+    if offer_asset_dec.amount >= MIN_TRADE_SIZE && swap_result.dy >= MIN_TRADE_SIZE {
+        let (base_amount, quote_amount) = if offer_ind == 0 {
+            (offer_asset.amount, return_amount)
+        } else {
+            (return_amount, offer_asset.amount)
+        };
+        PrecommitObservation::save(deps.storage, &env, base_amount, quote_amount)?;
+    }
+
+    CONFIG.save(deps.storage, &config)?;
+
+    if config.track_asset_balances {
+        CONCENTRATED_BALANCES.save(
+            deps.storage,
+            &pools[offer_ind].info,
+            &(pools[offer_ind].amount + offer_asset_dec.amount)
+                .to_uint(offer_asset_prec)
+                .map_err(|_| ContractError::Generic {
+                    err: "Conversion overflow".to_string(),
+                })?,
+            env.block.height,
+        )?;
+        CONCENTRATED_BALANCES.save(
+            deps.storage,
+            &pools[ask_ind].info,
+            &(pools[ask_ind].amount.to_uint(ask_asset_prec).map_err(|_| {
+                ContractError::Generic {
+                    err: "Conversion overflow".to_string(),
+                }
+            })? - return_amount
+                - maker_fee
+                - fee_share_amount),
+            env.block.height,
+        )?;
+    }
+
+    Ok(Response::new().add_messages(messages).add_attributes(vec![
+        attr("action", "swap"),
+        attr("sender", sender),
+        attr("receiver", receiver),
+        attr("offer_asset", offer_asset_dec.info.to_string()),
+        attr("ask_asset", pools[ask_ind].info.to_string()),
+        attr("offer_amount", offer_asset.amount),
+        attr("return_amount", return_amount),
+        attr("spread_amount", spread_amount),
+        attr(
+            "commission_amount",
+            swap_result
+                .total_fee
+                .to_uint(ask_asset_prec)
+                .map_err(|_| ContractError::Generic {
+                    err: "Conversion overflow".to_string(),
+                })?,
+        ),
+        attr("maker_fee_amount", maker_fee),
+        attr("fee_share_amount", fee_share_amount),
+    ]))
 }

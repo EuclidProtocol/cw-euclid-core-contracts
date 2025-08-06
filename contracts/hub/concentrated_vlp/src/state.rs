@@ -1,15 +1,16 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    coin, ensure, from_json, wasm_execute, Addr, CosmosMsg, CustomQuery, Decimal, Decimal256,
-    DepsMut, Env, Fraction, Order, QuerierWrapper, StdError, StdResult, Storage, Uint128, Uint64,
+    coin, ensure, from_json, to_json_binary, wasm_execute, Addr, BankMsg, CosmosMsg, CustomQuery,
+    Decimal, Decimal256, DepsMut, Env, Fraction, Order, QuerierWrapper, StdError, StdResult,
+    Storage, Uint128, Uint64, WasmMsg,
 };
-use cw20::{Cw20QueryMsg, TokenInfoResponse};
+use cw20::{Cw20ExecuteMsg, Cw20QueryMsg, TokenInfoResponse};
 use cw_asset::{Asset, AssetInfo};
 use cw_storage_plus::{Item, Map, SnapshotMap};
 use euclid::error::ContractError;
 use euclid::msgs::concentrated_vlp::{
-    query_balance, query_token_balance, tf_mint_msg, AmpGamma, DecimalAsset, FeeShareConfig,
-    PairType, PoolParams, PriceState,
+    query_balance, query_token_balance, tf_mint_msg, AmpGamma, CircularBuffer, DecimalAsset,
+    FeeShareConfig, Observation, PairType, PoolParams, PriceState,
 };
 use euclid::pool::State;
 use euclid::utils::math::Decimal256Ext;
@@ -40,6 +41,9 @@ pub const CONCENTRATED_BALANCES: SnapshotMap<&AssetInfo, Uint128> = SnapshotMap:
     "balances_change",
     cw_storage_plus::Strategy::EveryBlock,
 );
+/// Circular buffer to store trade size observations
+pub const OBSERVATIONS: CircularBuffer<Observation> =
+    CircularBuffer::new("observations_state", "observations_buffer");
 /// This structure stores the concentrated pair parameters.
 #[cw_serde]
 pub struct Config {
@@ -167,12 +171,48 @@ impl PairInfo {
             .collect()
     }
 }
+pub trait AssetExt {
+    fn to_decimal_asset(&self, precision: impl Into<u32>) -> StdResult<DecimalAsset>;
+    fn into_msg<T>(self, recipient: impl Into<String>) -> StdResult<CosmosMsg<T>>;
+}
+
+impl AssetExt for Asset {
+    fn to_decimal_asset(&self, precision: impl Into<u32>) -> StdResult<DecimalAsset> {
+        Ok(DecimalAsset {
+            info: self.info.clone(),
+            amount: Decimal256::with_precision(self.amount, precision.into())?,
+        })
+    }
+    /// For native tokens of type [`AssetInfo`] uses the default method [`BankMsg::Send`] to send a
+    /// token amount to a recipient.
+    /// For a token of type [`AssetInfo`] we use the default method [`Cw20ExecuteMsg::Transfer`].
+    fn into_msg<T>(self, recipient: impl Into<String>) -> StdResult<CosmosMsg<T>> {
+        let recipient = recipient.into();
+        match &self.info {
+            AssetInfo::Cw20(contract_addr) => Ok(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: contract_addr.to_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient,
+                    amount: self.amount,
+                })?,
+                funds: vec![],
+            })),
+            AssetInfo::Native(denom) => Ok(CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient,
+                amount: vec![coin(self.amount.u128(), denom.to_string())],
+            })),
+            _ => Err(StdError::generic_err("Invalid asset info")),
+        }
+    }
+}
+
 pub trait AssetInfoExt {
     fn query_pool(
         &self,
         querier: &QuerierWrapper,
         pool_addr: impl Into<String>,
     ) -> StdResult<Uint128>;
+    fn with_balance(&self, balance: impl Into<Uint128>) -> Asset;
 }
 
 impl AssetInfoExt for AssetInfo {
@@ -189,6 +229,12 @@ impl AssetInfoExt for AssetInfo {
             }
             AssetInfo::Native(denom) => query_balance(querier, &pool_addr, denom),
             _ => Err(StdError::generic_err("Invalid asset info")),
+        }
+    }
+    fn with_balance(&self, balance: impl Into<Uint128>) -> Asset {
+        Asset {
+            info: self.clone(),
+            amount: balance.into(),
         }
     }
 }

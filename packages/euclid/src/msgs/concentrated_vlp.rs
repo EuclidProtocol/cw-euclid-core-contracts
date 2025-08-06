@@ -1,4 +1,8 @@
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+    marker::PhantomData,
+};
 
 use crate::{
     chain::{ChainUid, CrossChainUser},
@@ -11,13 +15,15 @@ pub use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as ProtoCoin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{
     ensure, Addr, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg,
-    CustomQuery, Decimal, Decimal256, Env, Fraction, QuerierWrapper, StdError, StdResult, Uint128,
-    Uint256, Uint64,
+    CustomQuery, Decimal, Decimal256, Env, Fraction, QuerierWrapper, StdError, StdResult, Storage,
+    Uint128, Uint256, Uint64,
 };
 
 use cw20::{BalanceResponse as Cw20BalanceResponse, Cw20QueryMsg};
 use cw_asset::{Asset, AssetInfo, AssetInfoBase};
+use cw_storage_plus::{Item, Map};
 use prost::Message;
+use serde::{de::DeserializeOwned, Serialize};
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
 pub const TYPE_URL: &'static str = "/osmosis.tokenfactory.v1beta1.MsgMint";
@@ -64,13 +70,11 @@ pub enum ExecuteMsg {
     },
 
     Swap {
-        sender: CrossChainUser,
-        tx_id: String,
-        asset_in: Token,
-        amount_in: Uint128,
-        min_token_out: Uint128,
-        next_swaps: Vec<NextSwapVlp>,
-        test_fail: Option<bool>,
+        sender: Addr,
+        offer_asset: Asset,
+        belief_price: Option<Decimal>,
+        max_spread: Option<Decimal>,
+        to: Option<Addr>,
     },
     AddLiquidity {
         assets: Vec<Asset>,
@@ -270,6 +274,83 @@ where
     querier
         .query_balance(account_addr, denom)
         .map(|coin| coin.amount)
+}
+
+/// This structure describes the available query messages for the factory contract.
+#[cw_serde]
+#[derive(QueryResponses)]
+pub enum FactoryQueryMsg {
+    // /// Config returns contract settings specified in the custom [`ConfigResponse`] structure.
+    // #[returns(ConfigResponse)]
+    // Config {},
+    // /// Pair returns information about a specific pair according to the specified assets.
+    // #[returns(PairInfo)]
+    // Pair {
+    //     /// The assets for which we return a pair
+    //     asset_infos: Vec<AssetInfo>,
+    // },
+    // /// Pairs returns an array of pairs and their information according to the specified parameters in `start_after` and `limit` variables.
+    // #[returns(PairsResponse)]
+    // Pairs {
+    //     /// The pair item to start reading from. It is an [`Option`] type that accepts [`AssetInfo`] elements.
+    //     start_after: Option<Vec<AssetInfo>>,
+    //     /// The number of pairs to read and return. It is an [`Option`] type.
+    //     limit: Option<u32>,
+    // },
+    /// FeeInfo returns fee parameters for a specific pair. The response is returned using a [`FeeInfoResponse`] structure
+    #[returns(FeeInfoResponse)]
+    FeeInfo {
+        /// The pair type for which we return fee information. Pair type is a [`PairType`] struct
+        pair_type: PairType,
+    },
+    // /// Returns a vector that contains blacklisted pair types
+    // #[returns(Vec<PairType>)]
+    // BlacklistedPairTypes {},
+    // #[returns(TrackerConfig)]
+    // TrackerConfig {},
+}
+
+/// This structure holds parameters that describe the fee structure for a pool.
+#[derive(Clone)]
+pub struct FeeInfo {
+    /// The fee address
+    pub fee_address: Option<Addr>,
+    /// The total amount of fees charged per swap
+    pub total_fee_rate: Decimal,
+    /// The amount of fees sent to the Maker contract
+    pub maker_fee_rate: Decimal,
+}
+
+/// Returns the fee information for a specific pair type.
+///
+/// * **pair_type** pair type we query information for.
+pub fn query_fee_info<C>(
+    querier: &QuerierWrapper<C>,
+    factory_contract: impl Into<String>,
+    pair_type: PairType,
+) -> StdResult<FeeInfo>
+where
+    C: CustomQuery,
+{
+    let res: FeeInfoResponse =
+        querier.query_wasm_smart(factory_contract, &FactoryQueryMsg::FeeInfo { pair_type })?;
+
+    Ok(FeeInfo {
+        fee_address: res.fee_address,
+        total_fee_rate: Decimal::from_ratio(res.total_fee_bps, 10000u16),
+        maker_fee_rate: Decimal::from_ratio(res.maker_fee_bps, 10000u16),
+    })
+}
+
+/// A custom struct for each query response that returns an object of type [`FeeInfoResponse`].
+#[cw_serde]
+pub struct FeeInfoResponse {
+    /// Contract address to send governance fees to
+    pub fee_address: Option<Addr>,
+    /// Total amount of fees (in bps) charged on a swap
+    pub total_fee_bps: u16,
+    /// Amount of fees (in bps) sent to the Maker contract
+    pub maker_fee_bps: u16,
 }
 
 /// This structure stores the pool parameters which may be adjusted via the `update_pool_params`.
@@ -661,3 +742,277 @@ where
 }
 impl IntegerToDecimal for u64 {}
 impl IntegerToDecimal for Uint128 {}
+
+#[cw_serde]
+pub struct PrecommitObservation {
+    pub base_amount: Uint128,
+    pub quote_amount: Uint128,
+    pub precommit_ts: u64,
+}
+
+impl PrecommitObservation {
+    /// Temporal storage for observation which should be committed in the next block
+    const PRECOMMIT_OBSERVATION: Item<PrecommitObservation> = Item::new("precommit_observation");
+
+    pub fn save(
+        storage: &mut dyn Storage,
+        env: &Env,
+        base_amount: Uint128,
+        quote_amount: Uint128,
+    ) -> StdResult<()> {
+        let next_obs = match Self::may_load(storage)? {
+            // Accumulating observations at the same block
+            Some(mut prev_obs) if env.block.time.seconds() == prev_obs.precommit_ts => {
+                prev_obs.base_amount += base_amount;
+                prev_obs.quote_amount += quote_amount;
+                prev_obs
+            }
+            _ => PrecommitObservation {
+                base_amount,
+                quote_amount,
+                precommit_ts: env.block.time.seconds(),
+            },
+        };
+
+        Self::PRECOMMIT_OBSERVATION.save(storage, &next_obs)
+    }
+
+    #[inline]
+    pub fn may_load(storage: &dyn Storage) -> StdResult<Option<Self>> {
+        Self::PRECOMMIT_OBSERVATION.may_load(storage)
+    }
+}
+
+#[cw_serde]
+pub struct BufferState {
+    capacity: u32,
+    head: u32,
+}
+
+pub struct CircularBuffer<V> {
+    state_key: &'static str,
+    array_namespace: &'static str,
+    data_type: PhantomData<V>,
+}
+
+impl<V> CircularBuffer<V> {
+    pub const fn new(state_key: &'static str, array_namespace: &'static str) -> Self {
+        Self {
+            state_key,
+            array_namespace,
+            data_type: PhantomData,
+        }
+    }
+
+    pub const fn state(&self) -> Item<BufferState> {
+        Item::new(self.state_key)
+    }
+
+    pub const fn array(&self) -> Map<u32, V> {
+        Map::new(self.array_namespace)
+    }
+}
+use std::fmt::Debug;
+
+pub struct BufferManager<V> {
+    state: BufferState,
+    store_iface: CircularBuffer<V>,
+    precommit_buffer: HashMap<u32, V>,
+}
+
+impl<V> BufferManager<V>
+where
+    V: Serialize + DeserializeOwned + Clone,
+{
+    /// Static function to initialize buffer in storage.
+    /// Intended to be called during contract initialization.
+    pub fn init(
+        store: &mut dyn Storage,
+        store_iface: CircularBuffer<V>,
+        capacity: u32,
+    ) -> Result<(), StdError> {
+        let state_iface = store_iface.state();
+
+        if state_iface.may_load(store)?.is_some() {
+            return Err(StdError::generic_err("Buffer already initialized"));
+        }
+
+        state_iface.save(store, &BufferState { capacity, head: 0 })?;
+
+        Ok(())
+    }
+
+    /// Initialize buffer manager.
+    /// In case buffer is not initialized it throws [`BufferError::BufferNotInitialized`] error.
+    pub fn new(store: &dyn Storage, store_iface: CircularBuffer<V>) -> StdResult<Self> {
+        Ok(Self {
+            state: store_iface.state().load(store).map_err(|err| {
+                if let StdError::NotFound { .. } = err {
+                    StdError::generic_err("Buffer not initialized")
+                } else {
+                    err.into()
+                }
+            })?,
+            store_iface,
+            precommit_buffer: HashMap::new(),
+        })
+    }
+
+    /// Returns current buffer capacity.
+    pub fn capacity(&self) -> u32 {
+        self.state.capacity
+    }
+
+    /// Returns current buffer head.
+    pub fn head(&self) -> u32 {
+        self.state.head
+    }
+
+    /// Push value to precommit buffer.
+    pub fn push(&mut self, value: &V) {
+        self.precommit_buffer.insert(self.state.head, value.clone());
+        self.state.head = (self.state.head + 1) % self.state.capacity;
+    }
+
+    /// Push multiple values to precommit buffer.
+    pub fn push_many(&mut self, values: &[V]) {
+        for value in values {
+            self.push(value);
+        }
+    }
+
+    /// Push value to precommit buffer and commit it to storage.
+    pub fn instant_push(&mut self, store: &mut dyn Storage, value: &V) -> Result<(), StdError> {
+        self.push(value);
+        self.commit(store)
+    }
+
+    /// Commit in storage current state and precommit buffer. Buffer is erased after commit.
+    pub fn commit(&mut self, store: &mut dyn Storage) -> Result<(), StdError> {
+        let array_key = self.store_iface.array();
+        for (&key, value) in &self.precommit_buffer {
+            if key >= self.state.capacity {
+                return Err(StdError::generic_err("Save value error"));
+            }
+            array_key.save(store, key, value)?;
+        }
+        self.precommit_buffer.clear();
+        self.store_iface.state().save(store, &self.state)?;
+
+        Ok(())
+    }
+
+    /// Read values from storage by indexes. If `stop_if_empty` is true,
+    /// reading will stop when first empty value is encountered.
+    /// Otherwise, [`BufferError::IndexNotFound`] error will be thrown.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use cosmwasm_std::{testing::MockStorage};
+    /// # use astroport_circular_buffer::{BufferManager, CircularBuffer};
+    /// # let mut store = MockStorage::new();
+    /// # const CIRCULAR_BUFFER: CircularBuffer<u128> = CircularBuffer::new("buffer_state", "buffer");
+    /// # BufferManager::init(&mut store, CIRCULAR_BUFFER, 10).unwrap();
+    /// # let mut buffer = BufferManager::new(&store, CIRCULAR_BUFFER).unwrap();
+    /// # let data = (1..=10u128).collect::<Vec<_>>();
+    /// # buffer.push_many(&data);
+    /// # buffer.commit(&mut store).unwrap();
+    ///
+    /// let values = buffer.read(&store, 0u32..=9, false).unwrap();
+    /// let values = buffer.read(&store, vec![0u32, 5, 7], false).unwrap();
+    /// let values = buffer.read(&store, (0u32..buffer.capacity()).step_by(2), false).unwrap();
+    /// ```
+    pub fn read(
+        &self,
+        store: &dyn Storage,
+        indexes: impl IntoIterator<Item = impl Into<u32> + Display>,
+        stop_if_empty: bool,
+    ) -> Result<Vec<V>, StdError> {
+        let array_key = self.store_iface.array();
+        let mut values = vec![];
+        for index in indexes {
+            let ind = index.into();
+            if ind > self.state.capacity - 1 {
+                return Err(StdError::generic_err("Read ahead error"));
+            } else {
+                let value = array_key.load(store, ind).map_err(|err| {
+                    if let StdError::NotFound { .. } = err {
+                        StdError::generic_err("Index not found")
+                    } else {
+                        err.into()
+                    }
+                });
+                match value {
+                    Ok(value) => values.push(value),
+                    Err(StdError::NotFound { .. }) if stop_if_empty => return Ok(values),
+                    Err(err) => return Err(err),
+                }
+            }
+        }
+
+        Ok(values)
+    }
+
+    /// Read all available values from storage.
+    pub fn read_all(&self, store: &dyn Storage) -> Result<Vec<V>, StdError> {
+        self.read(store, 0..self.state.capacity, true)
+    }
+
+    /// Read last saved value from storage. Returns None if buffer is empty.
+    pub fn read_last(&self, store: &dyn Storage) -> Result<Option<V>, StdError> {
+        self.read_single(
+            store,
+            (self.state.capacity + self.state.head - 1) % self.state.capacity,
+        )
+    }
+
+    /// Looped read. Returns None if value in buffer does not exist.
+    pub fn read_single(
+        &self,
+        store: &dyn Storage,
+        index: impl Into<u32>,
+    ) -> Result<Option<V>, StdError> {
+        let ind = index.into() % self.state.capacity;
+        let res = self.store_iface.array().load(store, ind);
+        if let Err(StdError::NotFound { .. }) = res {
+            Ok(None)
+        } else {
+            res.map(Some).map_err(Into::into)
+        }
+    }
+
+    /// This operation is gas consuming. However, it might be helpful in rare cases.
+    pub fn clear_buffer(&self, store: &mut dyn Storage) {
+        let array_key = self.store_iface.array();
+        (0..self.state.capacity).for_each(|i| array_key.remove(store, i))
+    }
+
+    /// Whether index exists in buffer.
+    pub fn exists(&self, store: &dyn Storage, index: u32) -> bool {
+        self.store_iface
+            .array()
+            .has(store, index % self.state.capacity)
+    }
+}
+
+impl<V: Debug> Debug for BufferManager<V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BufferManager")
+            .field("state", &self.state)
+            .field("precommit_buffer", &self.precommit_buffer)
+            .finish()
+    }
+}
+
+/// Stores trade size observations. We use it in orderbook integration
+/// and derive prices for external contracts/users.
+#[cw_serde]
+#[derive(Copy, Default)]
+pub struct Observation {
+    /// Timestamp of the observation
+    pub ts: u64,
+    /// Observed price at this point
+    pub price: Decimal,
+    /// Price simple moving average (mean)
+    pub price_sma: Decimal,
+}

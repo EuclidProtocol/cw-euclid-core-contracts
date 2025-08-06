@@ -9,7 +9,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::provide_liquidity;
+use crate::execute::{provide_liquidity, swap};
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
@@ -246,30 +246,11 @@ pub fn execute(
         ),
         ExecuteMsg::Swap {
             sender,
-            asset_in,
-            amount_in,
-            min_token_out,
-            tx_id,
-            next_swaps,
-            test_fail,
-        } => {
-            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
-            execute_swap(
-                deps,
-                env,
-                info,
-                &STATE,
-                &BALANCES,
-                sender,
-                asset_in,
-                amount_in,
-                min_token_out,
-                tx_id,
-                next_swaps,
-                SwapCalculationMethod::Stable(amp_factor),
-                test_fail,
-            )
-        }
+            offer_asset,
+            belief_price,
+            max_spread,
+            to,
+        } => swap(deps, env, sender, offer_asset, belief_price, max_spread, to),
         ExecuteMsg::UpdateState {
             router,
             virtual_balance,

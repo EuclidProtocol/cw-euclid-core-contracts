@@ -1,5 +1,6 @@
-use cosmwasm_std::{Decimal256, Fraction, StdError, StdResult, Uint128};
-use euclid::msgs::concentrated_vlp::AmpGamma;
+use cosmwasm_std::{Decimal, Decimal256, Fraction, StdError, StdResult, Uint128, Uint256, Uint64};
+use euclid::msgs::concentrated_vlp::{AmpGamma, Decimal256Ext};
+use itertools::Itertools;
 use std::fmt::{Display, Formatter};
 use std::ops;
 
@@ -223,6 +224,25 @@ impl ops::Neg for SignedDecimal256 {
     }
 }
 
+pub trait AbsDiff
+where
+    Self: Copy + PartialOrd + ops::Sub<Output = Self>,
+{
+    fn diff(self, rhs: Self) -> Self {
+        if self > rhs {
+            self - rhs
+        } else {
+            rhs - self
+        }
+    }
+}
+
+impl AbsDiff for Uint256 {}
+impl AbsDiff for Uint128 {}
+impl AbsDiff for Uint64 {}
+impl AbsDiff for Decimal {}
+impl AbsDiff for Decimal256 {}
+
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
@@ -424,4 +444,177 @@ pub fn half_float_pow(power: Decimal256) -> StdResult<Decimal256> {
     }
 
     Err(StdError::generic_err("halfpow is not converging"))
+}
+
+/// The maximum number of calculation steps for Newton's method.
+const ITERATIONS: u8 = 64;
+
+pub const MAX_AMP: u64 = 1_000_000;
+pub const MAX_AMP_CHANGE: u64 = 10;
+pub const MIN_AMP_CHANGING_TIME: u64 = 86400;
+pub const AMP_PRECISION: u64 = 100;
+/// N = 2
+pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
+/// Calculate unknown pool's volume based on the other side of pools which is known and D.
+///
+/// * **xs** - internal representation of pool volumes.
+/// * **d** - current D invariant.
+/// * **amp_gamma** - an object which represents current Amp and Gamma parameters.
+/// * **ask_ind** - the index of pool which is unknown.
+pub fn calc_y(
+    xs: &[Decimal256],
+    d: Decimal256,
+    amp_gamma: &AmpGamma,
+    ask_ind: usize,
+) -> StdResult<Decimal256> {
+    newton_y(xs, amp_gamma.amp.into(), amp_gamma.gamma.into(), d, ask_ind)
+}
+
+pub(crate) fn newton_y(
+    xs: &[Decimal256],
+    a: Decimal256,
+    gamma: Decimal256,
+    d: Decimal256,
+    j: usize,
+) -> StdResult<Decimal256> {
+    let mut x = xs.iter().map(SignedDecimal256::from).collect_vec();
+    let x0 = d.pow(2) / (N_POW2 * x[1 - j]);
+    let mut xi_1 = x0;
+    x[j] = x0;
+
+    for _ in 0..MAX_ITER {
+        let xi = xi_1 - f(d.into(), &x, a, gamma) / df_dx(d, &x, a, gamma, j);
+        if xi.diff(xi_1) <= TOL {
+            return xi.try_into();
+        }
+        x[j] = xi;
+        xi_1 = xi;
+    }
+
+    Err(StdError::generic_err("newton_y is not converging"))
+}
+
+/// df/dx
+pub(crate) fn df_dx(
+    d: Decimal256,
+    x: &[SignedDecimal256],
+    a: Decimal256,
+    gamma: Decimal256,
+    i: usize,
+) -> SignedDecimal256 {
+    let x_r = x[1 - i];
+    let d_pow2 = d.pow(2);
+
+    let k0 = x[0] * x[1] * N_POW2 / d_pow2;
+    let gamma_one_k0 = gamma + Decimal256::one() - k0;
+    let gamma_one_k0_pow2 = gamma_one_k0.pow(2);
+    let a_gamma_pow2 = a * gamma.pow(2);
+
+    let k = a_gamma_pow2 * k0 / gamma_one_k0_pow2;
+    let k0_x = x_r * N_POW2;
+    let k_x = k0_x * a_gamma_pow2 * (gamma + Decimal256::one() + k0) * PADDING
+        / (PADDING * d_pow2 * gamma_one_k0 * gamma_one_k0_pow2);
+
+    (k_x * (x[0] + x[1]) + k) * d + x_r - k_x * d_pow2
+}
+
+/// Computes the stableswap invariant (D).
+///
+/// * **Equation**
+///
+/// A * sum(x_i) * n**n + D = A * D * n**n + D**(n+1) / (n**n * prod(x_i))
+///
+pub fn compute_d(amp: Uint64, pools: &[Decimal256]) -> StdResult<Decimal256> {
+    let leverage = Decimal256::from_ratio(amp, AMP_PRECISION) * N_COINS;
+    let amount_a_times_coins = pools[0] * N_COINS;
+    let amount_b_times_coins = pools[1] * N_COINS;
+
+    let sum_x = pools[0].checked_add(pools[1])?; // sum(x_i), a.k.a S
+    if sum_x.is_zero() {
+        Ok(Decimal256::zero())
+    } else {
+        let mut d_previous: Decimal256;
+        let mut d: Decimal256 = sum_x;
+
+        // Newton's method to approximate D
+        for _ in 0..ITERATIONS {
+            let d_product = d.pow(3) / (amount_a_times_coins * amount_b_times_coins);
+            d_previous = d;
+            d = calculate_step(d, leverage, sum_x, d_product)?;
+            // Equality with the precision of 1e-6
+            if d.abs_diff(d_previous) <= TOL {
+                return Ok(d);
+            }
+        }
+
+        Err(StdError::generic_err(
+            "Newton method for D failed to converge",
+        ))
+    }
+}
+
+/// Helper function used to calculate the D invariant as a last step in the `compute_d` public function.
+///
+/// * **Equation**:
+///
+/// d = (leverage * sum_x + d_product * n_coins) * initial_d / ((leverage - 1) * initial_d + (n_coins + 1) * d_product)
+fn calculate_step(
+    initial_d: Decimal256,
+    leverage: Decimal256,
+    sum_x: Decimal256,
+    d_product: Decimal256,
+) -> StdResult<Decimal256> {
+    let leverage_mul = leverage.checked_mul(sum_x)?;
+    let d_p_mul = d_product.checked_mul(N_COINS)?;
+
+    let l_val = leverage_mul.checked_add(d_p_mul)?.checked_mul(initial_d)?;
+
+    let leverage_sub = initial_d.checked_mul(leverage - Decimal256::one())?;
+    let n_coins_sum = d_product.checked_mul(N_COINS.checked_add(Decimal256::one())?)?;
+
+    let r_val = leverage_sub.checked_add(n_coins_sum)?;
+
+    l_val
+        .checked_div(r_val)
+        .map_err(|e| StdError::generic_err(e.to_string()))
+}
+
+/// Internal function to calculate new moving average using Uint256.
+/// Overflow is possible only if new average price is greater than 2^128 - 1 which is unlikely.
+/// Formula: (sma * count + new_price - oldest_price) / count
+pub fn safe_sma_calculation(
+    price_sma: Decimal,
+    oldest_price: Decimal,
+    count: u32,
+    new_price: Decimal,
+) -> StdResult<Decimal> {
+    let sma_times_count = price_sma.numerator().full_mul(count);
+    let res = Decimal256::from_ratio(
+        sma_times_count + Uint256::from(new_price.numerator())
+            - Uint256::from(oldest_price.numerator()),
+        price_sma.denominator().full_mul(count),
+    );
+
+    try_dec256_into_dec(res)
+}
+pub fn try_dec256_into_dec(val: Decimal256) -> StdResult<Decimal> {
+    let numerator: Uint128 = val.numerator().try_into()?;
+
+    Ok(Decimal::from_ratio(numerator, Decimal::one().denominator()))
+}
+
+/// Same as [`safe_sma_calculation`] but is being used when buffer is not full yet.
+/// Formula: (sma * count + new_price) / (count + 1)
+pub fn safe_sma_buffer_not_full(
+    price_sma: Decimal,
+    count: u32,
+    new_price: Decimal,
+) -> StdResult<Decimal> {
+    let sma_times_count = price_sma.numerator().full_mul(count);
+    let res = Decimal256::from_ratio(
+        sma_times_count + Uint256::from(new_price.numerator()),
+        price_sma.denominator().full_mul(count + 1),
+    );
+
+    try_dec256_into_dec(res)
 }
