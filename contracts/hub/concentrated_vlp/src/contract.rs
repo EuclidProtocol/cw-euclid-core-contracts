@@ -9,7 +9,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
-use crate::execute::{provide_liquidity, swap};
+use crate::execute::{provide_liquidity, swap, withdraw_liquidity};
 use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
@@ -229,21 +229,7 @@ pub fn execute(
             receiver,
             min_lp_to_receive,
         ),
-        ExecuteMsg::RemoveLiquidity {
-            sender,
-            lp_allocation,
-            tx_id,
-        } => remove_liquidity(
-            deps,
-            env,
-            info,
-            &STATE,
-            &BALANCES,
-            &CHAIN_LP_TOKENS,
-            sender,
-            lp_allocation,
-            tx_id,
-        ),
+        ExecuteMsg::RemoveLiquidity { assets } => withdraw_liquidity(deps, env, info, assets),
         ExecuteMsg::Swap {
             sender,
             offer_asset,

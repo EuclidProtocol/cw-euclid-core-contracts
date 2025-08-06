@@ -84,9 +84,7 @@ pub enum ExecuteMsg {
         min_lp_to_receive: Option<Uint128>,
     },
     RemoveLiquidity {
-        sender: CrossChainUser,
-        tx_id: String,
-        lp_allocation: Uint128,
+        assets: Vec<Asset>,
     },
     UpdateState {
         // Router Contract
@@ -648,6 +646,24 @@ impl Decimal256Ext for Decimal256 {
 
 #[cfg(not(feature = "injective"))]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgBurn {
+    #[prost(string, tag = "1")]
+    pub sender: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub amount: ::core::option::Option<cosmos_sdk_proto::cosmos::base::v1beta1::Coin>,
+    #[prost(string, tag = "3")]
+    pub burn_from_address: ::prost::alloc::string::String,
+}
+
+impl MsgBurn {
+    #[cfg(not(feature = "injective"))]
+    pub const TYPE_URL: &'static str = "/osmosis.tokenfactory.v1beta1.MsgBurn";
+    #[cfg(feature = "injective")]
+    pub const TYPE_URL: &'static str = "/injective.tokenfactory.v1beta1.MsgBurn";
+}
+
+#[cfg(not(feature = "injective"))]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgMint {
     #[prost(string, tag = "1")]
     pub sender: ::prost::alloc::string::String,
@@ -715,6 +731,32 @@ pub fn tf_mint_msg(
             }
             .into(),
         ]
+    }
+}
+
+pub fn tf_burn_msg(sender: impl Into<String>, coin: Coin) -> CosmosMsg {
+    #[cfg(not(feature = "injective"))]
+    let burn_msg = MsgBurn {
+        sender: sender.into(),
+        amount: Some(ProtoCoin {
+            denom: coin.denom,
+            amount: coin.amount.to_string(),
+        }),
+        burn_from_address: "".to_string(),
+    };
+
+    #[cfg(feature = "injective")]
+    let burn_msg = MsgBurn {
+        sender: sender.into(),
+        amount: Some(ProtoCoin {
+            denom: coin.denom,
+            amount: coin.amount.to_string(),
+        }),
+    };
+
+    CosmosMsg::Stargate {
+        type_url: MsgBurn::TYPE_URL.to_string(),
+        value: Binary::from(burn_msg.encode_to_vec()),
     }
 }
 

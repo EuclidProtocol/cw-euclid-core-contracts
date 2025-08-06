@@ -1,15 +1,16 @@
 // Concentrated VLP
 
 use cosmwasm_std::{
-    attr, ensure, wasm_execute, Addr, CosmosMsg, Decimal, Decimal256, DepsMut, Env, MessageInfo,
-    Response, Uint128, Uint256,
+    attr, coin, ensure, ensure_eq, wasm_execute, Addr, Coin, CosmosMsg, Decimal, Decimal256,
+    DepsMut, Env, MessageInfo, Response, StdResult, Uint128, Uint256,
 };
 use cw20::Cw20ExecuteMsg;
 use cw_asset::{Asset, AssetInfo};
+use cw_utils::one_coin;
 use euclid::{
     error::ContractError,
     msgs::concentrated_vlp::{
-        query_fee_info, query_native_supply, DecimalToInteger, IntegerToDecimal,
+        query_fee_info, query_native_supply, tf_burn_msg, DecimalToInteger, IntegerToDecimal,
         PrecommitObservation,
     },
 };
@@ -17,13 +18,14 @@ use itertools::Itertools;
 /// Minimum initial LP share
 pub const MINIMUM_LIQUIDITY_AMOUNT: Uint128 = Uint128::new(1_000);
 use crate::{
+    math::{calc_d, get_xcp},
     state::{
         accumulate_prices, mint_liquidity_token_message, query_pools, AssetExt, AssetInfoExt,
         Precisions, CONCENTRATED_BALANCES, CONFIG,
     },
     utils::{
         accumulate_swap_sizes, assert_max_spread, before_swap_check, calc_last_prices,
-        calculate_shares, compute_swap, get_assets_with_precision,
+        calculate_shares, compute_swap, get_assets_with_precision, get_share_in_assets,
     },
 };
 /// An LP token's precision.
@@ -398,5 +400,113 @@ pub fn swap(
         ),
         attr("maker_fee_amount", maker_fee),
         attr("fee_share_amount", fee_share_amount),
+    ]))
+}
+
+/// Withdraw liquidity from the pool.
+///
+/// * **sender** address that will receive assets back from the pair contract
+///
+/// * **assets** defines number of coins a user wants to withdraw per each asset.
+pub fn withdraw_liquidity(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    assets: Vec<Asset>,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+
+    let Coin { amount, denom } = one_coin(&info).map_err(|_| ContractError::Generic {
+        err: "Missing denom".to_string(),
+    })?;
+
+    ensure_eq!(
+        denom,
+        config.pair_info.liquidity_token,
+        ContractError::Generic {
+            err: "Missing denom".to_string(),
+        }
+    );
+
+    let precisions = Precisions::new(deps.storage)?;
+    let pools = query_pools(
+        deps.querier,
+        &config.pair_info.contract_addr,
+        &config,
+        &precisions,
+    )?;
+
+    let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?;
+    let mut messages = vec![];
+
+    let refund_assets = if assets.is_empty() {
+        // Usual withdraw (balanced)
+        get_share_in_assets(&pools, amount.saturating_sub(Uint128::one()), total_share)
+    } else {
+        return Err(ContractError::Generic {
+            err: "Imbalanced withdraw is currently disabled".to_string(),
+        });
+    };
+
+    // decrease XCP
+    let mut xs = pools.iter().map(|a| a.amount).collect_vec();
+
+    xs[0] -= refund_assets[0].amount;
+    xs[1] -= refund_assets[1].amount;
+    xs[1] *= config.pool_state.price_state.price_scale;
+    let amp_gamma = config.pool_state.get_amp_gamma(&env);
+    let d = calc_d(&xs, &amp_gamma)?;
+    config.pool_state.price_state.xcp_profit_real =
+        get_xcp(d, config.pool_state.price_state.price_scale)
+            / (total_share - amount).to_decimal256(LP_TOKEN_PRECISION)?;
+
+    let refund_assets = refund_assets
+        .into_iter()
+        .map(|asset| {
+            let prec = precisions.get_precision(&asset.info).unwrap();
+
+            Ok(Asset {
+                info: asset.info,
+                amount: asset.amount.to_uint(prec)?,
+            })
+        })
+        .collect::<StdResult<Vec<_>>>()?;
+
+    messages.extend(
+        refund_assets
+            .iter()
+            .cloned()
+            .map(|asset| asset.into_msg(&info.sender))
+            .collect::<StdResult<Vec<_>>>()?,
+    );
+    messages.push(tf_burn_msg(
+        env.contract.address,
+        coin(amount.u128(), config.pair_info.liquidity_token.to_string()),
+    ));
+
+    if config.track_asset_balances {
+        for (i, pool) in pools.iter().enumerate() {
+            CONCENTRATED_BALANCES.save(
+                deps.storage,
+                &pool.info,
+                &pool
+                    .amount
+                    .to_uint(precisions.get_precision(&pool.info)?)
+                    .map_err(|_| ContractError::Generic {
+                        err: "Conversion overflow".to_string(),
+                    })?
+                    .checked_sub(refund_assets[i].amount)?,
+                env.block.height,
+            )?;
+        }
+    }
+
+    CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new().add_messages(messages).add_attributes(vec![
+        attr("action", "withdraw_liquidity"),
+        attr("sender", info.sender),
+        attr("withdrawn_share", amount),
+        attr("refund_assets", refund_assets.iter().join(", ")),
     ]))
 }

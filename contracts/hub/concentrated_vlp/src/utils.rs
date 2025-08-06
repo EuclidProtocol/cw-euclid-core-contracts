@@ -475,3 +475,30 @@ pub fn accumulate_swap_sizes(storage: &mut dyn Storage, env: &Env) -> Result<(),
 
     Ok(())
 }
+
+/// Return the amount of tokens that a specific amount of LP tokens would withdraw.
+///
+/// * **pools** assets available in the pool.
+///
+/// * **amount** amount of LP tokens to calculate underlying amounts for.
+///
+/// * **total_share** total amount of LP tokens currently issued by the pool.
+pub fn get_share_in_assets(
+    pools: &[DecimalAsset],
+    amount: Uint128,
+    total_share: Uint128,
+) -> Vec<DecimalAsset> {
+    let share_ratio = if !total_share.is_zero() {
+        Decimal256::from_ratio(amount, total_share)
+    } else {
+        Decimal256::zero()
+    };
+
+    pools
+        .iter()
+        .map(|pool| DecimalAsset {
+            info: pool.info.clone(),
+            amount: pool.amount * share_ratio,
+        })
+        .collect()
+}
