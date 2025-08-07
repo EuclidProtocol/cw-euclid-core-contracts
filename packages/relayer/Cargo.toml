@@ -26,3 +26,4 @@ sha2 = "0.10.8"
 
 cw-orch = { workspace = true }
 k256 = "0.13.4"
+getrandom = { version = "0.2", features = ["js"] }
