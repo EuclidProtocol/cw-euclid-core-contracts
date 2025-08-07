@@ -3476,8 +3476,10 @@ name = "tests-integration"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "concentrated_vlp",
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
+ "cw-asset 4.0.0",
  "cw-multi-test",
  "cw-orch",
  "cw-orch-interchain",

@@ -14,7 +14,7 @@ use crate::{
 pub use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as ProtoCoin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{
-    ensure, Addr, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg,
+    ensure, Addr, AnyMsg, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg,
     CustomQuery, Decimal, Decimal256, Env, Fraction, QuerierWrapper, StdError, StdResult, Storage,
     Uint128, Uint256, Uint64,
 };
@@ -36,11 +36,9 @@ pub const N_POW2: Decimal256 = Decimal256::raw(4000000000000000000);
 pub struct InstantiateMsg {
     pub router: String,
     pub virtual_balance: String,
-    pub pair: Pair,
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
     pub admin: String,
-    pub amp_factor: Option<Uint64>,
     // Concentrated VLP
     /// The pair type
     pub pair_type: PairType,
@@ -552,10 +550,10 @@ where
         subdenom: denom.into(),
     };
 
-    CosmosMsg::Stargate {
+    CosmosMsg::Any(AnyMsg {
         type_url: MsgCreateDenom::TYPE_URL.to_string(),
         value: Binary::from(create_denom_msg.encode_to_vec()),
-    }
+    })
 }
 
 /// Returns the total supply of a native token.

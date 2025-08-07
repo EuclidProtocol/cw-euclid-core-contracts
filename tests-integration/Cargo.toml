@@ -12,6 +12,7 @@ modules = []
 router = { path = "../contracts/hub/router" }
 virtual_balance = { path = "../contracts/hub/virtual_balance" }
 vlp = { path = "../contracts/hub/vlp" }
+concentrated_vlp = { path = "../contracts/hub/concentrated_vlp" }
 stable_vlp = { path = "../contracts/hub/stable_vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }
@@ -25,7 +26,7 @@ relayer = { path = "../packages/relayer" }
 
 
 #Cosmwasm Crates
-cosmwasm-std = { workspace = true }
+cosmwasm-std = { workspace = true, features = ["cosmwasm_2_0"] }
 cw-storage-plus = { workspace = true }
 itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
@@ -33,6 +34,7 @@ cw-utils = { workspace = true }
 cw-orch = { workspace = true }
 cw-orch-interchain = "0.9.0"
 ibc-relayer-types = "0.32.1"
+cw-asset = "=4.0.0"
 
 anyhow = "1.0.79"
 

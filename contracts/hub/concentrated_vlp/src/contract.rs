@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
@@ -7,7 +5,6 @@ use cosmwasm_std::{
     SubMsg, SubMsgResponse, SubMsgResult, Uint128,
 };
 use cw2::set_contract_version;
-use euclid::fee::{DenomFees, TotalFees};
 
 use crate::execute::{provide_liquidity, swap, withdraw_liquidity};
 use crate::query::{
@@ -16,18 +13,14 @@ use crate::query::{
 };
 use crate::reply;
 use crate::state::{
-    Config, PairInfo, PoolState, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
-    CONCENTRATED_BALANCES, CONFIG, STATE,
+    Config, PairInfo, PoolState, AMP_FACTOR, CHAIN_LP_TOKENS, CONCENTRATED_BALANCES, CONFIG, STATE,
 };
 use euclid::error::ContractError;
 use euclid::msgs::concentrated_vlp::{
     tf_create_denom_msg, AmpGamma, ConcentratedPoolParams, ExecuteMsg, InstantiateMsg,
     MsgCreateDenomResponse, PoolParams, PriceState, QueryMsg, DEFAULT_AMP_FACTOR,
 };
-use euclid::pool::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
-    SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
-};
+use euclid::pool::{register_pool, update_fee, update_state};
 /// An LP token's precision.
 pub(crate) const LP_TOKEN_PRECISION: u8 = 6;
 // version info for migration info
@@ -41,60 +34,9 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    // Validate token pair
-    msg.pair.validate()?;
-
-    let state = State {
-        pair: msg.pair,
-        virtual_balance: msg.virtual_balance,
-        router: info.sender.to_string(),
-        fee: msg.fee,
-        total_fees_collected: TotalFees {
-            lp_fees: DenomFees {
-                totals: HashMap::default(),
-            },
-            euclid_fees: DenomFees {
-                totals: HashMap::default(),
-            },
-        },
-        last_updated: 0,
-        total_lp_tokens: Uint128::zero(),
-        admin: msg.admin,
-    };
-
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    STATE.save(deps.storage, &state)?;
-
-    BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
-    BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
-
-    let amp_factor = msg.amp_factor.unwrap_or(DEFAULT_AMP_FACTOR);
-    AMP_FACTOR.save(deps.storage, &amp_factor)?;
-
-    let response =
-        msg.execute
-            .map_or(Ok(Response::default()), |execute_msg| match execute_msg {
-                ExecuteMsg::RegisterPool {
-                    sender,
-                    pair,
-                    tx_id,
-                } => register_pool(
-                    deps.branch(),
-                    env.clone(),
-                    info.clone(),
-                    &STATE,
-                    &CHAIN_LP_TOKENS,
-                    Some(amp_factor),
-                    sender,
-                    pair,
-                    tx_id,
-                ),
-                _ => Err(ContractError::Unauthorized {}),
-            })?;
-
     // Concentrated VLP Config
     let factory_addr = deps.api.addr_validate(&msg.factory_addr)?;
-
     // Initializing cumulative prices
     let cumulative_prices = vec![
         (
@@ -175,7 +117,7 @@ pub fn instantiate(
         1,
     );
 
-    Ok(response
+    Ok(Response::default()
         .add_submessage(create_denom_msg)
         .add_attribute("method", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
