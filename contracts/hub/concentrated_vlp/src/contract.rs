@@ -222,6 +222,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    println!("reply: {:?}", msg);
     match msg.id {
         1 => {
             if let SubMsgResult::Ok(SubMsgResponse { data: Some(b), .. }) = msg.result {
@@ -231,11 +232,11 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
                     })?;
                 let config = CONFIG.load(deps.storage)?;
 
-                let tracking = config.track_asset_balances;
-                let mut sub_msgs = vec![];
+                // let tracking = config.track_asset_balances;
+                // let mut sub_msgs = vec![];
 
-                #[cfg(feature = "injective")]
-                let tracking = false;
+                // #[cfg(feature = "injective")]
+                // let tracking = false;
 
                 // if tracking {
                 //     let factory_config =
@@ -274,7 +275,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
                 })?;
 
                 Ok(Response::new()
-                    .add_submessages(sub_msgs)
+                    // .add_submessages(sub_msgs)
                     .add_attribute("lp_denom", new_token_denom))
             } else {
                 Err(ContractError::Generic {

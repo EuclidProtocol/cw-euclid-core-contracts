@@ -222,6 +222,8 @@ pub(crate) fn get_assets_with_precision(
             return Err(StdError::generic_err("Nothing to provide").into());
         }
         1 => {
+            println!("assets: {:?}", assets);
+            println!("pools: {:?}", pools);
             // Append omitted asset with explicit zero amount
             let (given_ind, _) = config
                 .pair_info

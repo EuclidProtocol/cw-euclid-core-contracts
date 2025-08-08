@@ -23,7 +23,7 @@ use cw20::{BalanceResponse as Cw20BalanceResponse, Cw20QueryMsg};
 use cw_asset::{Asset, AssetInfo, AssetInfoBase};
 use cw_storage_plus::{Item, Map};
 use prost::Message;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
 pub const TYPE_URL: &'static str = "/osmosis.tokenfactory.v1beta1.MsgMint";
@@ -475,7 +475,7 @@ pub struct FeeShareConfig {
     pub recipient: Addr,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct MsgCreateDenom {
     #[prost(string, tag = "1")]
     pub sender: ::prost::alloc::string::String,
@@ -491,7 +491,7 @@ impl MsgCreateDenom {
     pub const TYPE_URL: &'static str = "/injective.tokenfactory.v1beta1.MsgCreateDenom";
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message, Serialize, Deserialize)]
 pub struct MsgCreateDenomResponse {
     #[prost(string, tag = "1")]
     pub new_token_denom: ::prost::alloc::string::String,
@@ -550,10 +550,10 @@ where
         subdenom: denom.into(),
     };
 
-    CosmosMsg::Any(AnyMsg {
+    CosmosMsg::Stargate {
         type_url: MsgCreateDenom::TYPE_URL.to_string(),
         value: Binary::from(create_denom_msg.encode_to_vec()),
-    })
+    }
 }
 
 /// Returns the total supply of a native token.

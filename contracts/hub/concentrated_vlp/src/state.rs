@@ -71,6 +71,7 @@ pub struct Config {
 
 /// The first key is denom, the second key is a precision.
 pub const COINS_INFO: Map<String, u8> = Map::new("coins_info");
+#[derive(Debug)]
 pub struct Precisions(Vec<(String, u8)>);
 
 impl Precisions {
@@ -99,6 +100,8 @@ impl Precisions {
     }
 
     pub fn get_precision(&self, asset_info: &AssetInfo) -> Result<u8, ContractError> {
+        println!("asset info: {:?}", asset_info);
+        println!("self: {:?}", self);
         self.0
             .iter()
             .find_map(|(info, prec)| {

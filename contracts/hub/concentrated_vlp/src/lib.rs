@@ -9,7 +9,7 @@ pub mod utils;
 
 pub mod mock;
 #[cfg(test)]
-mod tests;
+pub mod testing;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod interface;
