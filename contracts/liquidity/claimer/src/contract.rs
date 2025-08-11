@@ -8,7 +8,9 @@ use euclid::msgs::claimer::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 use euclid::msgs::factory;
 
 use crate::execute::{execute_claim_voucher, execute_virtual_balance_receive};
-use crate::query::{get_claim, get_sender_claims, get_user_claims};
+use crate::query::{
+    get_claim, get_claims_by_claimer_pubkey, get_claims_by_group_id, get_claims_by_sender,
+};
 use crate::{execute::execute_update_admin, query::get_state, state::STATE};
 
 // version info for migration info
@@ -73,16 +75,30 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             sender,
             limit,
             offset,
-        } => Ok(to_json_binary(&get_sender_claims(
+        } => Ok(to_json_binary(&get_claims_by_sender(
             &deps, sender, limit, offset,
         )?)?),
         QueryMsg::GetUserClaims {
             pub_key,
             limit,
             offset,
-        } => Ok(to_json_binary(&get_user_claims(
+        } => Ok(to_json_binary(&get_claims_by_claimer_pubkey(
             &deps, pub_key, limit, offset,
         )?)?),
         QueryMsg::GetClaim { claim_id } => Ok(to_json_binary(&get_claim(&deps, claim_id)?)?),
+        QueryMsg::GetClaimsByClaimerPubkey {
+            pub_key,
+            limit,
+            offset,
+        } => Ok(to_json_binary(&get_claims_by_claimer_pubkey(
+            &deps, pub_key, limit, offset,
+        )?)?),
+        QueryMsg::GetClaimsByGroupId {
+            group_id,
+            limit,
+            offset,
+        } => Ok(to_json_binary(&get_claims_by_group_id(
+            &deps, group_id, limit, offset,
+        )?)?),
     }
 }

@@ -12,7 +12,7 @@ pub fn get_state(deps: &Deps) -> Result<State, ContractError> {
     Ok(state)
 }
 
-pub fn get_sender_claims(
+pub fn get_claims_by_sender(
     deps: &Deps,
     sender: CrossChainUser,
     limit: u64,
@@ -34,7 +34,7 @@ pub fn get_sender_claims(
     Ok(sender_claims)
 }
 
-pub fn get_user_claims(
+pub fn get_claims_by_claimer_pubkey(
     deps: &Deps,
     pub_key: Binary,
     limit: u64,
@@ -59,4 +59,48 @@ pub fn get_user_claims(
 pub fn get_claim(deps: &Deps, claim_id: u128) -> Result<Claim, ContractError> {
     let claim = CLAIMS.load(deps.storage, claim_id)?;
     Ok(claim)
+}
+
+pub fn get_claims_by_group_id(
+    deps: &Deps,
+    group_id: String,
+    limit: u64,
+    offset: u64,
+) -> Result<Vec<(u128, Claim)>, ContractError> {
+    let user_claims = CLAIMS
+        .range(deps.storage, None, None, Order::Ascending)
+        .filter(|claim| {
+            if let Ok(claim) = claim {
+                claim.1.claim_group_id == Some(group_id.clone())
+            } else {
+                false
+            }
+        })
+        .take(limit as usize)
+        .skip(offset as usize)
+        .flatten()
+        .collect::<Vec<_>>();
+    Ok(user_claims)
+}
+
+pub fn get_claims_by_pseudo_claim_id(
+    deps: &Deps,
+    pseudo_claim_id: String,
+    limit: u64,
+    offset: u64,
+) -> Result<Vec<(u128, Claim)>, ContractError> {
+    let user_claims = CLAIMS
+        .range(deps.storage, None, None, Order::Ascending)
+        .filter(|claim| {
+            if let Ok(claim) = claim {
+                claim.1.pseudo_claim_id == Some(pseudo_claim_id.clone())
+            } else {
+                false
+            }
+        })
+        .take(limit as usize)
+        .skip(offset as usize)
+        .flatten()
+        .collect::<Vec<_>>();
+    Ok(user_claims)
 }

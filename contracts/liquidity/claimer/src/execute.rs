@@ -80,6 +80,8 @@ pub fn execute_create_voucher_claim(
         amount,
         claimer_pubkey: msg.claimer_pubkey.clone(),
         sender: sender.clone(),
+        pseudo_claim_id: msg.pseudo_claim_id.clone(),
+        claim_group_id: msg.claim_group_id.clone(),
     };
     CLAIMS.save(deps.storage, claim_id, &claim)?;
 
@@ -88,6 +90,8 @@ pub fn execute_create_voucher_claim(
         .add_attribute("sender", sender.to_sender_string())
         .add_attribute("token", token.to_string())
         .add_attribute("claimer_pubkey", msg.claimer_pubkey.to_string())
+        .add_attribute("pseudo_claim_id", msg.pseudo_claim_id.unwrap_or_default())
+        .add_attribute("claim_group_id", msg.claim_group_id.unwrap_or_default())
         .add_attribute("amount", amount.to_string()))
 }
 
