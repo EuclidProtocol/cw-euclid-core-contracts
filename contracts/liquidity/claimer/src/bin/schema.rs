@@ -1,7 +1,7 @@
 use std::env::current_dir;
 
-use claimer::msgs::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use cosmwasm_schema::write_api;
+use euclid::msgs::claimer::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

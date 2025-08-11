@@ -102,6 +102,8 @@ fn test_create_claim() {
     let claim_obj = euclid::msgs::claimer::VirtualBalanceReceiveHookMsg::CreateVoucherClaim(
         CreateVoucherClaim {
             claimer_pubkey: pubkey_binary.clone(),
+            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+            claim_group_id: Some("group_id".to_string()),
         },
     );
 
@@ -153,6 +155,8 @@ fn test_create_claim_using_vcoin_transfer() {
     let claim_obj = euclid::msgs::claimer::VirtualBalanceReceiveHookMsg::CreateVoucherClaim(
         CreateVoucherClaim {
             claimer_pubkey: pubkey_binary.clone(),
+            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+            claim_group_id: Some("group_id".to_string()),
         },
     );
 
@@ -207,6 +211,8 @@ fn test_create_claim_using_swap() {
     let claim_obj = euclid::msgs::claimer::VirtualBalanceReceiveHookMsg::CreateVoucherClaim(
         CreateVoucherClaim {
             claimer_pubkey: pubkey_binary.clone(),
+            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+            claim_group_id: Some("group_id".to_string()),
         },
     );
     let amount_to_distribute = Uint128::from(100u128);
@@ -263,6 +269,8 @@ fn test_claim_voucher_as_voucher() {
     let claim_obj = euclid::msgs::claimer::VirtualBalanceReceiveHookMsg::CreateVoucherClaim(
         CreateVoucherClaim {
             claimer_pubkey: pubkey_binary.clone(),
+            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+            claim_group_id: Some("group_id".to_string()),
         },
     );
 
@@ -357,6 +365,8 @@ fn test_claim_voucher_and_release() {
     let claim_obj = euclid::msgs::claimer::VirtualBalanceReceiveHookMsg::CreateVoucherClaim(
         CreateVoucherClaim {
             claimer_pubkey: pubkey_binary.clone(),
+            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+            claim_group_id: Some("group_id".to_string()),
         },
     );
 
@@ -461,6 +471,8 @@ fn test_unauthorized_claim_voucher() {
     let claim_obj = euclid::msgs::claimer::VirtualBalanceReceiveHookMsg::CreateVoucherClaim(
         CreateVoucherClaim {
             claimer_pubkey: pubkey_binary.clone(),
+            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+            claim_group_id: Some("group_id".to_string()),
         },
     );
 

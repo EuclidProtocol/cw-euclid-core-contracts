@@ -40,13 +40,25 @@ pub enum QueryMsg {
         offset: u64,
     },
     #[returns(Vec<(u128, Claim)>)]
-    GetUserClaims {
+    GetClaimsByClaimerPubkey {
         pub_key: Binary,
         limit: u64,
         offset: u64,
     },
     #[returns(Claim)]
     GetClaim { claim_id: u128 },
+    #[returns(Vec<(u128, Claim)>)]
+    GetClaimsByGroupId {
+        group_id: String,
+        limit: u64,
+        offset: u64,
+    },
+    #[returns(Vec<(u128, Claim)>)]
+    GetUserClaims {
+        pub_key: Binary,
+        limit: u64,
+        offset: u64,
+    },
 }
 
 #[cw_serde]
@@ -74,6 +86,10 @@ pub struct ClaimVoucherData {
 #[cw_serde]
 pub struct CreateVoucherClaim {
     pub claimer_pubkey: Binary,
+    // Adds a pseudo claim id used by indexers
+    pub pseudo_claim_id: Option<String>,
+    // Group id used by indexers and on chain search using unique identifier
+    pub claim_group_id: Option<String>,
 }
 
 #[cw_serde]
@@ -87,6 +103,8 @@ pub struct Claim {
     pub amount: Uint128,
     pub claimer_pubkey: Binary,
     pub sender: CrossChainUser,
+    pub pseudo_claim_id: Option<String>, // Used by indexers
+    pub claim_group_id: Option<String>, // Used by indexers and on chain search using unique identifier
 }
 
 #[cw_serde]
