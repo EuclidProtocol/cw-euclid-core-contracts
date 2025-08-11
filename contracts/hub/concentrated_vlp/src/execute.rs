@@ -59,20 +59,17 @@ pub fn provide_liquidity(
     receiver: Option<String>,
     min_lp_to_receive: Option<Uint128>,
 ) -> Result<Response, ContractError> {
-    println!("reaching here");
     let mut config = CONFIG.load(deps.storage)?;
-    println!("config: {:?}", config);
 
     let total_share = Decimal256::new(Uint256::from(query_native_supply(
         &deps.querier,
         &config.pair_info.liquidity_token,
     )?));
-    println!("total share: {:?}", total_share);
 
     let precisions = Precisions::new(deps.storage)?;
 
     let mut pools = query_pools(deps.querier, &env.contract.address, &config, &precisions)?;
-    println!("pools: {:?}", pools);
+
     let old_real_price = config.pool_state.price_state.last_price;
 
     let deposits = get_assets_with_precision(
@@ -82,7 +79,7 @@ pub fn provide_liquidity(
         pools.clone(),
         &precisions,
     )?;
-    print!("deposits: {:?}", deposits);
+
     // info.funds
     //     .assert_coins_properly_sent(&assets, &config.pair_info.asset_infos)?;
 
@@ -110,8 +107,6 @@ pub fn provide_liquidity(
             AssetInfo::Native { .. } => {
                 // If the asset is native token, the pool balance is already increased
                 // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-                println!("deposits are: {:?}", deposits[i]);
-                println!("pool amount: {:?}", pool.amount);
                 pool.amount = pool.amount.checked_sub(deposits[i])?;
             }
             _ => {}

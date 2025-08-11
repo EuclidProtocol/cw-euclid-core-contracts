@@ -7,7 +7,7 @@ use cosmwasm_std::{
     to_json_binary, Binary, Coin, ContractResult, OwnedDeps, Querier, QuerierResult, QueryRequest,
     SystemError, SystemResult, WasmQuery,
 };
-use euclid::msgs::concentrated_vlp::{MsgCreateDenom, MsgCreateDenomResponse};
+use euclid::msgs::concentrated_vlp::{FeeInfoResponse, MsgCreateDenom, MsgCreateDenomResponse};
 
 pub const MOCK_TOKEN_CONTRACT: &str =
     "cosmwasm1k2mr5h0a6296pe7s7hwttxzvls049wml8zxnpul3apufzu4qwvwsu8c5mn";
@@ -118,6 +118,14 @@ impl WasmMockQuerier {
                 _ => panic!("Unsupported Query"),
             },
             QueryRequest::Stargate { path, data } => self.handle_create_denom(data),
+            QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
+                let res = FeeInfoResponse {
+                    fee_address: None,
+                    total_fee_bps: 0,
+                    maker_fee_bps: 0,
+                };
+                SystemResult::Ok(ContractResult::Ok(to_json_binary(&res).unwrap()))
+            }
             _ => panic!("Unsupported Query Request: {:?}", request),
         }
     }

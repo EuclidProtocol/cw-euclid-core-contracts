@@ -1,7 +1,7 @@
 #[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
-    use crate::state::Precisions;
+    use crate::state::{Precisions, CONCENTRATED_BALANCES};
     use crate::testing::mock_querier::{mock_dependencies_custom, WasmMockQuerier};
     use crate::{
         contract::{execute, instantiate},
@@ -12,7 +12,7 @@ mod tests {
         testing::{message_info, mock_env, MockQuerier},
         to_json_binary, Decimal, Decimal256, Response, Uint128, Uint64,
     };
-    use cw_asset::{Asset, AssetInfo, AssetInfoBase};
+    use cw_asset::{Asset, AssetBase, AssetInfo, AssetInfoBase};
     use euclid::{
         chain::{ChainUid, CrossChainUser},
         error::ContractError,
@@ -164,12 +164,33 @@ mod tests {
         )
         .unwrap();
 
+        let old_balances = CONCENTRATED_BALANCES
+            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+            .unwrap();
+
+        println!("old balances: {}", old_balances);
+
         let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
-        // let state = CHAIN_LP_TOKENS
-        //     .load(&deps.storage, ChainUid::create("1".to_string()).unwrap())
-        //     .unwrap();
-        // assert_eq!(state, Uint128::zero())
+        let new_balances = CONCENTRATED_BALANCES
+            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+            .unwrap();
+        println!("new balances: {}", new_balances);
+        assert_ne!(new_balances, old_balances);
+
+        let sender = router.clone();
+        let offer_asset = AssetBase::native("1", Uint128::new(100));
+
+        let swap_msg = ExecuteMsg::Swap {
+            sender,
+            offer_asset,
+            belief_price: None,
+            max_spread: None,
+            to: None,
+        };
+
+        let info = message_info(&router, &coins(100, "1"));
+        let res = execute(deps.as_mut(), env.clone(), info, swap_msg).unwrap();
     }
 
     //     #[test]
