@@ -14,6 +14,9 @@ pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
 
+    #[error("Not found: {msg}")]
+    NotFound { msg: String },
+
     #[error("{0}")]
     Overflow(#[from] OverflowError),
 

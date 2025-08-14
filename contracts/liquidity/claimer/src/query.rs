@@ -83,13 +83,11 @@ pub fn get_claims_by_group_id(
     Ok(user_claims)
 }
 
-pub fn get_claims_by_pseudo_claim_id(
+pub fn get_claim_by_pseudo_claim_id(
     deps: &Deps,
     pseudo_claim_id: String,
-    limit: u64,
-    offset: u64,
-) -> Result<Vec<(u128, Claim)>, ContractError> {
-    let user_claims = CLAIMS
+) -> Result<Claim, ContractError> {
+    let user_claim = CLAIMS
         .range(deps.storage, None, None, Order::Ascending)
         .filter(|claim| {
             if let Ok(claim) = claim {
@@ -98,9 +96,10 @@ pub fn get_claims_by_pseudo_claim_id(
                 false
             }
         })
-        .take(limit as usize)
-        .skip(offset as usize)
-        .flatten()
-        .collect::<Vec<_>>();
-    Ok(user_claims)
+        .next()
+        .ok_or(ContractError::NotFound {
+            msg: "Claim not found".to_string(),
+        })??
+        .1;
+    Ok(user_claim)
 }

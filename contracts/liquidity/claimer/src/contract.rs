@@ -9,7 +9,8 @@ use euclid::msgs::factory;
 
 use crate::execute::{execute_claim_voucher, execute_virtual_balance_receive};
 use crate::query::{
-    get_claim, get_claims_by_claimer_pubkey, get_claims_by_group_id, get_claims_by_sender,
+    get_claim, get_claim_by_pseudo_claim_id, get_claims_by_claimer_pubkey, get_claims_by_group_id,
+    get_claims_by_sender,
 };
 use crate::{execute::execute_update_admin, query::get_state, state::STATE};
 
@@ -100,5 +101,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         } => Ok(to_json_binary(&get_claims_by_group_id(
             &deps, group_id, limit, offset,
         )?)?),
+        QueryMsg::GetClaimByPseudoClaimId { pseudo_claim_id } => Ok(to_json_binary(
+            &get_claim_by_pseudo_claim_id(&deps, pseudo_claim_id)?,
+        )?),
     }
 }
