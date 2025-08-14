@@ -86,20 +86,18 @@ pub fn get_claims_by_group_id(
 pub fn get_claim_by_pseudo_claim_id(
     deps: &Deps,
     pseudo_claim_id: String,
-) -> Result<Claim, ContractError> {
-    let user_claim = CLAIMS
+) -> Result<(u128, Claim), ContractError> {
+    let claim = CLAIMS
         .range(deps.storage, None, None, Order::Ascending)
-        .filter(|claim| {
+        .find(|claim| {
             if let Ok(claim) = claim {
                 claim.1.pseudo_claim_id == Some(pseudo_claim_id.clone())
             } else {
                 false
             }
         })
-        .next()
         .ok_or(ContractError::NotFound {
             msg: "Claim not found".to_string(),
-        })??
-        .1;
-    Ok(user_claim)
+        })??;
+    Ok((claim.0, claim.1))
 }

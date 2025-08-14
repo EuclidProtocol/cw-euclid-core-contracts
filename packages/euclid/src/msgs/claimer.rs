@@ -59,7 +59,7 @@ pub enum QueryMsg {
         limit: u64,
         offset: u64,
     },
-    #[returns(Claim)]
+    #[returns((u128, Claim))]
     GetClaimByPseudoClaimId { pseudo_claim_id: String },
 }
 
