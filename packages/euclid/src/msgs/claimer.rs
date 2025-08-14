@@ -59,6 +59,8 @@ pub enum QueryMsg {
         limit: u64,
         offset: u64,
     },
+    #[returns(Claim)]
+    GetClaimByPseudoClaimId { pseudo_claim_id: String },
 }
 
 #[cw_serde]
