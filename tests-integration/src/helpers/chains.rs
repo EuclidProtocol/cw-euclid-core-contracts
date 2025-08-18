@@ -1,6 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
 use claimer::ClaimerContract;
-use cosmwasm_std::Binary;
 use cw20::Cw20Contract;
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
@@ -242,7 +241,7 @@ pub fn get_relayer(chain: &MockBase, address: &Addr) -> RelayerContract<MockBase
     relayer
 }
 
-pub fn get_claimer(chain: &MockBase, address: &Addr) -> ClaimerContract<MockBase> {
+pub fn _get_claimer(chain: &MockBase, address: &Addr) -> ClaimerContract<MockBase> {
     let mut claimer = ClaimerContract::new(chain.clone());
     claimer.as_instance_mut().id = format!("claimer_{}", address);
     claimer.set_address(address);

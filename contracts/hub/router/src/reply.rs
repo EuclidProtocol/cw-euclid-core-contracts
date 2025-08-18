@@ -15,6 +15,7 @@ use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
     msg::HUB_IBC_EXECUTE_MSG_QUEUE,
 };
+use function_name::named;
 
 use crate::{
     ibc::{self, receive::ibc_execute_add_liquidity},
@@ -92,9 +93,13 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
     }
 }
 
+#[named]
 pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
@@ -131,9 +136,13 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
     }
 }
 
+#[named]
 pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
@@ -175,13 +184,17 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
     }
 }
 
+#[named]
 pub fn on_remove_liquidity_reply(
     deps: DepsMut,
     env: Env,
     msg: Reply,
 ) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
         SubMsgResult::Ok(..) => {
             let mut response = Response::new().add_attribute("action", "reply_remove_liquidity");
 
@@ -245,9 +258,13 @@ pub fn on_remove_liquidity_reply(
     }
 }
 
+#[named]
 pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
@@ -321,12 +338,16 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
     }
 }
 
+#[named]
 pub fn on_virtual_balance_instantiate_reply(
     deps: DepsMut,
     msg: Reply,
 ) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Generic { err }),
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();

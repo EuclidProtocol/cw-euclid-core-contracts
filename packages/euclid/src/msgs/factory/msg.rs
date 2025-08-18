@@ -2,7 +2,7 @@ use crate::{
     chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    msgs::hook::{EuclidReceive, VirtualBalanceReceive},
+    msgs::hook::EuclidReceive,
     pool::PoolConfig,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
