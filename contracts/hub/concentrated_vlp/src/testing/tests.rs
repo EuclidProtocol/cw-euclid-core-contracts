@@ -4,6 +4,7 @@ mod tests {
     use crate::contract::{execute, instantiate};
     use crate::state::{Precisions, CONCENTRATED_BALANCES};
     use crate::testing::mock_querier::{mock_dependencies_custom, WasmMockQuerier};
+    use cosmwasm_std::Env;
     use cosmwasm_std::{
         coins,
         testing::{message_info, mock_env},
@@ -71,20 +72,15 @@ mod tests {
         instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
     }
 
-    #[test]
-    fn test_init() {
-        let mut deps = mock_dependencies_custom(&[]);
-        init(&mut deps);
-    }
-
-    #[test]
-    fn test_execute_swap() {
-        let mut deps = mock_dependencies_custom(&[]);
-        let env = mock_env();
-        let factory_addr = deps.api.addr_make("factory");
-
-        init(&mut deps);
-
+    fn add_liquidity(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            WasmMockQuerier,
+        >,
+        env: Env,
+    ) -> Response {
+        init(deps);
         let assets = vec![
             Asset::native("1", Uint128::from(1000u128)),
             Asset::native("2", Uint128::from(1000u128)),
@@ -96,7 +92,7 @@ mod tests {
             receiver: None,
             min_lp_to_receive: None,
         };
-
+        let factory_addr = deps.api.addr_make("factory");
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &coins(1000, "earth"));
 
@@ -115,19 +111,44 @@ mod tests {
         )
         .unwrap();
 
+        execute(deps.as_mut(), env.clone(), info, msg).unwrap()
+    }
+
+    #[test]
+    fn test_init() {
+        let mut deps = mock_dependencies_custom(&[]);
+        init(&mut deps);
+    }
+
+    #[test]
+    fn test_add_liquidity() {
+        let mut deps = mock_dependencies_custom(&[]);
+        let env = mock_env();
+        init(&mut deps);
+
         let old_balances = CONCENTRATED_BALANCES
             .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
             .unwrap();
 
-        println!("old balances: {}", old_balances);
-
-        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        add_liquidity(&mut deps, env);
 
         let new_balances = CONCENTRATED_BALANCES
             .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
             .unwrap();
         println!("new balances: {}", new_balances);
         assert_ne!(new_balances, old_balances);
+    }
+
+    #[test]
+    fn test_execute_swap() {
+        let mut deps = mock_dependencies_custom(&[]);
+        let env = mock_env();
+
+        let router = deps.api.addr_make("router");
+
+        init(&mut deps);
+
+        add_liquidity(&mut deps, env.clone());
 
         let sender = router.clone();
         let offer_asset = AssetBase::native("1", Uint128::new(100));
