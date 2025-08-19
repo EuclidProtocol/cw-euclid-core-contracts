@@ -11,7 +11,7 @@ use crate::{
 pub struct InstantiateMsg {
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
-
+    pub concentrated_vlp_code_id: u64,
     pub virtual_balance_code_id: u64,
     pub mock_relayer_addresses: Option<Vec<String>>,
 }
@@ -67,6 +67,7 @@ pub enum ExecuteMsg {
         // Pool Code ID
         vlp_code_id: Option<u64>,
         stable_vlp_code_id: Option<u64>,
+        concentrated_vlp_code_id: Option<u64>,
         virtual_balance_address: Option<Addr>,
         locked: Option<bool>,
         mock_relayer_addresses: Option<Vec<String>>,
@@ -228,6 +229,7 @@ pub struct StateResponse {
     pub admin: String,
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
+    pub concentrated_vlp_code_id: u64,
     pub virtual_balance_address: Option<Addr>,
     pub locked: bool,
 }

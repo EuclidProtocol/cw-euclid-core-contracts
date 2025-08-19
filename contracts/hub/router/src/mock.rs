@@ -21,11 +21,13 @@ impl MockRouter {
         sender: Addr,
         vlp_code_id: u64,
         stable_vlp_code_id: u64,
+        concentrated_vlp_code_id: u64,
         virtual_balance_code_id: u64,
     ) -> Self {
         let msg = mock_router_instantiate_msg(
             vlp_code_id,
             stable_vlp_code_id,
+            concentrated_vlp_code_id,
             virtual_balance_code_id,
             Some(vec![sender.to_string()]),
         );
@@ -64,12 +66,14 @@ pub fn mock_router() -> Box<dyn Contract<Empty>> {
 pub fn mock_router_instantiate_msg(
     constant_product_vlp_code_id: u64,
     stable_vlp_code_id: u64,
+    concentrated_vlp_code_id: u64,
     virtual_balance_code_id: u64,
     mock_relayer_addresses: Option<Vec<String>>,
 ) -> InstantiateMsg {
     InstantiateMsg {
         constant_product_vlp_code_id,
         stable_vlp_code_id,
+        concentrated_vlp_code_id,
         virtual_balance_code_id,
         mock_relayer_addresses,
     }

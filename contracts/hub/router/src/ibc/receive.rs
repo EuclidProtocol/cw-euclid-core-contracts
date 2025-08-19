@@ -331,9 +331,11 @@ fn execute_request_pool_creation(
         };
         Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)))
     } else {
+        let admin = Some(state.admin.clone());
+        let funds = vec![];
         let msg = match pool_config {
             PoolConfig::Stable { amp_factor } => WasmMsg::Instantiate {
-                admin: Some(state.admin.clone()),
+                admin,
                 code_id: state.stable_vlp_code_id,
                 msg: to_json_binary(&msgs::stable_vlp::InstantiateMsg {
                     router: env.contract.address.to_string(),
@@ -357,11 +359,11 @@ fn execute_request_pool_creation(
                     admin: state.admin.clone(),
                     amp_factor,
                 })?,
-                funds: vec![],
+                funds,
                 label: "Stable VLP".to_string(),
             },
             PoolConfig::ConstantProduct {} => WasmMsg::Instantiate {
-                admin: Some(state.admin.clone()),
+                admin,
                 code_id: state.constant_product_vlp_code_id,
                 msg: to_json_binary(&msgs::vlp::InstantiateMsg {
                     router: env.contract.address.to_string(),
@@ -380,8 +382,46 @@ fn execute_request_pool_creation(
                     execute: Some(register_msg),
                     admin: state.admin.clone(),
                 })?,
-                funds: vec![],
+                funds,
                 label: "Constant Product VLP".to_string(),
+            },
+            PoolConfig::Concentrated {
+                pair_type,
+                asset_infos,
+                token_code_id,
+                factory_addr,
+                init_params,
+            } => WasmMsg::Instantiate {
+                admin,
+                code_id: state.concentrated_vlp_code_id,
+                msg: to_json_binary(&msgs::concentrated_vlp::InstantiateMsg {
+                    router: env.contract.address.to_string(),
+                    virtual_balance: state
+                        .virtual_balance_address
+                        .ok_or(ContractError::Generic {
+                            err: "virtual balance not instantiated".to_string(),
+                        })?
+                        .to_string(),
+                    // pair,
+                    fee: Fee::new(
+                        10,
+                        10,
+                        CrossChainUser::new(ChainUid::vsl_chain_uid()?, state.admin.clone()),
+                    ),
+                    execute: Some(msgs::concentrated_vlp::ExecuteMsg::RegisterPool {
+                        sender: sender.clone(),
+                        pair: pair.clone(),
+                        tx_id: tx_id.clone(),
+                    }),
+                    admin: state.admin.clone(),
+                    pair_type,
+                    asset_infos,
+                    token_code_id,
+                    factory_addr,
+                    init_params,
+                })?,
+                funds,
+                label: "Concentrated VLP".to_string(),
             },
         };
 

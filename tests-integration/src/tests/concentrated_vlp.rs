@@ -50,6 +50,7 @@ fn test_proper_instantiation() {
     let vlp_code_id = 1;
     let router_code_id = 2;
     let virtual_balance_code_id = 3;
+    let concentrated_vlp_code_id = 4;
 
     let mock_router = MockRouter::instantiate(
         &mut vlp,
@@ -57,6 +58,7 @@ fn test_proper_instantiation() {
         owner.clone(),
         vlp_code_id,
         0,
+        concentrated_vlp_code_id,
         virtual_balance_code_id,
     );
 

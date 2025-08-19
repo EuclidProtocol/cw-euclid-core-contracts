@@ -502,6 +502,7 @@ pub fn execute_update_router_state(
     admin: Option<String>,
     constant_product_vlp_code_id: Option<u64>,
     stable_vlp_code_id: Option<u64>,
+    concentrated_vlp_code_id: Option<u64>,
     virtual_balance_address: Option<Addr>,
     locked: Option<bool>,
     mock_relayer_addresses: Option<Vec<String>>,
@@ -532,6 +533,8 @@ pub fn execute_update_router_state(
         constant_product_vlp_code_id: constant_product_vlp_code_id
             .unwrap_or(state.constant_product_vlp_code_id),
         stable_vlp_code_id: stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id),
+        concentrated_vlp_code_id: concentrated_vlp_code_id
+            .unwrap_or(state.concentrated_vlp_code_id),
         virtual_balance_address: verified_virtual_balance_address?,
         locked: locked.unwrap_or(state.locked),
     };
@@ -563,6 +566,10 @@ pub fn execute_update_router_state(
         .add_attribute(
             "stable_vlp_code_id",
             stable_vlp_code_id.map_or("unchanged".to_string(), |code_id| code_id.to_string()),
+        )
+        .add_attribute(
+            "concentrated_vlp_code_id",
+            concentrated_vlp_code_id.map_or("unchanged".to_string(), |code_id| code_id.to_string()),
         )
         .add_attribute(
             "virtual_balance_address",

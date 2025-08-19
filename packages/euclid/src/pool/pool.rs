@@ -4,7 +4,10 @@ use crate::{
     events::{liquidity_event, simple_event, tx_event, TxType},
     fee::{Fee, TotalFees, BPS_50_PERCENT, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
-    msgs::virtual_balance::{ExecuteApprove, ExecuteTransfer},
+    msgs::{
+        concentrated_vlp::PairType,
+        virtual_balance::{ExecuteApprove, ExecuteTransfer},
+    },
     pool::stable_math::compute_stable_swap,
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
@@ -14,10 +17,10 @@ pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo, Response,
-    SubMsg, Uint128, Uint512, Uint64, WasmMsg,
+    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo,
+    Response, SubMsg, Uint128, Uint512, Uint64, WasmMsg,
 };
-use cw_asset::Asset;
+use cw_asset::{Asset, AssetInfo};
 use cw_storage_plus::{Item, Map};
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
@@ -81,8 +84,17 @@ pub struct DeRegisterDenomResponse {}
 
 #[cw_serde]
 pub enum PoolConfig {
-    Stable { amp_factor: Option<Uint64> },
+    Stable {
+        amp_factor: Option<Uint64>,
+    },
     ConstantProduct {},
+    Concentrated {
+        pair_type: PairType,
+        asset_infos: Vec<AssetInfo>,
+        token_code_id: u64,
+        factory_addr: String,
+        init_params: Option<Binary>,
+    },
 }
 
 #[cw_serde]

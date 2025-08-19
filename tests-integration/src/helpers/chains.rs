@@ -1,4 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
+use concentrated_vlp::ConcentratedVlpContract;
 use cosmwasm_std::Binary;
 use cw20::Cw20Contract;
 use cw_orch::{mock::MockBase, prelude::*};
@@ -119,18 +120,20 @@ pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrch
     let virtual_balance = VirtualBalanceContract::new(chain.clone());
     let vlp = VlpContract::new(chain.clone());
     let stable_vlp = StableVlpContract::new(chain.clone());
+    let concentrated_vlp = ConcentratedVlpContract::new(chain.clone());
     let relayer = setup_relayer(chain)?;
 
     router.upload().unwrap();
     virtual_balance.upload().unwrap();
     vlp.upload().unwrap();
     stable_vlp.upload().unwrap();
-
+    concentrated_vlp.upload().unwrap();
     router.instantiate(
         &euclid::msgs::router::InstantiateMsg {
             constant_product_vlp_code_id: vlp.code_id().unwrap(),
             stable_vlp_code_id: stable_vlp.code_id().unwrap(),
             virtual_balance_code_id: virtual_balance.code_id().unwrap(),
+            concentrated_vlp_code_id: concentrated_vlp.code_id().unwrap(),
             mock_relayer_addresses: Some(vec![relayer.address().unwrap().to_string()]),
         },
         None,

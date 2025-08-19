@@ -16,6 +16,7 @@ pub struct State {
     pub constant_product_vlp_code_id: u64,
     // Stable Pool Code ID
     pub stable_vlp_code_id: u64,
+    pub concentrated_vlp_code_id: u64,
     pub virtual_balance_address: Option<Addr>,
     pub locked: bool,
 }

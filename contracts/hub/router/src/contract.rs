@@ -58,6 +58,7 @@ pub fn instantiate(
     let state = State {
         constant_product_vlp_code_id: msg.constant_product_vlp_code_id,
         stable_vlp_code_id: msg.stable_vlp_code_id,
+        concentrated_vlp_code_id: msg.concentrated_vlp_code_id,
         admin: info.sender.to_string(),
         virtual_balance_address: None,
         locked: false,
@@ -167,6 +168,7 @@ pub fn execute(
                     admin,
                     vlp_code_id,
                     stable_vlp_code_id,
+                    concentrated_vlp_code_id,
                     virtual_balance_address,
                     locked,
                     mock_relayer_addresses,
@@ -176,6 +178,7 @@ pub fn execute(
                     admin,
                     vlp_code_id,
                     stable_vlp_code_id,
+                    concentrated_vlp_code_id,
                     virtual_balance_address,
                     locked,
                     mock_relayer_addresses,

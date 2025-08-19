@@ -11,6 +11,11 @@ mod tests {
     use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, RegisterFactoryChainNative};
     use euclid_ibc::msg::HubIbcExecuteMsg;
 
+    const CONSTANT_PRODUCT_VLP_CODE_ID: u64 = 1;
+    const VIRTUAL_BALANCE_CODE_ID: u64 = 2;
+    const STABLE_VLP_CODE_ID: u64 = 3;
+    const CONCENTRATED_VLP_CODE_ID: u64 = 4;
+
     struct TestExecuteMsg {
         name: &'static str,
         msg: ExecuteMsg,
@@ -19,9 +24,10 @@ mod tests {
 
     fn init(deps: DepsMut, info: MessageInfo) -> Response {
         let msg = InstantiateMsg {
-            constant_product_vlp_code_id: 1,
-            stable_vlp_code_id: 3,
-            virtual_balance_code_id: 2,
+            constant_product_vlp_code_id: CONSTANT_PRODUCT_VLP_CODE_ID,
+            stable_vlp_code_id: STABLE_VLP_CODE_ID,
+            virtual_balance_code_id: VIRTUAL_BALANCE_CODE_ID,
+            concentrated_vlp_code_id: CONCENTRATED_VLP_CODE_ID,
             mock_relayer_addresses: None,
         };
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -35,8 +41,9 @@ mod tests {
         init(deps.as_mut(), info);
         let expected_state = State {
             admin: creator.to_string(),
-            constant_product_vlp_code_id: 1,
-            stable_vlp_code_id: 3,
+            constant_product_vlp_code_id: CONSTANT_PRODUCT_VLP_CODE_ID,
+            stable_vlp_code_id: STABLE_VLP_CODE_ID,
+            concentrated_vlp_code_id: CONCENTRATED_VLP_CODE_ID,
             virtual_balance_address: None,
             locked: false,
         };
@@ -55,9 +62,10 @@ mod tests {
 
         // Instantiate the contract first
         let msg = InstantiateMsg {
-            constant_product_vlp_code_id: 1,
-            stable_vlp_code_id: 3,
-            virtual_balance_code_id: 2,
+            constant_product_vlp_code_id: CONSTANT_PRODUCT_VLP_CODE_ID,
+            stable_vlp_code_id: STABLE_VLP_CODE_ID,
+            virtual_balance_code_id: VIRTUAL_BALANCE_CODE_ID,
+            concentrated_vlp_code_id: CONCENTRATED_VLP_CODE_ID,
             mock_relayer_addresses: None,
         };
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
@@ -212,8 +220,9 @@ mod tests {
         // Unauthorized
         let msg = ExecuteMsg::UpdateRouterState {
             admin: Some(new_admin.to_string()),
-            vlp_code_id: Some(1),
-            stable_vlp_code_id: Some(0),
+            vlp_code_id: Some(CONSTANT_PRODUCT_VLP_CODE_ID),
+            stable_vlp_code_id: Some(STABLE_VLP_CODE_ID),
+            concentrated_vlp_code_id: Some(CONCENTRATED_VLP_CODE_ID),
             virtual_balance_address: Some(new_virtual_balance_address.clone()),
             locked: Some(true),
             mock_relayer_addresses: Some(vec![new_mock_relayer_address.to_string()]),
@@ -228,7 +237,10 @@ mod tests {
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
         let state = STATE.load(deps.as_ref().storage).unwrap();
         assert_eq!(state.admin, new_admin.to_string());
-        assert_eq!(state.constant_product_vlp_code_id, 1);
+        assert_eq!(
+            state.constant_product_vlp_code_id,
+            CONSTANT_PRODUCT_VLP_CODE_ID
+        );
         assert_eq!(
             state.virtual_balance_address,
             Some(new_virtual_balance_address.clone())
