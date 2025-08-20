@@ -103,18 +103,20 @@ mod tests {
             WasmMockQuerier,
         >,
         env: Env,
+        assets: Vec<Asset>,
+        slippage_tolerance: Option<Decimal>,
+        auto_stake: Option<bool>,
+        receiver: Option<String>,
+        min_lp_to_receive: Option<Uint128>,
     ) -> Response {
         init(deps);
-        let assets = vec![
-            Asset::native("1", Uint128::from(1000u128)),
-            Asset::native("2", Uint128::from(1000u128)),
-        ];
+
         let msg = ExecuteMsg::AddLiquidity {
             assets,
-            slippage_tolerance: None,
-            auto_stake: None,
-            receiver: None,
-            min_lp_to_receive: None,
+            slippage_tolerance,
+            auto_stake,
+            receiver,
+            min_lp_to_receive,
         };
         let factory_addr = deps.api.addr_make("factory");
         let router = deps.api.addr_make("router");
@@ -154,7 +156,12 @@ mod tests {
             .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
             .unwrap();
 
-        add_liquidity(&mut deps, env);
+        let assets = vec![
+            Asset::native("1", Uint128::from(1000u128)),
+            Asset::native("2", Uint128::from(1000u128)),
+        ];
+
+        add_liquidity(&mut deps, env, assets, None, None, None, None);
 
         let new_balances = CONCENTRATED_BALANCES
             .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
@@ -174,7 +181,12 @@ mod tests {
             .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
             .unwrap();
 
-        add_liquidity(&mut deps, env.clone());
+        let assets = vec![
+            Asset::native("1", Uint128::from(1000u128)),
+            Asset::native("2", Uint128::from(1000u128)),
+        ];
+
+        add_liquidity(&mut deps, env.clone(), assets, None, None, None, None);
 
         let new_balances = CONCENTRATED_BALANCES
             .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
@@ -202,7 +214,12 @@ mod tests {
 
         init(&mut deps);
 
-        add_liquidity(&mut deps, env.clone());
+        let assets = vec![
+            Asset::native("1", Uint128::from(1000u128)),
+            Asset::native("2", Uint128::from(1000u128)),
+        ];
+
+        add_liquidity(&mut deps, env.clone(), assets, None, None, None, None);
 
         let sender = router.clone();
         let offer_asset = AssetBase::native("1", Uint128::new(100));
