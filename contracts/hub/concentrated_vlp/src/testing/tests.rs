@@ -1,16 +1,17 @@
 #[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
-    use crate::contract::{execute, instantiate};
+    use crate::contract::{execute, instantiate, reply};
     use crate::state::{Precisions, CONCENTRATED_BALANCES};
     use crate::testing::mock_querier::{mock_dependencies_custom, WasmMockQuerier};
-    use cosmwasm_std::Env;
     use cosmwasm_std::{
         coins,
         testing::{message_info, mock_env},
         to_json_binary, Decimal, Response, Uint128,
     };
+    use cosmwasm_std::{Binary, Env, Reply, SubMsgResponse, SubMsgResult};
     use cw_asset::{Asset, AssetBase, AssetInfo, AssetInfoBase};
+    use euclid::msgs::concentrated_vlp::MsgCreateDenomResponse;
     use euclid::{
         chain::{ChainUid, CrossChainUser},
         fee::Fee,
@@ -69,7 +70,30 @@ mod tests {
         };
 
         let info = message_info(&router, &[]);
-        instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
+        let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+        reply(
+            deps.as_mut(),
+            mock_env(),
+            Reply {
+                id: 1,
+                result: SubMsgResult::Ok(SubMsgResponse {
+                    #[allow(deprecated)]
+                    data: Some(
+                        MsgCreateDenomResponse {
+                            new_token_denom: "new_token_denom".to_string(),
+                        }
+                        .to_proto_bytes()
+                        .into(),
+                    ),
+                    msg_responses: vec![],
+                    events: vec![],
+                }),
+                payload: Binary::default(),
+                gas_used: 20,
+            },
+        )
+        .unwrap();
+        res
     }
 
     fn add_liquidity(
@@ -137,6 +161,36 @@ mod tests {
             .unwrap();
         println!("new balances: {}", new_balances);
         assert_ne!(new_balances, old_balances);
+    }
+
+    #[test]
+    fn test_withdraw_liquidity() {
+        let mut deps = mock_dependencies_custom(&[]);
+        let env = mock_env();
+        let router = deps.api.addr_make("router");
+        init(&mut deps);
+
+        let old_balances = CONCENTRATED_BALANCES
+            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+            .unwrap();
+
+        add_liquidity(&mut deps, env.clone());
+
+        let new_balances = CONCENTRATED_BALANCES
+            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+            .unwrap();
+        println!("new balances: {}", new_balances);
+        assert_ne!(new_balances, old_balances);
+
+        let msg = ExecuteMsg::RemoveLiquidity { assets: vec![] };
+        let info = message_info(&router, &coins(1000, "new_token_denom"));
+        let res = execute(deps.as_mut(), env, info, msg).unwrap();
+        println!("res {:?}", res);
+        let new_balances = CONCENTRATED_BALANCES
+            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+            .unwrap();
+        println!("new balances: {}", new_balances);
+        assert_eq!(new_balances.u128(), 999001);
     }
 
     #[test]

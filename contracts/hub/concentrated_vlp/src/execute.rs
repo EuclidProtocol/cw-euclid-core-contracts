@@ -419,7 +419,7 @@ pub fn withdraw_liquidity(
     let Coin { amount, denom } = one_coin(&info).map_err(|_| ContractError::Generic {
         err: "Missing denom".to_string(),
     })?;
-
+    println!("liquidity token: {}", config.pair_info.liquidity_token);
     ensure_eq!(
         denom,
         config.pair_info.liquidity_token,
