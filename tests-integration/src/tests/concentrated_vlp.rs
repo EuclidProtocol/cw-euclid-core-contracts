@@ -1,28 +1,17 @@
 #![cfg(not(target_arch = "wasm32"))]
-use std::collections::HashMap;
 
 use concentrated_vlp::mock::{mock_concentrated_vlp, MockConcentratedVlp};
-use cosmwasm_std::coin;
-use cosmwasm_std::to_json_binary;
-use cosmwasm_std::Decimal;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{coin, to_json_binary, Decimal};
 use cw_asset::AssetInfo;
-use euclid::chain::ChainUid;
-use euclid::chain::CrossChainUser;
-use euclid::fee::DenomFees;
-use euclid::fee::Fee;
-use euclid::fee::TotalFees;
-use euclid::msgs::concentrated_vlp::ConcentratedPoolParams;
-use euclid::msgs::concentrated_vlp::GetStateResponse;
-use euclid::msgs::concentrated_vlp::PairType;
-use euclid::pool::PoolConfig;
-use euclid::token::Pair;
-use euclid::token::Token;
+use euclid::{
+    chain::{ChainUid, CrossChainUser},
+    fee::Fee,
+    msgs::concentrated_vlp::{ConcentratedPoolParams, PairType},
+    token::{Pair, Token},
+};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
-use router::mock::mock_router;
-use router::mock::MockRouter;
-use virtual_balance::mock::mock_virtual_balance;
-use virtual_balance::mock::MockVirtualBalance;
+use router::mock::{mock_router, MockRouter};
+use virtual_balance::mock::{mock_virtual_balance, MockVirtualBalance};
 
 const _USER: &str = "user";
 const _NATIVE_DENOM: &str = "native";

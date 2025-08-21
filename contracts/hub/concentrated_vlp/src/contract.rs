@@ -11,7 +11,6 @@ use crate::query::{
     query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
     query_total_fees_collected, query_total_fees_per_denom,
 };
-use crate::reply;
 use crate::state::{
     Config, PairInfo, PoolState, AMP_FACTOR, CHAIN_LP_TOKENS, CONCENTRATED_BALANCES, CONFIG, STATE,
 };
@@ -29,7 +28,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    mut deps: DepsMut,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
@@ -230,6 +229,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
                     b.try_into().map_err(|_| ContractError::Generic {
                         err: "Failed to parse MsgCreateDenomResponse".to_string(),
                     })?;
+
                 let config = CONFIG.load(deps.storage)?;
 
                 // let tracking = config.track_asset_balances;

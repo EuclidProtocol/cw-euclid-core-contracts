@@ -550,10 +550,10 @@ where
         subdenom: denom.into(),
     };
 
-    CosmosMsg::Stargate {
+    CosmosMsg::Any(AnyMsg {
         type_url: MsgCreateDenom::TYPE_URL.to_string(),
         value: Binary::from(create_denom_msg.encode_to_vec()),
-    }
+    })
 }
 
 /// Returns the total supply of a native token.
