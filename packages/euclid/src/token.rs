@@ -6,6 +6,7 @@ use cosmwasm_std::{
     coin, ensure, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, StdError,
     StdResult, Uint128, WasmMsg,
 };
+use cw_asset::{Asset, AssetInfo};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::chain::CrossChainUser;
@@ -504,6 +505,20 @@ impl TokenWithDenomAndAmount {
             token_type: self.token_type.clone(),
         }
     }
+
+    pub fn to_asset(&self) -> Asset {
+        let info = match &self.token_type {
+            TokenType::Native { denom } => AssetInfo::Native(denom.to_string()),
+            TokenType::Smart { contract_address } => {
+                AssetInfo::Cw20(Addr::unchecked(contract_address))
+            }
+            TokenType::Voucher { .. } => todo!(),
+        };
+        Asset {
+            info,
+            amount: self.amount,
+        }
+    }
 }
 
 #[cw_serde]
@@ -638,6 +653,11 @@ impl PairWithDenomAndAmount {
     pub fn get_vec_token_info(&self) -> Vec<TokenWithDenomAndAmount> {
         let tokens: Vec<TokenWithDenomAndAmount> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
+    }
+
+    pub fn get_vec_asset(&self) -> Vec<Asset> {
+        let tokens: Vec<TokenWithDenomAndAmount> = vec![self.token_1.clone(), self.token_2.clone()];
+        tokens.into_iter().map(|t| t.to_asset()).collect()
     }
 }
 

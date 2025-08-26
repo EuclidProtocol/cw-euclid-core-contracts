@@ -11,7 +11,7 @@ use euclid::{
     msgs::vlp::{ExecuteMsg, InstantiateMsg, QueryMsg},
     pool::{
         add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
-        State, SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
+        PoolType, State, SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
     },
 };
 
@@ -53,6 +53,7 @@ pub fn instantiate(
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
         admin: msg.admin,
+        pool_type: PoolType::ConstantProduct,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -78,6 +79,7 @@ pub fn instantiate(
                     sender,
                     pair,
                     tx_id,
+                    PoolType::ConstantProduct,
                 ),
                 _ => Err(ContractError::Unauthorized {}),
             })?;
@@ -111,6 +113,7 @@ pub fn execute(
             sender,
             pair,
             tx_id,
+            PoolType::ConstantProduct,
         ),
         ExecuteMsg::UpdateFee {
             lp_fee_bps,

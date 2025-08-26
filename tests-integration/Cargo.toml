@@ -35,6 +35,7 @@ cw-orch = { workspace = true }
 cw-orch-interchain = "0.9.0"
 ibc-relayer-types = "0.32.1"
 cw-asset = "=4.0.0"
+prost = "0.11.5"
 
 anyhow = "1.0.79"
 

@@ -1,18 +1,22 @@
 // Concentrated VLP
 
 use cosmwasm_std::{
-    attr, coin, ensure, ensure_eq, wasm_execute, Addr, Coin, CosmosMsg, Decimal, Decimal256,
-    DepsMut, Env, MessageInfo, Response, StdResult, Uint128, Uint256,
+    attr, coin, ensure, ensure_eq, to_json_binary, wasm_execute, Addr, Coin, CosmosMsg, Decimal,
+    Decimal256, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, Uint256,
 };
 use cw20::Cw20ExecuteMsg;
 use cw_asset::{Asset, AssetInfo};
 use cw_utils::one_coin;
 use euclid::{
+    chain::CrossChainUser,
     error::ContractError,
+    liquidity::AddLiquidityResponse,
     msgs::concentrated_vlp::{
         query_fee_info, query_native_supply, tf_burn_msg, DecimalToInteger, IntegerToDecimal,
         PrecommitObservation,
     },
+    pool::PoolType,
+    token::PairWithAmount,
 };
 use itertools::Itertools;
 /// Minimum initial LP share
@@ -58,17 +62,23 @@ pub fn provide_liquidity(
     auto_stake: Option<bool>,
     receiver: Option<String>,
     min_lp_to_receive: Option<Uint128>,
+    sender: CrossChainUser,
+    tx_id: String,
+    liquidity: PairWithAmount,
+    slippage_tolerance_bps: u64,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
-
+    println!("provide liquidity");
     let total_share = Decimal256::new(Uint256::from(query_native_supply(
         &deps.querier,
         &config.pair_info.liquidity_token,
     )?));
-
+    println!("provide liquidity2");
     let precisions = Precisions::new(deps.storage)?;
 
+    println!("precisions: {:?}", precisions);
     let mut pools = query_pools(deps.querier, &env.contract.address, &config, &precisions)?;
+    println!("provide liquidity2.5");
 
     let old_real_price = config.pool_state.price_state.last_price;
 
@@ -79,7 +89,7 @@ pub fn provide_liquidity(
         pools.clone(),
         &precisions,
     )?;
-
+    println!("provide liquidity3");
     // info.funds
     //     .assert_coins_properly_sent(&assets, &config.pair_info.asset_infos)?;
 
@@ -105,14 +115,16 @@ pub fn provide_liquidity(
                 }
             }
             AssetInfo::Native { .. } => {
+                println!("pool amount: {:?}", pool.amount);
+                println!("deposit: {:?}", deposits[i]);
                 // If the asset is native token, the pool balance is already increased
                 // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-                pool.amount = pool.amount.checked_sub(deposits[i])?;
+                // pool.amount = pool.amount.checked_sub(deposits[i])?;
             }
             _ => {}
         }
     }
-
+    println!("provide liquidity4");
     let (share_uint128, slippage) = calculate_shares(
         &env,
         &mut config,
@@ -122,16 +134,16 @@ pub fn provide_liquidity(
         slippage_tolerance,
     )?;
 
-    if total_share.is_zero() {
-        messages.extend(mint_liquidity_token_message(
-            deps.querier,
-            &config,
-            &env.contract.address,
-            &env.contract.address,
-            MINIMUM_LIQUIDITY_AMOUNT,
-            false,
-        )?);
-    }
+    // if total_share.is_zero() {
+    //     messages.extend(mint_liquidity_token_message(
+    //         deps.querier,
+    //         &config,
+    //         &env.contract.address,
+    //         &env.contract.address,
+    //         MINIMUM_LIQUIDITY_AMOUNT,
+    //         false,
+    //     )?);
+    // }
 
     let min_amount_lp = min_lp_to_receive.unwrap_or_default();
     ensure!(
@@ -144,14 +156,14 @@ pub fn provide_liquidity(
     // Mint LP tokens for the sender or for the receiver (if set)
     let receiver = receiver.unwrap_or_else(|| info.sender.clone().into_string());
     let auto_stake = auto_stake.unwrap_or(false);
-    messages.extend(mint_liquidity_token_message(
-        deps.querier,
-        &config,
-        &env.contract.address,
-        &Addr::unchecked(receiver.clone()),
-        share_uint128,
-        auto_stake,
-    )?);
+    // messages.extend(mint_liquidity_token_message(
+    //     deps.querier,
+    //     &config,
+    //     &env.contract.address,
+    //     &Addr::unchecked(receiver.clone()),
+    //     share_uint128,
+    //     auto_stake,
+    // )?);
 
     if config.track_asset_balances {
         for (i, pool) in pools.iter().enumerate() {
@@ -174,6 +186,30 @@ pub fn provide_liquidity(
 
     CONFIG.save(deps.storage, &config)?;
 
+    let mut mint_lp_tokens: Uint128 = Uint128::zero();
+    for (i, pool) in pools.iter().enumerate() {
+        mint_lp_tokens = mint_lp_tokens.checked_add(
+            pool.amount
+                .checked_add(deposits[i])?
+                .to_uint(precisions.get_precision(&pool.info)?)
+                .map_err(|_| ContractError::Generic {
+                    err: "Conversion overflow".to_string(),
+                })?,
+        )?;
+    }
+
+    // Prepare Liquidity Response
+    let liquidity_response = AddLiquidityResponse {
+        mint_lp_tokens,
+        vlp_address: env.contract.address.to_string(),
+        tx_id: tx_id.clone(),
+        sender: sender.clone(),
+        pool_type: PoolType::Concentrated,
+    };
+
+    // Prepare acknowledgement
+    let acknowledgement = to_json_binary(&liquidity_response)?;
+
     let attrs = vec![
         attr("action", "provide_liquidity"),
         attr("sender", info.sender),
@@ -183,7 +219,10 @@ pub fn provide_liquidity(
         attr("slippage", slippage.to_string()),
     ];
 
-    Ok(Response::new().add_messages(messages).add_attributes(attrs))
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attributes(attrs)
+        .set_data(acknowledgement))
 }
 
 /// Performs an swap operation with the specified parameters. The trader must approve the

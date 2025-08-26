@@ -15,7 +15,7 @@ mod tests {
         error::ContractError,
         fee::{DenomFees, Fee, TotalFees},
         msgs::stable_vlp::{ExecuteMsg, InstantiateMsg},
-        pool::{stable_math::compute_stable_swap, State},
+        pool::{stable_math::compute_stable_swap, PoolType, State},
         token::{Pair, Token},
     };
     use std::collections::HashMap;
@@ -86,6 +86,7 @@ mod tests {
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
             admin: admin.to_string(),
+            pool_type: PoolType::Stable,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

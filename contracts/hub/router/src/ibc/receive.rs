@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
     IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -17,7 +17,7 @@ use euclid::{
             ExecuteApprove, ExecuteMint, ExecuteMsg as VirtualBalanceMsg, ExecuteTransfer,
         },
     },
-    pool::{DeRegisterDenomResponse, PoolConfig, RegisterDenomResponse},
+    pool::{DeRegisterDenomResponse, PoolConfig, PoolType, RegisterDenomResponse},
     swap::{TransferResponse, WithdrawResponse},
     token::{PairWithDenomAndAmount, TokenWithDenom},
     virtual_balance::BalanceKey,
@@ -321,11 +321,11 @@ fn execute_request_pool_creation(
     };
 
     let vlp = VLPS.may_load(deps.storage, pair.get_tupple())?;
-
+    println!("state is : {:?}", state);
     // If VLP exists, register pool on it, otherwise create new VLP contract
-    if let Some(vlp_addr) = vlp {
+    if let Some((vlp_address, pool_type)) = vlp {
         let msg = WasmMsg::Execute {
-            contract_addr: vlp_addr,
+            contract_addr: vlp_address.clone(),
             msg: to_json_binary(&register_msg)?,
             funds: vec![],
         };
@@ -333,7 +333,7 @@ fn execute_request_pool_creation(
     } else {
         let admin = Some(state.admin.clone());
         let funds = vec![];
-        let msg = match pool_config {
+        let msg = match pool_config.clone() {
             PoolConfig::Stable { amp_factor } => WasmMsg::Instantiate {
                 admin,
                 code_id: state.stable_vlp_code_id,
@@ -390,7 +390,7 @@ fn execute_request_pool_creation(
                 asset_infos,
                 token_code_id,
                 factory_addr,
-                init_params,
+                ref init_params,
             } => WasmMsg::Instantiate {
                 admin,
                 code_id: state.concentrated_vlp_code_id,
@@ -414,11 +414,12 @@ fn execute_request_pool_creation(
                         tx_id: tx_id.clone(),
                     }),
                     admin: state.admin.clone(),
+                    pair,
                     pair_type,
                     asset_infos,
                     token_code_id,
                     factory_addr,
-                    init_params,
+                    init_params: init_params.clone(),
                 })?,
                 funds,
                 label: "Concentrated VLP".to_string(),
@@ -527,7 +528,7 @@ pub fn ibc_execute_add_liquidity(
     slippage_tolerance_bps: u64,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    let vlp_address = VLPS.load(deps.storage, pair.get_pair()?.get_tupple())?;
+    let (vlp_address, pool_type) = VLPS.load(deps.storage, pair.get_pair()?.get_tupple())?;
 
     let mut response = Response::new().add_event(
         tx_event(&tx_id, &sender.to_sender_string(), TxType::AddLiquidity)
@@ -582,7 +583,7 @@ pub fn ibc_execute_add_liquidity(
             euclid::msgs::virtual_balance::ExecuteMsg::Approve(ExecuteApprove {
                 amount: token.amount,
                 token_id: token.token.to_string(),
-                spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
+                spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.clone()),
                 owner: sender.clone(),
             });
 
@@ -596,16 +597,37 @@ pub fn ibc_execute_add_liquidity(
         response = response.add_message(approve_voucher_msg);
     }
 
-    let add_liquidity_msg = msgs::vlp::ExecuteMsg::AddLiquidity {
-        liquidity: pair.get_pair_with_amount()?,
-        sender,
-        tx_id,
-        slippage_tolerance_bps,
+    let add_liquidity_msg: Binary = match pool_type {
+        PoolType::Stable => to_json_binary(&msgs::stable_vlp::ExecuteMsg::AddLiquidity {
+            liquidity: pair.get_pair_with_amount()?,
+            sender,
+            tx_id,
+            slippage_tolerance_bps,
+        })?,
+        PoolType::ConstantProduct => to_json_binary(&msgs::vlp::ExecuteMsg::AddLiquidity {
+            liquidity: pair.get_pair_with_amount()?,
+            sender,
+            tx_id,
+            slippage_tolerance_bps,
+        })?,
+        PoolType::Concentrated => {
+            to_json_binary(&msgs::concentrated_vlp::ExecuteMsg::AddLiquidity {
+                assets: pair.get_vec_asset(),
+                slippage_tolerance: None,
+                auto_stake: None,
+                receiver: None,
+                min_lp_to_receive: None,
+                sender,
+                tx_id,
+                liquidity: pair.get_pair_with_amount()?,
+                slippage_tolerance_bps,
+            })?
+        }
     };
 
     let msg = WasmMsg::Execute {
         contract_addr: vlp_address.clone(),
-        msg: to_json_binary(&add_liquidity_msg)?,
+        msg: add_liquidity_msg,
         funds: vec![],
     };
 
@@ -617,7 +639,7 @@ fn ibc_execute_remove_liquidity(
     _env: Env,
     msg: ChainIbcRemoveLiquidityExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let vlp_address = VLPS.load(deps.storage, msg.pair.get_tupple())?;
+    let (vlp_address, pool_type) = VLPS.load(deps.storage, msg.pair.get_tupple())?;
     let response = Response::new()
         .add_event(tx_event(
             &msg.tx_id,
@@ -645,7 +667,7 @@ fn ibc_execute_remove_liquidity(
     };
 
     let msg = WasmMsg::Execute {
-        contract_addr: vlp_address,
+        contract_addr: vlp_address.clone(),
         msg: to_json_binary(&remove_liquidity_msg)?,
         funds: vec![],
     };

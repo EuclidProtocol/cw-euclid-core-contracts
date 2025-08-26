@@ -4,6 +4,7 @@ use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
     msgs::router::TokenDenom,
+    pool::{PoolConfig, PoolType},
     token::{PairWithDenomAndAmount, Token},
 };
 use euclid_ibc::msg::{ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg};
@@ -26,7 +27,7 @@ pub const STATE: Item<State> = Item::new("state");
 pub const MOCK_RELAYER_ADDRESSES: Item<Vec<String>> = Item::new("mock_relayer_addresses");
 
 // Convert it to multi index map?
-pub const VLPS: Map<(String, String), String> = Map::new("vlps");
+pub const VLPS: Map<(String, String), (String, PoolType)> = Map::new("vlps");
 
 // Store all tokens in a map for easy access
 pub const TOKEN_VLPS: Map<Token, Vec<String>> = Map::new("token_vlps");

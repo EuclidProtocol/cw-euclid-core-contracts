@@ -8,6 +8,7 @@ use euclid::fee::Fee;
 use euclid::msgs::concentrated_vlp::{
     ExecuteMsg, GetStateResponse, InstantiateMsg, PairType, QueryMsg,
 };
+use euclid::token::Pair;
 use mock::mock::MockApp;
 
 pub struct MockConcentratedVlp(Addr);
@@ -26,6 +27,7 @@ impl MockConcentratedVlp {
         fee: Fee,
         execute: Option<ExecuteMsg>,
         admin: String,
+        pair: Pair,
         pair_type: PairType,
         asset_infos: Vec<AssetInfo>,
         token_code_id: u64,
@@ -38,6 +40,7 @@ impl MockConcentratedVlp {
             fee,
             execute,
             admin,
+            pair,
             pair_type,
             asset_infos,
             token_code_id,
@@ -76,6 +79,7 @@ pub fn mock_concentrated_vlp_instantiate_msg(
     fee: Fee,
     execute: Option<ExecuteMsg>,
     admin: String,
+    pair: Pair,
     // Concentrated VLP
     pair_type: PairType,
     asset_infos: Vec<AssetInfo>,
@@ -89,6 +93,7 @@ pub fn mock_concentrated_vlp_instantiate_msg(
         fee,
         execute,
         admin,
+        pair,
         pair_type,
         asset_infos,
         token_code_id,

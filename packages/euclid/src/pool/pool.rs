@@ -74,6 +74,7 @@ pub struct PoolCreationResponse {
     pub tx_id: String,
     pub mint_lp_tokens: Uint128,
     pub sender: CrossChainUser,
+    pub pool_type: PoolType,
 }
 
 #[cw_serde]
@@ -95,6 +96,13 @@ pub enum PoolConfig {
         factory_addr: String,
         init_params: Option<Binary>,
     },
+}
+
+#[cw_serde]
+pub enum PoolType {
+    Stable,
+    ConstantProduct,
+    Concentrated,
 }
 
 #[cw_serde]
@@ -123,6 +131,7 @@ pub struct State {
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
     pub admin: String,
+    pub pool_type: PoolType,
 }
 
 #[cw_serde]
@@ -308,6 +317,7 @@ pub fn update_state(
         last_updated: last_updated.unwrap_or(state.last_updated),
         total_lp_tokens: state.total_lp_tokens,
         admin: verified_admin,
+        pool_type: state.pool_type,
     };
 
     state_storage.save(deps.storage, &new_state)?;
@@ -332,6 +342,7 @@ pub fn register_pool(
     sender: CrossChainUser,
     pair: Pair,
     tx_id: String,
+    pool_type: PoolType,
 ) -> Result<Response, ContractError> {
     let state = state_storage.load(deps.storage)?;
 
@@ -360,11 +371,12 @@ pub fn register_pool(
         tx_id: tx_id.clone(),
         mint_lp_tokens: Uint128::zero(),
         sender: sender.clone(),
+        pool_type: pool_type.clone(),
     };
-    let pool_type = if amp_factor.is_some() {
-        "stable"
-    } else {
-        "constant_product"
+    let pool_type = match pool_type {
+        PoolType::Stable => "stable",
+        PoolType::ConstantProduct => "constant_product",
+        PoolType::Concentrated => "concentrated",
     };
 
     let mut response = Response::new()
@@ -612,6 +624,7 @@ pub fn add_liquidity(
         vlp_address: env.contract.address.to_string(),
         tx_id: tx_id.clone(),
         sender: sender.clone(),
+        pool_type: state.pool_type,
     };
 
     // Prepare acknowledgement

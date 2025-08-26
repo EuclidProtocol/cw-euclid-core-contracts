@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Uint128};
 
 use crate::{
     chain::CrossChainUser,
+    pool::{PoolConfig, PoolType},
     token::{Pair, PairWithAmount, PairWithDenomAndAmount},
 };
 
@@ -20,6 +21,7 @@ pub struct AddLiquidityResponse {
     pub vlp_address: String,
     pub tx_id: String,
     pub sender: CrossChainUser,
+    pub pool_type: PoolType,
 }
 
 #[cw_serde]

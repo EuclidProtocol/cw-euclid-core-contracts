@@ -12,6 +12,7 @@ mod tests {
     use cosmwasm_std::{Binary, Env, Reply, SubMsgResponse, SubMsgResult};
     use cw_asset::{Asset, AssetBase, AssetInfo, AssetInfoBase};
     use euclid::msgs::concentrated_vlp::MsgCreateDenomResponse;
+    use euclid::token::{Pair, PairWithAmount, Token, TokenWithAmount};
     use euclid::{
         chain::{ChainUid, CrossChainUser},
         fee::Fee,
@@ -62,6 +63,10 @@ mod tests {
             ),
             execute: None,
             admin: admin.to_string(),
+            pair: Pair {
+                token_1: Token::create("1".to_string()).unwrap(),
+                token_2: Token::create("2".to_string()).unwrap(),
+            },
             pair_type: PairType::Xyk {},
             asset_infos: vec![AssetInfo::native("1"), AssetInfo::native("2")],
             token_code_id: 4,
@@ -117,25 +122,42 @@ mod tests {
             auto_stake,
             receiver,
             min_lp_to_receive,
+            sender: CrossChainUser::new(
+                ChainUid::create("1".to_string()).unwrap(),
+                "addr".to_string(),
+            ),
+            tx_id: "tx_id".to_string(),
+            liquidity: PairWithAmount::new(
+                TokenWithAmount {
+                    token: Token::create("1".to_string()).unwrap(),
+                    amount: Uint128::from(1000u128),
+                },
+                TokenWithAmount {
+                    token: Token::create("2".to_string()).unwrap(),
+                    amount: Uint128::from(1000u128),
+                },
+            )
+            .unwrap(),
+            slippage_tolerance_bps: 1000,
         };
         let factory_addr = deps.api.addr_make("factory");
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &coins(1000, "earth"));
 
-        // Store precissions, not sure when or where to do this in production
-        Precisions::store_precisions(
-            deps.as_mut(),
-            &[AssetInfoBase::Native("1".to_string())],
-            &factory_addr,
-        )
-        .unwrap();
+        // Without these store precisions calls, a "Invalid asset" error is thrown
+        // Precisions::store_precisions(
+        //     &mut deps.storage,
+        //     &[AssetInfoBase::Native("1".to_string())],
+        //     &factory_addr,
+        // )
+        // .unwrap();
 
-        Precisions::store_precisions(
-            deps.as_mut(),
-            &[AssetInfoBase::Native("2".to_string())],
-            &factory_addr,
-        )
-        .unwrap();
+        // Precisions::store_precisions(
+        //     &mut deps.storage,
+        //     &[AssetInfoBase::Native("2".to_string())],
+        //     &factory_addr,
+        // )
+        // .unwrap();
 
         execute(deps.as_mut(), env.clone(), info, msg).unwrap()
     }

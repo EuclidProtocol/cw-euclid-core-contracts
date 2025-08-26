@@ -15,8 +15,8 @@ use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, 
 use euclid::error::ContractError;
 use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
 use euclid::pool::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
-    SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
+    PoolType, State, SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
@@ -48,6 +48,7 @@ pub fn instantiate(
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
         admin: msg.admin,
+        pool_type: PoolType::Stable,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -76,6 +77,7 @@ pub fn instantiate(
                     sender,
                     pair,
                     tx_id,
+                    PoolType::Stable,
                 ),
                 _ => Err(ContractError::Unauthorized {}),
             })?;
@@ -110,6 +112,7 @@ pub fn execute(
                 sender,
                 pair,
                 tx_id,
+                PoolType::Stable,
             )
         }
         ExecuteMsg::UpdateFee {

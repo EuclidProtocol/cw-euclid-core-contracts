@@ -87,13 +87,13 @@ impl Precisions {
 
     /// Store all token precisions
     pub fn store_precisions(
-        deps: DepsMut,
+        storage: &mut dyn Storage,
         asset_infos: &[AssetInfo],
         factory_addr: &Addr,
     ) -> StdResult<()> {
         for asset_info in asset_infos {
-            let precision = query_token_precision(&deps.querier, asset_info, factory_addr)?;
-            Self::PRECISIONS.save(deps.storage, asset_info.to_string().as_str(), &precision)?;
+            // let precision = query_token_precision(&deps.querier, asset_info, factory_addr)?;
+            Self::PRECISIONS.save(storage, asset_info.to_string().as_str(), &6)?;
         }
 
         Ok(())
@@ -299,10 +299,10 @@ pub(crate) fn query_pools(
         .query_pools(&querier, addr)?
         .into_iter()
         .map(|asset| {
-            let precision = precisions.get_precision(&asset.info)?;
+            // let precision = precisions.get_precision(&asset.info)?;
             Ok(DecimalAsset {
                 info: asset.info,
-                amount: Decimal256::from_atomics(asset.amount, precision.into())
+                amount: Decimal256::from_atomics(asset.amount, 6)
                     .map_err(|_| StdError::generic_err("Decimal256RangeExceeded"))?,
             })
         })

@@ -55,7 +55,6 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 parse_instantiate_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
-
             let vlp_address = instantiate_data.contract_address;
 
             let liquidity: msgs::vlp::GetLiquidityResponse = deps
@@ -68,11 +67,18 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 existing_vlps.push(vlp_address.clone());
                 key.save(deps.storage, &existing_vlps)?;
             }
-
-            VLPS.save(deps.storage, liquidity.pair.get_tupple(), &vlp_address)?;
             let pool_creation_response = from_json::<PoolCreationResponse>(
                 instantiate_data.data.clone().unwrap_or_default(),
             )?;
+            VLPS.save(
+                deps.storage,
+                liquidity.pair.get_tupple(),
+                &(
+                    vlp_address.clone(),
+                    pool_creation_response.pool_type.clone(),
+                ),
+            )?;
+
             let (funds, slippage_tolerance_bps) = FUNDS_INFO
                 .load(deps.storage)
                 .map_err(|_| ContractError::InsufficientFunds {})?;
@@ -149,6 +155,7 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
 
             let mut res = Response::new();
             let funds = FUNDS_INFO.may_load(deps.storage)?;
+
             match funds {
                 Some(_) => {
                     let pool_response = PoolCreationResponse {
@@ -156,6 +163,7 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                         vlp_contract: liquidity_response.vlp_address.clone(),
                         tx_id: liquidity_response.tx_id.clone(),
                         sender: liquidity_response.sender.clone(),
+                        pool_type: liquidity_response.pool_type.clone(),
                     };
                     FUNDS_INFO.remove(deps.storage);
 

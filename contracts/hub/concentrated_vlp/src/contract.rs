@@ -1,10 +1,4 @@
-#[cfg(not(feature = "library"))]
-use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    from_json, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
-    SubMsg, SubMsgResponse, SubMsgResult, Uint128,
-};
-use cw2::set_contract_version;
+use std::collections::HashMap;
 
 use crate::execute::{provide_liquidity, swap, withdraw_liquidity};
 use crate::query::{
@@ -12,14 +6,24 @@ use crate::query::{
     query_total_fees_collected, query_total_fees_per_denom,
 };
 use crate::state::{
-    Config, PairInfo, PoolState, AMP_FACTOR, CHAIN_LP_TOKENS, CONCENTRATED_BALANCES, CONFIG, STATE,
+    Config, PairInfo, PoolState, Precisions, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS,
+    CONCENTRATED_BALANCES, CONFIG, STATE,
 };
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
+use cosmwasm_std::{
+    from_json, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
+    SubMsg, SubMsgResponse, SubMsgResult, Uint128,
+};
+use cw2::set_contract_version;
 use euclid::error::ContractError;
+use euclid::fee::{DenomFees, TotalFees};
 use euclid::msgs::concentrated_vlp::{
     tf_create_denom_msg, AmpGamma, ConcentratedPoolParams, ExecuteMsg, InstantiateMsg,
     MsgCreateDenomResponse, PoolParams, PriceState, QueryMsg, DEFAULT_AMP_FACTOR,
 };
-use euclid::pool::{register_pool, update_fee, update_state};
+use euclid::pool::{register_pool, update_fee, update_state, PoolType};
+use euclid::pool::{PoolConfig, State};
 /// An LP token's precision.
 pub(crate) const LP_TOKEN_PRECISION: u8 = 6;
 // version info for migration info
@@ -33,6 +37,18 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    Precisions::store_precisions(
+        deps.storage,
+        &[msg.asset_infos[0].clone()],
+        &env.contract.address,
+    )
+    .unwrap();
+    Precisions::store_precisions(
+        deps.storage,
+        &[msg.asset_infos[1].clone()],
+        &env.contract.address,
+    )
+    .unwrap();
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     // Concentrated VLP Config
     let factory_addr = deps.api.addr_validate(&msg.factory_addr)?;
@@ -51,7 +67,7 @@ pub fn instantiate(
     ];
 
     let params: ConcentratedPoolParams =
-        from_json(msg.init_params.ok_or(ContractError::Generic {
+        from_json(msg.clone().init_params.ok_or(ContractError::Generic {
             err: "InitParamsNotFound".to_string(),
         })?)?;
 
@@ -90,7 +106,7 @@ pub fn instantiate(
             contract_addr: env.contract.address.clone(),
             liquidity_token: "".to_owned(),
             asset_infos: msg.asset_infos.clone(),
-            pair_type: msg.pair_type,
+            pair_type: msg.pair_type.clone(),
         },
         factory_addr,
         block_time_last: env.block.time.seconds(),
@@ -111,16 +127,65 @@ pub fn instantiate(
 
     CONFIG.save(deps.storage, &config)?;
 
-    let create_denom_msg = SubMsg::reply_on_success(
-        tf_create_denom_msg(env.contract.address.to_string(), "lp_subdenom"),
-        1,
-    );
+    // let create_denom_msg = SubMsg::reply_on_success(
+    //     tf_create_denom_msg(env.contract.address.to_string(), "lp_subdenom"),
+    //     1,
+    // );
 
-    Ok(Response::default()
-        .add_submessage(create_denom_msg)
+    let state = State {
+        pair: msg.pair,
+        virtual_balance: msg.virtual_balance,
+        router: info.sender.to_string(),
+        fee: msg.fee,
+        total_fees_collected: TotalFees {
+            lp_fees: DenomFees {
+                totals: HashMap::default(),
+            },
+            euclid_fees: DenomFees {
+                totals: HashMap::default(),
+            },
+        },
+        last_updated: 0,
+        total_lp_tokens: Uint128::zero(),
+        admin: msg.admin,
+        pool_type: PoolType::Concentrated,
+    };
+
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    STATE.save(deps.storage, &state)?;
+
+    BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
+
+    let response =
+        msg.execute
+            .map_or(Ok(Response::default()), |execute_msg| match execute_msg {
+                ExecuteMsg::RegisterPool {
+                    sender,
+                    pair,
+                    tx_id,
+                    ..
+                } => register_pool(
+                    deps,
+                    env.clone(),
+                    info.clone(),
+                    &STATE,
+                    &CHAIN_LP_TOKENS,
+                    None,
+                    sender,
+                    pair,
+                    tx_id,
+                    PoolType::Concentrated,
+                ),
+                _ => Err(ContractError::Unauthorized {}),
+            })?;
+
+    Ok(response
+        // .add_submessage(create_denom_msg)
         .add_attribute("method", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
-        .add_attribute("owner", info.sender))
+        .add_attribute("owner", info.sender)
+        .add_attribute("pool_type", "concentrated"))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -135,20 +200,18 @@ pub fn execute(
             sender,
             pair,
             tx_id,
-        } => {
-            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
-            register_pool(
-                deps,
-                env,
-                info,
-                &STATE,
-                &CHAIN_LP_TOKENS,
-                Some(amp_factor),
-                sender,
-                pair,
-                tx_id,
-            )
-        }
+        } => register_pool(
+            deps,
+            env,
+            info,
+            &STATE,
+            &CHAIN_LP_TOKENS,
+            None,
+            sender,
+            pair,
+            tx_id,
+            PoolType::Concentrated,
+        ),
         ExecuteMsg::UpdateFee {
             lp_fee_bps,
             euclid_fee_bps,
@@ -160,6 +223,10 @@ pub fn execute(
             auto_stake,
             receiver,
             min_lp_to_receive,
+            sender,
+            tx_id,
+            liquidity,
+            slippage_tolerance_bps,
         } => provide_liquidity(
             deps,
             env,
@@ -169,6 +236,10 @@ pub fn execute(
             auto_stake,
             receiver,
             min_lp_to_receive,
+            sender,
+            tx_id,
+            liquidity,
+            slippage_tolerance_bps,
         ),
         ExecuteMsg::RemoveLiquidity { assets } => withdraw_liquidity(deps, env, info, assets),
         ExecuteMsg::Swap {

@@ -51,7 +51,7 @@ pub fn query_all_vlps(
         .map(|v| {
             let v = v?;
             Ok(VlpResponse {
-                vlp: v.1,
+                vlp: v.1 .0,
                 token_1: Token::create(v.0 .0)?,
                 token_2: Token::create(v.0 .1)?,
             })
@@ -66,7 +66,7 @@ pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let vlp = VLPS.load(deps.storage, (key.0.to_string(), key.1.to_string()))?;
 
     Ok(to_json_binary(&VlpResponse {
-        vlp,
+        vlp: vlp.0,
         token_1: Token::create(key.0)?,
         token_2: Token::create(key.1)?,
     })?)
@@ -218,9 +218,9 @@ pub fn validate_swap_pairs(
         .iter()
         .map(|swap| -> Result<_, ContractError> {
             let pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
-            let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
+            let (vlp_address, _) = VLPS.load(deps.storage, pair.get_tupple())?;
             Ok(NextSwapVlp {
-                vlp_address,
+                vlp_address: vlp_address.clone(),
                 test_fail: swap.test_fail,
             })
         })

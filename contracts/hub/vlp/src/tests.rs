@@ -10,7 +10,7 @@ mod tests {
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
     use euclid::msgs::vlp::{ExecuteMsg, InstantiateMsg};
-    use euclid::pool::{GetSwapResponse, State};
+    use euclid::pool::{GetSwapResponse, PoolType, State};
     use euclid::token::{Pair, Token};
     use std::collections::HashMap;
 
@@ -79,6 +79,7 @@ mod tests {
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
             admin: admin.to_string(),
+            pool_type: PoolType::ConstantProduct,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -232,6 +233,7 @@ mod tests {
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
             admin: "admin".to_string(),
+            pool_type: PoolType::ConstantProduct,
         };
 
         STATE.save(deps.as_mut().storage, &state).unwrap();
@@ -306,6 +308,7 @@ mod tests {
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
             admin: "admin".to_string(),
+            pool_type: PoolType::ConstantProduct,
         };
 
         STATE.save(deps.as_mut().storage, &state).unwrap();

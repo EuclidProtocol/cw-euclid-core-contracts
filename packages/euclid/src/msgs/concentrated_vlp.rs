@@ -7,7 +7,7 @@ use std::{
 use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
-    pool::{GetSwapResponse, PoolConfig},
+    pool::{GetSwapResponse, PoolConfig, PoolType},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
@@ -39,6 +39,7 @@ pub struct InstantiateMsg {
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
     pub admin: String,
+    pub pair: Pair,
     // Concentrated VLP
     /// The pair type
     pub pair_type: PairType,
@@ -80,6 +81,10 @@ pub enum ExecuteMsg {
         auto_stake: Option<bool>,
         receiver: Option<String>,
         min_lp_to_receive: Option<Uint128>,
+        sender: CrossChainUser,
+        tx_id: String,
+        liquidity: PairWithAmount,
+        slippage_tolerance_bps: u64,
     },
     RemoveLiquidity {
         assets: Vec<Asset>,
