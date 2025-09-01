@@ -867,6 +867,7 @@ fn run_add_liquidity_concentrated_pool(factory_chain_id: &str, router_chain_id: 
     let liquidity_query: GetLiquidityResponse = vlp_contract
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
         .unwrap();
+    println!("liquidity_query: {:?}", liquidity_query);
     // assert_eq!(
     //     liquidity_query,
     //     GetLiquidityResponse {
@@ -939,6 +940,7 @@ fn run_add_liquidity_concentrated_pool(factory_chain_id: &str, router_chain_id: 
     let liquidity_query: GetLiquidityResponse = vlp_contract
         .query(&euclid::msgs::vlp::QueryMsg::Liquidity {})
         .unwrap();
+    println!("liquidity_query: {:?}", liquidity_query);
     // assert_eq!(
     //     liquidity_query,
     //     GetLiquidityResponse {
@@ -955,6 +957,7 @@ fn run_add_liquidity_concentrated_pool(factory_chain_id: &str, router_chain_id: 
     let escrow_query: EscrowStateResponse = escrow_token_a
         .query(&euclid::msgs::escrow::QueryMsg::State {})
         .unwrap();
+    println!("escrow_query: {:?}", escrow_query);
     // assert_eq!(
     //     escrow_query,
     //     EscrowStateResponse {
@@ -975,6 +978,7 @@ fn run_add_liquidity_concentrated_pool(factory_chain_id: &str, router_chain_id: 
     //         total_amount: Uint128::from(100_000u128 * 2),
     //     }
     // );
+    println!("escrow_query: {:?}", escrow_query);
 }
 
 #[test]
