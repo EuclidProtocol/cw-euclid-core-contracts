@@ -6,24 +6,24 @@ use crate::query::{
     query_total_fees_collected, query_total_fees_per_denom,
 };
 use crate::state::{
-    Config, PairInfo, PoolState, Precisions, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS,
-    CONCENTRATED_BALANCES, CONFIG, STATE,
+    Config, PairInfo, PoolState, Precisions, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, CONFIG, STATE,
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_json, Binary, Decimal256, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
-    SubMsg, SubMsgResponse, SubMsgResult, Uint128,
+    SubMsgResponse, SubMsgResult, Uint128,
 };
 use cw2::set_contract_version;
+use cw_asset::AssetInfo;
 use euclid::error::ContractError;
 use euclid::fee::{DenomFees, TotalFees};
 use euclid::msgs::concentrated_vlp::{
-    tf_create_denom_msg, AmpGamma, ConcentratedPoolParams, ExecuteMsg, InstantiateMsg,
-    MsgCreateDenomResponse, PoolParams, PriceState, QueryMsg, DEFAULT_AMP_FACTOR,
+    AmpGamma, ConcentratedPoolParams, ExecuteMsg, InstantiateMsg, MsgCreateDenomResponse,
+    PoolParams, PriceState, QueryMsg,
 };
+use euclid::pool::State;
 use euclid::pool::{register_pool, update_fee, update_state, PoolType};
-use euclid::pool::{PoolConfig, State};
 /// An LP token's precision.
 pub(crate) const LP_TOKEN_PRECISION: u8 = 6;
 // version info for migration info
@@ -39,29 +39,21 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     Precisions::store_precisions(
         deps.storage,
-        &[msg.asset_infos[0].clone()],
-        &env.contract.address,
-    )
-    .unwrap();
-    Precisions::store_precisions(
-        deps.storage,
-        &[msg.asset_infos[1].clone()],
+        &[msg.pair.token_1.clone(), msg.pair.token_2.clone()],
         &env.contract.address,
     )
     .unwrap();
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    // Concentrated VLP Config
-    let factory_addr = deps.api.addr_validate(&msg.factory_addr)?;
     // Initializing cumulative prices
     let cumulative_prices = vec![
         (
-            msg.asset_infos[0].clone(),
-            msg.asset_infos[1].clone(),
+            msg.pair.token_1.clone(),
+            msg.pair.token_2.clone(),
             Uint128::zero(),
         ),
         (
-            msg.asset_infos[1].clone(),
-            msg.asset_infos[0].clone(),
+            msg.pair.token_2.clone(),
+            msg.pair.token_1.clone(),
             Uint128::zero(),
         ),
     ];
@@ -105,25 +97,26 @@ pub fn instantiate(
         pair_info: PairInfo {
             contract_addr: env.contract.address.clone(),
             liquidity_token: "".to_owned(),
-            asset_infos: msg.asset_infos.clone(),
+            asset_infos: vec![
+                AssetInfo::Native(msg.pair.token_1.to_string()),
+                AssetInfo::Native(msg.pair.token_2.to_string()),
+            ],
             pair_type: msg.pair_type.clone(),
         },
-        factory_addr,
         block_time_last: env.block.time.seconds(),
         cumulative_prices,
         pool_params,
         pool_state,
         owner: None,
-        track_asset_balances: params.track_asset_balances.unwrap_or_default(),
         fee_share: None,
         tracker_addr: None,
     };
 
-    if config.track_asset_balances {
-        for asset in &config.pair_info.asset_infos {
-            CONCENTRATED_BALANCES.save(deps.storage, asset, &Uint128::zero(), env.block.height)?;
-        }
-    }
+    // if config.track_asset_balances {
+    //     for asset in &config.pair_info.asset_infos {
+    //         CONCENTRATED_BALANCES.save(deps.storage, asset, &Uint128::zero(), env.block.height)?;
+    //     }
+    // }
 
     CONFIG.save(deps.storage, &config)?;
 
@@ -218,9 +211,7 @@ pub fn execute(
             recipient,
         } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
         ExecuteMsg::AddLiquidity {
-            assets,
             slippage_tolerance,
-            auto_stake,
             receiver,
             min_lp_to_receive,
             sender,
@@ -231,15 +222,12 @@ pub fn execute(
             deps,
             env,
             info,
-            assets,
             slippage_tolerance,
-            auto_stake,
             receiver,
             min_lp_to_receive,
             sender,
             tx_id,
             liquidity,
-            slippage_tolerance_bps,
         ),
         ExecuteMsg::RemoveLiquidity { assets } => withdraw_liquidity(deps, env, info, assets),
         ExecuteMsg::Swap {

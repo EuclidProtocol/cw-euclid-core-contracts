@@ -20,7 +20,6 @@ use cosmwasm_std::{
     ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo,
     Response, SubMsg, Uint128, Uint512, Uint64, WasmMsg,
 };
-use cw_asset::{Asset, AssetInfo};
 use cw_storage_plus::{Item, Map};
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
@@ -91,9 +90,6 @@ pub enum PoolConfig {
     ConstantProduct {},
     Concentrated {
         pair_type: PairType,
-        asset_infos: Vec<AssetInfo>,
-        token_code_id: u64,
-        factory_addr: String,
         init_params: Option<Binary>,
     },
 }

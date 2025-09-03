@@ -2,7 +2,8 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate, reply};
-    use crate::state::{Precisions, CONCENTRATED_BALANCES};
+
+    use crate::state::BALANCES;
     use crate::testing::mock_querier::{mock_dependencies_custom, WasmMockQuerier};
     use cosmwasm_std::{
         coins,
@@ -10,7 +11,7 @@ mod tests {
         to_json_binary, Decimal, Response, Uint128,
     };
     use cosmwasm_std::{Binary, Env, Reply, SubMsgResponse, SubMsgResult};
-    use cw_asset::{Asset, AssetBase, AssetInfo, AssetInfoBase};
+    use cw_asset::{Asset, AssetBase};
     use euclid::msgs::concentrated_vlp::MsgCreateDenomResponse;
     use euclid::token::{Pair, PairWithAmount, Token, TokenWithAmount};
     use euclid::{
@@ -68,9 +69,6 @@ mod tests {
                 token_2: Token::create("2".to_string()).unwrap(),
             },
             pair_type: PairType::Xyk {},
-            asset_infos: vec![AssetInfo::native("1"), AssetInfo::native("2")],
-            token_code_id: 4,
-            factory_addr: deps.api.addr_make("factory").to_string(),
             init_params: Some(to_json_binary(&concentrated_vlp_params).unwrap()),
         };
 
@@ -108,18 +106,14 @@ mod tests {
             WasmMockQuerier,
         >,
         env: Env,
-        assets: Vec<Asset>,
         slippage_tolerance: Option<Decimal>,
-        auto_stake: Option<bool>,
         receiver: Option<String>,
         min_lp_to_receive: Option<Uint128>,
     ) -> Response {
         init(deps);
 
         let msg = ExecuteMsg::AddLiquidity {
-            assets,
             slippage_tolerance,
-            auto_stake,
             receiver,
             min_lp_to_receive,
             sender: CrossChainUser::new(
@@ -140,7 +134,6 @@ mod tests {
             .unwrap(),
             slippage_tolerance_bps: 1000,
         };
-        let factory_addr = deps.api.addr_make("factory");
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &coins(1000, "earth"));
 
@@ -174,8 +167,8 @@ mod tests {
         let env = mock_env();
         init(&mut deps);
 
-        let old_balances = CONCENTRATED_BALANCES
-            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+        let old_balances = BALANCES
+            .load(&deps.storage, Token::create("1".to_string()).unwrap())
             .unwrap();
 
         let assets = vec![
@@ -183,10 +176,10 @@ mod tests {
             Asset::native("2", Uint128::from(1000u128)),
         ];
 
-        add_liquidity(&mut deps, env, assets, None, None, None, None);
+        add_liquidity(&mut deps, env, None, None, None);
 
-        let new_balances = CONCENTRATED_BALANCES
-            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+        let new_balances = BALANCES
+            .load(&deps.storage, Token::create("1".to_string()).unwrap())
             .unwrap();
         println!("new balances: {}", new_balances);
         assert_ne!(new_balances, old_balances);
@@ -199,8 +192,8 @@ mod tests {
         let router = deps.api.addr_make("router");
         init(&mut deps);
 
-        let old_balances = CONCENTRATED_BALANCES
-            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+        let old_balances = BALANCES
+            .load(&deps.storage, Token::create("1".to_string()).unwrap())
             .unwrap();
 
         let assets = vec![
@@ -208,10 +201,10 @@ mod tests {
             Asset::native("2", Uint128::from(1000u128)),
         ];
 
-        add_liquidity(&mut deps, env.clone(), assets, None, None, None, None);
+        add_liquidity(&mut deps, env.clone(), None, None, None);
 
-        let new_balances = CONCENTRATED_BALANCES
-            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+        let new_balances = BALANCES
+            .load(&deps.storage, Token::create("1".to_string()).unwrap())
             .unwrap();
         println!("new balances: {}", new_balances);
         assert_ne!(new_balances, old_balances);
@@ -220,8 +213,8 @@ mod tests {
         let info = message_info(&router, &coins(1000, "new_token_denom"));
         let res = execute(deps.as_mut(), env, info, msg).unwrap();
         println!("res {:?}", res);
-        let new_balances = CONCENTRATED_BALANCES
-            .load(&deps.storage, &AssetInfoBase::Native("1".to_string()))
+        let new_balances = BALANCES
+            .load(&deps.storage, Token::create("1".to_string()).unwrap())
             .unwrap();
         println!("new balances: {}", new_balances);
         assert_eq!(new_balances.u128(), 999001);
@@ -241,7 +234,7 @@ mod tests {
             Asset::native("2", Uint128::from(1000u128)),
         ];
 
-        add_liquidity(&mut deps, env.clone(), assets, None, None, None, None);
+        add_liquidity(&mut deps, env.clone(), None, None, None);
 
         let sender = router.clone();
         let offer_asset = AssetBase::native("1", Uint128::new(100));

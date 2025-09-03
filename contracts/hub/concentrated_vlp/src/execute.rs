@@ -12,8 +12,7 @@ use euclid::{
     error::ContractError,
     liquidity::AddLiquidityResponse,
     msgs::concentrated_vlp::{
-        query_fee_info, query_native_supply, tf_burn_msg, DecimalToInteger, IntegerToDecimal,
-        PrecommitObservation,
+        query_native_supply, tf_burn_msg, DecimalToInteger, IntegerToDecimal, PrecommitObservation,
     },
     pool::PoolType,
     token::PairWithAmount,
@@ -23,10 +22,7 @@ use itertools::Itertools;
 pub const MINIMUM_LIQUIDITY_AMOUNT: Uint128 = Uint128::new(1_000);
 use crate::{
     math::{calc_d, get_xcp},
-    state::{
-        accumulate_prices, mint_liquidity_token_message, query_pools, AssetExt, AssetInfoExt,
-        Precisions, CONCENTRATED_BALANCES, CONFIG,
-    },
+    state::{accumulate_prices, query_pools, AssetExt, AssetInfoExt, Precisions, CONFIG},
     utils::{
         accumulate_swap_sizes, assert_max_spread, before_swap_check, calc_last_prices,
         calculate_shares, compute_swap, get_assets_with_precision, get_share_in_assets,
@@ -57,15 +53,12 @@ pub fn provide_liquidity(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    mut assets: Vec<Asset>,
     slippage_tolerance: Option<Decimal>,
-    auto_stake: Option<bool>,
     receiver: Option<String>,
     min_lp_to_receive: Option<Uint128>,
     sender: CrossChainUser,
     tx_id: String,
     liquidity: PairWithAmount,
-    slippage_tolerance_bps: u64,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
     println!("provide liquidity");
@@ -85,7 +78,16 @@ pub fn provide_liquidity(
     let deposits = get_assets_with_precision(
         deps.as_ref(),
         &config,
-        &mut assets,
+        &mut vec![
+            Asset::native(
+                liquidity.token_1.token.to_string(),
+                liquidity.token_1.amount,
+            ),
+            Asset::native(
+                liquidity.token_2.token.to_string(),
+                liquidity.token_2.amount,
+            ),
+        ],
         pools.clone(),
         &precisions,
     )?;
@@ -104,11 +106,11 @@ pub fn provide_liquidity(
                         &Cw20ExecuteMsg::TransferFrom {
                             owner: info.sender.to_string(),
                             recipient: env.contract.address.to_string(),
-                            amount: deposits[i]
-                                .to_uint(precisions.get_precision(&assets[i].info)?)
-                                .map_err(|_| ContractError::Generic {
+                            amount: deposits[i].to_uint(6u32).map_err(|_| {
+                                ContractError::Generic {
                                     err: "Conversion overflow".to_string(),
-                                })?,
+                                }
+                            })?,
                         },
                         vec![],
                     )?))
@@ -155,7 +157,6 @@ pub fn provide_liquidity(
 
     // Mint LP tokens for the sender or for the receiver (if set)
     let receiver = receiver.unwrap_or_else(|| info.sender.clone().into_string());
-    let auto_stake = auto_stake.unwrap_or(false);
     // messages.extend(mint_liquidity_token_message(
     //     deps.querier,
     //     &config,
@@ -164,23 +165,6 @@ pub fn provide_liquidity(
     //     share_uint128,
     //     auto_stake,
     // )?);
-
-    if config.track_asset_balances {
-        for (i, pool) in pools.iter().enumerate() {
-            CONCENTRATED_BALANCES.save(
-                deps.storage,
-                &pool.info,
-                &pool
-                    .amount
-                    .checked_add(deposits[i])?
-                    .to_uint(precisions.get_precision(&pool.info)?)
-                    .map_err(|_| ContractError::Generic {
-                        err: "Conversion overflow".to_string(),
-                    })?,
-                env.block.height,
-            )?;
-        }
-    }
 
     accumulate_prices(&env, &mut config, old_real_price);
 
@@ -191,7 +175,7 @@ pub fn provide_liquidity(
         mint_lp_tokens = mint_lp_tokens.checked_add(
             pool.amount
                 .checked_add(deposits[i])?
-                .to_uint(precisions.get_precision(&pool.info)?)
+                .to_uint(6u32)
                 .map_err(|_| ContractError::Generic {
                     err: "Conversion overflow".to_string(),
                 })?,
@@ -214,7 +198,6 @@ pub fn provide_liquidity(
         attr("action", "provide_liquidity"),
         attr("sender", info.sender),
         attr("receiver", receiver),
-        attr("assets", format!("{}, {}", &assets[0], &assets[1])),
         attr("share", share_uint128),
         attr("slippage", slippage.to_string()),
     ];
@@ -247,7 +230,7 @@ pub fn swap(
     to: Option<Addr>,
 ) -> Result<Response, ContractError> {
     let precisions = Precisions::new(deps.storage)?;
-    let offer_asset_prec = precisions.get_precision(&offer_asset.info)?;
+    let offer_asset_prec = 6u32;
     let offer_asset_dec = offer_asset.to_decimal_asset(offer_asset_prec)?;
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -260,7 +243,6 @@ pub fn swap(
             err: "Invalid asset".to_string(),
         })?;
     let ask_ind = 1 ^ offer_ind;
-    let ask_asset_prec = precisions.get_precision(&pools[ask_ind].info)?;
 
     pools[offer_ind].amount -= offer_asset_dec.amount;
 
@@ -269,16 +251,6 @@ pub fn swap(
     let mut xs = pools.iter().map(|asset| asset.amount).collect_vec();
     let old_real_price = calc_last_prices(&xs, &config, &env)?;
 
-    // Get fee info from the factory
-    let fee_info = query_fee_info(
-        &deps.querier,
-        &config.factory_addr,
-        config.pair_info.pair_type.clone(),
-    )?;
-    let mut maker_fee_share = Decimal256::zero();
-    if fee_info.fee_address.is_some() {
-        maker_fee_share = fee_info.maker_fee_rate.into();
-    }
     // If this pool is configured to share fees
     let mut share_fee_share = Decimal256::zero();
     if let Some(fee_share) = config.fee_share.clone() {
@@ -291,25 +263,24 @@ pub fn swap(
         ask_ind,
         &config,
         &env,
-        maker_fee_share,
         share_fee_share,
     )?;
     xs[offer_ind] += offer_asset_dec.amount;
-    xs[ask_ind] -= swap_result.dy + swap_result.maker_fee + swap_result.share_fee;
+    xs[ask_ind] -= swap_result.dy + swap_result.share_fee;
 
-    let return_amount =
-        swap_result
-            .dy
-            .to_uint(ask_asset_prec)
-            .map_err(|_| ContractError::Generic {
-                err: "Conversion overflow".to_string(),
-            })?;
-    let spread_amount = swap_result
-        .spread_fee
-        .to_uint(ask_asset_prec)
+    let return_amount = swap_result
+        .dy
+        .to_uint(6u32)
         .map_err(|_| ContractError::Generic {
             err: "Conversion overflow".to_string(),
         })?;
+    let spread_amount =
+        swap_result
+            .spread_fee
+            .to_uint(6u32)
+            .map_err(|_| ContractError::Generic {
+                err: "Conversion overflow".to_string(),
+            })?;
     assert_max_spread(
         belief_price,
         max_spread,
@@ -323,7 +294,7 @@ pub fn swap(
 
     // Skip very small trade sizes which could significantly mess up the price due to rounding errors,
     // especially if token precisions are 18.
-    if (swap_result.dy + swap_result.maker_fee + swap_result.share_fee) >= MIN_TRADE_SIZE
+    if (swap_result.dy + swap_result.share_fee) >= MIN_TRADE_SIZE
         && offer_asset_dec.amount >= MIN_TRADE_SIZE
     {
         let last_price = swap_result.calc_last_price(offer_asset_dec.amount, offer_ind);
@@ -349,29 +320,13 @@ pub fn swap(
         fee_share_amount =
             swap_result
                 .share_fee
-                .to_uint(ask_asset_prec)
+                .to_uint(6u32)
                 .map_err(|_| ContractError::Generic {
                     err: "Conversion overflow".to_string(),
                 })?;
         if !fee_share_amount.is_zero() {
             let fee = pools[ask_ind].info.with_balance(fee_share_amount);
             messages.push(fee.into_msg(fee_share.recipient)?);
-        }
-    }
-
-    // Send the maker fee
-    let mut maker_fee = Uint128::zero();
-    if let Some(fee_address) = fee_info.fee_address {
-        maker_fee =
-            swap_result
-                .maker_fee
-                .to_uint(ask_asset_prec)
-                .map_err(|_| ContractError::Generic {
-                    err: "Conversion overflow".to_string(),
-                })?;
-        if !maker_fee.is_zero() {
-            let fee = pools[ask_ind].info.with_balance(maker_fee);
-            messages.push(fee.into_msg(fee_address)?);
         }
     }
 
@@ -394,31 +349,6 @@ pub fn swap(
 
     CONFIG.save(deps.storage, &config)?;
 
-    if config.track_asset_balances {
-        CONCENTRATED_BALANCES.save(
-            deps.storage,
-            &pools[offer_ind].info,
-            &(pools[offer_ind].amount + offer_asset_dec.amount)
-                .to_uint(offer_asset_prec)
-                .map_err(|_| ContractError::Generic {
-                    err: "Conversion overflow".to_string(),
-                })?,
-            env.block.height,
-        )?;
-        CONCENTRATED_BALANCES.save(
-            deps.storage,
-            &pools[ask_ind].info,
-            &(pools[ask_ind].amount.to_uint(ask_asset_prec).map_err(|_| {
-                ContractError::Generic {
-                    err: "Conversion overflow".to_string(),
-                }
-            })? - return_amount
-                - maker_fee
-                - fee_share_amount),
-            env.block.height,
-        )?;
-    }
-
     Ok(Response::new().add_messages(messages).add_attributes(vec![
         attr("action", "swap"),
         attr("sender", sender),
@@ -432,12 +362,11 @@ pub fn swap(
             "commission_amount",
             swap_result
                 .total_fee
-                .to_uint(ask_asset_prec)
+                .to_uint(6u32)
                 .map_err(|_| ContractError::Generic {
                     err: "Conversion overflow".to_string(),
                 })?,
         ),
-        attr("maker_fee_amount", maker_fee),
         attr("fee_share_amount", fee_share_amount),
     ]))
 }
@@ -502,7 +431,7 @@ pub fn withdraw_liquidity(
     let refund_assets = refund_assets
         .into_iter()
         .map(|asset| {
-            let prec = precisions.get_precision(&asset.info).unwrap();
+            let prec = 6u32;
 
             Ok(Asset {
                 info: asset.info,
@@ -522,23 +451,6 @@ pub fn withdraw_liquidity(
         env.contract.address,
         coin(amount.u128(), config.pair_info.liquidity_token.to_string()),
     ));
-
-    if config.track_asset_balances {
-        for (i, pool) in pools.iter().enumerate() {
-            CONCENTRATED_BALANCES.save(
-                deps.storage,
-                &pool.info,
-                &pool
-                    .amount
-                    .to_uint(precisions.get_precision(&pool.info)?)
-                    .map_err(|_| ContractError::Generic {
-                        err: "Conversion overflow".to_string(),
-                    })?
-                    .checked_sub(refund_assets[i].amount)?,
-                env.block.height,
-            )?;
-        }
-    }
 
     CONFIG.save(deps.storage, &config)?;
 

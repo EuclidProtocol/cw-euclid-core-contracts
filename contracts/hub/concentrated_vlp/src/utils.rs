@@ -254,8 +254,8 @@ pub(crate) fn get_assets_with_precision(
 
     // precisions.get_precision() also validates that the asset belongs to the pool
     Ok(vec![
-        Decimal256::with_precision(assets[0].amount, precisions.get_precision(&assets[0].info)?)?,
-        Decimal256::with_precision(assets[1].amount, precisions.get_precision(&assets[1].info)?)?,
+        Decimal256::with_precision(assets[0].amount, 6u32)?,
+        Decimal256::with_precision(assets[1].amount, 6u32)?,
     ])
 }
 /// Checks whether it possible to make a swap or not.
@@ -277,16 +277,8 @@ pub fn calc_last_prices(xs: &[Decimal256], config: &Config, env: &Env) -> StdRes
         offer_amount = Decimal256::raw(1u128);
     }
 
-    let last_price = compute_swap(
-        xs,
-        offer_amount,
-        1,
-        config,
-        env,
-        Decimal256::zero(),
-        Decimal256::zero(),
-    )?
-    .calc_last_price(offer_amount, 0);
+    let last_price = compute_swap(xs, offer_amount, 1, config, env, Decimal256::zero())?
+        .calc_last_price(offer_amount, 0);
 
     Ok(last_price)
 }
@@ -298,7 +290,6 @@ pub fn compute_swap(
     ask_ind: usize,
     config: &Config,
     env: &Env,
-    maker_fee_share: Decimal256,
     share_fee_share: Decimal256,
 ) -> StdResult<SwapResult> {
     let offer_ind = 1 ^ ask_ind;
@@ -336,7 +327,6 @@ pub fn compute_swap(
     Ok(SwapResult {
         dy,
         spread_fee,
-        maker_fee: (total_fee - share_fee) * maker_fee_share,
         share_fee,
         total_fee,
     })
@@ -347,7 +337,6 @@ pub fn compute_swap(
 pub struct SwapResult {
     pub dy: Decimal256,
     pub spread_fee: Decimal256,
-    pub maker_fee: Decimal256,
     pub share_fee: Decimal256,
     pub total_fee: Decimal256,
 }
@@ -356,9 +345,9 @@ impl SwapResult {
     /// Calculates **last price** for PCL repeg algo
     pub fn calc_last_price(&self, offer_amount: Decimal256, offer_ind: usize) -> Decimal256 {
         if offer_ind == 0 {
-            offer_amount / (self.dy + self.maker_fee + self.share_fee)
+            offer_amount / (self.dy + self.share_fee)
         } else {
-            (self.dy + self.maker_fee + self.share_fee) / offer_amount
+            (self.dy + self.share_fee) / offer_amount
         }
     }
 }

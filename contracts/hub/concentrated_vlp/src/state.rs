@@ -34,13 +34,13 @@ pub const COLLATERAL_LP_TOKENS: Item<Uint128> = Item::new("collateral_lp_tokens"
 /// Concentrated VLP Config
 /// Stores pool parameters and state.
 pub const CONFIG: Item<Config> = Item::new("config");
-/// Stores asset balances to query them later at any block height
-pub const CONCENTRATED_BALANCES: SnapshotMap<&AssetInfo, Uint128> = SnapshotMap::new(
-    "balances",
-    "balances_check",
-    "balances_change",
-    cw_storage_plus::Strategy::EveryBlock,
-);
+// /// Stores asset balances to query them later at any block height
+// pub const CONCENTRATED_BALANCES: SnapshotMap<&Token, Uint128> = SnapshotMap::new(
+//     "balances",
+//     "balances_check",
+//     "balances_change",
+//     cw_storage_plus::Strategy::EveryBlock,
+// );
 /// Circular buffer to store trade size observations
 pub const OBSERVATIONS: CircularBuffer<Observation> =
     CircularBuffer::new("observations_state", "observations_buffer");
@@ -49,20 +49,16 @@ pub const OBSERVATIONS: CircularBuffer<Observation> =
 pub struct Config {
     /// The pair information stored in a [`PairInfo`] struct
     pub pair_info: PairInfo,
-    /// The factory contract address
-    pub factory_addr: Addr,
     /// The last timestamp when the pair contract updated the asset cumulative prices
     pub block_time_last: u64,
     /// The vector contains cumulative prices for each pair of assets in the pool
-    pub cumulative_prices: Vec<(AssetInfo, AssetInfo, Uint128)>,
+    pub cumulative_prices: Vec<(Token, Token, Uint128)>,
     /// Pool parameters
     pub pool_params: PoolParams,
     /// Pool state
     pub pool_state: PoolState,
     /// Pool's owner
     pub owner: Option<Addr>,
-    /// Whether asset balances are tracked over blocks or not.
-    pub track_asset_balances: bool,
     /// The config for swap fee sharing
     pub fee_share: Option<FeeShareConfig>,
     /// The tracker contract address
@@ -88,7 +84,7 @@ impl Precisions {
     /// Store all token precisions
     pub fn store_precisions(
         storage: &mut dyn Storage,
-        asset_infos: &[AssetInfo],
+        asset_infos: &[Token],
         factory_addr: &Addr,
     ) -> StdResult<()> {
         for asset_info in asset_infos {
@@ -99,13 +95,13 @@ impl Precisions {
         Ok(())
     }
 
-    pub fn get_precision(&self, asset_info: &AssetInfo) -> Result<u8, ContractError> {
+    pub fn get_precision(&self, asset_info: Token) -> Result<u8, ContractError> {
         println!("asset info: {:?}", asset_info);
         println!("self: {:?}", self);
         self.0
             .iter()
             .find_map(|(info, prec)| {
-                if info == &asset_info.to_string() {
+                if info == &asset_info {
                     Some(*prec)
                 } else {
                     None
@@ -149,30 +145,30 @@ impl PairInfo {
             .collect()
     }
 
-    /// Returns the balance for each asset in the pool in decimal.
-    ///
-    /// * **contract_addr** is pair's pool address.
-    pub fn query_pools_decimal(
-        &self,
-        querier: &QuerierWrapper,
-        contract_addr: impl Into<String>,
-        factory_addr: &Addr,
-    ) -> StdResult<Vec<DecimalAsset>> {
-        let contract_addr = contract_addr.into();
-        self.asset_infos
-            .iter()
-            .map(|asset_info| {
-                Ok(DecimalAsset {
-                    info: asset_info.clone(),
-                    amount: Decimal256::from_atomics(
-                        asset_info.query_pool(querier, &contract_addr)?,
-                        query_token_precision(querier, asset_info, factory_addr)?.into(),
-                    )
-                    .map_err(|_| StdError::generic_err("Decimal256RangeExceeded"))?,
-                })
-            })
-            .collect()
-    }
+    //     /// Returns the balance for each asset in the pool in decimal.
+    //     ///
+    //     /// * **contract_addr** is pair's pool address.
+    //     pub fn query_pools_decimal(
+    //         &self,
+    //         querier: &QuerierWrapper,
+    //         contract_addr: impl Into<String>,
+    //         factory_addr: &Addr,
+    //     ) -> StdResult<Vec<DecimalAsset>> {
+    //         let contract_addr = contract_addr.into();
+    //         self.asset_infos
+    //             .iter()
+    //             .map(|asset_info| {
+    //                 Ok(DecimalAsset {
+    //                     info: asset_info.clone(),
+    //                     amount: Decimal256::from_atomics(
+    //                         asset_info.query_pool(querier, &contract_addr)?,
+    //                         query_token_precision(querier, asset_info, factory_addr)?.into(),
+    //                     )
+    //                     .map_err(|_| StdError::generic_err("Decimal256RangeExceeded"))?,
+    //                 })
+    //             })
+    //             .collect()
+    //     }
 }
 pub trait AssetExt {
     fn to_decimal_asset(&self, precision: impl Into<u32>) -> StdResult<DecimalAsset>;
@@ -319,7 +315,7 @@ pub fn accumulate_prices(env: &Env, config: &mut Config, last_real_price: Decima
     let time_elapsed = Uint128::from(block_time - config.block_time_last);
 
     for (from, _, value) in config.cumulative_prices.iter_mut() {
-        let price = if &config.pair_info.asset_infos[0] == from {
+        let price = if &config.pair_info.asset_infos[0].to_string() == &from.to_string() {
             last_real_price.inv().unwrap()
         } else {
             last_real_price

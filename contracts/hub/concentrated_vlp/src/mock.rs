@@ -95,9 +95,6 @@ pub fn mock_concentrated_vlp_instantiate_msg(
         admin,
         pair,
         pair_type,
-        asset_infos,
-        token_code_id,
-        factory_addr,
         init_params,
     }
 }

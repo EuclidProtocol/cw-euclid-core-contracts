@@ -1,16 +1,15 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use concentrated_vlp::mock::{mock_concentrated_vlp, MockConcentratedVlp};
-use cosmwasm_std::{coin, to_json_binary, AnyMsg, Binary, CosmosMsg, Decimal};
+use cosmwasm_std::{coin, to_json_binary, Decimal};
 use cw_asset::AssetInfo;
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     fee::Fee,
-    msgs::concentrated_vlp::{ConcentratedPoolParams, MsgCreateDenom, PairType},
+    msgs::concentrated_vlp::{ConcentratedPoolParams, PairType},
     token::{Pair, Token},
 };
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
-use prost::Message;
 use router::mock::{mock_router, MockRouter};
 use virtual_balance::mock::{mock_virtual_balance, MockVirtualBalance};
 
@@ -87,7 +86,7 @@ fn test_proper_instantiation() {
         xcp_profit_losses_threshold: Some(Decimal::zero()),
     };
 
-    let mock_concentrated_vlp = MockConcentratedVlp::instantiate(
+    MockConcentratedVlp::instantiate(
         &mut vlp,
         vlp_code_id,
         mock_router.addr().clone(),

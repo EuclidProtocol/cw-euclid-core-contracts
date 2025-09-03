@@ -387,9 +387,6 @@ fn execute_request_pool_creation(
             },
             PoolConfig::Concentrated {
                 pair_type,
-                asset_infos,
-                token_code_id,
-                factory_addr,
                 ref init_params,
             } => WasmMsg::Instantiate {
                 admin,
@@ -416,9 +413,6 @@ fn execute_request_pool_creation(
                     admin: state.admin.clone(),
                     pair,
                     pair_type,
-                    asset_infos,
-                    token_code_id,
-                    factory_addr,
                     init_params: init_params.clone(),
                 })?,
                 funds,
@@ -612,9 +606,7 @@ pub fn ibc_execute_add_liquidity(
         })?,
         PoolType::Concentrated => {
             to_json_binary(&msgs::concentrated_vlp::ExecuteMsg::AddLiquidity {
-                assets: pair.get_vec_asset(),
                 slippage_tolerance: None,
-                auto_stake: None,
                 receiver: None,
                 min_lp_to_receive: None,
                 sender,

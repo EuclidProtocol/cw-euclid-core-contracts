@@ -1,6 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cosmwasm_std::{coin, to_json_binary, Addr, Coin, Decimal, Uint128, Uint64};
-use cw_asset::AssetInfo;
 use cw_orch::prelude::{ContractInstance, CwOrchExecute, CwOrchQuery, Environment};
 use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::*;
@@ -99,9 +98,6 @@ fn test_create_concentrated_pool_with_funds_ibc_concentrated() {
         "osmosis",
         PoolConfig::Concentrated {
             pair_type: PairType::Xyk {},
-            asset_infos: vec![AssetInfo::native("1"), AssetInfo::native("2")],
-            token_code_id: 1,
-            factory_addr: "factory_addr".to_string(),
             init_params: None,
         },
     );
@@ -802,12 +798,6 @@ fn run_add_liquidity_concentrated_pool(factory_chain_id: &str, router_chain_id: 
                 lp_token_marketing: None,
                 pool_config: PoolConfig::Concentrated {
                     pair_type: PairType::Xyk {},
-                    asset_infos: vec![
-                        AssetInfo::native(token_a.token.to_string()),
-                        AssetInfo::native(token_b.token.to_string()),
-                    ],
-                    token_code_id: 1,
-                    factory_addr: factory_contract.address().unwrap().to_string(),
                     init_params: Some(
                         to_json_binary(&ConcentratedPoolParams {
                             amp: Decimal::one(),

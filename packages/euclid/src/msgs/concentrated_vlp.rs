@@ -7,20 +7,20 @@ use std::{
 use crate::{
     chain::{ChainUid, CrossChainUser},
     fee::{Fee, TotalFees},
-    pool::{GetSwapResponse, PoolConfig, PoolType},
+    pool::{GetSwapResponse, PoolConfig},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
 pub use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as ProtoCoin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{
-    ensure, Addr, AnyMsg, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg,
+    Addr, AnyMsg, BankMsg, Binary, Coin, ConversionOverflowError, CosmosMsg, CustomMsg,
     CustomQuery, Decimal, Decimal256, Env, Fraction, QuerierWrapper, StdError, StdResult, Storage,
     Uint128, Uint256, Uint64,
 };
 
 use cw20::{BalanceResponse as Cw20BalanceResponse, Cw20QueryMsg};
-use cw_asset::{Asset, AssetInfo, AssetInfoBase};
+use cw_asset::{Asset, AssetInfo};
 use cw_storage_plus::{Item, Map};
 use prost::Message;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -43,12 +43,6 @@ pub struct InstantiateMsg {
     // Concentrated VLP
     /// The pair type
     pub pair_type: PairType,
-    /// Asset information for the assets in the pool
-    pub asset_infos: Vec<AssetInfo>,
-    /// The token contract code ID used for the tokens in the pool
-    pub token_code_id: u64,
-    /// The factory contract address
-    pub factory_addr: String,
     /// Optional binary serialised parameters for custom pool types
     pub init_params: Option<Binary>,
 }
@@ -76,9 +70,7 @@ pub enum ExecuteMsg {
         to: Option<Addr>,
     },
     AddLiquidity {
-        assets: Vec<Asset>,
         slippage_tolerance: Option<Decimal>,
-        auto_stake: Option<bool>,
         receiver: Option<String>,
         min_lp_to_receive: Option<Uint128>,
         sender: CrossChainUser,
@@ -320,27 +312,6 @@ pub struct FeeInfo {
     pub total_fee_rate: Decimal,
     /// The amount of fees sent to the Maker contract
     pub maker_fee_rate: Decimal,
-}
-
-/// Returns the fee information for a specific pair type.
-///
-/// * **pair_type** pair type we query information for.
-pub fn query_fee_info<C>(
-    querier: &QuerierWrapper<C>,
-    factory_contract: impl Into<String>,
-    pair_type: PairType,
-) -> StdResult<FeeInfo>
-where
-    C: CustomQuery,
-{
-    let res: FeeInfoResponse =
-        querier.query_wasm_smart(factory_contract, &FactoryQueryMsg::FeeInfo { pair_type })?;
-
-    Ok(FeeInfo {
-        fee_address: res.fee_address,
-        total_fee_rate: Decimal::from_ratio(res.total_fee_bps, 10000u16),
-        maker_fee_rate: Decimal::from_ratio(res.maker_fee_bps, 10000u16),
-    })
 }
 
 /// A custom struct for each query response that returns an object of type [`FeeInfoResponse`].
