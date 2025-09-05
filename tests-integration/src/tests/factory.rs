@@ -170,7 +170,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         token_type: euclid::token::TokenType::Native { denom: token_b_id },
     };
 
-    // // Register escrow
+    // Register escrow
     let register_escrow_request = factory_contract
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
@@ -188,10 +188,6 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         &factory_chain_uid,
     )
     .unwrap();
-
-    // let _ = interchain
-    //     .await_packets("osmosis", register_escrow_request)
-    //     .unwrap();
 
     let token_denoms_response: TokenDenomsResponse = router_contract
         .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
@@ -226,7 +222,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             lp_token_marketing: None,
             pool_config: PoolConfig::ConstantProduct {},
         },
-        &[], // Some(&[coin(0u128, "osmo"), coin(0u128, "eucl")]),
+        &[],
     );
     assert_eq!(
         ContractError::new("Amount cannot be zero"),
@@ -768,6 +764,58 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             total_amount: Uint128::from(100_000u128),
         }
     );
+
+    // Try deregistering a chain when two chains are involved.
+    if router_chain_id != factory_chain_id {
+        router_contract
+            .execute(
+                &euclid::msgs::router::ExecuteMsg::DeregisterChain {
+                    chain: ChainUid::create("osmosis".to_string()).unwrap(),
+                },
+                &[],
+            )
+            .unwrap();
+
+        let add_liquidity_request = factory_contract
+            .execute(
+                &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
+                    pair_info: PairWithDenomAndAmount {
+                        token_1: token_a.with_amount(Uint128::from(10_000u128)),
+                        token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                    },
+                    slippage_tolerance_bps: 100, // 1% slippage tolerance
+                    timeout: None,               // 10 minutes in seconds
+                },
+                &[
+                    coin(100_000u128, token_b.token.to_string()),
+                    coin(10_000u128, token_a.token.to_string()),
+                ],
+            )
+            .unwrap();
+        let res = relay_factory_router_factory(
+            add_liquidity_request.events,
+            &factory_contract,
+            &router_contract,
+            &factory_chain_uid,
+        )
+        .unwrap();
+        let wasm_event = res.iter().find(|event| {
+            event.ty == "wasm"
+                && event.attributes.iter().any(|attr| {
+                    attr.key == "reply_on_cosmos_receive_processing" && attr.value == "error"
+                })
+        });
+        assert!(wasm_event.is_some(), "Expected wasm event with error");
+
+        router_contract
+            .execute(
+                &euclid::msgs::router::ExecuteMsg::ReregisterChain {
+                    chain: ChainUid::create("osmosis".to_string()).unwrap(),
+                },
+                &[],
+            )
+            .unwrap();
+    }
 
     // Add Liquidity
     // Need to request register escrow first
