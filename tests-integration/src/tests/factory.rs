@@ -9,7 +9,7 @@ use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::*;
 use escrow::mock::mock_escrow;
 use euclid::{
-    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit, IbcChain},
     error::ContractError,
     fee::{DenomFees, PartnerFee, BPS_100_PERCENT, BPS_1_PERCENT, MAX_PARTNER_FEE_BPS},
     msgs::{
@@ -18,8 +18,11 @@ use euclid::{
             AllPoolsResponse, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns, StateResponse,
         },
         router::{
-            AllEscrowsResponse, AllVlpResponse, QueryMsgFns as RouterQueryMsgFns, TokenDenom,
-            TokenDenomsResponse, VlpResponse,
+            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
+            EscrowResponse, QueryMsgFns as RouterQueryMsgFns, QuerySimulateSwap,
+            RelayerAddressesResponse, SimulateEscrowReleaseResponse, SimulateSwapResponse,
+            TokenDenom, TokenDenomsResponse, TokenEscrowChainResponse, TokenEscrowsResponse,
+            VlpResponse,
         },
         virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns,
         vlp::GetLiquidityResponse,
@@ -398,17 +401,171 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         }
     );
 
-    let _resp: AllEscrowsResponse = router_contract
+    let resp: AllEscrowsResponse = router_contract
         .query(&euclid::msgs::router::QueryMsg::QueryAllEscrows {
             pagination: Pagination::new(None, None, None, None),
         })
         .unwrap();
 
-    let _resp: AllVlpResponse = router_contract
+    let expected_escrows = AllEscrowsResponse {
+        escrows: vec![
+            EscrowResponse {
+                token: token_a.token.clone(),
+                chain_uid: factory_chain_uid.clone(),
+                balance: Uint128::from(10_000u128 * 2),
+            },
+            EscrowResponse {
+                token: token_b.token.clone(),
+                chain_uid: factory_chain_uid.clone(),
+                balance: Uint128::from(100_000u128 * 2),
+            },
+        ],
+    };
+    assert_eq!(resp, expected_escrows);
+
+    let resp: AllVlpResponse = router_contract
         .query(&euclid::msgs::router::QueryMsg::GetAllVlps {
             pagination: Pagination::new(None, None, None, None),
         })
         .unwrap();
+
+    let expected_vlps = AllVlpResponse {
+        vlps: vec![VlpResponse {
+            vlp: vlp_contract.address().unwrap().to_string(),
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
+        }],
+    };
+    assert_eq!(resp, expected_vlps);
+
+    let chain_response: ChainResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::GetChain {
+            chain_uid: factory_chain_uid.clone(),
+        })
+        .unwrap();
+    let chain_type = if factory_chain_id == router_chain_id {
+        ChainType::Native {}
+    } else {
+        ChainType::Ibc(IbcChain {
+            from_hub_channel: "".to_string(),
+            from_factory_channel: "".to_string(),
+        })
+    };
+    assert_eq!(
+        chain_response,
+        ChainResponse {
+            chain: Chain {
+                factory_chain_id: factory_chain_id.to_string(),
+                factory: factory_contract.address().unwrap().to_string(),
+                chain_type,
+            },
+            chain_uid: factory_chain_uid.clone(),
+        }
+    );
+
+    let all_chains_response: AllChainResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::GetAllChains {})
+        .unwrap();
+    assert_eq!(
+        all_chains_response,
+        AllChainResponse {
+            chains: vec![chain_response]
+        }
+    );
+
+    let simulate_swap_response: SimulateSwapResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::SimulateSwap(
+            QuerySimulateSwap {
+                asset_in: token_a.token.clone(),
+                amount_in: Uint128::from(10_000u128),
+                asset_out: token_b.token.clone(),
+                min_amount_out: Uint128::from(10_000u128),
+                swaps: vec![NextSwapPair {
+                    token_in: token_a.token.clone(),
+                    token_out: token_b.token.clone(),
+                    test_fail: None,
+                }],
+            },
+        ))
+        .unwrap();
+    let expected_simulate_swap_response = SimulateSwapResponse {
+        amount_out: Uint128::from(66_578u128),
+        asset_out: token_b.token.clone(),
+    };
+    assert_eq!(simulate_swap_response, expected_simulate_swap_response);
+
+    let simulate_release_escrow_response: SimulateEscrowReleaseResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::SimulateReleaseEscrow {
+            token: token_a.token.clone(),
+            amount: Uint128::from(10_000u128),
+            cross_chain_addresses: vec![CrossChainUserWithLimit {
+                user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
+                limit: None,
+                preferred_denom: None,
+                refund_address: None,
+                unsafe_refund_voucher_to_recipient: None,
+                forwarding_message: None,
+                vcoin_msg: None,
+            }],
+        })
+        .unwrap();
+
+    let expected_simulate_release_escrow_response = SimulateEscrowReleaseResponse {
+        remaining_amount: Uint128::zero(),
+        release_amounts: vec![(
+            Uint128::from(10_000u128),
+            CrossChainUserWithLimit {
+                user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
+                limit: None,
+                preferred_denom: None,
+                refund_address: None,
+                unsafe_refund_voucher_to_recipient: None,
+                forwarding_message: None,
+                vcoin_msg: None,
+            },
+        )],
+    };
+    assert_eq!(
+        simulate_release_escrow_response,
+        expected_simulate_release_escrow_response
+    );
+
+    let token_escrows_response: TokenEscrowsResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::QueryTokenEscrows {
+            token: token_a.token.clone(),
+            pagination: Pagination::new(None, None, None, None),
+        })
+        .unwrap();
+    let expected_token_escrows_response = TokenEscrowsResponse {
+        chains: vec![TokenEscrowChainResponse {
+            chain_uid: factory_chain_uid.clone(),
+            balance: Uint128::from(10_000u128 * 2),
+        }],
+    };
+    assert_eq!(token_escrows_response, expected_token_escrows_response);
+
+    let all_tokens_response: AllTokensResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::QueryAllTokens {
+            pagination: Pagination::new(None, None, None, None),
+        })
+        .unwrap();
+    let expected_all_tokens_response = AllTokensResponse {
+        tokens: vec![token_a.token.clone(), token_b.token.clone()],
+    };
+    assert_eq!(all_tokens_response, expected_all_tokens_response);
+
+    let relayer_addresses_response: RelayerAddressesResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::QueryRelayerAddresses {})
+        .unwrap();
+    let expected_relayer_addresses_response = RelayerAddressesResponse {
+        relayer_addresses: vec![
+            "cosmwasm1mzdhwvvh22wrt07w59wxyd58822qavwkx5lcej7aqfkpqqlhaqfsgn6fq2".to_string(),
+        ],
+    };
+    assert_eq!(
+        relayer_addresses_response,
+        expected_relayer_addresses_response
+    );
 }
 
 #[test]
