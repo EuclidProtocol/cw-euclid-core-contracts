@@ -603,7 +603,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     println!("the sender is: {:?}", sender);
     factory_chain
         .set_balance(
-            &Addr::unchecked(sender.clone()),
+            &sender.clone(),
             vec![
                 Coin::new(100000000000000u128, token_a_id.clone()),
                 Coin::new(100000000000000u128, token_b_id.clone()),
@@ -613,7 +613,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
 
     router_chain
         .set_balance(
-            &Addr::unchecked(sender.clone()),
+            &sender.clone(),
             vec![
                 Coin::new(100000000000000u128, token_a_id.clone()),
                 Coin::new(100000000000000u128, token_b_id.clone()),
@@ -625,6 +625,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let _router_state = router_contract.get_state().unwrap();
 
     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
+    let router_chain_uid = ChainUid::create(router_chain_id.to_string()).unwrap();
     let factory_contract = setup_factory(
         &interchain,
         factory_chain_id,
@@ -883,6 +884,83 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             total_amount: Uint128::from(100_000u128 * 2),
         }
     );
+
+    let virtual_balance_contract = router_contract
+        .get_state()
+        .unwrap()
+        .virtual_balance_address
+        .unwrap();
+
+    let virtual_balance_contract = get_virtual_balance(&router_chain, &virtual_balance_contract);
+
+    let virtual_balance_state_query: euclid::msgs::virtual_balance::GetUserBalancesResponse =
+        virtual_balance_contract
+            .query(&euclid::msgs::virtual_balance::QueryMsg::GetUserBalances {
+                user: CrossChainUser::new(
+                    router_chain_uid.clone(),
+                    router_contract.environment().sender.to_string(),
+                ),
+            })
+            .unwrap();
+
+    println!(
+        "virtual balance state query: {:?}",
+        virtual_balance_state_query
+    );
+
+    // Withdraw
+    // Two cross chain users on unique chains
+    let withdraw_request = factory_contract
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::WithdrawVirtualBalance {
+                token: token_b.token.clone(),
+                amount: Uint128::from(1000u128),
+                cross_chain_addresses: vec![
+                    CrossChainUserWithLimit {
+                        user: CrossChainUser::new(
+                            factory_chain_uid.clone(),
+                            factory_contract.environment().sender.to_string(),
+                        ),
+                        limit: None,
+                        preferred_denom: None,
+                        refund_address: None,
+                        unsafe_refund_voucher_to_recipient: None,
+                        forwarding_message: None,
+                        vcoin_msg: None,
+                    },
+                    // CrossChainUserWithLimit {
+                    //     user: CrossChainUser::new(
+                    //         router_chain_uid.clone(),
+                    //         router_contract.environment().sender.to_string(),
+                    //     ),
+                    //     limit: None,
+                    //     preferred_denom: None,
+                    //     refund_address: None,
+                    //     unsafe_refund_voucher_to_recipient: None,
+                    //     forwarding_message: None,
+                    //     vcoin_msg: None,
+                    // },
+                ],
+                timeout: None,
+            },
+            &[],
+        )
+        .unwrap();
+
+    let res = relay_factory_router_factory(
+        withdraw_request.events,
+        &factory_contract,
+        &router_contract,
+        &factory_chain_uid,
+    )
+    .unwrap();
+    let wasm_event = res.iter().find(|event| {
+        event.ty == "wasm"
+            && event.attributes.iter().any(|attr| {
+                attr.key == "reply_on_cosmos_receive_processing" && attr.value == "error"
+            })
+    });
+    assert!(wasm_event.is_none(), "Expected wasm event without error");
 }
 
 #[test]

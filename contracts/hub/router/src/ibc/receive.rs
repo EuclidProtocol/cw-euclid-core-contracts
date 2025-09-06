@@ -527,6 +527,11 @@ pub fn ibc_execute_add_liquidity(
                     },
                 });
 
+            println!(
+                "ibc_execute_add_liquidity mint msg: {:?}",
+                mint_virtual_balance_msg
+            );
+
             let mint_virtual_balance_msg = WasmMsg::Execute {
                 contract_addr: virtual_balance_address.to_string(),
                 msg: to_json_binary(&mint_virtual_balance_msg)?,
