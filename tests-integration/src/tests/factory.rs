@@ -3034,32 +3034,32 @@ fn test_deposit_and_withdraw_multiple_chains() {
         }
     );
 
-    // // Register token
-    // register_token(&factory_2, &router, token.to_token_with_denom()).unwrap();
+    // Register token 2
+    register_token(&factory_2, &router, token.to_token_with_denom()).unwrap();
 
-    // // Deposit with claim msg
-    // deposit_token(
-    //     &factory_2,
-    //     &router,
-    //     token.to_token_with_denom(),
-    //     token.amount,
-    //     None,
-    //     // None,
-    //     None,
-    // )
-    // .unwrap();
+    // Deposit with claim msg
+    deposit_token(
+        &factory_2,
+        &router,
+        token.to_token_with_denom(),
+        token.amount,
+        None,
+        // None,
+        None,
+    )
+    .unwrap();
 
-    // // Query escrow state after deposit
-    // let escrow_contract = get_escrow(&factory_2, token.token.to_string().as_str());
-    // let escrow_query = escrow_contract.state().unwrap();
-    // assert_eq!(
-    //     escrow_query,
-    //     EscrowStateResponse {
-    //         token: token.token.clone(),
-    //         factory_address: factory_2.address().unwrap(),
-    //         total_amount: token.amount,
-    //     }
-    // );
+    // Query escrow state after deposit
+    let escrow_contract_2 = get_escrow(&factory_2, token.token.to_string().as_str());
+    let escrow_query = escrow_contract_2.state().unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: token.token.clone(),
+            factory_address: factory_2.address().unwrap(),
+            total_amount: token.amount,
+        }
+    );
 
     // Withdraw tokens
     let withdraw_amount = Uint128::new(1000);
@@ -3122,26 +3122,14 @@ fn test_deposit_and_withdraw_multiple_chains() {
             total_amount: token.amount - user_1_limit,
         }
     );
-    register_token(&factory_2, &router, token.to_token_with_denom()).unwrap();
-    // Deposit with claim msg
-    deposit_token(
-        &factory_2,
-        &router,
-        token.to_token_with_denom(),
-        token.amount,
-        None,
-        // None,
-        None,
-    )
-    .unwrap();
-    let escrow_contract_2 = get_escrow(&factory_2, token.token.to_string().as_str());
+
     let escrow_query_2: EscrowStateResponse = escrow_contract_2.state().unwrap();
     assert_eq!(
         escrow_query_2,
         EscrowStateResponse {
             token: token.token.clone(),
             factory_address: factory_2.address().unwrap(),
-            total_amount: Uint128::new(500),
+            total_amount: token.amount - withdraw_amount - user_1_limit,
         }
     );
 }
