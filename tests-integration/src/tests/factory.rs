@@ -497,7 +497,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             cross_chain_addresses: vec![CrossChainUserWithLimit {
                 user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
                 limit: None,
-                preferred_denom: None,
+                preferred_token_type: None,
                 refund_address: None,
                 unsafe_refund_voucher_to_recipient: None,
                 forwarding_message: None,
@@ -513,7 +513,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             CrossChainUserWithLimit {
                 user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
                 limit: None,
-                preferred_denom: None,
+                preferred_token_type: None,
                 refund_address: None,
                 unsafe_refund_voucher_to_recipient: None,
                 forwarding_message: None,
@@ -563,6 +563,107 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         expected_relayer_addresses_response
     );
 }
+
+// #[test]
+// fn test_deposit_and_withdraw() {
+//     run_adddeposit_and_withdrawliquidity("nibiru", "nibiru");
+// }
+
+// fn deposit_and_withdraw(factory_chain_id: &str, router_chain_id: &str) {
+//     let sender = Addr::unchecked("sender_for_all_chains").into_string();
+//     let mut chains = vec![(factory_chain_id, sender.as_str())];
+//     if factory_chain_id != router_chain_id {
+//         chains.push((router_chain_id, sender.as_str()));
+//     }
+//     let interchain = MockInterchainEnv::new(chains);
+//     let factory_chain = interchain.get_chain(factory_chain_id).unwrap();
+//     let router_chain = interchain.get_chain(router_chain_id).unwrap();
+
+//     let token_a_id: String = "token.a".to_string();
+//     let token_a = TokenWithDenom {
+//         token: Token::create(token_a_id.clone()).unwrap(),
+//         token_type: euclid::token::TokenType::Native {
+//             denom: token_a_id.clone(),
+//         },
+//     };
+//     let token_b_id: String = "token.b".to_string();
+//     let token_b = TokenWithDenom {
+//         token: Token::create(token_b_id.clone()).unwrap(),
+//         token_type: euclid::token::TokenType::Native {
+//             denom: token_b_id.clone(),
+//         },
+//     };
+
+//     let sender = factory_chain.addr_make("sender_for_all_chains");
+//     println!("the sender is: {:?}", sender);
+//     factory_chain
+//         .set_balance(
+//             &sender.clone(),
+//             vec![
+//                 Coin::new(100000000000000u128, token_a_id.clone()),
+//                 Coin::new(100000000000000u128, token_b_id.clone()),
+//             ],
+//         )
+//         .unwrap();
+
+//     router_chain
+//         .set_balance(
+//             &sender.clone(),
+//             vec![
+//                 Coin::new(100000000000000u128, token_a_id.clone()),
+//                 Coin::new(100000000000000u128, token_b_id.clone()),
+//             ],
+//         )
+//         .unwrap();
+
+//     let router_contract = setup_router(&router_chain).unwrap();
+//     let _router_state = router_contract.get_state().unwrap();
+
+//     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
+//     let router_chain_uid = ChainUid::create(router_chain_id.to_string()).unwrap();
+//     let factory_contract = setup_factory(
+//         &interchain,
+//         factory_chain_id,
+//         router_chain_id,
+//         &router_contract,
+//     )
+//     .unwrap();
+
+//     // // Register escrow
+//     let register_escrow_request = factory_contract
+//         .execute(
+//             &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
+//                 token: token_a.clone(),
+//                 timeout: None,
+//             },
+//             &[],
+//         )
+//         .unwrap();
+
+//     relay_factory_router_factory(
+//         register_escrow_request.events,
+//         &factory_contract,
+//         &router_contract,
+//         &factory_chain_uid,
+//     )
+//     .unwrap();
+
+//     let token_denoms_response: TokenDenomsResponse = router_contract
+//         .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
+//             token: token_a.token.clone(),
+//         })
+//         .unwrap();
+
+//     assert_eq!(
+//         token_denoms_response,
+//         TokenDenomsResponse {
+//             denoms: vec![TokenDenom {
+//                 chain_uid: factory_chain_uid.clone(),
+//                 token_type: token_a.token_type.clone(),
+//             }],
+//         }
+//     );
+// }
 
 #[test]
 fn test_add_liquidity_ibc() {
@@ -885,6 +986,35 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         }
     );
 
+    // Deposit
+    let factory_deposit_request = factory_contract
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::DepositToken {
+                asset_in: token_a.clone(),
+                amount_in: Uint128::from(1000u128),
+                timeout: None,
+                recipient: None,
+                msg: None,
+            },
+            &[coin(1000u128, token_a.token.to_string())],
+        )
+        .unwrap();
+
+    let res = relay_factory_router_factory(
+        factory_deposit_request.events,
+        &factory_contract,
+        &router_contract,
+        &factory_chain_uid,
+    )
+    .unwrap();
+    let wasm_event = res.iter().find(|event| {
+        event.ty == "wasm"
+            && event.attributes.iter().any(|attr| {
+                attr.key == "reply_on_cosmos_receive_processing" && attr.value == "error"
+            })
+    });
+    assert!(wasm_event.is_none(), "Expected wasm event without error");
+
     let virtual_balance_contract = router_contract
         .get_state()
         .unwrap()
@@ -913,8 +1043,8 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let withdraw_request = factory_contract
         .execute(
             &euclid::msgs::factory::ExecuteMsg::WithdrawVirtualBalance {
-                token: token_b.token.clone(),
-                amount: Uint128::from(1000u128),
+                token: token_a.token.clone(),
+                amount: Uint128::from(100u128),
                 cross_chain_addresses: vec![
                     CrossChainUserWithLimit {
                         user: CrossChainUser::new(
@@ -922,24 +1052,24 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
                             factory_contract.environment().sender.to_string(),
                         ),
                         limit: None,
-                        preferred_denom: None,
+                        preferred_token_type: None,
                         refund_address: None,
                         unsafe_refund_voucher_to_recipient: None,
                         forwarding_message: None,
                         vcoin_msg: None,
                     },
-                    // CrossChainUserWithLimit {
-                    //     user: CrossChainUser::new(
-                    //         router_chain_uid.clone(),
-                    //         router_contract.environment().sender.to_string(),
-                    //     ),
-                    //     limit: None,
-                    //     preferred_denom: None,
-                    //     refund_address: None,
-                    //     unsafe_refund_voucher_to_recipient: None,
-                    //     forwarding_message: None,
-                    //     vcoin_msg: None,
-                    // },
+                    CrossChainUserWithLimit {
+                        user: CrossChainUser::new(
+                            router_chain_uid.clone(),
+                            router_contract.environment().sender.to_string(),
+                        ),
+                        limit: None,
+                        preferred_token_type: None,
+                        refund_address: None,
+                        unsafe_refund_voucher_to_recipient: None,
+                        forwarding_message: None,
+                        vcoin_msg: None,
+                    },
                 ],
                 timeout: None,
             },
@@ -1597,7 +1727,7 @@ pub fn run_test_swap_request_reusable(
             cross_chain_addresses: cross_chain_addresses.unwrap_or(vec![CrossChainUserWithLimit {
                 user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
                 limit: None,
-                preferred_denom: None,
+                preferred_token_type: None,
                 refund_address: None,
                 forwarding_message: None,
                 vcoin_msg: None,
@@ -1746,7 +1876,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
                     user: CrossChainUser::new(factory_chain_uid.clone(), random_user.to_string()),
                     limit: None,
-                    preferred_denom: None,
+                    preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
                     vcoin_msg: None,
@@ -2369,7 +2499,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
                 sender.to_string(),
             ),
             limit: None,
-            preferred_denom: None,
+            preferred_token_type: None,
             refund_address: None,
             forwarding_message: None,
             vcoin_msg: None,
@@ -2592,7 +2722,7 @@ fn test_swap_request_with_timeout() {
 //                 address: sender.clone(),
 //             },
 //             limit: None,
-//             preferred_denom: None,
+//             preferred_token_type: None,
 //             refund_address: None,
 //             forwarding_message: None,
 //         }],
@@ -2737,7 +2867,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
                     user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
                     limit: None,
-                    preferred_denom: None,
+                    preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
                     vcoin_msg: None,
@@ -2816,7 +2946,7 @@ fn test_deposit_and_withdraw() {
                         factory.environment().sender.to_string(),
                     ),
                     limit: None,
-                    preferred_denom: None,
+                    preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
                     vcoin_msg: None,
@@ -2847,6 +2977,171 @@ fn test_deposit_and_withdraw() {
             token: token.token.clone(),
             factory_address: factory.address().unwrap(),
             total_amount: Uint128::zero(),
+        }
+    );
+}
+
+#[test]
+fn test_deposit_and_withdraw_multiple_chains() {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let interchain = MockInterchainEnv::new(vec![
+        ("osmosis", &sender),
+        ("nibiru", &sender),
+        ("andromeda", &sender),
+    ]);
+    let router_chain = interchain.get_chain("nibiru").unwrap();
+
+    let router = setup_router(&router_chain).unwrap();
+    let router_chain_uid = ChainUid::create("nibiru".to_string()).unwrap();
+    let factory_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
+    let factory = setup_factory(&interchain, &factory_chain_uid, "nibiru", &router).unwrap();
+
+    let factory_chain_uid_2 = ChainUid::create("andromeda".to_string()).unwrap();
+    let factory_2 = setup_factory(&interchain, &factory_chain_uid_2, "nibiru", &router).unwrap();
+
+    let token = TokenWithDenomAndAmount {
+        token: Token::create("osmo".to_string()).unwrap(),
+        amount: Uint128::from(100_000u128),
+        token_type: TokenType::Native {
+            denom: "osmo".to_string(),
+        },
+    };
+
+    // Register token
+    register_token(&factory, &router, token.to_token_with_denom()).unwrap();
+
+    // Deposit with claim msg
+    deposit_token(
+        &factory,
+        &router,
+        token.to_token_with_denom(),
+        token.amount,
+        None,
+        // None,
+        None,
+    )
+    .unwrap();
+
+    // Query escrow state after deposit
+    let escrow_contract = get_escrow(&factory, token.token.to_string().as_str());
+    let escrow_query = escrow_contract.state().unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: token.token.clone(),
+            factory_address: factory.address().unwrap(),
+            total_amount: token.amount,
+        }
+    );
+
+    // // Register token
+    // register_token(&factory_2, &router, token.to_token_with_denom()).unwrap();
+
+    // // Deposit with claim msg
+    // deposit_token(
+    //     &factory_2,
+    //     &router,
+    //     token.to_token_with_denom(),
+    //     token.amount,
+    //     None,
+    //     // None,
+    //     None,
+    // )
+    // .unwrap();
+
+    // // Query escrow state after deposit
+    // let escrow_contract = get_escrow(&factory_2, token.token.to_string().as_str());
+    // let escrow_query = escrow_contract.state().unwrap();
+    // assert_eq!(
+    //     escrow_query,
+    //     EscrowStateResponse {
+    //         token: token.token.clone(),
+    //         factory_address: factory_2.address().unwrap(),
+    //         total_amount: token.amount,
+    //     }
+    // );
+
+    // Withdraw tokens
+    let withdraw_amount = Uint128::new(1000);
+    let user_1_limit = Uint128::new(500);
+    let withdraw_response = factory
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::WithdrawVirtualBalance {
+                token: token.token.clone(),
+                amount: withdraw_amount,
+                cross_chain_addresses: vec![
+                    CrossChainUserWithLimit {
+                        user: CrossChainUser::new(
+                            factory_chain_uid.clone(),
+                            factory.environment().sender.to_string(),
+                        ),
+                        limit: Some(euclid::chain::Limit::Equal(user_1_limit)),
+                        preferred_token_type: None,
+                        refund_address: None,
+                        forwarding_message: None,
+                        vcoin_msg: None,
+                        unsafe_refund_voucher_to_recipient: None,
+                    },
+                    CrossChainUserWithLimit {
+                        user: CrossChainUser::new(
+                            factory_chain_uid_2.clone(),
+                            factory_2.environment().sender.to_string(),
+                        ),
+                        limit: None,
+                        preferred_token_type: None,
+                        refund_address: None,
+                        forwarding_message: None,
+                        vcoin_msg: None,
+                        unsafe_refund_voucher_to_recipient: None,
+                    },
+                ],
+                timeout: None,
+            },
+            &[],
+        )
+        .unwrap();
+
+    let relay_response = relay_factory_router_factory(
+        withdraw_response.events,
+        &factory,
+        &router,
+        &factory_chain_uid,
+    )
+    .unwrap();
+
+    relay_router_factory_router(relay_response, &factory, &factory_chain_uid, &router).unwrap();
+
+    // Query escrow state after withdrawal
+    let escrow_query: EscrowStateResponse = escrow_contract.state().unwrap();
+
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: token.token.clone(),
+            factory_address: factory.address().unwrap(),
+            total_amount: token.amount - user_1_limit,
+        }
+    );
+    register_token(&factory_2, &router, token.to_token_with_denom()).unwrap();
+    // Deposit with claim msg
+    deposit_token(
+        &factory_2,
+        &router,
+        token.to_token_with_denom(),
+        token.amount,
+        None,
+        // None,
+        None,
+    )
+    .unwrap();
+    let escrow_contract_2 = get_escrow(&factory_2, token.token.to_string().as_str());
+    let escrow_query_2: EscrowStateResponse = escrow_contract_2.state().unwrap();
+    assert_eq!(
+        escrow_query_2,
+        EscrowStateResponse {
+            token: token.token.clone(),
+            factory_address: factory_2.address().unwrap(),
+            total_amount: Uint128::new(500),
         }
     );
 }
@@ -2939,7 +3234,7 @@ fn test_deposit_and_withdraw_with_failure() {
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
                     user: new_recipient.clone(),
                     limit: None,
-                    preferred_denom: None,
+                    preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
                     vcoin_msg: None,
@@ -2977,7 +3272,7 @@ fn test_deposit_and_withdraw_with_failure() {
                 cross_chain_addresses: vec![CrossChainUserWithLimit {
                     user: new_recipient.clone(),
                     limit: None,
-                    preferred_denom: None,
+                    preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
                     vcoin_msg: None,

@@ -227,7 +227,7 @@ pub fn execute_withdraw(
     info: MessageInfo,
     recipient: Addr,
     amount: Uint128,
-    preferred_denom: Option<TokenType>,
+    preferred_token_type: Option<TokenType>,
     forwarding_message: Option<EuclidReceive>,
     refund_address: Option<String>,
 ) -> Result<Response, ContractError> {
@@ -257,14 +257,14 @@ pub fn execute_withdraw(
     let mut forwarding_messages: Vec<SubMsg> = Vec::new();
     let mut remaining_withdraw_amount = amount;
     let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
-    if let Some(preferred_denom) = preferred_denom {
+    if let Some(preferred_token_type) = preferred_token_type {
         ensure!(
-            allowed_denoms.any(|denom| denom.get_key() == preferred_denom.get_key()),
+            allowed_denoms.any(|denom| denom.get_key() == preferred_token_type.get_key()),
             ContractError::UnsupportedDenomination {}
         );
 
         // Only allow the preferred denom, remove all other denoms
-        allowed_denoms = vec![preferred_denom].into_iter().peekable();
+        allowed_denoms = vec![preferred_token_type].into_iter().peekable();
     }
 
     let mut released_denoms = vec![];

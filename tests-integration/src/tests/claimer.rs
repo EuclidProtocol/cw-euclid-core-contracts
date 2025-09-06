@@ -223,7 +223,7 @@ fn test_create_claim_using_swap() {
             claimer.address().unwrap().to_string(),
         ),
         limit: Some(Limit::Equal(amount_to_distribute)),
-        preferred_denom: None,
+        preferred_token_type: None,
         refund_address: None,
         forwarding_message: None,
         vcoin_msg: Some(to_json_binary(&claim_obj).unwrap()),

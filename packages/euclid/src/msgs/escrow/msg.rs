@@ -33,7 +33,7 @@ pub enum ExecuteMsg {
     Withdraw {
         recipient: Addr,
         amount: Uint128,
-        preferred_denom: Option<TokenType>,
+        preferred_token_type: Option<TokenType>,
         forwarding_message: Option<EuclidReceive>,
         refund_address: Option<String>,
     },

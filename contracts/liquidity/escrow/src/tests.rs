@@ -323,7 +323,7 @@ fn test_execute_withdraw() {
             msg: ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recipient1".to_string()),
                 amount: Uint128::new(50),
-                preferred_denom: None,
+                preferred_token_type: None,
                 forwarding_message: None,
                 refund_address: None,
             },
@@ -334,7 +334,7 @@ fn test_execute_withdraw() {
             msg: ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recipient1".to_string()),
                 amount: Uint128::new(2000),
-                preferred_denom: None,
+                preferred_token_type: None,
                 forwarding_message: None,
                 refund_address: None,
             }, // Use 2000 which exceeds the balance
@@ -345,7 +345,7 @@ fn test_execute_withdraw() {
             msg: ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recipient1".to_string()),
                 amount: Uint128::new(50),
-                preferred_denom: None,
+                preferred_token_type: None,
                 forwarding_message: None,
                 refund_address: None,
             },

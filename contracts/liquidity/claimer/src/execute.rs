@@ -133,7 +133,7 @@ pub fn execute_claim_voucher(
             amount: claim.amount,
             cross_chain_addresses: vec![CrossChainUserWithLimit {
                 user: claim_msg.recipient.clone(),
-                preferred_denom: None,
+                preferred_token_type: None,
                 refund_address: None,
                 forwarding_message: claim_msg.release_msg,
                 unsafe_refund_voucher_to_recipient: Some(true),

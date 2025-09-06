@@ -111,7 +111,7 @@ impl CrossChainUser {
     pub fn with_limit(
         self,
         limit: Option<Limit>,
-        preferred_denom: Option<TokenType>,
+        preferred_token_type: Option<TokenType>,
         refund_address: Option<String>,
         forwarding_message: Option<EuclidReceive>,
         vcoin_msg: Option<Binary>,
@@ -120,7 +120,7 @@ impl CrossChainUser {
         CrossChainUserWithLimit {
             user: self,
             limit,
-            preferred_denom,
+            preferred_token_type,
             refund_address,
             forwarding_message,
             vcoin_msg,
@@ -140,7 +140,7 @@ pub enum Limit {
 pub struct CrossChainUserWithLimit {
     pub user: CrossChainUser,
     pub limit: Option<Limit>,
-    pub preferred_denom: Option<TokenType>,
+    pub preferred_token_type: Option<TokenType>,
     pub refund_address: Option<String>,
     // Refund to recipient if release fails, default: false and it will return to original sender (Use this with caution as there is no validation check for wrong addresses)
     pub unsafe_refund_voucher_to_recipient: Option<bool>,

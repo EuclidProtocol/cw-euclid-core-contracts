@@ -178,7 +178,7 @@ fn execute_release_escrow(
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
         recipient: deps.api.addr_validate(&recipient.user.address)?,
         amount,
-        preferred_denom: recipient.preferred_denom,
+        preferred_token_type: recipient.preferred_token_type,
         forwarding_message: recipient.forwarding_message,
         refund_address: recipient.refund_address,
     };

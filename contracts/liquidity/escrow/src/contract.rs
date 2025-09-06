@@ -71,7 +71,7 @@ pub fn execute(
         ExecuteMsg::Withdraw {
             recipient,
             amount,
-            preferred_denom,
+            preferred_token_type,
             forwarding_message,
             refund_address,
         } => execute_withdraw(
@@ -80,7 +80,7 @@ pub fn execute(
             info,
             recipient,
             amount,
-            preferred_denom,
+            preferred_token_type,
             forwarding_message,
             refund_address,
         ),
