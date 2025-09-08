@@ -18,7 +18,7 @@ use euclid::{
         },
         hook::EuclidReceive,
     },
-    pool::{DenomRegisterDeregisterRequest, PoolConfig, PoolCreateRequest},
+    pool::{DenomRequest, PoolConfig, PoolCreateRequest},
     swap::{NextSwapPair, SwapRequest},
     timeout::get_timeout,
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
@@ -34,9 +34,8 @@ use crate::{
     query::get_chain_type,
     state::{
         State, HUB_CHANNEL, MOCK_RELAYER_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
-        PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
-        VLP_TO_CW20,
+        PENDING_DENOM_REQUESTS, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
+        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
     },
 };
 
@@ -941,8 +940,7 @@ pub fn execute_request_register_denom(
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
-        !PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
-            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_DENOM_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
     let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
@@ -979,17 +977,13 @@ pub fn execute_request_register_denom(
         timeout,
     )?;
 
-    let req = DenomRegisterDeregisterRequest {
+    let req = DenomRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
         token: token.clone(),
     };
 
-    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.save(
-        deps.storage,
-        (info.sender.clone(), tx_id.clone()),
-        &req,
-    )?;
+    PENDING_DENOM_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -1027,8 +1021,7 @@ pub fn execute_request_deregister_denom(
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
     ensure!(
-        !PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
-            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_DENOM_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
     let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone())?;
@@ -1060,17 +1053,13 @@ pub fn execute_request_deregister_denom(
         timeout,
     )?;
 
-    let req = DenomRegisterDeregisterRequest {
+    let req = DenomRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.to_string(),
         token: token.clone(),
     };
 
-    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.save(
-        deps.storage,
-        (info.sender.clone(), tx_id.clone()),
-        &req,
-    )?;
+    PENDING_DENOM_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     Ok(Response::new()
         .add_event(tx_event(

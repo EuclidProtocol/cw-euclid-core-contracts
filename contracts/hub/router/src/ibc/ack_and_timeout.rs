@@ -191,7 +191,6 @@ pub fn ibc_ack_update_factory_channel(
         env.contract.address.as_str(),
         TxType::RegisterFactory,
     ));
-    println!("ibc_ack_update_factory_channel");
     match res {
         AcknowledgementMsg::Ok(data) => {
             let chain_data = Chain {

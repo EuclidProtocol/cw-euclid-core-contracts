@@ -34,6 +34,7 @@ cw-utils = { workspace = true }
 cw-orch = { workspace = true }
 cw-orch-interchain = "0.9.0"
 ibc-relayer-types = "0.32.1"
+cw20-std = { package = "cw20", version = "2.0.0" }
 
 anyhow = "1.0.79"
 

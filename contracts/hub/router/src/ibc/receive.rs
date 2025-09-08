@@ -396,7 +396,6 @@ fn execute_register_denom(
     token: TokenWithDenom,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    println!("execute_register_denom");
     token.token.validate()?;
 
     let mut token_denoms = TOKEN_DENOMS
@@ -413,7 +412,6 @@ fn execute_register_denom(
         chain_uid: sender.chain_uid.clone(),
         token_type: token.token_type.clone(),
     });
-    println!("token key: {:?}", token.token);
     TOKEN_DENOMS.save(deps.storage, token.token.clone(), &token_denoms)?;
 
     let ack: AcknowledgementMsg<RegisterDenomResponse> =
@@ -526,12 +524,6 @@ pub fn ibc_execute_add_liquidity(
                         token_id: token.token.to_string(),
                     },
                 });
-
-            println!(
-                "ibc_execute_add_liquidity mint msg: {:?}",
-                mint_virtual_balance_msg
-            );
-
             let mint_virtual_balance_msg = WasmMsg::Execute {
                 contract_addr: virtual_balance_address.to_string(),
                 msg: to_json_binary(&mint_virtual_balance_msg)?,

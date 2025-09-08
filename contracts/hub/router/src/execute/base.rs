@@ -347,21 +347,17 @@ pub fn execute_release_escrow(
 
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
-        println!("execute_release_escrow 1");
         let cross_chain_address = cross_chain_addresses_iterator
             .next()
             .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
-        println!("execute_release_escrow 2");
         // Ensure that only one of vcoin_msg or forwarding_message is provided
         ensure!(
             !(cross_chain_address.vcoin_msg.is_some()
                 && cross_chain_address.forwarding_message.is_some()),
             ContractError::new("Exactly one of vcoin_msg or forwarding_message must be provided")
         );
-        println!("execute_release_escrow 3");
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
-        println!("execute_release_escrow 4");
         if let Some(ref preferred_token_type) = cross_chain_address.preferred_token_type {
             // Ensure that the preferred denom is valid
             ensure!(
@@ -372,7 +368,6 @@ pub fn execute_release_escrow(
                 ContractError::InvalidDenom {}
             );
         }
-        println!("execute_release_escrow 5");
         let escrow_key = ESCROW_BALANCES.key((
             token.to_string(),
             cross_chain_address.user.chain_uid.clone(),
@@ -502,7 +497,6 @@ pub fn execute_release_escrow(
         });
         response = response.add_message(burn_virtual_balance_msg);
     }
-    println!("release msgs: {:?}", release_msgs);
     Ok(response
         .add_attribute("method", "release_escrow_initiate")
         .add_attribute("token", token.to_string())

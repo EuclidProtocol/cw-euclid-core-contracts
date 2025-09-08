@@ -46,7 +46,8 @@ pub struct PoolWithLiquidityCreateRequest {
 }
 
 #[cw_serde]
-pub struct DenomRegisterDeregisterRequest {
+/// Used for registering and deregistering denoms
+pub struct DenomRequest {
     // Request sender
     pub sender: String,
     // Escrow request id

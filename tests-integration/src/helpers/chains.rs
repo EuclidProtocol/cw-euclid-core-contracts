@@ -119,6 +119,7 @@ pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrch
     let virtual_balance = VirtualBalanceContract::new(chain.clone());
     let vlp = VlpContract::new(chain.clone());
     let stable_vlp = StableVlpContract::new(chain.clone());
+
     let relayer = setup_relayer(chain)?;
 
     router.upload().unwrap();
@@ -199,7 +200,6 @@ pub fn get_virtual_balance(chain: &MockBase, address: &Addr) -> VirtualBalanceCo
     virtual_balance
 }
 
-#[allow(dead_code)]
 pub fn get_cw20(chain: &MockBase, address: &Addr) -> Cw20Contract<MockBase> {
     let mut cw20 = Cw20Contract::new(chain.clone());
     cw20.as_instance_mut().id = format!("cw20_{}", address);
