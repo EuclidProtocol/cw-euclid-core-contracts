@@ -7,7 +7,7 @@ use crate::execute::{
     execute_approve, execute_burn, execute_mint, execute_remove_zero_state_values,
     execute_transfer, execute_update_state,
 };
-use crate::query::{query_balance, query_state, query_user_balances};
+use crate::query::{query_allowance, query_balance, query_state, query_user_balances};
 use crate::state::STATE;
 use euclid::error::ContractError;
 use euclid::msgs::virtual_balance::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
@@ -67,5 +67,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetUserBalances { user } => {
             query_user_balances(deps, user.chain_uid, user.address)
         }
+        QueryMsg::GetAllowance { balance_key } => query_allowance(deps, balance_key),
     }
 }

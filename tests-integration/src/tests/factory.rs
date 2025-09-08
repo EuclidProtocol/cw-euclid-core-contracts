@@ -1028,7 +1028,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             .query(&euclid::msgs::virtual_balance::QueryMsg::GetUserBalances {
                 user: CrossChainUser::new(
                     router_chain_uid.clone(),
-                    router_contract.environment().sender.to_string(),
+                    vlp_contract.address().unwrap().into_string(),
                 ),
             })
             .unwrap();
@@ -1036,6 +1036,23 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     println!(
         "virtual balance state query: {:?}",
         virtual_balance_state_query
+    );
+
+    let balance_key = BalanceKey {
+        cross_chain_user: CrossChainUser::new(
+            ChainUid::vsl_chain_uid().unwrap(),
+            vlp_contract.address().unwrap().into_string(),
+        ),
+        token_id: token_b_id,
+    };
+    println!("balance key in test: {:?}", balance_key);
+    let virtual_balance_allowance_query: euclid::msgs::virtual_balance::GetAllowanceResponse =
+        virtual_balance_contract
+            .query(&euclid::msgs::virtual_balance::QueryMsg::GetAllowance { balance_key })
+            .unwrap();
+    println!(
+        "virtual balance allowance query: {:?}",
+        virtual_balance_allowance_query
     );
 
     // Withdraw

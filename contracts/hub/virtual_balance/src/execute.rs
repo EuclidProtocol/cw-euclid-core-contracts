@@ -7,12 +7,14 @@ use euclid::{
     error::ContractError,
     msgs::{
         hook::VirtualBalanceReceive,
-        virtual_balance::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
+        virtual_balance::{
+            Allowance, ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State,
+        },
     },
     virtual_balance::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
+use crate::state::{ALLOWANCES, BALANCES, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -117,7 +119,7 @@ pub fn execute_transfer(
     } else {
         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
     };
-
+    println!("getting transferred");
     let mut response = if let Some(from) = transfer_msg.from {
         let attributes = _deduct_allowance(
             deps,
@@ -205,6 +207,7 @@ fn _transfer(
         token_id: token_id.clone(),
         cross_chain_user: to.clone(),
     };
+    println!("receiver balance key: {:?}", receiver_balance_key);
     let receiver_key = receiver_balance_key.clone().to_serialized_balance_key();
 
     // Increase receiver balance
@@ -349,6 +352,11 @@ pub fn execute_approve(
     };
 
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+    println!("key is: {:?}", key);
+    println!("the msg amount is: {:?}", msg.amount);
+    println!("the spender is: {:?}", spender);
+    println!("the owner is: {:?}", owner);
+
     ALLOWANCES.save(
         deps.storage,
         key.to_serialized_balance_key(),

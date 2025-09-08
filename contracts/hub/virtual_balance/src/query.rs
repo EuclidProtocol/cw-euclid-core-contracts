@@ -3,12 +3,13 @@ use euclid::{
     chain::ChainUid,
     error::ContractError,
     msgs::virtual_balance::{
-        GetBalanceResponse, GetStateResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
+        GetAllowanceResponse, GetBalanceResponse, GetStateResponse, GetUserBalancesResponse,
+        GetUserBalancesResponseItem,
     },
     virtual_balance::BalanceKey,
 };
 
-use crate::state::{BALANCES, STATE};
+use crate::state::{ALLOWANCES, BALANCES, STATE};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -23,6 +24,16 @@ pub fn query_balance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, Cont
     Ok(to_json_binary(&GetBalanceResponse {
         amount: balance.unwrap_or(Uint128::zero()),
     })?)
+}
+
+pub fn query_allowance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, ContractError> {
+    let allowance = ALLOWANCES
+        .may_load(
+            deps.storage,
+            balance_key.clone().to_serialized_balance_key(),
+        )?
+        .ok_or(ContractError::new("Allowance not found"))?;
+    Ok(to_json_binary(&GetAllowanceResponse { allowance })?)
 }
 
 pub fn query_user_balances(

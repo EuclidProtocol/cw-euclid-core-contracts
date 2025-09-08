@@ -72,6 +72,12 @@ pub struct ExecuteApprove {
 }
 
 #[cw_serde]
+pub struct Allowance {
+    pub spender: CrossChainUser,
+    pub amount: Uint128,
+}
+
+#[cw_serde]
 pub struct MigrateMsg {}
 
 #[cw_serde]
@@ -88,6 +94,10 @@ pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(GetUserBalancesResponse)]
     GetUserBalances { user: CrossChainUser },
+
+    // Query to simulate a swap for the asset
+    #[returns(GetAllowanceResponse)]
+    GetAllowance { balance_key: BalanceKey },
 }
 
 // We define a custom struct for each query response
@@ -99,6 +109,11 @@ pub struct GetStateResponse {
 #[cw_serde]
 pub struct GetBalanceResponse {
     pub amount: Uint128,
+}
+
+#[cw_serde]
+pub struct GetAllowanceResponse {
+    pub allowance: Allowance,
 }
 
 #[cw_serde]
