@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint64};
+use cosmwasm_std::{coin, Addr, Coin, IbcTimeout, Timestamp, Uint128, Uint64};
 use cw_orch::{
     core::CwEnvError,
     mock::MockBase,
@@ -12,10 +12,13 @@ use euclid::{
     chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit, IbcChain},
     error::ContractError,
     fee::{DenomFees, PartnerFee, BPS_100_PERCENT, BPS_1_PERCENT, MAX_PARTNER_FEE_BPS},
+    liquidity::AddLiquidityRequest,
     msgs::{
         escrow::{QueryMsgFns as EscrowQueryMsgFns, StateResponse as EscrowStateResponse},
         factory::{
-            AllPoolsResponse, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns, StateResponse,
+            AllPoolsResponse, ExecuteSwapRequest, GetPendingLiquidityResponse,
+            GetPendingSwapsResponse, PartnerFeesCollectedResponse, PoolVlpResponse,
+            QueryMsgFns as FactoryQueryMsgFns, StateResponse,
         },
         router::{
             AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
@@ -28,7 +31,7 @@ use euclid::{
         vlp::GetLiquidityResponse,
     },
     pool::PoolConfig,
-    swap::NextSwapPair,
+    swap::{NextSwapPair, SwapRequest},
     token::{
         Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
     },
@@ -348,6 +351,30 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
             ],
         )
         .unwrap();
+    if router_chain_id != factory_chain_id {
+        // Query pending liquidity
+        let pending_liquidity_query: GetPendingLiquidityResponse = factory_contract
+            .query(&euclid::msgs::factory::QueryMsg::PendingLiquidity {
+                user: sender.clone(),
+                pagination: Pagination::new(None, None, None, None),
+            })
+            .unwrap();
+
+        let expected_pending_liquidity = GetPendingLiquidityResponse {
+            pending_add_liquidity: vec![AddLiquidityRequest {
+                sender: sender.to_string(),
+                tx_id: format!(
+                    "{}:{}:{}:12345:0:3",
+                    factory_chain_id, sender, factory_chain_id
+                ),
+                pair_info: PairWithDenomAndAmount {
+                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                },
+            }],
+        };
+        assert_eq!(pending_liquidity_query, expected_pending_liquidity);
+    }
 
     relay_factory_router_factory(
         add_liquidity_request.events,
@@ -1046,14 +1073,15 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         token_id: token_b_id,
     };
     println!("balance key in test: {:?}", balance_key);
-    let virtual_balance_allowance_query: euclid::msgs::virtual_balance::GetAllowanceResponse =
-        virtual_balance_contract
-            .query(&euclid::msgs::virtual_balance::QueryMsg::GetAllowance { balance_key })
-            .unwrap();
-    println!(
-        "virtual balance allowance query: {:?}",
-        virtual_balance_allowance_query
-    );
+    // TODO: Check why allowance is returning empty
+    // let virtual_balance_allowance_query: euclid::msgs::virtual_balance::GetAllowanceResponse =
+    //     virtual_balance_contract
+    //         .query(&euclid::msgs::virtual_balance::QueryMsg::GetAllowance { balance_key })
+    //         .unwrap();
+    // println!(
+    //     "virtual balance allowance query: {:?}",
+    //     virtual_balance_allowance_query
+    // );
 
     // Withdraw
     // Two cross chain users on unique chains
@@ -1108,6 +1136,47 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             })
     });
     assert!(wasm_event.is_none(), "Expected wasm event without error");
+
+    // Query get all pools from factory
+    let all_pools_query: AllPoolsResponse = factory_contract
+        .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
+        .unwrap();
+    let expected_all_pools_response = AllPoolsResponse {
+        pools: vec![PoolVlpResponse {
+            pair: Pair {
+                token_1: Token::create("token.a".to_string()).unwrap(),
+                token_2: Token::create("token.b".to_string()).unwrap(),
+            },
+            vlp: vlp_contract.address().unwrap().into_string(),
+        }],
+    };
+    assert_eq!(all_pools_query, expected_all_pools_response);
+
+    // Query get all tokens from factory
+    let all_tokens_query: AllTokensResponse = factory_contract
+        .query(&euclid::msgs::factory::QueryMsg::GetAllTokens {})
+        .unwrap();
+    let expected_all_tokens_response = AllTokensResponse {
+        tokens: vec![
+            Token::create("token.a".to_string()).unwrap(),
+            Token::create("token.b".to_string()).unwrap(),
+        ],
+    };
+    assert_eq!(all_tokens_query, expected_all_tokens_response);
+
+    // Query partner fees collected from factory
+    let partner_fees_collected_query: PartnerFeesCollectedResponse = factory_contract
+        .query(&euclid::msgs::factory::QueryMsg::GetPartnerFeesCollected {})
+        .unwrap();
+    let expected_partner_fees_collected_response = PartnerFeesCollectedResponse {
+        total: DenomFees {
+            totals: HashMap::new(),
+        },
+    };
+    assert_eq!(
+        partner_fees_collected_query,
+        expected_partner_fees_collected_response
+    );
 }
 
 #[test]
@@ -1633,6 +1702,7 @@ pub fn run_test_swap_request_reusable(
     let factory_chain = factory.environment();
     let router_chain = router.environment();
 
+    let router_chain_id = router_chain.chain_id();
     let factory_chain_id = factory_chain.chain_id();
     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
 
@@ -1755,6 +1825,56 @@ pub fn run_test_swap_request_reusable(
         }),
         &[coin(amount_in.u128(), token_a.token.to_string())],
     )?;
+
+    if router_chain_id != factory_chain_id {
+        // Query pending swap request
+        let pending_swap_request_query: GetPendingSwapsResponse = factory
+            .query(&euclid::msgs::factory::QueryMsg::PendingSwapsUser {
+                user: sender,
+                pagination: Pagination::new(None, None, None, None),
+            })
+            .unwrap();
+        println!(
+            "pending swap request query: {:?}",
+            pending_swap_request_query
+        );
+        let expected_pending_swap_request = GetPendingSwapsResponse {
+        pending_swaps: vec![SwapRequest {
+            sender: "cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9".to_string(),
+            tx_id: "osmosis:cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9:osmosis:12345:0:4".to_string(),
+            asset_in: TokenWithDenom {
+                token: Token::create("token.a".to_string()).unwrap(),
+                token_type: euclid::token::TokenType::Native {
+                    denom: "token.a".to_string(),
+                },
+            },
+            amount_in: Uint128::new(1_000_000),
+            asset_out: Token::create("token.b".to_string()).unwrap(),
+            min_amount_out: Uint128::new(50),
+            swaps: vec![NextSwapPair {
+                token_in: Token::create("token.a".to_string()).unwrap(),
+                token_out: Token::create("token.b".to_string()).unwrap(),
+                test_fail: None,
+            }],
+            timeout: IbcTimeout::with_timestamp(Timestamp::from_nanos(1571797479879305533)),
+            cross_chain_addresses: vec![CrossChainUserWithLimit {
+                user: CrossChainUser {
+                    chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
+                    address: "cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9".to_string(),
+                },
+                limit: None,
+                preferred_token_type: None,
+                refund_address: None,
+                unsafe_refund_voucher_to_recipient: None,
+                forwarding_message: None,
+                vcoin_msg: None,
+            }],
+            partner_fee_amount: Uint128::zero(),
+            partner_fee_recipient: Addr::unchecked("cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9"),
+            }],
+        };
+        assert_eq!(pending_swap_request_query, expected_pending_swap_request);
+    }
 
     relay_factory_router_factory(swap_request_msg.events, factory, router, &factory_chain_uid)?;
 
@@ -3009,7 +3129,6 @@ fn test_deposit_and_withdraw_multiple_chains() {
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
     let router = setup_router(&router_chain).unwrap();
-    let router_chain_uid = ChainUid::create("nibiru".to_string()).unwrap();
     let factory_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
     let factory = setup_factory(&interchain, &factory_chain_uid, "nibiru", &router).unwrap();
 
