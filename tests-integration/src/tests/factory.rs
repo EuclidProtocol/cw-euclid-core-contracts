@@ -1054,7 +1054,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         virtual_balance_contract
             .query(&euclid::msgs::virtual_balance::QueryMsg::GetUserBalances {
                 user: CrossChainUser::new(
-                    router_chain_uid.clone(),
+                    ChainUid::vsl_chain_uid().unwrap(),
                     vlp_contract.address().unwrap().into_string(),
                 ),
             })
@@ -1073,15 +1073,12 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         token_id: token_b_id,
     };
     println!("balance key in test: {:?}", balance_key);
-    // TODO: Check why allowance is returning empty
-    // let virtual_balance_allowance_query: euclid::msgs::virtual_balance::GetAllowanceResponse =
-    //     virtual_balance_contract
-    //         .query(&euclid::msgs::virtual_balance::QueryMsg::GetAllowance { balance_key })
-    //         .unwrap();
-    // println!(
-    //     "virtual balance allowance query: {:?}",
-    //     virtual_balance_allowance_query
-    // );
+
+    let _virtual_balance_allowance_err = virtual_balance_contract
+        .query::<euclid::msgs::virtual_balance::GetAllowanceResponse>(
+            &euclid::msgs::virtual_balance::QueryMsg::GetAllowance { balance_key },
+        )
+        .unwrap_err();
 
     // Withdraw
     // Two cross chain users on unique chains

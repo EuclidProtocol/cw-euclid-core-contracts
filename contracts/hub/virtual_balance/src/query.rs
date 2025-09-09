@@ -32,7 +32,7 @@ pub fn query_allowance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, Co
             deps.storage,
             balance_key.clone().to_serialized_balance_key(),
         )?
-        .ok_or(ContractError::new("Allowance not found"))?;
+        .ok_or(ContractError::NoAllowance {})?;
     Ok(to_json_binary(&GetAllowanceResponse { allowance })?)
 }
 
