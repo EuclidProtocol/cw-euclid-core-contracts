@@ -413,7 +413,7 @@ pub fn execute_release_escrow(
             }
             _ => {}
         }
-
+        println!("release_amount: {:?}", release_amount);
         if release_amount.is_zero() {
             continue;
         }
@@ -497,6 +497,9 @@ pub fn execute_release_escrow(
         });
         response = response.add_message(burn_virtual_balance_msg);
     }
+    println!("release_msgs: {:?}", release_msgs);
+    println!("vcoin_transfer_msgs: {:?}", vcoin_transfer_msgs);
+
     Ok(response
         .add_attribute("method", "release_escrow_initiate")
         .add_attribute("token", token.to_string())

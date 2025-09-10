@@ -1174,6 +1174,35 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         partner_fees_collected_query,
         expected_partner_fees_collected_response
     );
+
+    // Remove liquidity
+    let remove_liquidity_request = factory_contract
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::WithdrawVirtualBalance {
+                token: token_a.token.clone(),
+                amount: Uint128::from(100u128),
+                cross_chain_addresses: vec![],
+                timeout: None,
+            },
+            &[],
+        )
+        .unwrap();
+
+    let res = relay_factory_router_factory(
+        remove_liquidity_request.events,
+        &factory_contract,
+        &router_contract,
+        &factory_chain_uid,
+    )
+    .unwrap();
+
+    let wasm_event = res.iter().find(|event| {
+        event.ty == "wasm"
+            && event.attributes.iter().any(|attr| {
+                attr.key == "reply_on_cosmos_receive_processing" && attr.value == "error"
+            })
+    });
+    assert!(wasm_event.is_none(), "Expected wasm event without error");
 }
 
 #[test]
@@ -3235,7 +3264,7 @@ fn test_deposit_and_withdraw_multiple_chains() {
         .unwrap();
 
     let relay_response = relay_factory_router_factory(
-        withdraw_response.events,
+        withdraw_response.events.clone(),
         &factory,
         &router,
         &factory_chain_uid,
