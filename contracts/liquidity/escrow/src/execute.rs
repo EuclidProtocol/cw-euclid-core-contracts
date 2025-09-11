@@ -16,7 +16,9 @@ use euclid::{
 
 use crate::{
     reply::FORWARDING_MESSAGE_REPLY_ID,
-    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, REFUND_ADDRESS, REFUND_ASSETS, STATE},
+    state::{
+        ALLOWED_DENOMS, DENOM_TO_AMOUNT, DISALLOWED_DENOMS, REFUND_ADDRESS, REFUND_ASSETS, STATE,
+    },
 };
 
 use euclid_ibc::ack::AcknowledgementMsg;
@@ -86,7 +88,11 @@ pub fn execute_disallow_denom(
     allowed_denoms.retain(|current_denom| current_denom != &denom);
     ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
 
-    //TODO refund the disallowed funds
+    // Add to disallowed denoms
+    let mut disallowed_denoms = DISALLOWED_DENOMS.load(deps.storage).unwrap_or_default();
+    disallowed_denoms.push(denom.clone());
+    DISALLOWED_DENOMS.save(deps.storage, &disallowed_denoms)?;
+
     Ok(Response::new()
         .add_attribute("method", "disallow_denom")
         .add_attribute("deregistered_denom", denom.get_key()))
@@ -256,22 +262,30 @@ pub fn execute_withdraw(
     let mut messages: Vec<CosmosMsg> = Vec::new();
     let mut forwarding_messages: Vec<SubMsg> = Vec::new();
     let mut remaining_withdraw_amount = amount;
-    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
+    let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
+    let disallowed_denoms = DISALLOWED_DENOMS.load(deps.storage).unwrap_or_default();
+
+    let mut denoms = {
+        let mut v = allowed_denoms;
+        v.extend(disallowed_denoms);
+        v.into_iter().peekable()
+    };
+
     if let Some(preferred_token_type) = preferred_token_type {
         ensure!(
-            allowed_denoms.any(|denom| denom.get_key() == preferred_token_type.get_key()),
+            denoms.any(|denom| denom.get_key() == preferred_token_type.get_key()),
             ContractError::UnsupportedDenomination {}
         );
 
         // Only allow the preferred denom, remove all other denoms
-        allowed_denoms = vec![preferred_token_type].into_iter().peekable();
+        denoms = vec![preferred_token_type].into_iter().peekable();
     }
 
     let mut released_denoms = vec![];
 
     // Ensure that the amount desired doesn't exceed the current balance
-    while !remaining_withdraw_amount.is_zero() && allowed_denoms.peek().is_some() {
-        let denom = allowed_denoms
+    while !remaining_withdraw_amount.is_zero() && denoms.peek().is_some() {
+        let denom = denoms
             .next()
             .ok_or(ContractError::new("Denom Iter Faiiled"))?;
 

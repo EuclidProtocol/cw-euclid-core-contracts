@@ -3,7 +3,7 @@ use cosmwasm_std::{coin, Addr, Coin, IbcTimeout, Timestamp, Uint128, Uint64};
 use cw_orch::{
     core::CwEnvError,
     mock::MockBase,
-    prelude::{ContractInstance, CwOrchExecute, CwOrchQuery, Environment},
+    prelude::{CallAs, ContractInstance, CwOrchExecute, CwOrchQuery, Environment},
 };
 use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::*;
@@ -14,7 +14,10 @@ use euclid::{
     fee::{DenomFees, PartnerFee, BPS_100_PERCENT, BPS_1_PERCENT, MAX_PARTNER_FEE_BPS},
     liquidity::AddLiquidityRequest,
     msgs::{
-        escrow::{QueryMsgFns as EscrowQueryMsgFns, StateResponse as EscrowStateResponse},
+        escrow::{
+            ExecuteMsgFns as EscrowExecuteMsgFns, QueryMsgFns as EscrowQueryMsgFns,
+            StateResponse as EscrowStateResponse,
+        },
         factory::{
             AllPoolsResponse, ExecuteSwapRequest, GetPendingLiquidityResponse,
             GetPendingSwapsResponse, PartnerFeesCollectedResponse, PoolVlpResponse,
@@ -3054,6 +3057,14 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
 
 #[test]
 fn test_deposit_and_withdraw() {
+    deposit_and_withdraw_common(false);
+}
+
+#[test]
+fn test_deposit_and_withdraw_disallowed_denom() {
+    deposit_and_withdraw_common(true);
+}
+fn deposit_and_withdraw_common(disallow: bool) {
     let sender = Addr::unchecked("sender_for_all_chains").into_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
@@ -3080,13 +3091,12 @@ fn test_deposit_and_withdraw() {
         token.to_token_with_denom(),
         token.amount,
         None,
-        // None,
         None,
     )
     .unwrap();
 
     // Query escrow state after deposit
-    let escrow_contract = get_escrow(&factory, token.token.to_string().as_str());
+    let mut escrow_contract = get_escrow(&factory, token.token.to_string().as_str());
     let escrow_query = escrow_contract.state().unwrap();
     assert_eq!(
         escrow_query,
@@ -3096,6 +3106,14 @@ fn test_deposit_and_withdraw() {
             total_amount: token.amount,
         }
     );
+
+    // Optionally disallow denom
+    if disallow {
+        escrow_contract.set_sender(&factory.address().unwrap());
+        escrow_contract
+            .disallow_denom(token.token_type.clone())
+            .unwrap();
+    }
 
     // Withdraw tokens
     let withdraw_response = factory

@@ -1,21 +1,19 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::coin;
-use cosmwasm_std::Addr;
+use cosmwasm_std::{coin, Addr};
 use cw_orch::prelude::CwOrchQuery;
-use cw_orch_interchain::mock::MockInterchainEnv;
-use cw_orch_interchain::prelude::InterchainEnv;
-use euclid::error::ContractError;
-use euclid::msgs::router::QueryMsgFns;
-use euclid::msgs::virtual_balance::ExecuteMsgFns;
-use euclid::msgs::virtual_balance::{GetStateResponse, State};
+use cw_orch_interchain::{mock::MockInterchainEnv, prelude::InterchainEnv};
+use euclid::{
+    error::ContractError,
+    msgs::{
+        router::QueryMsgFns,
+        virtual_balance::{ExecuteMsgFns, GetStateResponse, State},
+    },
+};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
-use router::mock::mock_router;
-use router::mock::MockRouter;
+use router::mock::{mock_router, MockRouter};
 use virtual_balance::mock::{mock_virtual_balance, MockVirtualBalance};
 
-use crate::helpers::chains::get_virtual_balance;
-use crate::helpers::chains::setup_factory;
-use crate::helpers::chains::setup_router;
+use crate::helpers::chains::{get_virtual_balance, setup_router};
 
 #[test]
 fn test_proper_instantiation() {
