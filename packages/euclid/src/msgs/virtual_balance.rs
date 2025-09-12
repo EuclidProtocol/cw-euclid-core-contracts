@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
     chain::CrossChainUser,
+    utils::pagination::Pagination,
     virtual_balance::{BalanceKey, SerializedBalanceKey},
 };
 
@@ -87,7 +88,10 @@ pub enum QueryMsg {
 
     // Query to simulate a swap for the asset
     #[returns(GetUserBalancesResponse)]
-    GetUserBalances { user: CrossChainUser },
+    GetUserBalances {
+        user: CrossChainUser,
+        pagination: Pagination<Uint128>,
+    },
 }
 
 // We define a custom struct for each query response
