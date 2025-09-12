@@ -31,14 +31,14 @@ pub fn query_user_balances(
     deps: Deps,
     chain_uid: ChainUid,
     address: String,
-    pagination: Pagination<Uint128>,
+    pagination: Option<Pagination<Uint128>>,
 ) -> Result<Binary, ContractError> {
     let Pagination {
         min,
         max,
         skip,
         limit,
-    } = pagination;
+    } = pagination.unwrap_or_default();
 
     let min = min.map(Bound::inclusive);
     let max = max.map(Bound::exclusive);

@@ -90,7 +90,7 @@ pub enum QueryMsg {
     #[returns(GetUserBalancesResponse)]
     GetUserBalances {
         user: CrossChainUser,
-        pagination: Pagination<Uint128>,
+        pagination: Option<Pagination<Uint128>>,
     },
 }
 
