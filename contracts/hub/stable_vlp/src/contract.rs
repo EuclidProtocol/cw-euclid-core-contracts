@@ -32,6 +32,9 @@ pub fn instantiate(
     // Validate token pair
     msg.pair.validate()?;
 
+    // Validate the fees
+    msg.fee.validate()?;
+
     let state = State {
         pair: msg.pair,
         virtual_balance: msg.virtual_balance,

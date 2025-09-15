@@ -2,7 +2,7 @@ use crate::{
     chain::{ChainUid, CrossChainUser},
     error::ContractError,
     events::{liquidity_event, simple_event, tx_event, TxType},
-    fee::{Fee, TotalFees, BPS_50_PERCENT, MAX_FEE_BPS},
+    fee::{Fee, TotalFees, BPS_50_PERCENT},
     liquidity::AddLiquidityResponse,
     msgs::virtual_balance::{ExecuteApprove, ExecuteTransfer},
     pool::stable_math::compute_stable_swap,
@@ -224,16 +224,9 @@ pub fn update_fee(
     );
 
     state.fee.lp_fee_bps = lp_fee_bps.unwrap_or(state.fee.lp_fee_bps);
-    ensure!(
-        state.fee.lp_fee_bps <= MAX_FEE_BPS,
-        ContractError::new("LP Fee cannot exceed maximum limit")
-    );
-
     state.fee.euclid_fee_bps = euclid_fee_bps.unwrap_or(state.fee.euclid_fee_bps);
-    ensure!(
-        state.fee.euclid_fee_bps <= MAX_FEE_BPS,
-        ContractError::new("Euclid Fee cannot exceed maximum limit")
-    );
+
+    state.fee.validate()?;
 
     state.fee.recipient = recipient.unwrap_or(state.fee.recipient);
 
@@ -434,11 +427,6 @@ pub fn remove_liquidity(
 
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
-
-    let vlp_cross_chain_struct = CrossChainUser {
-        address: env.contract.address.to_string(),
-        chain_uid: ChainUid::vsl_chain_uid()?,
-    };
 
     let token_1_transfer_msg = pair.token_1.create_virtual_balance_transfer_msg(
         state.virtual_balance.clone(),

@@ -31,6 +31,30 @@ impl Fee {
             recipient,
         }
     }
+
+    pub fn validate(&self) -> Result<&Self, ContractError> {
+        ensure!(
+            self.lp_fee_bps <= MAX_FEE_BPS,
+            ContractError::new("LP Fee cannot exceed maximum limit")
+        );
+
+        ensure!(
+            self.euclid_fee_bps <= MAX_FEE_BPS,
+            ContractError::new("Euclid Fee cannot exceed maximum limit")
+        );
+
+        let total_fee_bps = self
+            .lp_fee_bps
+            .checked_add(self.euclid_fee_bps)
+            .ok_or(ContractError::new("Total Fee cannot exceed maximum limit"))?;
+
+        ensure!(
+            total_fee_bps <= MAX_FEE_BPS,
+            ContractError::new("Total Fee cannot exceed maximum limit")
+        );
+
+        Ok(self)
+    }
 }
 
 #[cw_serde]
