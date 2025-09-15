@@ -531,7 +531,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
                 refund_address: None,
                 unsafe_refund_voucher_to_recipient: None,
                 forwarding_message: None,
-                vcoin_msg: None,
+                voucher_msg: None,
             }],
         })
         .unwrap();
@@ -547,7 +547,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
                 refund_address: None,
                 unsafe_refund_voucher_to_recipient: None,
                 forwarding_message: None,
-                vcoin_msg: None,
+                voucher_msg: None,
             },
         )],
     };
@@ -1115,7 +1115,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
                         refund_address: None,
                         unsafe_refund_voucher_to_recipient: None,
                         forwarding_message: None,
-                        vcoin_msg: None,
+                        voucher_msg: None,
                     },
                     CrossChainUserWithLimit {
                         user: CrossChainUser::new(
@@ -1127,7 +1127,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
                         refund_address: None,
                         unsafe_refund_voucher_to_recipient: None,
                         forwarding_message: None,
-                        vcoin_msg: None,
+                        voucher_msg: None,
                     },
                 ],
                 timeout: None,
@@ -1727,7 +1727,14 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
     let router = setup_router(&router_chain).unwrap();
 
     let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
-    run_test_swap_request_reusable(sender, &factory, &router, None).unwrap();
+    run_test_swap_request_reusable(
+        sender,
+        &factory,
+        &router,
+        None,
+        ChainUid::create(factory_chain_id.to_string()).unwrap(),
+    )
+    .unwrap();
 }
 
 pub struct SwapTestReusableOutput {
@@ -1741,6 +1748,7 @@ pub fn run_test_swap_request_reusable(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     cross_chain_addresses: Option<Vec<CrossChainUserWithLimit>>,
+    chain_uid: ChainUid,
 ) -> Result<SwapTestReusableOutput, CwEnvError> {
     let factory_chain = factory.environment();
     let router_chain = router.environment();
@@ -1841,6 +1849,16 @@ pub fn run_test_swap_request_reusable(
 
     let amount_in = Uint128::new(1_000_000);
 
+    let cross_chain_addresses = vec![CrossChainUserWithLimit {
+        user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
+        limit: None,
+        preferred_token_type: None,
+        refund_address: None,
+        forwarding_message: None,
+        voucher_msg: None,
+        unsafe_refund_voucher_to_recipient: None,
+    }];
+
     let swap_request_msg = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
             sender: None,
@@ -1854,15 +1872,7 @@ pub fn run_test_swap_request_reusable(
                 token_out: token_b.token.clone(),
                 test_fail: None,
             }],
-            cross_chain_addresses: cross_chain_addresses.unwrap_or(vec![CrossChainUserWithLimit {
-                user: CrossChainUser::new(factory_chain_uid.clone(), sender.to_string()),
-                limit: None,
-                preferred_token_type: None,
-                refund_address: None,
-                forwarding_message: None,
-                vcoin_msg: None,
-                unsafe_refund_voucher_to_recipient: None,
-            }]),
+            cross_chain_addresses: cross_chain_addresses.clone(),
             partner_fee: None,
             meta: None,
         }),
@@ -1873,7 +1883,7 @@ pub fn run_test_swap_request_reusable(
         // Query pending swap request
         let pending_swap_request_query: GetPendingSwapsResponse = factory
             .query(&euclid::msgs::factory::QueryMsg::PendingSwapsUser {
-                user: sender,
+                user: sender.clone(),
                 pagination: Pagination::new(None, None, None, None),
             })
             .unwrap();
@@ -1883,7 +1893,7 @@ pub fn run_test_swap_request_reusable(
         );
         let expected_pending_swap_request = GetPendingSwapsResponse {
         pending_swaps: vec![SwapRequest {
-            sender: "cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9".to_string(),
+            sender: sender.to_string(),
             tx_id: "osmosis:cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9:osmosis:12345:0:4".to_string(),
             asset_in: TokenWithDenom {
                 token: Token::create("token.a".to_string()).unwrap(),
@@ -1902,15 +1912,15 @@ pub fn run_test_swap_request_reusable(
             timeout: IbcTimeout::with_timestamp(Timestamp::from_nanos(1571797479879305533)),
             cross_chain_addresses: vec![CrossChainUserWithLimit {
                 user: CrossChainUser {
-                    chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
-                    address: "cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9".to_string(),
+                    chain_uid: chain_uid,
+                    address: sender.to_string(),
                 },
-                limit: None,
+                limit: cross_chain_addresses[0].limit.clone(),
                 preferred_token_type: None,
                 refund_address: None,
                 unsafe_refund_voucher_to_recipient: None,
                 forwarding_message: None,
-                vcoin_msg: None,
+                voucher_msg: None,
             }],
             partner_fee_amount: Uint128::zero(),
             partner_fee_recipient: Addr::unchecked("cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9"),
@@ -2059,7 +2069,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
                     preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
-                    vcoin_msg: None,
+                    voucher_msg: None,
                     unsafe_refund_voucher_to_recipient: None,
                 }],
                 partner_fee: None,
@@ -2682,7 +2692,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
             preferred_token_type: None,
             refund_address: None,
             forwarding_message: None,
-            vcoin_msg: None,
+            voucher_msg: None,
             unsafe_refund_voucher_to_recipient: None,
         }],
         None,
@@ -3050,7 +3060,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
                     preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
-                    vcoin_msg: None,
+                    voucher_msg: None,
                     unsafe_refund_voucher_to_recipient: None,
                 }],
                 partner_fee: None,
@@ -3144,7 +3154,7 @@ fn deposit_and_withdraw_common(disallow: bool) {
                     preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
-                    vcoin_msg: None,
+                    voucher_msg: None,
                     unsafe_refund_voucher_to_recipient: None,
                 }],
                 timeout: None,
@@ -3273,7 +3283,7 @@ fn test_deposit_and_withdraw_multiple_chains() {
                         preferred_token_type: None,
                         refund_address: None,
                         forwarding_message: None,
-                        vcoin_msg: None,
+                        voucher_msg: None,
                         unsafe_refund_voucher_to_recipient: None,
                     },
                     CrossChainUserWithLimit {
@@ -3285,7 +3295,7 @@ fn test_deposit_and_withdraw_multiple_chains() {
                         preferred_token_type: None,
                         refund_address: None,
                         forwarding_message: None,
-                        vcoin_msg: None,
+                        voucher_msg: None,
                         unsafe_refund_voucher_to_recipient: None,
                     },
                 ],
@@ -3426,7 +3436,7 @@ fn test_deposit_and_withdraw_with_failure() {
                     preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
-                    vcoin_msg: None,
+                    voucher_msg: None,
                     unsafe_refund_voucher_to_recipient: None,
                 }],
                 timeout: None,
@@ -3449,7 +3459,7 @@ fn test_deposit_and_withdraw_with_failure() {
         .unwrap();
     assert_eq!(
         balance.amount, token.amount,
-        "Vcoin not refunded to original sender (unsafe send to recipient false)"
+        "Voucher not refunded to original sender (unsafe send to recipient false)"
     );
 
     // Withdraw tokens
@@ -3464,7 +3474,7 @@ fn test_deposit_and_withdraw_with_failure() {
                     preferred_token_type: None,
                     refund_address: None,
                     forwarding_message: None,
-                    vcoin_msg: None,
+                    voucher_msg: None,
                     unsafe_refund_voucher_to_recipient: Some(true),
                 }],
                 timeout: None,
@@ -3488,7 +3498,7 @@ fn test_deposit_and_withdraw_with_failure() {
     assert_eq!(
         balance.amount,
         Uint128::zero(),
-        "Vcoin refunded  to original sender after failed withdraw (unsafe send to recipient true)",
+        "Voucher refunded  to original sender after failed withdraw (unsafe send to recipient true)",
     );
 
     let new_balance_key = BalanceKey {
@@ -3501,6 +3511,6 @@ fn test_deposit_and_withdraw_with_failure() {
         .unwrap();
     assert_eq!(
         balance.amount, token.amount,
-        "Vcoin refunded to recipient after failed withdraw (unsafe send to recipient true)",
+        "Voucher refunded to recipient after failed withdraw (unsafe send to recipient true)",
     );
 }

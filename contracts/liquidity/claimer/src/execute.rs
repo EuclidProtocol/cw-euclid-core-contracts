@@ -43,8 +43,8 @@ pub fn execute_virtual_balance_receive(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
-        info.sender == state.vcoin_address,
-        ContractError::new("Invalid vcoin address")
+        info.sender == state.voucher_address,
+        ContractError::new("Invalid voucher address")
     );
 
     let claim_msg: VirtualBalanceReceiveHookMsg = from_json(transfer_msg.msg.clone())?;
@@ -137,7 +137,7 @@ pub fn execute_claim_voucher(
                 refund_address: None,
                 forwarding_message: claim_msg.release_msg,
                 unsafe_refund_voucher_to_recipient: Some(true),
-                vcoin_msg: None,
+                voucher_msg: None,
                 limit: Some(euclid::chain::Limit::Equal(claim.amount)),
             }],
             timeout: None,
@@ -149,7 +149,7 @@ pub fn execute_claim_voucher(
         };
         response = response.add_message(release_funds_msg);
     } else {
-        let transfer_vcoin_msg = euclid::msgs::factory::ExecuteMsg::TransferVirtualBalance {
+        let transfer_voucher_msg = euclid::msgs::factory::ExecuteMsg::TransferVirtualBalance {
             token: claim.token.clone(),
             amount: claim.amount,
             recipient_address: claim_msg.recipient.clone(),
@@ -157,12 +157,12 @@ pub fn execute_claim_voucher(
             msg: None,
             timeout: None,
         };
-        let transfer_vcoin_msg = WasmMsg::Execute {
+        let transfer_voucher_msg = WasmMsg::Execute {
             contract_addr: state.factory_address.to_string(),
-            msg: to_json_binary(&transfer_vcoin_msg)?,
+            msg: to_json_binary(&transfer_voucher_msg)?,
             funds: vec![],
         };
-        response = response.add_message(transfer_vcoin_msg);
+        response = response.add_message(transfer_voucher_msg);
     }
 
     // Remove claim from claims

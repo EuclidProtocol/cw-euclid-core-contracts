@@ -12,7 +12,7 @@ use super::hook::VirtualBalanceReceive;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub factory_address: Addr,
-    pub vcoin_address: Addr,
+    pub voucher_address: Addr,
 }
 
 #[cw_serde]
@@ -66,7 +66,7 @@ pub enum QueryMsg {
 #[cw_serde]
 pub struct State {
     pub factory_address: Addr,
-    pub vcoin_address: Addr,
+    pub voucher_address: Addr,
     pub chain_uid: ChainUid,
     pub admin: Addr,
 }

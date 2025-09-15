@@ -114,7 +114,7 @@ impl CrossChainUser {
         preferred_token_type: Option<TokenType>,
         refund_address: Option<String>,
         forwarding_message: Option<EuclidReceive>,
-        vcoin_msg: Option<Binary>,
+        voucher_msg: Option<Binary>,
         unsafe_refund_voucher_to_recipient: Option<bool>,
     ) -> CrossChainUserWithLimit {
         CrossChainUserWithLimit {
@@ -123,7 +123,7 @@ impl CrossChainUser {
             preferred_token_type,
             refund_address,
             forwarding_message,
-            vcoin_msg,
+            voucher_msg,
             unsafe_refund_voucher_to_recipient,
         }
     }
@@ -146,8 +146,8 @@ pub struct CrossChainUserWithLimit {
     pub unsafe_refund_voucher_to_recipient: Option<bool>,
     // Forward message to be executed on the destination chain
     pub forwarding_message: Option<EuclidReceive>,
-    // Vcoin Transfer Message to be executed. If this message is provided, escrow release will be skipped.
-    pub vcoin_msg: Option<Binary>,
+    // Voucher Transfer Message to be executed. If this message is provided, escrow release will be skipped.
+    pub voucher_msg: Option<Binary>,
 }
 
 #[cw_serde]

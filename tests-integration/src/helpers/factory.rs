@@ -106,7 +106,7 @@ pub fn deposit_token(
     Ok(())
 }
 
-pub fn transfer_token_vcoin(
+pub fn transfer_token_voucher(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     token: Token,

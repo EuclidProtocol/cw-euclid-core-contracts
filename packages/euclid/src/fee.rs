@@ -1,6 +1,6 @@
-use crate::chain::CrossChainUser;
+use crate::{chain::CrossChainUser, error::ContractError};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{ensure, Uint128};
 use std::collections::HashMap;
 
 pub const BPS_100_PERCENT: u64 = 10000;

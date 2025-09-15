@@ -11,7 +11,7 @@ use crate::{
     helpers::{
         chains::{get_virtual_balance, setup_claimer, setup_factory, setup_router},
         claimer::{get_claimer_key, sign_claim_messsage},
-        factory::{deposit_token, register_token, transfer_token_vcoin},
+        factory::{deposit_token, register_token, transfer_token_voucher},
         relayer::relay_router_factory_router,
     },
     tests::factory::run_test_swap_request_reusable,
@@ -44,11 +44,11 @@ fn setup_claimer_and_factory() -> (
     let router = setup_router(&router_chain).unwrap();
     let osmosis_factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
     let nibiru_factory = setup_factory(&interchain, "nibiru", "nibiru", &router).unwrap();
-    let vcoin_address = get_virtual_balance(
+    let voucher_address = get_virtual_balance(
         &router_chain,
         &router.get_state().unwrap().virtual_balance_address.unwrap(),
     );
-    let claimer = setup_claimer(&nibiru_factory, &vcoin_address).unwrap();
+    let claimer = setup_claimer(&nibiru_factory, &voucher_address).unwrap();
     (router, claimer, osmosis_factory, nibiru_factory)
 }
 
@@ -60,7 +60,7 @@ fn test_proper_instantiation() {
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
     let router = setup_router(&router_chain).unwrap();
-    let vcoin_address = get_virtual_balance(
+    let voucher_address = get_virtual_balance(
         &router_chain,
         &router.get_state().unwrap().virtual_balance_address.unwrap(),
     );
@@ -68,10 +68,10 @@ fn test_proper_instantiation() {
     let nibiru_factory = setup_factory(&interchain, "nibiru", "nibiru", &router).unwrap();
 
     assert!(
-        setup_claimer(&osmosis_factory, &vcoin_address).is_err(),
+        setup_claimer(&osmosis_factory, &voucher_address).is_err(),
         "Claimer should not be able to be instantiated on a different chain"
     );
-    let claimer_contract = setup_claimer(&nibiru_factory, &vcoin_address).unwrap();
+    let claimer_contract = setup_claimer(&nibiru_factory, &voucher_address).unwrap();
 
     let factory_address = nibiru_factory.address().unwrap();
 
@@ -140,7 +140,7 @@ fn test_create_claim() {
 }
 
 #[test]
-fn test_create_claim_using_vcoin_transfer() {
+fn test_create_claim_using_voucher_transfer() {
     let (router, claimer, osmosis_factory, nibiru_factory) = setup_claimer_and_factory();
 
     let token = TokenWithDenom {
@@ -172,7 +172,7 @@ fn test_create_claim_using_vcoin_transfer() {
     .unwrap();
 
     // Transfer vouchers
-    transfer_token_vcoin(
+    transfer_token_voucher(
         &osmosis_factory,
         &router,
         token.token.clone(),
@@ -226,7 +226,7 @@ fn test_create_claim_using_swap() {
         preferred_token_type: None,
         refund_address: None,
         forwarding_message: None,
-        vcoin_msg: Some(to_json_binary(&claim_obj).unwrap()),
+        voucher_msg: Some(to_json_binary(&claim_obj).unwrap()),
         unsafe_refund_voucher_to_recipient: None,
     }];
     let swap_test_output = run_test_swap_request_reusable(
@@ -234,6 +234,7 @@ fn test_create_claim_using_swap() {
         &osmosis_factory,
         &router,
         Some(cross_chain_address),
+        osmosis_factory.get_state().unwrap().chain_uid,
     )
     .unwrap();
 
@@ -337,7 +338,7 @@ fn test_claim_voucher_as_voucher() {
         .unwrap();
     assert_eq!(claims.len(), 0);
 
-    let vcoin_contract = get_virtual_balance(
+    let voucher_contract = get_virtual_balance(
         router.environment(),
         &router.get_state().unwrap().virtual_balance_address.unwrap(),
     );
@@ -346,8 +347,8 @@ fn test_claim_voucher_as_voucher() {
         cross_chain_user: new_recipient.clone(),
         token_id: token.token.to_string(),
     };
-    let vcoin_balance = vcoin_contract.get_balance(balance_key).unwrap();
-    assert_eq!(vcoin_balance.amount, amount_to_distribute);
+    let voucher_balance = voucher_contract.get_balance(balance_key).unwrap();
+    assert_eq!(voucher_balance.amount, amount_to_distribute);
 }
 
 #[test]
@@ -433,7 +434,7 @@ fn test_claim_voucher_and_release() {
         .unwrap();
     assert_eq!(claims.len(), 0);
 
-    let vcoin_contract = get_virtual_balance(
+    let voucher_contract = get_virtual_balance(
         router.environment(),
         &router.get_state().unwrap().virtual_balance_address.unwrap(),
     );
@@ -442,8 +443,8 @@ fn test_claim_voucher_and_release() {
         cross_chain_user: new_recipient.clone(),
         token_id: token.token.to_string(),
     };
-    let vcoin_balance = vcoin_contract.get_balance(balance_key).unwrap();
-    assert_eq!(vcoin_balance.amount, Uint128::zero());
+    let voucher_balance = voucher_contract.get_balance(balance_key).unwrap();
+    assert_eq!(voucher_balance.amount, Uint128::zero());
 
     let new_user_native_balance = osmosis_factory
         .environment()

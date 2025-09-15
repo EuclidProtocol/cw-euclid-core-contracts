@@ -337,24 +337,24 @@ pub fn execute_release_escrow(
 
     let timeout = get_timeout(timeout)?;
     let mut release_msgs: Vec<SubMsg> = vec![];
-    let mut vcoin_transfer_msgs: Vec<SubMsg> = vec![];
+    let mut voucher_transfer_msgs: Vec<SubMsg> = vec![];
 
     let mut cross_chain_addresses_iterator = cross_chain_addresses.into_iter().peekable();
     let mut remaining_withdraw_amount = amount;
     let token_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
     let mut transfer_amount = Uint128::zero();
-    let mut vcoin_transfer_amount = Uint128::zero();
+    let mut voucher_transfer_amount = Uint128::zero();
 
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
         let cross_chain_address = cross_chain_addresses_iterator
             .next()
             .ok_or(ContractError::new("Cross Chain Address Iter Failed"))?;
-        // Ensure that only one of vcoin_msg or forwarding_message is provided
+        // Ensure that only one of voucher_msg or forwarding_message is provided
         ensure!(
-            !(cross_chain_address.vcoin_msg.is_some()
+            !(cross_chain_address.voucher_msg.is_some()
                 && cross_chain_address.forwarding_message.is_some()),
-            ContractError::new("Exactly one of vcoin_msg or forwarding_message must be provided")
+            ContractError::new("Exactly one of voucher_msg or forwarding_message must be provided")
         );
         let chain =
             CHAIN_UID_TO_CHAIN.load(deps.storage, cross_chain_address.user.chain_uid.clone())?;
@@ -376,7 +376,7 @@ pub fn execute_release_escrow(
             .may_load(deps.storage)?
             .unwrap_or(Uint128::zero());
 
-        let max_balance_available_balance = if cross_chain_address.vcoin_msg.is_some() {
+        let max_balance_available_balance = if cross_chain_address.voucher_msg.is_some() {
             remaining_withdraw_amount
         } else {
             escrow_balance
@@ -418,8 +418,8 @@ pub fn execute_release_escrow(
             continue;
         }
 
-        // If its not a vcoin transfer, we release escrow so decrease escrow balance
-        if cross_chain_address.vcoin_msg.is_none() {
+        // If its not a voucher transfer, we release escrow so decrease escrow balance
+        if cross_chain_address.voucher_msg.is_none() {
             escrow_key.save(deps.storage, &escrow_balance.checked_sub(release_amount)?)?;
             transfer_amount = transfer_amount.checked_add(release_amount)?;
             // Prepare IBC Release Message
@@ -440,24 +440,24 @@ pub fn execute_release_escrow(
             )?;
             release_msgs.push(send_msg);
         } else {
-            vcoin_transfer_amount = vcoin_transfer_amount.checked_add(release_amount)?;
-            let transfer_voucher_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(
+            voucher_transfer_amount = voucher_transfer_amount.checked_add(release_amount)?;
+            let voucher_transfer_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(
                 euclid::msgs::virtual_balance::ExecuteTransfer {
                     amount: release_amount,
                     token_id: token.to_string(),
                     sender: Some(sender.clone()),
                     to: cross_chain_address.user.clone(),
                     from: None,
-                    msg: cross_chain_address.vcoin_msg.clone(),
+                    msg: cross_chain_address.voucher_msg.clone(),
                 },
             );
 
-            let transfer_voucher_msg = WasmMsg::Execute {
+            let voucher_transfer_msg = WasmMsg::Execute {
                 contract_addr: virtual_balance_address.clone(),
-                msg: to_json_binary(&transfer_voucher_msg)?,
+                msg: to_json_binary(&voucher_transfer_msg)?,
                 funds: vec![],
             };
-            vcoin_transfer_msgs.push(SubMsg::new(transfer_voucher_msg));
+            voucher_transfer_msgs.push(SubMsg::new(voucher_transfer_msg));
         }
 
         response = response.add_attribute(
@@ -475,7 +475,7 @@ pub fn execute_release_escrow(
     ensure!(
         transfer_amount
             .checked_add(remaining_withdraw_amount)?
-            .checked_add(vcoin_transfer_amount)?
+            .checked_add(voucher_transfer_amount)?
             == amount,
         ContractError::new("Amount mismatch after transfer calculations")
     );
@@ -498,7 +498,7 @@ pub fn execute_release_escrow(
         response = response.add_message(burn_virtual_balance_msg);
     }
     println!("release_msgs: {:?}", release_msgs);
-    println!("vcoin_transfer_msgs: {:?}", vcoin_transfer_msgs);
+    println!("voucher_transfer_msgs: {:?}", voucher_transfer_msgs);
 
     Ok(response
         .add_attribute("method", "release_escrow_initiate")
@@ -506,7 +506,7 @@ pub fn execute_release_escrow(
         .add_attribute("release_expected", amount)
         .add_attribute("release_initiated", transfer_amount)
         .add_submessages(release_msgs)
-        .add_submessages(vcoin_transfer_msgs))
+        .add_submessages(voucher_transfer_msgs))
 }
 
 pub fn execute_native_receive_callback(

@@ -40,7 +40,7 @@ pub fn instantiate(
     );
     let state = State {
         factory_address: msg.factory_address.clone(),
-        vcoin_address: msg.vcoin_address.clone(),
+        voucher_address: msg.voucher_address.clone(),
         chain_uid: factory_state.chain_uid,
         admin: info.sender,
     };
@@ -48,7 +48,7 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("chain_uid", state.chain_uid.to_string())
-        .add_attribute("vcoin_address", msg.vcoin_address.to_string())
+        .add_attribute("voucher_address", msg.voucher_address.to_string())
         .add_attribute("factory_address", msg.factory_address.to_string()))
 }
 
