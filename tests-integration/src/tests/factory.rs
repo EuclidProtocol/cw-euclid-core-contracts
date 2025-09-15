@@ -3289,7 +3289,14 @@ fn test_deposit_and_withdraw_multiple_chains() {
     )
     .unwrap();
 
-    relay_router_factory_router(relay_response, &factory, &factory_chain_uid, &router).unwrap();
+    relay_router_factory_router(
+        relay_response.clone(),
+        &factory,
+        &factory_chain_uid,
+        &router,
+    )
+    .unwrap();
+    relay_router_factory_router(relay_response, &factory_2, &factory_chain_uid_2, &router).unwrap();
 
     // Query escrow state after withdrawal
     let escrow_query: EscrowStateResponse = escrow_contract.state().unwrap();
@@ -3309,7 +3316,7 @@ fn test_deposit_and_withdraw_multiple_chains() {
         EscrowStateResponse {
             token: token.token.clone(),
             factory_address: factory_2.address().unwrap(),
-            total_amount: token.amount - withdraw_amount - user_1_limit,
+            total_amount: token.amount - user_1_limit,
         }
     );
 }
