@@ -991,6 +991,43 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             total_lp_tokens: Uint128::new(31622u128 * 2),
         }
     );
+
+    let virtual_balance_contract = router_contract
+        .get_state()
+        .unwrap()
+        .virtual_balance_address
+        .unwrap();
+
+    let virtual_balance_contract = get_virtual_balance(&router_chain, &virtual_balance_contract);
+
+    let virtual_balance_state_query: euclid::msgs::virtual_balance::GetUserBalancesResponse =
+        virtual_balance_contract
+            .query(&euclid::msgs::virtual_balance::QueryMsg::GetUserBalances {
+                user: CrossChainUser::new(
+                    ChainUid::vsl_chain_uid().unwrap(),
+                    vlp_contract.address().unwrap().into_string(),
+                ),
+            })
+            .unwrap();
+
+    let expected_virtual_balance_state_query =
+        euclid::msgs::virtual_balance::GetUserBalancesResponse {
+            balances: vec![
+                euclid::msgs::virtual_balance::GetUserBalancesResponseItem {
+                    amount: Uint128::from(20_000u128),
+                    token_id: "token.a".to_string(),
+                },
+                euclid::msgs::virtual_balance::GetUserBalancesResponseItem {
+                    amount: Uint128::from(20_0000u128),
+                    token_id: "token.b".to_string(),
+                },
+            ],
+        };
+
+    assert_eq!(
+        virtual_balance_state_query,
+        expected_virtual_balance_state_query
+    );
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_token_a
         .query(&euclid::msgs::escrow::QueryMsg::State {})
@@ -1044,29 +1081,6 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             })
     });
     assert!(wasm_event.is_none(), "Expected wasm event without error");
-
-    let virtual_balance_contract = router_contract
-        .get_state()
-        .unwrap()
-        .virtual_balance_address
-        .unwrap();
-
-    let virtual_balance_contract = get_virtual_balance(&router_chain, &virtual_balance_contract);
-
-    let virtual_balance_state_query: euclid::msgs::virtual_balance::GetUserBalancesResponse =
-        virtual_balance_contract
-            .query(&euclid::msgs::virtual_balance::QueryMsg::GetUserBalances {
-                user: CrossChainUser::new(
-                    ChainUid::vsl_chain_uid().unwrap(),
-                    vlp_contract.address().unwrap().into_string(),
-                ),
-            })
-            .unwrap();
-
-    println!(
-        "virtual balance state query: {:?}",
-        virtual_balance_state_query
-    );
 
     let balance_key = BalanceKey {
         cross_chain_user: CrossChainUser::new(
