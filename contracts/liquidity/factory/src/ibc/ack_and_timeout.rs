@@ -225,26 +225,6 @@ fn ack_pool_creation(
                 let escrow_contract =
                     TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
 
-                // Instantiate escrow if one doesn't exist
-                // if escrow_contract.is_none() {
-                //     let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                //         admin: Some(state.admin.clone()),
-                //         code_id: escrow_code_id,
-                //         msg: to_json_binary(&EscrowInstantiateMsg {
-                //             token_id: token.token,
-                //             allowed_denom: Some(token.token_type),
-                //         })?,
-                //         funds: vec![],
-                //         label: "escrow".to_string(),
-                //     });
-
-                //     res = res.add_submessage(SubMsg {
-                //         id: ESCROW_INSTANTIATE_REPLY_ID,
-                //         msg: init_msg,
-                //         gas_limit: None,
-                //         reply_on: ReplyOn::Always,
-                //     });
-                // }
                 match escrow_contract {
                     Some(address) => {
                         let send_msg = token.token_type.create_escrow_msg(token.amount, address)?;
