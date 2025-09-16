@@ -463,7 +463,7 @@ pub fn execute_swap_request(
     amount_in: Uint128,
     asset_out: Token,
     min_amount_out: Uint128,
-    swaps: Vec<NextSwapPair>,
+    mut swaps: Vec<NextSwapPair>,
     timeout: Option<u64>,
     cross_chain_addresses: Vec<CrossChainUserWithLimit>,
     partner_fee: Option<PartnerFee>,
@@ -475,6 +475,15 @@ pub fn execute_swap_request(
 
     let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
+
+    // Only the admin has the option of setting the test_fail flag to true
+    if info.sender.to_string() != state.admin {
+        for swap in swaps.iter_mut() {
+            if swap.test_fail != Some(false) {
+                swap.test_fail = Some(false);
+            }
+        }
+    }
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
 
