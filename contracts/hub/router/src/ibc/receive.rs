@@ -794,19 +794,6 @@ fn ibc_execute_swap(
             )
             .add_attribute("partner_fee_amount", msg.partner_fee_amount.to_string());
     }
-    //     let liquidity_response: GetLiquidityResponse = deps.querier.query(
-    //         &cosmwasm_std::QueryRequest::Wasm(cosmwasm_std::WasmQuery::Smart {
-    //             contract_addr: first_swap.vlp_address.clone(),
-    //             msg: to_json_binary(&euclid::msgs::stable_vlp::QueryMsg::Liquidity {})?,
-    //         }),
-    //     )?;
-    //    let swap_msg =  if liquidity_response.token_1_reserve == liquidity_response.token_2_reserve {
-    //         return Err(ContractError::Generic {
-    //             err: "Liquidity is not enough".to_string(),
-    //         });
-    //     } else {
-
-    //     }
 
     let swap_msg = msgs::vlp::ExecuteMsg::Swap {
         sender: sender.clone(),

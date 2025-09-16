@@ -454,8 +454,6 @@ pub fn remove_liquidity_request(
         .add_submessage(remove_liq_msg))
 }
 
-// TODO make execute_swap an internal function OR merge execute_swap_request and execute_swap into one function
-
 pub fn execute_swap_request(
     deps: &mut DepsMut,
     env: Env,

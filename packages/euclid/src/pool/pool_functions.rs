@@ -637,7 +637,6 @@ pub struct PreSwapResponse {
     pub spread_amount: Uint128,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn pre_swap(
     deps: &Deps,
     state_storage: &Item<State>,
