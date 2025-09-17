@@ -58,6 +58,8 @@ use crate::helpers::{
 };
 use rstest::*;
 
+const SENDER_FOR_ALL_CHAINS: &str = "sender_for_all_chains";
+
 #[test]
 fn test_proper_instantiation() {
     let mut factory = mock_app(None);
@@ -108,7 +110,7 @@ fn test_proper_instantiation() {
 #[case("nibiru", "osmosis")]
 #[case("nibiru", "nibiru")]
 fn test_create_pool_with_funds(#[case] router_chain_id: &str, #[case] factory_chain_id: &str) {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let mut chains = vec![(router_chain_id, sender.as_str())];
     if router_chain_id != factory_chain_id {
         chains.push((factory_chain_id, sender.as_str()));
@@ -122,7 +124,7 @@ fn test_create_pool_with_funds(#[case] router_chain_id: &str, #[case] factory_ch
     println!("token_a: {:?}", token_a_id);
     println!("token_b: {:?}", token_b_id);
 
-    let sender = factory.addr_make("sender_for_all_chains");
+    let sender = factory.addr_make(SENDER_FOR_ALL_CHAINS);
 
     router
         .set_balance(
@@ -592,7 +594,7 @@ fn test_create_pool_with_funds(#[case] router_chain_id: &str, #[case] factory_ch
 #[case("osmosis", "nibiru")]
 #[case("nibiru", "nibiru")]
 fn test_add_liquidity(#[case] factory_chain_id: &str, #[case] router_chain_id: &str) {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let mut chains = vec![(factory_chain_id, sender.as_str())];
     if factory_chain_id != router_chain_id {
         chains.push((router_chain_id, sender.as_str()));
@@ -616,7 +618,7 @@ fn test_add_liquidity(#[case] factory_chain_id: &str, #[case] router_chain_id: &
         },
     };
 
-    let sender = factory_chain.addr_make("sender_for_all_chains");
+    let sender = factory_chain.addr_make(SENDER_FOR_ALL_CHAINS);
     println!("the sender is: {:?}", sender);
     factory_chain
         .set_balance(
@@ -1111,7 +1113,7 @@ fn test_add_liquidity(#[case] factory_chain_id: &str, #[case] router_chain_id: &
 #[test]
 #[should_panic(expected = "Slippage Tolerance must be between 0 and 100")]
 fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let _factory_chain = interchain.get_chain("osmosis").unwrap();
     let router_chain = interchain.get_chain("nibiru").unwrap();
@@ -1166,7 +1168,7 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
 #[test]
 #[should_panic(expected = "Pool doesn't exist for this chain")]
 fn test_add_liquidity_fails_when_pool_does_not_exit() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -1222,7 +1224,7 @@ fn test_add_liquidity_fails_when_pool_does_not_exit() {
 #[test]
 #[should_panic(expected = "Amount cannot be zero")]
 fn test_add_liquidity_fails_with_zero_liquidity_amount() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -1286,7 +1288,7 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
 #[test]
 #[should_panic(expected = "The deposit amount is insufficient to add the liquidity")]
 fn test_add_liquidity_fails_with_insufficient_deposit() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -1335,7 +1337,7 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
 #[test]
 #[should_panic(expected = "UnsupportedDenomination")]
 fn test_add_liquidity_fails_with_unsupported_token_denomination() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -1404,7 +1406,7 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
 #[test]
 #[should_panic(expected = "Extra funds are not allowed")]
 fn test_add_liquidity_fails_with_extra_funds() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -1467,7 +1469,7 @@ fn test_add_liquidity_fails_with_extra_funds() {
 
 #[test]
 fn test_add_liquidity_with_timeout() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -1531,7 +1533,7 @@ fn test_add_liquidity_with_timeout() {
 #[test]
 #[should_panic(expected = "Invalid Timeout")]
 fn test_add_liquidity_with_invalid_timeout() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -1596,7 +1598,7 @@ fn test_add_liquidity_with_invalid_timeout() {
 #[case("osmosis", "nibiru")]
 #[case("nibiru", "nibiru")]
 fn test_swap_request(#[case] factory_chain_id: &str, #[case] router_chain_id: &str) {
-    let sender = "sender_for_all_chains";
+    let sender = SENDER_FOR_ALL_CHAINS;
     let mut chains = vec![(factory_chain_id, sender)];
     if factory_chain_id != router_chain_id {
         chains.push((router_chain_id, sender));
@@ -1617,9 +1619,7 @@ fn test_swap_request(#[case] factory_chain_id: &str, #[case] router_chain_id: &s
 }
 
 pub struct SwapTestReusableOutput {
-    // pub token_in: TokenWithDenom,
     pub token_out: TokenWithDenom,
-    // pub amount_in: Uint128,
 }
 
 pub fn run_test_swap_request_reusable(
@@ -1810,25 +1810,14 @@ pub fn run_test_swap_request_reusable(
 
     relay_factory_router_factory(swap_request_msg.events, factory, router, &factory_chain_uid)?;
 
-    Ok(SwapTestReusableOutput {
-        // token_in: token_a,
-        token_out: token_b,
-        // amount_in,
-    })
+    Ok(SwapTestReusableOutput { token_out: token_b })
 }
 
-#[test]
-fn test_multi_hop_swap_request_ibc() {
-    run_test_multi_hop_swap_request("osmosis", "nibiru");
-}
-
-#[test]
-fn test_multi_hop_swap_request_native() {
-    run_test_multi_hop_swap_request("nibiru", "nibiru");
-}
-
-fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str) {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+#[rstest]
+#[case("osmosis", "nibiru")]
+#[case("nibiru", "nibiru")]
+fn run_test_multi_hop_swap_request(#[case] factory_chain_id: &str, #[case] router_chain_id: &str) {
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let mut chains = vec![(factory_chain_id, sender.as_str())];
     if factory_chain_id != router_chain_id {
         chains.push((router_chain_id, sender.as_str()));
@@ -1863,7 +1852,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         },
     };
     let mut funds = vec![];
-    let sender = factory_chain.addr_make("sender_for_all_chains");
+    let sender = factory_chain.addr_make(SENDER_FOR_ALL_CHAINS);
     for token in [token_a.clone(), token_b.clone(), token_c.clone()] {
         faucet(
             &factory_chain,
@@ -1981,18 +1970,14 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
     );
 }
 
-#[test]
-fn test_swap_request_with_valid_partner_fee_ibc() {
-    run_swap_request_with_valid_partner_fee("osmosis", "nibiru");
-}
-
-#[test]
-fn test_swap_request_with_valid_partner_fee_native() {
-    run_swap_request_with_valid_partner_fee("nibiru", "nibiru");
-}
-
-fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_id: &str) {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+#[rstest]
+#[case("osmosis", "nibiru")]
+#[case("nibiru", "nibiru")]
+fn run_swap_request_with_valid_partner_fee(
+    #[case] factory_chain_id: &str,
+    #[case] router_chain_id: &str,
+) {
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let mut chains = vec![(factory_chain_id, sender.as_str())];
     if factory_chain_id != router_chain_id {
         chains.push((router_chain_id, sender.as_str()));
@@ -2121,7 +2106,7 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
 #[test]
 #[should_panic(expected = "InvalidPartnerFee")]
 fn test_swap_request_fails_with_invalid_partner_fee_bps() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -2243,7 +2228,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
 #[test]
 #[should_panic(expected = "UnsupportedDenomination")]
 fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -2319,7 +2304,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         asset_in.token_type.clone(),
         &mut funds,
     );
-    let sender = factory.environment().addr_make("sender_for_all_chains");
+    let sender = factory.environment().addr_make(SENDER_FOR_ALL_CHAINS);
     let old_sender_eucl_balance = factory
         .environment()
         .query_balance(&Addr::unchecked(sender.clone()), "juno")
@@ -2361,7 +2346,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
 #[test]
 #[should_panic(expected = "Cannot Swap 0 tokens")]
 fn test_swap_request_fails_for_zero_min_amount_out() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -2463,7 +2448,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
 #[test]
 #[should_panic(expected = "Token in doesn't match swap route")]
 fn test_swap_request_fails_for_invalid_swap_route() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -2538,7 +2523,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         &mut funds,
     );
 
-    let sender = factory.environment().addr_make("sender_for_all_chains");
+    let sender = factory.environment().addr_make(SENDER_FOR_ALL_CHAINS);
     let old_sender_balance = factory
         .environment()
         .query_balance(&Addr::unchecked(sender.clone()), "eucl")
@@ -2592,7 +2577,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
 
 #[test]
 fn test_swap_request_with_timeout() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -2697,7 +2682,7 @@ fn test_swap_request_with_timeout() {
 #[case("osmosis", "nibiru")]
 #[case("nibiru", "osmosis")]
 fn test_stable_pool_swap_request(#[case] factory_chain_id: &str, #[case] router_chain_id: &str) {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let mut chains = vec![(factory_chain_id, sender.as_str())];
     if factory_chain_id != router_chain_id {
         chains.push((router_chain_id, sender.as_str()));
@@ -2725,7 +2710,7 @@ fn test_stable_pool_swap_request(#[case] factory_chain_id: &str, #[case] router_
         },
     };
     let mut funds = vec![];
-    let sender = router_chain.addr_make("sender_for_all_chains");
+    let sender = router_chain.addr_make(SENDER_FOR_ALL_CHAINS);
     for token in [token_a.clone(), token_b.clone()] {
         faucet(
             &factory_chain,
@@ -2847,7 +2832,7 @@ fn test_stable_pool_swap_request(#[case] factory_chain_id: &str, #[case] router_
 #[case(false)]
 #[case(true)]
 fn test_deposit_and_withdraw(#[case] disallow: bool) {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
@@ -2946,7 +2931,7 @@ fn test_deposit_and_withdraw(#[case] disallow: bool) {
 
 #[test]
 fn test_deposit_and_withdraw_multiple_chains() {
-    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let sender = SENDER_FOR_ALL_CHAINS.to_string();
     let interchain = MockInterchainEnv::new(vec![
         ("osmosis", &sender),
         ("nibiru", &sender),
@@ -3105,7 +3090,7 @@ fn test_deposit_and_withdraw_multiple_chains() {
 
 #[test]
 fn test_deposit_and_withdraw_with_failure() {
-    let sender_label = String::from("sender_for_all_chains");
+    let sender_label = String::from(SENDER_FOR_ALL_CHAINS);
     let interchain =
         MockInterchainEnv::new(vec![("osmosis", &sender_label), ("nibiru", &sender_label)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
