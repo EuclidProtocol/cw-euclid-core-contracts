@@ -499,7 +499,7 @@ pub fn add_liquidity(
             None,
             CrossChainUser {
                 address: env.contract.address.to_string(),
-                chain_uid: ChainUid::vsl_chain_uid()?,
+                chain_uid: ChainUid::vsl_chain_uid(),
             },
             // We have approval to use voucher tokens on behalf of sender
             Some(sender.clone()),
@@ -722,7 +722,7 @@ pub fn execute_swap(
     } else {
         CrossChainUser {
             address: info.sender.to_string(),
-            chain_uid: ChainUid::vsl_chain_uid()?,
+            chain_uid: ChainUid::vsl_chain_uid(),
         }
     };
 
@@ -734,7 +734,7 @@ pub fn execute_swap(
             from: Some(voucher_sender.clone()),
             to: CrossChainUser {
                 address: env.contract.address.to_string(),
-                chain_uid: ChainUid::vsl_chain_uid()?,
+                chain_uid: ChainUid::vsl_chain_uid(),
             },
             sender: None,
             msg: None,
@@ -850,12 +850,12 @@ pub fn execute_swap(
 
                     owner: CrossChainUser {
                         address: env.contract.address.to_string(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
+                        chain_uid: ChainUid::vsl_chain_uid(),
                     },
 
                     spender: CrossChainUser {
                         address: next_swap.vlp_address.clone(),
-                        chain_uid: ChainUid::vsl_chain_uid()?,
+                        chain_uid: ChainUid::vsl_chain_uid(),
                     },
                 });
 

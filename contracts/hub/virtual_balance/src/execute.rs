@@ -117,7 +117,7 @@ pub fn execute_transfer(
         );
         sender
     } else {
-        CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
+        CrossChainUser::new(ChainUid::vsl_chain_uid(), info.sender.to_string())
     };
     let mut response = if let Some(from) = transfer_msg.from {
         let attributes = _deduct_allowance(
@@ -321,7 +321,7 @@ pub fn execute_approve(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+    let vsl_chain_uid = ChainUid::vsl_chain_uid();
 
     let spender = msg.spender;
 

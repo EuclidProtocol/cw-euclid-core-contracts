@@ -113,7 +113,7 @@ pub fn execute_register_factory(
         ContractError::new("Factory already exists")
     );
 
-    let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+    let vsl_chain_uid = ChainUid::vsl_chain_uid();
     let sender = CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string());
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
@@ -207,7 +207,7 @@ pub fn execute_update_factory_channel(
         ContractError::ChannelAlreadyExists {}
     );
 
-    let vsl_chain_uid = ChainUid::vsl_chain_uid()?;
+    let vsl_chain_uid = ChainUid::vsl_chain_uid();
     let sender = CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string());
 
     let tx_id = generate_tx(deps.branch(), &env, &sender)?;
@@ -267,7 +267,7 @@ pub fn execute_withdraw_voucher(
             .map(|x| x.user)
             .collect(),
     )?;
-    let cross_chain_user = CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
+    let cross_chain_user = CrossChainUser::new(ChainUid::vsl_chain_uid(), info.sender.to_string());
     let tx_id = generate_tx(deps.branch(), &env, &cross_chain_user)?;
     let msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),

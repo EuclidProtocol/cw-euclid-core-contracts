@@ -176,9 +176,8 @@ mod tests {
         STATE.save(&mut deps.storage, &state).unwrap();
 
         // Setup users
-        let owner = CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "owner".to_string());
-        let spender =
-            CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "spender".to_string());
+        let owner = CrossChainUser::new(ChainUid::vsl_chain_uid(), "owner".to_string());
+        let spender = CrossChainUser::new(ChainUid::vsl_chain_uid(), "spender".to_string());
         let recipient = CrossChainUser::new(
             ChainUid::create("1".to_string()).unwrap(),
             "recipient".to_string(),
@@ -362,10 +361,7 @@ mod tests {
         // Helper to create BalanceKey
         let key = |user: &str| {
             BalanceKey {
-                cross_chain_user: CrossChainUser::new(
-                    ChainUid::vsl_chain_uid().unwrap(),
-                    user.to_string(),
-                ),
+                cross_chain_user: CrossChainUser::new(ChainUid::vsl_chain_uid(), user.to_string()),
                 token_id: "eucl".to_string(),
             }
             .to_serialized_balance_key()
@@ -395,10 +391,7 @@ mod tests {
                 key("spender"),
                 &Allowance {
                     amount: Uint128::new(10),
-                    spender: CrossChainUser::new(
-                        ChainUid::vsl_chain_uid().unwrap(),
-                        "spender".to_string(),
-                    ),
+                    spender: CrossChainUser::new(ChainUid::vsl_chain_uid(), "spender".to_string()),
                 },
             )
             .unwrap();
@@ -409,10 +402,7 @@ mod tests {
                 key("spender2"),
                 &Allowance {
                     amount: Uint128::zero(),
-                    spender: CrossChainUser::new(
-                        ChainUid::vsl_chain_uid().unwrap(),
-                        "spender2".to_string(),
-                    ),
+                    spender: CrossChainUser::new(ChainUid::vsl_chain_uid(), "spender2".to_string()),
                 },
             )
             .unwrap();

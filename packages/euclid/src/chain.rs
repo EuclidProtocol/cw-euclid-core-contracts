@@ -42,8 +42,8 @@ impl ChainUid {
         Ok(self)
     }
 
-    pub fn vsl_chain_uid() -> Result<Self, ContractError> {
-        Self::create("vsl".to_string())
+    pub fn vsl_chain_uid() -> Self {
+        Self::new("vsl".to_string())
     }
 }
 

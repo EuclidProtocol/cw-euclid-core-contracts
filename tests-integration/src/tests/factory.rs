@@ -1004,7 +1004,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         virtual_balance_contract
             .query(&euclid::msgs::virtual_balance::QueryMsg::GetUserBalances {
                 user: CrossChainUser::new(
-                    ChainUid::vsl_chain_uid().unwrap(),
+                    ChainUid::vsl_chain_uid(),
                     vlp_contract.address().unwrap().into_string(),
                 ),
             })
@@ -1084,7 +1084,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
 
     let balance_key = BalanceKey {
         cross_chain_user: CrossChainUser::new(
-            ChainUid::vsl_chain_uid().unwrap(),
+            ChainUid::vsl_chain_uid(),
             vlp_contract.address().unwrap().into_string(),
         ),
         token_id: token_b_id,
