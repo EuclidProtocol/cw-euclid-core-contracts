@@ -895,6 +895,7 @@ fn test_add_liquidity(#[case] factory_chain_id: &str, #[case] router_chain_id: &
                     ChainUid::vsl_chain_uid(),
                     vlp_contract.address().unwrap().into_string(),
                 ),
+                pagination: None,
             })
             .unwrap();
 

@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
     chain::CrossChainUser,
+    utils::pagination::Pagination,
     virtual_balance::{BalanceKey, SerializedBalanceKey},
 };
 
@@ -83,19 +84,18 @@ pub struct MigrateMsg {}
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
-    // Query to simulate a swap for the asset
     #[returns(GetStateResponse)]
     GetState {},
 
-    // Query to simulate a swap for the asset
     #[returns(GetBalanceResponse)]
     GetBalance { balance_key: BalanceKey },
 
-    // Query to simulate a swap for the asset
     #[returns(GetUserBalancesResponse)]
-    GetUserBalances { user: CrossChainUser },
+    GetUserBalances {
+        user: CrossChainUser,
+        pagination: Option<Pagination<Uint128>>,
+    },
 
-    // Query to simulate a swap for the asset
     #[returns(GetAllowanceResponse)]
     GetAllowance { balance_key: BalanceKey },
 }
