@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Coin, Decimal, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
@@ -39,6 +39,9 @@ pub const ESCROW_BALANCES: Map<(String, ChainUid), Uint128> = Map::new("escrow_b
 pub const CHAIN_UID_TO_CHAIN: Map<ChainUid, Chain> = Map::new("chain_uid_to_chain");
 pub const CHANNEL_TO_CHAIN_UID: Map<String, ChainUid> = Map::new("channel_to_chain_uid");
 pub const DEREGISTERED_CHAINS: Item<Vec<ChainUid>> = Item::new("deregistered_chains");
+
+/// The key is Token ID + Chain UID
+pub const RELEASE_FEES: Map<String, Decimal> = Map::new("release_fees");
 
 // Map for (ChainUID ,Sender, TX ID)
 pub const SWAP_ID_TO_MSG: Map<(ChainUid, String, String), ChainIbcSwapExecuteMsg> =
