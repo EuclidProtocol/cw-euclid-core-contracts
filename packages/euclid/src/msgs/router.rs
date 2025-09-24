@@ -170,6 +170,10 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(StateResponse)]
     GetState {},
+    #[returns(ReleaseFeesQueryResponse)]
+    GetReleaseFees {
+        token_and_chain_uid: Option<TokenAndChainUid>,
+    },
     #[returns(ChainResponse)]
     GetChain { chain_uid: ChainUid },
     #[returns(AllChainResponse)]
@@ -207,6 +211,29 @@ pub enum QueryMsg {
     #[returns(RelayerAddressesResponse)]
     QueryRelayerAddresses {},
 }
+
+#[cw_serde]
+pub struct ReleaseFeeQuery {
+    pub token_and_chain_uid: String,
+    pub fee: Decimal,
+}
+
+#[cw_serde]
+pub struct ReleaseFeesQueryResponse {
+    pub fees: Vec<ReleaseFeeQuery>,
+}
+
+#[cw_serde]
+pub struct TokenAndChainUid {
+    pub token: Token,
+    pub chain_uid: ChainUid,
+}
+impl TokenAndChainUid {
+    pub fn key(&self) -> String {
+        format!("{}{}", self.token.to_string(), self.chain_uid.to_string())
+    }
+}
+
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct MigrateMsg {

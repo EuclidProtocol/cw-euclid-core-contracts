@@ -5,8 +5,9 @@ use euclid::{
     error::ContractError,
     msgs::router::{
         AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-        EscrowResponse, QuerySimulateSwap, RelayerAddressesResponse, SimulateEscrowReleaseResponse,
-        SimulateSwapResponse, StateResponse, TokenDenomsResponse, TokenEscrowChainResponse,
+        EscrowResponse, QuerySimulateSwap, RelayerAddressesResponse, ReleaseFeeQuery,
+        ReleaseFeesQueryResponse, SimulateEscrowReleaseResponse, SimulateSwapResponse,
+        StateResponse, TokenAndChainUid, TokenDenomsResponse, TokenEscrowChainResponse,
         TokenEscrowsResponse, VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
@@ -15,7 +16,8 @@ use euclid::{
 };
 
 use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS, VLPS,
+    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE, TOKEN_DENOMS,
+    VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -84,6 +86,38 @@ pub fn query_all_chains(deps: Deps) -> Result<Binary, ContractError> {
         .collect();
 
     Ok(to_json_binary(&AllChainResponse { chains: chains? })?)
+}
+
+pub fn query_release_fees(
+    deps: Deps,
+    token_and_chain_uid: Option<TokenAndChainUid>,
+) -> Result<Binary, ContractError> {
+    let release_fee_query = match token_and_chain_uid {
+        Some(token_and_chain_uid) => {
+            let release_fee = RELEASE_FEES.load(deps.storage, token_and_chain_uid.key())?;
+            ReleaseFeesQueryResponse {
+                fees: vec![ReleaseFeeQuery {
+                    token_and_chain_uid: token_and_chain_uid.key(),
+                    fee: release_fee,
+                }],
+            }
+        }
+        // If token_and_chain_uid is not provided, return all release fees
+        None => {
+            let release_fees = RELEASE_FEES
+                .range(deps.storage, None, None, Order::Ascending)
+                .map(|v| {
+                    let v = v?;
+                    Ok(ReleaseFeeQuery {
+                        token_and_chain_uid: v.0,
+                        fee: v.1,
+                    })
+                })
+                .collect::<Result<_, ContractError>>()?;
+            ReleaseFeesQueryResponse { fees: release_fees }
+        }
+    };
+    Ok(to_json_binary(&release_fee_query)?)
 }
 
 pub fn query_chain(deps: Deps, chain_uid: ChainUid) -> Result<Binary, ContractError> {

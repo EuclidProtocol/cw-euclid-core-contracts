@@ -33,8 +33,8 @@ use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
     self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_relayer_addresses, query_simulate_escrow_release, query_state, query_token_denoms,
-    query_token_escrows, query_vlp,
+    query_relayer_addresses, query_release_fees, query_simulate_escrow_release, query_state,
+    query_token_denoms, query_token_escrows, query_vlp,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, COSMOS_RECEIVE_REPLY_ID, EVM_RECEIVE_REPLY_ID,
@@ -270,6 +270,9 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => query_state(deps),
+        QueryMsg::GetReleaseFees {
+            token_and_chain_uid,
+        } => query_release_fees(deps, token_and_chain_uid),
         QueryMsg::GetChain { chain_uid } => query_chain(deps, chain_uid),
         QueryMsg::GetAllChains {} => query_all_chains(deps),
         QueryMsg::GetVlp { pair } => query_vlp(deps, pair),

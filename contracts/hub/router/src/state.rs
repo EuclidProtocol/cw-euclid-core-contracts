@@ -40,7 +40,7 @@ pub const CHAIN_UID_TO_CHAIN: Map<ChainUid, Chain> = Map::new("chain_uid_to_chai
 pub const CHANNEL_TO_CHAIN_UID: Map<String, ChainUid> = Map::new("channel_to_chain_uid");
 pub const DEREGISTERED_CHAINS: Item<Vec<ChainUid>> = Item::new("deregistered_chains");
 
-/// The key is Token ID + Chain UID
+/// The key is Token ID_Chain UID
 pub const RELEASE_FEES: Map<String, Decimal> = Map::new("release_fees");
 
 // Map for (ChainUID ,Sender, TX ID)
