@@ -15,7 +15,8 @@ use crate::execute::cosmos::{
 use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
     execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
-    execute_update_lock, execute_update_router_state, execute_withdraw_voucher,
+    execute_update_lock, execute_update_release_fees, execute_update_router_state,
+    execute_withdraw_voucher,
 };
 
 use crate::execute::evm::{
@@ -114,6 +115,9 @@ pub fn execute(
                 ContractError::ContractLocked {}
             );
             match msg {
+                ExecuteMsg::UpdateReleaseFees { release_fees } => {
+                    execute_update_release_fees(&mut deps, env, info, release_fees)
+                }
                 ExecuteMsg::UpdateFactoryChannel { channel, chain_uid } => {
                     execute_update_factory_channel(&mut deps, env, info, channel, chain_uid)
                 }

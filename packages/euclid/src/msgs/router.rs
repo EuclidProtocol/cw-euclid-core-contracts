@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, Binary, Decimal, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
 use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
@@ -28,6 +28,10 @@ pub enum ExecuteMsg {
     UpdateFactoryChannel {
         chain_uid: ChainUid,
         channel: String,
+    },
+    UpdateReleaseFees {
+        /// Leaving this empty will clear all the release fees
+        release_fees: Vec<ReleaseFee>,
     },
     UpdateLock {},
     RegisterFactory {
@@ -221,6 +225,13 @@ pub struct QuerySimulateSwap {
     pub asset_out: Token,
     pub min_amount_out: Uint128,
     pub swaps: Vec<NextSwapPair>,
+}
+
+#[cw_serde]
+pub struct ReleaseFee {
+    pub token: Token,
+    pub chain_uid: ChainUid,
+    pub fee: Decimal,
 }
 
 #[cw_serde]

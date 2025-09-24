@@ -11,7 +11,7 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
-        router::{ExecuteMsg, RegisterFactoryChainType},
+        router::{ExecuteMsg, RegisterFactoryChainType, ReleaseFee},
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
@@ -183,6 +183,34 @@ pub fn execute_register_factory(
     }
 }
 
+pub fn execute_update_release_fees(
+    deps: &mut DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    release_fees: Vec<ReleaseFee>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
+
+    if release_fees.is_empty() {
+        RELEASE_FEES.clear(deps.storage);
+    } else {
+        for release_fee in release_fees {
+            let key = format!(
+                "{}{}",
+                release_fee.token.to_string(),
+                release_fee.chain_uid.to_string()
+            );
+            RELEASE_FEES.save(deps.storage, key, &release_fee.fee)?;
+        }
+    }
+
+    Ok(Response::new().add_attribute("method", "update_release_fees"))
+}
+
 pub fn execute_update_factory_channel(
     deps: &mut DepsMut,
     env: Env,
@@ -348,7 +376,6 @@ pub fn execute_release_escrow(
 
     let mut transfer_amount = Uint128::zero();
     let mut vcoin_transfer_amount = Uint128::zero();
-    let mut release_fees = Uint128::zero();
 
     // Ensure that the amount desired doesn't exceed the current balance
     while !remaining_withdraw_amount.is_zero() && cross_chain_addresses_iterator.peek().is_some() {
