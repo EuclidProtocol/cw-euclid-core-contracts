@@ -107,6 +107,7 @@ pub enum ExecuteMsg {
 
     // COSMOS RELAYER ENTRY POINTS
     CosmosSendPacket {
+        cross_chain_user: CrossChainUser,
         msg: Binary,
     },
 

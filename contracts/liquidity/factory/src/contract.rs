@@ -236,7 +236,10 @@ pub fn execute(
             execute_native_receive_callback(&mut deps, env, info, msg)
         }
         // COMSOS ENTRY POINTS FOR RELAYER
-        ExecuteMsg::CosmosSendPacket { msg } => execute_cosmos_send_packet(deps, info, env, msg),
+        ExecuteMsg::CosmosSendPacket {
+            cross_chain_user,
+            msg,
+        } => execute_cosmos_send_packet(deps, info, env, cross_chain_user, msg),
         ExecuteMsg::CosmosReceivePacket {
             msg,
             sequence,

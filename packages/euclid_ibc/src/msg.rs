@@ -129,18 +129,12 @@ impl ChainIbcExecuteMsg {
                     count,
                 ))
             }
-            // ChainType::Ibc(ibc_info) => {
-            //     let packet = IbcMsg::SendPacket {
-            //         channel_id: ibc_info.from_factory_channel,
-            //         data: to_json_binary(self)?,
-            //         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-            //     };
-            //     Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
-            // }
+
             // Temporary solution for cosmos relaying
             ChainType::Ibc(_ibc_info) => {
                 let factory_internal_msg = factory::ExecuteMsg::CosmosSendPacket {
                     msg: to_json_binary(self)?,
+                    cross_chain_user: todo!(),
                 };
                 // Trigger a Send Packet execute call to the same contract
                 Ok(SubMsg::new(WasmMsg::Execute {

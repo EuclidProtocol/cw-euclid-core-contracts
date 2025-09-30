@@ -2,7 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Binary, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
-    chain::{Chain, ChainUid},
+    chain::{Chain, ChainUid, CrossChainUser},
     msgs::router::TokenDenom,
     token::{PairWithDenomAndAmount, Token},
 };
@@ -74,6 +74,15 @@ pub const COSMOS_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
 //Cosmos Relay sequence count
 pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
     Map::new("cosmos_packet_relay_sequence_count");
-
 pub const PROCESSED_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
     Map::new("processed_packet_sequence");
+
+// The key is a tuple of (ChainUid, sequence). Sequence is the count of packets relayed for that chain
+pub const PACKET_RELAY: Map<(ChainUid, u128), Binary> = Map::new("packet_relay");
+
+// The value here is the count of packets relayed on the chain
+pub const PACKET_RELAY_COUNT_CHAIN: Map<ChainUid, u128> = Map::new("packet_relay_count_chain");
+
+// The value here is the count of packets relayed for the cross chain user
+pub const PACKET_RELAY_COUNT_CROSS_CHAIN_USER: Map<CrossChainUser, u128> =
+    Map::new("packet_relay_count_cross_chain_user");

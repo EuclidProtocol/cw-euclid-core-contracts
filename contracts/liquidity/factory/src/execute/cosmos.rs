@@ -4,7 +4,11 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo,
     Response, StdError, SubMsg, Uint128, WasmMsg,
 };
-use euclid::{chain::IbcChain, error::ContractError, msgs::factory::ExecuteMsg};
+use euclid::{
+    chain::{CrossChainUser, IbcChain},
+    error::ContractError,
+    msgs::factory::ExecuteMsg,
+};
 use euclid_ibc::{
     ack::make_ack_fail,
     msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg},
@@ -14,18 +18,22 @@ use crate::{
     ibc::{ack_and_timeout, receive},
     reply::COSMOS_RECEIVE_REPLY_ID,
     state::{
-        COSMOS_PACKET_RELAY_MAP, COSMOS_PACKET_RELAY_SEQUENCE_COUNT, MOCK_RELAYER_ADDRESS,
-        PROCESSED_PACKET_SEQUENCE, STATE,
+        COSMOS_PACKET_RELAY_MAP, COSMOS_PACKET_RELAY_SEQUENCE_COUNT,
+        COSMOS_PACKET_RELAY_SEQUENCE_COUNT_LIMIT, CUSTOM_LIMITS, GLOBAL_LIMIT_FOR_USERS,
+        MOCK_RELAYER_ADDRESS, PROCESSED_PACKET_SEQUENCE, RELAY_COUNT_USER, STATE,
     },
 };
 
+const DEFAULT_GLOBAL_LIMIT: u128 = 10;
+
 /**
- * Always run by contract itself to trigger send packet evnent and also increment sequence count
+ * Always run by contract itself to trigger send packet event and also increment sequence count
  */
 pub fn execute_cosmos_send_packet(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
+    cross_chain_user: CrossChainUser,
     msg: Binary,
 ) -> Result<Response, ContractError> {
     // Only contract can call this function internally
@@ -34,13 +42,51 @@ pub fn execute_cosmos_send_packet(
         ContractError::Unauthorized {}
     );
 
+    // Check if the sender has a custom limit
+    let custom_limit = CUSTOM_LIMITS.may_load(deps.storage, cross_chain_user.address.clone())?;
+    let user_relay_count = RELAY_COUNT_USER
+        .load(deps.storage, cross_chain_user.address.clone())
+        .unwrap_or(0);
+    let new_user_relay_count = user_relay_count.add(1);
+
+    match custom_limit {
+        Some(custom_limit) => {
+            if new_user_relay_count.gt(&custom_limit) {
+                todo!("Handle custom limit exceeded by charging a fee");
+            }
+        }
+        None => {
+            let global_limit = GLOBAL_LIMIT_FOR_USERS
+                .load(deps.storage)
+                .unwrap_or(DEFAULT_GLOBAL_LIMIT);
+
+            if new_user_relay_count.gt(&global_limit) {
+                todo!("Handle global limit exceeded by charging a fee");
+            }
+        }
+    }
+
+    let sequence_limit = COSMOS_PACKET_RELAY_SEQUENCE_COUNT_LIMIT.load(deps.storage)?;
     let sequence = COSMOS_PACKET_RELAY_SEQUENCE_COUNT
         .load(deps.storage)
         .unwrap_or(0);
 
+    ensure!(
+        sequence.lt(&sequence_limit),
+        ContractError::Generic {
+            err: "Sequence limit exceeded".to_string()
+        }
+    );
+
     COSMOS_PACKET_RELAY_MAP.save(deps.storage, sequence, &msg)?;
 
+    // Update counts
     COSMOS_PACKET_RELAY_SEQUENCE_COUNT.save(deps.storage, &sequence.add(1))?;
+    RELAY_COUNT_USER.save(
+        deps.storage,
+        cross_chain_user.address.clone(),
+        &new_user_relay_count,
+    )?;
 
     let send_packet_event = Event::new("euclid-cosmos-send-packet")
         .add_attribute("msg", msg.to_string())

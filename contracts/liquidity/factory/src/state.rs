@@ -83,4 +83,14 @@ pub const COSMOS_PACKET_RELAY_MAP: Map<u128, Binary> = Map::new("cosmos_packet_r
 pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Item<u128> =
     Item::new("cosmos_packet_relay_sequence_count");
 
+pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT_LIMIT: Item<u128> =
+    Item::new("cosmos_packet_relay_sequence_count_limit");
+
+pub const RELAY_COUNT_USER: Map<String, u128> = Map::new("relay_count_user");
+
+pub const GLOBAL_LIMIT_FOR_USERS: Item<u128> = Item::new("global_limit_for_users");
+
+// Reserved for high frequency traders
+pub const CUSTOM_LIMITS: Map<String, u128> = Map::new("custom_limits");
+
 pub const PROCESSED_PACKET_SEQUENCE: Map<u128, Uint128> = Map::new("processed_packet_sequence");
