@@ -52,28 +52,6 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<
 
 pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
 
-//EVM Relay sequence map
-pub const EVM_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> = Map::new("evm_packet_relay_map");
-
-//EVM Relay sequence count
-pub const EVM_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
-    Map::new("evm_packet_relay_sequence_count");
-
-//SOLANA Relay sequence map
-pub const SOLANA_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
-    Map::new("solana_packet_relay_map");
-
-//SOLANA Relay sequence count
-pub const SOLANA_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
-    Map::new("solana_packet_relay_sequence_count");
-
-//COSMOS Relay sequence map
-pub const COSMOS_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
-    Map::new("cosmos_packet_relay_map");
-
-//Cosmos Relay sequence count
-pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
-    Map::new("cosmos_packet_relay_sequence_count");
 pub const PROCESSED_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
     Map::new("processed_packet_sequence");
 

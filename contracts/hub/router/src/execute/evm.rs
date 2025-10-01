@@ -18,8 +18,8 @@ use crate::{
     ibc::{ack_and_timeout, receive},
     reply::EVM_RECEIVE_REPLY_ID,
     state::{
-        CHAIN_UID_TO_CHAIN, EVM_PACKET_RELAY_MAP, EVM_PACKET_RELAY_SEQUENCE_COUNT,
-        MOCK_RELAYER_ADDRESSES, PROCESSED_PACKET_SEQUENCE,
+        CHAIN_UID_TO_CHAIN, MOCK_RELAYER_ADDRESSES, PACKET_RELAY, PACKET_RELAY_COUNT_CHAIN,
+        PROCESSED_PACKET_SEQUENCE,
     },
 };
 
@@ -36,13 +36,13 @@ pub fn execute_evm_send_packet(
         ContractError::Unauthorized {}
     );
 
-    let sequence = EVM_PACKET_RELAY_SEQUENCE_COUNT
+    let sequence = PACKET_RELAY_COUNT_CHAIN
         .load(deps.storage, chain_uid.clone())
         .unwrap_or(0);
 
-    EVM_PACKET_RELAY_MAP.save(deps.storage, (chain_uid.clone(), sequence), &msg)?;
+    PACKET_RELAY.save(deps.storage, (chain_uid.clone(), sequence), &msg)?;
 
-    EVM_PACKET_RELAY_SEQUENCE_COUNT.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
+    PACKET_RELAY_COUNT_CHAIN.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
 
     let send_packet_event = Event::new("euclid-evm-send-packet")
         .add_attribute("msg", msg.to_string())
@@ -150,8 +150,7 @@ pub fn execute_evm_receive_acknowledgement(
             .contains(&info.sender.to_string()),
         ContractError::Unauthorized {}
     );
-    let _existing_request =
-        EVM_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
+    let _existing_request = PACKET_RELAY.load(deps.storage, (chain_uid.clone(), sequence))?;
 
     // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
     // ensure!(
@@ -161,7 +160,7 @@ pub fn execute_evm_receive_acknowledgement(
 
     // Remove the existing request as its already relayed now
 
-    EVM_PACKET_RELAY_MAP.remove(deps.storage, (chain_uid.clone(), sequence));
+    PACKET_RELAY.remove(deps.storage, (chain_uid.clone(), sequence));
 
     let chain_type = euclid::chain::ChainType::Evm(EvmChain {});
 
