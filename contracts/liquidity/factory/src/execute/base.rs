@@ -218,7 +218,7 @@ pub fn execute_request_pool_creation(
 
     let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
         pair: pair_with_denom_and_amount,
-        sender,
+        sender: sender.clone(),
         tx_id: tx_id.clone(),
         slippage_tolerance_bps,
         pool_config,
@@ -229,6 +229,7 @@ pub fn execute_request_pool_creation(
         state.router_contract,
         state.chain_uid,
         chain_type,
+        sender.address,
         timeout,
     )?;
 
@@ -350,7 +351,7 @@ pub fn add_liquidity_request(
     let chain_type = get_chain_type(deps.as_ref())?;
 
     let add_liq_msg = ChainIbcExecuteMsg::AddLiquidity {
-        sender,
+        sender: sender.clone(),
         slippage_tolerance_bps,
         pair: pair_info,
         tx_id: tx_id.clone(),
@@ -361,6 +362,7 @@ pub fn add_liquidity_request(
         state.router_contract,
         state.chain_uid,
         chain_type,
+        sender.address,
         timeout,
     )?;
 
@@ -429,7 +431,7 @@ pub fn remove_liquidity_request(
 
     let chain_type = get_chain_type(deps.as_ref())?;
     let remove_liq_msg = ChainIbcExecuteMsg::RemoveLiquidity(ChainIbcRemoveLiquidityExecuteMsg {
-        sender,
+        sender: sender.clone(),
         lp_allocation,
         pair,
         cross_chain_addresses,
@@ -441,6 +443,7 @@ pub fn remove_liquidity_request(
         state.router_contract,
         state.chain_uid,
         chain_type,
+        sender.address,
         timeout,
     )?;
 
@@ -589,7 +592,7 @@ pub fn execute_swap_request(
     let chain_type = get_chain_type(deps.as_ref())?;
 
     let swap_msg = ChainIbcExecuteMsg::Swap(euclid_ibc::msg::ChainIbcSwapExecuteMsg {
-        sender,
+        sender: sender.clone(),
         asset_in,
         amount_in,
         asset_out,
@@ -609,6 +612,7 @@ pub fn execute_swap_request(
         state.router_contract.clone(),
         state.chain_uid.clone(),
         chain_type,
+        sender.address,
         timeout,
     )?;
 
@@ -710,7 +714,7 @@ pub fn execute_deposit_token(
 
     let deposit_token_msg =
         ChainIbcExecuteMsg::DepositToken(euclid_ibc::msg::ChainIbcDepositTokenExecuteMsg {
-            sender,
+            sender: sender.clone(),
             asset_in,
             amount_in,
             tx_id: tx_id.clone(),
@@ -723,6 +727,7 @@ pub fn execute_deposit_token(
             state.clone().router_contract,
             state.clone().chain_uid,
             chain_type,
+            sender.address,
             timeout,
         )?;
 
@@ -967,7 +972,7 @@ pub fn execute_request_register_denom(
 
     let request_register_denom_msg = ChainIbcExecuteMsg::RegisterDenom {
         token: token.clone(),
-        sender,
+        sender: sender.clone(),
         tx_id: tx_id.clone(),
     }
     .to_msg(
@@ -976,6 +981,7 @@ pub fn execute_request_register_denom(
         state.router_contract,
         state.chain_uid,
         chain_type,
+        sender.address,
         timeout,
     )?;
 
@@ -1048,7 +1054,7 @@ pub fn execute_request_deregister_denom(
 
     let request_deregister_denom_msg = ChainIbcExecuteMsg::DeRegisterDenom {
         token: token.clone(),
-        sender,
+        sender: sender.clone(),
         tx_id: tx_id.clone(),
     }
     .to_msg(
@@ -1057,6 +1063,7 @@ pub fn execute_request_deregister_denom(
         state.router_contract,
         state.chain_uid,
         chain_type,
+        sender.address,
         timeout,
     )?;
 
@@ -1103,7 +1110,7 @@ pub fn execute_withdraw_virtual_balance(
     let chain_type = get_chain_type(deps.as_ref())?;
 
     let withdraw_msg = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
-        sender,
+        sender: sender.clone(),
         token,
         amount,
         cross_chain_addresses,
@@ -1116,6 +1123,7 @@ pub fn execute_withdraw_virtual_balance(
         state.router_contract,
         state.chain_uid,
         chain_type,
+        sender.address,
         timeout,
     )?;
 
@@ -1155,7 +1163,7 @@ pub fn execute_transfer_virtual_balance(
 
     let chain_type = get_chain_type(deps.as_ref())?;
     let withdraw_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
-        sender,
+        sender: sender.clone(),
         token,
         amount,
         recipient_address,
@@ -1170,6 +1178,7 @@ pub fn execute_transfer_virtual_balance(
         state.router_contract,
         state.chain_uid,
         chain_type,
+        sender.address,
         timeout,
     )?;
 

@@ -24,7 +24,8 @@ use crate::{
     },
 };
 
-const DEFAULT_GLOBAL_LIMIT: u128 = 10;
+const DEFAULT_GLOBAL_LIMIT_FOR_USERS: u128 = 10;
+const DEFAULT_GLOBAL_LIMIT_FOR_CHAINS: u128 = 1000;
 
 /**
  * Always run by contract itself to trigger send packet event and also increment sequence count
@@ -43,7 +44,10 @@ pub fn execute_cosmos_send_packet(
     );
 
     // Check if the sender has a custom limit
-    let custom_limit = CUSTOM_LIMITS.may_load(deps.storage, cross_chain_user.address.clone())?;
+    let custom_limit = CUSTOM_LIMITS
+        .may_load(deps.storage, cross_chain_user.address.clone())
+        .unwrap_or(None);
+
     let user_relay_count = RELAY_COUNT_USER
         .load(deps.storage, cross_chain_user.address.clone())
         .unwrap_or(0);
@@ -58,7 +62,7 @@ pub fn execute_cosmos_send_packet(
         None => {
             let global_limit = GLOBAL_LIMIT_FOR_USERS
                 .load(deps.storage)
-                .unwrap_or(DEFAULT_GLOBAL_LIMIT);
+                .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_USERS);
 
             if new_user_relay_count.gt(&global_limit) {
                 todo!("Handle global limit exceeded by charging a fee");
@@ -66,7 +70,9 @@ pub fn execute_cosmos_send_packet(
         }
     }
 
-    let sequence_limit = COSMOS_PACKET_RELAY_SEQUENCE_COUNT_LIMIT.load(deps.storage)?;
+    let sequence_limit = COSMOS_PACKET_RELAY_SEQUENCE_COUNT_LIMIT
+        .load(deps.storage)
+        .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_CHAINS);
     let sequence = COSMOS_PACKET_RELAY_SEQUENCE_COUNT
         .load(deps.storage)
         .unwrap_or(0);

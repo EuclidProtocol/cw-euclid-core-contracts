@@ -96,6 +96,7 @@ impl ChainIbcExecuteMsg {
         router_contract: String,
         chain_uid: ChainUid,
         chain_type: ChainType,
+        sender: String,
         _timeout: u64,
     ) -> Result<SubMsg, ContractError> {
         match chain_type {
@@ -134,7 +135,10 @@ impl ChainIbcExecuteMsg {
             ChainType::Ibc(_ibc_info) => {
                 let factory_internal_msg = factory::ExecuteMsg::CosmosSendPacket {
                     msg: to_json_binary(self)?,
-                    cross_chain_user: todo!(),
+                    cross_chain_user: CrossChainUser {
+                        chain_uid,
+                        address: sender,
+                    },
                 };
                 // Trigger a Send Packet execute call to the same contract
                 Ok(SubMsg::new(WasmMsg::Execute {
