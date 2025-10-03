@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg,
-    IbcTimeout, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
+    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 
 use euclid::{
@@ -11,7 +11,7 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
-        router::{ExecuteMsg, RegisterFactoryChainType, ReleaseFee},
+        router::{ExecuteMsg, RegisterFactoryChainType},
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
@@ -26,7 +26,7 @@ use crate::{
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE, TOKEN_DENOMS,
+        MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS,
     },
 };
 
@@ -181,34 +181,6 @@ pub fn execute_register_factory(
             Ok(response.add_submessage(msg.to_msg(deps, &env, chain_uid, chain, 0)?))
         }
     }
-}
-
-pub fn execute_update_release_fees(
-    deps: &mut DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    release_fees: Vec<ReleaseFee>,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(
-        info.sender.as_str() == state.admin,
-        ContractError::Unauthorized {}
-    );
-
-    if release_fees.is_empty() {
-        RELEASE_FEES.clear(deps.storage);
-    } else {
-        for release_fee in release_fees {
-            let key = format!(
-                "{}{}",
-                release_fee.token.to_string(),
-                release_fee.chain_uid.to_string()
-            );
-            RELEASE_FEES.save(deps.storage, key, &release_fee.fee)?;
-        }
-    }
-
-    Ok(Response::new().add_attribute("method", "update_release_fees"))
 }
 
 pub fn execute_update_factory_channel(
@@ -451,38 +423,6 @@ pub fn execute_release_escrow(
 
         if release_amount.is_zero() {
             continue;
-        }
-
-        let fee = RELEASE_FEES
-            .load(
-                deps.storage,
-                format!("{token}{}", cross_chain_address.user.chain_uid.to_string()),
-            )
-            .unwrap_or(Decimal::zero());
-
-        let release_fee_amount = fee.checked_mul(Decimal::new(release_amount))?.atomics();
-
-        if release_fee_amount.gt(&Uint128::zero()) {
-            let transfer_voucher_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(
-                euclid::msgs::virtual_balance::ExecuteTransfer {
-                    amount: release_fee_amount,
-                    token_id: token.to_string(),
-                    sender: Some(sender.clone()),
-                    to: CrossChainUser::new(
-                        ChainUid::vsl_chain_uid()?,
-                        env.contract.address.to_string(),
-                    ),
-                    from: None,
-                    msg: None,
-                },
-            );
-
-            let transfer_voucher_msg = WasmMsg::Execute {
-                contract_addr: virtual_balance_address.clone(),
-                msg: to_json_binary(&transfer_voucher_msg)?,
-                funds: vec![],
-            };
-            vcoin_transfer_msgs.push(SubMsg::new(transfer_voucher_msg));
         }
 
         // If its not a vcoin transfer, we release escrow so decrease escrow balance

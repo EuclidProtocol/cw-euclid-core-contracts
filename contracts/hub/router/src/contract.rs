@@ -15,8 +15,7 @@ use crate::execute::cosmos::{
 use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
     execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
-    execute_update_lock, execute_update_release_fees, execute_update_router_state,
-    execute_withdraw_voucher,
+    execute_update_lock, execute_update_router_state, execute_withdraw_voucher,
 };
 
 use crate::execute::evm::{
@@ -33,8 +32,8 @@ use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
     self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_relayer_addresses, query_release_fees, query_simulate_escrow_release, query_state,
-    query_token_denoms, query_token_escrows, query_vlp,
+    query_relayer_addresses, query_simulate_escrow_release, query_state, query_token_denoms,
+    query_token_escrows, query_vlp,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, COSMOS_RECEIVE_REPLY_ID, EVM_RECEIVE_REPLY_ID,
@@ -115,9 +114,6 @@ pub fn execute(
                 ContractError::ContractLocked {}
             );
             match msg {
-                ExecuteMsg::UpdateReleaseFees { release_fees } => {
-                    execute_update_release_fees(&mut deps, env, info, release_fees)
-                }
                 ExecuteMsg::UpdateFactoryChannel { channel, chain_uid } => {
                     execute_update_factory_channel(&mut deps, env, info, channel, chain_uid)
                 }
@@ -270,9 +266,6 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => query_state(deps),
-        QueryMsg::GetReleaseFees {
-            token_and_chain_uid,
-        } => query_release_fees(deps, token_and_chain_uid),
         QueryMsg::GetChain { chain_uid } => query_chain(deps, chain_uid),
         QueryMsg::GetAllChains {} => query_all_chains(deps),
         QueryMsg::GetVlp { pair } => query_vlp(deps, pair),

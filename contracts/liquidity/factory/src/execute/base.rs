@@ -1,10 +1,10 @@
 use cosmwasm_std::{
     ensure, from_json, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout, MessageInfo, Response,
-    Uint128,
+    SubMsg, Uint128,
 };
 use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
-    chain::{CrossChainUser, CrossChainUserWithLimit},
+    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     deposit::DepositTokenRequest,
     error::ContractError,
     events::{deposit_token_event, simple_event, swap_event, tx_event, TxType},
@@ -14,7 +14,7 @@ use euclid::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
         factory::{
             cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook, ExecuteMsg,
-            ExecuteSwapRequest,
+            ExecuteSwapRequest, ReleaseFee,
         },
         hook::EuclidReceive,
     },
@@ -35,8 +35,8 @@ use crate::{
     state::{
         State, HUB_CHANNEL, MOCK_RELAYER_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
-        VLP_TO_CW20,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, RELEASE_FEES, STATE,
+        TOKEN_TO_ESCROW, VLP_TO_CW20,
     },
 };
 
@@ -1102,6 +1102,42 @@ pub fn execute_withdraw_virtual_balance(
 
     let chain_type = get_chain_type(deps.as_ref())?;
 
+    let mut sub_msgs: Vec<SubMsg> = vec![];
+
+    let fee = RELEASE_FEES
+        .load(
+            deps.storage,
+            format!("{token}{}", sender.chain_uid.to_string()),
+        )
+        .unwrap_or(Decimal::zero());
+
+    let release_fee_amount = fee.checked_mul(Decimal::new(amount))?.atomics();
+
+    if release_fee_amount.gt(&Uint128::zero()) {
+        let fee_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
+            sender: sender.clone(),
+            token: token.clone(),
+            amount: release_fee_amount,
+            recipient_address: CrossChainUser {
+                chain_uid: ChainUid::vsl_chain_uid()?,
+                address: state.router_contract.clone(),
+            },
+            from: None,
+            msg: None,
+            tx_id: tx_id.clone(),
+            timeout: Some(timeout),
+        })
+        .to_msg(
+            deps,
+            &env,
+            state.router_contract.clone(),
+            state.chain_uid.clone(),
+            chain_type.clone(),
+            timeout,
+        )?;
+        sub_msgs.push(fee_msg);
+    }
+
     let withdraw_msg = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
         sender,
         token,
@@ -1118,6 +1154,7 @@ pub fn execute_withdraw_virtual_balance(
         chain_type,
         timeout,
     )?;
+    sub_msgs.push(withdraw_msg);
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -1127,7 +1164,7 @@ pub fn execute_withdraw_virtual_balance(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "withdraw_virtual_balance")
-        .add_submessage(withdraw_msg))
+        .add_submessages(sub_msgs))
 }
 
 pub fn execute_transfer_virtual_balance(
@@ -1255,4 +1292,32 @@ pub fn execute_native_receive_callback(
         ContractError::Unauthorized {}
     );
     receive::reusable_internal_call(deps, env, msg)
+}
+
+pub fn execute_update_release_fees(
+    deps: &mut DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    release_fees: Vec<ReleaseFee>,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
+
+    if release_fees.is_empty() {
+        RELEASE_FEES.clear(deps.storage);
+    } else {
+        for release_fee in release_fees {
+            let key = format!(
+                "{}{}",
+                release_fee.token.to_string(),
+                release_fee.chain_uid.to_string()
+            );
+            RELEASE_FEES.save(deps.storage, key, &release_fee.fee)?;
+        }
+    }
+
+    Ok(Response::new().add_attribute("method", "update_release_fees"))
 }

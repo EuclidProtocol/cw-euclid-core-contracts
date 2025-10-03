@@ -7,7 +7,8 @@ use euclid::{
         AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
         GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
         GetRelayerResponse, GetVlpResponse, PartnerFeesCollectedPerDenomResponse,
-        PartnerFeesCollectedResponse, PoolVlpResponse, StateResponse,
+        PartnerFeesCollectedResponse, PoolVlpResponse, ReleaseFeeQuery, ReleaseFeesQueryResponse,
+        StateResponse, TokenAndChainUid,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
@@ -15,7 +16,7 @@ use euclid::{
 
 use crate::state::{
     HUB_CHANNEL, MOCK_RELAYER_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
-    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, RELEASE_FEES, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
 };
 
 // Returns the VLP address
@@ -187,4 +188,36 @@ pub fn query_relayer(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&GetRelayerResponse {
         relayer_address: relayer.to_string(),
     })?)
+}
+
+pub fn query_release_fees(
+    deps: Deps,
+    token_and_chain_uid: Option<TokenAndChainUid>,
+) -> Result<Binary, ContractError> {
+    let release_fee_query = match token_and_chain_uid {
+        Some(token_and_chain_uid) => {
+            let release_fee = RELEASE_FEES.load(deps.storage, token_and_chain_uid.key())?;
+            ReleaseFeesQueryResponse {
+                fees: vec![ReleaseFeeQuery {
+                    token_and_chain_uid: token_and_chain_uid.key(),
+                    fee: release_fee,
+                }],
+            }
+        }
+        // If token_and_chain_uid is not provided, return all release fees
+        None => {
+            let release_fees = RELEASE_FEES
+                .range(deps.storage, None, None, Order::Ascending)
+                .map(|v| {
+                    let v = v?;
+                    Ok(ReleaseFeeQuery {
+                        token_and_chain_uid: v.0,
+                        fee: v.1,
+                    })
+                })
+                .collect::<Result<_, ContractError>>()?;
+            ReleaseFeesQueryResponse { fees: release_fees }
+        }
+    };
+    Ok(to_json_binary(&release_fee_query)?)
 }

@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Decimal, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
 use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
@@ -29,10 +29,7 @@ pub enum ExecuteMsg {
         chain_uid: ChainUid,
         channel: String,
     },
-    UpdateReleaseFees {
-        /// Leaving this empty will clear all the release fees
-        release_fees: Vec<ReleaseFee>,
-    },
+
     UpdateLock {},
     RegisterFactory {
         chain_uid: ChainUid,
@@ -170,10 +167,6 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(StateResponse)]
     GetState {},
-    #[returns(ReleaseFeesQueryResponse)]
-    GetReleaseFees {
-        token_and_chain_uid: Option<TokenAndChainUid>,
-    },
     #[returns(ChainResponse)]
     GetChain { chain_uid: ChainUid },
     #[returns(AllChainResponse)]
@@ -212,28 +205,6 @@ pub enum QueryMsg {
     QueryRelayerAddresses {},
 }
 
-#[cw_serde]
-pub struct ReleaseFeeQuery {
-    pub token_and_chain_uid: String,
-    pub fee: Decimal,
-}
-
-#[cw_serde]
-pub struct ReleaseFeesQueryResponse {
-    pub fees: Vec<ReleaseFeeQuery>,
-}
-
-#[cw_serde]
-pub struct TokenAndChainUid {
-    pub token: Token,
-    pub chain_uid: ChainUid,
-}
-impl TokenAndChainUid {
-    pub fn key(&self) -> String {
-        format!("{}{}", self.token.to_string(), self.chain_uid.to_string())
-    }
-}
-
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct MigrateMsg {
@@ -252,13 +223,6 @@ pub struct QuerySimulateSwap {
     pub asset_out: Token,
     pub min_amount_out: Uint128,
     pub swaps: Vec<NextSwapPair>,
-}
-
-#[cw_serde]
-pub struct ReleaseFee {
-    pub token: Token,
-    pub chain_uid: ChainUid,
-    pub fee: Decimal,
 }
 
 #[cw_serde]
