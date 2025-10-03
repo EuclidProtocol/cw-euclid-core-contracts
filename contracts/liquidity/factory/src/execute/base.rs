@@ -1104,39 +1104,30 @@ pub fn execute_withdraw_virtual_balance(
 
     let mut sub_msgs: Vec<SubMsg> = vec![];
 
-    let fee = RELEASE_FEES
-        .load(
-            deps.storage,
-            format!("{token}{}", sender.chain_uid.to_string()),
-        )
-        .unwrap_or(Decimal::zero());
-
-    let release_fee_amount = fee.checked_mul(Decimal::new(amount))?.atomics();
-
-    if release_fee_amount.gt(&Uint128::zero()) {
-        let fee_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
-            sender: sender.clone(),
-            token: token.clone(),
-            amount: release_fee_amount,
-            recipient_address: CrossChainUser {
-                chain_uid: ChainUid::vsl_chain_uid()?,
-                address: state.router_contract.clone(),
-            },
-            from: None,
-            msg: None,
-            tx_id: tx_id.clone(),
-            timeout: Some(timeout),
-        })
-        .to_msg(
-            deps,
-            &env,
-            state.router_contract.clone(),
-            state.chain_uid.clone(),
-            chain_type.clone(),
-            timeout,
-        )?;
-        sub_msgs.push(fee_msg);
-    }
+    // if release_fee_amount.gt(&Uint128::zero()) {
+    //     let fee_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
+    //         sender: sender.clone(),
+    //         token: token.clone(),
+    //         amount: release_fee_amount,
+    //         recipient_address: CrossChainUser {
+    //             chain_uid: ChainUid::vsl_chain_uid()?,
+    //             address: state.router_contract.clone(),
+    //         },
+    //         from: None,
+    //         msg: None,
+    //         tx_id: tx_id.clone(),
+    //         timeout: Some(timeout),
+    //     })
+    //     .to_msg(
+    //         deps,
+    //         &env,
+    //         state.router_contract.clone(),
+    //         state.chain_uid.clone(),
+    //         chain_type.clone(),
+    //         timeout,
+    //     )?;
+    //     sub_msgs.push(fee_msg);
+    // }
 
     let withdraw_msg = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
         sender,

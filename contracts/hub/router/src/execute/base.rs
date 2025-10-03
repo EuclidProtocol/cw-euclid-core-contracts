@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
-    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcMsg,
+    IbcTimeout, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 
 use euclid::{
@@ -26,7 +26,7 @@ use crate::{
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS,
+        MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE, TOKEN_DENOMS,
     },
 };
 
@@ -425,6 +425,15 @@ pub fn execute_release_escrow(
             continue;
         }
 
+        let fee = RELEASE_FEES
+            .load(
+                deps.storage,
+                format!("{token}{}", sender.chain_uid.to_string()),
+            )
+            .unwrap_or(Decimal::zero());
+
+        let release_fee_amount = fee.checked_mul(Decimal::new(release_amount))?.atomics();
+
         // If its not a vcoin transfer, we release escrow so decrease escrow balance
         if cross_chain_address.vcoin_msg.is_none() {
             escrow_key.save(deps.storage, &escrow_balance.checked_sub(release_amount)?)?;
@@ -435,6 +444,7 @@ pub fn execute_release_escrow(
                 amount: release_amount,
                 recipient: cross_chain_address.clone(),
                 token: token.clone(),
+                release_fee: release_fee_amount,
                 // We can't use same tx id because it might conflict with pending requests on receiving chain
                 tx_id: generate_tx(deps.branch(), &env, &sender)?,
             }

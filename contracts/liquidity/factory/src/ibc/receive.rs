@@ -95,8 +95,17 @@ pub fn reusable_internal_call(
             token,
             tx_id,
             recipient,
+            release_fee,
             ..
-        } => execute_release_escrow(deps.branch(), env, amount, recipient, token, tx_id),
+        } => execute_release_escrow(
+            deps.branch(),
+            env,
+            amount,
+            recipient,
+            token,
+            tx_id,
+            release_fee,
+        ),
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             execute_update_factory_channel(deps.branch(), env, chain_uid, tx_id)
         }
@@ -174,6 +183,7 @@ fn execute_release_escrow(
     recipient: CrossChainUserWithLimit,
     token: Token,
     tx_id: String,
+    release_fee: Uint128,
 ) -> Result<Response, ContractError> {
     let withdraw_msg = EscrowExecuteMsg::Withdraw {
         recipient: deps.api.addr_validate(&recipient.user.address)?,
