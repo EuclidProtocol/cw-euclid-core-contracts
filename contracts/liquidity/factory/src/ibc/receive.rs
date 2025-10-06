@@ -87,9 +87,9 @@ pub fn reusable_internal_call(
     msg: HubIbcExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        HubIbcExecuteMsg::RegisterFactory { chain_uid, tx_id } => {
-            execute_register_router(deps.branch(), env, chain_uid, tx_id)
-        }
+        HubIbcExecuteMsg::RegisterFactory {
+            chain_uid, tx_id, ..
+        } => execute_register_router(deps.branch(), env, chain_uid, tx_id),
         HubIbcExecuteMsg::ReleaseEscrow {
             amount,
             token,
@@ -97,9 +97,9 @@ pub fn reusable_internal_call(
             recipient,
             ..
         } => execute_release_escrow(deps.branch(), env, amount, recipient, token, tx_id),
-        HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
-            execute_update_factory_channel(deps.branch(), env, chain_uid, tx_id)
-        }
+        HubIbcExecuteMsg::UpdateFactoryChannel {
+            chain_uid, tx_id, ..
+        } => execute_update_factory_channel(deps.branch(), env, chain_uid, tx_id),
     }
 }
 

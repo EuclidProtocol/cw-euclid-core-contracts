@@ -237,12 +237,14 @@ pub enum HubIbcExecuteMsg {
     // Send Factory Registration Message from Router to Factory
     RegisterFactory {
         chain_uid: ChainUid,
+        chain_type: ChainType,
         // Unique per tx
         tx_id: String,
     },
 
     UpdateFactoryChannel {
         chain_uid: ChainUid,
+        chain_type: ChainType,
         // Unique per tx
         tx_id: String,
     },
@@ -275,53 +277,7 @@ impl HubIbcExecuteMsg {
         _timeout: u64,
     ) -> Result<SubMsg, ContractError> {
         match chain.chain_type {
-            // euclid::chain::ChainType::Ibc(ibc_info) => {
-            //     let packet = IbcMsg::SendPacket {
-            //         channel_id: ibc_info.from_hub_channel,
-            //         data: to_json_binary(self)?,
-            //         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(timeout)),
-            //     };
-            //     Ok(SubMsg::new(CosmosMsg::Ibc(packet)))
-            // }
-
             // Temporary solution for cosmos chain speed
-            euclid::chain::ChainType::Ibc(_) => {
-                let router_internal_msg = router::ExecuteMsg::CosmosSendPacket {
-                    msg: to_json_binary(self)?,
-                    chain_uid,
-                };
-                // Trigger a Send Packet execute call to the same contract
-                Ok(SubMsg::new(WasmMsg::Execute {
-                    contract_addr: env.contract.address.to_string(),
-                    msg: to_json_binary(&router_internal_msg)?,
-                    funds: vec![],
-                }))
-            }
-
-            euclid::chain::ChainType::Evm(_) => {
-                let router_internal_msg = router::ExecuteMsg::EvmSendPacket {
-                    msg: to_json_binary(self)?,
-                    chain_uid,
-                };
-                // Trigger a Send Packet execute call to the same contract
-                Ok(SubMsg::new(WasmMsg::Execute {
-                    contract_addr: env.contract.address.to_string(),
-                    msg: to_json_binary(&router_internal_msg)?,
-                    funds: vec![],
-                }))
-            }
-            euclid::chain::ChainType::Solana(_) => {
-                let router_internal_msg = router::ExecuteMsg::SolanaSendPacket {
-                    msg: to_json_binary(self)?,
-                    chain_uid,
-                };
-                // Trigger a Send Packet execute call to the same contract
-                Ok(SubMsg::new(WasmMsg::Execute {
-                    contract_addr: env.contract.address.to_string(),
-                    msg: to_json_binary(&router_internal_msg)?,
-                    funds: vec![],
-                }))
-            }
             euclid::chain::ChainType::Native {} => {
                 let factory_msg = factory::ExecuteMsg::NativeReceiveCallback {
                     msg: to_json_binary(self)?,
@@ -350,6 +306,18 @@ impl HubIbcExecuteMsg {
                     },
                     count,
                 ))
+            }
+            _ => {
+                let router_internal_msg = router::ExecuteMsg::SendPacket {
+                    msg: to_json_binary(self)?,
+                    chain_uid,
+                };
+                // Trigger a Send Packet execute call to the same contract
+                Ok(SubMsg::new(WasmMsg::Execute {
+                    contract_addr: env.contract.address.to_string(),
+                    msg: to_json_binary(&router_internal_msg)?,
+                    funds: vec![],
+                }))
             }
         }
     }

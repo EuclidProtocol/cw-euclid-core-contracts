@@ -2,7 +2,10 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
 use crate::{
-    chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{
+        Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, IbcChain,
+        SolanaChain,
+    },
     swap::NextSwapPair,
     token::{Pair, Token, TokenType},
     utils::pagination::Pagination,
@@ -72,11 +75,6 @@ pub enum ExecuteMsg {
         mock_relayer_addresses: Option<Vec<String>>,
     },
 
-    EvmSendPacket {
-        msg: Binary,
-        chain_uid: ChainUid,
-    },
-
     EvmReceivePacket {
         msg: Binary,
         chain_uid: ChainUid,
@@ -84,26 +82,6 @@ pub enum ExecuteMsg {
         sequence: u128,
         // Continous hash of the packet to make sure its linked to the same source flow
         hash: String,
-    },
-
-    EvmReceivePacketInternalCallback {
-        msg: Binary,
-        chain_uid: ChainUid,
-    },
-
-    EvmReceiveAck {
-        msg: Binary,
-        chain_uid: ChainUid,
-        // Store sequence of packet relayed so we don't relay same sequence again
-        sequence: u128,
-        // Continous hash of the packet to make sure its linked to the same source flow
-        hash: String,
-        ack: Binary,
-    },
-
-    SolanaSendPacket {
-        msg: Binary,
-        chain_uid: ChainUid,
     },
 
     SolanaReceivePacket {
@@ -115,27 +93,7 @@ pub enum ExecuteMsg {
         hash: String,
     },
 
-    SolanaReceivePacketInternalCallback {
-        msg: Binary,
-        chain_uid: ChainUid,
-    },
-
-    SolanaReceiveAck {
-        msg: Binary,
-        chain_uid: ChainUid,
-        // Store sequence of packet relayed so we don't relay same sequence again
-        sequence: u128,
-        // Continous hash of the packet to make sure its linked to the same source flow
-        hash: String,
-        ack: Binary,
-    },
-
     // COSMOS REALYING MSGS
-    CosmosSendPacket {
-        msg: Binary,
-        chain_uid: ChainUid,
-    },
-
     CosmosReceivePacket {
         msg: Binary,
         chain_uid: ChainUid,
@@ -145,12 +103,17 @@ pub enum ExecuteMsg {
         hash: String,
     },
 
-    CosmosReceivePacketInternalCallback {
+    // Unified
+    SendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+    ReceivePacketInternalCallback {
         msg: Binary,
         chain_uid: ChainUid,
     },
 
-    CosmosReceiveAck {
+    ReceiveAcknowledgement {
         msg: Binary,
         chain_uid: ChainUid,
         // Store sequence of packet relayed so we don't relay same sequence again
@@ -317,6 +280,20 @@ pub enum RegisterFactoryChainType {
     Ibc(RegisterFactoryChainIbc),
     Evm(RegisterFactoryChainEvm),
     Solana(RegisterFactoryChainSolana),
+}
+
+impl RegisterFactoryChainType {
+    pub fn chain_type(&self) -> ChainType {
+        match self {
+            RegisterFactoryChainType::Native(_) => ChainType::Native {},
+            RegisterFactoryChainType::Ibc(ibc) => ChainType::Ibc(IbcChain {
+                from_hub_channel: ibc.channel.clone(),
+                from_factory_channel: "not_implemented".to_string(),
+            }),
+            RegisterFactoryChainType::Evm(_) => ChainType::Evm(EvmChain {}),
+            RegisterFactoryChainType::Solana(_) => ChainType::Solana(SolanaChain {}),
+        }
+    }
 }
 
 #[cw_serde]

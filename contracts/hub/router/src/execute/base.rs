@@ -136,8 +136,12 @@ pub fn execute_register_factory(
             TxType::RegisterFactory,
         ))
         .add_attribute("method", "register_factory");
+    println!("chain info: {:?}", chain_info);
+    let chain_type = chain_info.chain_type();
+    println!("chain type: {:?}", chain_type);
     let msg = HubIbcExecuteMsg::RegisterFactory {
         chain_uid: chain_uid.clone(),
+        chain_type: chain_info.chain_type(),
         tx_id: tx_id.clone(),
     };
     match chain_info {
@@ -227,6 +231,7 @@ pub fn execute_update_factory_channel(
 
     let msg = HubIbcExecuteMsg::UpdateFactoryChannel {
         chain_uid: chain_uid.clone(),
+        chain_type: chain_info.chain_type.clone(),
         tx_id: tx_id.clone(),
     };
 

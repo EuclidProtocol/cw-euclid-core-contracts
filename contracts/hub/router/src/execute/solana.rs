@@ -1,59 +1,14 @@
-use std::ops::Add;
-
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo,
     Response, StdError, SubMsg, Uint128, WasmMsg,
 };
-use euclid::{
-    chain::{ChainUid, SolanaChain},
-    error::ContractError,
-    msgs::router::ExecuteMsg,
-};
-use euclid_ibc::{
-    ack::make_ack_fail,
-    msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg},
-};
+use euclid::{chain::ChainUid, error::ContractError, msgs::router::ExecuteMsg};
+use euclid_ibc::{ack::make_ack_fail, msg::ChainIbcExecuteMsg};
 
 use crate::{
-    ibc::{ack_and_timeout, receive},
     reply::SOLANA_RECEIVE_REPLY_ID,
-    state::{
-        CHAIN_UID_TO_CHAIN, MOCK_RELAYER_ADDRESSES, PACKET_RELAY, PACKET_RELAY_COUNT_CHAIN,
-        PROCESSED_PACKET_SEQUENCE,
-    },
+    state::{CHAIN_UID_TO_CHAIN, MOCK_RELAYER_ADDRESSES, PROCESSED_PACKET_SEQUENCE},
 };
-
-pub fn execute_solana_send_packet(
-    deps: DepsMut,
-    info: MessageInfo,
-    env: Env,
-    chain_uid: ChainUid,
-    msg: Binary,
-) -> Result<Response, ContractError> {
-    // Only contract can call this function internally
-    ensure!(
-        info.sender == env.contract.address,
-        ContractError::Unauthorized {}
-    );
-
-    let sequence = PACKET_RELAY_COUNT_CHAIN
-        .load(deps.storage, chain_uid.clone())
-        .unwrap_or(0);
-
-    PACKET_RELAY.save(deps.storage, (chain_uid.clone(), sequence), &msg)?;
-
-    PACKET_RELAY_COUNT_CHAIN.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
-
-    let send_packet_event = Event::new("euclid-solana-send-packet")
-        .add_attribute("msg", msg.to_string())
-        .add_attribute("chain_uid", chain_uid.to_string())
-        .add_attribute("sequence", sequence.to_string())
-        .add_attribute("hash", "hash".to_string());
-
-    Ok(Response::new()
-        .add_attribute("action", "solana-send-packet")
-        .add_event(send_packet_event))
-}
 
 pub fn execute_solana_receive_packet(
     deps: DepsMut,
@@ -91,7 +46,7 @@ pub fn execute_solana_receive_packet(
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("hash", hash.to_string());
 
-    let internal_msg = ExecuteMsg::SolanaReceivePacketInternalCallback {
+    let internal_msg = ExecuteMsg::ReceivePacketInternalCallback {
         msg: msg.clone(),
         chain_uid: chain_uid.clone(),
     };
@@ -115,70 +70,4 @@ pub fn execute_solana_receive_packet(
         .add_event(write_acknowledge_event)
         .add_event(receive_packet_event)
         .add_submessage(sub_msg))
-}
-
-pub fn execute_solana_receive_packet_internal_callback(
-    deps: &mut DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: Binary,
-    chain_uid: ChainUid,
-) -> Result<Response, ContractError> {
-    ensure!(
-        info.sender == env.contract.address,
-        ContractError::Unauthorized {}
-    );
-    let msg: ChainIbcExecuteMsg = from_json(msg)?;
-    receive::reusable_internal_call(deps, env, info, msg, chain_uid)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn execute_solana_receive_acknowledgement(
-    deps: DepsMut,
-    info: MessageInfo,
-    env: Env,
-    chain_uid: ChainUid,
-    msg: Binary,
-    sequence: u128,
-    _hash: String,
-    ack: Binary,
-) -> Result<Response, ContractError> {
-    ensure!(
-        MOCK_RELAYER_ADDRESSES
-            .load(deps.storage)?
-            .contains(&info.sender.to_string()),
-        ContractError::Unauthorized {}
-    );
-    let _existing_request = PACKET_RELAY.load(deps.storage, (chain_uid.clone(), sequence))?;
-
-    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
-    // ensure!(
-    //     existing_request == msg,
-    //     ContractError::new("Ack source msg doesn't match with existing request")
-    // );
-
-    // Remove the existing request as its already relayed now
-
-    PACKET_RELAY.remove(deps.storage, (chain_uid.clone(), sequence));
-
-    let chain_type = euclid::chain::ChainType::Solana(SolanaChain {});
-
-    let msg: HubIbcExecuteMsg = from_json(msg)?;
-
-    // Verify chain uid is registerd and is solana chain if its not a register factory msg
-    match msg {
-        HubIbcExecuteMsg::RegisterFactory { .. } => {}
-        _ => {
-            let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-            ensure!(chain.is_solana(), ContractError::Unauthorized {});
-        }
-    }
-
-    let response = ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)?;
-    let response = response.add_event(
-        Event::new("euclid-hub-receive-acknowledgement")
-            .add_attribute("chain_uid", chain_uid.to_string())
-            .add_attribute("sequence", sequence.to_string()),
-    );
-    Ok(response)
 }

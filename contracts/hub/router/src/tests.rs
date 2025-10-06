@@ -128,6 +128,10 @@ mod tests {
                             msg,
                             HubIbcExecuteMsg::RegisterFactory {
                                 chain_uid: ChainUid::create("1".to_string()).unwrap(),
+                                chain_type: euclid::chain::ChainType::Ibc(IbcChain {
+                                    from_hub_channel: "channel-1".to_string(),
+                                    from_factory_channel: "channel-2".to_string(),
+                                }),
                                 tx_id: "vsl:creator:cosmos-testnet-14002:12345:3:1".to_string(),
                             }
                         );

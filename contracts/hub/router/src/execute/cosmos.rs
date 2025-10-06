@@ -4,11 +4,7 @@ use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo,
     Response, StdError, SubMsg, Uint128, WasmMsg,
 };
-use euclid::{
-    chain::{ChainUid, IbcChain},
-    error::ContractError,
-    msgs::router::ExecuteMsg,
-};
+use euclid::{chain::ChainUid, error::ContractError, msgs::router::ExecuteMsg};
 use euclid_ibc::{
     ack::make_ack_fail,
     msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg},
@@ -94,7 +90,7 @@ pub fn execute_cosmos_receive_packet(
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("hash", hash.to_string());
 
-    let internal_msg = ExecuteMsg::CosmosReceivePacketInternalCallback {
+    let internal_msg = ExecuteMsg::ReceivePacketInternalCallback {
         msg: msg.clone(),
         chain_uid: chain_uid.clone(),
     };
@@ -120,7 +116,7 @@ pub fn execute_cosmos_receive_packet(
         .add_submessage(sub_msg))
 }
 
-pub fn execute_cosmos_receive_packet_internal_callback(
+pub fn execute_receive_packet_internal_callback(
     deps: &mut DepsMut,
     env: Env,
     info: MessageInfo,
@@ -136,7 +132,7 @@ pub fn execute_cosmos_receive_packet_internal_callback(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn execute_cosmos_receive_acknowledgement(
+pub fn execute_receive_acknowledgement(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
@@ -165,15 +161,6 @@ pub fn execute_cosmos_receive_acknowledgement(
 
     let maybe_chain_type = CHAIN_UID_TO_CHAIN.may_load(deps.storage, chain_uid.clone())?;
 
-    let chain_type =
-        maybe_chain_type
-            .clone()
-            .map(|c| c.chain_type)
-            .unwrap_or(euclid::chain::ChainType::Ibc(IbcChain {
-                from_hub_channel: "".to_string(),
-                from_factory_channel: "".to_string(),
-            }));
-
     let msg: HubIbcExecuteMsg = from_json(msg)?;
 
     // Verify chain uid is registerd and is cosmos chain if its not a register factory msg
@@ -187,7 +174,7 @@ pub fn execute_cosmos_receive_acknowledgement(
         }
     }
 
-    let response = ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, chain_type)?;
+    let response = ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack)?;
 
     let response = response.add_event(
         Event::new("euclid-hub-receive-acknowledgement")

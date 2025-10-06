@@ -59,12 +59,7 @@ pub fn ibc_ack_packet_internal_call(
     // Parse the ack based on request
     let msg: HubIbcExecuteMsg = from_json(ack.original_packet.data)?;
 
-    let chain_type = euclid::chain::ChainType::Ibc(euclid::chain::IbcChain {
-        from_hub_channel: ack.original_packet.src.channel_id,
-        from_factory_channel: ack.original_packet.dest.channel_id,
-    });
-
-    reusable_internal_ack_call(deps, env, msg, ack.acknowledgement.data, chain_type)
+    reusable_internal_ack_call(deps, env, msg, ack.acknowledgement.data)
 }
 
 pub fn reusable_internal_ack_call(
@@ -72,13 +67,15 @@ pub fn reusable_internal_ack_call(
     env: Env,
     msg: HubIbcExecuteMsg,
     ack: Binary,
-    chain_type: euclid::chain::ChainType,
 ) -> Result<Response, ContractError> {
     let tx_id = msg.get_tx_id();
 
     let response = match msg {
         HubIbcExecuteMsg::RegisterFactory {
-            chain_uid, tx_id, ..
+            chain_uid,
+            tx_id,
+            chain_type,
+            ..
         } => {
             let res = from_json(ack)?;
             ibc_ack_register_factory(deps, env, chain_uid, chain_type, res, tx_id)?
@@ -94,7 +91,11 @@ pub fn reusable_internal_ack_call(
             let res = from_json(ack)?;
             ibc_ack_release_escrow(deps, env, sender, amount, token, res, recipient, tx_id)?
         }
-        HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
+        HubIbcExecuteMsg::UpdateFactoryChannel {
+            chain_uid,
+            chain_type,
+            tx_id,
+        } => {
             let res = from_json(ack)?;
             ibc_ack_update_factory_channel(deps, env, chain_uid, chain_type, res, tx_id)?
         }

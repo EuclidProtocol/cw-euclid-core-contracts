@@ -421,19 +421,13 @@ pub fn on_reply_native_ibc_wrapper_call(
     env: Env,
     msg: Reply,
 ) -> Result<Response, ContractError> {
-    let chain_type = euclid::chain::ChainType::Native {};
     let original_msg = HUB_IBC_EXECUTE_MSG_QUEUE.load(deps.storage, msg.id)?;
     HUB_IBC_EXECUTE_MSG_QUEUE.remove(deps.storage, msg.id);
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
             let ack = make_ack_fail(err.clone())?;
-            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
-                deps,
-                env,
-                original_msg,
-                ack,
-                chain_type,
-            )?;
+            let response =
+                ibc::ack_and_timeout::reusable_internal_ack_call(deps, env, original_msg, ack)?;
             Ok(response
                 .add_attribute("reply_on_ibc_receive_processing", "err")
                 .add_attribute("err", err))
@@ -448,13 +442,8 @@ pub fn on_reply_native_ibc_wrapper_call(
                         .unwrap_or_default()
                 })
                 .unwrap_or_default();
-            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
-                deps,
-                env,
-                original_msg,
-                data,
-                chain_type,
-            )?;
+            let response =
+                ibc::ack_and_timeout::reusable_internal_ack_call(deps, env, original_msg, data)?;
             Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
         }
     }

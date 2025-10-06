@@ -9,25 +9,16 @@ use euclid::error::ContractError;
 use euclid_ibc::msg::HUB_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::cosmos::{
-    execute_cosmos_receive_acknowledgement, execute_cosmos_receive_packet,
-    execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
+    execute_cosmos_receive_packet, execute_cosmos_send_packet, execute_receive_acknowledgement,
+    execute_receive_packet_internal_callback,
 };
+use crate::execute::evm::execute_evm_receive_packet;
+use crate::execute::solana::execute_solana_receive_packet;
 use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
     execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
     execute_update_lock, execute_update_router_state, execute_withdraw_voucher,
 };
-
-use crate::execute::evm::{
-    execute_evm_receive_acknowledgement, execute_evm_receive_packet,
-    execute_evm_receive_packet_internal_callback, execute_evm_send_packet,
-};
-
-use crate::execute::solana::{
-    execute_solana_receive_acknowledgement, execute_solana_receive_packet,
-    execute_solana_receive_packet_internal_callback, execute_solana_send_packet,
-};
-
 use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
@@ -180,34 +171,12 @@ pub fn execute(
                     locked,
                     mock_relayer_addresses,
                 ),
-                ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
-                    execute_evm_send_packet(deps, info, env, chain_uid, msg)
-                }
                 ExecuteMsg::EvmReceivePacket {
                     msg,
                     chain_uid,
                     sequence,
                     hash,
                 } => execute_evm_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
-
-                ExecuteMsg::EvmReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_evm_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
-                }
-                ExecuteMsg::EvmReceiveAck {
-                    msg,
-                    chain_uid,
-                    sequence,
-                    hash,
-                    ack,
-                } => execute_evm_receive_acknowledgement(
-                    deps, info, env, chain_uid, msg, sequence, hash, ack,
-                ),
-
-                ExecuteMsg::SolanaSendPacket { msg, chain_uid } => {
-                    execute_solana_send_packet(deps, info, env, chain_uid, msg)
-                }
                 ExecuteMsg::SolanaReceivePacket {
                     msg,
                     chain_uid,
@@ -215,25 +184,7 @@ pub fn execute(
                     hash,
                 } => execute_solana_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
 
-                ExecuteMsg::SolanaReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_solana_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
-                }
-                ExecuteMsg::SolanaReceiveAck {
-                    msg,
-                    chain_uid,
-                    sequence,
-                    hash,
-                    ack,
-                } => execute_solana_receive_acknowledgement(
-                    deps, info, env, chain_uid, msg, sequence, hash, ack,
-                ),
-
                 // COMSOS ENTRY POINTS FOR RELAYER
-                ExecuteMsg::CosmosSendPacket { msg, chain_uid } => {
-                    execute_cosmos_send_packet(deps, info, env, chain_uid, msg)
-                }
                 ExecuteMsg::CosmosReceivePacket {
                     msg,
                     chain_uid,
@@ -241,18 +192,19 @@ pub fn execute(
                     hash,
                 } => execute_cosmos_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
 
-                ExecuteMsg::CosmosReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_cosmos_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
+                ExecuteMsg::SendPacket { msg, chain_uid } => {
+                    execute_cosmos_send_packet(deps, info, env, chain_uid, msg)
                 }
-                ExecuteMsg::CosmosReceiveAck {
+                ExecuteMsg::ReceivePacketInternalCallback { msg, chain_uid } => {
+                    execute_receive_packet_internal_callback(&mut deps, env, info, msg, chain_uid)
+                }
+                ExecuteMsg::ReceiveAcknowledgement {
                     msg,
                     chain_uid,
                     sequence,
                     hash,
                     ack,
-                } => execute_cosmos_receive_acknowledgement(
+                } => execute_receive_acknowledgement(
                     deps, info, env, chain_uid, msg, sequence, hash, ack,
                 ),
 

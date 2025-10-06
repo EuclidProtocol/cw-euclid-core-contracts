@@ -299,7 +299,7 @@ pub fn relay_router_ack_packet(
             .clone();
         let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
 
-        let call_data = euclid::msgs::router::ExecuteMsg::CosmosReceiveAck {
+        let call_data = euclid::msgs::router::ExecuteMsg::ReceiveAcknowledgement {
             msg: msg_binary,
             chain_uid: chain_uid.clone(),
             sequence,
