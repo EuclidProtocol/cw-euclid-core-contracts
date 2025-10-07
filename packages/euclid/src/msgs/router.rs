@@ -75,24 +75,6 @@ pub enum ExecuteMsg {
         mock_relayer_addresses: Option<Vec<String>>,
     },
 
-    EvmReceivePacket {
-        msg: Binary,
-        chain_uid: ChainUid,
-        // Store sequence of packet relayed so we don't relay same sequence again
-        sequence: u128,
-        // Continous hash of the packet to make sure its linked to the same source flow
-        hash: String,
-    },
-
-    SolanaReceivePacket {
-        msg: Binary,
-        chain_uid: ChainUid,
-        // Store sequence of packet relayed so we don't relay same sequence again
-        sequence: u128,
-        // Continous hash of the packet to make sure its linked to the same source flow
-        hash: String,
-    },
-
     // COSMOS REALYING MSGS
     CosmosReceivePacket {
         msg: Binary,

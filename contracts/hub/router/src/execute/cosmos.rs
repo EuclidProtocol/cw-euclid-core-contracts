@@ -149,13 +149,6 @@ pub fn execute_receive_acknowledgement(
         ContractError::Unauthorized {}
     );
     let _existing_request = PACKET_RELAY.load(deps.storage, (chain_uid.clone(), sequence))?;
-
-    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
-    // ensure!(
-    //     existing_request == msg,
-    //     ContractError::new("Ack source msg doesn't match with existing request")
-    // );
-
     // Remove the existing request as its already relayed now
     PACKET_RELAY.remove(deps.storage, (chain_uid.clone(), sequence));
 

@@ -12,8 +12,7 @@ use crate::execute::cosmos::{
     execute_cosmos_receive_packet, execute_cosmos_send_packet, execute_receive_acknowledgement,
     execute_receive_packet_internal_callback,
 };
-use crate::execute::evm::execute_evm_receive_packet;
-use crate::execute::solana::execute_solana_receive_packet;
+
 use crate::execute::{
     execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
     execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
@@ -27,10 +26,9 @@ use crate::query::{
     query_token_escrows, query_vlp,
 };
 use crate::reply::{
-    self, ADD_LIQUIDITY_REPLY_ID, COSMOS_RECEIVE_REPLY_ID, EVM_RECEIVE_REPLY_ID,
-    IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID,
-    SOLANA_RECEIVE_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
-    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    self, ADD_LIQUIDITY_REPLY_ID, COSMOS_RECEIVE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID,
+    IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID,
+    VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESSES, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -171,19 +169,6 @@ pub fn execute(
                     locked,
                     mock_relayer_addresses,
                 ),
-                ExecuteMsg::EvmReceivePacket {
-                    msg,
-                    chain_uid,
-                    sequence,
-                    hash,
-                } => execute_evm_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
-                ExecuteMsg::SolanaReceivePacket {
-                    msg,
-                    chain_uid,
-                    sequence,
-                    hash,
-                } => execute_solana_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
-
                 // COMSOS ENTRY POINTS FOR RELAYER
                 ExecuteMsg::CosmosReceivePacket {
                     msg,
@@ -259,10 +244,6 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
 
         IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
         IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
-
-        EVM_RECEIVE_REPLY_ID => reply::on_evm_receive_reply(deps, msg),
-
-        SOLANA_RECEIVE_REPLY_ID => reply::on_solana_receive_reply(deps, msg),
 
         COSMOS_RECEIVE_REPLY_ID => reply::on_cosmos_receive_reply(deps, msg),
 
