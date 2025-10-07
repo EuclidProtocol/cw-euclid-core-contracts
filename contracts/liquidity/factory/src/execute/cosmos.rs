@@ -27,7 +27,6 @@ pub fn execute_cosmos_send_packet(
     info: MessageInfo,
     env: Env,
     msg: Binary,
-    acknowledgement: bool,
 ) -> Result<Response, ContractError> {
     // Only contract can call this function internally
     ensure!(
@@ -46,8 +45,7 @@ pub fn execute_cosmos_send_packet(
     let send_packet_event = Event::new("euclid-cosmos-send-packet")
         .add_attribute("msg", msg.to_string())
         .add_attribute("sequence", sequence.to_string())
-        .add_attribute("hash", "hash".to_string())
-        .add_attribute("acknowledgement", acknowledgement.to_string());
+        .add_attribute("hash", "hash".to_string());
 
     Ok(Response::new()
         .add_attribute("action", "cosmos-send-packet")

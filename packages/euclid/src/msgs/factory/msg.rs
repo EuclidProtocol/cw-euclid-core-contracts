@@ -108,7 +108,6 @@ pub enum ExecuteMsg {
     // COSMOS RELAYER ENTRY POINTS
     CosmosSendPacket {
         msg: Binary,
-        acknowledgement: bool,
     },
 
     CosmosReceivePacket {
