@@ -141,6 +141,7 @@ impl ChainIbcExecuteMsg {
             ChainType::Ibc(_ibc_info) => {
                 let factory_internal_msg = factory::ExecuteMsg::CosmosSendPacket {
                     msg: to_json_binary(self)?,
+                    acknowledgement: true,
                 };
                 // Trigger a Send Packet execute call to the same contract
                 Ok(SubMsg::new(WasmMsg::Execute {
