@@ -162,6 +162,7 @@ pub fn swap_request(
                 swaps,
                 cross_chain_addresses,
                 partner_fee,
+                meta: None,
             }),
             Some(&funds),
         )

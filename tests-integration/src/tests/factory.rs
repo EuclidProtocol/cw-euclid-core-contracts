@@ -1971,6 +1971,7 @@ fn test_swap_request() {
                     forwarding_message: None,
                 }],
                 partner_fee: None,
+                meta: None,
             }),
             Some(&[coin(100u128, "eucl")]),
         )
