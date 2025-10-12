@@ -54,13 +54,13 @@ impl<'a> PrimaryKey<'a> for ChainUid {
     type Suffix = Self;
     type SuperSuffix = Self;
 
-    fn key(&self) -> Vec<Key> {
+    fn key(&self) -> Vec<Key<'_>> {
         vec![Key::Ref(self.0.as_bytes())]
     }
 }
 
 impl<'a> Prefixer<'a> for ChainUid {
-    fn prefix(&self) -> Vec<Key> {
+    fn prefix(&self) -> Vec<Key<'_>> {
         vec![Key::Ref(self.0.as_bytes())]
     }
 }
