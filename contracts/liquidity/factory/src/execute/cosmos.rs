@@ -66,20 +66,23 @@ pub fn execute_send_packet(
         .load(deps.storage)
         .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_CHAINS);
 
-    let sequence = PENDING_PACKETS.load(deps.storage).unwrap_or(0);
+    let pending_packets = PENDING_PACKETS.load(deps.storage).unwrap_or(0);
 
     ensure!(
-        sequence.lt(&sequence_limit),
+        pending_packets.lt(&sequence_limit),
         ContractError::Generic {
             err: "Sequence limit exceeded".to_string()
         }
     );
 
+    let sequence = COSMOS_PACKET_RELAY_SEQUENCE_COUNT
+        .load(deps.storage)
+        .unwrap_or(0);
     COSMOS_PACKET_RELAY_MAP.save(deps.storage, sequence, &msg)?;
 
     // Update counts
     COSMOS_PACKET_RELAY_SEQUENCE_COUNT.save(deps.storage, &sequence.add(1))?;
-    PENDING_PACKETS.save(deps.storage, &sequence.add(1))?;
+    PENDING_PACKETS.save(deps.storage, &pending_packets.add(1))?;
     RELAY_COUNT_USER.save(
         deps.storage,
         cross_chain_user.address.clone(),
