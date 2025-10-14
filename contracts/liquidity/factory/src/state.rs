@@ -83,8 +83,8 @@ pub const COSMOS_PACKET_RELAY_MAP: Map<u128, Binary> = Map::new("cosmos_packet_r
 pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Item<u128> =
     Item::new("cosmos_packet_relay_sequence_count");
 
-pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT_LIMIT: Item<u128> =
-    Item::new("cosmos_packet_relay_sequence_count_limit");
+pub const PACKET_RELAY_SEQUENCE_COUNT_LIMIT: Item<u128> =
+    Item::new("packet_relay_sequence_count_limit");
 
 pub const RELAY_COUNT_USER: Map<String, u128> = Map::new("relay_count_user");
 

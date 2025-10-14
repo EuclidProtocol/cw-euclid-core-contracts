@@ -52,8 +52,8 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<
 
 pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
 
-pub const PROCESSED_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
-    Map::new("processed_packet_sequence");
+pub const PROCESSED_RECEIVE_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
+    Map::new("processed_receive_packet_sequence");
 
 // The key is a tuple of (ChainUid, sequence). Sequence is the count of packets relayed for that chain
 pub const PACKET_RELAY: Map<(ChainUid, u128), Binary> = Map::new("packet_relay");

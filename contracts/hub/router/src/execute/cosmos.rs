@@ -12,14 +12,14 @@ use euclid_ibc::{
 
 use crate::{
     ibc::{ack_and_timeout, receive},
-    reply::COSMOS_RECEIVE_REPLY_ID,
+    reply::RECEIVE_REPLY_ID,
     state::{
         CHAIN_UID_TO_CHAIN, MOCK_RELAYER_ADDRESSES, PACKET_RELAY, PACKET_RELAY_COUNT_CHAIN,
-        PROCESSED_PACKET_SEQUENCE,
+        PROCESSED_RECEIVE_PACKET_SEQUENCE,
     },
 };
 
-pub fn execute_cosmos_send_packet(
+pub fn execute_send_packet(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
@@ -40,18 +40,18 @@ pub fn execute_cosmos_send_packet(
 
     PACKET_RELAY_COUNT_CHAIN.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
 
-    let send_packet_event = Event::new("euclid-cosmos-send-packet")
+    let send_packet_event = Event::new("euclid-send-packet")
         .add_attribute("msg", msg.to_string())
         .add_attribute("chain_uid", chain_uid.to_string())
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("hash", "hash".to_string());
 
     Ok(Response::new()
-        .add_attribute("action", "cosmos-send-packet")
+        .add_attribute("action", "send-packet")
         .add_event(send_packet_event))
 }
 
-pub fn execute_cosmos_receive_packet(
+pub fn execute_receive_packet(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
@@ -71,7 +71,8 @@ pub fn execute_cosmos_receive_packet(
     ensure!(chain.is_ibc(), ContractError::Unauthorized {});
 
     // Only add event if sequence is present, sequence is not present for native calls
-    let processed_sequence_key = PROCESSED_PACKET_SEQUENCE.key((chain_uid.clone(), sequence));
+    let processed_sequence_key =
+        PROCESSED_RECEIVE_PACKET_SEQUENCE.key((chain_uid.clone(), sequence));
     ensure!(
         !processed_sequence_key.has(deps.storage),
         ContractError::Generic {
@@ -84,7 +85,7 @@ pub fn execute_cosmos_receive_packet(
         .add_attribute("chain_uid", chain_uid.to_string())
         .add_attribute("sequence", sequence.to_string());
 
-    let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
+    let write_acknowledge_event = Event::new("euclid-write-acknowledgement")
         .add_attribute("msg", msg.to_string())
         .add_attribute("chain_uid", chain_uid.to_string())
         .add_attribute("sequence", sequence.to_string())
@@ -100,15 +101,15 @@ pub fn execute_cosmos_receive_packet(
         funds: vec![],
     });
 
-    let sub_msg = SubMsg::reply_always(internal_msg, COSMOS_RECEIVE_REPLY_ID);
+    let sub_msg = SubMsg::reply_always(internal_msg, RECEIVE_REPLY_ID);
     let msg: Result<ChainIbcExecuteMsg, StdError> = from_json(&msg);
     let tx_id = msg
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
 
     Ok(Response::new()
-        .add_attribute("action", "cosmos-write-acknowledgement")
-        .add_attribute("method", "cosmos_packet_receive")
+        .add_attribute("action", "write-acknowledgement")
+        .add_attribute("method", "packet_receive")
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
         .add_event(write_acknowledge_event)

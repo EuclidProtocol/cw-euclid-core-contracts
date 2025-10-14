@@ -75,20 +75,19 @@ pub enum ExecuteMsg {
         mock_relayer_addresses: Option<Vec<String>>,
     },
 
-    // COSMOS REALYING MSGS
-    CosmosReceivePacket {
+    // Unified
+    SendPacket {
+        msg: Binary,
+        chain_uid: ChainUid,
+    },
+
+    ReceivePacket {
         msg: Binary,
         chain_uid: ChainUid,
         // Store sequence of packet relayed so we don't relay same sequence again
         sequence: u128,
         // Continous hash of the packet to make sure its linked to the same source flow
         hash: String,
-    },
-
-    // Unified
-    SendPacket {
-        msg: Binary,
-        chain_uid: ChainUid,
     },
     ReceivePacketInternalCallback {
         msg: Binary,

@@ -32,14 +32,13 @@ pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 
 pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
-pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
+pub const ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
 
 pub const EVM_ACK_AND_TIMEOUT_REPLY_ID: u64 = 14;
 
 pub const SOLANA_ACK_AND_TIMEOUT_REPLY_ID: u64 = 16;
 
-pub const COSMOS_RECEIVE_REPLY_ID: u64 = 17;
-pub const COSMOS_ACK_AND_TIMEOUT_REPLY_ID: u64 = 18;
+pub const RECEIVE_REPLY_ID: u64 = 17;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -369,7 +368,7 @@ pub fn on_virtual_balance_instantiate_reply(
     }
 }
 
-pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Ok(Response::new()
             .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
@@ -447,16 +446,16 @@ pub fn on_reply_native_ibc_wrapper_call(
     }
 }
 
-pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
-            let euclid_event = simple_event().add_attribute("action", "cosmos-relay");
+            let euclid_event = simple_event().add_attribute("action", "relay");
 
-            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
+            let write_acknowledge_event = Event::new("euclid-write-acknowledgement")
                 .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
 
             Ok(Response::new()
-                .add_attribute("reply_on_cosmos_receive_processing", "error")
+                .add_attribute("reply_on_receive_processing", "error")
                 .add_attribute("error", err.clone())
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event))
@@ -472,14 +471,13 @@ pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 })
                 .unwrap_or_default();
 
-            let euclid_event =
-                simple_event().add_attribute("action", "cosmos-write-acknowledgement");
+            let euclid_event = simple_event().add_attribute("action", "write-acknowledgement");
 
-            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
-                .add_attribute("ack", data.to_string());
+            let write_acknowledge_event =
+                Event::new("euclid-write-acknowledgement").add_attribute("ack", data.to_string());
 
             Ok(Response::new()
-                .add_attribute("reply_on_cosmos_receive_processing", "success")
+                .add_attribute("reply_on_receive_processing", "success")
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event)
                 .set_data(data))

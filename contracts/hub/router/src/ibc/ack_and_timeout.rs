@@ -16,7 +16,7 @@ use euclid::virtual_balance::BalanceKey;
 use euclid_ibc::ack::AcknowledgementMsg;
 use euclid_ibc::msg::HubIbcExecuteMsg;
 
-use crate::reply::IBC_ACK_AND_TIMEOUT_REPLY_ID;
+use crate::reply::ACK_AND_TIMEOUT_REPLY_ID;
 use crate::state::{CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, ESCROW_BALANCES, STATE};
 
 use super::channel::TIMEOUT_COUNTS;
@@ -39,7 +39,7 @@ pub fn ibc_packet_ack(
         .map(|m| m.get_tx_id())
         .unwrap_or("tx_id_not_found".to_string());
 
-    let sub_msg = SubMsg::reply_always(internal_msg, IBC_ACK_AND_TIMEOUT_REPLY_ID);
+    let sub_msg = SubMsg::reply_always(internal_msg, ACK_AND_TIMEOUT_REPLY_ID);
     Ok(IbcBasicResponse::new()
         .add_attribute("ibc_ack", ack.acknowledgement.data.to_string())
         .add_attribute("tx_id", tx_id)

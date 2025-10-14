@@ -31,7 +31,7 @@ pub fn relay_factory_send_packet(
 
     let send_packet_events = events
         .iter()
-        .filter(|event| event.ty == "wasm-euclid-cosmos-send-packet")
+        .filter(|event| event.ty == "wasm-euclid-send-packet")
         .collect::<Vec<_>>();
 
     for event in send_packet_events {
@@ -65,7 +65,7 @@ pub fn relay_factory_send_packet(
             .clone();
         println!("relay_factory_send_packet: {:?}", relayer_address);
         let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
-        let call_data = euclid::msgs::router::ExecuteMsg::CosmosReceivePacket {
+        let call_data = euclid::msgs::router::ExecuteMsg::ReceivePacket {
             msg: msg_binary,
             chain_uid: chain_uid.clone(),
             sequence,
@@ -95,7 +95,7 @@ pub fn relay_router_send_packet(
 
     let send_packet_events = events
         .iter()
-        .filter(|event| event.ty == "wasm-euclid-cosmos-send-packet")
+        .filter(|event| event.ty == "wasm-euclid-send-packet")
         .collect::<Vec<_>>();
 
     for event in send_packet_events {
@@ -169,7 +169,7 @@ pub fn relay_factory_ack_packet(
 
     let write_ack_events = events
         .iter()
-        .filter(|event| event.ty == "wasm-euclid-cosmos-write-acknowledgement")
+        .filter(|event| event.ty == "wasm-euclid-write-acknowledgement")
         .collect::<Vec<_>>();
 
     for events in write_ack_events.chunks(2) {
@@ -257,7 +257,7 @@ pub fn relay_router_ack_packet(
 
     let write_ack_events = events
         .iter()
-        .filter(|event| event.ty == "wasm-euclid-cosmos-write-acknowledgement")
+        .filter(|event| event.ty == "wasm-euclid-write-acknowledgement")
         .collect::<Vec<_>>();
 
     for events in write_ack_events.chunks(2) {

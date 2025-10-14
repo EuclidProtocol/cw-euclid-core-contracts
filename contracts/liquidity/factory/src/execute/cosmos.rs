@@ -18,9 +18,9 @@ use crate::{
     ibc::{ack_and_timeout, receive},
     reply::COSMOS_RECEIVE_REPLY_ID,
     state::{
-        COSMOS_PACKET_RELAY_MAP, COSMOS_PACKET_RELAY_SEQUENCE_COUNT,
-        COSMOS_PACKET_RELAY_SEQUENCE_COUNT_LIMIT, CUSTOM_LIMITS, GLOBAL_LIMIT_FOR_USERS,
-        MOCK_RELAYER_ADDRESS, PROCESSED_PACKET_SEQUENCE, RELAY_COUNT_USER, STATE,
+        COSMOS_PACKET_RELAY_MAP, COSMOS_PACKET_RELAY_SEQUENCE_COUNT, CUSTOM_LIMITS,
+        GLOBAL_LIMIT_FOR_USERS, MOCK_RELAYER_ADDRESS, PACKET_RELAY_SEQUENCE_COUNT_LIMIT,
+        PROCESSED_PACKET_SEQUENCE, RELAY_COUNT_USER, STATE,
     },
 };
 
@@ -30,7 +30,7 @@ const DEFAULT_GLOBAL_LIMIT_FOR_CHAINS: u128 = 1000;
 /**
  * Always run by contract itself to trigger send packet event and also increment sequence count
  */
-pub fn execute_cosmos_send_packet(
+pub fn execute_send_packet(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
@@ -70,7 +70,7 @@ pub fn execute_cosmos_send_packet(
         }
     }
 
-    let sequence_limit = COSMOS_PACKET_RELAY_SEQUENCE_COUNT_LIMIT
+    let sequence_limit = PACKET_RELAY_SEQUENCE_COUNT_LIMIT
         .load(deps.storage)
         .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_CHAINS);
     let sequence = COSMOS_PACKET_RELAY_SEQUENCE_COUNT
@@ -94,13 +94,13 @@ pub fn execute_cosmos_send_packet(
         &new_user_relay_count,
     )?;
 
-    let send_packet_event = Event::new("euclid-cosmos-send-packet")
+    let send_packet_event = Event::new("euclid-send-packet")
         .add_attribute("msg", msg.to_string())
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("hash", "hash".to_string());
 
     Ok(Response::new()
-        .add_attribute("action", "cosmos-send-packet")
+        .add_attribute("action", "send-packet")
         .add_event(send_packet_event))
 }
 
@@ -129,9 +129,9 @@ pub fn execute_cosmos_receive_packet(
     processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
 
     let receive_packet_event =
-        Event::new("euclid-cosmos-receive-packet").add_attribute("sequence", sequence.to_string());
+        Event::new("euclid-receive-packet").add_attribute("sequence", sequence.to_string());
 
-    let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
+    let write_acknowledge_event = Event::new("euclid-write-acknowledgement")
         .add_attribute("msg", msg.to_string())
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("hash", hash.to_string());
@@ -150,8 +150,8 @@ pub fn execute_cosmos_receive_packet(
         .unwrap_or("tx_id_not_found".to_string());
 
     Ok(Response::new()
-        .add_attribute("action", "cosmos-write-acknowledgement")
-        .add_attribute("method", "cosmos_packet_receive")
+        .add_attribute("action", "write-acknowledgement")
+        .add_attribute("method", "packet_receive")
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
         .add_event(receive_packet_event)

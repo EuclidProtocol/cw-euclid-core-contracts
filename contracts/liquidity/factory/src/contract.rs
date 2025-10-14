@@ -12,7 +12,7 @@ use euclid_ibc::msg::CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE;
 
 use crate::execute::cosmos::{
     execute_cosmos_receive_acknowledgement, execute_cosmos_receive_packet,
-    execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
+    execute_cosmos_receive_packet_internal_callback, execute_send_packet,
 };
 use crate::execute::{
     add_liquidity_request, execute_deposit_token, execute_native_receive_callback,
@@ -239,7 +239,7 @@ pub fn execute(
         ExecuteMsg::CosmosSendPacket {
             cross_chain_user,
             msg,
-        } => execute_cosmos_send_packet(deps, info, env, cross_chain_user, msg),
+        } => execute_send_packet(deps, info, env, cross_chain_user, msg),
         ExecuteMsg::CosmosReceivePacket {
             msg,
             sequence,

@@ -202,11 +202,11 @@ pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
         SubMsgResult::Err(err) => {
             let euclid_event = simple_event().add_attribute("action", "cosmos-relay");
 
-            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
+            let write_acknowledge_event = Event::new("euclid-write-acknowledgement")
                 .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
 
             Ok(Response::new()
-                .add_attribute("reply_on_cosmos_receive_processing", "error")
+                .add_attribute("reply_on_receive_processing", "error")
                 .add_attribute("error", err.clone())
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event))
@@ -222,14 +222,13 @@ pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 })
                 .unwrap_or_default();
 
-            let euclid_event =
-                simple_event().add_attribute("action", "cosmos-write-acknowledgement");
+            let euclid_event = simple_event().add_attribute("action", "write-acknowledgement");
 
-            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
-                .add_attribute("ack", data.to_string());
+            let write_acknowledge_event =
+                Event::new("euclid-write-acknowledgement").add_attribute("ack", data.to_string());
 
             Ok(Response::new()
-                .add_attribute("reply_on_cosmos_receive_processing", "success")
+                .add_attribute("reply_on_receive_processing", "success")
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event)
                 .set_data(data))
