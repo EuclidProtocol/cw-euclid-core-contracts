@@ -95,3 +95,5 @@ pub const GLOBAL_LIMIT_FOR_USERS: Item<u128> = Item::new("global_limit_for_users
 pub const CUSTOM_LIMITS: Map<String, u128> = Map::new("custom_limits");
 
 pub const PROCESSED_PACKET_SEQUENCE: Map<u128, Uint128> = Map::new("processed_packet_sequence");
+
+pub const PENDING_PACKETS: Item<u128> = Item::new("pending_packets");

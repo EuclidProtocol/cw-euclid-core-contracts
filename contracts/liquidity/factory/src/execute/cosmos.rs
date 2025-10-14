@@ -20,7 +20,7 @@ use crate::{
     state::{
         COSMOS_PACKET_RELAY_MAP, COSMOS_PACKET_RELAY_SEQUENCE_COUNT, CUSTOM_LIMITS,
         GLOBAL_LIMIT_FOR_USERS, MOCK_RELAYER_ADDRESS, PACKET_RELAY_SEQUENCE_COUNT_LIMIT,
-        PROCESSED_PACKET_SEQUENCE, RELAY_COUNT_USER, STATE,
+        PENDING_PACKETS, PROCESSED_PACKET_SEQUENCE, RELAY_COUNT_USER, STATE,
     },
 };
 
@@ -65,9 +65,8 @@ pub fn execute_send_packet(
     let sequence_limit = PACKET_RELAY_SEQUENCE_COUNT_LIMIT
         .load(deps.storage)
         .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_CHAINS);
-    let sequence = COSMOS_PACKET_RELAY_SEQUENCE_COUNT
-        .load(deps.storage)
-        .unwrap_or(0);
+
+    let sequence = PENDING_PACKETS.load(deps.storage).unwrap_or(0);
 
     ensure!(
         sequence.lt(&sequence_limit),
@@ -80,6 +79,7 @@ pub fn execute_send_packet(
 
     // Update counts
     COSMOS_PACKET_RELAY_SEQUENCE_COUNT.save(deps.storage, &sequence.add(1))?;
+    PENDING_PACKETS.save(deps.storage, &sequence.add(1))?;
     RELAY_COUNT_USER.save(
         deps.storage,
         cross_chain_user.address.clone(),
@@ -198,6 +198,10 @@ pub fn execute_cosmos_receive_acknowledgement(
 
     let msg: ChainIbcExecuteMsg = from_json(msg)?;
     let state = STATE.load(deps.storage)?;
+
+    PENDING_PACKETS.update(deps.storage, |total| {
+        Ok::<u128, StdError>(total.checked_sub(1).unwrap_or(0))
+    })?;
 
     let response =
         ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack, state.is_native)?;
