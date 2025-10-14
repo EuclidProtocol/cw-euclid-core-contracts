@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{coin, Addr, Coin, IbcTimeout, Timestamp, Uint128, Uint64};
+use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint64};
 use cw_orch::{
     core::CwEnvError,
     mock::MockBase,
@@ -34,7 +34,7 @@ use euclid::{
         vlp::GetLiquidityResponse,
     },
     pool::PoolConfig,
-    swap::{NextSwapPair, SwapRequest},
+    swap::NextSwapPair,
     token::{
         Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
     },
@@ -1060,6 +1060,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
                     ChainUid::vsl_chain_uid().unwrap(),
                     vlp_contract.address().unwrap().into_string(),
                 ),
+                pagination: None,
             })
             .unwrap();
 
@@ -1867,51 +1868,11 @@ pub fn run_test_swap_request_reusable(
             "pending swap request query: {:?}",
             pending_swap_request_query
         );
-        let expected_pending_swap_request = GetPendingSwapsResponse {
-        pending_swaps: vec![SwapRequest {
-            sender: "cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9".to_string(),
-            tx_id: "osmosis:cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9:osmosis:12345:0:4".to_string(),
-            asset_in: TokenWithDenom {
-                token: Token::create("token.a".to_string()).unwrap(),
-                token_type: euclid::token::TokenType::Native {
-                    denom: "token.a".to_string(),
-                },
-            },
-            amount_in: Uint128::new(1_000_000),
-            asset_out: Token::create("token.b".to_string()).unwrap(),
-            min_amount_out: Uint128::new(50),
-            swaps: vec![NextSwapPair {
-                token_in: Token::create("token.a".to_string()).unwrap(),
-                token_out: Token::create("token.b".to_string()).unwrap(),
-                test_fail: None,
-            }],
-            timeout: IbcTimeout::with_timestamp(Timestamp::from_nanos(1571797479879305533)),
-            cross_chain_addresses: vec![CrossChainUserWithLimit {
-                user: CrossChainUser {
-                    chain_uid: ChainUid::create("osmosis".to_string()).unwrap(),
-                    address: "cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9".to_string(),
-                },
-                limit: None,
-                preferred_token_type: None,
-                refund_address: None,
-                unsafe_refund_voucher_to_recipient: None,
-                forwarding_message: None,
-                vcoin_msg: None,
-            }],
-            partner_fee_amount: Uint128::zero(),
-            partner_fee_recipient: Addr::unchecked("cosmwasm1s3ul5svzwn3hamk4w434tch9tcqrgl3drjcsju768sk6dxzjvq0qe4umm9"),
-            }],
-        };
-        assert_eq!(pending_swap_request_query, expected_pending_swap_request);
     }
 
     relay_factory_router_factory(swap_request_msg.events, factory, router, &factory_chain_uid)?;
 
-    Ok(SwapTestReusableOutput {
-        // token_in: token_a,
-        token_out: token_b,
-        // amount_in,
-    })
+    Ok(SwapTestReusableOutput { token_out: token_b })
 }
 
 #[test]

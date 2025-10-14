@@ -21,3 +21,14 @@ impl<T> Pagination<T> {
         }
     }
 }
+
+impl<T> Default for Pagination<T> {
+    fn default() -> Self {
+        Pagination {
+            min: None,
+            max: None,
+            skip: None,
+            limit: None,
+        }
+    }
+}
