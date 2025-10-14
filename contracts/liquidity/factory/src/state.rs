@@ -67,6 +67,7 @@ pub const PENDING_TOKEN_DEPOSIT: Map<(Addr, String), DepositTokenRequest> =
 // Map for PENDING liquidity transactions
 pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
     Map::new("pending_add_liquidity");
+
 // Map for PENDING liquidity transactions
 pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> =
     Map::new("pending_remove_liquidity");

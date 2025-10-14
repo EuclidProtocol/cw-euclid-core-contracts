@@ -53,21 +53,13 @@ pub fn execute_send_packet(
         .unwrap_or(0);
     let new_user_relay_count = user_relay_count.add(1);
 
-    match custom_limit {
-        Some(custom_limit) => {
-            if new_user_relay_count.gt(&custom_limit) {
-                todo!("Handle custom limit exceeded by charging a fee");
-            }
-        }
-        None => {
-            let global_limit = GLOBAL_LIMIT_FOR_USERS
-                .load(deps.storage)
-                .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_USERS);
-
-            if new_user_relay_count.gt(&global_limit) {
-                todo!("Handle global limit exceeded by charging a fee");
-            }
-        }
+    let limit = custom_limit.unwrap_or(
+        GLOBAL_LIMIT_FOR_USERS
+            .load(deps.storage)
+            .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_USERS),
+    );
+    if new_user_relay_count.gt(&limit) {
+        todo!("Handle limit exceeded by charging a fee");
     }
 
     let sequence_limit = PACKET_RELAY_SEQUENCE_COUNT_LIMIT
