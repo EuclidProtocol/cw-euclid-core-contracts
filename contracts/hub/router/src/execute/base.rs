@@ -25,8 +25,8 @@ use crate::{
     ibc::receive,
     query::verify_cross_chain_addresses,
     state::{
-        State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE, TOKEN_DENOMS,
+        default_release_fee, State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS,
+        ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE, TOKEN_DENOMS,
     },
 };
 
@@ -428,9 +428,9 @@ pub fn execute_release_escrow(
         let fee = RELEASE_FEES
             .load(
                 deps.storage,
-                format!("{token}{}", sender.chain_uid.to_string()),
+                format!("{token}{}", cross_chain_address.user.chain_uid.to_string()),
             )
-            .unwrap_or(Decimal::zero());
+            .unwrap_or(default_release_fee());
 
         let release_fee_amount = fee.checked_mul(Decimal::new(release_amount))?.atomics();
 

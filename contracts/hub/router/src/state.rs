@@ -80,3 +80,8 @@ pub const PROCESSED_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
 
 /// The key is TokenID_ChainUID
 pub const RELEASE_FEES: Map<String, Decimal> = Map::new("release_fees");
+
+/// 0.1%
+pub fn default_release_fee() -> Decimal {
+    Decimal::from_ratio(1u128, 1000u128)
+}
