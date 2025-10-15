@@ -6,7 +6,9 @@ use cw_multi_test::{Contract, ContractWrapper, Executor};
 
 use euclid::{
     chain::ChainUid,
-    msgs::factory::{GetEscrowResponse, InstantiateMsg, QueryMsg, StateResponse},
+    msgs::factory::{
+        usage_fee::UsageFee, GetEscrowResponse, InstantiateMsg, QueryMsg, StateResponse,
+    },
 };
 use mock::mock::MockApp;
 
@@ -27,6 +29,7 @@ impl MockFactory {
         escrow_code_id: u64,
         cw20_code_id: u64,
         is_native: bool,
+        usage_fee_config: UsageFee,
     ) -> Self {
         let msg = mock_factory_instantiate_msg(
             router_contract,
@@ -34,6 +37,7 @@ impl MockFactory {
             escrow_code_id,
             cw20_code_id,
             is_native,
+            usage_fee_config,
         );
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid factory", None);
 
@@ -76,6 +80,7 @@ pub fn mock_factory_instantiate_msg(
     escrow_code_id: u64,
     cw20_code_id: u64,
     is_native: bool,
+    usage_fee_config: UsageFee,
 ) -> InstantiateMsg {
     InstantiateMsg {
         router_contract,
@@ -84,6 +89,7 @@ pub fn mock_factory_instantiate_msg(
         cw20_code_id,
         is_native,
         mock_relayer_address: None,
+        usage_fee_config,
     }
 }
 

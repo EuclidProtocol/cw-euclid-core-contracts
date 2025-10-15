@@ -6,6 +6,7 @@ use euclid::{
     deposit::DepositTokenRequest,
     fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    msgs::factory::usage_fee::UsageFee,
     pool::{DenomRegisterDeregisterRequest, PoolCreateRequest},
     swap::SwapRequest,
     token::{PairWithDenomAndAmount, Token, TokenWithDenomAndAmount},
@@ -28,6 +29,8 @@ pub struct State {
     pub is_native: bool,
     // Total partner fees collected
     pub partner_fees_collected: DenomFees,
+    // Usage fee config
+    pub usage_fee_config: UsageFee,
 }
 
 pub const STATE: Item<State> = Item::new("state");

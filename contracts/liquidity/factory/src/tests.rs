@@ -10,6 +10,7 @@ mod tests {
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
     use euclid::fee::DenomFees;
+    use euclid::msgs::factory::usage_fee::UsageFee;
     use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg};
 
     fn _initialize_state(deps: &mut DepsMut) {
@@ -23,6 +24,7 @@ mod tests {
             partner_fees_collected: DenomFees {
                 totals: HashMap::default(),
             },
+            usage_fee_config: UsageFee::default(),
         };
         STATE.save(deps.storage, &state).unwrap();
     }
@@ -41,6 +43,7 @@ mod tests {
             cw20_code_id: 2,
             is_native: true,
             mock_relayer_address: None,
+            usage_fee_config: UsageFee::default(),
         };
         let owner = deps.api.addr_make("owner");
         let info = message_info(&owner, &[]);
@@ -63,6 +66,7 @@ mod tests {
             partner_fees_collected: DenomFees {
                 totals: HashMap::default(),
             },
+            usage_fee_config: UsageFee::default(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

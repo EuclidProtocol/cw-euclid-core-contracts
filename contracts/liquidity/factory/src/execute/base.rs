@@ -13,8 +13,8 @@ use euclid::{
     msgs::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
         factory::{
-            cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook, ExecuteMsg,
-            ExecuteSwapRequest,
+            cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook,
+            usage_fee::UsageFee, ExecuteMsg, ExecuteSwapRequest,
         },
         hook::EuclidReceive,
     },
@@ -1201,6 +1201,7 @@ pub fn execute_update_state(
     cw20_code_id: Option<u64>,
     is_native: Option<bool>,
     mock_relayer_address: Option<String>,
+    usage_fee_config: Option<UsageFee>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -1217,6 +1218,7 @@ pub fn execute_update_state(
         chain_uid: state.chain_uid,
         is_native: is_native.unwrap_or(state.is_native),
         partner_fees_collected: state.partner_fees_collected,
+        usage_fee_config: usage_fee_config.unwrap_or(state.usage_fee_config),
     };
 
     if let Some(mock_relayer_address) = mock_relayer_address {

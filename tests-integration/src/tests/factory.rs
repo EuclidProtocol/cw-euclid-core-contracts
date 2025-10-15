@@ -15,7 +15,8 @@ use euclid::{
     msgs::{
         escrow::{QueryMsgFns as EscrowQueryMsgFns, StateResponse as EscrowStateResponse},
         factory::{
-            AllPoolsResponse, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns, StateResponse,
+            usage_fee::UsageFee, AllPoolsResponse, ExecuteSwapRequest,
+            QueryMsgFns as FactoryQueryMsgFns, StateResponse,
         },
         router::{
             AllEscrowsResponse, AllVlpResponse, QueryMsgFns as RouterQueryMsgFns, TokenDenom,
@@ -76,6 +77,7 @@ fn test_proper_instantiation() {
         escrow_code_id,
         cw20_code_id,
         true,
+        UsageFee::default(),
     );
 
     let state_response = MockFactory::query_state(&mock_factory, &factory);

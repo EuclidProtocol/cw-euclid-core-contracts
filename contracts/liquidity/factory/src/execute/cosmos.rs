@@ -1,13 +1,13 @@
 use std::ops::Add;
 
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo,
-    Response, StdError, SubMsg, Uint128, WasmMsg,
+    coins, ensure, from_json, to_json_binary, BankMsg, Binary, CosmosMsg, DepsMut, Env, Event,
+    MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
     chain::{CrossChainUser, IbcChain},
     error::ContractError,
-    msgs::factory::ExecuteMsg,
+    msgs::factory::{usage_fee::calc_fee, ExecuteMsg},
 };
 use euclid_ibc::{
     ack::make_ack_fail,
@@ -58,8 +58,16 @@ pub fn execute_send_packet(
             .load(deps.storage)
             .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_USERS),
     );
+    let mut response = Response::new();
     if new_user_relay_count.gt(&limit) {
-        todo!("Handle limit exceeded by charging a fee");
+        let config = STATE.load(deps.storage)?.usage_fee_config;
+        let fee = calc_fee(&config, new_user_relay_count);
+
+        let cosmos_msg = CosmosMsg::Bank(BankMsg::Send {
+            to_address: config.fee_recipient,
+            amount: coins(fee.u128(), info.funds[0].denom.clone()),
+        });
+        response = response.add_message(cosmos_msg);
     }
 
     let sequence_limit = PACKET_RELAY_SEQUENCE_COUNT_LIMIT
@@ -94,7 +102,7 @@ pub fn execute_send_packet(
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("hash", "hash".to_string());
 
-    Ok(Response::new()
+    Ok(response
         .add_attribute("action", "send-packet")
         .add_event(send_packet_event))
 }

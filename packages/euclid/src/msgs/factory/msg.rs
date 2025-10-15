@@ -2,7 +2,7 @@ use crate::{
     chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    msgs::hook::EuclidReceive,
+    msgs::{factory::usage_fee::UsageFee, hook::EuclidReceive},
     pool::PoolConfig,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
@@ -21,6 +21,7 @@ pub struct InstantiateMsg {
     pub cw20_code_id: u64,
     pub is_native: bool,
     pub mock_relayer_address: Option<String>,
+    pub usage_fee_config: UsageFee,
 }
 
 #[cw_serde]
@@ -87,6 +88,7 @@ pub enum ExecuteMsg {
         cw20_code_id: Option<u64>,
         is_native: Option<bool>,
         mock_relayer_address: Option<String>,
+        usage_fee_config: Option<UsageFee>,
     },
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),

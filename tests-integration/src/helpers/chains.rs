@@ -5,6 +5,7 @@ use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use escrow::EscrowContract;
+use euclid::msgs::factory::usage_fee::UsageFee;
 use euclid::{
     chain::ChainUid,
     msgs::{
@@ -54,6 +55,7 @@ pub fn setup_factory(
             cw20_code_id: cw20.code_id().unwrap(),
             is_native,
             mock_relayer_address: Some(relayer.address().unwrap().to_string()),
+            usage_fee_config: UsageFee::default(),
         },
         None,
         &[],

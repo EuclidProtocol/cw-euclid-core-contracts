@@ -58,6 +58,7 @@ pub fn instantiate(
         partner_fees_collected: DenomFees {
             totals: HashMap::default(),
         },
+        usage_fee_config: msg.usage_fee_config,
     };
 
     if let Some(mock_relayer_address) = msg.mock_relayer_address {
@@ -214,6 +215,7 @@ pub fn execute(
             cw20_code_id,
             is_native,
             mock_relayer_address,
+            usage_fee_config,
         } => execute_update_state(
             deps,
             info,
@@ -223,6 +225,7 @@ pub fn execute(
             cw20_code_id,
             is_native,
             mock_relayer_address,
+            usage_fee_config,
         ),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
