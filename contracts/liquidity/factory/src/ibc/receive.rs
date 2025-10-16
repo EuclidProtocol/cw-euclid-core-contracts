@@ -1,8 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
+    coins, ensure, from_json, to_json_binary, BankMsg, CosmosMsg, DepsMut, Env,
+    IbcPacketReceiveMsg, IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128,
+    WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUserWithLimit},
@@ -198,6 +199,17 @@ fn execute_release_escrow(
         .load(deps.storage, token.validate()?.to_owned())?
         .into_string();
 
+    let state = STATE.load(deps.storage)?;
+    let release_fee_recipeint = state
+        .release_fee_recipeint
+        .clone()
+        .unwrap_or(state.admin.clone());
+
+    let release_fee_msg = SubMsg::new(CosmosMsg::Bank(BankMsg::Send {
+        to_address: release_fee_recipeint,
+        amount: coins(release_fee.u128(), token.to_string()),
+    }));
+
     Ok(Response::new()
         .add_submessage(SubMsg::reply_always(
             CosmosMsg::Wasm(WasmMsg::Execute {
@@ -207,6 +219,7 @@ fn execute_release_escrow(
             }),
             RELEASE_ESCROW_REPLY_ID,
         ))
+        .add_submessage(release_fee_msg)
         .add_attribute("method", "release escrow_execute")
         .add_attribute("token", token.to_string())
         .add_attribute("amount", amount.to_string())

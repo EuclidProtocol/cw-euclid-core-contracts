@@ -21,6 +21,8 @@ pub struct InstantiateMsg {
     pub cw20_code_id: u64,
     pub is_native: bool,
     pub mock_relayer_address: Option<String>,
+    // Release fee recipient might become different than admin in the case the admin becomes a dao
+    // pub release_fee_recipient: Option<String>,
 }
 
 #[cw_serde]
@@ -87,6 +89,7 @@ pub enum ExecuteMsg {
         cw20_code_id: Option<u64>,
         is_native: Option<bool>,
         mock_relayer_address: Option<String>,
+        release_fee_recipeint: Option<String>,
     },
     UpdateReleaseFees {
         /// Leaving this empty will clear all the release fees

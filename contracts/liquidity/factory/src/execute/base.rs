@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
-    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::{CrossChainUser, CrossChainUserWithLimit},
     deposit::DepositTokenRequest,
     error::ContractError,
     events::{deposit_token_event, simple_event, swap_event, tx_event, TxType},
@@ -1220,6 +1220,7 @@ pub fn execute_update_state(
     cw20_code_id: Option<u64>,
     is_native: Option<bool>,
     mock_relayer_address: Option<String>,
+    release_fee_recipeint: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -1230,12 +1231,20 @@ pub fn execute_update_state(
 
     let new_state = State {
         router_contract: router_contract.clone().unwrap_or(state.router_contract),
-        admin: admin.clone().unwrap_or(state.admin),
+        admin: admin.clone().unwrap_or(state.admin.clone()),
         escrow_code_id: escrow_code_id.unwrap_or(state.escrow_code_id),
         cw20_code_id: cw20_code_id.unwrap_or(state.cw20_code_id),
         chain_uid: state.chain_uid,
         is_native: is_native.unwrap_or(state.is_native),
         partner_fees_collected: state.partner_fees_collected,
+        release_fee_recipeint: Some(
+            release_fee_recipeint.clone().unwrap_or(
+                state
+                    .release_fee_recipeint
+                    .clone()
+                    .unwrap_or(admin.clone().unwrap_or(state.admin)),
+            ),
+        ),
     };
 
     if let Some(mock_relayer_address) = mock_relayer_address {

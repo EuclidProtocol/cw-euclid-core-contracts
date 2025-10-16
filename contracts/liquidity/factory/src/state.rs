@@ -28,6 +28,7 @@ pub struct State {
     pub is_native: bool,
     // Total partner fees collected
     pub partner_fees_collected: DenomFees,
+    pub release_fee_recipeint: Option<String>,
 }
 
 pub const STATE: Item<State> = Item::new("state");
