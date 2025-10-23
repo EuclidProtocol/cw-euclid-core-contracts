@@ -37,7 +37,6 @@ pub fn execute_send_packet(
     env: Env,
     cross_chain_user: CrossChainUser,
     msg: Binary,
-    funds_manager: &mut FundManager,
 ) -> Result<Response, ContractError> {
     // Only contract can call this function internally
     ensure!(
@@ -60,6 +59,7 @@ pub fn execute_send_packet(
             .load(deps.storage)
             .unwrap_or(DEFAULT_GLOBAL_LIMIT_FOR_USERS),
     );
+    let mut funds_manager = FundManager::new(&info.funds);
     let mut response = Response::new();
     if new_user_relay_count.gt(&limit) {
         let config = STATE.load(deps.storage)?.usage_fee_config;

@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    coin, ensure, from_json, Binary, Coin, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout,
-    MessageInfo, Response, Uint128,
+    ensure, from_json, Binary, Coin, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout, MessageInfo,
+    Response, Uint128,
 };
 use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
@@ -215,7 +215,7 @@ pub fn execute_request_pool_creation(
     PENDING_POOL_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     let chain_type = get_chain_type(deps.as_ref())?;
-
+    let fund_manager = FundManager::new(&info.funds);
     let pool_create_msg = ChainIbcExecuteMsg::RequestPoolCreation {
         pair: pair_with_denom_and_amount,
         sender: sender.clone(),
@@ -231,6 +231,7 @@ pub fn execute_request_pool_creation(
         chain_type,
         sender.address,
         timeout,
+        fund_manager,
     )?;
 
     Ok(res
@@ -350,6 +351,7 @@ pub fn add_liquidity_request(
 
     let chain_type = get_chain_type(deps.as_ref())?;
 
+    let fund_manager = FundManager::new(&info.funds);
     let add_liq_msg = ChainIbcExecuteMsg::AddLiquidity {
         sender: sender.clone(),
         slippage_tolerance_bps,
@@ -364,6 +366,7 @@ pub fn add_liquidity_request(
         chain_type,
         sender.address,
         timeout,
+        fund_manager,
     )?;
 
     Ok(Response::new()
@@ -445,6 +448,7 @@ pub fn remove_liquidity_request(
         chain_type,
         sender.address,
         timeout,
+        FundManager::new(&info.funds),
     )?;
 
     Ok(Response::new()
@@ -716,7 +720,7 @@ pub fn execute_deposit_token(
     )?;
 
     let chain_type = get_chain_type(deps.as_ref())?;
-
+    let fund_manager = FundManager::new(&info.funds);
     let deposit_token_msg =
         ChainIbcExecuteMsg::DepositToken(euclid_ibc::msg::ChainIbcDepositTokenExecuteMsg {
             sender: sender.clone(),
@@ -734,6 +738,7 @@ pub fn execute_deposit_token(
             chain_type,
             sender.address,
             timeout,
+            fund_manager,
         )?;
 
     Ok(Response::new()
@@ -974,7 +979,7 @@ pub fn execute_request_register_denom(
     let timeout = get_timeout(timeout)?;
 
     let chain_type = get_chain_type(deps.as_ref())?;
-
+    let fund_manager = FundManager::new(&info.funds);
     let request_register_denom_msg = ChainIbcExecuteMsg::RegisterDenom {
         token: token.clone(),
         sender: sender.clone(),
@@ -988,6 +993,7 @@ pub fn execute_request_register_denom(
         chain_type,
         sender.address,
         timeout,
+        fund_manager,
     )?;
 
     let req = DenomRegisterDeregisterRequest {
@@ -1056,7 +1062,7 @@ pub fn execute_request_deregister_denom(
     let timeout = get_timeout(timeout)?;
 
     let chain_type = get_chain_type(deps.as_ref())?;
-
+    let fund_manager = FundManager::new(&info.funds);
     let request_deregister_denom_msg = ChainIbcExecuteMsg::DeRegisterDenom {
         token: token.clone(),
         sender: sender.clone(),
@@ -1070,6 +1076,7 @@ pub fn execute_request_deregister_denom(
         chain_type,
         sender.address,
         timeout,
+        fund_manager,
     )?;
 
     let req = DenomRegisterDeregisterRequest {
@@ -1113,7 +1120,7 @@ pub fn execute_withdraw_virtual_balance(
     let timeout = get_timeout(timeout)?;
 
     let chain_type = get_chain_type(deps.as_ref())?;
-
+    let fund_manager = FundManager::new(&info.funds);
     let withdraw_msg = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
         sender: sender.clone(),
         token,
@@ -1130,6 +1137,7 @@ pub fn execute_withdraw_virtual_balance(
         chain_type,
         sender.address,
         timeout,
+        fund_manager,
     )?;
 
     Ok(Response::new()
@@ -1167,6 +1175,7 @@ pub fn execute_transfer_virtual_balance(
     let timeout = get_timeout(timeout)?;
 
     let chain_type = get_chain_type(deps.as_ref())?;
+    let fund_manager = FundManager::new(&info.funds);
     let withdraw_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
         sender: sender.clone(),
         token,
@@ -1185,6 +1194,7 @@ pub fn execute_transfer_virtual_balance(
         chain_type,
         sender.address,
         timeout,
+        fund_manager,
     )?;
 
     Ok(Response::new()

@@ -434,11 +434,6 @@ pub fn remove_liquidity(
     // Prepare acknowledgement
     let acknowledgement = to_json_binary(&liquidity_response)?;
 
-    let vlp_cross_chain_struct = CrossChainUser {
-        address: env.contract.address.to_string(),
-        chain_uid: ChainUid::vsl_chain_uid()?,
-    };
-
     let token_1_transfer_msg = pair.token_1.create_virtual_balance_transfer_msg(
         state.virtual_balance.clone(),
         token_1_liquidity,

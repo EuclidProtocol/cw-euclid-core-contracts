@@ -242,8 +242,7 @@ pub fn execute(
         ExecuteMsg::CosmosSendPacket {
             cross_chain_user,
             msg,
-            mut funds_manager,
-        } => execute_send_packet(deps, info, env, cross_chain_user, msg, &mut funds_manager),
+        } => execute_send_packet(deps, info, env, cross_chain_user, msg),
         ExecuteMsg::CosmosReceivePacket {
             msg,
             sequence,

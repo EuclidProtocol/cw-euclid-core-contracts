@@ -1,7 +1,7 @@
 use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, to_json_binary, Binary, DepsMut, Env, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Coin, DepsMut, Env, SubMsg, Uint128, WasmMsg};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainType, ChainUid, CrossChainUser, CrossChainUserWithLimit},
@@ -141,13 +141,14 @@ impl ChainIbcExecuteMsg {
                         chain_uid,
                         address: sender,
                     },
-                    funds_manager,
                 };
+
+                let (denom, amount) = funds_manager.get_single_fund()?;
                 // Trigger a Send Packet execute call to the same contract
                 Ok(SubMsg::new(WasmMsg::Execute {
                     contract_addr: env.contract.address.to_string(),
                     msg: to_json_binary(&factory_internal_msg)?,
-                    funds: vec![],
+                    funds: vec![Coin::new(amount.u128(), denom)],
                 }))
             }
             _ => Err(ContractError::new("Unsupported chain type")),
