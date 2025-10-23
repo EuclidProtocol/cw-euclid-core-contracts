@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
+use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{ensure, Coin, Uint128};
 
 use crate::error::ContractError;
 
+#[cw_serde]
 pub struct FundManager {
     funds: HashMap<String, Uint128>,
 }
@@ -75,6 +77,18 @@ impl FundManager {
             ContractError::new(&format!("Expected {} funds, got {}", n, self.funds.len()))
         );
         Ok(())
+    }
+
+    /// Get the only (denom, amount) pair in the manager. Errors if there is not exactly one fund.
+    pub fn get_single_fund(&self) -> Result<(String, Uint128), ContractError> {
+        if self.funds.len() != 1 {
+            return Err(ContractError::new(&format!(
+                "Expected exactly one fund, got {}",
+                self.funds.len()
+            )));
+        }
+        let (denom, amount) = self.funds.iter().next().unwrap();
+        Ok((denom.clone(), *amount))
     }
 }
 
@@ -159,5 +173,27 @@ mod tests {
             fund_manager.use_fund(Uint128::new(150), "atom"),
             Err(ContractError::InsufficientFunds {})
         );
+    }
+
+    #[test]
+    fn test_get_single_fund_success() {
+        let fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
+        let res = fund_manager.get_single_fund();
+        assert_eq!(res, Ok(("atom".to_string(), Uint128::new(100))));
+    }
+
+    #[test]
+    fn test_get_single_fund_error_none() {
+        let fund_manager = FundManager::new(&[]);
+        let res = fund_manager.get_single_fund();
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_get_single_fund_error_multiple() {
+        let fund_manager =
+            FundManager::new(&[Coin::new(100u128, "atom"), Coin::new(50u128, "osmo")]);
+        let res = fund_manager.get_single_fund();
+        assert!(res.is_err());
     }
 }

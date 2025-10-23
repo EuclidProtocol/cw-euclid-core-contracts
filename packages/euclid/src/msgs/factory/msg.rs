@@ -6,7 +6,7 @@ use crate::{
     pool::PoolConfig,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
-    utils::pagination::Pagination,
+    utils::{fund_manager::FundManager, pagination::Pagination},
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
@@ -111,6 +111,7 @@ pub enum ExecuteMsg {
     CosmosSendPacket {
         cross_chain_user: CrossChainUser,
         msg: Binary,
+        funds_manager: FundManager,
     },
 
     CosmosReceivePacket {

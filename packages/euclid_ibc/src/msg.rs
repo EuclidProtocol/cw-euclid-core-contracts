@@ -10,6 +10,7 @@ use euclid::{
     pool::PoolConfig,
     swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
+    utils::fund_manager::FundManager,
 };
 
 // Message that implements an ExecuteSwap on the VLP contract
@@ -98,6 +99,7 @@ impl ChainIbcExecuteMsg {
         chain_type: ChainType,
         sender: String,
         _timeout: u64,
+        funds_manager: FundManager,
     ) -> Result<SubMsg, ContractError> {
         match chain_type {
             ChainType::Native {} => {
@@ -139,6 +141,7 @@ impl ChainIbcExecuteMsg {
                         chain_uid,
                         address: sender,
                     },
+                    funds_manager,
                 };
                 // Trigger a Send Packet execute call to the same contract
                 Ok(SubMsg::new(WasmMsg::Execute {

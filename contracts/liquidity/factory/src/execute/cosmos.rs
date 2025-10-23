@@ -8,6 +8,7 @@ use euclid::{
     chain::{CrossChainUser, IbcChain},
     error::ContractError,
     msgs::factory::{usage_fee::calc_fee, ExecuteMsg},
+    utils::fund_manager::FundManager,
 };
 use euclid_ibc::{
     ack::make_ack_fail,
@@ -36,6 +37,7 @@ pub fn execute_send_packet(
     env: Env,
     cross_chain_user: CrossChainUser,
     msg: Binary,
+    funds_manager: &mut FundManager,
 ) -> Result<Response, ContractError> {
     // Only contract can call this function internally
     ensure!(
@@ -62,10 +64,12 @@ pub fn execute_send_packet(
     if new_user_relay_count.gt(&limit) {
         let config = STATE.load(deps.storage)?.usage_fee_config;
         let fee = calc_fee(&config, new_user_relay_count);
+        let (denom, _amount) = funds_manager.get_single_fund()?;
 
+        funds_manager.use_fund(fee, &denom)?;
         let cosmos_msg = CosmosMsg::Bank(BankMsg::Send {
             to_address: config.fee_recipient,
-            amount: coins(fee.u128(), info.funds[0].denom.clone()),
+            amount: coins(fee.u128(), &denom),
         });
         response = response.add_message(cosmos_msg);
     }
