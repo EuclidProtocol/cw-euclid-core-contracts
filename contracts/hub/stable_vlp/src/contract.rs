@@ -122,19 +122,23 @@ pub fn execute(
             tx_id,
             slippage_tolerance_bps,
             liquidity,
-        } => add_liquidity(
-            deps,
-            env,
-            info,
-            &STATE,
-            &BALANCES,
-            &CHAIN_LP_TOKENS,
-            &COLLATERAL_LP_TOKENS,
-            sender,
-            liquidity,
-            slippage_tolerance_bps,
-            tx_id,
-        ),
+        } => {
+            let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
+            add_liquidity(
+                deps,
+                env,
+                info,
+                &STATE,
+                &BALANCES,
+                &CHAIN_LP_TOKENS,
+                &COLLATERAL_LP_TOKENS,
+                sender,
+                liquidity,
+                slippage_tolerance_bps,
+                tx_id,
+                SwapCalculationMethod::Stable(amp_factor),
+            )
+        }
         ExecuteMsg::RemoveLiquidity {
             sender,
             lp_allocation,

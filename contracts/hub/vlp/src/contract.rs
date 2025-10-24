@@ -134,6 +134,7 @@ pub fn execute(
             liquidity,
             slippage_tolerance_bps,
             tx_id,
+            SwapCalculationMethod::Regular,
         ),
         ExecuteMsg::RemoveLiquidity {
             sender,

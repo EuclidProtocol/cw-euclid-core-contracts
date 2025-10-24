@@ -5,7 +5,7 @@ use crate::{
     fee::{Fee, TotalFees, BPS_50_PERCENT, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
     msgs::virtual_balance::{ExecuteApprove, ExecuteTransfer},
-    pool::stable_math::compute_stable_swap,
+    pool::stable_math::{compute_stable_swap, compute_stable_lp_mint},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenWithDenom},
     utils::math::Decimal256Ext,
@@ -493,6 +493,7 @@ pub fn add_liquidity(
     liquidity: PairWithAmount,
     slippage_tolerance_bps: u64,
     tx_id: String,
+    calculation_method: SwapCalculationMethod,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
     ensure!(
@@ -559,15 +560,25 @@ pub fn add_liquidity(
 
     assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
 
-    //TODO Change calculate_lp_allocation to use stable swap formula
     // Calculate liquidity added share for LP provider from total liquidity
-    let lp_allocation = calculate_lp_allocation(
-        token_1_liquidity,
-        token_2_liquidity,
-        total_reserve_1,
-        total_reserve_2,
-        state.total_lp_tokens,
-    )?;
+    // Uses stable swap formula for stable pools, constant product for regular pools
+    let lp_allocation = match calculation_method {
+        SwapCalculationMethod::Regular => calculate_lp_allocation(
+            token_1_liquidity,
+            token_2_liquidity,
+            total_reserve_1,
+            total_reserve_2,
+            state.total_lp_tokens,
+        )?,
+        SwapCalculationMethod::Stable(amp) => compute_stable_lp_mint(
+            total_reserve_1,
+            total_reserve_2,
+            token_1_liquidity,
+            token_2_liquidity,
+            state.total_lp_tokens,
+            amp,
+        )?,
+    };
 
     let is_new_pool = state.total_lp_tokens.is_zero();
     state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
