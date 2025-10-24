@@ -145,3 +145,62 @@ pub(crate) fn calc_y(
     // Should definitely converge in 64 iterations.
     Err(StdError::generic_err("y is not converging"))
 }
+
+/// Compute LP tokens to mint for stable pools using D-invariant formula
+/// 
+/// For initial provision: minted = D1 (invariant after deposit)
+/// For subsequent provision: minted = total_lp_supply * (D1 - D0) / D0
+pub fn compute_stable_lp_mint(
+    reserve_1: Uint128,
+    reserve_2: Uint128,
+    amount_1: Uint128,
+    amount_2: Uint128,
+    total_lp_supply: Uint128,
+    amp: Uint64,
+) -> Result<Uint128, ContractError> {
+    // Compute D before deposit (D0)
+    let d0 = compute_d(
+        amp,
+        &[
+            Decimal256::from_integer(reserve_1),
+            Decimal256::from_integer(reserve_2),
+        ],
+    )
+    .map_err(|e| ContractError::Generic {
+        err: format!("Failed to compute D0: {}", e),
+    })?;
+
+    // Compute D after deposit (D1)
+    let d1 = compute_d(
+        amp,
+        &[
+            Decimal256::from_integer(reserve_1.checked_add(amount_1)?),
+            Decimal256::from_integer(reserve_2.checked_add(amount_2)?),
+        ],
+    )
+    .map_err(|e| ContractError::Generic {
+        err: format!("Failed to compute D1: {}", e),
+    })?;
+
+    // If this is the first liquidity provision, return D1
+    if total_lp_supply.is_zero() {
+        return d1
+            .to_uint128_with_precision(0u32)
+            .map_err(|e| ContractError::Generic {
+                err: format!("Failed to convert D1 to Uint128: {}", e),
+            });
+    }
+
+    // Otherwise, compute proportional LP tokens: total_lp * (D1 - D0) / D0
+    let minted = Decimal256::from_integer(total_lp_supply)
+        .checked_multiply_ratio(d1.checked_sub(d0)?, d0)
+        .map_err(|e| ContractError::Generic {
+            err: format!("Failed to compute minted LP tokens: {}", e),
+        })?;
+
+    minted
+        .to_uint128_with_precision(0u32)
+        .map_err(|e| ContractError::Generic {
+            err: format!("Failed to convert minted LP tokens to Uint128: {}", e),
+        })
+}
