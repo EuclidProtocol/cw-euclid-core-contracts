@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, Binary, Coin, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout, MessageInfo,
-    Response, Uint128,
+    ensure, from_json, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout, MessageInfo, Response,
+    Uint128,
 };
 use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
@@ -595,10 +595,7 @@ pub fn execute_swap_request(
 
     let chain_type = get_chain_type(deps.as_ref())?;
 
-    let fund_manager = FundManager::new(&[Coin::new(
-        amount_in.u128(),
-        asset_in.token_type.get_denom()?,
-    )]);
+    let fund_manager = FundManager::new(info.funds.as_slice());
     let swap_msg = ChainIbcExecuteMsg::Swap(euclid_ibc::msg::ChainIbcSwapExecuteMsg {
         sender: sender.clone(),
         asset_in,
