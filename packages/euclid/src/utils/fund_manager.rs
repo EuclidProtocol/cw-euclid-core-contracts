@@ -90,6 +90,13 @@ impl FundManager {
         let (denom, amount) = self.funds.iter().next().unwrap();
         Ok((denom.clone(), *amount))
     }
+
+    pub fn get_all_funds(&self) -> Vec<Coin> {
+        self.funds
+            .iter()
+            .map(|(denom, amount)| Coin::new(amount.u128(), denom.clone()))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -195,5 +202,31 @@ mod tests {
             FundManager::new(&[Coin::new(100u128, "atom"), Coin::new(50u128, "osmo")]);
         let res = fund_manager.get_single_fund();
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_get_all_funds_multiple() {
+        let fund_manager =
+            FundManager::new(&[Coin::new(100u128, "atom"), Coin::new(50u128, "osmo")]);
+        let mut all_funds = fund_manager.get_all_funds();
+        all_funds.sort_by(|a, b| a.denom.cmp(&b.denom));
+        assert_eq!(all_funds.len(), 2);
+        assert_eq!(all_funds[0], Coin::new(100u128, "atom"));
+        assert_eq!(all_funds[1], Coin::new(50u128, "osmo"));
+    }
+
+    #[test]
+    fn test_get_all_funds_single() {
+        let fund_manager = FundManager::new(&[Coin::new(999u128, "ustars")]);
+        let all_funds = fund_manager.get_all_funds();
+        assert_eq!(all_funds.len(), 1);
+        assert_eq!(all_funds[0], Coin::new(999u128, "ustars"));
+    }
+
+    #[test]
+    fn test_get_all_funds_empty() {
+        let fund_manager = FundManager::new(&[]);
+        let all_funds = fund_manager.get_all_funds();
+        assert_eq!(all_funds, Vec::<Coin>::new());
     }
 }
