@@ -401,6 +401,12 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
 name = "bech32"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf9ff0bbfd639f15c74af777d81383cf53efb7c93613f6cab67c6c11e05bbf8b"
+
+[[package]]
+name = "bech32"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
@@ -2802,6 +2808,7 @@ checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 name = "relayer"
 version = "0.1.0"
 dependencies = [
+ "bech32 0.8.1",
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
  "cw-orch",
@@ -2809,9 +2816,11 @@ dependencies = [
  "cw20 2.0.0",
  "euclid",
  "k256",
+ "ripemd",
  "schemars",
  "serde",
  "sha2 0.10.8",
+ "sha3",
 ]
 
 [[package]]
