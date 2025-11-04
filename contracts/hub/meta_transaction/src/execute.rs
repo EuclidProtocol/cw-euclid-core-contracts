@@ -120,7 +120,7 @@ pub fn execute_execute_meta_transaction(
     ensure!(verified, ContractError::new("Invalid signature"));
 
     let relay_msg = WasmMsg::Execute {
-        contract_addr: meta_transaction.target.to_string(),
+        contract_addr: state.router_contract.to_string(),
         msg: meta_transaction.call_data,
         funds: vec![],
     };
@@ -128,7 +128,6 @@ pub fn execute_execute_meta_transaction(
     Ok(Response::new()
         .add_message(relay_msg)
         .add_attribute("relayer_nonce", meta_transaction.nonce)
-        .add_attribute("relayer_target", meta_transaction.target)
         .add_attribute("relayer_sender", info.sender.to_string()))
 }
 
@@ -155,8 +154,9 @@ pub fn execute_execute_authorized_transaction(
         &Uint128::from(env.block.height),
     )?;
 
+    let router_contract = STATE.load(deps.storage)?.router_contract;
     let relay_msg = WasmMsg::Execute {
-        contract_addr: msg.target.to_string(),
+        contract_addr: router_contract.to_string(),
         msg: msg.call_data,
         funds: vec![],
     };
@@ -164,6 +164,6 @@ pub fn execute_execute_authorized_transaction(
     Ok(Response::new()
         .add_message(relay_msg)
         .add_attribute("meta_transaction_nonce", msg.nonce)
-        .add_attribute("meta_transaction_target", msg.target)
+        .add_attribute("meta_transaction_target", router_contract)
         .add_attribute("meta_transaction_sender", info.sender.to_string()))
 }

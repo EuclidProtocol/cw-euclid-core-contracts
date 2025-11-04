@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Binary};
 
 #[cw_serde]
 pub struct InstantiateMsg {
+    pub router_contract: Addr,
     pub relayer_pubkey: Binary,
     pub relayer_address: String,
     pub authorized_addresses: Vec<Addr>,
@@ -33,7 +34,7 @@ pub struct State {
     pub relayer_pubkey: Binary,
     // Address of the on chain relayer wallet used to sign authorized transactions
     pub relayer_address: String,
-
+    pub router_contract: Addr,
     pub admin: Addr,
 }
 
@@ -45,7 +46,6 @@ pub struct MetaTransaction {
 
 #[cw_serde]
 pub struct MetaTransactionData {
-    pub target: Addr,
     pub call_data: Binary,
     pub expiry: u64,
     pub nonce: String,
@@ -53,7 +53,6 @@ pub struct MetaTransactionData {
 
 #[cw_serde]
 pub struct AuthorizedTransaction {
-    pub target: Addr,
     pub call_data: Binary,
     pub nonce: String,
 }

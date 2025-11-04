@@ -29,6 +29,7 @@ pub fn instantiate(
     let state = State {
         relayer_pubkey: msg.relayer_pubkey,
         relayer_address: msg.relayer_address.clone(),
+        router_contract: msg.router_contract.clone(),
         admin: info.sender,
     };
     STATE.save(deps.storage, &state)?;
@@ -36,7 +37,8 @@ pub fn instantiate(
     AUTHORIZED_ADDRESSES.save(deps.storage, &msg.authorized_addresses)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("relayer_address", msg.relayer_address))
+        .add_attribute("relayer_address", msg.relayer_address)
+        .add_attribute("router_contract", msg.router_contract))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
