@@ -5,6 +5,7 @@ use euclid::error::ContractError;
 use euclid::msgs::meta_transaction::{
     AuthorizedTransaction, MetaTransaction, MetaTransactionData, UpdateAdminMsg, UpdateStateMsg,
 };
+use euclid::msgs::router;
 use relayer::verify::{verify_signature, MsgSignData};
 
 use crate::state::{AUTHORIZED_ADDRESSES, NONCES, STATE};
@@ -118,6 +119,20 @@ pub fn execute_execute_meta_transaction(
     )?;
 
     ensure!(verified, ContractError::new("Invalid signature"));
+
+    let router_execute_msg: router::ExecuteMsg =
+        cosmwasm_std::from_json(&meta_transaction.call_data)
+            .map_err(|_| ContractError::new("call_data is not a valid Router ExecuteMsg"))?;
+
+    // This contract can only call voucher related messages on the router contract
+    match router_execute_msg {
+        router::ExecuteMsg::WithdrawVoucher { .. } => {}
+        _ => {
+            return Err(ContractError::Generic {
+                err: "Invalid router execute message".to_string(),
+            });
+        }
+    };
 
     let relay_msg = WasmMsg::Execute {
         contract_addr: state.router_contract.to_string(),
