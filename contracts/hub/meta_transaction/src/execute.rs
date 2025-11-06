@@ -67,15 +67,31 @@ pub fn execute_execute_meta_transaction(
         .value;
     let meta_transaction: MetaTransactionData = from_json(first_msg.data.clone())?;
 
-    // Ensure the nonce is not used
-    ensure!(
-        !NONCES.has(deps.storage, meta_transaction.nonce.clone()),
-        ContractError::new(format!("Nonce already used: {}", meta_transaction.nonce).as_str())
+    // Create sender key: chainuid:address
+    let sender_key = format!(
+        "{}:{}",
+        meta_transaction.chain_uid_src_chain.as_str(),
+        meta_transaction.signer_address_src_chain
     );
-    // Save the nonce
+
+    // Ensure the nonce is not used for this sender
+    ensure!(
+        !NONCES.has(
+            deps.storage,
+            (sender_key.clone(), meta_transaction.nonce.clone())
+        ),
+        ContractError::new(
+            format!(
+                "Nonce already used for sender {}: {}",
+                sender_key, meta_transaction.nonce
+            )
+            .as_str()
+        )
+    );
+    // Save the nonce for this sender
     NONCES.save(
         deps.storage,
-        meta_transaction.nonce.clone(),
+        (sender_key.clone(), meta_transaction.nonce.clone()),
         &Uint128::from(env.block.height),
     )?;
 

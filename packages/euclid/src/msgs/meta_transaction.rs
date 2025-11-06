@@ -24,7 +24,11 @@ pub enum QueryMsg {
     GetState {},
 
     #[returns(bool)]
-    NonceRelayed { nonce: String },
+    NonceRelayed {
+        chain_uid: ChainUid,
+        address: String,
+        nonce: String,
+    },
 }
 
 #[cw_serde]

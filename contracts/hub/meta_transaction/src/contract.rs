@@ -55,6 +55,12 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => Ok(to_json_binary(&get_state(&deps)?)?),
-        QueryMsg::NonceRelayed { nonce } => Ok(to_json_binary(&nonce_relayed(&deps, nonce)?)?),
+        QueryMsg::NonceRelayed {
+            chain_uid,
+            address,
+            nonce,
+        } => Ok(to_json_binary(&nonce_relayed(
+            &deps, chain_uid, address, nonce,
+        )?)?),
     }
 }
