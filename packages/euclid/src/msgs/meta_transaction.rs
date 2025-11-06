@@ -1,11 +1,11 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary};
 
+use crate::chain::ChainUid;
+
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router_contract: Addr,
-    pub relayer_pubkey: Binary,
-    pub relayer_address: String,
     pub authorized_addresses: Vec<Addr>,
 }
 
@@ -13,7 +13,6 @@ pub struct InstantiateMsg {
 #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     ExecuteMetaTransaction(MetaTransaction),
-    ExecuteAuthorizedTransaction(AuthorizedTransaction),
     UpdateState(UpdateStateMsg),
     UpdateAdmin(UpdateAdminMsg),
 }
@@ -30,10 +29,6 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct State {
-    // Public key of the off chain relayer wallet used to sign meta transactions
-    pub relayer_pubkey: Binary,
-    // Address of the on chain relayer wallet used to sign authorized transactions
-    pub relayer_address: String,
     pub router_contract: Addr,
     pub admin: Addr,
 }
@@ -46,21 +41,16 @@ pub struct MetaTransaction {
 
 #[cw_serde]
 pub struct MetaTransactionData {
+    pub signer_address_src_chain: String,
+    pub chain_uid_src_chain: ChainUid,
+    pub pubkey_singer: Binary,
     pub call_data: Binary,
     pub expiry: u64,
     pub nonce: String,
 }
 
 #[cw_serde]
-pub struct AuthorizedTransaction {
-    pub call_data: Binary,
-    pub nonce: String,
-}
-
-#[cw_serde]
 pub struct UpdateStateMsg {
-    pub relayer_pubkey: Option<Binary>,
-    pub relayer_address: Option<String>,
     pub authorized_addresses: Option<Vec<Addr>>,
 }
 

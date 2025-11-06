@@ -1,12 +1,16 @@
 use cosmwasm_std::{
-    ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, QueryRequest, Response,
+    Timestamp, Uint128, WasmMsg, WasmQuery,
 };
+use euclid::chain::ChainType;
 use euclid::error::ContractError;
 use euclid::msgs::meta_transaction::{
-    AuthorizedTransaction, MetaTransaction, MetaTransactionData, UpdateAdminMsg, UpdateStateMsg,
+    MetaTransaction, MetaTransactionData, UpdateAdminMsg, UpdateStateMsg,
 };
-use euclid::msgs::router;
-use relayer::verify::{verify_signature, MsgSignData};
+use euclid::msgs::router::{self, ChainResponse};
+use relayer::verify::{
+    cosmos_address_from_pubkey, eth_address_from_pubkey, verify_signature, MsgSignData,
+};
 
 use crate::state::{AUTHORIZED_ADDRESSES, NONCES, STATE};
 
@@ -15,30 +19,9 @@ pub fn execute_update_state(
     info: &MessageInfo,
     msg: UpdateStateMsg,
 ) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
+    let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     let mut response = Response::new();
-    if let Some(relayer_pubkey) = msg.relayer_pubkey {
-        state.relayer_pubkey = relayer_pubkey.clone();
-        response = response
-            .add_attribute(
-                "meta_transaction_pubkey_old_value",
-                state.relayer_pubkey.to_string(),
-            )
-            .add_attribute(
-                "meta_transaction_pubkey_new_value",
-                relayer_pubkey.to_string(),
-            );
-    }
-    if let Some(relayer_address) = msg.relayer_address {
-        state.relayer_address = relayer_address.clone();
-        response = response
-            .add_attribute(
-                "meta_transaction_address_old_value",
-                state.relayer_address.clone(),
-            )
-            .add_attribute("meta_transaction_address_new_value", relayer_address);
-    }
 
     if let Some(authorized_addresses) = msg.authorized_addresses {
         AUTHORIZED_ADDRESSES.save(deps.storage, &authorized_addresses)?;
@@ -84,15 +67,6 @@ pub fn execute_execute_meta_transaction(
         .value;
     let meta_transaction: MetaTransactionData = from_json(first_msg.data.clone())?;
 
-    ensure!(
-        first_msg.signer == state.relayer_address,
-        ContractError::Generic {
-            err: format!(
-                "Invalid signer: expected {}, got {}",
-                state.relayer_address, first_msg.signer
-            )
-        }
-    );
     // Ensure the nonce is not used
     ensure!(
         !NONCES.has(deps.storage, meta_transaction.nonce.clone()),
@@ -111,14 +85,65 @@ pub fn execute_execute_meta_transaction(
         ContractError::new("Timestamp limit exceeded")
     );
 
-    let verified = verify_signature(
+    // Get chain type from router
+    let chain_type = deps
+        .querier
+        .query::<ChainResponse>(&QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: state.router_contract.to_string(),
+            msg: to_json_binary(&euclid::msgs::router::QueryMsg::GetChain {
+                chain_uid: meta_transaction.chain_uid_src_chain.clone(),
+            })?,
+        }))?
+        .chain
+        .chain_type;
+
+    // Verify signature using the signer's public key
+    let signature_valid = verify_signature(
         deps.as_ref(),
         &msg.data,
         &msg.signature,
-        &state.relayer_pubkey,
+        &meta_transaction.pubkey_singer,
     )?;
 
-    ensure!(verified, ContractError::new("Invalid signature"));
+    ensure!(signature_valid, ContractError::new("Invalid signature"));
+
+    // Derive address from public key and verify it matches the claimed address
+    let derived_address = match chain_type {
+        ChainType::Ibc(_) | ChainType::Native {} => {
+            // Extract bech32 prefix from the provided address
+            let prefix = meta_transaction
+                .signer_address_src_chain
+                .split('1')
+                .next()
+                .ok_or_else(|| ContractError::new("Invalid bech32 address format"))?;
+
+            cosmos_address_from_pubkey(&meta_transaction.pubkey_singer, prefix).map_err(|e| {
+                ContractError::new(&format!("Failed to derive cosmos address: {}", e))
+            })?
+        }
+        ChainType::Evm(_) => eth_address_from_pubkey(&meta_transaction.pubkey_singer)
+            .map_err(|e| ContractError::new(&format!("Failed to derive EVM address: {}", e)))?,
+        ChainType::Solana(_) => {
+            return Err(ContractError::new(
+                "Solana chain type not yet supported for meta transactions",
+            ));
+        }
+    };
+
+    // Compare derived address with claimed address (case-insensitive for EVM)
+    let addresses_match = if matches!(chain_type, ChainType::Evm(_)) {
+        derived_address.to_lowercase() == meta_transaction.signer_address_src_chain.to_lowercase()
+    } else {
+        derived_address == meta_transaction.signer_address_src_chain
+    };
+
+    ensure!(
+        addresses_match,
+        ContractError::new(&format!(
+            "Address mismatch: derived '{}' does not match claimed '{}'",
+            derived_address, meta_transaction.signer_address_src_chain
+        ))
+    );
 
     let router_execute_msg: router::ExecuteMsg =
         cosmwasm_std::from_json(&meta_transaction.call_data)
@@ -144,41 +169,4 @@ pub fn execute_execute_meta_transaction(
         .add_message(relay_msg)
         .add_attribute("relayer_nonce", meta_transaction.nonce)
         .add_attribute("relayer_sender", info.sender.to_string()))
-}
-
-pub fn execute_execute_authorized_transaction(
-    deps: &mut DepsMut,
-    env: &Env,
-    info: &MessageInfo,
-    msg: AuthorizedTransaction,
-) -> Result<Response, ContractError> {
-    let authorized_addresses = AUTHORIZED_ADDRESSES.load(deps.storage).unwrap_or_default();
-    ensure!(
-        authorized_addresses.contains(&info.sender),
-        ContractError::Unauthorized {}
-    );
-    // Ensure the nonce is not used
-    ensure!(
-        !NONCES.has(deps.storage, msg.nonce.clone()),
-        ContractError::new(format!("Nonce already used: {}", msg.nonce).as_str())
-    );
-    // Save the nonce
-    NONCES.save(
-        deps.storage,
-        msg.nonce.clone(),
-        &Uint128::from(env.block.height),
-    )?;
-
-    let router_contract = STATE.load(deps.storage)?.router_contract;
-    let relay_msg = WasmMsg::Execute {
-        contract_addr: router_contract.to_string(),
-        msg: msg.call_data,
-        funds: vec![],
-    };
-
-    Ok(Response::new()
-        .add_message(relay_msg)
-        .add_attribute("meta_transaction_nonce", msg.nonce)
-        .add_attribute("meta_transaction_target", router_contract)
-        .add_attribute("meta_transaction_sender", info.sender.to_string()))
 }
