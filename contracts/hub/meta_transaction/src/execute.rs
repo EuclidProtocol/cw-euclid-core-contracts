@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, QueryRequest, Response,
-    Timestamp, Uint128, WasmMsg, WasmQuery,
+    ensure, from_json, to_json_binary, Binary, DepsMut, Env, HexBinary, MessageInfo, QueryRequest,
+    Response, Timestamp, Uint128, WasmMsg, WasmQuery,
 };
 use euclid::chain::ChainType;
 use euclid::error::ContractError;
@@ -9,7 +9,8 @@ use euclid::msgs::meta_transaction::{
 };
 use euclid::msgs::router::{self, ChainResponse};
 use relayer::verify::{
-    cosmos_address_from_pubkey, eth_address_from_pubkey, verify_signature, MsgSignData,
+    cosmos_address_from_pubkey, eth_address_from_pubkey, verify_keccak256_signature,
+    verify_signature, MsgSignData,
 };
 
 use crate::state::{AUTHORIZED_ADDRESSES, NONCES, STATE};
@@ -57,14 +58,27 @@ fn process_meta_transaction(
     state: &State,
     msg: &MetaTransaction,
 ) -> Result<(WasmMsg, MetaTransactionData), ContractError> {
-    let signed_data: MsgSignData = from_json(msg.data.clone())?;
-    let first_msg = signed_data
-        .msgs
-        .first()
-        .ok_or(ContractError::new("No messages found"))?
-        .clone()
-        .value;
-    let meta_transaction: MetaTransactionData = from_json(first_msg.data.clone())?;
+    // First, we need to parse the data to get the chain_uid to determine chain type
+    // Try to parse as MsgSignData first (Cosmos format), if that fails try direct parsing (EVM format)
+    let data_binary = Binary::from(msg.data.as_bytes());
+    let (meta_transaction, data_for_verification) =
+        if let Ok(signed_data) = from_json::<MsgSignData>(&data_binary) {
+            // Cosmos/IBC format: data is wrapped in MsgSignData
+            let first_msg = signed_data
+                .msgs
+                .first()
+                .ok_or(ContractError::new("No messages found"))?
+                .clone()
+                .value;
+            let meta_transaction: MetaTransactionData = from_json(first_msg.data.clone())?;
+            (meta_transaction, msg.data.clone())
+        } else {
+            // EVM format: data is direct MetaTransactionData JSON string
+            let meta_transaction: MetaTransactionData = from_json(&data_binary).map_err(|e| {
+                ContractError::new(&format!("Failed to parse meta transaction data: {}", e))
+            })?;
+            (meta_transaction, msg.data.clone())
+        };
 
     // Create sender key: chainuid:address
     let sender_key = format!(
@@ -112,13 +126,35 @@ fn process_meta_transaction(
         .chain
         .chain_type;
 
-    // Verify signature using the signer's public key
-    let signature_valid = verify_signature(
-        deps.as_ref(),
-        &msg.data,
-        &msg.signature,
-        &meta_transaction.pubkey_singer,
-    )?;
+    // Verify signature based on chain type
+    let signature_valid = match &chain_type {
+        ChainType::Evm(_) => {
+            // For EVM: use Keccak256 with Ethereum signed message format
+            let prefix = "\x19Ethereum Signed Message:\n";
+            let msg_length = data_for_verification.len().to_string();
+            let combined_msg = format!("{}{}{}", prefix, msg_length, data_for_verification);
+
+            // Convert Binary to HexBinary for EVM verification
+            let signature_hex = HexBinary::from(msg.signature.as_slice());
+            let pubkey_hex = HexBinary::from(meta_transaction.pubkey_singer.as_slice());
+
+            verify_keccak256_signature(deps.as_ref(), &combined_msg, &signature_hex, &pubkey_hex)?
+        }
+        ChainType::Ibc(_) | ChainType::Native {} => {
+            // For Cosmos: use SHA256
+            verify_signature(
+                deps.as_ref(),
+                &data_for_verification,
+                &msg.signature,
+                &meta_transaction.pubkey_singer,
+            )?
+        }
+        ChainType::Solana(_) => {
+            return Err(ContractError::new(
+                "Solana chain type not yet supported for meta transactions",
+            ));
+        }
+    };
 
     ensure!(signature_valid, ContractError::new("Invalid signature"));
 
