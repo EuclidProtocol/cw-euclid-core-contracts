@@ -7,7 +7,10 @@ use euclid::error::ContractError;
 use euclid::msgs::meta_transaction::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 use crate::{
-    execute::{execute_execute_meta_transaction, execute_update_admin, execute_update_state},
+    execute::{
+        execute_execute_meta_transaction, execute_execute_meta_transaction_batch,
+        execute_update_admin, execute_update_state,
+    },
     query::{get_state, nonce_relayed},
     state::{AUTHORIZED_ADDRESSES, STATE},
 };
@@ -45,6 +48,9 @@ pub fn execute(
     match msg {
         ExecuteMsg::ExecuteMetaTransaction(msg) => {
             execute_execute_meta_transaction(&mut deps, &env, &info, msg)
+        }
+        ExecuteMsg::ExecuteMetaTransactionBatch { transactions } => {
+            execute_execute_meta_transaction_batch(&mut deps, &env, &info, transactions)
         }
         ExecuteMsg::UpdateState(msg) => execute_update_state(&mut deps, &info, msg),
         ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),

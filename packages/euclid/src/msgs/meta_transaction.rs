@@ -13,6 +13,7 @@ pub struct InstantiateMsg {
 #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     ExecuteMetaTransaction(MetaTransaction),
+    ExecuteMetaTransactionBatch { transactions: Vec<MetaTransaction> },
     UpdateState(UpdateStateMsg),
     UpdateAdmin(UpdateAdminMsg),
 }

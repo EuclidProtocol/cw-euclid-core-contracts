@@ -5,7 +5,7 @@ use cosmwasm_std::{
 use euclid::chain::ChainType;
 use euclid::error::ContractError;
 use euclid::msgs::meta_transaction::{
-    MetaTransaction, MetaTransactionData, UpdateAdminMsg, UpdateStateMsg,
+    MetaTransaction, MetaTransactionData, State, UpdateAdminMsg, UpdateStateMsg,
 };
 use euclid::msgs::router::{self, ChainResponse};
 use relayer::verify::{
@@ -50,14 +50,13 @@ pub fn execute_update_admin(
         .add_attribute("new_admin", msg.new_admin.to_string()))
 }
 
-pub fn execute_execute_meta_transaction(
+/// Helper function to process a single meta transaction and return the WasmMsg to execute
+fn process_meta_transaction(
     deps: &mut DepsMut,
     env: &Env,
-    info: &MessageInfo,
-    msg: MetaTransaction,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-
+    state: &State,
+    msg: &MetaTransaction,
+) -> Result<(WasmMsg, MetaTransactionData), ContractError> {
     let signed_data: MsgSignData = from_json(msg.data.clone())?;
     let first_msg = signed_data
         .msgs
@@ -177,12 +176,56 @@ pub fn execute_execute_meta_transaction(
 
     let relay_msg = WasmMsg::Execute {
         contract_addr: state.router_contract.to_string(),
-        msg: meta_transaction.call_data,
+        msg: meta_transaction.call_data.clone(),
         funds: vec![],
     };
+
+    Ok((relay_msg, meta_transaction))
+}
+
+pub fn execute_execute_meta_transaction(
+    deps: &mut DepsMut,
+    env: &Env,
+    info: &MessageInfo,
+    msg: MetaTransaction,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    let (relay_msg, meta_transaction) = process_meta_transaction(deps, env, &state, &msg)?;
 
     Ok(Response::new()
         .add_message(relay_msg)
         .add_attribute("relayer_nonce", meta_transaction.nonce)
         .add_attribute("relayer_sender", info.sender.to_string()))
+}
+
+pub fn execute_execute_meta_transaction_batch(
+    deps: &mut DepsMut,
+    env: &Env,
+    info: &MessageInfo,
+    transactions: Vec<MetaTransaction>,
+) -> Result<Response, ContractError> {
+    ensure!(
+        !transactions.is_empty(),
+        ContractError::new("Batch cannot be empty")
+    );
+
+    let state = STATE.load(deps.storage)?;
+    let mut response = Response::new();
+    let mut nonces = Vec::new();
+
+    for (idx, transaction) in transactions.iter().enumerate() {
+        let (relay_msg, meta_transaction) =
+            process_meta_transaction(deps, env, &state, transaction).map_err(|e| {
+                ContractError::new(&format!("Failed to process transaction {}: {}", idx, e))
+            })?;
+
+        response = response.add_message(relay_msg);
+        nonces.push(meta_transaction.nonce);
+    }
+
+    Ok(response
+        .add_attribute("relayer_nonces", nonces.join(","))
+        .add_attribute("relayer_sender", info.sender.to_string())
+        .add_attribute("batch_size", transactions.len().to_string()))
 }
