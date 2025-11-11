@@ -3535,6 +3535,7 @@ dependencies = [
  "ibc-relayer-types 0.32.1",
  "itertools 0.10.5",
  "k256",
+ "meta-transaction",
  "mock",
  "relayer",
  "router",
