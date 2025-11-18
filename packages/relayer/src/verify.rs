@@ -1,8 +1,8 @@
 use bech32::{encode, ToBase32, Variant};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Binary, Coin, Deps, HexBinary, Uint128};
+use cosmwasm_std::{ensure, Binary, Coin, Deps, HexBinary, Uint128};
 use euclid::error::ContractError;
-use k256::{elliptic_curve::sec1::ToEncodedPoint, PublicKey};
+// use k256::{elliptic_curve::sec1::ToEncodedPoint, PublicKey};
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 use sha3::Keccak256;
@@ -122,28 +122,28 @@ fn normalize_evm_pubkey(pk: &[u8]) -> Result<&[u8], String> {
     }
 }
 
-// Normalize pubkey: accept 65 (0x04+xy) or 64 (xy).
-fn normalize_cosmos_pubkey(pk: &[u8]) -> Result<Vec<u8>, String> {
-    match pk.len() {
-        33 => Ok(pk.to_vec()),
-        64 => {
-            // prepend 0x04 to make valid uncompressed point
-            let mut tmp = vec![0x04];
-            tmp.extend_from_slice(pk);
-            let pk = PublicKey::from_sec1_bytes(&tmp)
-                .map_err(|e| format!("Invalid 64-byte pubkey: {}", e))?;
-            let compressed_pk = pk.to_encoded_point(true).as_bytes().to_vec();
-            Ok(compressed_pk)
-        }
-        65 => {
-            let pk = PublicKey::from_sec1_bytes(pk)
-                .map_err(|e| format!("Invalid 65-byte pubkey: {}", e))?;
-            let compressed_pk = pk.to_encoded_point(true).as_bytes().to_vec();
-            Ok(compressed_pk)
-        }
-        _ => Err(format!("unexpected pubkey length: {}", pk.len())),
-    }
-}
+// // Normalize pubkey: accept 65 (0x04+xy) or 64 (xy).
+// fn normalize_cosmos_pubkey(pk: &[u8]) -> Result<Vec<u8>, String> {
+//     match pk.len() {
+//         33 => Ok(pk.to_vec()),
+//         64 => {
+//             // prepend 0x04 to make valid uncompressed point
+//             let mut tmp = vec![0x04];
+//             tmp.extend_from_slice(pk);
+//             let pk = PublicKey::from_sec1_bytes(&tmp)
+//                 .map_err(|e| format!("Invalid 64-byte pubkey: {}", e))?;
+//             let compressed_pk = pk.to_encoded_point(true).as_bytes().to_vec();
+//             Ok(compressed_pk)
+//         }
+//         65 => {
+//             let pk = PublicKey::from_sec1_bytes(pk)
+//                 .map_err(|e| format!("Invalid 65-byte pubkey: {}", e))?;
+//             let compressed_pk = pk.to_encoded_point(true).as_bytes().to_vec();
+//             Ok(compressed_pk)
+//         }
+//         _ => Err(format!("unexpected pubkey length: {}", pk.len())),
+//     }
+// }
 
 // Ethereum address: keccak256(x||y) -> last 20 bytes, return lower-hex (0x prefixed)
 pub fn eth_address_from_pubkey(pubkey: &[u8]) -> Result<String, String> {
@@ -157,10 +157,14 @@ pub fn eth_address_from_pubkey(pubkey: &[u8]) -> Result<String, String> {
 }
 
 pub fn cosmos_address_from_pubkey(pubkey: &[u8], prefix: &str) -> Result<String, String> {
-    let pk = normalize_cosmos_pubkey(pubkey)?;
+    ensure!(pubkey.len() == 33, "pubkey must be 33 bytes");
+    ensure!(
+        pubkey[0] == 0x02 || pubkey[0] == 0x03,
+        "pubkey must be compressed"
+    );
     // Some SDKs expect the compressed pubkey or a protobuf/pubkey wrapper.
     // Here we compute raw address bytes the simple way:
-    let sha = Sha256::digest(&pk);
+    let sha = Sha256::digest(pubkey);
     let rip = Ripemd160::digest(sha);
 
     // bech32 encode
@@ -188,7 +192,7 @@ mod tests {
         let pub_key = Binary::from(
             secret_key
                 .verifying_key()
-                .to_encoded_point(false)
+                .to_encoded_point(true)
                 .as_bytes()
                 .to_vec(),
         );
