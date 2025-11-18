@@ -1,20 +1,18 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary};
+use cosmwasm_std::{Addr, Uint128};
 
 use crate::chain::ChainUid;
+use crate::msgs::router;
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub router_contract: Addr,
-    pub authorized_addresses: Vec<Addr>,
 }
 
 #[cw_serde]
 #[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     ExecuteMetaTransaction(MetaTransaction),
-    ExecuteMetaTransactionBatch { transactions: Vec<MetaTransaction> },
-    UpdateState(UpdateStateMsg),
     UpdateAdmin(UpdateAdminMsg),
 }
 
@@ -24,12 +22,8 @@ pub enum QueryMsg {
     #[returns(State)]
     GetState {},
 
-    #[returns(bool)]
-    NonceRelayed {
-        chain_uid: ChainUid,
-        address: String,
-        nonce: String,
-    },
+    #[returns(NonceRelayedResponse)]
+    NonceRelayed { nonce: String },
 }
 
 #[cw_serde]
@@ -39,30 +33,36 @@ pub struct State {
 }
 
 #[cw_serde]
+pub struct UpdateAdminMsg {
+    pub new_admin: Addr,
+}
+
+#[cw_serde]
 pub struct MetaTransaction {
-    pub data: String,
-    pub signature: Binary,
+    pub data: MetaTransactionData,
+    pub signature: String,     // Can be hex or base64 based on chain type
+    pub signer_pubkey: String, // Can be hex or base64 based on chain type
 }
 
 #[cw_serde]
 pub struct MetaTransactionData {
-    pub signer_address_src_chain: String,
-    pub chain_uid_src_chain: ChainUid,
-    pub pubkey_singer: Binary,
-    pub call_data: Binary,
+    pub signer_address: String,
+    pub signer_prefix: String, // bech32 for cosmos and 0x for evm
+    pub signer_chain_uid: ChainUid,
+    pub call_data: Vec<MetaTransactionCallData>,
     pub expiry: u64,
     pub nonce: String,
 }
 
 #[cw_serde]
-pub struct UpdateStateMsg {
-    pub authorized_addresses: Option<Vec<Addr>>,
+pub struct MetaTransactionCallData {
+    pub target: Addr,
+    pub call_data: String,
 }
 
 #[cw_serde]
-pub struct UpdateAdminMsg {
-    pub new_admin: Addr,
+pub struct NonceRelayedResponse {
+    pub height: Uint128,
 }
-
 #[cw_serde]
 pub struct MigrateMsg {}

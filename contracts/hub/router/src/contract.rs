@@ -13,9 +13,11 @@ use crate::execute::cosmos::{
     execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
 };
 use crate::execute::{
-    execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
-    execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
-    execute_update_lock, execute_update_router_state, execute_withdraw_voucher,
+    execute_deregister_chain, execute_execute_meta_transaction,
+    execute_execute_meta_transaction_batch, execute_native_receive_callback,
+    execute_register_factory, execute_release_escrow, execute_reregister_chain,
+    execute_update_factory_channel, execute_update_lock, execute_update_router_state,
+    execute_withdraw_voucher,
 };
 
 use crate::execute::evm::{
@@ -255,6 +257,10 @@ pub fn execute(
                 } => execute_cosmos_receive_acknowledgement(
                     deps, info, env, chain_uid, msg, sequence, hash, ack,
                 ),
+
+                ExecuteMsg::ExecuteMetaTransaction(msg) => {
+                    execute_execute_meta_transaction(&mut deps, &env, &info, msg)
+                }
 
                 _ => Err(ContractError::UnreachableCode {}),
             }

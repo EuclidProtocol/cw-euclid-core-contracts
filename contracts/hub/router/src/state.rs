@@ -77,3 +77,5 @@ pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
 
 pub const PROCESSED_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
     Map::new("processed_packet_sequence");
+
+pub const META_TRANSACTION_CONTRACT: Item<Addr> = Item::new("meta_transaction_contract");

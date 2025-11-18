@@ -159,6 +159,8 @@ pub enum ExecuteMsg {
         hash: String,
         ack: Binary,
     },
+
+    ExecuteMetaTransaction(MetaTransaction),
 }
 
 #[cw_serde]
@@ -343,4 +345,10 @@ pub struct RegisterFactoryChainIbc {
     pub timeout: Option<u64>,
     pub factory_address: String,
     pub factory_chain_id: String,
+}
+
+#[cw_serde]
+pub struct MetaTransaction {
+    pub verified_sender: CrossChainUser,
+    pub call_data: String,
 }

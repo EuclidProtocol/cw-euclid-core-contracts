@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
-    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
+    MessageInfo, QueryRequest, Response, SubMsg, Timestamp, Uint128, WasmMsg, WasmQuery,
 };
 
 use euclid::{
@@ -11,7 +11,8 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
-        router::{ExecuteMsg, RegisterFactoryChainType},
+        meta_transaction::MetaTransactionVerifyResponse,
+        router::{BatchMetaTransaction, ExecuteMsg, MetaTransaction, RegisterFactoryChainType},
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
@@ -19,14 +20,15 @@ use euclid::{
     utils::tx::generate_tx,
     virtual_balance::BalanceKey,
 };
-use euclid_ibc::msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg};
+use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcSwapExecuteMsg, HubIbcExecuteMsg};
 
 use crate::{
-    ibc::receive,
+    ibc::receive::{self, reusable_internal_call},
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS,
+        META_TRANSACTION_CONTRACT, META_TRANSACTION_NONCES, MOCK_RELAYER_ADDRESSES, STATE,
+        TOKEN_DENOMS,
     },
 };
 
@@ -613,3 +615,13 @@ pub fn execute_update_router_state(
             locked.map_or("unchanged".to_string(), |locked_val| locked_val.to_string()),
         ))
 }
+
+// fn relay_swap_meta_transaction(
+//     deps: &mut DepsMut,
+//     env: &Env,
+//     state: &State,
+//     meta_transaction: &MetaTransaction,
+//     router_execute_msg: router::ExecuteMsg,
+// ) -> Result<WasmMsg, ContractError> {
+// }
+

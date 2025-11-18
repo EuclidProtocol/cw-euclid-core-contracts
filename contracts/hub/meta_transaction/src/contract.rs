@@ -6,14 +6,9 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 use euclid::msgs::meta_transaction::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
-use crate::{
-    execute::{
-        execute_execute_meta_transaction, execute_execute_meta_transaction_batch,
-        execute_update_admin, execute_update_state,
-    },
-    query::{get_state, nonce_relayed},
-    state::{AUTHORIZED_ADDRESSES, STATE},
-};
+use crate::execute::execute_execute_meta_transaction;
+use crate::query::get_nonce;
+use crate::{execute::execute_update_admin, query::get_state, state::STATE};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:meta-transaction";
@@ -32,7 +27,6 @@ pub fn instantiate(
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    AUTHORIZED_ADDRESSES.save(deps.storage, &msg.authorized_addresses)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract))
@@ -46,14 +40,10 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
+        ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
         ExecuteMsg::ExecuteMetaTransaction(msg) => {
             execute_execute_meta_transaction(&mut deps, &env, &info, msg)
         }
-        ExecuteMsg::ExecuteMetaTransactionBatch { transactions } => {
-            execute_execute_meta_transaction_batch(&mut deps, &env, &info, transactions)
-        }
-        ExecuteMsg::UpdateState(msg) => execute_update_state(&mut deps, &info, msg),
-        ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
     }
 }
 
@@ -61,12 +51,6 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => Ok(to_json_binary(&get_state(&deps)?)?),
-        QueryMsg::NonceRelayed {
-            chain_uid,
-            address,
-            nonce,
-        } => Ok(to_json_binary(&nonce_relayed(
-            &deps, chain_uid, address, nonce,
-        )?)?),
+        QueryMsg::NonceRelayed { nonce } => Ok(to_json_binary(&get_nonce(&deps, nonce)?)?),
     }
 }

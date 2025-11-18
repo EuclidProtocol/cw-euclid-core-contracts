@@ -53,7 +53,7 @@ fn sign_meta_transaction_message(
         nonce,
     };
 
-    let msg = MsgSignDataMsg::new(MsgSignDataValue::new(
+    let msg: MsgSignDataMsg = MsgSignDataMsg::new(MsgSignDataValue::new(
         to_json_binary(&meta_tx_data).unwrap(),
         "".to_string(), // Signer can be empty for meta transactions
     ));
