@@ -27,7 +27,6 @@ fn setup_meta_transaction(
     meta_tx_contract.instantiate(
         &euclid::msgs::meta_transaction::InstantiateMsg {
             router_contract: router_address,
-            authorized_addresses: vec![],
         },
         None,
         &[],
@@ -36,23 +35,10 @@ fn setup_meta_transaction(
 }
 
 fn sign_meta_transaction_message(
-    call_data: Binary,
-    signer_address_src_chain: String,
-    chain_uid_src_chain: ChainUid,
-    pubkey_singer: Binary,
-    nonce: String,
+    data: MetaTransactionData,
     app: &App,
     secret_key: &SigningKey,
 ) -> MetaTransaction {
-    let meta_tx_data = MetaTransactionData {
-        signer_address_src_chain,
-        chain_uid_src_chain,
-        pubkey_singer,
-        call_data,
-        expiry: app.block_info().time.plus_seconds(60).seconds(),
-        nonce,
-    };
-
     let msg: MsgSignDataMsg = MsgSignDataMsg::new(MsgSignDataValue::new(
         to_json_binary(&meta_tx_data).unwrap(),
         "".to_string(), // Signer can be empty for meta transactions

@@ -112,6 +112,10 @@ pub fn verify_keccak256_signature(
         .map_err(|err| ContractError::new(&err.to_string()))
 }
 
+pub fn add_eth_prefix(message: &str) -> String {
+    format!("Ethereum Signed Message:\n{}{}", message.len(), message)
+}
+
 // Normalize pubkey: accept 65 (0x04+xy) or 64 (xy).
 fn normalize_evm_pubkey(pk: &[u8]) -> Result<&[u8], String> {
     match pk.len() {
@@ -237,14 +241,8 @@ mod tests {
 
     #[test]
     fn test_verify_evm_signature() {
-        let prefix = "\x19Ethereum Signed Message:\n";
-        // let prefix = HexBinary::from(prefix.as_bytes()).to_hex();
         let msg_str = "Hello, world!";
-        let msg_length = msg_str.len().to_string();
-        // let msg_length = HexBinary::from(msg_length.as_bytes()).to_hex();
-        // let msg_str = HexBinary::from(msg_str.as_bytes()).to_hex();
-
-        let combined_msg = format!("{}{}{}", prefix, msg_length, msg_str);
+        let combined_msg = add_eth_prefix(msg_str);
         println!("combined_msg: {:?}", combined_msg);
 
         let signature = "68b37e2f523d414669be3e57f2c8232d26e78e9a7c7ff2e2690b15b72d21b4f740babfa1e165920ee6f2a490de47ceb91760a72f2e2ec7fc4169f2d154198a1e1b";

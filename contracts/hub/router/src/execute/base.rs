@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout,
-    MessageInfo, QueryRequest, Response, SubMsg, Timestamp, Uint128, WasmMsg, WasmQuery,
+    MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 
 use euclid::{
@@ -11,8 +11,8 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
-        meta_transaction::MetaTransactionVerifyResponse,
-        router::{BatchMetaTransaction, ExecuteMsg, MetaTransaction, RegisterFactoryChainType},
+        hook::MetaReceive,
+        router::{ExecuteMsg, RegisterFactoryChainType, UpdateRouterState},
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
@@ -20,15 +20,17 @@ use euclid::{
     utils::tx::generate_tx,
     virtual_balance::BalanceKey,
 };
-use euclid_ibc::msg::{ChainIbcExecuteMsg, ChainIbcSwapExecuteMsg, HubIbcExecuteMsg};
+use euclid_ibc::msg::{
+    ChainIbcExecuteMsg, ChainIbcSwapExecuteMsg, ChainIbcTransferExecuteMsg,
+    ChainIbcWithdrawExecuteMsg, HubIbcExecuteMsg,
+};
 
 use crate::{
     ibc::receive::{self, reusable_internal_call},
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        META_TRANSACTION_CONTRACT, META_TRANSACTION_NONCES, MOCK_RELAYER_ADDRESSES, STATE,
-        TOKEN_DENOMS,
+        META_TRANSACTION_CONTRACT, MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS,
     },
 };
 
@@ -541,13 +543,17 @@ pub fn execute_native_receive_callback(
 pub fn execute_update_router_state(
     deps: DepsMut,
     info: MessageInfo,
-    admin: Option<String>,
-    constant_product_vlp_code_id: Option<u64>,
-    stable_vlp_code_id: Option<u64>,
-    virtual_balance_address: Option<Addr>,
-    locked: Option<bool>,
-    mock_relayer_addresses: Option<Vec<String>>,
+    msg: UpdateRouterState,
 ) -> Result<Response, ContractError> {
+    let UpdateRouterState {
+        admin,
+        vlp_code_id: constant_product_vlp_code_id,
+        stable_vlp_code_id,
+        virtual_balance_address,
+        locked,
+        mock_relayer_addresses,
+        meta_transaction_contract,
+    } = msg;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender.as_str() == state.admin,
@@ -581,6 +587,13 @@ pub fn execute_update_router_state(
     STATE.save(deps.storage, &state)?;
 
     let mut response = Response::new();
+    if let Some(ref meta_transaction_contract) = meta_transaction_contract {
+        META_TRANSACTION_CONTRACT.save(deps.storage, meta_transaction_contract)?;
+        response = response.add_attribute(
+            "meta_transaction_contract",
+            meta_transaction_contract.to_string(),
+        );
+    }
 
     if let Some(ref mock_relayer_addresses) = mock_relayer_addresses {
         MOCK_RELAYER_ADDRESSES.save(deps.storage, mock_relayer_addresses)?;
@@ -616,12 +629,118 @@ pub fn execute_update_router_state(
         ))
 }
 
-// fn relay_swap_meta_transaction(
-//     deps: &mut DepsMut,
-//     env: &Env,
-//     state: &State,
-//     meta_transaction: &MetaTransaction,
-//     router_execute_msg: router::ExecuteMsg,
-// ) -> Result<WasmMsg, ContractError> {
-// }
+pub fn execute_meta_receive(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: MetaReceive,
+) -> Result<Response, ContractError> {
+    let meta_transaction_contract = META_TRANSACTION_CONTRACT.load(deps.storage)?;
+    ensure!(
+        info.sender == meta_transaction_contract,
+        ContractError::Unauthorized {}
+    );
+    let sender = msg.verified_sender;
+    let data: ChainIbcExecuteMsg = from_json(msg.call_data.clone())?;
+    match data {
+        ChainIbcExecuteMsg::Swap(swap_msg) => {
+            process_swap_meta_transaction(deps, env, info, sender, swap_msg)
+        }
+        ChainIbcExecuteMsg::Withdraw(withdraw_voucher_msg) => {
+            process_withdraw_voucher_meta_transaction(deps, env, info, sender, withdraw_voucher_msg)
+        }
+        ChainIbcExecuteMsg::Transfer(transfer_voucher_msg) => {
+            process_transfer_voucher_meta_transaction(deps, env, info, sender, transfer_voucher_msg)
+        }
+        _ => Err(ContractError::Unauthorized {}),
+    }
+}
 
+fn process_swap_meta_transaction(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: CrossChainUser,
+    mut swap_msg: ChainIbcSwapExecuteMsg,
+) -> Result<Response, ContractError> {
+    ensure!(
+        sender.chain_uid == swap_msg.sender.chain_uid,
+        ContractError::new("Chain UID mismatch")
+    );
+
+    ensure!(
+        swap_msg.sender.address == sender.address,
+        ContractError::new("Sender address mismatch")
+    );
+
+    ensure!(
+        swap_msg.asset_in.token_type.is_voucher(),
+        ContractError::new("Asset IN does not match asset OUT")
+    );
+
+    swap_msg.tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    reusable_internal_call(
+        deps,
+        env,
+        info,
+        ChainIbcExecuteMsg::Swap(swap_msg),
+        sender.chain_uid,
+    )
+}
+
+fn process_withdraw_voucher_meta_transaction(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: CrossChainUser,
+    mut withdraw_voucher_msg: ChainIbcWithdrawExecuteMsg,
+) -> Result<Response, ContractError> {
+    ensure!(
+        sender.chain_uid == withdraw_voucher_msg.sender.chain_uid,
+        ContractError::new("Chain UID mismatch")
+    );
+
+    ensure!(
+        withdraw_voucher_msg.sender.address == sender.address,
+        ContractError::new("Sender address mismatch")
+    );
+
+    withdraw_voucher_msg.tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    reusable_internal_call(
+        deps,
+        env,
+        info,
+        ChainIbcExecuteMsg::Withdraw(withdraw_voucher_msg),
+        sender.chain_uid,
+    )
+}
+
+fn process_transfer_voucher_meta_transaction(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: CrossChainUser,
+    mut transfer_voucher_msg: ChainIbcTransferExecuteMsg,
+) -> Result<Response, ContractError> {
+    ensure!(
+        sender.chain_uid == transfer_voucher_msg.sender.chain_uid,
+        ContractError::new("Chain UID mismatch")
+    );
+
+    ensure!(
+        transfer_voucher_msg.sender.address == sender.address,
+        ContractError::new("Sender address mismatch")
+    );
+
+    transfer_voucher_msg.tx_id = generate_tx(deps.branch(), &env, &sender)?;
+
+    reusable_internal_call(
+        deps,
+        env,
+        info,
+        ChainIbcExecuteMsg::Transfer(transfer_voucher_msg),
+        sender.chain_uid,
+    )
+}

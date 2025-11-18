@@ -1,12 +1,16 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Binary, DepsMut, Env, HexBinary, MessageInfo, QueryRequest, Response,
-    Timestamp, Uint128, WasmMsg, WasmQuery,
+    ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, HexBinary, MessageInfo,
+    QueryRequest, Response, Timestamp, Uint128, WasmMsg, WasmQuery,
 };
-use euclid::chain::ChainType;
+use euclid::chain::{ChainType, CrossChainUser};
 use euclid::error::ContractError;
+use euclid::msgs::hook::MetaReceive;
 use euclid::msgs::meta_transaction::{MetaTransaction, UpdateAdminMsg};
 use euclid::msgs::router;
-use relayer::verify::{cosmos_address_from_pubkey, eth_address_from_pubkey};
+use relayer::verify::{
+    add_eth_prefix, cosmos_address_from_pubkey, eth_address_from_pubkey, msg_to_sign_data,
+    verify_keccak256_signature, verify_signature,
+};
 
 use crate::state::{NONCES, STATE};
 
@@ -59,12 +63,33 @@ pub fn execute_execute_meta_transaction(
             let pubkey = Binary::from_base64(meta_transaction.signer_pubkey.as_str())?;
             let bech32 = meta_transaction.data.signer_prefix.clone();
 
+            let data_binary = to_json_binary(&meta_transaction.data)?;
+            let msg_sign_data =
+                msg_to_sign_data(data_binary, meta_transaction.data.signer_address.clone());
+            let msg_sign_data_str = to_json_string(&msg_sign_data)?;
+
+            let verified = verify_signature(
+                deps.as_ref(),
+                &msg_sign_data_str,
+                &Binary::from_base64(meta_transaction.signature.as_str())?,
+                &pubkey,
+            )?;
+            ensure!(verified, ContractError::new("Invalid signature"));
+
             cosmos_address_from_pubkey(&pubkey, &bech32).map_err(|e| {
                 ContractError::new(&format!("Failed to derive cosmos address: {}", e))
             })?
         }
         ChainType::Evm(_) => {
             let pubkey = HexBinary::from_hex(meta_transaction.signer_pubkey.as_str())?;
+            let prefixed_msg = add_eth_prefix(&to_json_string(&meta_transaction.data)?);
+            let verified = verify_keccak256_signature(
+                deps.as_ref(),
+                &prefixed_msg,
+                &HexBinary::from_hex(meta_transaction.signature.as_str())?,
+                &pubkey,
+            )?;
+            ensure!(verified, ContractError::new("Invalid signature"));
             eth_address_from_pubkey(&pubkey)
                 .map_err(|e| ContractError::new(&format!("Failed to derive EVM address: {}", e)))?
         }
@@ -109,14 +134,23 @@ pub fn execute_execute_meta_transaction(
         &Uint128::from(env.block.height),
     )?;
 
-    let response = Response::new()
+    let mut response = Response::new()
         .add_attribute("meta_sender_key", sender_key)
         .add_attribute("meta_broadcaster", info.sender.to_string());
 
+    let verified_sender = CrossChainUser::new(
+        meta_transaction.data.signer_chain_uid.clone(),
+        meta_transaction.data.signer_address.clone(),
+    );
+
     for call_data in meta_transaction.data.call_data {
+        let meta_receive = MetaReceive {
+            verified_sender: verified_sender.clone(),
+            call_data: call_data.call_data.clone(),
+        };
         response = response.add_message(WasmMsg::Execute {
             contract_addr: call_data.target.to_string(),
-            msg: call_data.call_data,
+            msg: meta_receive.to_receiver_msg()?,
             funds: vec![],
         });
     }
