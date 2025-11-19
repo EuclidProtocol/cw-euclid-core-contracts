@@ -351,7 +351,7 @@ pub fn get_signer_key() -> (SigningKey, Binary) {
     let signer_key = SigningKey::from(scalar);
     let pubkey = signer_key
         .verifying_key()
-        .to_encoded_point(false)
+        .to_encoded_point(true)  // true = compressed format (33 bytes) for Cosmos
         .as_bytes()
         .to_vec();
 
