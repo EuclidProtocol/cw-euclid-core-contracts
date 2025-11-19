@@ -6,7 +6,7 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 use euclid::msgs::meta_transaction::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
-use crate::execute::execute_execute_meta_transaction;
+use crate::execute::execute_meta_transaction;
 use crate::query::get_nonce;
 use crate::{execute::execute_update_admin, query::get_state, state::STATE};
 
@@ -42,7 +42,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
         ExecuteMsg::ExecuteMetaTransaction(msg) => {
-            execute_execute_meta_transaction(&mut deps, &env, &info, msg)
+            execute_meta_transaction(&mut deps, &env, &info, msg)
         }
     }
 }
