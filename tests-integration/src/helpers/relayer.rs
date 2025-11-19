@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use cosmwasm_std::{from_json, to_json_binary, to_json_string, Addr, Binary, Event};
+use cosmwasm_std::{from_json, to_json_binary, to_json_string, Addr, Binary, Event, HexBinary};
 use cw_orch::{
     core::CwEnvError,
     mock::{cw_multi_test::App, MockBase},
@@ -344,14 +344,27 @@ pub fn relay_router_factory_router(
     Ok(ack_events)
 }
 
+pub fn get_random_private_key(seed: &str) -> String {
+    let mut new_private_key = HexBinary::from(seed.as_bytes()).to_string();
+    while new_private_key.len() < 64 {
+        new_private_key = HexBinary::from(new_private_key.as_bytes()).to_string();
+    }
+    new_private_key.truncate(64);
+    new_private_key
+}
+
 pub fn get_signer_key() -> (SigningKey, Binary) {
     let pk = "2268A9118C1681EC6A649F01886995DE55E90C7E71B0BC5E409C551B92FF7369";
+
+    get_signer_key_from_pk(pk)
+}
+pub fn get_signer_key_from_pk(pk: &str) -> (SigningKey, Binary) {
     let scalar = NonZeroScalar::from_str(pk).unwrap();
 
     let signer_key = SigningKey::from(scalar);
     let pubkey = signer_key
         .verifying_key()
-        .to_encoded_point(false)
+        .to_encoded_point(true) // true = compressed format (33 bytes) for Cosmos
         .as_bytes()
         .to_vec();
 

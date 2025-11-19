@@ -13,9 +13,10 @@ use crate::execute::cosmos::{
     execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
 };
 use crate::execute::{
-    execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
-    execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
-    execute_update_lock, execute_update_router_state, execute_withdraw_voucher,
+    execute_deregister_chain, execute_meta_receive, execute_native_receive_callback,
+    execute_register_factory, execute_release_escrow, execute_reregister_chain,
+    execute_update_factory_channel, execute_update_lock, execute_update_router_state,
+    execute_withdraw_voucher,
 };
 
 use crate::execute::evm::{
@@ -163,23 +164,7 @@ pub fn execute(
                 ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
                     execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
                 }
-                ExecuteMsg::UpdateRouterState {
-                    admin,
-                    vlp_code_id,
-                    stable_vlp_code_id,
-                    virtual_balance_address,
-                    locked,
-                    mock_relayer_addresses,
-                } => execute_update_router_state(
-                    deps,
-                    info,
-                    admin,
-                    vlp_code_id,
-                    stable_vlp_code_id,
-                    virtual_balance_address,
-                    locked,
-                    mock_relayer_addresses,
-                ),
+                ExecuteMsg::UpdateRouterState(msg) => execute_update_router_state(deps, info, msg),
                 ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
                     execute_evm_send_packet(deps, info, env, chain_uid, msg)
                 }
@@ -255,6 +240,8 @@ pub fn execute(
                 } => execute_cosmos_receive_acknowledgement(
                     deps, info, env, chain_uid, msg, sequence, hash, ack,
                 ),
+
+                ExecuteMsg::MetaReceive(msg) => execute_meta_receive(&mut deps, env, info, msg),
 
                 _ => Err(ContractError::UnreachableCode {}),
             }

@@ -4,19 +4,14 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Resp
 
 use cw2::set_contract_version;
 use euclid::error::ContractError;
-use relayer::msgs::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
+use euclid::msgs::meta_transaction::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
-use crate::{
-    execute::{
-        execute_authorized_transaction, execute_meta_transaction, execute_update_admin,
-        execute_update_state,
-    },
-    query::{get_state, nonce_relayed},
-    state::{AUTHORIZED_ADDRESSES, STATE},
-};
+use crate::execute::execute_meta_transaction;
+use crate::query::get_nonce;
+use crate::{execute::execute_update_admin, query::get_state, state::STATE};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:euclid-relayer";
+const CONTRACT_NAME: &str = "crates.io:meta-transaction";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -27,16 +22,14 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
-        relayer_pubkey: msg.relayer_pubkey,
-        relayer_address: msg.relayer_address.clone(),
+        router_contract: msg.router_contract.clone(),
         admin: info.sender,
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    AUTHORIZED_ADDRESSES.save(deps.storage, &msg.authorized_addresses)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("relayer_address", msg.relayer_address))
+        .add_attribute("router_contract", msg.router_contract))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -47,14 +40,10 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
+        ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
         ExecuteMsg::ExecuteMetaTransaction(msg) => {
             execute_meta_transaction(&mut deps, &env, &info, msg)
         }
-        ExecuteMsg::ExecuteAuthorizedTransaction(msg) => {
-            execute_authorized_transaction(&mut deps, &env, &info, msg)
-        }
-        ExecuteMsg::UpdateState(msg) => execute_update_state(&mut deps, &info, msg),
-        ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
     }
 }
 
@@ -62,6 +51,6 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => Ok(to_json_binary(&get_state(&deps)?)?),
-        QueryMsg::NonceRelayed { nonce } => Ok(to_json_binary(&nonce_relayed(&deps, nonce)?)?),
+        QueryMsg::NonceRelayed { nonce } => Ok(to_json_binary(&get_nonce(&deps, nonce)?)?),
     }
 }

@@ -8,7 +8,9 @@ mod tests {
     use cosmwasm_std::{from_json, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Response};
     use euclid::chain::{Chain, ChainUid, IbcChain};
     use euclid::error::ContractError;
-    use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, RegisterFactoryChainNative};
+    use euclid::msgs::router::{
+        ExecuteMsg, InstantiateMsg, RegisterFactoryChainNative, UpdateRouterState,
+    };
     use euclid_ibc::msg::HubIbcExecuteMsg;
 
     struct TestExecuteMsg {
@@ -208,16 +210,17 @@ mod tests {
         let new_admin = deps.api.addr_make("new_admin");
         let new_virtual_balance_address = deps.api.addr_make("new_virtual_balance_address");
         let new_mock_relayer_address = deps.api.addr_make("new_mock_relayer_address");
-
+        let new_meta_transaction_contract = deps.api.addr_make("new_meta_transaction_contract");
         // Unauthorized
-        let msg = ExecuteMsg::UpdateRouterState {
+        let msg = ExecuteMsg::UpdateRouterState(UpdateRouterState {
             admin: Some(new_admin.to_string()),
             vlp_code_id: Some(1),
             stable_vlp_code_id: Some(0),
             virtual_balance_address: Some(new_virtual_balance_address.clone()),
             locked: Some(true),
             mock_relayer_addresses: Some(vec![new_mock_relayer_address.to_string()]),
-        };
+            meta_transaction_contract: Some(new_meta_transaction_contract.clone()),
+        });
         let not_owner = deps.api.addr_make("not_owner");
         let info = message_info(&not_owner, &[]);
         let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();

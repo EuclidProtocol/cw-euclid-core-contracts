@@ -45,3 +45,20 @@ impl VirtualBalanceReceive {
         )?)
     }
 }
+
+#[cw_serde]
+pub struct MetaReceive {
+    pub verified_sender: CrossChainUser,
+    pub call_data: String,
+}
+
+#[cw_serde]
+pub enum MetaReceiverMsg {
+    MetaReceive(MetaReceive),
+}
+
+impl MetaReceive {
+    pub fn to_receiver_msg(&self) -> Result<Binary, ContractError> {
+        Ok(to_json_binary(&MetaReceiverMsg::MetaReceive(self.clone()))?)
+    }
+}
