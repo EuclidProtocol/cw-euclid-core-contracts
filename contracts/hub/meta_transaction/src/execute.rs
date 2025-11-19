@@ -148,9 +148,10 @@ pub fn execute_meta_transaction(
             verified_sender: verified_sender.clone(),
             call_data: call_data.call_data.clone(),
         };
+        let meta_receive_msg = meta_receive.to_receiver_msg()?;
         response = response.add_message(WasmMsg::Execute {
             contract_addr: call_data.target.to_string(),
-            msg: meta_receive.to_receiver_msg()?,
+            msg: meta_receive_msg,
             funds: vec![],
         });
     }

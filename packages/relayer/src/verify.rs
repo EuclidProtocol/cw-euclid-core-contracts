@@ -113,7 +113,7 @@ pub fn verify_keccak256_signature(
 }
 
 pub fn add_eth_prefix(message: &str) -> String {
-    format!("Ethereum Signed Message:\n{}{}", message.len(), message)
+    format!("\x19Ethereum Signed Message:\n{}{}", message.len(), message)
 }
 
 // Normalize pubkey: accept 65 (0x04+xy) or 64 (xy).

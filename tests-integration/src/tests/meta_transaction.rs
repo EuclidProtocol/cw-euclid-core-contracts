@@ -2,21 +2,45 @@
 use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, Uint128};
 use cw_orch::{
     mock::{cw_multi_test::App, MockBase},
-    prelude::{ContractInstance, CwOrchError, CwOrchExecute, CwOrchInstantiate, CwOrchUpload},
-};
-use euclid::{
-    chain::ChainUid,
-    msgs::meta_transaction::{
-        MetaTransaction, MetaTransactionData, QueryMsgFns as MetaQueryMsgFns,
+    prelude::{
+        ContractInstance, CwOrchError, CwOrchExecute, CwOrchInstantiate, CwOrchUpload, Environment,
     },
-    token::Token,
 };
+use cw_orch_interchain::mock::MockInterchainEnv;
+use cw_orch_interchain::prelude::*;
+use euclid::{
+    chain::{ChainUid, CrossChainUser},
+    fee::BPS_10_PERCENT,
+    msgs::{
+        factory::QueryMsgFns as FactoryQueryMsgFns,
+        meta_transaction::{
+            ExecuteMsgFns as MetaExecuteMsgFns, MetaTransaction, MetaTransactionCallData,
+            MetaTransactionData, QueryMsgFns as MetaQueryMsgFns,
+        },
+        router::{ExecuteMsgFns as RouterExecuteMsgFns, QueryMsgFns as RouterQueryMsgFns},
+        virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns,
+    },
+    pool::PoolConfig,
+    swap::NextSwapPair,
+    token::{PairWithDenomAndAmount, Token, TokenWithDenom},
+    virtual_balance::BalanceKey,
+};
+use euclid_ibc::msg::{
+    ChainIbcExecuteMsg, ChainIbcSwapExecuteMsg, ChainIbcTransferExecuteMsg,
+    ChainIbcWithdrawExecuteMsg,
+};
+use factory::FactoryContract;
 use k256::ecdsa::SigningKey;
 use meta_transaction::MetaTransactionContract;
-use relayer::verify::{cosmos_address_from_pubkey, MsgSignData, MsgSignDataMsg, MsgSignDataValue};
+use relayer::verify::{cosmos_address_from_pubkey, msg_to_sign_data};
+use router::RouterContract;
 use sha2::{digest::Update, Digest, Sha256};
 
-use crate::helpers::{chains::setup_router, relayer::get_signer_key};
+use crate::helpers::{
+    chains::{get_virtual_balance, setup_factory, setup_router},
+    factory::{create_pool, deposit_token, register_token},
+    relayer::{get_random_private_key, get_signer_key_from_pk, relay_router_factory_router},
+};
 
 fn setup_meta_transaction(
     chain: &MockBase,
@@ -34,33 +58,77 @@ fn setup_meta_transaction(
     Ok(meta_tx_contract)
 }
 
+fn setup_meta_transaction_e2e() -> Result<
+    (
+        RouterContract<MockBase>,
+        FactoryContract<MockBase>,
+        MetaTransactionContract<MockBase>,
+    ),
+    CwOrchError,
+> {
+    // Set up interchain environment with router and factory
+    let factory_chain_id = "nibiru";
+    let router_chain_id = "euclid";
+    let interchain = MockInterchainEnv::new(vec![
+        (factory_chain_id, "sender_for_all_chains"),
+        (router_chain_id, "sender_for_router"),
+    ]);
+    let router_chain = interchain.get_chain(router_chain_id).unwrap();
+    // Set up router and factory using the helper functions
+    let router_contract = setup_router(&router_chain).unwrap();
+    let factory_contract = setup_factory(
+        &interchain,
+        factory_chain_id,
+        router_chain_id,
+        &router_contract,
+    )
+    .unwrap();
+
+    let meta_tx_contract =
+        setup_meta_transaction(&router_chain, router_contract.address().unwrap()).unwrap();
+
+    router_contract
+        .update_router_state(euclid::msgs::router::UpdateRouterState {
+            meta_transaction_contract: Some(meta_tx_contract.address().unwrap()),
+            admin: None,
+            vlp_code_id: None,
+            stable_vlp_code_id: None,
+            virtual_balance_address: None,
+            locked: None,
+            mock_relayer_addresses: None,
+        })
+        .unwrap();
+
+    Ok((router_contract, factory_contract, meta_tx_contract))
+}
+
+fn get_signer_key_and_address(seed: &str) -> (SigningKey, String) {
+    let private_key = get_random_private_key(seed);
+    let (secret_key, pubkey_binary) = get_signer_key_from_pk(&private_key);
+    let signer_address = cosmos_address_from_pubkey(&pubkey_binary, "cosmwasm").unwrap();
+    (secret_key, signer_address)
+}
+
 fn sign_meta_transaction_message(
-    call_data: Binary,
+    call_data: Vec<MetaTransactionCallData>,
     signer_address: String,
+    signer_prefix: String,
     signer_chain_uid: ChainUid,
-    target: Addr,
     nonce: String,
     app: &App,
     secret_key: &SigningKey,
 ) -> MetaTransaction {
     // Create MetaTransactionData
     let data = MetaTransactionData {
-        signer_address,
-        signer_prefix: "euclid".to_string(), // bech32 prefix for cosmos chains
+        signer_address: signer_address.clone(),
+        signer_prefix,
         signer_chain_uid,
-        call_data: vec![euclid::msgs::meta_transaction::MetaTransactionCallData {
-            target,
-            call_data: call_data.to_base64(),
-        }],
+        call_data,
         expiry: app.block_info().time.plus_seconds(60).seconds(),
         nonce,
     };
 
-    let msg: MsgSignDataMsg = MsgSignDataMsg::new(MsgSignDataValue::new(
-        to_json_binary(&data).unwrap(),
-        "".to_string(), // Signer can be empty for meta transactions
-    ));
-    let msg = MsgSignData::new(vec![msg]);
+    let msg = msg_to_sign_data(to_json_binary(&data).unwrap(), signer_address.clone());
     let msg = to_json_string(&msg).unwrap();
     let message_digest = Sha256::new().chain(msg.as_bytes());
 
@@ -95,518 +163,6 @@ fn test_meta_transaction_instantiation() {
 }
 
 #[test]
-fn test_execute_meta_transaction() {
-    let chain = <MockBase>::new("nibiru");
-    let router = setup_router(&chain).unwrap();
-    let meta_tx_contract = setup_meta_transaction(&chain, router.address().unwrap()).unwrap();
-
-    // Get signer key
-    let (secret_key, pubkey_binary) = get_signer_key();
-
-    // Derive the signer address from the public key
-    let signer_address = cosmos_address_from_pubkey(&pubkey_binary, "euclid").unwrap();
-    println!("Signer address: {}", signer_address);
-
-    // Create a WithdrawVoucher call data (this is what the meta transaction will execute)
-    let withdraw_voucher_msg = euclid::msgs::router::ExecuteMsg::WithdrawVoucher {
-        token: Token::create("tokena".to_string()).unwrap(),
-        amount: Some(Uint128::from(1000u128)),
-        cross_chain_addresses: vec![],
-        timeout: None,
-    };
-    let call_data = to_json_binary(&withdraw_voucher_msg).unwrap();
-
-    // Create and sign the meta transaction
-    let chain_uid_src_chain = ChainUid::create("nibiru".to_string()).unwrap();
-    let signed_meta_tx = sign_meta_transaction_message(
-        call_data,
-        signer_address.clone(),
-        chain_uid_src_chain.clone(),
-        router.address().unwrap(),
-        "1".to_string(),
-        &chain.app.borrow(),
-        &secret_key,
-    );
-
-    // Execute the meta transaction - it should fail because chain info is not registered
-    let response = meta_tx_contract.execute(
-        &euclid::msgs::meta_transaction::ExecuteMsg::ExecuteMetaTransaction(signed_meta_tx),
-        &[],
-    );
-
-    // Since no chain is registered, we expect an error during chain lookup
-    assert!(response.is_err(), "Expected error for unregistered chain");
-    let err_msg = response.unwrap_err().to_string();
-    println!("Expected error (chain not registered): {}", err_msg);
-}
-
-#[test]
-fn test_execute_meta_transaction_with_registered_chain() {
-    use cw_orch_interchain::prelude::*;
-    use euclid::token::{PairWithDenomAndAmount, TokenWithDenom};
-
-    // Set up interchain environment with router and factory
-    let sender = "sender_for_all_chains";
-    let interchain = MockInterchainEnv::new(vec![("nibiru", sender)]);
-    let chain = interchain.get_chain("nibiru").unwrap();
-
-    // Create token denoms
-    let token_a_id = "token.a.nibiru".to_string();
-    let token_b_id = "token.b.nibiru".to_string();
-
-    // Get the sender address
-    let sender_addr = chain.addr_make(sender);
-
-    // Set balances for the sender
-    chain
-        .set_balance(
-            &sender_addr,
-            vec![
-                cosmwasm_std::coin(100_000_000u128, token_a_id.clone()),
-                cosmwasm_std::coin(100_000_000u128, token_b_id.clone()),
-            ],
-        )
-        .unwrap();
-
-    // Set up router and factory using the helper functions
-    let router_contract = setup_router(&chain).unwrap();
-
-    // Setup factory on the same chain (native)
-    let factory_chain_uid = ChainUid::create("nibiru".to_string()).unwrap();
-    let factory_contract =
-        crate::helpers::chains::setup_factory(&interchain, "nibiru", "nibiru", &router_contract)
-            .unwrap();
-
-    // Set up meta transaction contract
-    let meta_tx_contract =
-        setup_meta_transaction(&chain, router_contract.address().unwrap()).unwrap();
-
-    // Get signer key and address (this will be different from the sender)
-    let (secret_key, pubkey_binary) = get_signer_key();
-    let signer_address = cosmos_address_from_pubkey(&pubkey_binary, "euclid").unwrap();
-    println!("Signer address: {}", signer_address);
-
-    // Create tokens
-    let token_a = TokenWithDenom {
-        token: Token::create(token_a_id.clone()).unwrap(),
-        token_type: euclid::token::TokenType::Native {
-            denom: token_a_id.clone(),
-        },
-    };
-    let token_b = TokenWithDenom {
-        token: Token::create(token_b_id.clone()).unwrap(),
-        token_type: euclid::token::TokenType::Native {
-            denom: token_b_id.clone(),
-        },
-    };
-
-    // Register token_a escrow
-    println!("Registering token escrows...");
-    let register_escrow_request = factory_contract
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
-                token: token_a.clone(),
-                timeout: None,
-            },
-            &[],
-        )
-        .unwrap();
-
-    crate::helpers::relayer::relay_factory_router_factory(
-        register_escrow_request.events,
-        &factory_contract,
-        &router_contract,
-        &factory_chain_uid,
-    )
-    .unwrap();
-
-    // Create a pool with funds as the sender
-    println!("Creating pool with liquidity...");
-    let create_pool_request = factory_contract
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
-                pair: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(50_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(50_000u128)),
-                },
-                slippage_tolerance_bps: 100,
-                timeout: None,
-                lp_token_name: "LP Token".to_string(),
-                lp_token_symbol: "LPTOK".to_string(),
-                lp_token_decimal: 6,
-                lp_token_marketing: None,
-                pool_config: euclid::pool::PoolConfig::ConstantProduct {},
-            },
-            &[
-                cosmwasm_std::coin(50_000u128, token_a.token.to_string()),
-                cosmwasm_std::coin(50_000u128, token_b.token.to_string()),
-            ],
-        )
-        .unwrap();
-
-    crate::helpers::relayer::relay_factory_router_factory(
-        create_pool_request.events,
-        &factory_contract,
-        &router_contract,
-        &factory_chain_uid,
-    )
-    .unwrap();
-
-    println!("✓ Pool created and liquidity added");
-
-    // Now the sender has vouchers (LP tokens) that they can work with
-    // Let's have the sender add more liquidity to get vouchers
-    let add_liquidity_request = factory_contract
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
-                pair_info: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(10_000u128)),
-                },
-                slippage_tolerance_bps: 100,
-                timeout: None,
-            },
-            &[
-                cosmwasm_std::coin(10_000u128, token_a.token.to_string()),
-                cosmwasm_std::coin(10_000u128, token_b.token.to_string()),
-            ],
-        )
-        .unwrap();
-
-    crate::helpers::relayer::relay_factory_router_factory(
-        add_liquidity_request.events,
-        &factory_contract,
-        &router_contract,
-        &factory_chain_uid,
-    )
-    .unwrap();
-
-    println!("✓ Additional liquidity added, sender now has vouchers");
-
-    // Now let's try to withdraw vouchers through a meta transaction
-    // Note: We're trying to withdraw as the signer (different from sender)
-    // This will fail because the signer has no vouchers, but it will prove
-    // that the meta transaction contract successfully processes and forwards the message
-
-    let withdraw_voucher_msg = euclid::msgs::router::ExecuteMsg::WithdrawVoucher {
-        token: token_a.token.clone(),
-        amount: Some(Uint128::from(1000u128)),
-        cross_chain_addresses: vec![],
-        timeout: None,
-    };
-    let call_data = to_json_binary(&withdraw_voucher_msg).unwrap();
-
-    // Create and sign the meta transaction
-    let signed_meta_tx = sign_meta_transaction_message(
-        call_data,
-        signer_address.clone(),
-        factory_chain_uid.clone(),
-        router_contract.address().unwrap(),
-        "nonce_success_1".to_string(),
-        &chain.app.borrow(),
-        &secret_key,
-    );
-
-    // Execute the meta transaction
-    println!("\nExecuting meta transaction...");
-    let response = meta_tx_contract.execute(
-        &euclid::msgs::meta_transaction::ExecuteMsg::ExecuteMetaTransaction(signed_meta_tx),
-        &[],
-    );
-
-    // Check the result
-    match &response {
-        Ok(_res) => {}
-        Err(e) => {
-            let err_msg = e.to_string();
-            println!("Meta transaction processing result: {}", err_msg);
-
-            // The meta transaction contract should have successfully validated and forwarded
-            // The error should be from the router (e.g., insufficient balance)
-            // not from the meta transaction contract's validation
-            assert!(
-                !err_msg.contains("Invalid signature")
-                    && !err_msg.contains("Nonce already used")
-                    && !err_msg.contains("Timestamp limit exceeded")
-                    && !err_msg.contains("Chain not found"),
-                "Meta transaction should pass all validation checks. Error: {}",
-                err_msg
-            );
-
-            println!("✓ Meta transaction passed all validation checks:");
-            println!("  ✓ Signature verified");
-            println!("  ✓ Nonce checked");
-            println!("  ✓ Chain registered");
-            println!("  ✓ Message forwarded to router");
-            println!("\n  ℹ  Router-level error (expected): User has no vouchers to withdraw");
-            println!("  ℹ  This proves the meta transaction contract works correctly!");
-        }
-    }
-}
-
-#[test]
-fn test_execute_meta_transaction_success_end_to_end() {
-    use cw_orch::prelude::TxHandler;
-    use cw_orch_interchain::prelude::*;
-    use euclid::{
-        msgs::router::QueryMsgFns as RouterQueryMsgFns2,
-        msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns2,
-        token::{PairWithDenomAndAmount, TokenWithDenom},
-    };
-
-    // Set up interchain environment
-    let sender = "sender_for_all_chains";
-    let interchain = MockInterchainEnv::new(vec![("nibiru", sender)]);
-    let mut chain = interchain.get_chain("nibiru").unwrap();
-
-    // Create token denoms
-    let token_a_id = "token.a.nibiru".to_string();
-    let token_b_id = "token.b.nibiru".to_string();
-
-    // Get the test signer address that will be used in meta transactions
-    let (secret_key, pubkey_binary) = get_signer_key();
-    let signer_address = cosmos_address_from_pubkey(&pubkey_binary, "euclid").unwrap();
-    println!("Signer address: {}", signer_address);
-
-    // Set balances for BOTH sender and signer
-    let sender_addr = chain.addr_make(sender);
-    let signer_addr = Addr::unchecked(&signer_address);
-
-    chain
-        .set_balance(
-            &sender_addr,
-            vec![
-                cosmwasm_std::coin(100_000_000u128, token_a_id.clone()),
-                cosmwasm_std::coin(100_000_000u128, token_b_id.clone()),
-            ],
-        )
-        .unwrap();
-
-    chain
-        .set_balance(
-            &signer_addr,
-            vec![
-                cosmwasm_std::coin(100_000_000u128, token_a_id.clone()),
-                cosmwasm_std::coin(100_000_000u128, token_b_id.clone()),
-            ],
-        )
-        .unwrap();
-
-    // Set up router and factory
-    let router_contract = setup_router(&chain).unwrap();
-    let factory_chain_uid = ChainUid::create("nibiru".to_string()).unwrap();
-    let factory_contract =
-        crate::helpers::chains::setup_factory(&interchain, "nibiru", "nibiru", &router_contract)
-            .unwrap();
-
-    // Set up meta transaction contract
-    let meta_tx_contract =
-        setup_meta_transaction(&chain, router_contract.address().unwrap()).unwrap();
-
-    // Create tokens
-    let token_a = TokenWithDenom {
-        token: Token::create(token_a_id.clone()).unwrap(),
-        token_type: euclid::token::TokenType::Native {
-            denom: token_a_id.clone(),
-        },
-    };
-    let token_b = TokenWithDenom {
-        token: Token::create(token_b_id.clone()).unwrap(),
-        token_type: euclid::token::TokenType::Native {
-            denom: token_b_id.clone(),
-        },
-    };
-
-    // Register token escrow
-    println!("Setting up pool and liquidity...");
-    let register_escrow_request = factory_contract
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestRegisterDenom {
-                token: token_a.clone(),
-                timeout: None,
-            },
-            &[],
-        )
-        .unwrap();
-
-    crate::helpers::relayer::relay_factory_router_factory(
-        register_escrow_request.events,
-        &factory_contract,
-        &router_contract,
-        &factory_chain_uid,
-    )
-    .unwrap();
-
-    // Create pool as sender first
-    let create_pool_request = factory_contract
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
-                pair: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(100_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
-                },
-                slippage_tolerance_bps: 100,
-                timeout: None,
-                lp_token_name: "LP Token".to_string(),
-                lp_token_symbol: "LPTOK".to_string(),
-                lp_token_decimal: 6,
-                lp_token_marketing: None,
-                pool_config: euclid::pool::PoolConfig::ConstantProduct {},
-            },
-            &[
-                cosmwasm_std::coin(100_000u128, token_a.token.to_string()),
-                cosmwasm_std::coin(100_000u128, token_b.token.to_string()),
-            ],
-        )
-        .unwrap();
-
-    crate::helpers::relayer::relay_factory_router_factory(
-        create_pool_request.events,
-        &factory_contract,
-        &router_contract,
-        &factory_chain_uid,
-    )
-    .unwrap();
-
-    // Now have the SIGNER add liquidity so they get vouchers
-    // Change the sender to the signer address
-    chain.set_sender(signer_addr.clone());
-
-    // Add liquidity as the signer to get vouchers
-    let add_liquidity_request = factory_contract
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
-                pair_info: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(20_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(20_000u128)),
-                },
-                slippage_tolerance_bps: 100,
-                timeout: None,
-            },
-            &[
-                cosmwasm_std::coin(20_000u128, token_a.token.to_string()),
-                cosmwasm_std::coin(20_000u128, token_b.token.to_string()),
-            ],
-        )
-        .unwrap();
-
-    crate::helpers::relayer::relay_factory_router_factory(
-        add_liquidity_request.events,
-        &factory_contract,
-        &router_contract,
-        &factory_chain_uid,
-    )
-    .unwrap();
-
-    println!("✓ Signer now has vouchers from adding liquidity");
-
-    // Verify the signer has vouchers by checking their virtual balance
-    let router_state = router_contract.get_state().unwrap();
-    let virtual_balance_addr = router_state.virtual_balance_address.unwrap();
-    let virtual_balance =
-        crate::helpers::chains::get_virtual_balance(&chain, &virtual_balance_addr);
-
-    let balance_result = virtual_balance.get_balance(euclid::virtual_balance::BalanceKey {
-        cross_chain_user: euclid::chain::CrossChainUser::new(
-            factory_chain_uid.clone(),
-            signer_address.clone(),
-        ),
-        token_id: token_a.token.to_string(),
-    });
-
-    match balance_result {
-        Ok(balance) => println!("✓ Signer's voucher balance: {:?}", balance),
-        Err(e) => println!("Could not query balance: {}", e),
-    }
-
-    // Now create and execute a meta transaction to withdraw some vouchers
-    let withdraw_amount = Uint128::from(5_000u128);
-    let withdraw_voucher_msg = euclid::msgs::router::ExecuteMsg::WithdrawVoucher {
-        token: token_a.token.clone(),
-        amount: Some(withdraw_amount),
-        cross_chain_addresses: vec![],
-        timeout: None,
-    };
-    let call_data = to_json_binary(&withdraw_voucher_msg).unwrap();
-
-    // Create and sign the meta transaction
-    let signed_meta_tx = sign_meta_transaction_message(
-        call_data,
-        signer_address.clone(),
-        factory_chain_uid.clone(),
-        router_contract.address().unwrap(),
-        "nonce_success_end_to_end".to_string(),
-        &chain.app.borrow(),
-        &secret_key,
-    );
-
-    // Execute the meta transaction
-    println!("\n🚀 Executing meta transaction for voucher withdrawal...");
-    let response = meta_tx_contract.execute(
-        &euclid::msgs::meta_transaction::ExecuteMsg::ExecuteMetaTransaction(signed_meta_tx),
-        &[],
-    );
-
-    // Check the result
-    match &response {
-        Ok(_res) => {
-            println!("\n✅ SUCCESS! Meta transaction executed successfully!");
-            println!("  ✓ Signature verified");
-            println!("  ✓ Nonce checked and marked as used");
-            println!("  ✓ Message forwarded to router");
-            println!("  ✓ Router processed the withdrawal successfully!");
-            println!("  ✓ User withdrew {} vouchers", withdraw_amount);
-            println!("\nThis demonstrates a complete end-to-end successful meta transaction!");
-
-            // // Verify the nonce was marked as used
-            // let nonce_used = meta_tx_contract
-            //     .nonce_relayed(
-            //         signer_address.clone(),
-            //         factory_chain_uid.clone(),
-            //         "nonce_success_end_to_end".to_string(),
-            //     )
-            //     .unwrap();
-            // assert!(
-            //     nonce_used,
-            //     "Nonce should be marked as used after successful execution"
-            // );
-            println!("✓ Nonce verified as used");
-        }
-        Err(e) => {
-            let err_msg = e.to_string();
-            println!("\nMeta transaction execution result: Router-level error occurred");
-            println!("Error: {}", err_msg);
-
-            // The meta transaction contract successfully validated and forwarded the message
-            // The error is from the router because:
-            // - LP tokens (from adding liquidity) are different from virtual balance vouchers
-            // - Virtual balance vouchers are created during cross-chain operations
-            // - This test setup demonstrates the meta transaction contract works correctly
-
-            // Verify that the meta transaction passed all its validation checks
-            assert!(
-                !err_msg.contains("Invalid signature")
-                    && !err_msg.contains("Nonce already used")
-                    && !err_msg.contains("Timestamp limit exceeded")
-                    && !err_msg.contains("Chain not found"),
-                "Meta transaction should pass all validation checks. Error: {}",
-                err_msg
-            );
-
-            println!("\n✅ SUCCESS! Meta transaction contract is working correctly:");
-            println!("  ✓ Signature verified");
-            println!("  ✓ Nonce checked");
-            println!("  ✓ Chain registered");
-            println!("  ✓ Message successfully forwarded to router");
-            println!("\nℹ️  Note: Router returned an error because:");
-            println!("   - LP tokens (from liquidity) ≠ Virtual balance vouchers");
-            println!("   - Virtual balance vouchers are created during cross-chain operations");
-            println!("   - This demonstrates the meta transaction contract validates and forwards correctly");
-        }
-    }
-}
-
-#[test]
 fn test_update_admin() {
     let chain = <MockBase>::new("nibiru");
     let router = setup_router(&chain).unwrap();
@@ -629,4 +185,588 @@ fn test_update_admin() {
     // Verify admin was updated
     let state = meta_tx_contract.get_state().unwrap();
     assert_eq!(state.admin, new_admin);
+}
+
+#[test]
+fn test_execute_meta_transaction_withdraw_voucher() {
+    let (router_contract, factory_contract, meta_tx_contract) =
+        setup_meta_transaction_e2e().unwrap();
+
+    let factory_chain_uid = factory_contract.get_state().unwrap().chain_uid.clone();
+    let factory_chain = factory_contract.environment();
+
+    // Get signer key and address (this will be different from the sender)
+    let (user_secret_key, user_signer_address) = get_signer_key_and_address("user");
+
+    let user = CrossChainUser::new(factory_chain_uid.clone(), user_signer_address.clone());
+    println!("User: {}", user.to_sender_string());
+
+    // Get signer key and address (this will be different from the sender)
+    let (unauthorized_secret_key, unauthorized_signer_address) =
+        get_signer_key_and_address("unauthorized_user");
+
+    let unauthorized_user = CrossChainUser::new(
+        factory_chain_uid.clone(),
+        unauthorized_signer_address.clone(),
+    );
+    println!(
+        "Unauthorized user: {}",
+        unauthorized_user.to_sender_string()
+    );
+
+    let token_denom = "tokena";
+    // Create tokens
+    let token_a = TokenWithDenom {
+        token: Token::create("token.a".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_denom.to_string(),
+        },
+    };
+
+    register_token(&factory_contract, &router_contract, token_a.clone()).unwrap();
+    deposit_token(
+        &factory_contract,
+        &router_contract,
+        token_a.clone(),
+        Uint128::from(1000u128),
+        Some(user.clone()),
+        None,
+    )
+    .unwrap();
+    let virtual_balance_contract = get_virtual_balance(
+        router_contract.environment(),
+        &router_contract
+            .get_state()
+            .unwrap()
+            .virtual_balance_address
+            .unwrap(),
+    );
+    let user_virtual_balance = virtual_balance_contract
+        .get_balance(BalanceKey {
+            cross_chain_user: user.clone(),
+            token_id: token_a.token.to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        factory_chain
+            .query_balance(&Addr::unchecked(user.address.clone()), token_denom)
+            .unwrap(),
+        Uint128::zero(),
+        "User native balance should be zero before meta withdraw"
+    );
+
+    assert_eq!(
+        user_virtual_balance.amount,
+        Uint128::from(1000u128),
+        "User virtual balance should be amount of tokens deposited before meta withdraw"
+    );
+
+    let unauthorized_withdraw = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
+        sender: user.clone(),
+        tx_id: "".to_string(),
+        token: token_a.token.clone(),
+        amount: Uint128::from(1000u128),
+        cross_chain_addresses: vec![unauthorized_user
+            .clone()
+            .with_limit(None, None, None, None, None, None)],
+        timeout: None,
+    });
+    let unauthorized_withdraw_call_data = MetaTransactionCallData {
+        target: router_contract.address().unwrap(),
+        call_data: to_json_string(&unauthorized_withdraw).unwrap(),
+    };
+
+    // Create and sign the meta transaction
+    let signed_meta_tx = sign_meta_transaction_message(
+        vec![unauthorized_withdraw_call_data.clone()],
+        unauthorized_user.address.clone(),
+        "cosmwasm".to_string(),
+        factory_chain_uid.clone(),
+        "nonce_success_1".to_string(),
+        &router_contract.environment().app.borrow(),
+        &unauthorized_secret_key,
+    );
+
+    // Execute the meta transaction
+    let response = meta_tx_contract.execute_meta_transaction(signed_meta_tx);
+    assert!(
+        response.is_err(),
+        "Expected error for unauthorized meta transaction: {}",
+        response.err().unwrap()
+    );
+
+    // Lets try to withdraw vouchers through a meta transaction
+    let withdraw_voucher_msg = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
+        sender: user.clone(),
+        tx_id: "".to_string(),
+        token: token_a.token.clone(),
+        amount: Uint128::from(1000u128),
+        cross_chain_addresses: vec![user.clone().with_limit(None, None, None, None, None, None)],
+        timeout: None,
+    });
+    let withdraw_call_data = MetaTransactionCallData {
+        target: router_contract.address().unwrap(),
+        call_data: to_json_string(&withdraw_voucher_msg).unwrap(),
+    };
+
+    // Create and sign the meta transaction
+    let signed_meta_tx = sign_meta_transaction_message(
+        vec![withdraw_call_data],
+        user.address.clone(),
+        "cosmwasm".to_string(),
+        factory_chain_uid.clone(),
+        "nonce_success_1".to_string(),
+        &router_contract.environment().app.borrow(),
+        &user_secret_key,
+    );
+
+    // Execute the meta transaction
+    let response = meta_tx_contract.execute_meta_transaction(signed_meta_tx);
+
+    assert!(
+        response.is_ok(),
+        "Expected success for meta transaction: {}",
+        response.err().unwrap()
+    );
+
+    relay_router_factory_router(
+        response.unwrap().events,
+        &factory_contract,
+        &factory_chain_uid,
+        &router_contract,
+    )
+    .unwrap();
+
+    let user_virtual_balance = virtual_balance_contract
+        .get_balance(BalanceKey {
+            cross_chain_user: user.clone(),
+            token_id: token_a.token.to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        factory_chain
+            .query_balance(&Addr::unchecked(user.address.clone()), token_denom)
+            .unwrap(),
+        Uint128::from(1000u128),
+        "User native balance should be amount of tokens withdrawn after meta withdraw"
+    );
+
+    assert_eq!(
+        user_virtual_balance.amount,
+        Uint128::zero(),
+        "User virtual balance should be zero after meta withdraw"
+    );
+}
+
+#[test]
+fn test_execute_meta_transaction_transfer_voucher() {
+    let (router_contract, factory_contract, meta_tx_contract) =
+        setup_meta_transaction_e2e().unwrap();
+
+    let factory_chain_uid = factory_contract.get_state().unwrap().chain_uid.clone();
+    let factory_chain = factory_contract.environment();
+
+    // Get signer key and address (this will be different from the sender)
+    let (user_secret_key, user_signer_address) = get_signer_key_and_address("user");
+
+    let user = CrossChainUser::new(factory_chain_uid.clone(), user_signer_address.clone());
+    println!("User: {}", user.to_sender_string());
+
+    // Get signer key and address (this will be different from the sender)
+    let (unauthorized_secret_key, unauthorized_signer_address) =
+        get_signer_key_and_address("unauthorized_user");
+
+    let unauthorized_user = CrossChainUser::new(
+        factory_chain_uid.clone(),
+        unauthorized_signer_address.clone(),
+    );
+    println!(
+        "Unauthorized user: {}",
+        unauthorized_user.to_sender_string()
+    );
+
+    let token_denom = "tokena";
+    // Create tokens
+    let token_a = TokenWithDenom {
+        token: Token::create("token.a".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_denom.to_string(),
+        },
+    };
+
+    register_token(&factory_contract, &router_contract, token_a.clone()).unwrap();
+    deposit_token(
+        &factory_contract,
+        &router_contract,
+        token_a.clone(),
+        Uint128::from(1000u128),
+        Some(user.clone()),
+        None,
+    )
+    .unwrap();
+    let virtual_balance_contract = get_virtual_balance(
+        router_contract.environment(),
+        &router_contract
+            .get_state()
+            .unwrap()
+            .virtual_balance_address
+            .unwrap(),
+    );
+    let user_virtual_balance = virtual_balance_contract
+        .get_balance(BalanceKey {
+            cross_chain_user: user.clone(),
+            token_id: token_a.token.to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        factory_chain
+            .query_balance(&Addr::unchecked(user.address.clone()), token_denom)
+            .unwrap(),
+        Uint128::zero(),
+        "User native balance should be zero before meta withdraw"
+    );
+
+    assert_eq!(
+        user_virtual_balance.amount,
+        Uint128::from(1000u128),
+        "User virtual balance should be amount of tokens deposited before meta withdraw"
+    );
+
+    let unauthorized_transfer = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
+        sender: user.clone(),
+        token: token_a.token.clone(),
+        amount: Uint128::from(1000u128),
+        recipient_address: unauthorized_user.clone(),
+        from: None,
+        msg: None,
+        tx_id: "".to_string(),
+        timeout: None,
+    });
+    let unauthorized_transfer_call_data = MetaTransactionCallData {
+        target: router_contract.address().unwrap(),
+        call_data: to_json_string(&unauthorized_transfer).unwrap(),
+    };
+
+    // Create and sign the meta transaction
+    let signed_meta_tx = sign_meta_transaction_message(
+        vec![unauthorized_transfer_call_data.clone()],
+        unauthorized_user.address.clone(),
+        "cosmwasm".to_string(),
+        factory_chain_uid.clone(),
+        "nonce_success_1".to_string(),
+        &router_contract.environment().app.borrow(),
+        &unauthorized_secret_key,
+    );
+
+    // Execute the meta transaction
+    let response = meta_tx_contract.execute_meta_transaction(signed_meta_tx);
+    assert!(
+        response.is_err(),
+        "Expected error for unauthorized meta transaction: {}",
+        response.err().unwrap()
+    );
+
+    let recipient_user = CrossChainUser::new(
+        factory_chain_uid.clone(),
+        factory_chain.addr_make("recipient_user").to_string(),
+    );
+    // Lets try to withdraw vouchers through a meta transaction
+    let transfer_voucher_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
+        sender: user.clone(),
+        tx_id: "".to_string(),
+        token: token_a.token.clone(),
+        amount: Uint128::from(1000u128),
+        recipient_address: recipient_user.clone(),
+        from: None,
+        msg: None,
+        timeout: None,
+    });
+    let transfer_call_data = MetaTransactionCallData {
+        target: router_contract.address().unwrap(),
+        call_data: to_json_string(&transfer_voucher_msg).unwrap(),
+    };
+
+    // Create and sign the meta transaction
+    let signed_meta_tx = sign_meta_transaction_message(
+        vec![transfer_call_data],
+        user.address.clone(),
+        "cosmwasm".to_string(),
+        factory_chain_uid.clone(),
+        "nonce_success_1".to_string(),
+        &router_contract.environment().app.borrow(),
+        &user_secret_key,
+    );
+
+    // Execute the meta transaction
+    let response = meta_tx_contract.execute_meta_transaction(signed_meta_tx);
+
+    assert!(
+        response.is_ok(),
+        "Expected success for meta transaction: {}",
+        response.err().unwrap()
+    );
+
+    relay_router_factory_router(
+        response.unwrap().events,
+        &factory_contract,
+        &factory_chain_uid,
+        &router_contract,
+    )
+    .unwrap();
+
+    let user_virtual_balance = virtual_balance_contract
+        .get_balance(BalanceKey {
+            cross_chain_user: user.clone(),
+            token_id: token_a.token.to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        user_virtual_balance.amount,
+        Uint128::zero(),
+        "User virtual balance should be zero after meta withdraw"
+    );
+
+    let recipient_virtual_balance = virtual_balance_contract
+        .get_balance(BalanceKey {
+            cross_chain_user: recipient_user.clone(),
+            token_id: token_a.token.to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        recipient_virtual_balance.amount,
+        Uint128::from(1000u128),
+        "Recipient virtual balance should be amount of tokens transferred after meta transfer"
+    );
+}
+
+#[test]
+fn test_execute_meta_transaction_swap() {
+    let (router_contract, factory_contract, meta_tx_contract) =
+        setup_meta_transaction_e2e().unwrap();
+
+    let virtual_balance_contract = get_virtual_balance(
+        router_contract.environment(),
+        &router_contract
+            .get_state()
+            .unwrap()
+            .virtual_balance_address
+            .unwrap(),
+    );
+
+    let factory_chain_uid = factory_contract.get_state().unwrap().chain_uid.clone();
+    let factory_chain = factory_contract.environment();
+
+    // Get signer key and address (this will be different from the sender)
+    let (user_secret_key, user_signer_address) = get_signer_key_and_address("user");
+
+    let user = CrossChainUser::new(factory_chain_uid.clone(), user_signer_address.clone());
+    println!("User: {}", user.to_sender_string());
+
+    // Get signer key and address (this will be different from the sender)
+    let (unauthorized_secret_key, unauthorized_signer_address) =
+        get_signer_key_and_address("unauthorized_user");
+
+    let unauthorized_user = CrossChainUser::new(
+        factory_chain_uid.clone(),
+        unauthorized_signer_address.clone(),
+    );
+    println!(
+        "Unauthorized user: {}",
+        unauthorized_user.to_sender_string()
+    );
+
+    let token_denom_a = "tokena";
+    // Create tokens
+    let token_a = TokenWithDenom {
+        token: Token::create("token.a".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_denom_a.to_string(),
+        },
+    };
+
+    let token_denom_b = "tokenb";
+    let token_b = TokenWithDenom {
+        token: Token::create("token.b".to_string()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_denom_b.to_string(),
+        },
+    };
+
+    register_token(&factory_contract, &router_contract, token_a.clone()).unwrap();
+    register_token(&factory_contract, &router_contract, token_b.clone()).unwrap();
+    let pair_info = PairWithDenomAndAmount {
+        token_1: token_a.clone().with_amount(Uint128::from(1000000u128)),
+        token_2: token_b.clone().with_amount(Uint128::from(1000000u128)),
+    };
+    create_pool(
+        &factory_contract,
+        &router_contract,
+        pair_info.clone(),
+        BPS_10_PERCENT,
+        PoolConfig::ConstantProduct {},
+    )
+    .unwrap();
+
+    deposit_token(
+        &factory_contract,
+        &router_contract,
+        token_a.clone(),
+        Uint128::from(1000u128),
+        Some(user.clone()),
+        None,
+    )
+    .unwrap();
+
+    for token in [token_a.clone(), token_b.clone()] {
+        assert_eq!(
+            factory_chain
+                .query_balance(
+                    &Addr::unchecked(user.address.clone()),
+                    &token.token_type.get_denom().unwrap()
+                )
+                .unwrap(),
+            Uint128::zero(),
+            "User native balance should be zero before meta withdraw"
+        );
+    }
+
+    let user_virtual_balance = virtual_balance_contract
+        .get_balance(BalanceKey {
+            cross_chain_user: user.clone(),
+            token_id: token_a.token.to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        user_virtual_balance.amount,
+        Uint128::from(1000u128),
+        "User virtual balance should be amount of tokens deposited before meta withdraw"
+    );
+
+    let token_a_voucher = TokenWithDenom {
+        token: token_a.token.clone(),
+        token_type: euclid::token::TokenType::Voucher {},
+    };
+
+    let mut swap_msg = ChainIbcSwapExecuteMsg {
+        sender: user.clone(),
+        tx_id: "".to_string(),
+        asset_in: token_a_voucher.clone(),
+        amount_in: Uint128::from(1000u128),
+        asset_out: token_b.token.clone(),
+        min_amount_out: Uint128::from(10u128),
+        swaps: vec![NextSwapPair {
+            token_in: token_a.token.clone(),
+            token_out: token_b.token.clone(),
+            test_fail: None,
+        }],
+        partner_fee_amount: Uint128::zero(),
+        partner_fee_recipient: unauthorized_user.clone(),
+        cross_chain_addresses: vec![unauthorized_user
+            .clone()
+            .with_limit(None, None, None, None, None, None)],
+    };
+
+    let unauthorized_swap = ChainIbcExecuteMsg::Swap(swap_msg.clone());
+    let unauthorized_swap_call_data = MetaTransactionCallData {
+        target: router_contract.address().unwrap(),
+        call_data: to_json_string(&unauthorized_swap).unwrap(),
+    };
+
+    // Create and sign the meta transaction
+    let signed_meta_tx = sign_meta_transaction_message(
+        vec![unauthorized_swap_call_data.clone()],
+        unauthorized_user.address.clone(),
+        "cosmwasm".to_string(),
+        factory_chain_uid.clone(),
+        "nonce_success_1".to_string(),
+        &router_contract.environment().app.borrow(),
+        &unauthorized_secret_key,
+    );
+
+    // Execute the meta transaction
+    let response = meta_tx_contract.execute_meta_transaction(signed_meta_tx);
+    assert!(
+        response.is_err(),
+        "Expected error for unauthorized meta transaction: {}",
+        response.err().unwrap()
+    );
+
+    swap_msg.cross_chain_addresses =
+        vec![user.clone().with_limit(None, None, None, None, None, None)];
+
+    let mut swap_msg_without_voucher = swap_msg.clone();
+    swap_msg_without_voucher.asset_in = token_a;
+    let authorized_swap_without_voucher = ChainIbcExecuteMsg::Swap(swap_msg_without_voucher);
+    let authorized_swap_without_voucher_call_data = MetaTransactionCallData {
+        target: router_contract.address().unwrap(),
+        call_data: to_json_string(&authorized_swap_without_voucher).unwrap(),
+    };
+
+    // Create and sign the meta transaction
+    let signed_meta_tx = sign_meta_transaction_message(
+        vec![authorized_swap_without_voucher_call_data],
+        user.address.clone(),
+        "cosmwasm".to_string(),
+        factory_chain_uid.clone(),
+        "nonce_success_1".to_string(),
+        &router_contract.environment().app.borrow(),
+        &user_secret_key,
+    );
+
+    // Execute the meta transaction
+    let response = meta_tx_contract.execute_meta_transaction(signed_meta_tx);
+
+    assert!(
+        response.is_err(),
+        "Expected error for meta transaction without voucher: {:?}",
+        response.unwrap()
+    );
+    // Lets try to withdraw vouchers through a meta transaction
+    let authorized_swap = ChainIbcExecuteMsg::Swap(swap_msg);
+    let authorized_swap_call_data = MetaTransactionCallData {
+        target: router_contract.address().unwrap(),
+        call_data: to_json_string(&authorized_swap).unwrap(),
+    };
+
+    // Create and sign the meta transaction
+    let signed_meta_tx = sign_meta_transaction_message(
+        vec![authorized_swap_call_data],
+        user.address.clone(),
+        "cosmwasm".to_string(),
+        factory_chain_uid.clone(),
+        "nonce_success_1".to_string(),
+        &router_contract.environment().app.borrow(),
+        &user_secret_key,
+    );
+
+    // Execute the meta transaction
+    let response = meta_tx_contract.execute_meta_transaction(signed_meta_tx);
+
+    assert!(
+        response.is_ok(),
+        "Expected success for meta transaction: {}",
+        response.err().unwrap()
+    );
+
+    relay_router_factory_router(
+        response.unwrap().events,
+        &factory_contract,
+        &factory_chain_uid,
+        &router_contract,
+    )
+    .unwrap();
+
+    assert_eq!(
+        factory_chain
+            .query_balance(&Addr::unchecked(user.address.clone()), token_denom_b)
+            .unwrap(),
+        Uint128::from(998u128),
+        "User native balance should be amount of tokens swapped after meta swap"
+    );
 }

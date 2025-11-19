@@ -652,7 +652,9 @@ pub fn execute_meta_receive(
         ChainIbcExecuteMsg::Transfer(transfer_voucher_msg) => {
             process_transfer_voucher_meta_transaction(deps, env, info, sender, transfer_voucher_msg)
         }
-        _ => Err(ContractError::Unauthorized {}),
+        _ => Err(ContractError::Generic {
+            err: "Unsupported message type".to_string(),
+        }),
     }
 }
 
