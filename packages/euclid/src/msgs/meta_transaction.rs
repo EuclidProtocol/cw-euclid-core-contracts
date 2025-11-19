@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 
-use crate::chain::{ChainUid, CrossChainUser};
+use crate::chain::ChainUid;
 
 #[cw_serde]
 pub struct InstantiateMsg {
