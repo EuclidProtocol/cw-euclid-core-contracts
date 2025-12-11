@@ -372,6 +372,20 @@ pub fn get_signer_key_from_pk(pk: &str) -> (SigningKey, Binary) {
     (signer_key, pubkey_binary)
 }
 
+pub fn get_signer_key_from_pk_evm(pk: &str) -> (SigningKey, Binary) {
+    let scalar = NonZeroScalar::from_str(pk).unwrap();
+
+    let signer_key = SigningKey::from(scalar);
+    let pubkey = signer_key
+        .verifying_key()
+        .to_encoded_point(false) // false = uncompressed format (65 bytes) for EVM
+        .as_bytes()
+        .to_vec();
+
+    let pubkey_binary = Binary::from(pubkey);
+    (signer_key, pubkey_binary)
+}
+
 pub fn sign_relay_messsage(
     call_data: Binary,
     target: Addr,
