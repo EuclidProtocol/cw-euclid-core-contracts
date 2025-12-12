@@ -177,13 +177,11 @@ pub fn setup_factory_evm(
         let register_request = router
             .register_factory(chain_info.clone(), chain_uid.clone())
             .unwrap();
+        println!("register_request: {:?}", register_request.events);
         let ack_events = relay_router_send_packet(register_request.events, &factory, &chain_uid)?;
-        relay_router_ack_packet(router, &chain_uid, ack_events)?;
-
-        router.register_factory(chain_info, chain_uid.clone())?;
-        // let _ = interchain
-        //     .await_packets(router_chain_id, register_request)
-        //     .unwrap();
+        println!("ack_packet_send: {:?}", ack_events);
+        let ack_packet_events = relay_router_ack_packet(router, &chain_uid, ack_events)?;
+        println!("ack_packet_events: {:?}", ack_packet_events);
     } else {
         let chain_info =
             euclid::msgs::router::RegisterFactoryChainType::Native(RegisterFactoryChainNative {

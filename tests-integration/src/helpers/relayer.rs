@@ -95,7 +95,10 @@ pub fn relay_router_send_packet(
 
     let send_packet_events = events
         .iter()
-        .filter(|event| event.ty == "wasm-euclid-cosmos-send-packet")
+        .filter(|event| {
+            event.ty == "wasm-euclid-cosmos-send-packet"
+                || event.ty == "wasm-euclid-evm-send-packet"
+        })
         .collect::<Vec<_>>();
 
     for event in send_packet_events {
