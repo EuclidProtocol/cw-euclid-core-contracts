@@ -1,5 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 use claimer::ClaimerContract;
+use cosmwasm_std::{Attribute, Event};
 use cw20::Cw20Contract;
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
@@ -178,8 +179,12 @@ pub fn setup_factory_evm(
             .register_factory(chain_info.clone(), chain_uid.clone())
             .unwrap();
         println!("register_request: {:?}", register_request.events);
-        let ack_events = relay_router_send_packet(register_request.events, &factory, &chain_uid)?;
+        let mut ack_events =
+            relay_router_send_packet(register_request.events, &factory, &chain_uid)?;
         println!("ack_packet_send: {:?}", ack_events);
+
+        // Modify events
+
         let ack_packet_events = relay_router_ack_packet(router, &chain_uid, ack_events)?;
         println!("ack_packet_events: {:?}", ack_packet_events);
     } else {

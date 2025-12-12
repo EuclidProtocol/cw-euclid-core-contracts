@@ -317,9 +317,12 @@ pub fn relay_router_ack_packet(
             &router.environment().app.borrow(),
         );
 
-        let response = relayer.execute_meta_transaction(signed_data)?;
+        println!("signed_data: {:?}", signed_data);
 
-        responses.extend(response.events);
+        let response = relayer.execute_meta_transaction(signed_data);
+        println!("response: {:?}", response);
+
+        responses.extend(response.unwrap().events);
     }
     Ok(responses)
 }
