@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, Uint128};
+use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, HexBinary, Uint128};
 use cw_orch::{
     mock::{cw_multi_test::App, MockBase},
     prelude::{
@@ -227,7 +227,7 @@ fn sign_meta_transaction_message_evm(
     app: &App,
     secret_key: &SigningKey,
 ) -> MetaTransaction {
-    // Create MetaTransactionData
+    // 1. Create the exact data struct the contract expects
     let data = MetaTransactionData {
         signer_address: signer_address.clone(),
         signer_prefix: "0x".to_string(),
@@ -237,26 +237,40 @@ fn sign_meta_transaction_message_evm(
         nonce,
     };
 
-    let msg = msg_to_sign_data(to_json_binary(&data).unwrap(), signer_address.clone());
-    let msg = to_json_string(&msg).unwrap();
-    let message_digest = Sha256::new().chain(msg.as_bytes());
+    // 2. Serialize to JSON
+    let json_payload = to_json_string(&data).unwrap();
 
+    // 3. Construct the Ethereum Signed Message (EIP-191)
+    // Matches contract: add_eth_prefix(&to_json_string(&meta_transaction.data)?)
+    let formatted_message = format!(
+        "\x19Ethereum Signed Message:\n{}{}",
+        json_payload.len(),
+        json_payload
+    );
+    use sha3::{Digest as KeccakDigest, Keccak256};
+    // 4. Hash with Keccak256 (Not Sha256)
+    let digest = Keccak256::new().chain_update(formatted_message.as_bytes());
+
+    // 5. Sign the Digest (pass the digest, not the raw bytes)
     let signature = secret_key
-        .sign_digest_recoverable(message_digest)
-        .unwrap()
+        .sign_digest_recoverable(digest)
+        .expect("failed to sign")
         .0;
 
-    // Derive the public key from the secret key (uncompressed format for EVM)
+    // 6. Format Output
     let pubkey = secret_key
         .verifying_key()
-        .to_encoded_point(false) // false = uncompressed format (65 bytes)
+        .to_encoded_point(false)
         .as_bytes()
         .to_vec();
 
+    let pubkey_hex = HexBinary::from(pubkey).to_hex();
+    let signature_hex = HexBinary::from(signature.to_vec()).to_hex();
+
     MetaTransaction {
         data,
-        signature: Binary::from(signature.to_vec()).to_base64(),
-        signer_pubkey: Binary::from(pubkey).to_base64(),
+        signature: signature_hex,
+        signer_pubkey: pubkey_hex,
     }
 }
 
@@ -659,13 +673,12 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
         setup_meta_transaction_e2e_evm().unwrap();
 
     let factory_chain_uid = factory_contract.get_state().unwrap().chain_uid.clone();
-    let factory_chain = factory_contract.environment();
 
     let factory_chain_uid_evm = factory_contract_evm.get_state().unwrap().chain_uid.clone();
     let factory_chain_evm = factory_contract_evm.environment();
 
     // Get signer key and address (this will be different from the sender)
-    let (user_secret_key, user_signer_address) = get_signer_key_and_address("user");
+    let (_user_secret_key, user_signer_address) = get_signer_key_and_address("user");
 
     let user = CrossChainUser::new(factory_chain_uid.clone(), user_signer_address.clone());
     println!("User: {}", user.to_sender_string());

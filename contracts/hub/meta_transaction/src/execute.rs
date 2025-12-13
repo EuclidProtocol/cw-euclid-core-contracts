@@ -66,13 +66,10 @@ pub fn execute_meta_transaction(
 
         ChainType::Evm(EvmChain {})
     } else {
-        ChainType::Native {}
+        chain_type
     };
 
     // Derive address from public key and verify it matches the claimed address
-    println!("chain_type: {:?}", chain_type);
-    println!("meta_transaction: {:?}", meta_transaction);
-
     let derived_address = match chain_type {
         ChainType::Ibc(_) | ChainType::Native {} => {
             let pubkey = Binary::from_base64(meta_transaction.signer_pubkey.as_str())?;
@@ -104,7 +101,9 @@ pub fn execute_meta_transaction(
                 &HexBinary::from_hex(meta_transaction.signature.as_str())?,
                 &pubkey,
             )?;
+
             ensure!(verified, ContractError::new("Invalid signature"));
+
             eth_address_from_pubkey(&pubkey)
                 .map_err(|e| ContractError::new(&format!("Failed to derive EVM address: {}", e)))?
         }
