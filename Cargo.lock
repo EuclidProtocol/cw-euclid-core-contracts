@@ -2472,6 +2472,8 @@ dependencies = [
  "cw-multi-test",
  "cw-storage-plus 2.0.0",
  "cw2 2.0.0",
+ "euclid",
+ "mock",
  "schemars",
  "serde",
  "thiserror 1.0.69",
