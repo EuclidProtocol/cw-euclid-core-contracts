@@ -1,7 +1,9 @@
 use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, StdResult, Uint128};
+use cw_storage_plus::Bound;
 
 use crate::msg::{
-    AssetDepositResponse, QueryMsg, StateResponse, UserDepositResponse, WhitelistResponse,
+    AssetDepositResponse, QueryMsg, StateResponse, UserDepositResponse, WhitelistListResponse,
+    WhitelistResponse,
 };
 use crate::state::{
     OrderbookDepositsStatus, ASSET_DEPOSITS, STATE, USER_DEPOSITS, WHITELISTED_ASSETS,
@@ -17,6 +19,9 @@ pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
             to_json_binary(&query_user_deposit(deps, user, token_id)?)
         }
         QueryMsg::Whitelist { token_id } => to_json_binary(&query_whitelist(deps, token_id)?),
+        QueryMsg::WhitelistedAssets { start_after, limit } => {
+            to_json_binary(&query_whitelisted_assets(deps, start_after, limit)?)
+        }
     }
 }
 
@@ -65,4 +70,26 @@ fn query_whitelist(deps: Deps, token_id: String) -> StdResult<WhitelistResponse>
         token_id,
         whitelisted,
     })
+}
+
+fn query_whitelisted_assets(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<WhitelistListResponse> {
+    let limit = limit.unwrap_or(50).min(200) as usize;
+    let start = start_after.map(Bound::exclusive);
+
+    let assets: Vec<WhitelistResponse> = WHITELISTED_ASSETS
+        .range(deps.storage, start, None, cosmwasm_std::Order::Ascending)
+        .filter_map(|item| item.ok())
+        .filter(|(_, whitelisted)| *whitelisted)
+        .take(limit)
+        .map(|(token_id, _)| WhitelistResponse {
+            token_id,
+            whitelisted: true,
+        })
+        .collect();
+
+    Ok(WhitelistListResponse { assets })
 }

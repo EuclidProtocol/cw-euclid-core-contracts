@@ -23,6 +23,11 @@ pub enum QueryMsg {
     UserDeposit { user: String, token_id: String },
     #[returns(WhitelistResponse)]
     Whitelist { token_id: String },
+    #[returns(WhitelistListResponse)]
+    WhitelistedAssets {
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
 }
 
 #[cw_serde]
@@ -49,4 +54,9 @@ pub struct UserDepositResponse {
 pub struct WhitelistResponse {
     pub token_id: String,
     pub whitelisted: bool,
+}
+
+#[cw_serde]
+pub struct WhitelistListResponse {
+    pub assets: Vec<WhitelistResponse>,
 }
