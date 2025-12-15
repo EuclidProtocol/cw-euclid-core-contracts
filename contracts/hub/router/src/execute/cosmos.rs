@@ -1,7 +1,7 @@
 use std::ops::Add;
 
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo, Order,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Event, MessageInfo,
     Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
@@ -152,12 +152,6 @@ pub fn execute_cosmos_receive_acknowledgement(
             .contains(&info.sender.to_string()),
         ContractError::Unauthorized {}
     );
-    let keys = COSMOS_PACKET_RELAY_MAP
-        .keys(deps.storage, None, None, Order::Ascending)
-        .collect::<Result<Vec<(ChainUid, u128)>, StdError>>()?;
-
-    #[cfg(not(target_arch = "wasm32"))]
-    COSMOS_PACKET_RELAY_MAP.save(deps.storage, (chain_uid.clone(), sequence), &msg)?;
 
     COSMOS_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
 
