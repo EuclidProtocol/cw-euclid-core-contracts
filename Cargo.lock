@@ -3524,6 +3524,7 @@ dependencies = [
  "itertools 0.10.5",
  "k256",
  "mock",
+ "orderbook_deposits",
  "relayer",
  "router",
  "rstest",

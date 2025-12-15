@@ -20,6 +20,10 @@ pub fn execute(
         ExecuteMsg::Deposit { token_id, amount } => {
             execute_deposit(deps, env, info, token_id, amount)
         }
+        ExecuteMsg::SetWhitelist {
+            token_id,
+            whitelisted,
+        } => execute_set_whitelist(deps, info, token_id, whitelisted),
     }
 }
 
@@ -82,4 +86,23 @@ fn execute_deposit(
             attr("amount", amount.to_string()),
             attr("sender", info.sender.as_str()),
         ]))
+}
+
+fn execute_set_whitelist(
+    deps: DepsMut,
+    info: MessageInfo,
+    token_id: String,
+    whitelisted: bool,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+
+    let token = Token::create(token_id.clone())?;
+    WHITELISTED_ASSETS.save(deps.storage, token.to_string(), &whitelisted)?;
+
+    Ok(Response::new().add_attributes(vec![
+        attr("action", "set_whitelist"),
+        attr("token_id", token_id),
+        attr("whitelisted", whitelisted.to_string()),
+    ]))
 }

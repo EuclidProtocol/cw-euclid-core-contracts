@@ -10,6 +10,7 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     Deposit { token_id: String, amount: Uint128 },
+    SetWhitelist { token_id: String, whitelisted: bool },
 }
 
 #[cw_serde]
