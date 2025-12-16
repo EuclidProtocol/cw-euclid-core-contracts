@@ -1,5 +1,6 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Uint128;
+use euclid::msgs::hook::VirtualBalanceReceive;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -9,8 +10,8 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Deposit { token_id: String, amount: Uint128 },
     SetWhitelist { token_id: String, whitelisted: bool },
+    VirtualBalanceReceive(VirtualBalanceReceive),
 }
 
 #[cw_serde]
@@ -60,4 +61,9 @@ pub struct WhitelistResponse {
 #[cw_serde]
 pub struct WhitelistListResponse {
     pub assets: Vec<WhitelistResponse>,
+}
+
+#[cw_serde]
+pub enum VirtualBalanceReceiveHookMsg {
+    Deposit {},
 }

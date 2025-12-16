@@ -1,18 +1,18 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Empty, Uint128};
+use cosmwasm_std::{Empty, Uint128};
 use cw_multi_test::{App, Contract, ContractWrapper, Executor};
 use euclid::{
     chain::{ChainUid, CrossChainUser},
     msgs::virtual_balance::{
-        ExecuteApprove, ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg,
+        ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg,
         InstantiateMsg as VirtualBalanceInstantiateMsg,
     },
     virtual_balance::BalanceKey,
 };
 use orderbook_deposits::msg::{
     AssetDepositResponse, QueryMsg as OrderbookQueryMsg, StateResponse, UserDepositResponse,
-    WhitelistListResponse,
+    VirtualBalanceReceiveHookMsg, WhitelistListResponse,
 };
 use orderbook_deposits::msg::{
     ExecuteMsg as OrderbookExecuteMsg, InstantiateMsg as OrderbookInstantiateMsg,
@@ -104,28 +104,19 @@ fn deposit_and_query_flow() {
     )
     .unwrap();
 
-    // Approve orderbook to move depositor's balance
+    // Deposit via virtual balance transfer with hook
+    let hook_msg = cosmwasm_std::to_json_binary(&VirtualBalanceReceiveHookMsg::Deposit {}).unwrap();
     app.execute_contract(
         depositor.clone(),
         virtual_balance_addr.clone(),
-        &VirtualBalanceExecuteMsg::Approve(ExecuteApprove {
+        &VirtualBalanceExecuteMsg::Transfer(euclid::msgs::virtual_balance::ExecuteTransfer {
             amount: deposit_amount,
             token_id: token_id.clone(),
-            spender: CrossChainUser::new(chain_uid.clone(), orderbook_addr.to_string()),
-            owner: CrossChainUser::new(chain_uid.clone(), depositor.to_string()),
+            sender: None,
+            to: CrossChainUser::new(chain_uid.clone(), orderbook_addr.to_string()),
+            from: None,
+            msg: Some(hook_msg),
         }),
-        &[],
-    )
-    .unwrap();
-
-    // Deposit
-    app.execute_contract(
-        depositor.clone(),
-        orderbook_addr.clone(),
-        &OrderbookExecuteMsg::Deposit {
-            token_id: token_id.clone(),
-            amount: deposit_amount,
-        },
         &[],
     )
     .unwrap();
