@@ -50,13 +50,13 @@ fn query_user_deposit(
     user: String,
     token_id: String,
 ) -> StdResult<UserDepositResponse> {
-    let user_addr: Addr = deps.api.addr_validate(&user)?;
+    
     let amount = USER_DEPOSITS
-        .may_load(deps.storage, (user_addr.clone(), token_id.clone()))?
+        .may_load(deps.storage, (user.clone(), token_id.clone()))?
         .unwrap_or_else(Uint128::zero);
 
     Ok(UserDepositResponse {
-        user: user_addr.to_string(),
+        user: user.to_string(),
         token_id,
         amount,
     })

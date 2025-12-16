@@ -29,4 +29,4 @@ pub const WHITELISTED_ASSETS: Map<AssetId, bool> = Map::new("whitelisted_assets"
 pub const ASSET_DEPOSITS: Map<AssetId, Uint128> = Map::new("asset_deposits");
 
 // Per-user deposits keyed by (user address, asset id).
-pub const USER_DEPOSITS: Map<(Addr, AssetId), Uint128> = Map::new("user_deposits");
+pub const USER_DEPOSITS: Map<(String, AssetId), Uint128> = Map::new("user_deposits");

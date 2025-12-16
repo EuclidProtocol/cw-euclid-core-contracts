@@ -67,7 +67,7 @@ fn execute_deposit(
         sender.chain_uid == chain_uid,
         ContractError::Unauthorized {}
     );
-    let sender_addr = deps.api.addr_validate(&sender.address)?;
+    let sender_addr = &sender.address;
 
     // Update aggregate and user-level deposit tracking.
     let new_asset_total = ASSET_DEPOSITS
