@@ -62,11 +62,7 @@ fn execute_deposit(
     ensure!(is_whitelisted, ContractError::AssetNotWhitelisted {});
 
     let _ = Token::create(token_id.clone())?;
-    let chain_uid = ChainUid::vsl_chain_uid()?;
-    ensure!(
-        sender.chain_uid == chain_uid,
-        ContractError::Unauthorized {}
-    );
+
     let sender_addr = &sender.address;
 
     // Update aggregate and user-level deposit tracking.
