@@ -8,9 +8,16 @@ use cw_orch::{
 };
 use euclid::{
     chain::ChainUid,
-    msgs::{factory::QueryMsgFns, router::QueryMsgFns as RouterQueryFns},
+    msgs::{
+        self,
+        factory::{QueryMsgFns, RegisterFactoryResponse},
+        router::QueryMsgFns as RouterQueryFns,
+    },
 };
-use euclid_ibc::msg::ChainIbcExecuteMsg;
+use euclid_ibc::{
+    ack::AcknowledgementMsg,
+    msg::{ChainIbcExecuteMsg, HubIbcExecuteMsg},
+};
 use factory::FactoryContract;
 use k256::{ecdsa::SigningKey, elliptic_curve::NonZeroScalar};
 use relayer::{
@@ -99,6 +106,81 @@ pub fn relay_router_send_packet(
             event.ty == "wasm-euclid-cosmos-send-packet"
                 || event.ty == "wasm-euclid-evm-send-packet"
         })
+        .collect::<Vec<_>>();
+
+    for event in send_packet_events {
+        let msg = event
+            .attributes
+            .iter()
+            .find(|attr| attr.key == "msg")
+            .unwrap();
+
+        let msg_binary = Binary::from_base64(msg.value.as_str()).unwrap();
+        let sequence = event
+            .attributes
+            .iter()
+            .find(|attr| attr.key == "sequence")
+            .unwrap();
+
+        let sequence = str::parse::<u128>(sequence.value.as_str()).unwrap();
+        println!("relay_router_send_packet sequence: {:?}", sequence);
+        let hash = event
+            .attributes
+            .iter()
+            .find(|attr| attr.key == "hash")
+            .unwrap();
+
+        let chain_uid = event
+            .attributes
+            .iter()
+            .find(|attr| attr.key == "chain_uid")
+            .unwrap();
+
+        // If this send packet was not meant for the current factory, skip it
+        if chain_uid.value != factory_chain_uid.to_string() {
+            println!(
+                "relay_router_send_packet: skipping packet for chain_uid: {:?}",
+                chain_uid.value
+            );
+            continue;
+        }
+        let relayer_address = factory.get_relayer().unwrap();
+        let relayer = get_relayer(
+            factory.environment(),
+            &Addr::unchecked(relayer_address.relayer_address),
+        );
+
+        let call_data = euclid::msgs::factory::ExecuteMsg::CosmosReceivePacket {
+            msg: msg_binary,
+            sequence,
+            hash: hash.value.clone(),
+        };
+
+        let signed_data = sign_relay_messsage(
+            to_json_binary(&call_data).unwrap(),
+            factory.address().unwrap(),
+            format!("{}-receive", sequence),
+            &factory.environment().app.borrow(),
+        );
+
+        let response = relayer.execute_meta_transaction(signed_data)?;
+
+        responses.extend(response.events);
+    }
+    Ok(responses)
+}
+
+pub fn relay_router_send_packet_evm(
+    events: Vec<Event>,
+    factory: &FactoryContract<MockBase>,
+    factory_chain_uid: &ChainUid,
+) -> Result<Vec<Event>, CwEnvError> {
+    let mut responses = Vec::new();
+
+    println!("relay_router_send_packet_evm events: {:?}", events);
+    let send_packet_events = events
+        .iter()
+        .filter(|event| event.ty == "wasm-euclid-evm-send-packet")
         .collect::<Vec<_>>();
 
     for event in send_packet_events {
@@ -324,6 +406,102 @@ pub fn relay_router_ack_packet(
 
         responses.extend(response.unwrap().events);
     }
+    Ok(responses)
+}
+
+pub fn relay_router_ack_packet_evm(
+    router: &RouterContract<MockBase>,
+    chain_uid: &ChainUid,
+) -> Result<Vec<Event>, CwEnvError> {
+    let mut responses = Vec::new();
+
+    // let write_ack_events = events
+    //     .iter()
+    //     .filter(|event| event.ty == "wasm-euclid-evm-write-acknowledgement")
+    //     .collect::<Vec<_>>();
+
+    // // for events in write_ack_events.chunks(2) {
+    // let msg = events[0]
+    //     .attributes
+    //     .iter()
+    //     .find(|attr| attr.key == "msg")
+    //     .unwrap();
+
+    let ack = AcknowledgementMsg::Ok(RegisterFactoryResponse {
+        factory_address: "factory_address".to_string(),
+        chain_id: "ethereum".to_string(),
+    });
+
+    let evm_receive_packet_msg = msgs::router::ExecuteMsg::EvmReceiveAck {
+        msg: to_json_binary(&HubIbcExecuteMsg::RegisterFactory {
+            chain_uid: chain_uid.clone(),
+            tx_id: "".to_string(),
+        })
+        .unwrap(),
+        chain_uid: chain_uid.clone(),
+        sequence: 0,
+        hash: "".to_string(),
+        ack: to_json_binary(&ack).unwrap(),
+    };
+
+    let msg_binary = to_json_binary(&evm_receive_packet_msg).unwrap();
+    // let sequence = events[0]
+    //     .attributes
+    //     .iter()
+    //     .find(|attr| attr.key == "sequence")
+    //     .unwrap();
+    // println!("relay_router_ack_packet: {:?}", sequence.value);
+
+    // let sequence = str::parse::<u128>(sequence.value.as_str()).unwrap();
+    // let hash = events[0]
+    //     .attributes
+    //     .iter()
+    //     .find(|attr| attr.key == "hash")
+    //     .unwrap();
+
+    // let ack = events[1]
+    //     .attributes
+    //     .iter()
+    //     .find(|attr| attr.key == "ack")
+    //     .unwrap();
+
+    let ack_binary = to_json_binary(&ack).unwrap();
+
+    let relayer_address = router
+        .query_relayer_addresses()
+        .unwrap()
+        .relayer_addresses
+        .first()
+        .unwrap()
+        .clone();
+    let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
+
+    let call_data = euclid::msgs::router::ExecuteMsg::EvmReceiveAck {
+        msg: to_json_binary(&HubIbcExecuteMsg::RegisterFactory {
+            chain_uid: chain_uid.clone(),
+            tx_id: "".to_string(),
+        })
+        .unwrap(),
+        chain_uid: chain_uid.clone(),
+        sequence: 0,
+        hash: "".to_string(),
+        ack: ack_binary,
+    };
+
+    let signed_data = sign_relay_messsage(
+        to_json_binary(&call_data).unwrap(),
+        router.address().unwrap(),
+        format!("{}-{}-ack", 0, **chain_uid),
+        &router.environment().app.borrow(),
+    );
+
+    println!("signed_data: {:?}", signed_data);
+
+    let response = relayer.execute_meta_transaction(signed_data);
+    println!("response: {:?}", response);
+
+    responses.extend(response.unwrap().events);
+    // }
     Ok(responses)
 }
 

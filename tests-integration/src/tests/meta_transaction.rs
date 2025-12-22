@@ -37,7 +37,7 @@ use router::RouterContract;
 use sha2::{digest::Update, Digest, Sha256};
 
 use crate::helpers::{
-    chains::{get_virtual_balance, setup_factory, setup_router},
+    chains::{get_virtual_balance, setup_factory, setup_factory_evm, setup_router},
     factory::{create_pool, deposit_token, register_token},
     relayer::{
         get_random_private_key, get_signer_key_from_pk, get_signer_key_from_pk_evm,
@@ -80,6 +80,50 @@ fn setup_meta_transaction_e2e() -> Result<
     // Set up router and factory using the helper functions
     let router_contract = setup_router(&router_chain).unwrap();
     let factory_contract = setup_factory(
+        &interchain,
+        factory_chain_id,
+        router_chain_id,
+        &router_contract,
+    )
+    .unwrap();
+
+    let meta_tx_contract =
+        setup_meta_transaction(&router_chain, router_contract.address().unwrap()).unwrap();
+
+    router_contract
+        .update_router_state(euclid::msgs::router::UpdateRouterState {
+            meta_transaction_contract: Some(meta_tx_contract.address().unwrap()),
+            admin: None,
+            vlp_code_id: None,
+            stable_vlp_code_id: None,
+            virtual_balance_address: None,
+            locked: None,
+            mock_relayer_addresses: None,
+        })
+        .unwrap();
+
+    Ok((router_contract, factory_contract, meta_tx_contract))
+}
+
+fn setup_meta_transaction_e2e_evm() -> Result<
+    (
+        RouterContract<MockBase>,
+        FactoryContract<MockBase>,
+        MetaTransactionContract<MockBase>,
+    ),
+    CwOrchError,
+> {
+    // Set up interchain environment with router and factory
+    let factory_chain_id = "ethereum";
+    let router_chain_id = "euclid";
+    let interchain = MockInterchainEnv::new(vec![
+        (factory_chain_id, "sender_for_all_chains"),
+        (router_chain_id, "sender_for_router"),
+    ]);
+    let router_chain = interchain.get_chain(router_chain_id).unwrap();
+    // Set up router and factory using the helper functions
+    let router_contract = setup_router(&router_chain).unwrap();
+    let factory_contract = setup_factory_evm(
         &interchain,
         factory_chain_id,
         router_chain_id,
@@ -612,7 +656,7 @@ fn test_execute_meta_transaction_transfer_voucher() {
 #[test]
 fn test_execute_meta_transaction_transfer_voucher_evm() {
     let (router_contract, factory_contract, meta_tx_contract) =
-        setup_meta_transaction_e2e().unwrap();
+        setup_meta_transaction_e2e_evm().unwrap();
 
     let factory_contract_evm = factory_contract.clone();
 

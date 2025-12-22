@@ -58,17 +58,6 @@ pub fn execute_meta_transaction(
         .chain
         .chain_type;
 
-    #[cfg(not(target_arch = "wasm32"))]
-    let chain_type = if meta_transaction.data.signer_address
-        == "0x719a0cc869284721e8f973a71e24efaef0c1e3f5".to_string()
-    {
-        use euclid::chain::EvmChain;
-
-        ChainType::Evm(EvmChain {})
-    } else {
-        chain_type
-    };
-
     // Derive address from public key and verify it matches the claimed address
     let derived_address = match chain_type {
         ChainType::Ibc(_) | ChainType::Native {} => {
