@@ -23,7 +23,7 @@ use euclid::virtual_balance::BalanceKey;
 use factory::FactoryContract;
 use router::RouterContract;
 
-use crate::helpers::relayer::relay_factory_router_factory;
+use crate::helpers::relayer::{relay_factory_router_factory, relay_factory_router_factory_evm};
 
 use super::chains::get_virtual_balance;
 
@@ -32,12 +32,40 @@ pub fn register_token(
     router: &RouterContract<MockBase>,
     token: TokenWithDenom,
 ) -> Result<(), CwOrchError> {
+    println!("here1");
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    println!("here2");
     let tx_response = factory.request_register_denom(token.clone(), None)?;
+    println!("here3");
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-
+    println!("here4");
     let escrow_response = factory.get_escrow(token.token.to_string())?;
+    println!("here5");
+    assert!(
+        escrow_response
+            .denoms
+            .iter()
+            .any(|d| d == &token.token_type),
+        "Escrow found but denom not registered"
+    );
 
+    Ok(())
+}
+
+pub fn register_token_evm(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    token: TokenWithDenom,
+) -> Result<(), CwOrchError> {
+    println!("here1");
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    println!("here2");
+    let tx_response = factory.request_register_denom(token.clone(), None)?;
+    println!("here3");
+    relay_factory_router_factory_evm(tx_response.events, factory, router, factory_chain_uid)?;
+    println!("here4");
+    let escrow_response = factory.get_escrow(token.token.to_string())?;
+    println!("here5");
     assert!(
         escrow_response
             .denoms
