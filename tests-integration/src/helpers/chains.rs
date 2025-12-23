@@ -5,9 +5,9 @@ use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use escrow::EscrowContract;
-use euclid::msgs::router::RegisterFactoryChainEvm;
 use euclid::{
-    chain::ChainUid,
+    chain::{ChainType, ChainUid, EvmChain, IbcChain},
+    msgs::router::RegisterFactoryChainEvm,
     msgs::{
         factory::{ExecuteMsgFns as FactoryExecuteMsgFns, QueryMsgFns as FactoryQueryMsgFns},
         router::{
@@ -25,7 +25,6 @@ use vlp::VlpContract;
 
 use crate::helpers::relayer::{
     relay_router_ack_packet, relay_router_ack_packet_evm, relay_router_send_packet,
-    relay_router_send_packet_evm,
 };
 
 use super::relayer::get_signer_key;
@@ -36,86 +35,16 @@ pub fn setup_factory(
     router_chain_id: &str,
     router: &RouterContract<MockBase>,
 ) -> Result<FactoryContract<MockBase>, CwOrchError> {
-    let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
-    let chain = interchain.get_chain(factory_chain_id).unwrap();
-    let _router_chain = interchain.get_chain(router_chain_id).unwrap();
-    let factory = FactoryContract::new(chain.clone());
-    let escrow = EscrowContract::new(chain.clone());
-    let cw20 = Cw20Contract::new(chain.clone());
-    let relayer = setup_relayer(&chain)?;
-
-    factory.upload().unwrap();
-    escrow.upload().unwrap();
-    cw20.upload().unwrap();
-
-    let is_native = router_chain_id == factory_chain_id;
-
-    factory.instantiate(
-        &euclid::msgs::factory::InstantiateMsg {
-            router_contract: router.address().unwrap().to_string(),
-            chain_uid: chain_uid.clone(),
-            escrow_code_id: escrow.code_id().unwrap(),
-            cw20_code_id: cw20.code_id().unwrap(),
-            is_native,
-            mock_relayer_address: Some(relayer.address().unwrap().to_string()),
-        },
-        None,
-        &[],
-    )?;
-
-    if !is_native {
-        // Set up channel from osmosis to nibiru
-        let channel_receipt = interchain
-            .create_contract_channel(&factory, router, "counter-1", None)
-            .unwrap();
-        let factory_channel = channel_receipt
-            .interchain_channel
-            .get_chain(factory_chain_id)
-            .unwrap()
-            .channel
-            .unwrap();
-
-        let router_channel = channel_receipt
-            .interchain_channel
-            .get_chain(router_chain_id)
-            .unwrap()
-            .channel
-            .unwrap();
-
-        factory.update_hub_channel(factory_channel.to_string())?;
-
-        let chain_info =
-            euclid::msgs::router::RegisterFactoryChainType::Ibc(RegisterFactoryChainIbc {
-                channel: router_channel.to_string(),
-                timeout: None,
-                factory_address: factory.address().unwrap().to_string(),
-                factory_chain_id: factory.environment().chain_id(),
-            });
-        let register_request = router
-            .register_factory(chain_info, chain_uid.clone())
-            .unwrap();
-        let ack_events = relay_router_send_packet(register_request.events, &factory, &chain_uid)?;
-        relay_router_ack_packet(router, &chain_uid, ack_events)?;
-        // let _ = interchain
-        //     .await_packets(router_chain_id, register_request)
-        //     .unwrap();
-    } else {
-        let chain_info =
-            euclid::msgs::router::RegisterFactoryChainType::Native(RegisterFactoryChainNative {
-                factory_address: factory.address().unwrap().to_string(),
-                factory_chain_id: factory.environment().chain_id(),
-            });
-        factory.update_hub_channel("channel-0".to_string())?;
-        router.register_factory(chain_info, chain_uid.clone())?;
-    }
-    let all_chains = router.get_all_chains().unwrap();
-    // Asert that this chain is registered
-    assert!(all_chains
-        .chains
-        .iter()
-        .any(|c| c.chain_uid == chain_uid.clone()));
-
-    Ok(factory)
+    setup_factory_inner(
+        interchain,
+        factory_chain_id,
+        router_chain_id,
+        router,
+        ChainType::Ibc(IbcChain {
+            from_hub_channel: String::new(),
+            from_factory_channel: String::new(),
+        }),
+    )
 }
 
 pub fn setup_factory_evm(
@@ -123,6 +52,22 @@ pub fn setup_factory_evm(
     factory_chain_id: &str,
     router_chain_id: &str,
     router: &RouterContract<MockBase>,
+) -> Result<FactoryContract<MockBase>, CwOrchError> {
+    setup_factory_inner(
+        interchain,
+        factory_chain_id,
+        router_chain_id,
+        router,
+        ChainType::Evm(EvmChain {}),
+    )
+}
+
+fn setup_factory_inner(
+    interchain: &MockInterchainEnv,
+    factory_chain_id: &str,
+    router_chain_id: &str,
+    router: &RouterContract<MockBase>,
+    chain_type: ChainType,
 ) -> Result<FactoryContract<MockBase>, CwOrchError> {
     let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let chain = interchain.get_chain(factory_chain_id).unwrap();
@@ -163,32 +108,50 @@ pub fn setup_factory_evm(
             .channel
             .unwrap();
 
-        let router_channel = channel_receipt
-            .interchain_channel
-            .get_chain(router_chain_id)
-            .unwrap()
-            .channel
-            .unwrap();
-
         factory.update_hub_channel(factory_channel.to_string())?;
 
-        let chain_info =
-            euclid::msgs::router::RegisterFactoryChainType::Evm(RegisterFactoryChainEvm {
-                factory_address: factory.address().unwrap().to_string(),
-                factory_chain_id: factory.environment().chain_id(),
-            });
-        let register_request = router
-            .register_factory(chain_info, chain_uid.clone())
-            .unwrap();
-        println!("register_request: {:?}", register_request);
-        // let ack_events =
-        //     relay_router_send_packet_evm(register_request.events, &factory, &chain_uid)?;
+        match chain_type {
+            ChainType::Ibc(_) => {
+                let router_channel = channel_receipt
+                    .interchain_channel
+                    .get_chain(router_chain_id)
+                    .unwrap()
+                    .channel
+                    .unwrap();
 
-        let relay_ack_events = relay_router_ack_packet_evm(router, &chain_uid)?;
-        println!("relay_ack_events: {:?}", relay_ack_events);
-        // let _ = interchain
-        //     .await_packets(router_chain_id, register_request)
-        //     .unwrap();
+                let chain_info =
+                    euclid::msgs::router::RegisterFactoryChainType::Ibc(RegisterFactoryChainIbc {
+                        channel: router_channel.to_string(),
+                        timeout: None,
+                        factory_address: factory.address().unwrap().to_string(),
+                        factory_chain_id: factory.environment().chain_id(),
+                    });
+                let register_request = router
+                    .register_factory(chain_info, chain_uid.clone())
+                    .unwrap();
+                let ack_events =
+                    relay_router_send_packet(register_request.events, &factory, &chain_uid)?;
+                relay_router_ack_packet(router, &chain_uid, ack_events)?;
+            }
+            ChainType::Evm(_) => {
+                let chain_info =
+                    euclid::msgs::router::RegisterFactoryChainType::Evm(RegisterFactoryChainEvm {
+                        factory_address: factory.address().unwrap().to_string(),
+                        factory_chain_id: factory.environment().chain_id(),
+                    });
+                router
+                    .register_factory(chain_info, chain_uid.clone())
+                    .unwrap();
+
+                let _relay_ack_events = relay_router_ack_packet_evm(router, &chain_uid)?;
+            }
+            ChainType::Native {} => {
+                unreachable!("native chains are handled by is_native branch")
+            }
+            ChainType::Solana(_) => {
+                unreachable!("Solana chain type not supported in tests")
+            }
+        }
     } else {
         let chain_info =
             euclid::msgs::router::RegisterFactoryChainType::Native(RegisterFactoryChainNative {
@@ -199,7 +162,7 @@ pub fn setup_factory_evm(
         router.register_factory(chain_info, chain_uid.clone())?;
     }
     let all_chains = router.get_all_chains().unwrap();
-    // Asert that this chain is registered
+    // Assert that this chain is registered
     assert!(all_chains
         .chains
         .iter()

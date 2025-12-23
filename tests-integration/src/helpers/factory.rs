@@ -32,15 +32,10 @@ pub fn register_token(
     router: &RouterContract<MockBase>,
     token: TokenWithDenom,
 ) -> Result<(), CwOrchError> {
-    println!("here1");
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    println!("here2");
     let tx_response = factory.request_register_denom(token.clone(), None)?;
-    println!("here3");
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-    println!("here4");
     let escrow_response = factory.get_escrow(token.token.to_string())?;
-    println!("here5");
     assert!(
         escrow_response
             .denoms
