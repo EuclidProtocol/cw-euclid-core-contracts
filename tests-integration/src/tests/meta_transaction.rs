@@ -38,7 +38,7 @@ use sha2::{digest::Update, Digest, Sha256};
 
 use crate::helpers::{
     chains::{get_virtual_balance, setup_factory, setup_factory_evm, setup_router},
-    factory::{create_pool, deposit_token, register_token, register_token_evm},
+    factory::{create_pool, deposit_token, deposit_token_evm, register_token, register_token_evm},
     relayer::{
         get_random_private_key, get_signer_key_from_pk, get_signer_key_from_pk_evm,
         relay_router_factory_router,
@@ -703,7 +703,7 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
     };
 
     register_token_evm(&factory_contract_evm, &router_contract, token_a.clone()).unwrap();
-    deposit_token(
+    deposit_token_evm(
         &factory_contract_evm,
         &router_contract,
         token_a.clone(),

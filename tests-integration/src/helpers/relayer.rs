@@ -100,7 +100,6 @@ pub fn relay_factory_send_packet_evm(
     chain_uid: &ChainUid,
 ) -> Result<Vec<Event>, CwEnvError> {
     let mut responses = Vec::new();
-    println!("relay_factory_send_packet_evm events: {:?}", events);
 
     let send_packet_events = events
         .iter()
@@ -150,13 +149,10 @@ pub fn relay_factory_send_packet_evm(
             format!("{}-{}-receive", sequence, **chain_uid),
             &router.environment().app.borrow(),
         );
-        println!("signed_data: {:?}", signed_data);
 
         let response = relayer.execute_meta_transaction(signed_data)?;
-        println!("response-mini: {:?}", response);
         responses.extend(response.events);
     }
-    println!("responses: {:?}", responses);
     Ok(responses)
 }
 
@@ -682,11 +678,8 @@ pub fn relay_factory_router_factory_evm(
     router: &RouterContract<MockBase>,
     factory_chain_uid: &ChainUid,
 ) -> Result<Vec<Event>, CwEnvError> {
-    println!("relay_factory_router_factory1");
     let ack_events = relay_factory_send_packet_evm(send_events, router, factory_chain_uid)?;
-    println!("relay_factory_router_factory2");
     relay_factory_ack_packet_evm(factory, factory_chain_uid, ack_events.clone())?;
-    println!("relay_factory_router_factory3");
     Ok(ack_events)
 }
 

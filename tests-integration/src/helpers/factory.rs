@@ -57,15 +57,10 @@ pub fn register_token_evm(
     router: &RouterContract<MockBase>,
     token: TokenWithDenom,
 ) -> Result<(), CwOrchError> {
-    println!("here1");
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    println!("here2");
     let tx_response = factory.request_register_denom(token.clone(), None)?;
-    println!("here3");
     relay_factory_router_factory_evm(tx_response.events, factory, router, factory_chain_uid)?;
-    println!("here4");
     let escrow_response = factory.get_escrow(token.token.to_string())?;
-    println!("here5");
     assert!(
         escrow_response
             .denoms
@@ -118,6 +113,63 @@ pub fn deposit_token(
         &funds,
     )?;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+
+    let new_balance = virtual_balance_contract.get_balance(BalanceKey {
+        cross_chain_user: actual_recipient,
+        token_id: token.token.to_string(),
+    })?;
+
+    assert!(
+        new_balance.amount.u128() == old_balance.amount.u128() + amount.u128(),
+        "Virtual balance not deposited properly, old balance: {}, new balance: {}, amount: {}",
+        old_balance.amount.u128(),
+        new_balance.amount.u128(),
+        amount.u128()
+    );
+    Ok(())
+}
+
+pub fn deposit_token_evm(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    token: TokenWithDenom,
+    amount: Uint128,
+    recipient: Option<CrossChainUser>,
+    msg: Option<Binary>,
+) -> Result<(), CwOrchError> {
+    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address.unwrap();
+    let virtual_balance_contract =
+        get_virtual_balance(router.environment(), &virtual_balance_address);
+
+    let actual_recipient = recipient.clone().unwrap_or(CrossChainUser::new(
+        factory.get_state().unwrap().chain_uid,
+        factory.environment().sender.to_string(),
+    ));
+
+    let old_balance = virtual_balance_contract.get_balance(BalanceKey {
+        cross_chain_user: actual_recipient.clone(),
+        token_id: token.token.to_string(),
+    })?;
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    let mut funds = vec![];
+    faucet(
+        factory.environment(),
+        factory.environment().sender.as_str(),
+        amount.u128(),
+        token.token_type.clone(),
+        &mut funds,
+    );
+    let tx_response = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::DepositToken {
+            asset_in: token.clone(),
+            amount_in: amount,
+            timeout: None,
+            recipient,
+            msg,
+        },
+        &funds,
+    )?;
+    relay_factory_router_factory_evm(tx_response.events, factory, router, factory_chain_uid)?;
 
     let new_balance = virtual_balance_contract.get_balance(BalanceKey {
         cross_chain_user: actual_recipient,
