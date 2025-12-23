@@ -24,7 +24,7 @@ use virtual_balance::VirtualBalanceContract;
 use vlp::VlpContract;
 
 use crate::helpers::relayer::{
-    relay_router_ack_packet, relay_router_ack_packet_evm, relay_router_send_packet,
+    ack_register_factory_evm, relay_router_ack_packet, relay_router_send_packet,
 };
 
 use super::relayer::get_signer_key;
@@ -143,7 +143,7 @@ fn setup_factory_inner(
                     .register_factory(chain_info, chain_uid.clone())
                     .unwrap();
 
-                let _relay_ack_events = relay_router_ack_packet_evm(router, &chain_uid)?;
+                let _relay_ack_events = ack_register_factory_evm(router, &chain_uid)?;
             }
             ChainType::Native {} => {
                 unreachable!("native chains are handled by is_native branch")

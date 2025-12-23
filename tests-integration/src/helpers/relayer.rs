@@ -139,10 +139,7 @@ pub fn relay_router_send_packet(
 
     let send_packet_events = events
         .iter()
-        .filter(|event| {
-            event.ty == "wasm-euclid-cosmos-send-packet"
-                || event.ty == "wasm-euclid-evm-send-packet"
-        })
+        .filter(|event| event.ty == "wasm-euclid-cosmos-send-packet")
         .collect::<Vec<_>>();
 
     for event in send_packet_events {
@@ -536,7 +533,7 @@ pub fn relay_router_ack_packet(
     Ok(responses)
 }
 
-pub fn relay_router_ack_packet_evm(
+pub fn ack_register_factory_evm(
     router: &RouterContract<MockBase>,
     chain_uid: &ChainUid,
 ) -> Result<Vec<Event>, CwEnvError> {

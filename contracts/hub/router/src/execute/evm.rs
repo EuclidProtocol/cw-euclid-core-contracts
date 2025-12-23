@@ -50,8 +50,6 @@ pub fn execute_evm_send_packet(
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("hash", "hash".to_string());
 
-    println!("sending evm packet");
-
     Ok(Response::new()
         .add_attribute("action", "evm-send-packet")
         .add_event(send_packet_event))
