@@ -7,7 +7,7 @@ use crate::error::ContractError;
 use crate::execute;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query;
-use crate::state::{OrderbookDepositsStatus, State, STATE};
+use crate::state::{OrderbookDepositsStatus, RootConfig, State, ROOT_CONFIG, STATE};
 
 const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -32,6 +32,22 @@ pub fn instantiate(
         virtual_balance: virtual_balance.clone(),
     };
     STATE.save(deps.storage, &state)?;
+
+    let authorized_posters = match msg.authorized_posters {
+        Some(posters) => posters
+            .into_iter()
+            .map(|poster| deps.api.addr_validate(&poster))
+            .collect::<Result<Vec<_>, _>>()?,
+        None => vec![admin.clone()],
+    };
+
+    let root_config = RootConfig {
+        permit_signer_pubkey: msg.permit_signer_pubkey,
+        permit_signer_address: msg.permit_signer_address,
+        root_challenge_period: msg.root_challenge_period.unwrap_or(0),
+        authorized_posters,
+    };
+    ROOT_CONFIG.save(deps.storage, &root_config)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     Ok(Response::new().add_attributes(vec![

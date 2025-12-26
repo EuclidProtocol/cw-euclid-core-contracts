@@ -1,12 +1,13 @@
-use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, StdResult, Uint128};
+use cosmwasm_std::{to_json_binary, Binary, Deps, StdResult, Uint128};
 use cw_storage_plus::Bound;
 
 use crate::msg::{
-    AssetDepositResponse, QueryMsg, StateResponse, UserDepositResponse, WhitelistListResponse,
-    WhitelistResponse,
+    AssetDepositResponse, QueryMsg, RootResponse, StateResponse, UserDepositResponse,
+    WhitelistListResponse, WhitelistResponse,
 };
 use crate::state::{
-    OrderbookDepositsStatus, ASSET_DEPOSITS, STATE, USER_DEPOSITS, WHITELISTED_ASSETS,
+    OrderbookDepositsStatus, ASSET_DEPOSITS, CURRENT_ROOT, STATE, USER_DEPOSITS,
+    WHITELISTED_ASSETS,
 };
 
 pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
@@ -22,6 +23,7 @@ pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::WhitelistedAssets { start_after, limit } => {
             to_json_binary(&query_whitelisted_assets(deps, start_after, limit)?)
         }
+        QueryMsg::CurrentRoot {} => to_json_binary(&query_current_root(deps)?),
     }
 }
 
@@ -92,4 +94,16 @@ fn query_whitelisted_assets(
         .collect();
 
     Ok(WhitelistListResponse { assets })
+}
+
+fn query_current_root(deps: Deps) -> StdResult<RootResponse> {
+    let root = CURRENT_ROOT.load(deps.storage)?;
+    Ok(RootResponse {
+        root_id: root.root_id,
+        root_hash: root.root_hash,
+        per_asset_totals: root.per_asset_totals,
+        da_hash: root.da_hash,
+        da_url: root.da_url,
+        proposed_at: root.proposed_at,
+    })
 }

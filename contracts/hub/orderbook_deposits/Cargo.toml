@@ -44,6 +44,8 @@ schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
+sha2 = "0.10.8"
+relayer = { workspace = true }
 
 [dev-dependencies]
 cw-multi-test = { workspace = true }

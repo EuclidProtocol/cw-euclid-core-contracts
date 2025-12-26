@@ -1,85 +1,230 @@
-# CosmWasm Starter Pack
+# Orderbook Deposits Contract
 
-This is a template to build smart contracts in Rust to run inside a
-[Cosmos SDK](https://github.com/cosmos/cosmos-sdk) module on all chains that enable it.
-To understand the framework better, please read the overview in the
-[cosmwasm repo](https://github.com/CosmWasm/cosmwasm/blob/master/README.md),
-and dig into the [cosmwasm docs](https://www.cosmwasm.com).
-This assumes you understand the theory and just want to get coding.
+## Overview
 
-## Creating a new repo from template
+This contract tracks virtual balance deposits for whitelisted assets, lets
+authorized posters publish Merkle roots for off-chain balance snapshots, and
+allows users to withdraw based on a Merkle proof plus an operator permit.
 
-Assuming you have a recent version of Rust and Cargo installed
-(via [rustup](https://rustup.rs/)),
-then the following should get you a new repo to start a contract:
+Key behaviors:
+- Deposits come from the virtual balance contract via a receive hook.
+- Roots can be proposed and optionally activated after a challenge period.
+- Withdrawals require a valid Merkle proof and a signed permit.
+- Per-asset and per-user totals are tracked and decremented on withdrawal.
 
-Install [cargo-generate](https://github.com/ashleygwilliams/cargo-generate) and cargo-run-script.
-Unless you did that before, run this line now:
+## InstantiateMsg
 
-```sh
-cargo install cargo-generate --features vendored-openssl
-cargo install cargo-run-script
+```
+InstantiateMsg {
+  virtual_balance: String,
+  admin: Option<String>,
+  root_challenge_period: Option<u64>,
+  permit_signer_pubkey: Option<Binary>,
+  permit_signer_address: Option<String>,
+  authorized_posters: Option<Vec<String>>,
+}
 ```
 
-Now, use it to create your new contract.
-Go to the folder in which you want to place it and run:
+Behavior:
+- `admin` defaults to the sender if not provided.
+- `root_challenge_period` defaults to 0 (roots become current immediately).
+- `authorized_posters` defaults to `[admin]` if not provided.
+- `permit_signer_*` must be configured to enable withdrawals.
 
-**Latest**
+## ExecuteMsg
 
-```sh
-cargo generate --git https://github.com/CosmWasm/cw-template.git --name PROJECT_NAME
+### SetWhitelist
+```
+SetWhitelist { token_id: String, whitelisted: bool }
+```
+- Admin-only.
+- Controls which assets can be deposited and included in root totals.
+
+### VirtualBalanceReceive
+```
+VirtualBalanceReceive(VirtualBalanceReceive)
+```
+- Only callable by the configured `virtual_balance` contract.
+- The hook message must be `VirtualBalanceReceiveHookMsg::Deposit`.
+- Updates:
+  - `ASSET_DEPOSITS[token_id] += amount`
+  - `USER_DEPOSITS[(user, token_id)] += amount`
+
+### UpdateConfig
+```
+UpdateConfig {
+  admin: Option<String>,
+  status: Option<OrderbookDepositsStatus>,
+  root_challenge_period: Option<u64>,
+  permit_signer_pubkey: Option<Binary>,
+  permit_signer_address: Option<String>,
+  authorized_posters: Option<Vec<String>>,
+}
+```
+- Admin-only.
+- `authorized_posters` replaces the current list; if empty, it falls back to
+  `[admin]`.
+
+### ProposeRoot
+```
+ProposeRoot {
+  root_id: String,
+  root_hash: Binary,
+  per_asset_totals: Vec<AssetTotal>,
+  da_hash: Option<Binary>,
+  da_url: Option<String>,
+}
+```
+- Authorized posters only (admin or in `authorized_posters`).
+- Contract status must be `Active`.
+- `root_hash` must be 32 bytes.
+- Each `per_asset_totals` entry must be whitelisted and <= on-chain escrow
+  (`ASSET_DEPOSITS`).
+- If `root_challenge_period > 0`, the root is stored as pending.
+- Otherwise it becomes the current root immediately.
+
+### ActivateRoot
+```
+ActivateRoot { root_id: String }
+```
+- Authorized posters only.
+- Contract status must be `Active`.
+- Pending root must exist, match `root_id`, and have passed the challenge
+  period.
+- The pending root becomes the current root.
+
+### Withdraw
+```
+Withdraw {
+  root_id: String,
+  amount: Uint128,
+  nonce: u64,
+  leaf: WithdrawalLeaf,
+  proof: Vec<MerkleProofStep>,
+  permit: Permit,
+  destination: String,
+}
+```
+Requirements:
+- Contract status is `Active`.
+- `root_id` matches the current root.
+- `leaf` is well-formed and matches the request (`leaf.nonce == nonce`).
+- `leaf.token_id` is whitelisted.
+- Permit is valid and not expired, and the signature verifies against the
+  configured `permit_signer_pubkey`.
+- Permit payload must match `root_id`, `user`, `token_id`, `amount`, `nonce`,
+  and `destination`.
+- Permit data must not be replayed.
+- Merkle proof must compute the current root hash.
+- `amount <= leaf.balance - already_withdrawn`.
+- Escrow totals must be sufficient.
+
+Effects:
+- Updates nullifier tracking for `(root_id, user, token_id, nonce)`.
+- Decrements `ASSET_DEPOSITS` and `USER_DEPOSITS`.
+- Transfers virtual balance to `destination` on the VSL chain.
+- Emits `action=withdrawal_completed` with relevant attributes.
+
+## QueryMsg
+
+### State
+```
+State {}
+```
+Returns:
+```
+StateResponse { admin, status, virtual_balance }
 ```
 
-For cloning minimal code repo:
-
-```sh
-cargo generate --git https://github.com/CosmWasm/cw-template.git --name PROJECT_NAME -d minimal=true
+### AssetDeposit
+```
+AssetDeposit { token_id: String }
+```
+Returns:
+```
+AssetDepositResponse { token_id, amount }
 ```
 
-You will now have a new folder called `PROJECT_NAME` (I hope you changed that to something else)
-containing a simple working contract and build system that you can customize.
-
-## Create a Repo
-
-After generating, you have a initialized local git repo, but no commits, and no remote.
-Go to a server (eg. github) and create a new upstream repo (called `YOUR-GIT-URL` below).
-Then run the following:
-
-```sh
-# this is needed to create a valid Cargo.lock file (see below)
-cargo check
-git branch -M main
-git add .
-git commit -m 'Initial Commit'
-git remote add origin YOUR-GIT-URL
-git push -u origin main
+### UserDeposit
+```
+UserDeposit { user: String, token_id: String }
+```
+Returns:
+```
+UserDepositResponse { user, token_id, amount }
 ```
 
-## CI Support
+### Whitelist
+```
+Whitelist { token_id: String }
+```
+Returns:
+```
+WhitelistResponse { token_id, whitelisted }
+```
 
-We have template configurations for both [GitHub Actions](.github/workflows/Basic.yml)
-and [Circle CI](.circleci/config.yml) in the generated project, so you can
-get up and running with CI right away.
+### WhitelistedAssets
+```
+WhitelistedAssets { start_after: Option<String>, limit: Option<u32> }
+```
+Returns:
+```
+WhitelistListResponse { assets: Vec<WhitelistResponse> }
+```
 
-One note is that the CI runs all `cargo` commands
-with `--locked` to ensure it uses the exact same versions as you have locally. This also means
-you must have an up-to-date `Cargo.lock` file, which is not auto-generated.
-The first time you set up the project (or after adding any dep), you should ensure the
-`Cargo.lock` file is updated, so the CI will test properly. This can be done simply by
-running `cargo check` or `cargo unit-test`.
+### CurrentRoot
+```
+CurrentRoot {}
+```
+Returns:
+```
+RootResponse {
+  root_id,
+  root_hash,
+  per_asset_totals,
+  da_hash,
+  da_url,
+  proposed_at,
+}
+```
 
-## Using your project
+## Message Types
 
-Once you have your custom repo, you should check out [Developing](./Developing.md) to explain
-more on how to run tests and develop code. Or go through the
-[online tutorial](https://docs.cosmwasm.com/) to get a better feel
-of how to develop.
+```
+AssetTotal { token_id: String, amount: Uint128 }
 
-[Publishing](./Publishing.md) contains useful information on how to publish your contract
-to the world, once you are ready to deploy it on a running blockchain. And
-[Importing](./Importing.md) contains information about pulling in other contracts or crates
-that have been published.
+WithdrawalLeaf {
+  user: String,
+  token_id: String,
+  balance: Uint128,
+  nonce: u64,
+}
 
-Please replace this README file with information about your specific project. You can keep
-the `Developing.md` and `Publishing.md` files as useful references, but please set some
-proper description in the README.
+MerkleProofStep {
+  hash: Binary,
+  position: ProofPosition, // Left | Right
+}
+
+Permit { data: String, signature: Binary }
+
+PermitData {
+  root_id: String,
+  user: String,
+  token_id: String,
+  amount: Uint128,
+  nonce: u64,
+  destination: String,
+  expiry: u64,
+}
+```
+
+## Merkle Proof Rules
+
+Merkle root verification is SHA-256 based:
+- `leaf_hash = sha256(JSON(WithdrawalLeaf))`
+- For each proof step:
+  - `Left`: `hash = sha256(step.hash || current)`
+  - `Right`: `hash = sha256(current || step.hash)`
+- The computed hash must equal `current_root_hash`.
+
+The `root_hash` and proof `hash` values must be 32 bytes.
