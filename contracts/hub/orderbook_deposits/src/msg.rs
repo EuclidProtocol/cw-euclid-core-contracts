@@ -144,6 +144,9 @@ pub struct PermitData {
 }
 
 #[cw_serde]
+pub struct MigrateMsg {}
+
+#[cw_serde]
 pub enum VirtualBalanceReceiveHookMsg {
     Deposit {},
 }

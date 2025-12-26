@@ -188,6 +188,16 @@ RootResponse {
 }
 ```
 
+## Migrate
+
+```
+MigrateMsg {}
+```
+
+Notes:
+- The migrate entry point is only callable by the chain-level contract admin.
+- It currently just updates the stored contract version.
+
 ## Message Types
 
 ```

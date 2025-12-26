@@ -3,6 +3,7 @@ mod error;
 pub mod execute;
 pub mod helpers;
 pub mod msg;
+pub mod migrate;
 pub mod query;
 pub mod state;
 
