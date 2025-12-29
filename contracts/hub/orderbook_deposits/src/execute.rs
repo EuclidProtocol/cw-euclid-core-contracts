@@ -81,6 +81,7 @@ pub fn execute(
             leaf,
             proof,
             permit,
+            destination_chain_uid,
             destination,
         } => execute_withdraw(
             deps,
@@ -91,6 +92,7 @@ pub fn execute(
             leaf,
             proof,
             permit,
+            destination_chain_uid,
             destination,
         ),
     }
@@ -323,9 +325,14 @@ fn execute_withdraw(
     leaf: WithdrawalLeaf,
     proof: Vec<MerkleProofStep>,
     permit: Permit,
+    destination_chain_uid: String,
     destination: String,
 ) -> Result<Response, ContractError> {
     ensure!(!amount.is_zero(), ContractError::InvalidAmount {});
+    ensure!(
+        !destination_chain_uid.is_empty(),
+        ContractError::InvalidDestination {}
+    );
     ensure!(!destination.is_empty(), ContractError::InvalidDestination {});
 
     let state = STATE.load(deps.storage)?;
@@ -363,6 +370,7 @@ fn execute_withdraw(
         amount,
         nonce,
         &leaf,
+        &destination_chain_uid,
         &destination,
         &permit,
     )?;
@@ -427,7 +435,8 @@ fn execute_withdraw(
         USER_DEPOSITS.save(deps.storage, user_key, &new_user_total)?;
     }
 
-    let destination_user = CrossChainUser::new(ChainUid::vsl_chain_uid()?, destination.clone());
+    let destination_chain_uid = ChainUid::create(destination_chain_uid)?;
+    let destination_user = CrossChainUser::new(destination_chain_uid, destination.clone());
     let transfer_msg = VirtualBalanceExecuteMsg::Transfer(ExecuteTransfer {
         amount,
         token_id: permit_data.token_id.clone(),
@@ -453,6 +462,7 @@ fn execute_withdraw(
             attr("token_id", permit_data.token_id),
             attr("amount", amount.to_string()),
             attr("nonce", nonce.to_string()),
+            attr("destination_chain_uid", permit_data.destination_chain_uid),
             attr("destination", destination),
         ]))
 }
@@ -487,6 +497,7 @@ fn verify_permit(
     amount: Uint128,
     nonce: u64,
     leaf: &WithdrawalLeaf,
+    destination_chain_uid: &str,
     destination: &str,
     permit: &Permit,
 ) -> Result<PermitData, ContractError> {
@@ -519,6 +530,7 @@ fn verify_permit(
             && permit_data.token_id == leaf.token_id
             && permit_data.amount == amount
             && permit_data.nonce == nonce
+            && permit_data.destination_chain_uid == destination_chain_uid
             && permit_data.destination == destination,
         ContractError::InvalidPermit {}
     );

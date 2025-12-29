@@ -102,6 +102,7 @@ Withdraw {
   leaf: WithdrawalLeaf,
   proof: Vec<MerkleProofStep>,
   permit: Permit,
+  destination_chain_uid: String,
   destination: String,
 }
 ```
@@ -113,7 +114,7 @@ Requirements:
 - Permit is valid and not expired, and the signature verifies against the
   configured `permit_signer_pubkey`.
 - Permit payload must match `root_id`, `user`, `token_id`, `amount`, `nonce`,
-  and `destination`.
+  `destination_chain_uid`, and `destination`.
 - Permit data must not be replayed.
 - Merkle proof must compute the current root hash.
 - `amount <= leaf.balance - already_withdrawn`.
@@ -122,7 +123,7 @@ Requirements:
 Effects:
 - Updates nullifier tracking for `(root_id, user, token_id, nonce)`.
 - Decrements `ASSET_DEPOSITS` and `USER_DEPOSITS`.
-- Transfers virtual balance to `destination` on the VSL chain.
+- Transfers virtual balance to `destination` on `destination_chain_uid`.
 - Emits `action=withdrawal_completed` with relevant attributes.
 
 ## QueryMsg
@@ -223,6 +224,7 @@ PermitData {
   token_id: String,
   amount: Uint128,
   nonce: u64,
+  destination_chain_uid: String,
   destination: String,
   expiry: u64,
 }

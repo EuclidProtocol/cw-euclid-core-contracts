@@ -41,6 +41,7 @@ pub enum ExecuteMsg {
         leaf: WithdrawalLeaf,
         proof: Vec<MerkleProofStep>,
         permit: Permit,
+        destination_chain_uid: String,
         destination: String,
     },
 }
@@ -139,6 +140,7 @@ pub struct PermitData {
     pub token_id: String,
     pub amount: Uint128,
     pub nonce: u64,
+    pub destination_chain_uid: String,
     pub destination: String,
     pub expiry: u64,
 }
