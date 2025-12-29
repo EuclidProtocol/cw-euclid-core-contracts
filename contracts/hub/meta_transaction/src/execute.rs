@@ -46,6 +46,7 @@ pub fn execute_meta_transaction(
 
     let state = STATE.load(deps.storage)?;
     // Get chain type from router
+
     let chain_type = deps
         .querier
         .query::<router::ChainResponse>(&QueryRequest::Wasm(WasmQuery::Smart {
@@ -89,7 +90,9 @@ pub fn execute_meta_transaction(
                 &HexBinary::from_hex(meta_transaction.signature.as_str())?,
                 &pubkey,
             )?;
+
             ensure!(verified, ContractError::new("Invalid signature"));
+
             eth_address_from_pubkey(&pubkey)
                 .map_err(|e| ContractError::new(&format!("Failed to derive EVM address: {}", e)))?
         }
