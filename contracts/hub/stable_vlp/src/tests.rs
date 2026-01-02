@@ -86,6 +86,7 @@ mod tests {
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
             admin: admin.to_string(),
+            paused: false,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);

@@ -24,7 +24,6 @@ pub const STATE: Item<State> = Item::new("state");
 
 pub const MOCK_RELAYER_ADDRESSES: Item<Vec<String>> = Item::new("mock_relayer_addresses");
 
-// Convert it to multi index map?
 pub const VLPS: Map<(String, String), String> = Map::new("vlps");
 
 // Store all tokens in a map for easy access

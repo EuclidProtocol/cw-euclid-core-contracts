@@ -63,6 +63,7 @@ pub enum ExecuteMsg {
         // The last timestamp where the balances for each token have been updated
         last_updated: Option<u64>,
         admin: Option<String>,
+        paused: Option<bool>,
     },
 }
 

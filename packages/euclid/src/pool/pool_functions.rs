@@ -109,6 +109,7 @@ pub struct State {
     pub last_updated: u64,
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
+    pub paused: bool,
     pub admin: String,
 }
 
@@ -217,6 +218,7 @@ pub fn update_fee(
     recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
+    ensure!(!state.paused, ContractError::ContractPaused {});
     ensure!(
         info.sender.as_str() == state.admin,
         ContractError::Unauthorized {}
@@ -255,6 +257,7 @@ pub fn update_state(
     last_updated: Option<u64>,
     admin: Option<String>,
     amp_factor: Option<Uint64>,
+    paused: Option<bool>,
 ) -> Result<Response, ContractError> {
     let state = state_storage.load(deps.storage)?;
     ensure!(
@@ -286,6 +289,12 @@ pub fn update_state(
         state.admin
     };
 
+    let verified_paused = if let Some(paused) = paused {
+        paused
+    } else {
+        state.paused
+    };
+
     let new_state = State {
         pair: state.pair,
         router: verified_router,
@@ -294,6 +303,7 @@ pub fn update_state(
         total_fees_collected: state.total_fees_collected,
         last_updated: last_updated.unwrap_or(state.last_updated),
         total_lp_tokens: state.total_lp_tokens,
+        paused: verified_paused,
         admin: verified_admin,
     };
 
@@ -321,6 +331,7 @@ pub fn register_pool(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let state = state_storage.load(deps.storage)?;
+    ensure!(!state.paused, ContractError::ContractPaused {});
 
     ensure!(
         info.sender.as_str() == state.router,
@@ -390,6 +401,7 @@ pub fn remove_liquidity(
         info.sender.as_str() == state.router,
         ContractError::Unauthorized {}
     );
+    ensure!(!state.paused, ContractError::ContractPaused {});
     let pair = state.pair.clone();
 
     let mut total_reserve_1 = balances_storage.load(deps.storage, pair.token_1.clone())?;
@@ -494,6 +506,8 @@ pub fn add_liquidity(
         info.sender.as_str() == state.router,
         ContractError::Unauthorized {}
     );
+    ensure!(!state.paused, ContractError::ContractPaused {});
+
     let mut response = Response::new();
 
     // Ensure tokens are received by VLP
@@ -721,7 +735,7 @@ pub fn execute_swap(
     test_fail: Option<bool>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
-
+    ensure!(!state.paused, ContractError::ContractPaused {});
     // If the sender is the router, use the sender as the voucher sender
     // Otherwise, use the last contract caller as the voucher sender
     let voucher_sender = if info.sender.as_str() == state.router {

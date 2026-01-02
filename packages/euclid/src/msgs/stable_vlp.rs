@@ -67,6 +67,7 @@ pub enum ExecuteMsg {
         last_updated: Option<u64>,
         admin: Option<String>,
         amp_factor: Option<Uint64>,
+        paused: Option<bool>,
     },
 }
 

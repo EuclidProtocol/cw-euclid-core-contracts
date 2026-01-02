@@ -47,6 +47,7 @@ pub fn instantiate(
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
+        paused: false,
         admin: msg.admin,
     };
 
@@ -183,6 +184,7 @@ pub fn execute(
             last_updated,
             admin,
             amp_factor,
+            paused,
         } => update_state(
             deps,
             info,
@@ -194,6 +196,7 @@ pub fn execute(
             last_updated,
             admin,
             amp_factor,
+            paused,
         ),
     }
 }
