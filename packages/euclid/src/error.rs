@@ -104,6 +104,12 @@ pub enum ContractError {
     #[error("UnsupportedOperation")]
     UnsupportedOperation {},
 
+    #[error("VlpAlreadyPaused")]
+    VlpAlreadyPaused {},
+
+    #[error("VlpNotPaused")]
+    VlpNotPaused {},
+
     #[error("Not Implemented")]
     NotImplemented {},
     #[error("DenomDoesNotExist")]

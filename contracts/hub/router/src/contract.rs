@@ -14,9 +14,9 @@ use crate::execute::cosmos::{
 };
 use crate::execute::{
     execute_deregister_chain, execute_meta_receive, execute_native_receive_callback,
-    execute_register_factory, execute_release_escrow, execute_reregister_chain,
-    execute_update_factory_channel, execute_update_lock, execute_update_router_state,
-    execute_withdraw_voucher,
+    execute_pause_vlp, execute_register_factory, execute_release_escrow, execute_reregister_chain,
+    execute_unpause_vlp, execute_update_factory_channel, execute_update_lock,
+    execute_update_router_state, execute_withdraw_voucher,
 };
 
 use crate::execute::evm::{
@@ -103,8 +103,6 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    // If the contract is locked and the message isn't UpdateLock, return error
-
     match msg {
         ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
         ExecuteMsg::ReregisterChain { chain } => execute_reregister_chain(deps, info, chain),
@@ -115,6 +113,12 @@ pub fn execute(
                 ContractError::ContractLocked {}
             );
             match msg {
+                ExecuteMsg::PauseVlp { vlp_address } => {
+                    execute_pause_vlp(&mut deps, info, vlp_address)
+                }
+                ExecuteMsg::UnpauseVlp { vlp_address } => {
+                    execute_unpause_vlp(&mut deps, info, vlp_address)
+                }
                 ExecuteMsg::UpdateFactoryChannel { channel, chain_uid } => {
                     execute_update_factory_channel(&mut deps, env, info, channel, chain_uid)
                 }

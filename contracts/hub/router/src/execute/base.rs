@@ -30,7 +30,7 @@ use crate::{
     query::verify_cross_chain_addresses,
     state::{
         State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
-        META_TRANSACTION_CONTRACT, MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS,
+        META_TRANSACTION_CONTRACT, MOCK_RELAYER_ADDRESSES, PAUSED_VLPS, STATE, TOKEN_DENOMS,
     },
 };
 
@@ -289,6 +289,92 @@ pub fn execute_withdraw_voucher(
     Ok(Response::new()
         .add_message(msg)
         .add_attribute("method", "withdraw_voucher"))
+}
+
+pub fn execute_pause_vlp(
+    deps: &mut DepsMut,
+    info: MessageInfo,
+    vlp_address: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
+
+    let mut paused_vlps = PAUSED_VLPS.load(deps.storage)?;
+
+    // Make sure that the VLP is not already paused
+    ensure!(
+        !paused_vlps.contains(&vlp_address.clone()),
+        ContractError::VlpAlreadyPaused {}
+    );
+    paused_vlps.push(vlp_address.clone());
+    PAUSED_VLPS.save(deps.storage, &paused_vlps)?;
+
+    // Change VLP state to paused
+    let pause_msg = euclid::msgs::vlp::ExecuteMsg::UpdateState {
+        paused: Some(true),
+        router: None,
+        virtual_balance: None,
+        fee: None,
+        last_updated: None,
+        admin: None,
+    };
+
+    let sub_msg = SubMsg::new(WasmMsg::Execute {
+        contract_addr: vlp_address.clone(),
+        msg: to_json_binary(&pause_msg)?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_submessage(sub_msg)
+        .add_attribute("method", "pause_vlp")
+        .add_attribute("vlp_address", vlp_address))
+}
+
+pub fn execute_unpause_vlp(
+    deps: &mut DepsMut,
+    info: MessageInfo,
+    vlp_address: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
+
+    let mut paused_vlps = PAUSED_VLPS.load(deps.storage)?;
+
+    // Make sure that the VLP is already paused
+    ensure!(
+        paused_vlps.contains(&vlp_address.clone()),
+        ContractError::VlpNotPaused {}
+    );
+    paused_vlps.retain(|x| x != &vlp_address.clone());
+    PAUSED_VLPS.save(deps.storage, &paused_vlps)?;
+
+    // Change VLP state to unpaused
+    let pause_msg = euclid::msgs::vlp::ExecuteMsg::UpdateState {
+        paused: Some(false),
+        router: None,
+        virtual_balance: None,
+        fee: None,
+        last_updated: None,
+        admin: None,
+    };
+
+    let sub_msg = SubMsg::new(WasmMsg::Execute {
+        contract_addr: vlp_address.clone(),
+        msg: to_json_binary(&pause_msg)?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_submessage(sub_msg)
+        .add_attribute("method", "unpause_vlp")
+        .add_attribute("vlp_address", vlp_address))
 }
 
 #[allow(clippy::too_many_arguments)]
