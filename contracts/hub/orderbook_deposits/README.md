@@ -109,7 +109,7 @@ Withdraw {
 Requirements:
 - Contract status is `Active`.
 - `root_id` matches the current root.
-- `leaf` is well-formed and matches the request (`leaf.nonce == nonce`).
+- `leaf` is well-formed (non-empty `user` and `token_id`).
 - `leaf.token_id` is whitelisted.
 - Permit is valid and not expired, and the signature verifies against the
   configured `permit_signer_pubkey`.
@@ -208,7 +208,6 @@ WithdrawalLeaf {
   user: String,
   token_id: String,
   balance: Uint128,
-  nonce: u64,
 }
 
 MerkleProofStep {

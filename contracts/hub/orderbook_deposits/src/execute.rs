@@ -350,7 +350,6 @@ fn execute_withdraw(
         ContractError::InvalidRootHash {}
     );
 
-    ensure!(leaf.nonce == nonce, ContractError::InvalidLeaf {});
     ensure!(!leaf.user.is_empty(), ContractError::InvalidLeaf {});
     ensure!(!leaf.token_id.is_empty(), ContractError::InvalidLeaf {});
 

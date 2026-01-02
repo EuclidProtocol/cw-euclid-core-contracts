@@ -112,7 +112,6 @@ pub struct WithdrawalLeaf {
     pub user: String,
     pub token_id: String,
     pub balance: Uint128,
-    pub nonce: u64,
 }
 
 #[cw_serde]

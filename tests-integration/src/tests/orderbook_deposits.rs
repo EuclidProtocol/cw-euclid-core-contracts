@@ -275,17 +275,16 @@ fn withdraw_with_merkle_and_permit() {
     )
     .unwrap();
 
+    let nonce = 1u64;
     let leaf = WithdrawalLeaf {
         user: depositor.to_string(),
         token_id: token_id.clone(),
         balance: deposit_amount,
-        nonce: 1,
     };
     let sibling = WithdrawalLeaf {
         user: "other".to_string(),
         token_id: token_id.clone(),
         balance: Uint128::zero(),
-        nonce: 2,
     };
     let leaf_hash = hash_leaf(&leaf);
     let sibling_hash = hash_leaf(&sibling);
@@ -313,7 +312,7 @@ fn withdraw_with_merkle_and_permit() {
         user: depositor.to_string(),
         token_id: token_id.clone(),
         amount: withdraw_amount,
-        nonce: leaf.nonce,
+        nonce,
         destination_chain_uid: chain_uid.as_str().to_string(),
         destination: destination.to_string(),
         expiry: app.block_info().time.plus_seconds(60).seconds(),
@@ -331,7 +330,7 @@ fn withdraw_with_merkle_and_permit() {
         &OrderbookExecuteMsg::Withdraw {
             root_id: root_id.clone(),
             amount: withdraw_amount,
-            nonce: leaf.nonce,
+            nonce,
             leaf: leaf.clone(),
             proof: proof.clone(),
             permit: permit.clone(),
@@ -376,7 +375,7 @@ fn withdraw_with_merkle_and_permit() {
         &OrderbookExecuteMsg::Withdraw {
             root_id,
             amount: withdraw_amount,
-            nonce: leaf.nonce,
+            nonce,
             leaf,
             proof,
             permit,
@@ -480,17 +479,16 @@ fn withdraw_rejects_invalid_merkle_proof() {
     )
     .unwrap();
 
+    let nonce = 7u64;
     let leaf = WithdrawalLeaf {
         user: depositor.to_string(),
         token_id: token_id.clone(),
         balance: deposit_amount,
-        nonce: 7,
     };
     let sibling = WithdrawalLeaf {
         user: "other".to_string(),
         token_id: token_id.clone(),
         balance: Uint128::zero(),
-        nonce: 8,
     };
     let leaf_hash = hash_leaf(&leaf);
     let sibling_hash = hash_leaf(&sibling);
@@ -518,7 +516,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
         user: depositor.to_string(),
         token_id: token_id.clone(),
         amount: withdraw_amount,
-        nonce: leaf.nonce,
+        nonce,
         destination_chain_uid: chain_uid.as_str().to_string(),
         destination: destination.to_string(),
         expiry: app.block_info().time.plus_seconds(60).seconds(),
@@ -535,7 +533,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
         &OrderbookExecuteMsg::Withdraw {
             root_id: root_id.clone(),
             amount: withdraw_amount,
-            nonce: leaf.nonce,
+            nonce,
             leaf: leaf.clone(),
             proof: bad_position_proof,
             permit,
@@ -553,7 +551,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
         user: depositor.to_string(),
         token_id: token_id.clone(),
         amount: withdraw_amount,
-        nonce: leaf.nonce,
+        nonce,
         destination_chain_uid: chain_uid.as_str().to_string(),
         destination: destination.to_string(),
         expiry: app.block_info().time.plus_seconds(120).seconds(),
@@ -570,7 +568,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
         &OrderbookExecuteMsg::Withdraw {
             root_id,
             amount: withdraw_amount,
-            nonce: leaf.nonce,
+            nonce,
             leaf,
             proof: bad_hash_proof,
             permit,
