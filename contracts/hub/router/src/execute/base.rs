@@ -302,7 +302,7 @@ pub fn execute_pause_vlp(
         ContractError::Unauthorized {}
     );
 
-    let mut paused_vlps = PAUSED_VLPS.load(deps.storage)?;
+    let mut paused_vlps = PAUSED_VLPS.load(deps.storage).unwrap_or_default();
 
     // Make sure that the VLP is not already paused
     ensure!(
@@ -345,7 +345,7 @@ pub fn execute_unpause_vlp(
         ContractError::Unauthorized {}
     );
 
-    let mut paused_vlps = PAUSED_VLPS.load(deps.storage)?;
+    let mut paused_vlps = PAUSED_VLPS.load(deps.storage).unwrap_or_default();
 
     // Make sure that the VLP is already paused
     ensure!(
@@ -377,6 +377,60 @@ pub fn execute_unpause_vlp(
         .add_attribute("vlp_address", vlp_address))
 }
 
+pub fn execute_pause_token(
+    deps: &mut DepsMut,
+    info: MessageInfo,
+    chain_uid: ChainUid,
+    token_id: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
+    let pause_message = euclid::msgs::virtual_balance::ExecuteMsg::PauseToken {
+        chain_uid: chain_uid.clone(),
+        token_id: token_id.clone(),
+    };
+    let sub_msg = SubMsg::new(WasmMsg::Execute {
+        contract_addr: state.virtual_balance_address.clone().unwrap().to_string(),
+        msg: to_json_binary(&pause_message)?,
+        funds: vec![],
+    });
+    Ok(Response::new()
+        .add_submessage(sub_msg)
+        .add_attribute("method", "pause_token")
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("token_id", token_id))
+}
+
+pub fn execute_unpause_token(
+    deps: &mut DepsMut,
+    info: MessageInfo,
+    chain_uid: ChainUid,
+    token_id: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
+
+    let unpause_message = euclid::msgs::virtual_balance::ExecuteMsg::UnpauseToken {
+        chain_uid: chain_uid.clone(),
+        token_id: token_id.clone(),
+    };
+    let sub_msg = SubMsg::new(WasmMsg::Execute {
+        contract_addr: state.virtual_balance_address.clone().unwrap().to_string(),
+        msg: to_json_binary(&unpause_message)?,
+        funds: vec![],
+    });
+    Ok(Response::new()
+        .add_submessage(sub_msg)
+        .add_attribute("method", "unpause_token")
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("token_id", token_id))
+}
 #[allow(clippy::too_many_arguments)]
 pub fn execute_release_escrow(
     deps: &mut DepsMut,
