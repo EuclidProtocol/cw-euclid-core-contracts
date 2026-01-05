@@ -2,12 +2,17 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map};
 use euclid::{
-    chain::CrossChainUser, msgs::virtual_balance::State, virtual_balance::SerializedBalanceKey,
+    chain::{ChainUid, CrossChainUser},
+    msgs::virtual_balance::State,
+    virtual_balance::SerializedBalanceKey,
 };
 
 pub const STATE: Item<State> = Item::new("state");
 
 pub const BALANCES: Map<SerializedBalanceKey, Uint128> = Map::new("snapshot_balances");
+
+// A tuple of ChainUid and TokenId
+pub const PAUSED_TOKENS: Item<Vec<(ChainUid, String)>> = Item::new("paused_tokens");
 
 #[cw_serde]
 pub struct Allowance {

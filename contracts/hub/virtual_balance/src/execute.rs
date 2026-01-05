@@ -12,7 +12,7 @@ use euclid::{
     virtual_balance::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
+use crate::state::{Allowance, ALLOWANCES, BALANCES, PAUSED_TOKENS, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -26,6 +26,15 @@ pub fn execute_mint(
     );
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Check if token is paused
+    let paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
+    ensure!(
+        !paused_tokens.contains(&(ChainUid::vsl_chain_uid()?, msg.balance_key.token_id.clone())),
+        ContractError::TokenPaused {
+            msg: "This token's mint is paused, withdrawal is available".to_string(),
+        }
+    );
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
@@ -117,6 +126,15 @@ pub fn execute_transfer(
     } else {
         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
     };
+
+    // Check if voucher is paused
+    let paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
+    ensure!(
+        !paused_tokens.contains(&(sender.chain_uid.clone(), transfer_msg.token_id.clone())),
+        ContractError::TokenPaused {
+            msg: "This token's transfer is paused, withdrawal is available".to_string(),
+        }
+    );
 
     let mut response = if let Some(from) = transfer_msg.from {
         let attributes = _deduct_allowance(
@@ -343,6 +361,15 @@ pub fn execute_approve(
         ContractError::Unauthorized {}
     );
 
+    // Check if token is paused
+    let paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
+    ensure!(
+        !paused_tokens.contains(&(vsl_chain_uid.clone(), msg.token_id.clone())),
+        ContractError::TokenPaused {
+            msg: "This token's approve is paused, withdrawal is available".to_string(),
+        }
+    );
+
     let key = BalanceKey {
         token_id: msg.token_id.clone(),
         cross_chain_user: owner.clone(),
@@ -414,4 +441,52 @@ pub fn execute_remove_zero_state_values(
     }
 
     Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
+}
+
+pub fn execute_pause_token(
+    deps: DepsMut,
+    info: MessageInfo,
+    chain_uid: ChainUid,
+    token_id: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+
+    let mut paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
+    // Make sure that the token is not already paused
+    ensure!(
+        !paused_tokens.contains(&(chain_uid.clone(), token_id.clone())),
+        ContractError::TokenAlreadyPaused {}
+    );
+    paused_tokens.push((chain_uid.clone(), token_id.clone()));
+    PAUSED_TOKENS.save(deps.storage, &paused_tokens)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "execute_pause_token")
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("token_id", token_id))
+}
+
+pub fn execute_unpause_token(
+    deps: DepsMut,
+    info: MessageInfo,
+    chain_uid: ChainUid,
+    token_id: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+
+    let mut paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
+    // Make sure that the token is paused
+    ensure!(
+        paused_tokens.contains(&(chain_uid.clone(), token_id.clone())),
+        ContractError::TokenNotPaused {}
+    );
+    paused_tokens.retain(|x| x != &(chain_uid.clone(), token_id.clone()));
+    PAUSED_TOKENS.save(deps.storage, &paused_tokens)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "execute_unpause_token")
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("token_id", token_id))
 }

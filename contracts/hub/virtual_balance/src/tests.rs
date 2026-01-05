@@ -1,10 +1,8 @@
 #[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
-
     use crate::contract::{execute, instantiate};
     use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
-
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, MessageInfo, Response, Uint128};
     use euclid::chain::{ChainUid, CrossChainUser};
@@ -339,6 +337,80 @@ mod tests {
                 recipient_key.clone().to_serialized_balance_key(),
             )
             .unwrap_err();
+
+        // Pause token
+        let pause_msg = ExecuteMsg::PauseToken {
+            chain_uid: ChainUid::vsl_chain_uid().unwrap(),
+            token_id: "eucl".to_string(),
+        };
+        let info = MessageInfo {
+            sender: admin.clone(),
+            funds: vec![],
+        };
+        execute(deps.as_mut(), env.clone(), info.clone(), pause_msg).unwrap();
+
+        // Mint token should fail
+        let mint_msg = ExecuteMsg::Mint(ExecuteMint {
+            amount: Uint128::new(10),
+            balance_key: balance_key.clone(),
+        });
+        let err = execute(
+            deps.as_mut(),
+            env.clone(),
+            MessageInfo {
+                sender: router.clone(),
+                funds: vec![],
+            },
+            mint_msg,
+        )
+        .unwrap_err();
+        assert_eq!(
+            ContractError::TokenPaused {
+                msg: "This token's mint is paused, withdrawal is available".to_string(),
+            },
+            err
+        );
+
+        // Transfer token should fail
+        let transfer_msg = ExecuteMsg::Transfer(ExecuteTransfer {
+            amount: Uint128::new(10),
+            token_id: "eucl".to_string(),
+            from: Some(owner.clone()),
+            to: recipient.clone(),
+            sender: None,
+            msg: None,
+        });
+        let err = execute(deps.as_mut(), env.clone(), info.clone(), transfer_msg).unwrap_err();
+        assert_eq!(
+            ContractError::TokenPaused {
+                msg: "This token's transfer is paused, withdrawal is available".to_string(),
+            },
+            err
+        );
+
+        // Approve token should fail
+        let approve_msg = ExecuteMsg::Approve(ExecuteApprove {
+            amount: Uint128::new(10),
+            token_id: "eucl".to_string(),
+            spender: spender.clone(),
+            owner: owner.clone(),
+        });
+        let err = execute(
+            deps.as_mut(),
+            env.clone(),
+            MessageInfo {
+                sender: router.clone(),
+                funds: vec![],
+            },
+            approve_msg,
+        )
+        .unwrap_err();
+        assert_eq!(
+            ContractError::TokenPaused {
+                msg: "This token's approve is paused, withdrawal is available".to_string(),
+            },
+            err
+        );
     }
 
     #[test]

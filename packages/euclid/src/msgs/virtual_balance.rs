@@ -2,7 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
-    chain::CrossChainUser,
+    chain::{ChainUid, CrossChainUser},
     utils::pagination::Pagination,
     virtual_balance::{BalanceKey, SerializedBalanceKey},
 };
@@ -35,6 +35,14 @@ pub enum ExecuteMsg {
         limit: Option<u32>,
     },
     Approve(ExecuteApprove),
+    PauseToken {
+        chain_uid: ChainUid,
+        token_id: String,
+    },
+    UnpauseToken {
+        chain_uid: ChainUid,
+        token_id: String,
+    },
 }
 
 #[cw_serde]

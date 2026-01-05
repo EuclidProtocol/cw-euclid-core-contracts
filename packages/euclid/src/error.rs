@@ -56,6 +56,15 @@ pub enum ContractError {
     #[error("Token already exist")]
     TokenAlreadyExist {},
 
+    #[error("Token already paused")]
+    TokenAlreadyPaused {},
+
+    #[error("Token not paused")]
+    TokenNotPaused {},
+
+    #[error("Token is paused")]
+    TokenPaused { msg: String },
+
     #[error("Chain already exist")]
     ChainAlreadyExist {},
 
