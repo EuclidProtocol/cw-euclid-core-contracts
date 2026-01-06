@@ -42,7 +42,7 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     mut deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
@@ -60,7 +60,7 @@ pub fn execute(
         ExecuteMsg::PauseToken {
             chain_uid,
             token_id,
-        } => execute_pause_token(deps, info, chain_uid, token_id),
+        } => execute_pause_token(deps, env, info, chain_uid, token_id),
         ExecuteMsg::UnpauseToken {
             chain_uid,
             token_id,

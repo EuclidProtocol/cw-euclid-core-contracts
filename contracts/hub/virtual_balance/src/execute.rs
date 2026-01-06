@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, Addr, Attribute, DepsMut, MessageInfo, Order, Response, Uint128, WasmMsg,
+    ensure, Addr, Attribute, DepsMut, Env, MessageInfo, Order, Response, Uint128, WasmMsg,
 };
 use cw_storage_plus::Bound;
 use euclid::{
@@ -12,7 +12,7 @@ use euclid::{
     virtual_balance::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ALLOWANCES, BALANCES, PAUSED_TOKENS, STATE};
+use crate::state::{token_pause_check, Allowance, ALLOWANCES, BALANCES, PAUSED_TOKENS, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -28,13 +28,11 @@ pub fn execute_mint(
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     // Check if token is paused
-    let paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
-    ensure!(
-        !paused_tokens.contains(&(ChainUid::vsl_chain_uid()?, msg.balance_key.token_id.clone())),
-        ContractError::TokenPaused {
-            msg: "This token's mint is paused, withdrawal is available".to_string(),
-        }
-    );
+    token_pause_check(
+        deps.storage,
+        ChainUid::vsl_chain_uid()?,
+        msg.balance_key.token_id.clone(),
+    )?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
@@ -128,13 +126,11 @@ pub fn execute_transfer(
     };
 
     // Check if voucher is paused
-    let paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
-    ensure!(
-        !paused_tokens.contains(&(sender.chain_uid.clone(), transfer_msg.token_id.clone())),
-        ContractError::TokenPaused {
-            msg: "This token's transfer is paused, withdrawal is available".to_string(),
-        }
-    );
+    token_pause_check(
+        deps.storage,
+        sender.chain_uid.clone(),
+        transfer_msg.token_id.clone(),
+    )?;
 
     let mut response = if let Some(from) = transfer_msg.from {
         let attributes = _deduct_allowance(
@@ -362,13 +358,7 @@ pub fn execute_approve(
     );
 
     // Check if token is paused
-    let paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
-    ensure!(
-        !paused_tokens.contains(&(vsl_chain_uid.clone(), msg.token_id.clone())),
-        ContractError::TokenPaused {
-            msg: "This token's approve is paused, withdrawal is available".to_string(),
-        }
-    );
+    token_pause_check(deps.storage, vsl_chain_uid.clone(), msg.token_id.clone())?;
 
     let key = BalanceKey {
         token_id: msg.token_id.clone(),
@@ -445,21 +435,21 @@ pub fn execute_remove_zero_state_values(
 
 pub fn execute_pause_token(
     deps: DepsMut,
+    env: Env,
     info: MessageInfo,
     chain_uid: ChainUid,
     token_id: String,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+    let current_block = env.block.height;
 
-    let mut paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
-    // Make sure that the token is not already paused
-    ensure!(
-        !paused_tokens.contains(&(chain_uid.clone(), token_id.clone())),
-        ContractError::TokenAlreadyPaused {}
-    );
-    paused_tokens.push((chain_uid.clone(), token_id.clone()));
-    PAUSED_TOKENS.save(deps.storage, &paused_tokens)?;
+    token_pause_check(deps.storage, chain_uid.clone(), token_id.clone())?;
+    PAUSED_TOKENS.save(
+        deps.storage,
+        (chain_uid.clone(), token_id.clone()),
+        &current_block,
+    )?;
 
     Ok(Response::new()
         .add_attribute("action", "execute_pause_token")
@@ -476,14 +466,12 @@ pub fn execute_unpause_token(
     let state = STATE.load(deps.storage)?;
     ensure!(state.admin == info.sender, ContractError::Unauthorized {});
 
-    let mut paused_tokens = PAUSED_TOKENS.load(deps.storage).unwrap_or_default();
-    // Make sure that the token is paused
     ensure!(
-        paused_tokens.contains(&(chain_uid.clone(), token_id.clone())),
+        token_pause_check(deps.storage, chain_uid.clone(), token_id.clone()).is_err(),
         ContractError::TokenNotPaused {}
     );
-    paused_tokens.retain(|x| x != &(chain_uid.clone(), token_id.clone()));
-    PAUSED_TOKENS.save(deps.storage, &paused_tokens)?;
+
+    PAUSED_TOKENS.remove(deps.storage, (chain_uid.clone(), token_id.clone()));
 
     Ok(Response::new()
         .add_attribute("action", "execute_unpause_token")
