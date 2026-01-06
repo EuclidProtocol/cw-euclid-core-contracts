@@ -22,7 +22,7 @@ mod tests {
     ) -> Response {
         let msg = InstantiateMsg {
             router: Addr::unchecked("router"),
-            admin: None,
+            admin: Addr::unchecked("admin"),
         };
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);

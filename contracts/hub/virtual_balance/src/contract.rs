@@ -28,7 +28,8 @@ pub fn instantiate(
 
     let state = State {
         router: info.sender.to_string(),
-        admin: msg.admin.unwrap_or(info.sender),
+        // The admin is set by the router contract from its instantiate function
+        admin: msg.admin,
     };
 
     STATE.save(deps.storage, &state)?;

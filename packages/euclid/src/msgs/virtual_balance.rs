@@ -17,7 +17,7 @@ pub struct State {
 
 pub struct InstantiateMsg {
     pub router: Addr,
-    pub admin: Option<Addr>,
+    pub admin: Addr,
 }
 
 #[cw_serde]

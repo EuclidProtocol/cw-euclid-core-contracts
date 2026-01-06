@@ -40,7 +40,7 @@ fn test_proper_instantiation() {
         virtual_balance_code_id,
         mock_router.addr().clone(),
         mock_router.addr().clone(),
-        None,
+        owner.clone(),
     );
 
     let token_id_response =
@@ -48,7 +48,7 @@ fn test_proper_instantiation() {
     let expected_token_id = GetStateResponse {
         state: State {
             router: mock_router.addr().clone().into_string(),
-            admin: mock_router.addr().to_owned(),
+            admin: owner.clone(),
         },
     };
     assert_eq!(token_id_response, expected_token_id);
