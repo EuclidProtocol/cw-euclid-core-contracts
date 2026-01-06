@@ -4,7 +4,8 @@ use euclid::{
     chain::ChainUid,
     error::ContractError,
     msgs::virtual_balance::{
-        GetBalanceResponse, GetStateResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
+        GetAddressBalancesResponse, GetAddressBalancesResponseItem, GetBalanceResponse,
+        GetStateResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
     },
     utils::pagination::Pagination,
     virtual_balance::BalanceKey,
@@ -58,6 +59,35 @@ pub fn query_user_balances(
         .collect();
 
     Ok(to_json_binary(&GetUserBalancesResponse {
+        balances: balances?,
+    })?)
+}
+
+pub fn query_address_balances(
+    deps: Deps,
+    address: String,
+    pagination: Option<Pagination<Uint128>>,
+) -> Result<Binary, ContractError> {
+    let Pagination { skip, limit, .. } = pagination.unwrap_or_default();
+
+    let balances: Result<_, ContractError> = BALANCES
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .filter(|res| res.is_ok() && res.as_ref().unwrap().0 .1 == address)
+        .skip(skip.unwrap_or(0) as usize)
+        .take(limit.unwrap_or(10) as usize)
+        .map(|res| {
+            let res = res?;
+            let (chain_uid, _address, token_id) = res.0;
+            let amount = res.1;
+            Ok(GetAddressBalancesResponseItem {
+                token_id,
+                amount,
+                chain_uid,
+            })
+        })
+        .collect();
+
+    Ok(to_json_binary(&GetAddressBalancesResponse {
         balances: balances?,
     })?)
 }

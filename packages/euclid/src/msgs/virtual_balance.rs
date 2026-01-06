@@ -2,7 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
-    chain::CrossChainUser,
+    chain::{ChainUid, CrossChainUser},
     utils::pagination::Pagination,
     virtual_balance::{BalanceKey, SerializedBalanceKey},
 };
@@ -114,4 +114,16 @@ pub struct GetUserBalancesResponse {
 pub struct GetUserBalancesResponseItem {
     pub amount: Uint128,
     pub token_id: String,
+}
+
+#[cw_serde]
+pub struct GetAddressBalancesResponse {
+    pub balances: Vec<GetAddressBalancesResponseItem>,
+}
+
+#[cw_serde]
+pub struct GetAddressBalancesResponseItem {
+    pub amount: Uint128,
+    pub token_id: String,
+    pub chain_uid: ChainUid,
 }
