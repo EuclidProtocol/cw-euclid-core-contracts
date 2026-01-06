@@ -30,20 +30,6 @@ pub enum ExecuteMsg {
         chain_uid: ChainUid,
         channel: String,
     },
-    PauseVlp {
-        vlp_address: String,
-    },
-    UnpauseVlp {
-        vlp_address: String,
-    },
-    PauseToken {
-        chain_uid: ChainUid,
-        token_id: String,
-    },
-    UnpauseToken {
-        chain_uid: ChainUid,
-        token_id: String,
-    },
     UpdateLock {},
     RegisterFactory {
         chain_uid: ChainUid,

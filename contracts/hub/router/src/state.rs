@@ -26,8 +26,6 @@ pub const MOCK_RELAYER_ADDRESSES: Item<Vec<String>> = Item::new("mock_relayer_ad
 
 pub const VLPS: Map<(String, String), String> = Map::new("vlps");
 
-pub const PAUSED_VLPS: Item<Vec<String>> = Item::new("paused_vlps");
-
 // Store all tokens in a map for easy access
 pub const TOKEN_VLPS: Map<Token, Vec<String>> = Map::new("token_vlps");
 

@@ -38,7 +38,7 @@ use crate::{
     },
     state::{
         CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES, FUNDS_INFO,
-        PAUSED_VLPS, PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS, VLPS,
+        PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_DENOMS, VLPS,
     },
 };
 
@@ -488,11 +488,6 @@ pub fn ibc_execute_add_liquidity(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let vlp_address = VLPS.load(deps.storage, pair.get_pair()?.get_tupple())?;
-    let paused_vlps = PAUSED_VLPS.load(deps.storage).unwrap_or_default();
-    ensure!(
-        !paused_vlps.contains(&vlp_address.clone()),
-        ContractError::ContractPaused {}
-    );
 
     let mut response = Response::new().add_event(
         tx_event(&tx_id, &sender.to_sender_string(), TxType::AddLiquidity)
@@ -583,11 +578,7 @@ fn ibc_execute_remove_liquidity(
     msg: ChainIbcRemoveLiquidityExecuteMsg,
 ) -> Result<Response, ContractError> {
     let vlp_address = VLPS.load(deps.storage, msg.pair.get_tupple())?;
-    let paused_vlps = PAUSED_VLPS.load(deps.storage).unwrap_or_default();
-    ensure!(
-        !paused_vlps.contains(&vlp_address.clone()),
-        ContractError::ContractPaused {}
-    );
+
     let response = Response::new()
         .add_event(tx_event(
             &msg.tx_id,
