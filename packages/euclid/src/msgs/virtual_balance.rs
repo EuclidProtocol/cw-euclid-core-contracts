@@ -100,6 +100,16 @@ pub enum QueryMsg {
         user: CrossChainUser,
         pagination: Option<Pagination<Uint128>>,
     },
+
+    #[returns(GetPausedTokenHeightResponse)]
+    GetPausedTokenHeight {
+        chain_uid: ChainUid,
+        token_id: String,
+    },
+    #[returns(GetAllPausedTokensResponse)]
+    GetAllPausedTokens {
+        pagination: Option<Pagination<(ChainUid, String)>>,
+    },
 }
 
 // We define a custom struct for each query response
@@ -122,4 +132,14 @@ pub struct GetUserBalancesResponse {
 pub struct GetUserBalancesResponseItem {
     pub amount: Uint128,
     pub token_id: String,
+}
+
+#[cw_serde]
+pub struct GetPausedTokenHeightResponse {
+    pub paused_token_height: u64,
+}
+
+#[cw_serde]
+pub struct GetAllPausedTokensResponse {
+    pub paused_tokens: Vec<(ChainUid, String)>,
 }

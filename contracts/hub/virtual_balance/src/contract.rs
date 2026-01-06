@@ -8,7 +8,10 @@ use crate::execute::{
     execute_remove_zero_state_values, execute_transfer, execute_unpause_token,
     execute_update_state,
 };
-use crate::query::{query_balance, query_state, query_user_balances};
+use crate::query::{
+    query_all_paused_tokens, query_balance, query_paused_token_height, query_state,
+    query_user_balances,
+};
 use crate::state::STATE;
 use euclid::error::ContractError;
 use euclid::msgs::virtual_balance::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
@@ -77,5 +80,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetUserBalances { user, pagination } => {
             query_user_balances(deps, user.chain_uid, user.address, pagination)
         }
+        QueryMsg::GetPausedTokenHeight {
+            chain_uid,
+            token_id,
+        } => query_paused_token_height(deps, chain_uid, token_id),
+        QueryMsg::GetAllPausedTokens { pagination } => query_all_paused_tokens(deps, pagination),
     }
 }

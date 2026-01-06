@@ -527,4 +527,81 @@ mod tests {
         assert!(BALANCES.load(&deps.storage, key("owner")).is_err());
         assert!(BALANCES.load(&deps.storage, key("owner2")).is_ok());
     }
+    #[test]
+    fn test_paused_tokens_queries() {
+        use cosmwasm_std::from_json;
+        use euclid::msgs::virtual_balance::{
+            GetAllPausedTokensResponse, GetPausedTokenHeightResponse, QueryMsg,
+        };
+
+        let mut deps = mock_dependencies();
+
+        // Add a paused token entry
+        let chain_uid1 = ChainUid::create("10".to_string()).unwrap();
+        let token_id1 = "tokenA".to_string();
+        let height1 = 42u64;
+        crate::state::PAUSED_TOKENS
+            .save(
+                &mut deps.storage,
+                (chain_uid1.clone(), token_id1.clone()),
+                &height1,
+            )
+            .unwrap();
+
+        // Add a second paused token entry
+        let chain_uid2 = ChainUid::create("20".to_string()).unwrap();
+        let token_id2 = "tokenB".to_string();
+        let height2 = 77u64;
+        crate::state::PAUSED_TOKENS
+            .save(
+                &mut deps.storage,
+                (chain_uid2.clone(), token_id2.clone()),
+                &height2,
+            )
+            .unwrap();
+
+        // Test GetPausedTokenHeight query for first token
+        let query_resp = crate::contract::query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetPausedTokenHeight {
+                chain_uid: chain_uid1.clone(),
+                token_id: token_id1.clone(),
+            },
+        )
+        .unwrap();
+        let resp: GetPausedTokenHeightResponse = from_json(query_resp).unwrap();
+        assert_eq!(resp.paused_token_height, height1);
+
+        // Test GetPausedTokenHeight query for second token
+        let query_resp = crate::contract::query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetPausedTokenHeight {
+                chain_uid: chain_uid2.clone(),
+                token_id: token_id2.clone(),
+            },
+        )
+        .unwrap();
+        let resp: GetPausedTokenHeightResponse = from_json(query_resp).unwrap();
+        assert_eq!(resp.paused_token_height, height2);
+
+        // Test GetAllPausedTokens query returns both tokens
+        let query_resp = crate::contract::query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetAllPausedTokens { pagination: None },
+        )
+        .unwrap();
+        let all_paused: GetAllPausedTokensResponse = from_json(query_resp).unwrap();
+        let mut expected = vec![
+            (chain_uid1.clone(), token_id1.clone()),
+            (chain_uid2.clone(), token_id2.clone()),
+        ];
+        let mut got = all_paused.paused_tokens.clone();
+        // Sort for equality check since order is not guaranteed
+        expected.sort_by(|a, b| a.0.cmp(&b.0));
+        got.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(got, expected);
+    }
 }
