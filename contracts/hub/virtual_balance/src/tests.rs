@@ -340,6 +340,7 @@ mod tests {
             )
             .unwrap_err();
     }
+
     #[test]
     fn test_token_pause() {
         let mut deps = mock_dependencies();
@@ -361,7 +362,6 @@ mod tests {
             "recipient".to_string(),
         );
 
-        // Mint tokens to owner
         let balance_key = BalanceKey {
             cross_chain_user: owner.clone(),
             token_id: "eucl".to_string(),
@@ -416,7 +416,6 @@ mod tests {
             err
         );
 
-        // Approve token should fail
         let approve_msg = ExecuteMsg::Approve(ExecuteApprove {
             amount: Uint128::new(10),
             token_id: "eucl".to_string(),
