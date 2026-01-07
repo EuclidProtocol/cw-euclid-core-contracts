@@ -400,6 +400,7 @@ mod tests {
         );
 
         // Transfer token should fail
+        //TODO fix this case
         let transfer_msg = ExecuteMsg::Transfer(ExecuteTransfer {
             amount: Uint128::new(10),
             token_id: "eucl".to_string(),

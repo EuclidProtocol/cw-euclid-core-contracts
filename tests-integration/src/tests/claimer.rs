@@ -234,6 +234,8 @@ fn test_create_claim_using_swap() {
         &osmosis_factory,
         &router,
         Some(cross_chain_address),
+        false,
+        false,
     )
     .unwrap();
 

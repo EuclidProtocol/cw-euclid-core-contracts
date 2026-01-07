@@ -128,7 +128,8 @@ pub fn execute_transfer(
     // Check if voucher is paused
     token_pause_check(
         deps.storage,
-        sender.chain_uid.clone(),
+        //TODO This originally took the sender's chain uid but what do we do in case the sender in transfer_msg is empty?
+        transfer_msg.to.chain_uid.clone(),
         transfer_msg.token_id.clone(),
     )?;
 
