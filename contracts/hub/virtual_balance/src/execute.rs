@@ -357,9 +357,6 @@ pub fn execute_approve(
         ContractError::Unauthorized {}
     );
 
-    // Check if token is paused
-    token_pause_check(deps.storage, vsl_chain_uid.clone(), msg.token_id.clone())?;
-
     let key = BalanceKey {
         token_id: msg.token_id.clone(),
         cross_chain_user: owner.clone(),

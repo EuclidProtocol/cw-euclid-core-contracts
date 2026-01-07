@@ -218,7 +218,7 @@ pub fn update_fee(
     recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
-    ensure!(!state.paused, ContractError::ContractPaused {});
+
     ensure!(
         info.sender.as_str() == state.admin,
         ContractError::Unauthorized {}

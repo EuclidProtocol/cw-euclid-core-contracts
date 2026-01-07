@@ -5,7 +5,7 @@ mod tests {
         fee::{DenomFees, Fee, TotalFees},
         pool::{
             add_liquidity, calculate_amount_from_shares, calculate_lp_allocation, register_pool,
-            remove_liquidity, update_fee, update_state, State,
+            remove_liquidity, update_state, State,
         },
         token::{Pair, PairWithAmount, Token},
     };
@@ -280,18 +280,6 @@ mod tests {
             sender.clone(),
             Uint128::new(50),
             "tx_remove".to_string(),
-        )
-        .unwrap_err();
-        assert_eq!(err, crate::error::ContractError::ContractPaused {});
-
-        // update_fee should fail when paused
-        let err = update_fee(
-            deps.as_mut(),
-            message_info(&admin, &[]),
-            &state_storage,
-            Some(2),
-            Some(2),
-            Some(sender.clone()),
         )
         .unwrap_err();
         assert_eq!(err, crate::error::ContractError::ContractPaused {});

@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn test_paused_blocks_actions_except_update_state() {
+    fn test_paused_blocks_actions() {
         let mut deps = mock_dependencies();
         let env = mock_env();
 
@@ -301,7 +301,8 @@ mod tests {
         .unwrap_err();
         assert_eq!(err, ContractError::ContractPaused {});
 
-        let err = execute(
+        // UpdateFee is not affected by pause
+        execute(
             deps.as_mut(),
             env.clone(),
             admin_info.clone(),
@@ -311,8 +312,7 @@ mod tests {
                 recipient: Some(sender.clone()),
             },
         )
-        .unwrap_err();
-        assert_eq!(err, ContractError::ContractPaused {});
+        .unwrap();
 
         let err = execute(
             deps.as_mut(),

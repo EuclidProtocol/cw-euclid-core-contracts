@@ -20,9 +20,10 @@ mod tests {
             MockQuerier,
         >,
     ) -> Response {
+        let admin = deps.api.addr_make("admin");
         let msg = InstantiateMsg {
             router: Addr::unchecked("router"),
-            admin: Addr::unchecked("admin"),
+            admin: admin.clone(),
         };
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -35,10 +36,11 @@ mod tests {
         let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
         let router = deps.api.addr_make("router");
+        let admin = deps.api.addr_make("admin");
 
         let expected_state = State {
             router: router.to_string(),
-            admin: router.clone(),
+            admin,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -337,8 +339,34 @@ mod tests {
                 recipient_key.clone().to_serialized_balance_key(),
             )
             .unwrap_err();
+    }
+    #[test]
+    fn test_token_pause() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let router = Addr::unchecked("router");
+        let admin = Addr::unchecked("admin");
+        let state = State {
+            router: router.to_string(),
+            admin: admin.clone(),
+        };
+        STATE.save(&mut deps.storage, &state).unwrap();
 
-        // Pause token
+        // Setup users
+        let owner = CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "owner".to_string());
+        let spender =
+            CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "spender".to_string());
+        let recipient = CrossChainUser::new(
+            ChainUid::create("1".to_string()).unwrap(),
+            "recipient".to_string(),
+        );
+
+        // Mint tokens to owner
+        let balance_key = BalanceKey {
+            cross_chain_user: owner.clone(),
+            token_id: "eucl".to_string(),
+        };
+
         let pause_msg = ExecuteMsg::PauseToken {
             chain_uid: ChainUid::vsl_chain_uid().unwrap(),
             token_id: "eucl".to_string(),
@@ -366,7 +394,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             ContractError::TokenPaused {
-                msg: "This token's mint is paused, withdrawal is available".to_string(),
+                msg: "This token's operation is paused, withdrawal is available".to_string(),
             },
             err
         );
@@ -383,7 +411,7 @@ mod tests {
         let err = execute(deps.as_mut(), env.clone(), info.clone(), transfer_msg).unwrap_err();
         assert_eq!(
             ContractError::TokenPaused {
-                msg: "This token's transfer is paused, withdrawal is available".to_string(),
+                msg: "This token's operation is paused, withdrawal is available".to_string(),
             },
             err
         );
@@ -395,7 +423,8 @@ mod tests {
             spender: spender.clone(),
             owner: owner.clone(),
         });
-        let err = execute(
+        // Approvals are not affected by pause
+        execute(
             deps.as_mut(),
             env.clone(),
             MessageInfo {
@@ -404,13 +433,7 @@ mod tests {
             },
             approve_msg,
         )
-        .unwrap_err();
-        assert_eq!(
-            ContractError::TokenPaused {
-                msg: "This token's approve is paused, withdrawal is available".to_string(),
-            },
-            err
-        );
+        .unwrap();
     }
 
     #[test]
