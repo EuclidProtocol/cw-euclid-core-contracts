@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
 use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    msgs::hook::MetaReceive,
     swap::NextSwapPair,
     token::{Pair, Token, TokenType},
     utils::pagination::Pagination,
@@ -62,16 +63,7 @@ pub enum ExecuteMsg {
         msg: Binary,
         chain_uid: ChainUid,
     },
-    UpdateRouterState {
-        // Contract admin
-        admin: Option<String>,
-        // Pool Code ID
-        vlp_code_id: Option<u64>,
-        stable_vlp_code_id: Option<u64>,
-        virtual_balance_address: Option<Addr>,
-        locked: Option<bool>,
-        mock_relayer_addresses: Option<Vec<String>>,
-    },
+    UpdateRouterState(UpdateRouterState),
 
     EvmSendPacket {
         msg: Binary,
@@ -160,6 +152,8 @@ pub enum ExecuteMsg {
         hash: String,
         ack: Binary,
     },
+
+    MetaReceive(MetaReceive),
 }
 
 #[cw_serde]
@@ -345,4 +339,17 @@ pub struct RegisterFactoryChainIbc {
     pub timeout: Option<u64>,
     pub factory_address: String,
     pub factory_chain_id: String,
+}
+
+#[cw_serde]
+pub struct UpdateRouterState {
+    // Contract admin
+    pub admin: Option<String>,
+    // Pool Code ID
+    pub vlp_code_id: Option<u64>,
+    pub stable_vlp_code_id: Option<u64>,
+    pub virtual_balance_address: Option<Addr>,
+    pub locked: Option<bool>,
+    pub mock_relayer_addresses: Option<Vec<String>>,
+    pub meta_transaction_contract: Option<Addr>,
 }

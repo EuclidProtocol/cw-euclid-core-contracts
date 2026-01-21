@@ -85,3 +85,4 @@ pub const RELEASE_FEES: Map<String, Decimal> = Map::new("release_fees");
 pub fn default_release_fee() -> Decimal {
     Decimal::from_ratio(1u128, 1000u128)
 }
+pub const META_TRANSACTION_CONTRACT: Item<Addr> = Item::new("meta_transaction_contract");

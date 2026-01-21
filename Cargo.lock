@@ -401,6 +401,12 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
 name = "bech32"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf9ff0bbfd639f15c74af777d81383cf53efb7c93613f6cab67c6c11e05bbf8b"
+
+[[package]]
+name = "bech32"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
@@ -1859,9 +1865,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4567c8db10ae91089c99af84c68c38da3ec2f087c3f82960bcdbf3656b6f4d7"
+checksum = "335ff9f135e4384c8150d6f27c6daed433577f86b4750418338c01a1a2528592"
 dependencies = [
  "cfg-if",
  "libc",
@@ -2296,6 +2302,25 @@ name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
+
+[[package]]
+name = "meta-transaction"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema 2.2.2",
+ "cosmwasm-std 2.2.2",
+ "cw-multi-test",
+ "cw-orch",
+ "cw-storage-plus 2.0.0",
+ "cw-utils 2.0.0",
+ "cw2 2.0.0",
+ "euclid",
+ "mock",
+ "relayer",
+ "schemars",
+ "serde",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "mime"
@@ -2802,6 +2827,7 @@ checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 name = "relayer"
 version = "0.1.0"
 dependencies = [
+ "bech32 0.8.1",
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
  "cw-orch",
@@ -2809,9 +2835,11 @@ dependencies = [
  "cw20 2.0.0",
  "euclid",
  "k256",
+ "ripemd",
  "schemars",
  "serde",
  "sha2 0.10.8",
+ "sha3",
 ]
 
 [[package]]
@@ -3507,11 +3535,13 @@ dependencies = [
  "ibc-relayer-types 0.32.1",
  "itertools 0.10.5",
  "k256",
+ "meta-transaction",
  "mock",
  "relayer",
  "router",
  "rstest",
  "sha2 0.10.8",
+ "sha3",
  "stable_vlp",
  "virtual_balance",
  "vlp",

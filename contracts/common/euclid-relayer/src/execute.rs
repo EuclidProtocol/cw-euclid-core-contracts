@@ -58,7 +58,7 @@ pub fn execute_update_admin(
         .add_attribute("new_admin", msg.new_admin.to_string()))
 }
 
-pub fn execute_execute_meta_transaction(
+pub fn execute_meta_transaction(
     deps: &mut DepsMut,
     env: &Env,
     info: &MessageInfo,
@@ -124,7 +124,7 @@ pub fn execute_execute_meta_transaction(
         .add_attribute("relayer_sender", info.sender.to_string()))
 }
 
-pub fn execute_execute_authorized_transaction(
+pub fn execute_authorized_transaction(
     deps: &mut DepsMut,
     env: &Env,
     info: &MessageInfo,

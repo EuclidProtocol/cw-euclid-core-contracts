@@ -115,13 +115,13 @@ impl PrimaryKey<'_> for Token {
     type Suffix = Self;
     type SuperSuffix = Self;
 
-    fn key(&self) -> Vec<Key> {
+    fn key(&self) -> Vec<Key<'_>> {
         vec![Key::Ref(self.as_bytes())]
     }
 }
 
 impl Prefixer<'_> for Token {
-    fn prefix(&self) -> Vec<Key> {
+    fn prefix(&self) -> Vec<Key<'_>> {
         vec![Key::Ref(self.as_bytes())]
     }
 }
@@ -246,7 +246,7 @@ impl PrimaryKey<'_> for Pair {
     type Suffix = Token;
     type SuperSuffix = Self;
 
-    fn key(&self) -> Vec<Key> {
+    fn key(&self) -> Vec<Key<'_>> {
         let token_1_key_size = self.token_1.joined_key().len();
         assert!(
             token_1_key_size <= u16::MAX as usize,

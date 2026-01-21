@@ -152,8 +152,8 @@ pub fn execute_cosmos_receive_acknowledgement(
             .contains(&info.sender.to_string()),
         ContractError::Unauthorized {}
     );
-    let _existing_request =
-        COSMOS_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
+
+    COSMOS_PACKET_RELAY_MAP.load(deps.storage, (chain_uid.clone(), sequence))?;
 
     // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
     // ensure!(

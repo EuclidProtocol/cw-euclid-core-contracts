@@ -18,6 +18,7 @@ factory = { path = "../contracts/liquidity/factory" }
 cw20 = { path = "../contracts/liquidity/cw20" }
 euclid-relayer = { path = "../contracts/common/euclid-relayer" }
 claimer = { path = "../contracts/liquidity/claimer" }
+meta-transaction = { path = "../contracts/hub/meta_transaction" }
 
 #Other Crates
 euclid = { path = "../packages/euclid" }
@@ -43,6 +44,7 @@ anyhow = "1.0.79"
 
 sha2 = "0.10.8"
 k256 = "0.13.4"
+sha3 = "0.10.8"
 
 # [[test]]
 # name = "cw721"
