@@ -254,6 +254,7 @@ pub enum HubIbcExecuteMsg {
         amount: Uint128,
         recipient: CrossChainUserWithLimit,
         token: Token,
+        release_fee: Uint128,
         // Unique per tx
         tx_id: String,
     },

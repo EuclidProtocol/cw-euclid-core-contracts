@@ -1,8 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, IbcPacketReceiveMsg,
-    IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128, WasmMsg,
+    coins, ensure, from_json, to_json_binary, BankMsg, CosmosMsg, DepsMut, Env,
+    IbcPacketReceiveMsg, IbcReceiveResponse, MessageInfo, Response, StdError, SubMsg, Uint128,
+    WasmMsg,
 };
 use euclid::{
     chain::{ChainUid, CrossChainUserWithLimit},
@@ -95,8 +96,17 @@ pub fn reusable_internal_call(
             token,
             tx_id,
             recipient,
+            release_fee,
             ..
-        } => execute_release_escrow(deps.branch(), env, amount, recipient, token, tx_id),
+        } => execute_release_escrow(
+            deps.branch(),
+            env,
+            amount,
+            recipient,
+            token,
+            tx_id,
+            release_fee,
+        ),
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             execute_update_factory_channel(deps.branch(), env, chain_uid, tx_id)
         }
@@ -174,32 +184,63 @@ fn execute_release_escrow(
     recipient: CrossChainUserWithLimit,
     token: Token,
     tx_id: String,
+    release_fee: Uint128,
 ) -> Result<Response, ContractError> {
-    let withdraw_msg = EscrowExecuteMsg::Withdraw {
-        recipient: deps.api.addr_validate(&recipient.user.address)?,
-        amount,
-        preferred_denom: recipient.preferred_denom,
-        forwarding_message: recipient.forwarding_message,
-        refund_address: recipient.refund_address,
-    };
-
+    let total_amount = amount.checked_add(release_fee)?;
     // Get escrow address
     let escrow_address = TOKEN_TO_ESCROW
         .load(deps.storage, token.validate()?.to_owned())?
         .into_string();
 
-    Ok(Response::new()
-        .add_submessage(SubMsg::reply_always(
+    let mut response = Response::new();
+
+    if release_fee.gt(&Uint128::zero()) {
+        let state = STATE.load(deps.storage)?;
+        let release_fee_recipeint = state
+            .release_fee_recipeint
+            .clone()
+            .unwrap_or(state.admin.clone());
+
+        let fee_withdraw_msg = EscrowExecuteMsg::Withdraw {
+            recipient: deps.api.addr_validate(&release_fee_recipeint)?,
+            amount: release_fee,
+            preferred_denom: recipient.preferred_denom.clone(),
+            forwarding_message: None,
+            refund_address: None,
+        };
+        let fee_withdraw_msg = SubMsg::reply_always(
             CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: escrow_address,
-                msg: to_json_binary(&withdraw_msg)?,
+                contract_addr: escrow_address.clone(),
+                msg: to_json_binary(&fee_withdraw_msg)?,
                 funds: vec![],
             }),
             RELEASE_ESCROW_REPLY_ID,
-        ))
+        );
+        response = response.add_submessage(fee_withdraw_msg);
+    }
+
+    let user_withdraw_msg = EscrowExecuteMsg::Withdraw {
+        recipient: deps.api.addr_validate(&recipient.user.address)?,
+        amount,
+        preferred_denom: recipient.preferred_denom.clone(),
+        forwarding_message: recipient.forwarding_message,
+        refund_address: recipient.refund_address,
+    };
+
+    let user_withdraw_msg = SubMsg::reply_always(
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: escrow_address.clone(),
+            msg: to_json_binary(&user_withdraw_msg)?,
+            funds: vec![],
+        }),
+        RELEASE_ESCROW_REPLY_ID,
+    );
+
+    Ok(response
+        .add_submessage(user_withdraw_msg)
         .add_attribute("method", "release escrow_execute")
         .add_attribute("token", token.to_string())
-        .add_attribute("amount", amount.to_string())
+        .add_attribute("amount", total_amount.to_string())
         .add_attribute("tx_id", tx_id)
         .add_attribute("to_address", recipient.user.address))
 }

@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Int256, Uint128};
+use cosmwasm_std::{Addr, Binary, Decimal, Int256, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
@@ -28,6 +28,7 @@ pub struct State {
     pub is_native: bool,
     // Total partner fees collected
     pub partner_fees_collected: DenomFees,
+    pub release_fee_recipeint: Option<String>,
 }
 
 pub const STATE: Item<State> = Item::new("state");

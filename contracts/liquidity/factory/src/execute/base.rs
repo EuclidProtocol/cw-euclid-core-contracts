@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, Binary, CosmosMsg, Decimal, DepsMut, Env, IbcTimeout, MessageInfo, Response,
-    Uint128,
+    SubMsg, Uint128,
 };
 use cw20::{Cw20ReceiveMsg, Logo};
 use euclid::{
@@ -1102,6 +1102,33 @@ pub fn execute_withdraw_virtual_balance(
 
     let chain_type = get_chain_type(deps.as_ref())?;
 
+    let mut sub_msgs: Vec<SubMsg> = vec![];
+
+    // if release_fee_amount.gt(&Uint128::zero()) {
+    //     let fee_msg = ChainIbcExecuteMsg::Transfer(ChainIbcTransferExecuteMsg {
+    //         sender: sender.clone(),
+    //         token: token.clone(),
+    //         amount: release_fee_amount,
+    //         recipient_address: CrossChainUser {
+    //             chain_uid: ChainUid::vsl_chain_uid()?,
+    //             address: state.router_contract.clone(),
+    //         },
+    //         from: None,
+    //         msg: None,
+    //         tx_id: tx_id.clone(),
+    //         timeout: Some(timeout),
+    //     })
+    //     .to_msg(
+    //         deps,
+    //         &env,
+    //         state.router_contract.clone(),
+    //         state.chain_uid.clone(),
+    //         chain_type.clone(),
+    //         timeout,
+    //     )?;
+    //     sub_msgs.push(fee_msg);
+    // }
+
     let withdraw_msg = ChainIbcExecuteMsg::Withdraw(ChainIbcWithdrawExecuteMsg {
         sender,
         token,
@@ -1118,6 +1145,7 @@ pub fn execute_withdraw_virtual_balance(
         chain_type,
         timeout,
     )?;
+    sub_msgs.push(withdraw_msg);
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -1127,7 +1155,7 @@ pub fn execute_withdraw_virtual_balance(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "withdraw_virtual_balance")
-        .add_submessage(withdraw_msg))
+        .add_submessages(sub_msgs))
 }
 
 pub fn execute_transfer_virtual_balance(
@@ -1192,6 +1220,7 @@ pub fn execute_update_state(
     cw20_code_id: Option<u64>,
     is_native: Option<bool>,
     mock_relayer_address: Option<String>,
+    release_fee_recipeint: Option<String>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
@@ -1202,12 +1231,20 @@ pub fn execute_update_state(
 
     let new_state = State {
         router_contract: router_contract.clone().unwrap_or(state.router_contract),
-        admin: admin.clone().unwrap_or(state.admin),
+        admin: admin.clone().unwrap_or(state.admin.clone()),
         escrow_code_id: escrow_code_id.unwrap_or(state.escrow_code_id),
         cw20_code_id: cw20_code_id.unwrap_or(state.cw20_code_id),
         chain_uid: state.chain_uid,
         is_native: is_native.unwrap_or(state.is_native),
         partner_fees_collected: state.partner_fees_collected,
+        release_fee_recipeint: Some(
+            release_fee_recipeint.clone().unwrap_or(
+                state
+                    .release_fee_recipeint
+                    .clone()
+                    .unwrap_or(admin.clone().unwrap_or(state.admin)),
+            ),
+        ),
     };
 
     if let Some(mock_relayer_address) = mock_relayer_address {

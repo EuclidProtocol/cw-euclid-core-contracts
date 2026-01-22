@@ -15,8 +15,8 @@ use crate::execute::cosmos::{
 use crate::execute::{
     execute_deregister_chain, execute_meta_receive, execute_native_receive_callback,
     execute_register_factory, execute_release_escrow, execute_reregister_chain,
-    execute_update_factory_channel, execute_update_lock, execute_update_router_state,
-    execute_withdraw_voucher,
+    execute_update_factory_channel, execute_update_lock, execute_update_release_fee,
+    execute_update_router_state, execute_withdraw_voucher,
 };
 
 use crate::execute::evm::{
@@ -33,8 +33,8 @@ use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
 use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
     self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_relayer_addresses, query_simulate_escrow_release, query_state, query_token_denoms,
-    query_token_escrows, query_vlp,
+    query_relayer_addresses, query_release_fees, query_simulate_escrow_release, query_state,
+    query_token_denoms, query_token_escrows, query_vlp,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, COSMOS_RECEIVE_REPLY_ID, EVM_RECEIVE_REPLY_ID,
@@ -165,6 +165,13 @@ pub fn execute(
                     execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
                 }
                 ExecuteMsg::UpdateRouterState(msg) => execute_update_router_state(deps, info, msg),
+                ExecuteMsg::UpdateReleaseFee {
+                    token,
+                    chain_uid,
+                    release_fee,
+                } => {
+                    execute_update_release_fee(&mut deps, env, info, token, chain_uid, release_fee)
+                }
                 ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
                     execute_evm_send_packet(deps, info, env, chain_uid, msg)
                 }
@@ -270,6 +277,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
         QueryMsg::QueryTokenDenoms { token } => query_token_denoms(deps, token),
         QueryMsg::QueryRelayerAddresses {} => query_relayer_addresses(deps),
+        QueryMsg::GetReleaseFees { pagination } => query_release_fees(deps, pagination),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

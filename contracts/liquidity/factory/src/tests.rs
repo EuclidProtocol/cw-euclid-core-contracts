@@ -23,6 +23,7 @@ mod tests {
             partner_fees_collected: DenomFees {
                 totals: HashMap::default(),
             },
+            release_fee_recipeint: Some("admin".to_string()),
         };
         STATE.save(deps.storage, &state).unwrap();
     }
@@ -63,6 +64,7 @@ mod tests {
             partner_fees_collected: DenomFees {
                 totals: HashMap::default(),
             },
+            release_fee_recipeint: Some(owner.to_string()),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
