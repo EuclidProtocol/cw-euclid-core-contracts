@@ -79,10 +79,7 @@ pub const PROCESSED_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
     Map::new("processed_packet_sequence");
 
 /// The key is TokenID_ChainUID
-pub const RELEASE_FEES: Map<String, Decimal> = Map::new("release_fees");
+pub const RELEASE_FEES: Map<(Token, ChainUid), Decimal> = Map::new("release_fees");
+pub const DEFAULT_RELEASE_FEE: Item<Decimal> = Item::new("default_release_fee");
 
-/// 0.1%
-pub fn default_release_fee() -> Decimal {
-    Decimal::from_ratio(1u128, 1000u128)
-}
 pub const META_TRANSACTION_CONTRACT: Item<Addr> = Item::new("meta_transaction_contract");

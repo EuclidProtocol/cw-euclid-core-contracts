@@ -9,7 +9,7 @@ use crate::{
     utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Decimal, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -90,10 +90,6 @@ pub enum ExecuteMsg {
         is_native: Option<bool>,
         mock_relayer_address: Option<String>,
         release_fee_recipeint: Option<String>,
-    },
-    UpdateReleaseFees {
-        /// Leaving this empty will clear all the release fees
-        release_fees: Vec<ReleaseFee>,
     },
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
@@ -199,40 +195,6 @@ pub enum QueryMsg {
 
     #[returns(GetRelayerResponse)]
     GetRelayer {},
-
-    #[returns(ReleaseFeesQueryResponse)]
-    GetReleaseFees {
-        token_and_chain_uid: Option<TokenAndChainUid>,
-    },
-}
-
-#[cw_serde]
-pub struct ReleaseFee {
-    pub token: Token,
-    pub chain_uid: ChainUid,
-    pub fee: Decimal,
-}
-
-#[cw_serde]
-pub struct ReleaseFeeQuery {
-    pub token_and_chain_uid: String,
-    pub fee: Decimal,
-}
-
-#[cw_serde]
-pub struct ReleaseFeesQueryResponse {
-    pub fees: Vec<ReleaseFeeQuery>,
-}
-
-#[cw_serde]
-pub struct TokenAndChainUid {
-    pub token: Token,
-    pub chain_uid: ChainUid,
-}
-impl TokenAndChainUid {
-    pub fn key(&self) -> String {
-        format!("{}{}", self.token.to_string(), self.chain_uid.to_string())
-    }
 }
 
 #[cw_serde]

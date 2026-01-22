@@ -304,7 +304,7 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 tx_id: vlp_swap_response.tx_id,
             };
 
-            // Prepare burn msg
+            // Prepare release message
             let release_msg = ExecuteMsg::ReleaseEscrowInternal {
                 sender: swap_msg.sender,
                 token: swap_msg.asset_out.clone(),

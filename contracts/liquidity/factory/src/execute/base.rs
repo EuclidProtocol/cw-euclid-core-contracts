@@ -14,7 +14,7 @@ use euclid::{
         escrow::{AllowedTokenResponse, QueryMsg as EscrowQueryMsg},
         factory::{
             cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook, ExecuteMsg,
-            ExecuteSwapRequest, ReleaseFee,
+            ExecuteSwapRequest,
         },
         hook::EuclidReceive,
     },
@@ -35,8 +35,8 @@ use crate::{
     state::{
         State, HUB_CHANNEL, MOCK_RELAYER_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, RELEASE_FEES, STATE,
-        TOKEN_TO_ESCROW, VLP_TO_CW20,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_CW20,
     },
 };
 
@@ -1292,32 +1292,4 @@ pub fn execute_native_receive_callback(
         ContractError::Unauthorized {}
     );
     receive::reusable_internal_call(deps, env, msg)
-}
-
-pub fn execute_update_release_fees(
-    deps: &mut DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    release_fees: Vec<ReleaseFee>,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(
-        info.sender.as_str() == state.admin,
-        ContractError::Unauthorized {}
-    );
-
-    if release_fees.is_empty() {
-        RELEASE_FEES.clear(deps.storage);
-    } else {
-        for release_fee in release_fees {
-            let key = format!(
-                "{}{}",
-                release_fee.token.to_string(),
-                release_fee.chain_uid.to_string()
-            );
-            RELEASE_FEES.save(deps.storage, key, &release_fee.fee)?;
-        }
-    }
-
-    Ok(Response::new().add_attribute("method", "update_release_fees"))
 }

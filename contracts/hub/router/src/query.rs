@@ -5,9 +5,10 @@ use euclid::{
     error::ContractError,
     msgs::router::{
         AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-        EscrowResponse, QuerySimulateSwap, RelayerAddressesResponse, SimulateEscrowReleaseResponse,
-        SimulateSwapResponse, StateResponse, TokenDenomsResponse, TokenEscrowChainResponse,
-        TokenEscrowsResponse, VlpResponse,
+        EscrowResponse, QuerySimulateSwap, RelayerAddressesResponse, ReleaseFee,
+        ReleaseFeesQueryResponse, SimulateEscrowReleaseResponse, SimulateSwapResponse,
+        StateResponse, TokenDenomsResponse, TokenEscrowChainResponse, TokenEscrowsResponse,
+        VlpResponse,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -15,7 +16,8 @@ use euclid::{
 };
 
 use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, STATE, TOKEN_DENOMS, VLPS,
+    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE, TOKEN_DENOMS,
+    VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -349,5 +351,36 @@ pub fn query_relayer_addresses(deps: Deps) -> Result<Binary, ContractError> {
     let relayer_addresses = MOCK_RELAYER_ADDRESSES.load(deps.storage)?;
     Ok(to_json_binary(&RelayerAddressesResponse {
         relayer_addresses,
+    })?)
+}
+
+pub fn query_release_fees(
+    deps: Deps,
+    pagination: Pagination<(Token, ChainUid)>,
+) -> Result<Binary, ContractError> {
+    let Pagination {
+        min: start,
+        max: end,
+        skip,
+        limit,
+    } = pagination;
+    let start = start.map(Bound::inclusive);
+    let end = end.map(Bound::exclusive);
+    let order = Order::Ascending;
+    let release_fees = RELEASE_FEES
+        .range(deps.storage, start, end, order)
+        .map(|v| {
+            let ((token, chain_uid), fee) = v?;
+            Ok(ReleaseFee {
+                token,
+                chain_uid,
+                fee,
+            })
+        })
+        .skip(skip.unwrap_or(DEFAULT_PAGINATION_SKIP) as usize)
+        .take(limit.unwrap_or(DEFAULT_PAGINATION_LIMIT) as usize)
+        .collect::<Result<_, ContractError>>()?;
+    Ok(to_json_binary(&ReleaseFeesQueryResponse {
+        fees: release_fees,
     })?)
 }

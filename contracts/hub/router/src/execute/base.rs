@@ -3,6 +3,9 @@ use cosmwasm_std::{
     IbcTimeout, MessageInfo, Response, SubMsg, Uint128, WasmMsg,
 };
 
+use crate::helpers::release::{
+    calculate_release_fee, default_release_fee, get_release_fee_storage,
+};
 use euclid::{
     chain::{
         Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit, EvmChain, IbcChain, Limit,
@@ -12,7 +15,7 @@ use euclid::{
     events::{tx_event, TxType},
     msgs::{
         hook::MetaReceive,
-        router::{ExecuteMsg, RegisterFactoryChainType, UpdateRouterState},
+        router::{ExecuteMsg, RegisterFactoryChainType, ReleaseFee, UpdateRouterState},
         virtual_balance::ExecuteBurn,
     },
     timeout::get_timeout,
@@ -29,9 +32,8 @@ use crate::{
     ibc::receive::{self, reusable_internal_call},
     query::verify_cross_chain_addresses,
     state::{
-        default_release_fee, State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS,
-        ESCROW_BALANCES, META_TRANSACTION_CONTRACT, MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE,
-        TOKEN_DENOMS,
+        State, CHAIN_UID_TO_CHAIN, CHANNEL_TO_CHAIN_UID, DEREGISTERED_CHAINS, ESCROW_BALANCES,
+        META_TRANSACTION_CONTRACT, MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE, TOKEN_DENOMS,
     },
 };
 
@@ -430,23 +432,20 @@ pub fn execute_release_escrow(
             continue;
         }
 
-        let fee = RELEASE_FEES
-            .load(
-                deps.storage,
-                format!("{token}{}", cross_chain_address.user.chain_uid.to_string()),
-            )
-            .unwrap_or(default_release_fee());
-
-        let release_fee_amount = fee.checked_mul(Decimal::new(release_amount))?.atomics();
-
         // If its not a vcoin transfer, we release escrow so decrease escrow balance
         if cross_chain_address.vcoin_msg.is_none() {
             escrow_key.save(deps.storage, &escrow_balance.checked_sub(release_amount)?)?;
+
+            let fee = get_release_fee_storage(deps, &token, &cross_chain_address.user.chain_uid);
+
+            let release_fee_amount = calculate_release_fee(release_amount, fee)?;
+            let release_amount_after_fee = release_amount.checked_sub(release_fee_amount)?;
+
             transfer_amount = transfer_amount.checked_add(release_amount)?;
             // Prepare IBC Release Message
             let send_msg = HubIbcExecuteMsg::ReleaseEscrow {
                 sender: sender.clone(),
-                amount: release_amount,
+                amount: release_amount_after_fee,
                 recipient: cross_chain_address.clone(),
                 token: token.clone(),
                 release_fee: release_fee_amount,
@@ -461,6 +460,14 @@ pub fn execute_release_escrow(
                 timeout,
             )?;
             release_msgs.push(send_msg);
+            response = response.add_attribute(
+                format!(
+                    "release_escrow_expected_{token}_{sender}",
+                    sender = cross_chain_address.user.to_sender_string(),
+                    token = token
+                ),
+                release_amount_after_fee,
+            );
         } else {
             vcoin_transfer_amount = vcoin_transfer_amount.checked_add(release_amount)?;
             let transfer_voucher_msg = euclid::msgs::virtual_balance::ExecuteMsg::Transfer(
@@ -481,15 +488,6 @@ pub fn execute_release_escrow(
             };
             vcoin_transfer_msgs.push(SubMsg::new(transfer_voucher_msg));
         }
-
-        response = response.add_attribute(
-            format!(
-                "release_escrow_expected_{token}_{sender}",
-                sender = cross_chain_address.user.to_sender_string(),
-                token = token
-            ),
-            release_amount,
-        );
 
         remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(release_amount)?;
     }
@@ -756,4 +754,30 @@ fn process_transfer_voucher_meta_transaction(
         ChainIbcExecuteMsg::Transfer(transfer_voucher_msg),
         sender.chain_uid,
     )
+}
+
+pub fn execute_update_release_fee(
+    deps: &mut DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    token: Token,
+    chain_uid: ChainUid,
+    release_fee: Decimal,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(
+        info.sender.as_str() == state.admin,
+        ContractError::Unauthorized {}
+    );
+    RELEASE_FEES.save(
+        deps.storage,
+        (token.clone(), chain_uid.clone()),
+        &release_fee,
+    )?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_release_fee")
+        .add_attribute("token", token.to_string())
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("release_fee", release_fee.to_string()))
 }

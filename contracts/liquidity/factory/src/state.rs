@@ -85,6 +85,3 @@ pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Item<u128> =
     Item::new("cosmos_packet_relay_sequence_count");
 
 pub const PROCESSED_PACKET_SEQUENCE: Map<u128, Uint128> = Map::new("processed_packet_sequence");
-
-/// The key is TokenID_ChainUID
-pub const RELEASE_FEES: Map<String, Decimal> = Map::new("release_fees");

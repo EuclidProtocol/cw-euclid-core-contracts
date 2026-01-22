@@ -89,10 +89,21 @@ pub fn reusable_internal_ack_call(
             tx_id,
             sender,
             recipient,
+            release_fee,
             ..
         } => {
             let res = from_json(ack)?;
-            ibc_ack_release_escrow(deps, env, sender, amount, token, res, recipient, tx_id)?
+            ibc_ack_release_escrow(
+                deps,
+                env,
+                sender,
+                amount,
+                release_fee,
+                token,
+                res,
+                recipient,
+                tx_id,
+            )?
         }
         HubIbcExecuteMsg::UpdateFactoryChannel { chain_uid, tx_id } => {
             let res = from_json(ack)?;
@@ -256,6 +267,7 @@ pub fn ibc_ack_release_escrow(
     _env: Env,
     sender: CrossChainUser,
     amount: Uint128,
+    release_fee: Uint128,
     token: Token,
     res: AcknowledgementMsg<ReleaseEscrowResponse>,
     recipient: CrossChainUserWithLimit,
@@ -266,6 +278,7 @@ pub fn ibc_ack_release_escrow(
         sender.address.as_str(),
         TxType::EscrowRelease,
     ));
+    let total_amount = amount.checked_add(release_fee)?;
     match res {
         AcknowledgementMsg::Ok(data) => {
             let mut response = response
@@ -322,6 +335,7 @@ pub fn ibc_ack_release_escrow(
                 cross_chain_user: refund_recipient.clone(),
                 token_id: token.to_string(),
             };
+            let mint_amount = amount.checked_add(release_fee)?;
             // Escrow release failed, mint tokens again for the original cross chain sender
             let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
                 amount,

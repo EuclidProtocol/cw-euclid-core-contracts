@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, Binary, Decimal, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
 
 use crate::{
     chain::{Chain, ChainUid, CrossChainUser, CrossChainUserWithLimit},
@@ -64,6 +64,11 @@ pub enum ExecuteMsg {
         chain_uid: ChainUid,
     },
     UpdateRouterState(UpdateRouterState),
+    UpdateReleaseFee {
+        token: Token,
+        chain_uid: ChainUid,
+        release_fee: Decimal,
+    },
 
     EvmSendPacket {
         msg: Binary,
@@ -197,6 +202,10 @@ pub enum QueryMsg {
 
     #[returns(RelayerAddressesResponse)]
     QueryRelayerAddresses {},
+    #[returns(ReleaseFeesQueryResponse)]
+    GetReleaseFees {
+        pagination: Pagination<(Token, ChainUid)>,
+    },
 }
 
 // We define a custom struct for each query response
@@ -352,4 +361,20 @@ pub struct UpdateRouterState {
     pub locked: Option<bool>,
     pub mock_relayer_addresses: Option<Vec<String>>,
     pub meta_transaction_contract: Option<Addr>,
+}
+
+#[cw_serde]
+pub struct ReleaseFee {
+    pub token: Token,
+    pub chain_uid: ChainUid,
+    pub fee: Decimal,
+}
+
+#[cw_serde]
+pub struct ReleaseFeesQueryResponse {
+    pub fees: Vec<ReleaseFee>,
+}
+#[cw_serde]
+pub struct GetVlpResponse {
+    pub vlp_address: String,
 }

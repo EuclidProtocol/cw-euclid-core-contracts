@@ -18,13 +18,13 @@ use crate::execute::{
     add_liquidity_request, execute_deposit_token, execute_native_receive_callback,
     execute_request_deregister_denom, execute_request_pool_creation,
     execute_request_register_denom, execute_swap_request, execute_transfer_virtual_balance,
-    execute_update_hub_channel, execute_update_release_fees, execute_update_state,
-    execute_withdraw_virtual_balance, receive_cw20, receive_euclid_native,
+    execute_update_hub_channel, execute_update_state, execute_withdraw_virtual_balance,
+    receive_cw20, receive_euclid_native,
 };
 use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
     pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_relayer,
-    query_release_fees, query_state,
+    query_state,
 };
 use crate::reply::{
     on_cw20_instantiate_reply, on_escrow_instantiate_reply, on_ibc_ack_and_timeout_reply,
@@ -227,9 +227,6 @@ pub fn execute(
             mock_relayer_address,
             release_fee_recipeint,
         ),
-        ExecuteMsg::UpdateReleaseFees { release_fees } => {
-            execute_update_release_fees(&mut deps, env, info, release_fees)
-        }
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
         ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
@@ -280,9 +277,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
         QueryMsg::GetRelayer {} => query_relayer(deps),
-        QueryMsg::GetReleaseFees {
-            token_and_chain_uid,
-        } => query_release_fees(deps, token_and_chain_uid),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
