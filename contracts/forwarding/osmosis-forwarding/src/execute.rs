@@ -58,11 +58,7 @@ pub fn receive_euclid_native(
                 info.clone(),
                 forwarding::msgs::osmosis::ExecuteMsg::Swap(swap_msg),
             )?;
-            let event = simple_event().add_attribute(
-                "meta",
-                euclid_receive.meta.clone().unwrap_or("no_meta".to_string()),
-            );
-            Ok(response.add_event(event))
+            Ok(response)
         }
     }
 }
@@ -81,11 +77,7 @@ pub fn receive_euclid_cw20(
                 contract_address: sender.to_string(),
             };
             let response = swap(deps, env, swap_msg, from_token, amount)?;
-            let event = simple_event().add_attribute(
-                "meta",
-                euclid_receive.meta.clone().unwrap_or("no_meta".to_string()),
-            );
-            Ok(response.add_event(event))
+            Ok(response)
         }
     }
 }

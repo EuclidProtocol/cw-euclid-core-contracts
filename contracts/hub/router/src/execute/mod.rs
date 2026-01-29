@@ -1,6 +1,5 @@
 pub mod base;
-pub mod cosmos;
-pub mod evm;
-pub mod solana;
+pub mod relay;
+pub mod token;
 
 pub use base::*;

@@ -1,6 +1,6 @@
 use cosmwasm_std::{entry_point, DepsMut, Env, Response};
 use euclid::error::ContractError;
-use relayer::msgs::MigrateMsg;
+use euclid::msgs::meta_transaction::msg::MigrateMsg;
 
 /// This is the migrate entry point for the contract.
 /// Currently, it does not perform any migration logic and simply returns an empty response.

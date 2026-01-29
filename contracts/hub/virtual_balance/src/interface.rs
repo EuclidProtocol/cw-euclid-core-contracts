@@ -1,6 +1,6 @@
 use crate::contract::{execute, instantiate, query};
 use cw_orch::{interface, prelude::*};
-use euclid::msgs::virtual_balance::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use euclid::msgs::virtual_balance::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 pub const CONTRACT_ID: &str = "virtual_balance_contract";
 
 #[interface(InstantiateMsg, ExecuteMsg, QueryMsg, MigrateMsg, id = CONTRACT_ID)]

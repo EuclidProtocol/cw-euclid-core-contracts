@@ -1,6 +1,6 @@
 use cosmwasm_std::{Uint128, Uint64};
 use cw_storage_plus::{Item, Map};
-use euclid::pool::State;
+use euclid::msgs::vlp::base::State;
 use euclid::{chain::ChainUid, token::Token};
 
 pub const STATE: Item<State> = Item::new("state");

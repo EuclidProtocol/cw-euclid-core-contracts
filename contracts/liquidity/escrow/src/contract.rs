@@ -14,7 +14,6 @@ use crate::execute::{
     execute_withdraw, receive_cw20,
 };
 use crate::query::{self, query_token_id};
-use crate::reply::{handle_refund, FORWARDING_MESSAGE_REPLY_ID};
 use crate::state::{State, STATE};
 
 use euclid::msgs::escrow::{EscrowInstantiateResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -71,18 +70,16 @@ pub fn execute(
         ExecuteMsg::Withdraw {
             recipient,
             amount,
-            preferred_denom,
+            denom,
             forwarding_message,
-            refund_address,
         } => execute_withdraw(
             deps,
             env,
             info,
             recipient,
             amount,
-            preferred_denom,
+            denom,
             forwarding_message,
-            refund_address,
         ),
     }
 }
@@ -97,10 +94,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     let id = msg.id;
     match id {
-        FORWARDING_MESSAGE_REPLY_ID => handle_refund(deps, msg),
         _ => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

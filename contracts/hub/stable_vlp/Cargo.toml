@@ -52,6 +52,7 @@ schemars = { workspace = true }
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
+euclid-pool = { workspace = true }
 cw-orch = { workspace = true }
 function_name = { workspace = true }
 

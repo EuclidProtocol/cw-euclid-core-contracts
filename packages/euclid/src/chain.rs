@@ -1,10 +1,10 @@
 use std::ops::Deref;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, Binary, StdError, StdResult, Uint128};
+use cosmwasm_std::{ensure, StdError, StdResult};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
-use crate::{error::ContractError, msgs::hook::EuclidReceive, token::TokenType};
+use crate::error::ContractError;
 
 #[cw_serde]
 #[derive(PartialOrd)]
@@ -79,101 +79,26 @@ impl KeyDeserialize for ChainUid {
 }
 
 #[cw_serde]
-pub struct CrossChainUser {
-    pub chain_uid: ChainUid,
-    pub address: String,
-}
-
-impl CrossChainUser {
-    pub fn new(chain_uid: ChainUid, address: String) -> Self {
-        Self { chain_uid, address }
-    }
-
-    pub fn to_sender_string(&self) -> String {
-        format!(
-            "{chain}:{address}",
-            chain = self.chain_uid.as_str(),
-            address = self.address.as_str()
-        )
-    }
-
-    pub fn validate(&self) -> Result<&Self, ContractError> {
-        ensure!(
-            !self.address.is_empty(),
-            ContractError::Generic {
-                err: "Address cannot be empty".to_string()
-            }
-        );
-        self.chain_uid.validate()?;
-        Ok(self)
-    }
-
-    pub fn with_limit(
-        self,
-        limit: Option<Limit>,
-        preferred_denom: Option<TokenType>,
-        refund_address: Option<String>,
-        forwarding_message: Option<EuclidReceive>,
-        vcoin_msg: Option<Binary>,
-        unsafe_refund_voucher_to_recipient: Option<bool>,
-    ) -> CrossChainUserWithLimit {
-        CrossChainUserWithLimit {
-            user: self,
-            limit,
-            preferred_denom,
-            refund_address,
-            forwarding_message,
-            vcoin_msg,
-            unsafe_refund_voucher_to_recipient,
-        }
-    }
-}
-
-#[cw_serde]
-pub enum Limit {
-    LessThanOrEqual(Uint128),
-    Equal(Uint128),
-    GreaterThanOrEqual(Uint128),
-}
-
-#[cw_serde]
-pub struct CrossChainUserWithLimit {
-    pub user: CrossChainUser,
-    pub limit: Option<Limit>,
-    pub preferred_denom: Option<TokenType>,
-    pub refund_address: Option<String>,
-    // Refund to recipient if release fails, default: false and it will return to original sender (Use this with caution as there is no validation check for wrong addresses)
-    pub unsafe_refund_voucher_to_recipient: Option<bool>,
-    // Forward message to be executed on the destination chain
-    pub forwarding_message: Option<EuclidReceive>,
-    // Vcoin Transfer Message to be executed. If this message is provided, escrow release will be skipped.
-    pub vcoin_msg: Option<Binary>,
-}
-
-#[cw_serde]
 pub struct Chain {
-    pub factory_chain_id: String,
-    pub factory: String,
+    pub chain_uid: ChainUid,
+    pub factory_address: String,
     pub chain_type: ChainType,
 }
 
 #[cw_serde]
-pub struct IbcChain {
-    pub from_hub_channel: String,
-    pub from_factory_channel: String,
+pub struct CosmosChain {
+    pub chain_id: String,
 }
 
 #[cw_serde]
-pub struct EvmChain {}
-
-#[cw_serde]
-pub struct SolanaChain {}
+pub struct EvmChain {
+    pub chain_id: String,
+}
 
 #[cw_serde]
 pub enum ChainType {
-    Ibc(IbcChain),
+    Cosmos(CosmosChain),
     Evm(EvmChain),
-    Solana(SolanaChain),
     Native {},
 }
 
@@ -186,26 +111,21 @@ impl Chain {
         matches!(self.chain_type, ChainType::Evm(_))
     }
 
-    pub fn is_ibc(&self) -> bool {
-        matches!(self.chain_type, ChainType::Ibc(_))
+    pub fn is_cosmos(&self) -> bool {
+        matches!(self.chain_type, ChainType::Cosmos(_))
     }
 
-    pub fn is_solana(&self) -> bool {
-        matches!(self.chain_type, ChainType::Solana(_))
-    }
-
-    pub fn ibc_info(&self) -> Result<IbcChain, ContractError> {
+    pub fn cosmos_info(&self) -> Result<CosmosChain, ContractError> {
         match self.chain_type.clone() {
-            ChainType::Ibc(data) => Ok(data),
-            _ => Err(ContractError::new("Not an ibc chain")),
+            ChainType::Cosmos(data) => Ok(data),
+            _ => Err(ContractError::new("Not a cosmos chain")),
         }
     }
 
     pub fn get_chain_type_str(&self) -> String {
         match self.chain_type {
-            ChainType::Ibc(_) => "ibc".to_string(),
+            ChainType::Cosmos(_) => "cosmos".to_string(),
             ChainType::Evm(_) => "evm".to_string(),
-            ChainType::Solana(_) => "solana".to_string(),
             ChainType::Native {} => "native".to_string(),
         }
     }

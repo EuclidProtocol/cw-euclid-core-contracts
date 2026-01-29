@@ -1,6 +1,6 @@
 use cosmwasm_std::Deps;
 use euclid::error::ContractError;
-use euclid::msgs::meta_transaction::{NonceRelayedResponse, State};
+use euclid::msgs::meta_transaction::msg::{NonceRelayedResponse, State};
 
 use crate::state::{NONCES, STATE};
 

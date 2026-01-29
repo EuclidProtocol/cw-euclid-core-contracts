@@ -4,6 +4,7 @@ pub mod helpers;
 pub mod ibc;
 pub mod migrate;
 pub mod query;
+pub mod relay_state;
 pub mod reply;
 pub mod state;
 #[cfg(test)]

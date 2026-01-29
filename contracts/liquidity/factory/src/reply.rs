@@ -1,21 +1,24 @@
 use crate::{
     ibc,
-    state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_CW20},
+    state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN},
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Event, Reply, Response, SubMsgResult};
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::{error::ContractError, events::simple_event};
-use euclid_ibc::{ack::make_ack_fail, msg::CHAIN_IBC_EXECUTE_MSG_QUEUE};
+use euclid_ibc::{
+    ack::make_ack_fail,
+    router_ibc::RouterCrossChainExecuteMsg,
+    state::{
+        NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE, NATIVE_CROSS_CHAIN_PENDING_PACKET_SENDER,
+    },
+};
 use function_name::named;
 
 pub const ESCROW_INSTANTIATE_REPLY_ID: u64 = 1;
-pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 2;
-pub const IBC_RECEIVE_REPLY_ID: u64 = 3;
-pub const CW20_INSTANTIATE_REPLY_ID: u64 = 4;
+pub const LP_INSTANTIATE_REPLY_ID: u64 = 4;
 pub const RELEASE_ESCROW_REPLY_ID: u64 = 5;
 
-pub const COSMOS_RECEIVE_REPLY_ID: u64 = 6;
-pub const COSMOS_ACK_AND_TIMEOUT_REPLY_ID: u64 = 7;
+pub const CROSS_CHAIN_RECEIVE_REPLY_ID: u64 = 6;
 
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -58,7 +61,7 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     }
 }
 
-pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_lp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
         SubMsgResult::Ok(..) => {
@@ -76,99 +79,11 @@ pub fn on_cw20_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, 
             let cw20_data: euclid::msgs::escrow::Cw20InstantiateResponse =
                 from_json(instantiate_data.data.unwrap_or_default())?;
 
-            VLP_TO_CW20.save(deps.storage, cw20_data.vlp, &cw20_address)?;
+            VLP_TO_LP_TOKEN.save(deps.storage, cw20_data.vlp, &cw20_address)?;
 
             Ok(Response::new()
                 .add_attribute("action", "reply_pool_instantiate")
                 .add_attribute("cw20", cw20_address))
-        }
-    }
-}
-
-pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => Ok(Response::new()
-            .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
-            .add_attribute("error", err)),
-        SubMsgResult::Ok(res) => {
-            #[allow(deprecated)]
-            let data = res
-                .data
-                .map(|data| {
-                    parse_execute_response_data(&data)
-                        .map(|d| d.data.unwrap_or_default())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
-            Ok(Response::new()
-                .add_attribute("reply_on_ibc_ack_or_timeout_processing", "success")
-                .set_data(data))
-        }
-    }
-}
-
-pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => Ok(Response::new()
-            .add_attribute("reply_on_ibc_receive_processing", "error")
-            .add_attribute("error", err.clone())
-            .set_data(make_ack_fail(err)?)),
-        SubMsgResult::Ok(res) => {
-            #[allow(deprecated)]
-            let data = res
-                .data
-                .map(|data| {
-                    parse_execute_response_data(&data)
-                        .map(|d| d.data.unwrap_or_default())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
-            Ok(Response::new()
-                .add_attribute("reply_on_ibc_receive_processing", "success")
-                .set_data(data))
-        }
-    }
-}
-
-pub fn on_reply_native_ibc_wrapper_call(
-    deps: DepsMut,
-    env: Env,
-    msg: Reply,
-) -> Result<Response, ContractError> {
-    let original_msg = CHAIN_IBC_EXECUTE_MSG_QUEUE.load(deps.storage, msg.id)?;
-    CHAIN_IBC_EXECUTE_MSG_QUEUE.remove(deps.storage, msg.id);
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => {
-            let ack = make_ack_fail(err.clone())?;
-            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
-                deps,
-                env,
-                original_msg,
-                ack,
-                true,
-            )?;
-            Ok(response
-                .add_attribute("reply_on_ibc_receive_processing", "err")
-                .add_attribute("err", err))
-        }
-        SubMsgResult::Ok(res) => {
-            #[allow(deprecated)]
-            let data = res
-                .data
-                .map(|data| {
-                    parse_execute_response_data(&data)
-                        .map(|d| d.data.unwrap_or_default())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
-            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
-                deps,
-                env,
-                original_msg,
-                data,
-                true,
-            )?;
-            Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
         }
     }
 }
@@ -197,16 +112,62 @@ pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
     }
 }
 
-pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_reply_native_ibc_wrapper_call(
+    deps: DepsMut,
+    env: Env,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    let original_msg = NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.load(deps.storage, msg.id)?;
+    NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.remove(deps.storage, msg.id);
+    let _sender = NATIVE_CROSS_CHAIN_PENDING_PACKET_SENDER.load(deps.storage, msg.id)?;
+    NATIVE_CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, msg.id);
+    let original_msg: RouterCrossChainExecuteMsg = from_json(original_msg.original_msg)?;
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
-            let euclid_event = simple_event().add_attribute("action", "cosmos-relay");
+            let ack = make_ack_fail(err.clone())?;
+            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
+                deps,
+                env,
+                original_msg,
+                ack,
+                true,
+            )?;
+            Ok(response
+                .add_attribute("reply_on_native_ibc_wrapper_call_processing", "err")
+                .add_attribute("err", err))
+        }
+        SubMsgResult::Ok(res) => {
+            #[allow(deprecated)]
+            let data = res
+                .data
+                .map(|data| {
+                    parse_execute_response_data(&data)
+                        .map(|d| d.data.unwrap_or_default())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            let response = ibc::ack_and_timeout::reusable_internal_ack_call(
+                deps,
+                env,
+                original_msg,
+                data,
+                true,
+            )?;
+            Ok(response.add_attribute("reply_on_native_ibc_wrapper_call_processing", "success"))
+        }
+    }
+}
 
-            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
+pub fn on_cross_chain_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => {
+            let euclid_event = simple_event().add_attribute("action", "cross-chain-receive");
+
+            let write_acknowledge_event = Event::new("euclid-write-acknowledgement")
                 .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
 
             Ok(Response::new()
-                .add_attribute("reply_on_cosmos_receive_processing", "error")
+                .add_attribute("reply_on_receive_processing", "error")
                 .add_attribute("error", err.clone())
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event))
@@ -223,13 +184,13 @@ pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 .unwrap_or_default();
 
             let euclid_event =
-                simple_event().add_attribute("action", "cosmos-write-acknowledgement");
+                simple_event().add_attribute("action", "euclid-write-acknowledgement");
 
-            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
-                .add_attribute("ack", data.to_string());
+            let write_acknowledge_event =
+                Event::new("euclid-write-acknowledgement").add_attribute("ack", data.to_string());
 
             Ok(Response::new()
-                .add_attribute("reply_on_cosmos_receive_processing", "success")
+                .add_attribute("reply_on_receive_processing", "success")
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event)
                 .set_data(data))

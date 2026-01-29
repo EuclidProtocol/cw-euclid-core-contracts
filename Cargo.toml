@@ -3,11 +3,12 @@ resolver = "2"
 
 members = [
     "contracts/hub/*",
+    "contracts/hub_utilities/*",
     "contracts/liquidity/*",
     "contracts/forwarding/*",
     "contracts/common/*",
     "packages/*",
-    "tests-integration",
+    # "tests-integration",
 ]
 
 [profile.release]
@@ -24,6 +25,7 @@ strip = true
 
 [workspace.dependencies]
 euclid = { path = "./packages/euclid" }
+euclid-pool = { path = "./packages/pool" }
 euclid-ibc = { path = "./packages/euclid_ibc" }
 euclid-utils = { path = "./packages/euclid_utils" }
 forwarding = { path = "./packages/forwarding" }

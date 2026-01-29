@@ -1,153 +1,127 @@
 use crate::{
-    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit},
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    msgs::hook::EuclidReceive,
-    pool::PoolConfig,
+    msgs::vlp::base::PoolConfig,
+    msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive},
+    recipient::Recipient,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, IbcPacketAckMsg, IbcPacketReceiveMsg, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 use cw20::Cw20ReceiveMsg;
-
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
     pub router_contract: String,
     pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
-    pub cw20_code_id: u64,
+    pub lp_code_id: u64,
     pub is_native: bool,
-    pub mock_relayer_address: Option<String>,
-    // Release fee recipient might become different than admin in the case the admin becomes a dao
-    // pub release_fee_recipient: Option<String>,
+    pub relayer_contract: Addr,
+    pub rate_limit_fee_recipient: Addr,
+    pub rate_limit_fee_denom: String,
+    pub rate_limit_free_limit: Uint128,
 }
 
 #[cw_serde]
 #[cfg_attr(not(target_arch = "wasm32"), derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
-    AddLiquidityRequest {
-        pair_info: PairWithDenomAndAmount,
-        slippage_tolerance_bps: u64,
-        timeout: Option<u64>,
+    ManageFactoryState(ManageFactoryState),
+    RegisterDenom {
+        token_with_denom: TokenWithDenom,
+        cross_chain_config: CrossChainConfig,
     },
-    ExecuteSwapRequest(ExecuteSwapRequest),
-    RequestRegisterDenom {
-        token: TokenWithDenom,
-        timeout: Option<u64>,
-    },
-    RequestDeregisterDenom {
-        token: TokenWithDenom,
-        timeout: Option<u64>,
-    },
-    RequestPoolCreation {
-        pair: PairWithDenomAndAmount,
-        pool_config: PoolConfig,
-        slippage_tolerance_bps: u64,
-        timeout: Option<u64>,
-        lp_token_name: String,
-        lp_token_symbol: String,
-        lp_token_decimal: u8,
-        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
-    },
-    UpdateHubChannel {
-        new_channel: String,
-    },
-    WithdrawVirtualBalance {
-        token: Token,
-        amount: Uint128,
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-        timeout: Option<u64>,
-    },
-    TransferVirtualBalance {
-        token: Token,
-        amount: Uint128,
-        recipient_address: CrossChainUser,
-        // If user has approval for transfer, they can set the address to transfer from (Behaves like cw20 allowance)
-        from: Option<CrossChainUser>,
-        // Msg that we want to trigger with transfer, behaves like cw20 send
-        msg: Option<Binary>,
-        timeout: Option<u64>,
+    DeregisterDenom {
+        token_with_denom: TokenWithDenom,
+        cross_chain_config: CrossChainConfig,
     },
     DepositToken {
         asset_in: TokenWithDenom,
         amount_in: Uint128,
-        timeout: Option<u64>,
-        recipient: Option<CrossChainUser>,
-        msg: Option<Binary>,
+        recipients: Vec<Recipient>,
+        cross_chain_config: CrossChainConfig,
     },
-    UpdateFactoryState {
-        // The Router Contract Address on the Virtual Settlement Layer
-        router_contract: Option<String>,
-        // Contract admin
-        admin: Option<String>,
-        // Escrow Code ID
-        escrow_code_id: Option<u64>,
-        // CW20 Code ID
-        cw20_code_id: Option<u64>,
-        is_native: Option<bool>,
-        mock_relayer_address: Option<String>,
-        release_fee_recipeint: Option<String>,
+    TransferVoucher {
+        token_id: Token,
+        amount: Uint128,
+        // If user has approval for transfer, they can set the address to transfer from (Behaves like cw20 allowance)
+        from: Option<CrossChainUser>,
+        recipients: Vec<Recipient>,
+        cross_chain_config: CrossChainConfig,
     },
+    RequestPoolCreation {
+        pair_with_denom_and_amount: PairWithDenomAndAmount,
+        pool_config: PoolConfig,
+        lp_token_name: String,
+        lp_token_symbol: String,
+        lp_token_decimal: u8,
+        slippage_tolerance_bps: u64,
+        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+        cross_chain_config: CrossChainConfig,
+    },
+    AddLiquidity {
+        pair_with_denom_and_amount: PairWithDenomAndAmount,
+        slippage_tolerance_bps: u64,
+        cross_chain_config: CrossChainConfig,
+    },
+    ExecuteSwapRequest(ExecuteSwapRequest),
+
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
 
     EuclidReceive(EuclidReceive),
 
-    // IBC Callbacks
-    IbcCallbackAckAndTimeout {
-        ack: IbcPacketAckMsg,
-    },
-    // IBC Callbacks
-    IbcCallbackReceive {
-        receive_msg: IbcPacketReceiveMsg,
-    },
     NativeReceiveCallback {
         msg: Binary,
     },
 
-    // COSMOS RELAYER ENTRY POINTS
-    CosmosSendPacket {
+    SendPacket {
         msg: Binary,
+        timeout: Option<u64>,
+        ack_response: Option<Binary>,
+        sender: Addr,
     },
 
-    CosmosReceivePacket {
+    ReceivePacket {
+        source_port: String,
+        destination_port: String,
         msg: Binary,
-        // Store sequence of packet relayed so we don't relay same sequence again
         sequence: u128,
-        // Continous hash of the packet to make sure its linked to the same source flow
-        hash: String,
     },
 
-    CosmosReceivePacketInternalCallback {
+    ReceivePacketInternalCallback {
         msg: Binary,
     },
-
-    CosmosReceiveAck {
+    AcknowledgePacket {
+        source_port: String,
+        destination_port: String,
         msg: Binary,
-        // Store sequence of packet relayed so we don't relay same sequence again
         sequence: u128,
-        // Continous hash of the packet to make sure its linked to the same source flow
-        hash: String,
         ack: Binary,
     },
 }
 
 #[cw_serde]
+pub enum ManageFactoryState {
+    UpdateAdmin { admin: String },
+    UpdateEscrowCodeId { escrow_code_id: u64 },
+    UpdateLPCodeId { lp_code_id: u64 },
+    UpdateRelayerAddress { relayer_address: String },
+}
+
+#[cw_serde]
 pub struct ExecuteSwapRequest {
-    pub sender: Option<CrossChainUser>,
     pub asset_in: TokenWithDenom,
-    pub amount_in: Uint128,
     pub asset_out: Token,
     pub min_amount_out: Uint128,
-    pub timeout: Option<u64>,
     pub swaps: Vec<NextSwapPair>,
-    // First element in array has highest priority
-    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    pub recipients: Vec<Recipient>,
     pub partner_fee: Option<PartnerFee>,
-    pub meta: Option<String>,
+    pub cross_chain_config: CrossChainConfig,
 }
 
 #[cw_serde]
@@ -192,9 +166,6 @@ pub enum QueryMsg {
 
     #[returns(GetEscrowResponse)]
     GetEscrow { token_id: String },
-
-    #[returns(GetRelayerResponse)]
-    GetRelayer {},
 }
 
 #[cw_serde]
@@ -217,14 +188,13 @@ pub struct GetEscrowResponse {
 pub struct StateResponse {
     pub chain_uid: ChainUid,
     pub router_contract: String,
-    pub hub_channel: Option<String>,
+    pub relayer_contract: Addr,
     pub admin: String,
     // Escrow Code ID
     pub escrow_code_id: u64,
     // CW20 Code ID
-    pub cw20_code_id: u64,
+    pub lp_code_id: u64,
     pub is_native: bool,
-    pub partner_fees_collected: DenomFees,
 }
 
 #[cw_serde]
@@ -271,7 +241,7 @@ pub struct ReleaseEscrowResponse {
     pub amount: Uint128,
     pub token: Token,
     pub to_address: String,
-    pub denoms: Vec<ReleaseEscrowDenomsResponse>,
+    pub denom: TokenType,
 }
 
 #[cw_serde]
@@ -291,9 +261,4 @@ pub struct GetPendingRemoveLiquidityResponse {
 #[cw_serde]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>, // Assuming pool addresses are strings
-}
-
-#[cw_serde]
-pub struct GetRelayerResponse {
-    pub relayer_address: String,
 }

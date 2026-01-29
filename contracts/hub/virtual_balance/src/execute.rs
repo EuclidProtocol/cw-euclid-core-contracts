@@ -3,13 +3,14 @@ use cosmwasm_std::{
 };
 use cw_storage_plus::Bound;
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::{
-        hook::VirtualBalanceReceive,
-        virtual_balance::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
+        hook::VoucherReceive,
+        virtual_balance::msg::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
     },
-    virtual_balance::{BalanceKey, SerializedBalanceKey},
+    voucher::{BalanceKey, SerializedBalanceKey},
 };
 
 use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
@@ -20,10 +21,8 @@ pub fn execute_mint(
     msg: ExecuteMint,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(
-        info.sender.as_str() == state.router,
-        ContractError::Unauthorized {}
-    );
+    // Only router can mint vouchers
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
@@ -60,10 +59,8 @@ pub fn execute_burn(
     msg: ExecuteBurn,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(
-        info.sender.as_str() == state.router,
-        ContractError::Unauthorized {}
-    );
+    // Only router can burn vouchers
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
 
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -79,6 +76,7 @@ pub fn execute_burn(
     let new_balance = old_balance.checked_sub(msg.amount)?;
 
     if new_balance.is_zero() {
+        // Lets clear some space from chain storage
         BALANCES.remove(deps.storage, key);
     } else {
         BALANCES.save(deps.storage, key, &new_balance)?;
@@ -108,7 +106,7 @@ pub fn execute_transfer(
 
     let sender = if let Some(sender) = transfer_msg.sender {
         ensure!(
-            info.sender.to_string() == state.router,
+            info.sender == state.router,
             ContractError::UnauthorizedWithMsg {
                 msg: "Only router can set pseudo sender".to_string(),
             }
@@ -145,7 +143,11 @@ pub fn execute_transfer(
     };
 
     if let Some(forward_msg) = transfer_msg.msg {
-        let forward_msg = VirtualBalanceReceive {
+        ensure!(
+            transfer_msg.to.chain_uid == ChainUid::vsl_chain_uid()?,
+            ContractError::new("Voucher transfer with message must be to vsl chain")
+        );
+        let forward_msg = VoucherReceive {
             sender,
             amount: transfer_msg.amount,
             token_id: transfer_msg.token_id.clone(),
@@ -271,7 +273,7 @@ fn _deduct_allowance(
 pub fn execute_update_state(
     deps: DepsMut,
     info: MessageInfo,
-    router: Option<String>,
+    router: Option<Addr>,
     admin: Option<Addr>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -326,7 +328,7 @@ pub fn execute_approve(
 
     // If router is approving, then owner is the owner
     // If user is approving, then owner is the user from info.sender and vsl chain
-    let owner = if info.sender.to_string() == state.router {
+    let owner = if info.sender == state.router {
         msg.owner.clone()
     } else {
         CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string())
@@ -337,7 +339,7 @@ pub fn execute_approve(
 
     // Router can send on behalf of anyone, or any user can transfer his own funds
     ensure!(
-        state.router == info.sender.to_string()
+        state.router == info.sender
             || (msg.owner.address == info.sender.to_string()
                 && msg.owner.chain_uid == vsl_chain_uid),
         ContractError::Unauthorized {}

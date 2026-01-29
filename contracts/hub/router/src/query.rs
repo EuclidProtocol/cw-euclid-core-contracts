@@ -1,14 +1,17 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order};
 use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
-    chain::{ChainUid, CrossChainUser, CrossChainUserWithLimit, Limit},
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     error::ContractError,
-    msgs::router::{
-        AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-        EscrowResponse, QuerySimulateSwap, RelayerAddressesResponse, ReleaseFee,
-        ReleaseFeesQueryResponse, SimulateEscrowReleaseResponse, SimulateSwapResponse,
-        StateResponse, TokenDenomsResponse, TokenEscrowChainResponse, TokenEscrowsResponse,
-        VlpResponse,
+    msgs::{
+        router::{
+            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
+            EscrowResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
+            QueryTokenDenomsResponse, ReleaseFee, ReleaseFeesQueryResponse, SimulateSwapResponse,
+            StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
+        },
+        vlp::base::VlpSimulateSwapMsg,
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -16,8 +19,8 @@ use euclid::{
 };
 
 use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, MOCK_RELAYER_ADDRESSES, RELEASE_FEES, STATE, TOKEN_DENOMS,
-    VLPS,
+    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS,
+    VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -26,7 +29,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         admin: state.admin,
         constant_product_vlp_code_id: state.constant_product_vlp_code_id,
         stable_vlp_code_id: state.stable_vlp_code_id,
-        virtual_balance_address: state.virtual_balance_address,
+        virtual_balance_address: VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?,
         locked: state.locked,
     })?)
 }
@@ -52,7 +55,7 @@ pub fn query_all_vlps(
         .map(|v| {
             let v = v?;
             Ok(VlpResponse {
-                vlp: v.1,
+                vlp: v.1.to_string(),
                 token_1: Token::create(v.0 .0)?,
                 token_2: Token::create(v.0 .1)?,
             })
@@ -67,7 +70,7 @@ pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let vlp = VLPS.load(deps.storage, (key.0.to_string(), key.1.to_string()))?;
 
     Ok(to_json_binary(&VlpResponse {
-        vlp,
+        vlp: vlp.to_string(),
         token_1: Token::create(key.0)?,
         token_2: Token::create(key.1)?,
     })?)
@@ -125,13 +128,13 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
         err: "Swaps cannot be empty".to_string(),
     })?;
 
-    let simulate_msg = euclid::msgs::vlp::QueryMsg::SimulateSwap {
+    let simulate_msg = euclid::msgs::vlp::base::QueryMsg::SimulateSwap(VlpSimulateSwapMsg {
         asset: msg.asset_in,
         asset_amount: msg.amount_in,
         swaps: next_swaps.to_vec(),
-    };
+    });
 
-    let simulate_res: euclid::pool::GetSwapResponse = deps
+    let simulate_res: euclid::msgs::vlp::base::GetSwapQueryResponse = deps
         .querier
         .query_wasm_smart(first_swap.vlp_address.clone(), &simulate_msg)?;
 
@@ -146,71 +149,6 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
     })?)
 }
 
-pub fn query_simulate_escrow_release(
-    deps: Deps,
-    token: Token,
-    amount: Uint128,
-    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
-) -> Result<Binary, ContractError> {
-    let mut release_amounts = Vec::new();
-    let mut remaining_withdraw_amount = amount;
-
-    for cross_chain_address in cross_chain_addresses.into_iter() {
-        let escrow_key = ESCROW_BALANCES.key((
-            token.to_string(),
-            cross_chain_address.user.chain_uid.clone(),
-        ));
-
-        let escrow_balance = escrow_key.may_load(deps.storage)?.unwrap_or_default();
-
-        let release_amount = if remaining_withdraw_amount.ge(&escrow_balance) {
-            escrow_balance
-        } else {
-            remaining_withdraw_amount
-        };
-
-        match cross_chain_address.limit {
-            Some(Limit::LessThanOrEqual(limit)) => {
-                ensure!(
-                    release_amount.le(&limit),
-                    ContractError::LimitExceeded {
-                        limit,
-                        amount: release_amount
-                    }
-                );
-            }
-            Some(Limit::Equal(limit)) => {
-                ensure!(
-                    release_amount.eq(&limit),
-                    ContractError::AmountMismatch {
-                        expected: limit,
-                        received: release_amount
-                    }
-                );
-            }
-            Some(Limit::GreaterThanOrEqual(limit)) => {
-                ensure!(
-                    release_amount.ge(&limit),
-                    ContractError::InsufficientAmount {
-                        min_amount: limit,
-                        amount: release_amount
-                    }
-                );
-            }
-            _ => {}
-        }
-        if release_amount.is_zero() {
-            continue;
-        }
-        remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(release_amount)?;
-        release_amounts.push((release_amount, cross_chain_address));
-    }
-    Ok(to_json_binary(&SimulateEscrowReleaseResponse {
-        remaining_amount: remaining_withdraw_amount,
-        release_amounts,
-    })?)
-}
-
 pub fn validate_swap_pairs(
     deps: Deps,
     swaps: &[NextSwapPair],
@@ -221,7 +159,7 @@ pub fn validate_swap_pairs(
             let pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
             let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
             Ok(NextSwapVlp {
-                vlp_address,
+                vlp_address: vlp_address.to_string(),
                 test_fail: swap.test_fail,
             })
         })
@@ -322,7 +260,7 @@ pub fn query_token_denoms(deps: Deps, token: Token) -> Result<Binary, ContractEr
         }
     );
     let denoms = TOKEN_DENOMS.load(deps.storage, token)?;
-    Ok(to_json_binary(&TokenDenomsResponse { denoms })?)
+    Ok(to_json_binary(&QueryTokenDenomsResponse { denoms })?)
 }
 
 pub fn verify_cross_chain_addresses(
@@ -348,9 +286,9 @@ pub fn verify_cross_chain_addresses(
 }
 
 pub fn query_relayer_addresses(deps: Deps) -> Result<Binary, ContractError> {
-    let relayer_addresses = MOCK_RELAYER_ADDRESSES.load(deps.storage)?;
-    Ok(to_json_binary(&RelayerAddressesResponse {
-        relayer_addresses,
+    let relayer_addresses = RELAYER_CONTRACT.load(deps.storage)?;
+    Ok(to_json_binary(&QueryRelayerAddressesResponse {
+        relayer_contract: relayer_addresses,
     })?)
 }
 

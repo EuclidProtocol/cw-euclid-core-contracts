@@ -1,6 +1,6 @@
 use crate::contract::{execute, instantiate, query};
 use cw_orch::{interface, prelude::*};
-use euclid::msgs::meta_transaction::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use euclid::msgs::meta_transaction::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 pub const CONTRACT_ID: &str = "meta_transaction_contract";
 
 #[interface(InstantiateMsg, ExecuteMsg, QueryMsg, MigrateMsg, id = CONTRACT_ID)]

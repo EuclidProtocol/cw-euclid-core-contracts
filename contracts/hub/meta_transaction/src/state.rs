@@ -1,6 +1,6 @@
 use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map};
-use euclid::msgs::meta_transaction::State;
+use euclid::msgs::meta_transaction::msg::State;
 
 pub const STATE: Item<State> = Item::new("state");
 

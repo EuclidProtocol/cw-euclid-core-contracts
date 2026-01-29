@@ -1,29 +1,23 @@
 #[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
-    use crate::contract::{execute, instantiate};
-    use crate::state::{State, HUB_CHANNEL, STATE};
-    use std::collections::HashMap;
+    use crate::contract::instantiate;
+    use crate::state::{State, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
-    use cosmwasm_std::{DepsMut, Response};
+    use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
     use euclid::chain::ChainUid;
-    use euclid::error::ContractError;
-    use euclid::fee::DenomFees;
-    use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg};
+    use euclid::msgs::factory::InstantiateMsg;
 
     fn _initialize_state(deps: &mut DepsMut) {
         let state = State {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             router_contract: "router_contract".to_string(),
+            relayer_contract: Addr::unchecked("relayer_contract"),
             admin: "admin".to_string(),
             escrow_code_id: 1,
-            cw20_code_id: 2,
+            lp_code_id: 2,
             is_native: true,
-            partner_fees_collected: DenomFees {
-                totals: HashMap::default(),
-            },
-            release_fee_recipeint: Some("admin".to_string()),
         };
         STATE.save(deps.storage, &state).unwrap();
     }
@@ -37,11 +31,14 @@ mod tests {
     ) -> Response {
         let msg = InstantiateMsg {
             router_contract: "router".to_string(),
+            relayer_contract: Addr::unchecked("relayer_contract"),
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             escrow_code_id: 1,
-            cw20_code_id: 2,
+            lp_code_id: 2,
             is_native: true,
-            mock_relayer_address: None,
+            rate_limit_fee_recipient: Addr::unchecked("rate_limit_fee_recipient"),
+            rate_limit_fee_denom: "rate_limit_fee_denom".to_string(),
+            rate_limit_free_limit: Uint128::from(10u128),
         };
         let owner = deps.api.addr_make("owner");
         let info = message_info(&owner, &[]);
@@ -56,42 +53,15 @@ mod tests {
         let owner = deps.api.addr_make("owner");
         let expected_state = State {
             router_contract: "router".to_string(),
+            relayer_contract: Addr::unchecked("relayer_contract"),
             admin: owner.to_string(),
             escrow_code_id: 1,
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
-            cw20_code_id: 2,
+            lp_code_id: 2,
             is_native: true,
-            partner_fees_collected: DenomFees {
-                totals: HashMap::default(),
-            },
-            release_fee_recipeint: Some(owner.to_string()),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
-    }
-    #[test]
-    fn test_update_hub_channel() {
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let not_owner = deps.api.addr_make("not_owner");
-        let info = message_info(&not_owner, &[]);
-        init(&mut deps);
-
-        HUB_CHANNEL
-            .save(deps.as_mut().storage, &"1".to_string())
-            .unwrap();
-        let msg = ExecuteMsg::UpdateHubChannel {
-            new_channel: "2".to_string(),
-        };
-        // Unauthorized
-        let err = execute(deps.as_mut(), env.clone(), info, msg.clone()).unwrap_err();
-        assert_eq!(err, ContractError::Unauthorized {});
-
-        let owner = deps.api.addr_make("owner");
-        let info = message_info(&owner, &[]);
-        let _res = execute(deps.as_mut(), env, info, msg).unwrap();
-
-        assert_eq!(HUB_CHANNEL.load(&deps.storage).unwrap(), "2".to_string());
     }
 
     //     #[test]
