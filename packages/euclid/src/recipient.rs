@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, Uint128};
+use cosmwasm_std::ensure;
 
 use crate::{
     chain::ChainUid, cross_chain_user::CrossChainUser, error::ContractError, limit::Limit,
@@ -24,6 +24,13 @@ impl Recipient {
                 self.recipient.chain_uid != ChainUid::vsl_chain_uid()?,
                 ContractError::new(
                     "Recipient chain UID should not be VSL chain UID if denom is not a voucher"
+                )
+            );
+        } else if self.forwarding_message.is_some() {
+            ensure!(
+                self.recipient.chain_uid == ChainUid::vsl_chain_uid()?,
+                ContractError::new(
+                    "Recipient chain UID should be VSL chain UID if forwarding message is present"
                 )
             );
         }
