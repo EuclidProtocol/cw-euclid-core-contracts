@@ -15,6 +15,7 @@ impl MockRouter {
 }
 
 impl MockRouter {
+    #[allow(clippy::too_many_arguments)]
     pub fn instantiate(
         app: &mut MockApp,
         code_id: u64,
@@ -23,7 +24,6 @@ impl MockRouter {
         stable_vlp_code_id: u64,
         virtual_balance_code_id: u64,
         relayer_contract: Addr,
-        meta_transaction_contract: Addr,
         release_fee_recipient: Addr,
         default_fee_recipient: Addr,
     ) -> Self {
@@ -32,7 +32,6 @@ impl MockRouter {
             stable_vlp_code_id,
             virtual_balance_code_id,
             relayer_contract,
-            meta_transaction_contract,
             release_fee_recipient,
             default_fee_recipient,
         );
@@ -73,7 +72,6 @@ pub fn mock_router_instantiate_msg(
     stable_vlp_code_id: u64,
     virtual_balance_code_id: u64,
     relayer_contract: Addr,
-    meta_transaction_contract: Addr,
     release_fee_recipient: Addr,
     default_fee_recipient: Addr,
 ) -> InstantiateMsg {
@@ -82,7 +80,6 @@ pub fn mock_router_instantiate_msg(
         stable_vlp_code_id,
         virtual_balance_code_id,
         relayer_contract,
-        meta_transaction_contract,
         release_fee_recipient,
         default_fee_recipient,
     }

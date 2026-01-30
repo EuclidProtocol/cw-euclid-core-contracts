@@ -9,7 +9,8 @@ use euclid::{
     error::ContractError,
     events::{
         receive_acknowledgement_event, receive_packet_event, send_packet_event,
-        write_acknowledgement_event,
+        write_acknowledgement_event, EUCLID_RECEIVE_PACKET_EVENT,
+        EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT,
     },
     msgs::router::ExecuteMsg,
     timeout::get_timeout,
@@ -87,7 +88,6 @@ pub fn execute_receive_packet(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
-    chain_uid: ChainUid,
     msg: Binary,
     sequence: u128,
     source_port: String,
@@ -97,6 +97,7 @@ pub fn execute_receive_packet(
         RELAYER_CONTRACT.load(deps.storage)? == info.sender,
         ContractError::Unauthorized {}
     );
+    let chain_uid = ChainUid::create(source_port.split('.').next().unwrap().to_string())?;
 
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     ensure!(
@@ -148,8 +149,8 @@ pub fn execute_receive_packet(
         .unwrap_or("tx_id_not_found".to_string());
 
     Ok(Response::new()
-        .add_attribute("method", "euclid-receive-packet")
-        .add_attribute("action", "euclid-write-acknowledgement")
+        .add_attribute("method", EUCLID_RECEIVE_PACKET_EVENT)
+        .add_attribute("action", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
         .add_event(receive_packet_event)

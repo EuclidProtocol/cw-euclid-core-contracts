@@ -56,9 +56,9 @@ pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError>
         escrow_address: escrow_address.clone(),
         denoms: vec![],
     };
-    if escrow_address.is_some() {
+    if let Some(escrow_address) = escrow_address {
         let denoms: euclid::msgs::escrow::AllowedDenomsResponse = deps.querier.query_wasm_smart(
-            escrow_address.unwrap(),
+            escrow_address,
             &euclid::msgs::escrow::QueryMsg::AllowedDenoms {},
         )?;
         response.denoms = denoms.denoms;

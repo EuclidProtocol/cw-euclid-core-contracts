@@ -286,7 +286,7 @@ pub fn _release_voucher(
     }
     .to_msg(
         deps,
-        &env,
+        env,
         sender.address.clone(),
         chain,
         timeout,

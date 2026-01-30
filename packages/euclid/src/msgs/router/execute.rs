@@ -46,7 +46,6 @@ pub enum ExecuteMsg {
     },
 
     ReceivePacket {
-        chain_uid: ChainUid,
         source_port: String,
         destination_port: String,
         msg: Binary,
@@ -83,10 +82,10 @@ pub enum ManageRouterState {
         locked: bool,
     },
     RelayerContract {
-        relayer_contract: String,
+        relayer_contract: Addr,
     },
     MetaTransactionContract {
-        meta_transaction_contract: String,
+        meta_transaction_contract: Addr,
     },
     UpdateReleaseFee {
         token: Token,

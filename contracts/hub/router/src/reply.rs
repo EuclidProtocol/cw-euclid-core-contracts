@@ -4,7 +4,7 @@ use cosmwasm_std::{
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::{
     error::ContractError,
-    events::simple_event,
+    events::{simple_event, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT},
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
         self,
@@ -274,7 +274,7 @@ pub fn on_swap_reply(deps: &mut DepsMut, env: Env, msg: Reply) -> Result<Respons
                 env,
                 swap_msg.sender.clone(),
                 swap_msg.asset_out.clone(),
-                swap_response.amount_out.clone(),
+                swap_response.amount_out,
                 swap_msg.recipients.clone(),
             )?;
 
@@ -377,7 +377,7 @@ pub fn on_cross_chain_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
         SubMsgResult::Err(err) => {
             let euclid_event = simple_event().add_attribute("action", "cross-chain-receive");
 
-            let write_acknowledge_event = Event::new("euclid-write-acknowledgement")
+            let write_acknowledge_event = Event::new(EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
                 .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
 
             Ok(Response::new()
@@ -398,10 +398,10 @@ pub fn on_cross_chain_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
                 .unwrap_or_default();
 
             let euclid_event =
-                simple_event().add_attribute("action", "euclid-write-acknowledgement");
+                simple_event().add_attribute("action", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT);
 
-            let write_acknowledge_event =
-                Event::new("euclid-write-acknowledgement").add_attribute("ack", data.to_string());
+            let write_acknowledge_event = Event::new(EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
+                .add_attribute("ack", data.to_string());
 
             Ok(Response::new()
                 .add_attribute("reply_on_receive_processing", "success")

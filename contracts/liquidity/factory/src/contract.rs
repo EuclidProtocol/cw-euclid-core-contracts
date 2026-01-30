@@ -14,7 +14,7 @@ use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 
 use crate::execute::pool::{add_liquidity_request, execute_request_pool_creation};
 use crate::execute::relay::{
-    execute_receive_acknowledgement, execute_receive_packet,
+    execute_native_receive_callback, execute_receive_acknowledgement, execute_receive_packet,
     execute_receive_packet_internal_callback, execute_send_packet,
 };
 use crate::execute::swap::execute_swap_request;
@@ -27,6 +27,7 @@ use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
     pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
+use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
     self, on_lp_instantiate_reply, CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID,
 };
@@ -69,6 +70,13 @@ pub fn instantiate(
         },
     };
     FEE_STATE.save(deps.storage, &fee_state)?;
+    RATE_LIMIT_STATE.save(
+        deps.storage,
+        &RateLimitState {
+            free_limit: msg.rate_limit_free_limit.u128(),
+            fee_brackets: vec![],
+        },
+    )?;
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
@@ -219,7 +227,7 @@ pub fn execute(
         ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
 
         ExecuteMsg::NativeReceiveCallback { msg } => {
-            execute_receive_packet_internal_callback(&mut deps, env, info, msg)
+            execute_native_receive_callback(&mut deps, env, info, msg)
         }
         // COMSOS ENTRY POINTS FOR RELAYER
         ExecuteMsg::SendPacket {

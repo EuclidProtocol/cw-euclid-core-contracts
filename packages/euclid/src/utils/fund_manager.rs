@@ -43,11 +43,11 @@ impl FundManager {
             self.get(denom).ge(&amount),
             ContractError::InsufficientFunds {}
         );
-        let mut balance = *self
+        let balance = self
             .funds
             .get_mut(denom)
             .ok_or(ContractError::new("Denom not found"))?;
-        balance = balance.checked_sub(amount)?;
+        *balance = balance.checked_sub(amount)?;
         // Remove the denom if the balance is zero
         if balance.is_zero() {
             self.funds.remove(denom);

@@ -45,10 +45,16 @@ pub struct State {
 }
 
 #[cw_serde]
+pub struct ValidatorSignature {
+    pub pubkey: Binary,
+    pub signature: Binary,
+}
+
+#[cw_serde]
 pub struct MetaTransaction {
     pub data: String,
     pub admin_signature: Binary,
-    pub validator_signatures: Vec<Binary>,
+    pub validator_signatures: Vec<ValidatorSignature>,
 }
 
 #[cw_serde]

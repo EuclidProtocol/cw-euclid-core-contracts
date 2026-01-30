@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use forwarding::msgs::{
-    common_old::{simple_event, EuclidReceive, TokenType},
+    common_old::{EuclidReceive, TokenType},
     cw20::OsmosisCw20HookMsg,
     errors_old::ContractError,
     euclid_receive::OsmosisEuclidReceiveHook,

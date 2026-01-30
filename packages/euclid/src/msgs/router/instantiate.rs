@@ -8,7 +8,6 @@ pub struct InstantiateMsg {
 
     pub virtual_balance_code_id: u64,
     pub relayer_contract: Addr,
-    pub meta_transaction_contract: Addr,
 
     pub release_fee_recipient: Addr,
     pub default_fee_recipient: Addr,

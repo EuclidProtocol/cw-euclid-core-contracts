@@ -33,7 +33,7 @@ impl Limit {
 
     pub fn get_equal_amount(&self) -> Result<Uint128, ContractError> {
         match self {
-            Limit::Equal(amount) => Ok(amount.clone()),
+            Limit::Equal(amount) => Ok(*amount),
             _ => Err(ContractError::new("Limit is not equal")),
         }
     }

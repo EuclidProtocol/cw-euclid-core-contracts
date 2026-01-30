@@ -1,6 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, Binary, DepsMut, Env, MessageInfo, Response, SubMsg,
-    Uint128,
+    ensure, from_json, to_json_binary, Addr, Binary, DepsMut, Env, MessageInfo, Response, Uint128,
 };
 
 use cw20::Cw20ReceiveMsg;

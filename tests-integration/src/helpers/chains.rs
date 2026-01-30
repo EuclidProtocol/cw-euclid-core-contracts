@@ -1,30 +1,36 @@
 #![cfg(not(target_arch = "wasm32"))]
 use claimer::ClaimerContract;
-use cw20::Cw20Contract;
+use cosmwasm_std::{from_json, Uint128};
+use cp_vlp::VlpContract;
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use escrow::EscrowContract;
+use euclid::chain::{CosmosChain, EvmChain};
+use euclid::msgs::router::{RegisterFactoryChainCosmos, RegisterFactoryChainNative};
 use euclid::{
-    chain::{ChainType, ChainUid, EvmChain, IbcChain},
+    chain::{ChainType, ChainUid},
     msgs::router::RegisterFactoryChainEvm,
-    msgs::{
-        factory::{ExecuteMsgFns as FactoryExecuteMsgFns, QueryMsgFns as FactoryQueryMsgFns},
-        router::{
-            ExecuteMsgFns as RouterExecuteMsgFns, QueryMsgFns as RouterQueryMsgFns,
-            RegisterFactoryChainIbc, RegisterFactoryChainNative,
-        },
-    },
 };
+use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 use euclid_relayer::RelayerContract;
 use factory::FactoryContract;
+use lp_token::LpTokenContract;
+use meta_transaction::MetaTransactionContract;
+use relayer::verify::cosmos_address_from_pubkey;
+use relayer::Validator;
 use router::RouterContract;
 use stable_vlp::StableVlpContract;
 use virtual_balance::VirtualBalanceContract;
-use vlp::VlpContract;
+
+use euclid::msgs::router::execute::ExecuteMsgFns as RouterExecuteMsgFns;
+use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
+
+use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 
 use crate::helpers::relayer::{
-    ack_register_factory_evm, relay_router_ack_packet, relay_router_send_packet,
+    ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
+    relay_router_send_packet,
 };
 
 use super::relayer::get_signer_key;
@@ -40,9 +46,8 @@ pub fn setup_factory(
         factory_chain_id,
         router_chain_id,
         router,
-        ChainType::Ibc(IbcChain {
-            from_hub_channel: String::new(),
-            from_factory_channel: String::new(),
+        ChainType::Cosmos(CosmosChain {
+            chain_id: factory_chain_id.to_string(),
         }),
     )
 }
@@ -58,7 +63,9 @@ pub fn setup_factory_evm(
         factory_chain_id,
         router_chain_id,
         router,
-        ChainType::Evm(EvmChain {}),
+        ChainType::Evm(EvmChain {
+            chain_id: factory_chain_id.to_string(),
+        }),
     )
 }
 
@@ -74,12 +81,12 @@ fn setup_factory_inner(
     let _router_chain = interchain.get_chain(router_chain_id).unwrap();
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
-    let cw20 = Cw20Contract::new(chain.clone());
+    let lp_token = LpTokenContract::new(chain.clone());
     let relayer = setup_relayer(&chain)?;
 
     factory.upload().unwrap();
     escrow.upload().unwrap();
-    cw20.upload().unwrap();
+    lp_token.upload().unwrap();
 
     let is_native = router_chain_id == factory_chain_id;
 
@@ -88,44 +95,26 @@ fn setup_factory_inner(
             router_contract: router.address().unwrap().to_string(),
             chain_uid: chain_uid.clone(),
             escrow_code_id: escrow.code_id().unwrap(),
-            cw20_code_id: cw20.code_id().unwrap(),
+            lp_code_id: lp_token.code_id().unwrap(),
+            relayer_contract: relayer.address().unwrap(),
+            rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
+            rate_limit_fee_denom: "ufee".to_string(),
+            rate_limit_free_limit: Uint128::from(10u128),
             is_native,
-            mock_relayer_address: Some(relayer.address().unwrap().to_string()),
         },
         None,
         &[],
     )?;
 
     if !is_native {
-        // Set up channel from osmosis to nibiru
-        let channel_receipt = interchain
-            .create_contract_channel(&factory, router, "counter-1", None)
-            .unwrap();
-        let factory_channel = channel_receipt
-            .interchain_channel
-            .get_chain(factory_chain_id)
-            .unwrap()
-            .channel
-            .unwrap();
-
-        factory.update_hub_channel(factory_channel.to_string())?;
-
         match chain_type {
-            ChainType::Ibc(_) => {
-                let router_channel = channel_receipt
-                    .interchain_channel
-                    .get_chain(router_chain_id)
-                    .unwrap()
-                    .channel
-                    .unwrap();
-
-                let chain_info =
-                    euclid::msgs::router::RegisterFactoryChainType::Ibc(RegisterFactoryChainIbc {
-                        channel: router_channel.to_string(),
-                        timeout: None,
+            ChainType::Cosmos(_) => {
+                let chain_info = euclid::msgs::router::RegisterFactoryChainType::Cosmos(
+                    RegisterFactoryChainCosmos {
                         factory_address: factory.address().unwrap().to_string(),
                         factory_chain_id: factory.environment().chain_id(),
-                    });
+                    },
+                );
                 let register_request = router
                     .register_factory(chain_info, chain_uid.clone())
                     .unwrap();
@@ -139,17 +128,25 @@ fn setup_factory_inner(
                         factory_address: factory.address().unwrap().to_string(),
                         factory_chain_id: factory.environment().chain_id(),
                     });
-                router
+                let register_request = router
                     .register_factory(chain_info, chain_uid.clone())
                     .unwrap();
+                let send_packet_events = extract_send_packet_events(&register_request.events);
+                let packet = send_packet_events.first().unwrap();
+                let msg: FactoryCrossChainExecuteMsg = from_json(&packet.msg).unwrap();
+                let tx_id = msg.get_tx_id();
 
-                let _relay_ack_events = ack_register_factory_evm(router, &chain_uid)?;
+                let _relay_ack_events = ack_register_factory_evm(
+                    router,
+                    &chain_uid,
+                    factory.address().unwrap().as_str(),
+                    &factory.environment().chain_id(),
+                    &tx_id,
+                    packet.sequence,
+                )?;
             }
             ChainType::Native {} => {
                 unreachable!("native chains are handled by is_native branch")
-            }
-            ChainType::Solana(_) => {
-                unreachable!("Solana chain type not supported in tests")
             }
         }
     } else {
@@ -158,15 +155,17 @@ fn setup_factory_inner(
                 factory_address: factory.address().unwrap().to_string(),
                 factory_chain_id: factory.environment().chain_id(),
             });
-        factory.update_hub_channel("channel-0".to_string())?;
         router.register_factory(chain_info, chain_uid.clone())?;
     }
     let all_chains = router.get_all_chains().unwrap();
     // Assert that this chain is registered
-    assert!(all_chains
-        .chains
-        .iter()
-        .any(|c| c.chain_uid == chain_uid.clone()));
+    assert!(
+        all_chains
+            .chains
+            .iter()
+            .any(|c| c.chain_uid == chain_uid.clone()),
+        "Factory chain not registered",
+    );
 
     Ok(factory)
 }
@@ -188,7 +187,9 @@ pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrch
             constant_product_vlp_code_id: vlp.code_id().unwrap(),
             stable_vlp_code_id: stable_vlp.code_id().unwrap(),
             virtual_balance_code_id: virtual_balance.code_id().unwrap(),
-            mock_relayer_addresses: Some(vec![relayer.address().unwrap().to_string()]),
+            relayer_contract: relayer.address().unwrap(),
+            release_fee_recipient: chain.addr_make("release_fee_recipient"),
+            default_fee_recipient: chain.addr_make("default_fee_recipient"),
         },
         None,
         &[],
@@ -201,13 +202,20 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
     let relayer = RelayerContract::new(chain.clone());
     let (_, pubkey_binary) = get_signer_key();
 
+    let validator_address = cosmos_address_from_pubkey(&pubkey_binary, "cosmos").unwrap();
+
     relayer.upload().unwrap();
+
+    let validator = Validator {
+        pubkey: pubkey_binary,
+        address: validator_address,
+    };
 
     relayer.instantiate(
         &relayer::msgs::InstantiateMsg {
-            relayer_pubkey: pubkey_binary,
-            relayer_address: format!("relayer_{}", chain.chain_id()),
-            authorized_addresses: vec![],
+            message_signer: validator.clone(),
+            signature_threshold: 1,
+            validators: vec![validator],
         },
         Some(&chain.sender),
         &[],
@@ -217,21 +225,37 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
 }
 
 pub fn setup_claimer(
-    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
     vcoin_address: &VirtualBalanceContract<MockBase>,
 ) -> Result<ClaimerContract<MockBase>, CwOrchError> {
-    let chain = factory.environment().clone();
+    let chain = router.environment().clone();
     let claimer = ClaimerContract::new(chain.clone());
     claimer.upload().unwrap();
     claimer.instantiate(
-        &euclid::msgs::claimer::InstantiateMsg {
-            factory_address: factory.address().unwrap(),
+        &euclid::msgs::claimer::msg::InstantiateMsg {
+            router_contract: router.address().unwrap(),
             vcoin_address: vcoin_address.address().unwrap(),
         },
         None,
         &[],
     )?;
     Ok(claimer)
+}
+
+pub fn setup_meta_transaction_contract(
+    router: &RouterContract<MockBase>,
+) -> Result<MetaTransactionContract<MockBase>, CwOrchError> {
+    let chain = router.environment().clone();
+    let meta_transaction_contract = MetaTransactionContract::new(chain.clone());
+    meta_transaction_contract.upload().unwrap();
+    meta_transaction_contract.instantiate(
+        &euclid::msgs::meta_transaction::msg::InstantiateMsg {
+            router_contract: router.address().unwrap(),
+        },
+        None,
+        &[],
+    )?;
+    Ok(meta_transaction_contract)
 }
 
 pub fn get_vlp(chain: &MockBase, address: &Addr) -> VlpContract<MockBase> {
@@ -257,11 +281,11 @@ pub fn get_virtual_balance(chain: &MockBase, address: &Addr) -> VirtualBalanceCo
 }
 
 #[allow(dead_code)]
-pub fn get_cw20(chain: &MockBase, address: &Addr) -> Cw20Contract<MockBase> {
-    let mut cw20 = Cw20Contract::new(chain.clone());
-    cw20.as_instance_mut().id = format!("cw20_{}", address);
-    cw20.set_address(address);
-    cw20
+pub fn get_lp_token(chain: &MockBase, address: &Addr) -> LpTokenContract<MockBase> {
+    let mut lp_token = LpTokenContract::new(chain.clone());
+    lp_token.as_instance_mut().id = format!("lp_token_{}", address);
+    lp_token.set_address(address);
+    lp_token
 }
 
 pub fn get_escrow(factory: &FactoryContract<MockBase>, token: &str) -> EscrowContract<MockBase> {

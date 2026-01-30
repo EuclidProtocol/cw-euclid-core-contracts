@@ -70,6 +70,16 @@ fn execute_register_router(
                 ContractError::new("Factory chain ID mismatch")
             );
         }
+        RegisterFactoryChainType::Native(native_info) => {
+            ensure!(
+                native_info.factory_address == env.contract.address.to_string(),
+                ContractError::new("Factory address mismatch")
+            );
+            ensure!(
+                native_info.factory_chain_id == env.block.chain_id,
+                ContractError::new("Factory chain ID mismatch")
+            );
+        }
         _ => {
             return Err(ContractError::new("Invalid chain type"));
         }

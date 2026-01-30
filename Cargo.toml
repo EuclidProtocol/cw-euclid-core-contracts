@@ -8,7 +8,7 @@ members = [
     "contracts/forwarding/*",
     "contracts/common/*",
     "packages/*",
-    # "tests-integration",
+    "tests-integration",
 ]
 
 [profile.release]

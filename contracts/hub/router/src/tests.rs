@@ -22,7 +22,6 @@ mod tests {
     fn init(deps: DepsMut, info: MessageInfo) -> Response {
         let msg = InstantiateMsg {
             relayer_contract: Addr::unchecked("relayer"),
-            meta_transaction_contract: Addr::unchecked("meta_transaction"),
             release_fee_recipient: Addr::unchecked("release_fee_recipient"),
             default_fee_recipient: Addr::unchecked("default_fee_recipient"),
             constant_product_vlp_code_id: 1,
@@ -63,7 +62,6 @@ mod tests {
             stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
             relayer_contract: Addr::unchecked("relayer"),
-            meta_transaction_contract: Addr::unchecked("meta_transaction"),
             release_fee_recipient: Addr::unchecked("release_fee_recipient"),
             default_fee_recipient: Addr::unchecked("default_fee_recipient"),
         };

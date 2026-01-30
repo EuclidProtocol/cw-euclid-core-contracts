@@ -26,9 +26,7 @@ use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID, SWAP_REPLY_ID,
     VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{
-    FeeState, State, FEE_STATE, LOCKED_CHAINS, META_TRANSACTION_CONTRACT, RELAYER_CONTRACT, STATE,
-};
+use crate::state::{FeeState, State, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -51,7 +49,6 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     RELAYER_CONTRACT.save(deps.storage, &msg.relayer_contract)?;
-    META_TRANSACTION_CONTRACT.save(deps.storage, &msg.meta_transaction_contract)?;
     LOCKED_CHAINS.save(deps.storage, &vec![])?;
 
     STATE.save(deps.storage, &state)?;
@@ -156,7 +153,6 @@ pub fn execute(
                     execute_send_packet(deps, info, env, chain, msg, timeout, ack_response, sender)
                 }
                 ExecuteMsg::ReceivePacket {
-                    chain_uid,
                     source_port,
                     destination_port,
                     msg,
@@ -165,7 +161,6 @@ pub fn execute(
                     deps,
                     info,
                     env,
-                    chain_uid,
                     msg,
                     sequence,
                     source_port,

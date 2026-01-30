@@ -44,5 +44,5 @@ pub fn calc_fee(
         }
     }
 
-    return Ok(Uint128::zero());
+    Ok(Uint128::zero())
 }

@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::ensure;
+use cosmwasm_std::{ensure, Uint128};
 
 use crate::{
     chain::ChainUid, cross_chain_user::CrossChainUser, error::ContractError, limit::Limit,
@@ -28,5 +28,15 @@ impl Recipient {
             );
         }
         Ok(())
+    }
+
+    pub fn default_voucher_recipient(user: CrossChainUser, limit: Limit) -> Self {
+        Self {
+            recipient: user,
+            amount: limit,
+            denom: TokenType::Voucher {},
+            forwarding_message: None,
+            unsafe_refund_as_voucher: None,
+        }
     }
 }

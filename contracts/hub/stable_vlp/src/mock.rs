@@ -58,7 +58,7 @@ impl MockStableVlp {
     }
 }
 
-pub fn mock_vlp() -> Box<dyn Contract<Empty>> {
+pub fn mock_stable_vlp() -> Box<dyn Contract<Empty>> {
     let contract = ContractWrapper::new_with_empty(execute, instantiate, query).with_reply(reply);
     Box::new(contract)
 }

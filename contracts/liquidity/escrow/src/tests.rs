@@ -340,7 +340,7 @@ fn test_execute_withdraw() {
                 },
                 forwarding_message: None,
             }, // Use 2000 which exceeds the balance
-            expected_error: Some(ContractError::InsufficientDeposit {}),
+            expected_error: Some(ContractError::InsufficientFunds {}),
         },
         TestExecuteMsg {
             name: "Withdraw by non-factory",

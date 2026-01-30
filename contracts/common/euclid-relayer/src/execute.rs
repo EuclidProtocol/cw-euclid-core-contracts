@@ -113,16 +113,16 @@ pub fn execute_meta_transaction(
     for signature in msg.validator_signatures {
         let validator_index = validators
             .iter()
-            .position(|v| v.pubkey == signature)
-            .ok_or(ContractError::new("Invalid validator signature"))?;
+            .position(|v| v.pubkey == signature.pubkey)
+            .ok_or(ContractError::new("Validator not found"))?;
         if visited[validator_index] {
             continue;
         }
         let verified = verify_signature(
             deps.as_ref(),
             &msg.data,
-            &signature,
-            &validators[validator_index].pubkey,
+            &signature.signature,
+            &signature.pubkey,
         )?;
         if !verified {
             continue;

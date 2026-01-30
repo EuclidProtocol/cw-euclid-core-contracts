@@ -35,7 +35,7 @@ pub fn execute_manage_router_state(
     match msg {
         ManageRouterState::Admin { admin } => {
             state.admin = admin;
-            return Ok(Response::new().add_attribute("method", "update_admin"));
+            Ok(Response::new().add_attribute("method", "update_admin"))
         }
         ManageRouterState::Vlp {
             vlp_code_id,
@@ -44,16 +44,16 @@ pub fn execute_manage_router_state(
             state.constant_product_vlp_code_id =
                 vlp_code_id.unwrap_or(state.constant_product_vlp_code_id);
             state.stable_vlp_code_id = stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id);
-            return Ok(Response::new().add_attribute("method", "update_vlp_code_id"));
+            Ok(Response::new().add_attribute("method", "update_vlp_code_id"))
         }
         ManageRouterState::LockState { locked } => {
             state.locked = locked;
-            return Ok(Response::new().add_attribute("method", "update_lock_state"));
+            Ok(Response::new().add_attribute("method", "update_lock_state"))
         }
         ManageRouterState::RelayerContract { relayer_contract } => {
             let relayer_contract = deps.api.addr_validate(relayer_contract.as_str())?;
             RELAYER_CONTRACT.save(deps.storage, &relayer_contract)?;
-            return Ok(Response::new().add_attribute("method", "update_relayer_contract"));
+            Ok(Response::new().add_attribute("method", "update_relayer_contract"))
         }
         ManageRouterState::MetaTransactionContract {
             meta_transaction_contract,
@@ -61,7 +61,7 @@ pub fn execute_manage_router_state(
             let meta_transaction_contract =
                 deps.api.addr_validate(meta_transaction_contract.as_str())?;
             META_TRANSACTION_CONTRACT.save(deps.storage, &meta_transaction_contract)?;
-            return Ok(Response::new().add_attribute("method", "update_meta_transaction_contract"));
+            Ok(Response::new().add_attribute("method", "update_meta_transaction_contract"))
         }
         ManageRouterState::UpdateReleaseFee {
             token,
@@ -69,7 +69,7 @@ pub fn execute_manage_router_state(
             release_fee,
         } => {
             RELEASE_FEES.save(deps.storage, (token, chain_uid), &release_fee)?;
-            return Ok(Response::new().add_attribute("method", "update_release_fee"));
+            Ok(Response::new().add_attribute("method", "update_release_fee"))
         }
         ManageRouterState::LockChain { chain } => {
             let mut locked_chains = LOCKED_CHAINS.load(deps.storage)?;
@@ -79,7 +79,7 @@ pub fn execute_manage_router_state(
             );
             locked_chains.push(chain);
             LOCKED_CHAINS.save(deps.storage, &locked_chains)?;
-            return Ok(Response::new().add_attribute("method", "lock_chain"));
+            Ok(Response::new().add_attribute("method", "lock_chain"))
         }
         ManageRouterState::UnlockChain { chain } => {
             let mut locked_chains = LOCKED_CHAINS.load(deps.storage)?;
@@ -89,7 +89,7 @@ pub fn execute_manage_router_state(
             );
             locked_chains.retain(|x| x != &chain);
             LOCKED_CHAINS.save(deps.storage, &locked_chains)?;
-            return Ok(Response::new().add_attribute("method", "unlock_chain"));
+            Ok(Response::new().add_attribute("method", "unlock_chain"))
         }
     }
 }

@@ -2,6 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Binary;
 
 #[cw_serde]
+#[derive(Default)]
 pub struct CrossChainConfig {
     // Timeout for the cross chain message
     pub timeout: Option<u64>,
@@ -17,14 +18,6 @@ impl CrossChainConfig {
             timeout,
             ack_response,
             meta,
-        }
-    }
-
-    pub fn default() -> Self {
-        Self {
-            timeout: None,
-            ack_response: None,
-            meta: None,
         }
     }
 }

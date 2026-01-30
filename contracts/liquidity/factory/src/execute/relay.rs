@@ -9,7 +9,8 @@ use euclid::{
     error::ContractError,
     events::{
         receive_acknowledgement_event, receive_packet_event, send_packet_event,
-        write_acknowledgement_event,
+        write_acknowledgement_event, EUCLID_RECEIVE_PACKET_EVENT,
+        EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT,
     },
     msgs::{factory::ExecuteMsg, hook::EuclidAcknowledgement},
     timeout::get_timeout,
@@ -53,8 +54,9 @@ pub fn execute_send_packet(
 
     let factory_state = STATE.load(deps.storage)?;
 
-    let user_pending_packets_count =
-        USER_PENDING_PACKETS_COUNT.load(deps.storage, sender.clone())?;
+    let user_pending_packets_count = USER_PENDING_PACKETS_COUNT
+        .load(deps.storage, sender.clone())
+        .unwrap_or(0);
 
     let user_free_limit = USER_FREE_LIMIT.may_load(deps.storage, sender.clone())?;
     let rate_limit_fee = calc_fee(&deps, user_pending_packets_count, user_free_limit)?;
@@ -176,8 +178,8 @@ pub fn execute_receive_packet(
         .unwrap_or("tx_id_not_found".to_string());
 
     Ok(Response::new()
-        .add_attribute("method", "euclid-receive-packet")
-        .add_attribute("action", "euclid-write-acknowledgement")
+        .add_attribute("method", EUCLID_RECEIVE_PACKET_EVENT)
+        .add_attribute("action", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
         .add_event(receive_packet_event)
@@ -272,12 +274,15 @@ pub fn execute_native_receive_callback(
     let state = STATE.load(deps.storage)?;
 
     // Only native chains can directly use this messages
-    ensure!(state.is_native, ContractError::Unauthorized {});
+    ensure!(
+        state.is_native,
+        ContractError::new("Only native chains can execute this message")
+    );
 
     // Only router contract can execute this message
     ensure!(
         state.router_contract == info.sender.to_string(),
-        ContractError::Unauthorized {}
+        ContractError::new("Only router contract can execute this message")
     );
     receive::reusable_internal_call(deps, env, msg)
 }

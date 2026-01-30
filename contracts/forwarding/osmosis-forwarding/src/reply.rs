@@ -1,8 +1,6 @@
 use crate::state::{ForwardingState, FORWARDING_STATE};
-use cosmwasm_std::{
-    ensure, to_json_binary, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult,
-};
-use forwarding::msgs::common_old::{EuclidReceive, EuclidReceiverMsg, TokenType};
+use cosmwasm_std::{ensure, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult};
+use forwarding::msgs::common_old::{EuclidReceive, TokenType};
 use forwarding::msgs::errors_old::ContractError;
 use swaprouter::msg::Slippage as OsmosisSlippage;
 

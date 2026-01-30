@@ -135,6 +135,11 @@ pub fn deregister_denom_event(token: &Token, chain_uid: &str, denom: &TokenType)
         .add_attribute(format!("{}_denom", token), denom.get_key())
 }
 
+pub const EUCLID_SEND_PACKET_EVENT: &str = "euclid-send-packet";
+pub const EUCLID_RECEIVE_PACKET_EVENT: &str = "euclid-receive-packet";
+pub const EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT: &str = "euclid-write-acknowledgement";
+pub const EUCLID_RECEIVE_ACKNOWLEDGEMENT_EVENT: &str = "euclid-receive-acknowledgement";
+
 pub fn send_packet_event(
     source_port: &str,
     destination_port: &str,
@@ -143,7 +148,7 @@ pub fn send_packet_event(
     timeout: u64,
     destination_chain_type: &str,
 ) -> Event {
-    Event::new("euclid-send-packet")
+    Event::new(EUCLID_SEND_PACKET_EVENT)
         .add_attribute("source_port", source_port)
         .add_attribute("destination_port", destination_port)
         .add_attribute("msg", msg)
@@ -153,7 +158,7 @@ pub fn send_packet_event(
 }
 
 pub fn receive_packet_event(sequence: u128, source_port: &str, destination_port: &str) -> Event {
-    Event::new("euclid-receive-packet")
+    Event::new(EUCLID_RECEIVE_PACKET_EVENT)
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("source_port", source_port)
         .add_attribute("destination_port", destination_port)
@@ -167,7 +172,7 @@ pub fn write_acknowledgement_event(
     destination_chain_type: &str,
     msg: &str,
 ) -> Event {
-    Event::new("euclid-write-acknowledgement")
+    Event::new(EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("source_port", source_port)
         .add_attribute("destination_port", destination_port)
@@ -180,7 +185,7 @@ pub fn receive_acknowledgement_event(
     source_port: &str,
     destination_port: &str,
 ) -> Event {
-    Event::new("euclid-receive-acknowledgement")
+    Event::new(EUCLID_RECEIVE_ACKNOWLEDGEMENT_EVENT)
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("source_port", source_port)
         .add_attribute("destination_port", destination_port)
