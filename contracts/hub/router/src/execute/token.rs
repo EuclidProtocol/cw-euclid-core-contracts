@@ -91,7 +91,7 @@ pub fn execute_transfer_voucher(
                 virtual_balance_address.clone(),
                 sender.clone(),
                 token.clone(),
-                amount,
+                remaining_withdraw_amount,
                 recipient.clone(),
             )?;
             if transfer_amount.is_zero() {
@@ -111,7 +111,7 @@ pub fn execute_transfer_voucher(
                 available_denoms.clone(),
                 sender.clone(),
                 token.clone(),
-                amount,
+                remaining_withdraw_amount,
                 recipient.clone(),
                 None,
                 None,
@@ -240,22 +240,31 @@ pub fn _release_voucher(
         .unwrap_or(Uint128::zero());
 
     // We cannot release more than escrow balance
-    let release_amount = amount.min(escrow_balance);
+    let max_release_amount = amount.min(escrow_balance);
 
     let release_amount = match recipient.amount {
-        Limit::LessThanOrEqual(limit) => release_amount.min(limit),
-        Limit::Equal(limit) => release_amount.min(limit),
+        Limit::LessThanOrEqual(limit) => max_release_amount.min(limit),
+        Limit::Equal(limit) => max_release_amount.min(limit),
         Limit::GreaterThanOrEqual(limit) => {
             ensure!(
-                release_amount.ge(&limit),
+                max_release_amount.ge(&limit),
                 ContractError::InsufficientAmount {
                     min_amount: limit,
                     amount
                 }
             );
-            release_amount
+            max_release_amount
         }
-        Limit::Dynamic(_) => release_amount,
+        Limit::Dynamic(_) => {
+            ensure!(
+                max_release_amount.ge(&amount),
+                ContractError::InsufficientAmount {
+                    min_amount: amount,
+                    amount: max_release_amount
+                }
+            );
+            amount
+        }
     };
     if release_amount.is_zero() {
         return Ok((vec![], Uint128::zero()));
