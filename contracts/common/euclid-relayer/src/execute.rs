@@ -95,13 +95,13 @@ pub fn execute_meta_transaction(
 
     // Ensure the timestamp is not exceeded
     ensure!(
-        env.block.time <= Timestamp::from_seconds(meta_transaction.expiry),
+        env.block.time <= Timestamp::from_seconds(msg.expiry),
         ContractError::new("Timestamp limit exceeded")
     );
 
     let verified = verify_signature(
         deps.as_ref(),
-        &msg.data,
+        &expiry_call_data(&msg.data, msg.expiry),
         &msg.admin_signature,
         &state.message_signer.pubkey,
     )?;
@@ -120,7 +120,7 @@ pub fn execute_meta_transaction(
         }
         let verified = verify_signature(
             deps.as_ref(),
-            &msg.data,
+            &expiry_call_data(&msg.data, signature.expiry),
             &signature.signature,
             &signature.pubkey,
         )?;
@@ -153,6 +153,11 @@ pub fn execute_meta_transaction(
         .add_attribute("relayer_nonce", meta_transaction.nonce)
         .add_attribute("relayer_target", meta_transaction.target)
         .add_attribute("relayer_sender", info.sender.to_string()))
+}
+
+fn expiry_call_data(data: &str, expiry: u64) -> String {
+    let expiry_call_data = format!("{data},{expiry}", data=data, expiry=expiry);
+    expiry_call_data
 }
 
 pub fn execute_add_validator(

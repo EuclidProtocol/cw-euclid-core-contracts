@@ -48,11 +48,13 @@ pub struct State {
 pub struct ValidatorSignature {
     pub pubkey: Binary,
     pub signature: Binary,
+    pub expiry: u64,
 }
 
 #[cw_serde]
 pub struct MetaTransaction {
     pub data: String,
+    pub expiry: u64,
     pub admin_signature: Binary,
     pub validator_signatures: Vec<ValidatorSignature>,
 }
@@ -61,7 +63,6 @@ pub struct MetaTransaction {
 pub struct MetaTransactionData {
     pub target: Addr,
     pub call_data: Binary,
-    pub expiry: u64,
     pub nonce: String,
 }
 

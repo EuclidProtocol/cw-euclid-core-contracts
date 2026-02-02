@@ -350,12 +350,13 @@ pub fn sign_relay_messsage(
 ) -> RelayerMetaTransaction {
     let meta_tx_data = RelayerMetaTransactionData {
         call_data,
-        expiry: app.block_info().time.plus_seconds(60).seconds(),
         nonce,
         target,
     };
+    let expiry = app.block_info().time.plus_seconds(60).seconds();
     let msg = to_json_string(&meta_tx_data).unwrap();
-    let message_digest = Sha256::new().chain(msg.as_bytes());
+    let expiry_call_data = format!("{msg},{expiry}", msg=msg, expiry=expiry);
+    let message_digest = Sha256::new().chain(expiry_call_data.as_bytes());
 
     let (secret_key, pubkey) = get_signer_key();
     let signature = secret_key
@@ -365,10 +366,12 @@ pub fn sign_relay_messsage(
     let admin_signature = Binary::from(signature.to_vec());
     RelayerMetaTransaction {
         data: msg,
+        expiry: app.block_info().time.plus_seconds(60).seconds(),
         admin_signature: admin_signature.clone(),
         validator_signatures: vec![ValidatorSignature {
             pubkey,
             signature: admin_signature,
+            expiry: app.block_info().time.plus_seconds(60).seconds(),
         }],
     }
 }
