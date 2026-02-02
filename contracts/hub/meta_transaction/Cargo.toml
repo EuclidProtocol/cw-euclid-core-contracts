@@ -1,0 +1,41 @@
+[package]
+name = "meta-transaction"
+version = "0.1.0"
+authors = [
+    "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
+    "Joe Monem <jmonem@icloud.com>"
+]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# use library feature to disable all instantiate/execute/query exports
+library = []
+
+[package.metadata.scripts]
+optimize = """docker run --rm -v "$(pwd)":/code \
+  --mount type=volume,source="$(basename "$(pwd)")_cache",target=/target \
+  --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+  cosmwasm/optimizer:0.15.0
+"""
+
+[dependencies]
+cosmwasm-schema = { workspace = true }
+cosmwasm-std = { workspace = true}
+cw2 = { workspace = true }
+cw-storage-plus = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true, default-features = false, features = ["derive"] }
+thiserror = { workspace = true }
+cw-utils = { workspace = true }
+euclid = { workspace = true }
+relayer = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cw-orch = { workspace = true }
+cw-multi-test = { workspace = true }
+mock = { workspace = true }

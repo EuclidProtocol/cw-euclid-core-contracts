@@ -1,6 +1,6 @@
 use cosmwasm_std::{to_json_binary, to_json_string, Binary};
 use cw_orch::mock::cw_multi_test::App;
-use euclid::msgs::claimer::{ClaimVoucherData, SignedTransaction};
+use euclid::msgs::claimer::msg::{ClaimVoucherData, SignedTransaction};
 use k256::{
     ecdsa::SigningKey,
     elliptic_curve::{rand_core, NonZeroScalar},

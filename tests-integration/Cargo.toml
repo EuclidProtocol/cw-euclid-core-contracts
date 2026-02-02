@@ -11,13 +11,14 @@ modules = []
 [dev-dependencies]
 router = { path = "../contracts/hub/router" }
 virtual_balance = { path = "../contracts/hub/virtual_balance" }
-vlp = { path = "../contracts/hub/vlp" }
+cp_vlp = { path = "../contracts/hub/cp_vlp" }
 stable_vlp = { path = "../contracts/hub/stable_vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }
-cw20 = { path = "../contracts/liquidity/cw20" }
+lp_token = { path = "../contracts/liquidity/lp_token" }
 euclid-relayer = { path = "../contracts/common/euclid-relayer" }
-claimer = { path = "../contracts/liquidity/claimer" }
+claimer = { path = "../contracts/hub_utilities/claimer" }
+meta-transaction = { path = "../contracts/hub/meta_transaction" }
 
 #Other Crates
 euclid = { path = "../packages/euclid" }
@@ -43,6 +44,7 @@ anyhow = "1.0.79"
 
 sha2 = "0.10.8"
 k256 = "0.13.4"
+sha3 = "0.10.8"
 
 # [[test]]
 # name = "cw721"

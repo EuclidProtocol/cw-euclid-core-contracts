@@ -5,43 +5,28 @@ use cosmwasm_std::{
     SubMsg, WasmMsg,
 };
 use cw2::set_contract_version;
+use euclid::chain::ChainUid;
+use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
-use euclid_ibc::msg::HUB_IBC_EXECUTE_MSG_QUEUE_RANGE;
+use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 
-use crate::execute::cosmos::{
-    execute_cosmos_receive_acknowledgement, execute_cosmos_receive_packet,
-    execute_cosmos_receive_packet_internal_callback, execute_cosmos_send_packet,
+use crate::execute::relay::{
+    execute_native_receive_callback, execute_receive_acknowledgement, execute_receive_packet,
+    execute_receive_packet_internal_callback, execute_send_packet,
 };
-use crate::execute::{
-    execute_deregister_chain, execute_native_receive_callback, execute_register_factory,
-    execute_release_escrow, execute_reregister_chain, execute_update_factory_channel,
-    execute_update_lock, execute_update_router_state, execute_withdraw_voucher,
-};
+use crate::execute::token::{execute_transfer_voucher, execute_withdraw_voucher};
+use crate::execute::{execute_manage_router_state, execute_meta_receive, execute_register_factory};
 
-use crate::execute::evm::{
-    execute_evm_receive_acknowledgement, execute_evm_receive_packet,
-    execute_evm_receive_packet_internal_callback, execute_evm_send_packet,
-};
-
-use crate::execute::solana::{
-    execute_solana_receive_acknowledgement, execute_solana_receive_packet,
-    execute_solana_receive_packet_internal_callback, execute_solana_send_packet,
-};
-
-use crate::ibc::ack_and_timeout::ibc_ack_packet_internal_call;
-use crate::ibc::receive::ibc_receive_internal_call;
 use crate::query::{
     self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_relayer_addresses, query_simulate_escrow_release, query_state, query_token_denoms,
+    query_relayer_addresses, query_release_fees, query_state, query_token_denoms,
     query_token_escrows, query_vlp,
 };
 use crate::reply::{
-    self, ADD_LIQUIDITY_REPLY_ID, COSMOS_RECEIVE_REPLY_ID, EVM_RECEIVE_REPLY_ID,
-    IBC_ACK_AND_TIMEOUT_REPLY_ID, IBC_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID,
-    SOLANA_RECEIVE_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
-    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    self, ADD_LIQUIDITY_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID, SWAP_REPLY_ID,
+    VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{State, DEREGISTERED_CHAINS, MOCK_RELAYER_ADDRESSES, STATE};
+use crate::state::{FeeState, State, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -58,19 +43,24 @@ pub fn instantiate(
     let state = State {
         constant_product_vlp_code_id: msg.constant_product_vlp_code_id,
         stable_vlp_code_id: msg.stable_vlp_code_id,
-        admin: info.sender.to_string(),
-        virtual_balance_address: None,
+        admin: info.sender.clone(),
         locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    if let Some(mock_relayer_addresses) = msg.mock_relayer_addresses {
-        MOCK_RELAYER_ADDRESSES.save(deps.storage, &mock_relayer_addresses)?;
-    }
+    RELAYER_CONTRACT.save(deps.storage, &msg.relayer_contract)?;
+    LOCKED_CHAINS.save(deps.storage, &vec![])?;
 
     STATE.save(deps.storage, &state)?;
+    FEE_STATE.save(
+        deps.storage,
+        &FeeState {
+            release_fee_recipient: msg.release_fee_recipient,
+            default_fee_recipient: msg.default_fee_recipient,
+        },
+    )?;
 
-    let virtual_balance_instantiate_msg = euclid::msgs::virtual_balance::InstantiateMsg {
+    let virtual_balance_instantiate_msg = euclid::msgs::virtual_balance::msg::InstantiateMsg {
         router: env.contract.address.clone(),
         admin: Some(info.sender.clone()),
     };
@@ -86,8 +76,6 @@ pub fn instantiate(
         virtual_balance_instantiate_msg,
         VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
     );
-
-    DEREGISTERED_CHAINS.save(deps.storage, &vec![])?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -105,158 +93,102 @@ pub fn execute(
     // If the contract is locked and the message isn't UpdateLock, return error
 
     match msg {
-        ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
-        ExecuteMsg::ReregisterChain { chain } => execute_reregister_chain(deps, info, chain),
-        ExecuteMsg::DeregisterChain { chain } => execute_deregister_chain(deps, info, chain),
+        ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, info, msg),
         _ => {
+            // Only allow these messages if the contract is not locked
             ensure!(
                 !STATE.load(deps.storage)?.locked,
                 ContractError::ContractLocked {}
             );
             match msg {
-                ExecuteMsg::UpdateFactoryChannel { channel, chain_uid } => {
-                    execute_update_factory_channel(&mut deps, env, info, channel, chain_uid)
-                }
+                ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, info, msg),
                 ExecuteMsg::RegisterFactory {
                     chain_uid,
                     chain_info,
                 } => execute_register_factory(&mut deps, env, info, chain_uid, chain_info),
-                ExecuteMsg::ReleaseEscrowInternal {
-                    sender,
-                    token,
-                    amount,
-                    cross_chain_addresses,
-                    timeout,
-                    tx_id,
-                } => execute_release_escrow(
-                    &mut deps,
-                    env,
-                    info,
-                    sender,
-                    token,
-                    amount,
-                    cross_chain_addresses,
-                    timeout,
-                    tx_id,
-                ),
                 ExecuteMsg::WithdrawVoucher {
                     token,
                     amount,
-                    cross_chain_addresses,
-                    timeout,
-                } => execute_withdraw_voucher(
-                    &mut deps,
-                    env,
-                    info,
+                    recipient,
+                    cross_chain_config,
+                } => {
+                    let verified_sender =
+                        CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
+                    execute_withdraw_voucher(
+                        &mut deps,
+                        env,
+                        verified_sender,
+                        token,
+                        amount,
+                        recipient,
+                        cross_chain_config,
+                    )
+                }
+                ExecuteMsg::TransferVoucher {
                     token,
                     amount,
-                    cross_chain_addresses,
-                    timeout,
-                ),
-                ExecuteMsg::IbcCallbackReceive { receive_msg } => {
-                    ibc_receive_internal_call(&mut deps, env, info, receive_msg)
+                    recipient,
+                } => {
+                    let verified_sender =
+                        CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
+                    execute_transfer_voucher(
+                        &mut deps,
+                        env,
+                        verified_sender,
+                        token,
+                        amount,
+                        recipient,
+                    )
                 }
-                ExecuteMsg::IbcCallbackAckAndTimeout { ack } => {
-                    ibc_ack_packet_internal_call(deps, info, env, ack)
-                }
-                ExecuteMsg::UpdateLock {} => execute_update_lock(deps, info),
                 ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
                     execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
                 }
-                ExecuteMsg::UpdateRouterState {
-                    admin,
-                    vlp_code_id,
-                    stable_vlp_code_id,
-                    virtual_balance_address,
-                    locked,
-                    mock_relayer_addresses,
-                } => execute_update_router_state(
+                ExecuteMsg::SendPacket {
+                    msg,
+                    chain,
+                    sender,
+                    timeout,
+                    ack_response,
+                } => {
+                    execute_send_packet(deps, info, env, chain, msg, timeout, ack_response, sender)
+                }
+                ExecuteMsg::ReceivePacket {
+                    source_port,
+                    destination_port,
+                    msg,
+                    sequence,
+                } => execute_receive_packet(
                     deps,
                     info,
-                    admin,
-                    vlp_code_id,
-                    stable_vlp_code_id,
-                    virtual_balance_address,
-                    locked,
-                    mock_relayer_addresses,
+                    env,
+                    msg,
+                    sequence,
+                    source_port,
+                    destination_port,
                 ),
-                ExecuteMsg::EvmSendPacket { msg, chain_uid } => {
-                    execute_evm_send_packet(deps, info, env, chain_uid, msg)
+                ExecuteMsg::ReceivePacketInternalCallback { msg, chain_uid } => {
+                    execute_receive_packet_internal_callback(&mut deps, env, info, msg, chain_uid)
                 }
-                ExecuteMsg::EvmReceivePacket {
-                    msg,
+                ExecuteMsg::AcknowledgePacket {
                     chain_uid,
-                    sequence,
-                    hash,
-                } => execute_evm_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
-
-                ExecuteMsg::EvmReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_evm_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
-                }
-                ExecuteMsg::EvmReceiveAck {
+                    source_port,
+                    destination_port,
                     msg,
-                    chain_uid,
                     sequence,
-                    hash,
                     ack,
-                } => execute_evm_receive_acknowledgement(
-                    deps, info, env, chain_uid, msg, sequence, hash, ack,
-                ),
-
-                ExecuteMsg::SolanaSendPacket { msg, chain_uid } => {
-                    execute_solana_send_packet(deps, info, env, chain_uid, msg)
-                }
-                ExecuteMsg::SolanaReceivePacket {
-                    msg,
+                } => execute_receive_acknowledgement(
+                    deps,
+                    info,
+                    env,
                     chain_uid,
-                    sequence,
-                    hash,
-                } => execute_solana_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
-
-                ExecuteMsg::SolanaReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_solana_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
-                }
-                ExecuteMsg::SolanaReceiveAck {
                     msg,
-                    chain_uid,
                     sequence,
-                    hash,
+                    source_port,
+                    destination_port,
                     ack,
-                } => execute_solana_receive_acknowledgement(
-                    deps, info, env, chain_uid, msg, sequence, hash, ack,
                 ),
 
-                // COMSOS ENTRY POINTS FOR RELAYER
-                ExecuteMsg::CosmosSendPacket { msg, chain_uid } => {
-                    execute_cosmos_send_packet(deps, info, env, chain_uid, msg)
-                }
-                ExecuteMsg::CosmosReceivePacket {
-                    msg,
-                    chain_uid,
-                    sequence,
-                    hash,
-                } => execute_cosmos_receive_packet(deps, info, env, chain_uid, msg, sequence, hash),
-
-                ExecuteMsg::CosmosReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_cosmos_receive_packet_internal_callback(
-                        &mut deps, env, info, msg, chain_uid,
-                    )
-                }
-                ExecuteMsg::CosmosReceiveAck {
-                    msg,
-                    chain_uid,
-                    sequence,
-                    hash,
-                    ack,
-                } => execute_cosmos_receive_acknowledgement(
-                    deps, info, env, chain_uid, msg, sequence, hash, ack,
-                ),
-
-                _ => Err(ContractError::UnreachableCode {}),
+                ExecuteMsg::MetaReceive(msg) => execute_meta_receive(&mut deps, env, info, msg),
             }
         }
     }
@@ -271,11 +203,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetVlp { pair } => query_vlp(deps, pair),
         QueryMsg::GetAllVlps { pagination } => query_all_vlps(deps, pagination),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
-        QueryMsg::SimulateReleaseEscrow {
-            token,
-            amount,
-            cross_chain_addresses,
-        } => query_simulate_escrow_release(deps, token, amount, cross_chain_addresses),
         QueryMsg::QueryTokenEscrows { token, pagination } => {
             query_token_escrows(deps, token, pagination)
         }
@@ -283,15 +210,16 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
         QueryMsg::QueryTokenDenoms { token } => query_token_denoms(deps, token),
         QueryMsg::QueryRelayerAddresses {} => query_relayer_addresses(deps),
+        QueryMsg::GetReleaseFees { pagination } => query_release_fees(deps, pagination),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     // If reply id is in HUB_IBC_EXECUTE_MSG_QUEUE_RANGE range of IDS, process it for native ibc wrapper ack call
     // Pros - This way we can reuse existing ack_and _timeout calls instead of managing two flow for native and ibc
     // Cons - Error messages are lost in reply which makes it hard to debug why there was an error. This is fixed from cosmwasm 2.0 probably
-    if msg.id.ge(&HUB_IBC_EXECUTE_MSG_QUEUE_RANGE.0)
-        && msg.id.le(&HUB_IBC_EXECUTE_MSG_QUEUE_RANGE.1)
+    if msg.id.ge(&NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0)
+        && msg.id.le(&NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.1)
     {
         return reply::on_reply_native_ibc_wrapper_call(deps, env, msg);
     }
@@ -299,20 +227,11 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
         VLP_INSTANTIATE_REPLY_ID => reply::on_vlp_instantiate_reply(deps, msg),
         VLP_POOL_REGISTER_REPLY_ID => reply::on_pool_register_reply(deps, msg),
         ADD_LIQUIDITY_REPLY_ID => reply::on_add_liquidity_reply(deps, msg),
-        REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, env, msg),
-        SWAP_REPLY_ID => reply::on_swap_reply(deps, env, msg),
+        SWAP_REPLY_ID => reply::on_swap_reply(&mut deps, env, msg),
         VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID => {
             reply::on_virtual_balance_instantiate_reply(deps, msg)
         }
-
-        IBC_ACK_AND_TIMEOUT_REPLY_ID => reply::on_ibc_ack_and_timeout_reply(deps, msg),
-        IBC_RECEIVE_REPLY_ID => reply::on_ibc_receive_reply(deps, msg),
-
-        EVM_RECEIVE_REPLY_ID => reply::on_evm_receive_reply(deps, msg),
-
-        SOLANA_RECEIVE_REPLY_ID => reply::on_solana_receive_reply(deps, msg),
-
-        COSMOS_RECEIVE_REPLY_ID => reply::on_cosmos_receive_reply(deps, msg),
+        CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps, msg),
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",

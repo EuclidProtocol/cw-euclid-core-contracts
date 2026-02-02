@@ -1,4 +1,4 @@
-use crate::chain::CrossChainUser;
+use crate::cross_chain_user::CrossChainUser;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 use std::collections::HashMap;

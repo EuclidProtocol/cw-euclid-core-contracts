@@ -10,7 +10,7 @@ use crate::execute::{
 use crate::query::{query_balance, query_state, query_user_balances};
 use crate::state::STATE;
 use euclid::error::ContractError;
-use euclid::msgs::virtual_balance::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
+use euclid::msgs::virtual_balance::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:virtual_balance";
@@ -26,7 +26,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     let state = State {
-        router: info.sender.to_string(),
+        router: info.sender.clone(),
         admin: msg.admin.unwrap_or(info.sender),
     };
 

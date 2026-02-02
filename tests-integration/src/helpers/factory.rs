@@ -1,28 +1,34 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{coin, Binary, Uint128};
-use cw20::Cw20Contract;
+use cosmwasm_std::{coin, Uint128};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
-use euclid::chain::{CrossChainUser, CrossChainUserWithLimit};
+use euclid::cross_chain_user::CrossChainUser;
 use euclid::fee::PartnerFee;
-use euclid::msgs::cw20::ExecuteMsgFns;
-use euclid::msgs::factory::{
-    ExecuteMsgFns as FactoryExecuteMsgFns, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns,
-};
-
-use cw_orch_interchain::prelude::MockInterchainEnv;
-use euclid::msgs::router::QueryMsgFns;
-use euclid::msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns;
-use euclid::pool::PoolConfig;
+use euclid::msgs::cross_chain_config::CrossChainConfig;
+use euclid::msgs::factory::ExecuteSwapRequest;
+use euclid::msgs::vlp::base::PoolConfig;
+use euclid::recipient::Recipient;
 use euclid::swap::NextSwapPair;
+use euclid::token::PairWithDenomAndAmount;
+use euclid::token::Token;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
-use euclid::token::{PairWithDenomAndAmount, Token};
-use euclid::virtual_balance::BalanceKey;
+
+use cw_orch_interchain::prelude::MockInterchainEnv;
+use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
+use euclid::msgs::factory::msg::ExecuteMsgFns as FactoryExecuteMsgFns;
+use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
+use euclid::msgs::lp_token::msg::ExecuteMsgFns as LpTokenExecuteMsgFns;
+use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
+use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
+use euclid::utils::pagination::Pagination;
+use euclid::voucher::BalanceKey;
 use factory::FactoryContract;
+use lp_token::LpTokenContract;
 use router::RouterContract;
 
+use crate::helpers::chains::get_escrow;
 use crate::helpers::relayer::relay_factory_router_factory;
 
 use super::chains::get_virtual_balance;
@@ -33,11 +39,9 @@ pub fn register_token(
     token: TokenWithDenom,
 ) -> Result<(), CwOrchError> {
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    let tx_response = factory.request_register_denom(token.clone(), None)?;
+    let tx_response = factory.register_denom(CrossChainConfig::default(), token.clone())?;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-
     let escrow_response = factory.get_escrow(token.token.to_string())?;
-
     assert!(
         escrow_response
             .denoms
@@ -54,22 +58,8 @@ pub fn deposit_token(
     router: &RouterContract<MockBase>,
     token: TokenWithDenom,
     amount: Uint128,
-    recipient: Option<CrossChainUser>,
-    msg: Option<Binary>,
+    recipients: Vec<Recipient>,
 ) -> Result<(), CwOrchError> {
-    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address.unwrap();
-    let virtual_balance_contract =
-        get_virtual_balance(router.environment(), &virtual_balance_address);
-
-    let actual_recipient = recipient.clone().unwrap_or(CrossChainUser::new(
-        factory.get_state().unwrap().chain_uid,
-        factory.environment().sender.to_string(),
-    ));
-
-    let old_balance = virtual_balance_contract.get_balance(BalanceKey {
-        cross_chain_user: actual_recipient.clone(),
-        token_id: token.token.to_string(),
-    })?;
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
     let mut funds = vec![];
     faucet(
@@ -80,29 +70,46 @@ pub fn deposit_token(
         &mut funds,
     );
     let tx_response = factory.execute(
-        &euclid::msgs::factory::ExecuteMsg::DepositToken {
+        &euclid::msgs::factory::msg::ExecuteMsg::DepositToken {
             asset_in: token.clone(),
             amount_in: amount,
-            timeout: None,
-            recipient,
-            msg,
+            recipients,
+            cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
     )?;
+    let escrow_contract = get_escrow(factory, token.token.as_str());
+    let old_escrow_balance = escrow_contract.state().unwrap();
+
+    let old_router_escrow_balance = router.query_token_escrows(
+        Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
+        token.token.clone(),
+    )?;
+    let old_balance = match old_router_escrow_balance.chains.first() {
+        Some(chain) => chain.balance,
+        None => Uint128::zero(),
+    };
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-
-    let new_balance = virtual_balance_contract.get_balance(BalanceKey {
-        cross_chain_user: actual_recipient,
-        token_id: token.token.to_string(),
-    })?;
-
-    assert!(
-        new_balance.amount.u128() == old_balance.amount.u128() + amount.u128(),
-        "Virtual balance not deposited properly, old balance: {}, new balance: {}, amount: {}",
-        old_balance.amount.u128(),
-        new_balance.amount.u128(),
-        amount.u128()
+    let new_router_escrow_balance = router.query_token_escrows(
+        Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
+        token.token.clone(),
+    )?;
+    let new_balance = match new_router_escrow_balance.chains.first() {
+        Some(chain) => chain.balance,
+        None => Uint128::zero(),
+    };
+    assert_eq!(
+        new_balance,
+        old_balance + amount,
+        "Router escrow balance not updated properly"
     );
+    let new_escrow_balance = escrow_contract.state().unwrap();
+    assert_eq!(
+        new_escrow_balance.total_amount,
+        old_escrow_balance.total_amount + amount,
+        "Escrow balance not updated properly"
+    );
+
     Ok(())
 }
 
@@ -111,40 +118,44 @@ pub fn transfer_token_vcoin(
     router: &RouterContract<MockBase>,
     token: Token,
     amount: Uint128,
-    recipient: CrossChainUser,
-    msg: Option<Binary>,
+    recipients: Vec<Recipient>,
 ) -> Result<(), CwOrchError> {
-    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address.unwrap();
+    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
     let virtual_balance_contract =
         get_virtual_balance(router.environment(), &virtual_balance_address);
 
+    let sender = CrossChainUser::new(
+        factory.get_state().unwrap().chain_uid,
+        factory.environment().sender.to_string(),
+    );
+
     let old_balance = virtual_balance_contract.get_balance(BalanceKey {
-        cross_chain_user: recipient.clone(),
+        cross_chain_user: sender.clone(),
         token_id: token.to_string(),
     })?;
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
 
     let tx_response = factory.execute(
-        &euclid::msgs::factory::ExecuteMsg::TransferVirtualBalance {
-            token: token.clone(),
+        &euclid::msgs::factory::ExecuteMsg::TransferVoucher {
+            token_id: token.clone(),
             amount,
-            recipient_address: recipient.clone(),
-            timeout: None,
             from: None,
-            msg,
+            recipients,
+            cross_chain_config: CrossChainConfig::default(),
         },
         &[],
     )?;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 
     let new_balance = virtual_balance_contract.get_balance(BalanceKey {
-        cross_chain_user: recipient,
+        cross_chain_user: sender.clone(),
         token_id: token.to_string(),
     })?;
 
-    assert!(
-        new_balance.amount.u128() == old_balance.amount.u128() + amount.u128(),
-        "Virtual balance not deposited properly, old balance: {}, new balance: {}, amount: {}",
+    assert_eq!(
+        new_balance.amount.u128() + amount.u128(),
+        old_balance.amount.u128(),
+        "Virtual balance not transferred properly, old balance: {}, new balance: {}, amount: {}",
         old_balance.amount.u128(),
         new_balance.amount.u128(),
         amount.u128()
@@ -168,7 +179,7 @@ pub fn faucet(
             funds.push(coin(amount, denom));
         }
         TokenType::Smart { contract_address } => {
-            let cw20 = Cw20Contract::new(chain.clone());
+            let cw20 = LpTokenContract::new(chain.clone());
             cw20.set_address(&Addr::unchecked(contract_address));
             // Increase allowance
             cw20.increase_allowance(amount, address, None).unwrap();
@@ -197,14 +208,14 @@ pub fn create_pool(
     }
     let tx_response = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
-            pair: pair_with_denom.clone(),
+            pair_with_denom_and_amount: pair_with_denom.clone(),
             slippage_tolerance_bps,
-            timeout: None,
             lp_token_name: "LPNAME".to_string(),
             lp_token_symbol: "LPSYMBOL".to_string(),
             lp_token_decimal: 6,
             lp_token_marketing: None,
             pool_config,
+            cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
     )?;
@@ -222,14 +233,13 @@ pub fn add_liquidity(
     router: &RouterContract<MockBase>,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
-    timeout: Option<u64>,
     funds: Vec<Coin>,
 ) -> Result<(), CwOrchError> {
     let tx_response = factory.execute(
-        &euclid::msgs::factory::ExecuteMsg::AddLiquidityRequest {
-            pair_info: pair_with_denom.clone(),
+        &euclid::msgs::factory::ExecuteMsg::AddLiquidity {
+            pair_with_denom_and_amount: pair_with_denom.clone(),
             slippage_tolerance_bps,
-            timeout,
+            cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
     )?;
@@ -244,30 +254,23 @@ pub fn swap_request(
     _interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
-    sender: Option<CrossChainUser>,
     asset_in: TokenWithDenom,
-    amount_in: Uint128,
     asset_out: Token,
     min_amount_out: Uint128,
-    timeout: Option<u64>,
     swaps: Vec<NextSwapPair>,
-    cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    recipients: Vec<Recipient>,
     partner_fee: Option<PartnerFee>,
     funds: Vec<Coin>,
-    meta: Option<String>,
 ) -> Result<(), CwOrchError> {
     let tx_response = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
-            sender,
+            recipients,
             asset_in,
-            amount_in,
             asset_out,
             min_amount_out,
-            timeout,
             swaps,
-            cross_chain_addresses,
             partner_fee,
-            meta,
+            cross_chain_config: CrossChainConfig::default(),
         }),
         &funds,
     )?;

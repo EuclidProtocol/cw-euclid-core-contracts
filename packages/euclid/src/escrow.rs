@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 
-use crate::{chain::CrossChainUser, token::Token};
+use crate::{cross_chain_user::CrossChainUser, token::Token};
 
 #[cw_serde]
 pub struct EscrowReleaseRequest {

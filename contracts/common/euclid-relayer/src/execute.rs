@@ -4,11 +4,11 @@ use cosmwasm_std::{
 use euclid::error::ContractError;
 use relayer::{
     msgs::{MetaTransaction, UpdateAdminMsg, UpdateStateMsg},
-    verify::{verify_signature, MsgSignData},
-    AuthorizedTransaction, MetaTransactionData,
+    verify::verify_signature,
+    MetaTransactionData, Validator,
 };
 
-use crate::state::{AUTHORIZED_ADDRESSES, NONCES, STATE};
+use crate::state::{NONCES, STATE, VALIDATORS};
 
 pub fn execute_update_state(
     deps: &mut DepsMut,
@@ -18,24 +18,39 @@ pub fn execute_update_state(
     let mut state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     let mut response = Response::new();
-    if let Some(relayer_pubkey) = msg.relayer_pubkey {
-        state.relayer_pubkey = relayer_pubkey.clone();
+    if let Some(message_signer) = msg.message_signer {
+        state.message_signer = message_signer.clone();
         response = response
-            .add_attribute("relayer_pubkey_old_value", state.relayer_pubkey.to_string())
-            .add_attribute("relayer_pubkey_new_value", relayer_pubkey.to_string());
-    }
-    if let Some(relayer_address) = msg.relayer_address {
-        state.relayer_address = relayer_address.clone();
-        response = response
-            .add_attribute("relayer_address_old_value", state.relayer_address.clone())
-            .add_attribute("relayer_address_new_value", relayer_address);
+            .add_attribute(
+                "message_signer_pubkey_old_value",
+                state.message_signer.pubkey.to_string(),
+            )
+            .add_attribute(
+                "message_signer_pubkey_new_value",
+                message_signer.pubkey.to_string(),
+            )
+            .add_attribute(
+                "message_signer_address_old_value",
+                state.message_signer.address.to_string(),
+            )
+            .add_attribute(
+                "message_signer_address_new_value",
+                message_signer.address.to_string(),
+            );
     }
 
-    if let Some(authorized_addresses) = msg.authorized_addresses {
-        AUTHORIZED_ADDRESSES.save(deps.storage, &authorized_addresses)?;
-        response = response.add_attribute("updated_authorized_addresses", "true");
+    if let Some(signature_threshold) = msg.signature_threshold {
+        state.signature_threshold = signature_threshold;
+        response = response
+            .add_attribute(
+                "signature_threshold_old_value",
+                state.signature_threshold.to_string(),
+            )
+            .add_attribute(
+                "signature_threshold_new_value",
+                signature_threshold.to_string(),
+            );
     }
-
     STATE.save(deps.storage, &state)?;
     Ok(response)
 }
@@ -58,32 +73,14 @@ pub fn execute_update_admin(
         .add_attribute("new_admin", msg.new_admin.to_string()))
 }
 
-pub fn execute_execute_meta_transaction(
+pub fn execute_meta_transaction(
     deps: &mut DepsMut,
     env: &Env,
     info: &MessageInfo,
     msg: MetaTransaction,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-
-    let signed_data: MsgSignData = from_json(msg.data.clone())?;
-    let first_msg = signed_data
-        .msgs
-        .first()
-        .ok_or(ContractError::new("No messages found"))?
-        .clone()
-        .value;
-    let meta_transaction: MetaTransactionData = from_json(first_msg.data.clone())?;
-
-    ensure!(
-        first_msg.signer == state.relayer_address,
-        ContractError::Generic {
-            err: format!(
-                "Invalid signer: expected {}, got {}",
-                state.relayer_address, first_msg.signer
-            )
-        }
-    );
+    let meta_transaction: MetaTransactionData = from_json(msg.data.clone())?;
     // Ensure the nonce is not used
     ensure!(
         !NONCES.has(deps.storage, meta_transaction.nonce.clone()),
@@ -105,11 +102,45 @@ pub fn execute_execute_meta_transaction(
     let verified = verify_signature(
         deps.as_ref(),
         &msg.data,
-        &msg.signature,
-        &state.relayer_pubkey,
+        &msg.admin_signature,
+        &state.message_signer.pubkey,
     )?;
 
-    ensure!(verified, ContractError::new("Invalid signature"));
+    ensure!(verified, ContractError::new("Invalid admin signature"));
+    let validators = VALIDATORS.load(deps.storage)?;
+    let mut visited = vec![false; validators.len()];
+    let mut valid_signatures = 0;
+    for signature in msg.validator_signatures {
+        let validator_index = validators
+            .iter()
+            .position(|v| v.pubkey == signature.pubkey)
+            .ok_or(ContractError::new("Validator not found"))?;
+        if visited[validator_index] {
+            continue;
+        }
+        let verified = verify_signature(
+            deps.as_ref(),
+            &msg.data,
+            &signature.signature,
+            &signature.pubkey,
+        )?;
+        if !verified {
+            continue;
+        }
+        valid_signatures += 1;
+        visited[validator_index] = true;
+    }
+
+    ensure!(
+        valid_signatures >= state.signature_threshold,
+        ContractError::new(
+            format!(
+                "Threshold not met: expected {}, got {}",
+                state.signature_threshold, valid_signatures
+            )
+            .as_str()
+        )
+    );
 
     let relay_msg = WasmMsg::Execute {
         contract_addr: meta_transaction.target.to_string(),
@@ -124,38 +155,39 @@ pub fn execute_execute_meta_transaction(
         .add_attribute("relayer_sender", info.sender.to_string()))
 }
 
-pub fn execute_execute_authorized_transaction(
+pub fn execute_add_validator(
     deps: &mut DepsMut,
-    env: &Env,
     info: &MessageInfo,
-    msg: AuthorizedTransaction,
+    validator: Validator,
 ) -> Result<Response, ContractError> {
-    let authorized_addresses = AUTHORIZED_ADDRESSES.load(deps.storage).unwrap_or_default();
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let mut validators = VALIDATORS.load(deps.storage)?;
     ensure!(
-        authorized_addresses.contains(&info.sender),
-        ContractError::Unauthorized {}
+        !validators.contains(&validator),
+        ContractError::new("Validator already exists")
     );
-    // Ensure the nonce is not used
-    ensure!(
-        !NONCES.has(deps.storage, msg.nonce.clone()),
-        ContractError::new(format!("Nonce already used: {}", msg.nonce).as_str())
-    );
-    // Save the nonce
-    NONCES.save(
-        deps.storage,
-        msg.nonce.clone(),
-        &Uint128::from(env.block.height),
-    )?;
+    validators.push(validator.clone());
+    VALIDATORS.save(deps.storage, &validators)?;
+    Ok(Response::new().add_attribute("validator_added", validator.address.to_string()))
+}
 
-    let relay_msg = WasmMsg::Execute {
-        contract_addr: msg.target.to_string(),
-        msg: msg.call_data,
-        funds: vec![],
-    };
-
-    Ok(Response::new()
-        .add_message(relay_msg)
-        .add_attribute("relayer_nonce", msg.nonce)
-        .add_attribute("relayer_target", msg.target)
-        .add_attribute("relayer_sender", info.sender.to_string()))
+pub fn execute_remove_validator(
+    deps: &mut DepsMut,
+    info: &MessageInfo,
+    validator: Validator,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let mut validators = VALIDATORS.load(deps.storage)?;
+    let index = validators
+        .iter()
+        .position(|v| v.address == validator.address);
+    if let Some(index) = index {
+        validators.remove(index);
+    } else {
+        return Err(ContractError::new("Validator does not exist"));
+    }
+    VALIDATORS.save(deps.storage, &validators)?;
+    Ok(Response::new().add_attribute("validator_removed", validator.address.clone()))
 }

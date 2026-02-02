@@ -8,16 +8,20 @@ mod tests {
     use cosmwasm_std::{
         coins,
         testing::{message_info, mock_dependencies, mock_env, MockQuerier},
-        Decimal256, Response, Uint128, Uint64,
+        Addr, Decimal256, Response, Uint128, Uint64,
     };
     use euclid::{
-        chain::{ChainUid, CrossChainUser},
+        chain::ChainUid,
+        cross_chain_user::CrossChainUser,
         error::ContractError,
         fee::{DenomFees, Fee, TotalFees},
-        msgs::stable_vlp::{ExecuteMsg, InstantiateMsg},
-        pool::{stable_math::compute_stable_swap, State},
+        msgs::vlp::{
+            base::{State, VlpRegisterPoolMsg},
+            stable::msg::{ExecuteMsg, InstantiateMsg},
+        },
         token::{Pair, Token},
     };
+    use euclid_pool::stable_math::compute_stable_swap;
     use std::collections::HashMap;
 
     fn init(
@@ -30,8 +34,8 @@ mod tests {
         let router = deps.api.addr_make("router");
         let admin = deps.api.addr_make("admin");
         let msg = InstantiateMsg {
-            router: router.to_string(),
-            virtual_balance: "virtual_balance".to_string(),
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
                 token_2: Token::create("token2".to_string()).unwrap(),
@@ -45,7 +49,7 @@ mod tests {
                 ),
             ),
             execute: None,
-            admin: admin.to_string(),
+            admin,
             amp_factor: Some(Uint64::from(1000u64)),
         };
 
@@ -65,8 +69,8 @@ mod tests {
                 token_1: Token::create("token1".to_string()).unwrap(),
                 token_2: Token::create("token2".to_string()).unwrap(),
             },
-            router: router.to_string(),
-            virtual_balance: "virtual_balance".to_string(),
+            router,
+            virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
             fee: Fee::new(
                 1,
                 1,
@@ -85,7 +89,7 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
-            admin: admin.to_string(),
+            admin,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -118,11 +122,11 @@ mod tests {
             token_2: Token::create("token2".to_string()).unwrap(),
         };
 
-        let msg = ExecuteMsg::RegisterPool {
+        let msg = ExecuteMsg::RegisterPool(VlpRegisterPoolMsg {
             sender,
             pair,
             tx_id: "1".to_string(),
-        };
+        });
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &coins(1000, "earth"));
 

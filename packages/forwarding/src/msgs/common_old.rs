@@ -7,8 +7,6 @@ use super::errors_old::ContractError;
 #[cw_serde]
 pub struct EuclidReceive {
     pub data: Binary,
-    // Metadata to be logged into events for some off chain oracle/analytics
-    pub meta: Option<String>,
 }
 
 // This is just a helper to properly serialize the above message
@@ -22,6 +20,11 @@ impl EuclidReceive {
         Ok(to_json_binary(&EuclidReceiverMsg::EuclidReceive(
             self.clone(),
         ))?)
+    }
+    pub fn from_msg(binary: &Binary) -> Self {
+        Self {
+            data: binary.clone(),
+        }
     }
 }
 

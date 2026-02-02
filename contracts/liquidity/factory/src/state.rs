@@ -1,40 +1,47 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Int256, Uint128};
+use cosmwasm_std::{Addr, Int256, Uint512};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
     deposit::DepositTokenRequest,
     fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    pool::{DenomRegisterDeregisterRequest, PoolCreateRequest},
     swap::SwapRequest,
-    token::{PairWithDenomAndAmount, Token, TokenWithDenomAndAmount},
+    token::{PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
 };
 
 #[cw_serde]
 pub struct State {
     // The Router Contract Address on the Virtual Settlement Layer
     pub router_contract: String,
+    pub relayer_contract: Addr,
     // Contract admin
     pub admin: String,
     // Escrow Code ID
     pub escrow_code_id: u64,
-    // CW20 Code ID
-    pub cw20_code_id: u64,
+    // LP Token Code ID
+    pub lp_code_id: u64,
     // The Unique Chain Identifier
     // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
     // IN THE EUCLID ECOSYSTEM
     pub chain_uid: ChainUid,
     pub is_native: bool,
-    // Total partner fees collected
-    pub partner_fees_collected: DenomFees,
 }
 
 pub const STATE: Item<State> = Item::new("state");
-pub const MOCK_RELAYER_ADDRESS: Item<String> = Item::new("mock_relayer_address");
 
-// Channel that connects factory to hub chain
-pub const HUB_CHANNEL: Item<String> = Item::new("hub_channel");
+#[cw_serde]
+pub struct FeeState {
+    pub rate_limit_fee_recipient: Addr,
+    pub rate_limit_fee_denom: String,
+
+    // Total rate limit fee collected till now
+    pub rate_limit_fee_collected: Uint512,
+    // Total partner fees collected till now
+    pub partner_fees_collected: DenomFees,
+}
+
+pub const FEE_STATE: Item<FeeState> = Item::new("fee_state");
 
 // Map Pair to vlp address
 pub const PAIR_TO_VLP: Map<(String, String), String> = Map::new("pair_to_vlp");
@@ -45,13 +52,26 @@ pub const VLP_TO_LP_SHARES: Map<String, Int256> = Map::new("vlp_to_lp_shares");
 // New Factory states
 pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 
-// New CW20 states
-pub const VLP_TO_CW20: Map<String, Addr> = Map::new("vlp_to_cw20");
+// New LP Token states
+pub const VLP_TO_LP_TOKEN: Map<String, Addr> = Map::new("vlp_to_lp_token");
 
+#[cw_serde]
+pub struct PoolCreateRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pair_info: PairWithDenomAndAmount,
+    pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
+}
 // Map for pending pool requests for user
 pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =
     Map::new("request_to_pool");
 
+#[cw_serde]
+pub struct DenomRegisterDeregisterRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub token: TokenWithDenom,
+}
 pub const PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS: Map<
     (Addr, String),
     DenomRegisterDeregisterRequest,
@@ -73,14 +93,3 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> 
 
 pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
     Map::new("pending_deposit_token");
-
-pub const FUNDS_INFO: Item<PairWithDenomAndAmount> = Item::new("funds_info");
-
-//COSMOS Relay sequence map
-pub const COSMOS_PACKET_RELAY_MAP: Map<u128, Binary> = Map::new("cosmos_packet_relay_map");
-
-//Cosmos Relay sequence count
-pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Item<u128> =
-    Item::new("cosmos_packet_relay_sequence_count");
-
-pub const PROCESSED_PACKET_SEQUENCE: Map<u128, Uint128> = Map::new("processed_packet_sequence");
