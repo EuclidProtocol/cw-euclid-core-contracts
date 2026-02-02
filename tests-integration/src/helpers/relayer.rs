@@ -355,7 +355,7 @@ pub fn sign_relay_messsage(
     };
     let expiry = app.block_info().time.plus_seconds(60).seconds();
     let msg = to_json_string(&meta_tx_data).unwrap();
-    let expiry_call_data = format!("{msg},{expiry}", msg=msg, expiry=expiry);
+    let expiry_call_data = format!("{msg},{expiry}", msg = msg, expiry = expiry);
     let message_digest = Sha256::new().chain(expiry_call_data.as_bytes());
 
     let (secret_key, pubkey) = get_signer_key();

@@ -156,7 +156,7 @@ pub fn execute_meta_transaction(
 }
 
 fn expiry_call_data(data: &str, expiry: u64) -> String {
-    let expiry_call_data = format!("{data},{expiry}", data=data, expiry=expiry);
+    let expiry_call_data = format!("{data},{expiry}", data = data, expiry = expiry);
     expiry_call_data
 }
 
