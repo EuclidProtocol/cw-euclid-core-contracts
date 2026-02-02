@@ -178,7 +178,6 @@ pub fn execute_receive_acknowledgement(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
-    chain_uid: ChainUid,
     msg: Binary,
     sequence: u128,
     source_port: String,
@@ -189,6 +188,8 @@ pub fn execute_receive_acknowledgement(
         RELAYER_CONTRACT.load(deps.storage)? == info.sender,
         ContractError::Unauthorized {}
     );
+
+    let chain_uid = ChainUid::create(source_port.split('.').next().unwrap().to_string())?;
 
     ensure!(
         destination_port == format!("vsl.{router}", router = env.contract.address),

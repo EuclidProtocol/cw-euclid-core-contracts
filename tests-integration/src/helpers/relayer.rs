@@ -203,7 +203,6 @@ pub fn relay_router_ack_packet(
         println!("Destination port: {:?}", packet.destination_port);
         println!("Ack packet: {:?}", packet.ack.to_base64());
         let call_data = euclid::msgs::router::ExecuteMsg::AcknowledgePacket {
-            chain_uid: chain_uid.clone(),
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
             msg: packet.msg,
@@ -249,7 +248,6 @@ pub fn ack_register_factory_evm(
     let vsl_port = format!("vsl.{}", router.address().unwrap()).to_string();
 
     let call_data = euclid::msgs::router::ExecuteMsg::AcknowledgePacket {
-        chain_uid: chain_uid.clone(),
         source_port: evm_port.clone(),
         destination_port: vsl_port.clone(),
         msg: to_json_binary(&FactoryCrossChainExecuteMsg::RegisterFactory {
@@ -261,7 +259,7 @@ pub fn ack_register_factory_evm(
             tx_id: tx_id.to_string(),
         })
         .unwrap(),
-        sequence: sequence,
+        sequence,
         ack: ack_binary,
     };
 

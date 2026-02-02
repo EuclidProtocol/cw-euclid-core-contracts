@@ -170,7 +170,6 @@ pub fn execute(
                     execute_receive_packet_internal_callback(&mut deps, env, info, msg, chain_uid)
                 }
                 ExecuteMsg::AcknowledgePacket {
-                    chain_uid,
                     source_port,
                     destination_port,
                     msg,
@@ -180,7 +179,6 @@ pub fn execute(
                     deps,
                     info,
                     env,
-                    chain_uid,
                     msg,
                     sequence,
                     source_port,

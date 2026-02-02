@@ -58,7 +58,6 @@ pub enum ExecuteMsg {
     },
 
     AcknowledgePacket {
-        chain_uid: ChainUid,
         source_port: String,
         destination_port: String,
         msg: Binary,
