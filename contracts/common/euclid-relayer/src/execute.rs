@@ -169,7 +169,6 @@ pub fn execute_add_validator(
     );
     validators.push(validator.clone());
     VALIDATORS.save(deps.storage, &validators)?;
-    STATE.save(deps.storage, &state)?;
     Ok(Response::new().add_attribute("validator_added", validator.address.to_string()))
 }
 
