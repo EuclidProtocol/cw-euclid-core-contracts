@@ -14,4 +14,4 @@ docker run --rm -v "$(pwd)":/code \
   --env RUSTFLAGS="-C link-arg=-s target-feature=-bulk-memory" \
   --mount type=volume,source="$(basename "$(pwd)")_cache",target=/code/target \
   --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
-  cosmwasm-optimizer-clang > ./logs.txt 2>&1
+  cosmwasm-optimizer-clang
