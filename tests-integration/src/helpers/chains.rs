@@ -7,7 +7,9 @@ use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use escrow::EscrowContract;
 use euclid::chain::{CosmosChain, EvmChain};
-use euclid::msgs::router::{RegisterFactoryChainCosmos, RegisterFactoryChainNative};
+use euclid::msgs::router::{
+    ManageRouterState, RegisterFactoryChainCosmos, RegisterFactoryChainNative,
+};
 use euclid::{
     chain::{ChainType, ChainUid},
     msgs::router::RegisterFactoryChainEvm,
@@ -194,6 +196,11 @@ pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrch
         None,
         &[],
     )?;
+
+    let meta_transaction_contract = setup_meta_transaction_contract(&router)?;
+    router.manage_router_state(ManageRouterState::MetaTransactionContract {
+        meta_transaction_contract: meta_transaction_contract.address().unwrap(),
+    })?;
 
     Ok(router)
 }

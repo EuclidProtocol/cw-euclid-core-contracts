@@ -696,7 +696,6 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
         .clone();
 
     let factory_chain_uid_evm = evm_factory_contract.get_state().unwrap().chain_uid.clone();
-    let factory_chain_evm = evm_factory_contract.environment();
     let factory_chain_cosmos = cosmos_factory_contract.environment();
 
     // Get signer key and address (this will be different from the sender)
