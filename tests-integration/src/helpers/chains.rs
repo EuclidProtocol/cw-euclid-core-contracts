@@ -86,27 +86,32 @@ fn setup_factory_inner(
     let lp_token = LpTokenContract::new(chain.clone());
     let relayer = setup_relayer(&chain)?;
 
+    let string_length = factory_chain_id.len();
+
     factory.upload().unwrap();
     escrow.upload().unwrap();
     lp_token.upload().unwrap();
 
     let is_native = router_chain_id == factory_chain_id;
 
-    factory.instantiate(
-        &euclid::msgs::factory::InstantiateMsg {
-            router_contract: router.address().unwrap().to_string(),
-            chain_uid: chain_uid.clone(),
-            escrow_code_id: escrow.code_id().unwrap(),
-            lp_code_id: lp_token.code_id().unwrap(),
-            relayer_contract: relayer.address().unwrap(),
-            rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
-            rate_limit_fee_denom: "ufee".to_string(),
-            rate_limit_free_limit: Uint128::from(10u128),
-            is_native,
-        },
-        None,
-        &[],
-    )?;
+    for _ in 0..string_length {
+        // Do this in order to randomly generate the factory address
+        factory.instantiate(
+            &euclid::msgs::factory::InstantiateMsg {
+                router_contract: router.address().unwrap().to_string(),
+                chain_uid: chain_uid.clone(),
+                escrow_code_id: escrow.code_id().unwrap(),
+                lp_code_id: lp_token.code_id().unwrap(),
+                relayer_contract: relayer.address().unwrap(),
+                rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
+                rate_limit_fee_denom: "ufee".to_string(),
+                rate_limit_free_limit: Uint128::from(10u128),
+                is_native,
+            },
+            None,
+            &[],
+        )?;
+    }
 
     if !is_native {
         match chain_type {
