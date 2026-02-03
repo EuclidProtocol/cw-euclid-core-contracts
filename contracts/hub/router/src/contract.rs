@@ -157,6 +157,7 @@ pub fn execute(
                     destination_port,
                     msg,
                     sequence,
+                    timeout,
                 } => execute_receive_packet(
                     deps,
                     info,
@@ -165,6 +166,7 @@ pub fn execute(
                     sequence,
                     source_port,
                     destination_port,
+                    timeout,
                 ),
                 ExecuteMsg::ReceivePacketInternalCallback { msg, chain_uid } => {
                     execute_receive_packet_internal_callback(&mut deps, env, info, msg, chain_uid)
