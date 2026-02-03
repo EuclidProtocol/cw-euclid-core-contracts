@@ -241,6 +241,7 @@ pub fn execute(
             sequence,
             source_port,
             destination_port,
+            timeout,
         } => execute_receive_packet(
             deps,
             info,
@@ -249,6 +250,7 @@ pub fn execute(
             sequence,
             source_port,
             destination_port,
+            timeout,
         ),
 
         ExecuteMsg::ReceivePacketInternalCallback { msg } => {

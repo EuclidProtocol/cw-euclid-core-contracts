@@ -91,6 +91,7 @@ pub enum ExecuteMsg {
         destination_port: String,
         msg: Binary,
         sequence: u128,
+        timeout: Option<u64>,
     },
 
     ReceivePacketInternalCallback {

@@ -113,6 +113,7 @@ pub fn relay_router_send_packet(
             sequence: packet.sequence,
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
+            timeout: None,
         };
 
         let signed_data = sign_relay_messsage(

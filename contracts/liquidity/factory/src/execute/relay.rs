@@ -129,6 +129,7 @@ pub fn execute_receive_packet(
     sequence: u128,
     source_port: String,
     destination_port: String,
+    _timeout: Option<u64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
