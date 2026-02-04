@@ -63,8 +63,12 @@ pub fn execute_send_packet(
     CROSS_CHAIN_PENDING_PACKET_SENDER.save(deps.storage, sequence, &sender)?;
     CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(deps.storage, &sequence.add(1))?;
 
-    let source_port = format!("vsl.{}", env.contract.address);
-    let destination_port = format!("{}.{}", chain.chain_uid.as_str(), chain.factory_address);
+    let source_port = format!("vsl.{}", env.contract.address.to_string().to_lowercase());
+    let destination_port = format!(
+        "{}.{}",
+        chain.chain_uid.as_str(),
+        chain.factory_address.to_lowercase()
+    );
 
     let chain_type = chain.get_chain_type_str();
     let timeout = get_timeout(timeout)?;

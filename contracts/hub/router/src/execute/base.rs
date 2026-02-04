@@ -134,6 +134,10 @@ pub fn execute_register_factory(
     };
     match chain_info {
         RegisterFactoryChainType::Cosmos(cosmos_info) => {
+            ensure!(
+                cosmos_info.factory_address.to_lowercase() == cosmos_info.factory_address,
+                ContractError::new("Factory address must be lowercase")
+            );
             // Save chain info because this call will fail if the tx is not sucessful
             let chain = Chain {
                 chain_uid: chain_uid.clone(),
@@ -170,6 +174,10 @@ pub fn execute_register_factory(
         }
         RegisterFactoryChainType::Evm(evm_info) => {
             // Save chain info because this call will fail if the tx is not sucessful
+            ensure!(
+                evm_info.factory_address.to_lowercase() == evm_info.factory_address,
+                ContractError::new("Factory address must be lowercase")
+            );
             let chain = Chain {
                 chain_uid: chain_uid.clone(),
                 factory_address: evm_info.factory_address,
