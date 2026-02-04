@@ -292,7 +292,6 @@ pub fn get_virtual_balance(chain: &MockBase, address: &Addr) -> VirtualBalanceCo
     virtual_balance
 }
 
-#[allow(dead_code)]
 pub fn get_lp_token(chain: &MockBase, address: &Addr) -> LpTokenContract<MockBase> {
     let mut lp_token = LpTokenContract::new(chain.clone());
     lp_token.as_instance_mut().id = format!("lp_token_{}", address);
