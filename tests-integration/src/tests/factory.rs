@@ -1048,7 +1048,7 @@ fn test_remove_liquidity_ibc() {
 
 #[test]
 fn test_remove_liquidity_native() {
-    run_add_liquidity("nibiru", "nibiru");
+    run_remove_liquidity("nibiru", "nibiru");
 }
 
 fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
@@ -1330,7 +1330,8 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         recipient: CrossChainUser::new(factory_chain_uid.clone(), factory_chain.sender.to_string()),
         cross_chain_config: CrossChainConfig::default(),
     };
-    let lp_to_remove = Uint128::from(1000u128);
+    // let lp_to_remove = Uint128::from(1000u128);
+    let lp_to_remove = user_lp_balance;
     let remove_request = lp_token_contract
         .send(
             lp_to_remove.u128(),
@@ -1338,6 +1339,7 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
             to_json_binary(&remove_msg).unwrap(),
         )
         .unwrap();
+    println!("remove_request: {:?}", remove_request.events);
     relay_factory_router_factory(
         remove_request.events,
         &factory_contract,
@@ -1350,15 +1352,12 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .balance(factory_chain.sender.clone())
         .unwrap();
     let user_lp_balance = lp_token_balance_response.balance;
-    assert_eq!(user_lp_balance, Uint128::from(31622u128 * 2) - lp_to_remove);
+    assert_eq!(user_lp_balance, Uint128::zero());
 
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
-    assert_eq!(
-        liquidity_query.total_lp_tokens,
-        Uint128::new(64244u128) - lp_to_remove
-    );
+    assert_eq!(liquidity_query.total_lp_tokens, Uint128::new(1000));
 }
 
 #[test]
