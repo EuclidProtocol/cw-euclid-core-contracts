@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint64};
+use cosmwasm_std::{coin, to_json_binary, Addr, Coin, Uint128, Uint64};
 use cw_orch::{
     core::CwEnvError,
     mock::MockBase,
@@ -18,8 +18,10 @@ use euclid::{
         cross_chain_config::CrossChainConfig,
         escrow::{QueryMsgFns as EscrowQueryMsgFns, StateResponse as EscrowStateResponse},
         factory::{
-            AllPoolsResponse, ExecuteSwapRequest, QueryMsgFns as FactoryQueryMsgFns, StateResponse,
+            cw20::FactoryCw20HookMsg, AllPoolsResponse, ExecuteSwapRequest,
+            QueryMsgFns as FactoryQueryMsgFns, StateResponse,
         },
+        lp_token::msg::{ExecuteMsgFns, QueryMsgFns},
         router::{
             AllEscrowsResponse, AllVlpResponse, QueryMsgFns as RouterQueryMsgFns,
             QueryTokenDenomsResponse, TokenDenom, VlpResponse,
@@ -43,7 +45,7 @@ use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::RouterContract;
 
 use crate::helpers::{
-    chains::{get_escrow, get_virtual_balance, get_vlp, setup_factory, setup_router},
+    chains::{get_escrow, get_lp_token, get_virtual_balance, get_vlp, setup_factory, setup_router},
     factory::{add_liquidity, create_pool, deposit_token, faucet, register_token, swap_request},
     relayer::{
         relay_factory_router_factory, relay_factory_send_packet, relay_router_factory_router,
@@ -1037,6 +1039,325 @@ fn test_add_liquidity_fails_with_extra_funds() {
         funds,
     )
     .unwrap();
+}
+
+#[test]
+fn test_remove_liquidity_ibc() {
+    run_remove_liquidity("osmosis", "nibiru");
+}
+
+#[test]
+fn test_remove_liquidity_native() {
+    run_remove_liquidity("nibiru", "nibiru");
+}
+
+fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
+    let sender = Addr::unchecked("sender_for_all_chains").into_string();
+    let mut chains = vec![(factory_chain_id, sender.as_str())];
+    if factory_chain_id != router_chain_id {
+        chains.push((router_chain_id, sender.as_str()));
+    }
+    let interchain = MockInterchainEnv::new(chains);
+    let factory_chain = interchain.get_chain(factory_chain_id).unwrap();
+    let router_chain = interchain.get_chain(router_chain_id).unwrap();
+
+    let token_a_id: String = "token.a".to_string();
+    let token_a = TokenWithDenom {
+        token: Token::create(token_a_id.clone()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_a_id.clone(),
+        },
+    };
+    let token_b_id: String = "token.b".to_string();
+    let token_b = TokenWithDenom {
+        token: Token::create(token_b_id.clone()).unwrap(),
+        token_type: euclid::token::TokenType::Native {
+            denom: token_b_id.clone(),
+        },
+    };
+
+    let sender = factory_chain.addr_make("sender_for_all_chains");
+    println!("the sender is: {:?}", sender);
+    factory_chain
+        .set_balance(
+            &Addr::unchecked(sender.clone()),
+            vec![
+                Coin::new(100000000000000u128, token_a_id.clone()),
+                Coin::new(100000000000000u128, token_b_id.clone()),
+            ],
+        )
+        .unwrap();
+
+    router_chain
+        .set_balance(
+            &Addr::unchecked(sender.clone()),
+            vec![
+                Coin::new(100000000000000u128, token_a_id.clone()),
+                Coin::new(100000000000000u128, token_b_id.clone()),
+            ],
+        )
+        .unwrap();
+
+    let router_contract = setup_router(&router_chain).unwrap();
+    let _router_state = router_contract.get_state().unwrap();
+
+    let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
+    let factory_contract = setup_factory(
+        &interchain,
+        factory_chain_id,
+        router_chain_id,
+        &router_contract,
+    )
+    .unwrap();
+
+    // // Register escrow
+    let register_escrow_request = factory_contract
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RegisterDenom {
+                token_with_denom: token_a.clone(),
+                cross_chain_config: CrossChainConfig::default(),
+            },
+            &[],
+        )
+        .unwrap();
+
+    relay_factory_router_factory(
+        register_escrow_request.events,
+        &factory_contract,
+        &router_contract,
+        &factory_chain_uid,
+    )
+    .unwrap();
+
+    let token_denoms_response: QueryTokenDenomsResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
+            token: token_a.token.clone(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        token_denoms_response,
+        QueryTokenDenomsResponse {
+            denoms: vec![TokenDenom {
+                chain_uid: factory_chain_uid.clone(),
+                token_type: token_a.token_type.clone(),
+            }],
+        }
+    );
+
+    // create pool with funds
+    let create_pool_with_funds_request = factory_contract
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
+                pair_with_denom_and_amount: PairWithDenomAndAmount {
+                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                },
+                slippage_tolerance_bps: 100,
+                lp_token_name: "lpname".to_string(),
+                lp_token_symbol: "lpsymbol".to_string(),
+                lp_token_decimal: 6,
+                lp_token_marketing: None,
+                pool_config: PoolConfig::ConstantProduct {},
+                cross_chain_config: CrossChainConfig::default(),
+            },
+            &[
+                coin(100_000u128, token_b.token.to_string()),
+                coin(10_000u128, token_a.token.to_string()),
+            ],
+        )
+        .unwrap();
+
+    relay_factory_router_factory(
+        create_pool_with_funds_request.events,
+        &factory_contract,
+        &router_contract,
+        &factory_chain_uid,
+    )
+    .unwrap();
+
+    let all_pools_query: AllPoolsResponse = factory_contract
+        .query(&euclid::msgs::factory::QueryMsg::GetAllPools {})
+        .unwrap();
+
+    for pool in all_pools_query.pools {
+        assert_eq!(
+            pool.pair,
+            Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap()
+        );
+    }
+
+    let vlp_query: VlpResponse = router_contract
+        .query(&euclid::msgs::router::QueryMsg::GetVlp {
+            pair: Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap(),
+        })
+        .unwrap();
+    assert_eq!(vlp_query.token_1, token_a.token.clone());
+    assert_eq!(vlp_query.token_2, token_b.token.clone());
+
+    let vlp_contract = get_vlp(&router_chain, &Addr::unchecked(vlp_query.vlp.clone()));
+
+    let liquidity_query: GetLiquidityQueryResponse = vlp_contract
+        .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
+        .unwrap();
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityQueryResponse {
+            pair: Pair {
+                token_1: token_a.token.clone(),
+                token_2: token_b.token.clone(),
+            },
+            token_1_reserve: Uint128::new(10_000),
+            token_2_reserve: Uint128::new(100_000),
+            total_lp_tokens: Uint128::new(31622),
+        }
+    );
+
+    let lp_token_address_response = factory_contract
+        .get_lp_token(vlp_query.vlp.clone())
+        .unwrap();
+    let lp_token_address = lp_token_address_response.token_address;
+    let lp_token_contract = get_lp_token(&factory_chain, &Addr::unchecked(lp_token_address));
+
+    let lp_token_balance_response = lp_token_contract
+        .balance(factory_chain.sender.clone())
+        .unwrap();
+    let user_lp_balance = lp_token_balance_response.balance;
+    assert_eq!(user_lp_balance, Uint128::from(30622u128));
+
+    // Osmo escrow contract
+    let escrow_token_a = get_escrow(&factory_contract, token_a.token.as_str());
+    let escrow_token_b = get_escrow(&factory_contract, token_b.token.as_str());
+
+    // This is the escrow for the Euclid token
+    let escrow_query: EscrowStateResponse = escrow_token_a
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: token_a.token.clone(),
+            factory_address: factory_contract.address().unwrap(),
+            total_amount: Uint128::from(10_000u128),
+        }
+    );
+
+    let escrow_query: EscrowStateResponse = escrow_token_b
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: token_b.token.clone(),
+            factory_address: factory_contract.address().unwrap(),
+            total_amount: Uint128::from(100_000u128),
+        }
+    );
+
+    // Add Liquidity
+    // Need to request register escrow first
+    let add_liquidity_request = factory_contract
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::AddLiquidity {
+                pair_with_denom_and_amount: PairWithDenomAndAmount {
+                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                },
+                slippage_tolerance_bps: 100, // 1% slippage tolerance
+                cross_chain_config: CrossChainConfig::default(),
+            },
+            &[
+                coin(100_000u128, token_b.token.to_string()),
+                coin(10_000u128, token_a.token.to_string()),
+            ],
+        )
+        .unwrap();
+
+    relay_factory_router_factory(
+        add_liquidity_request.events,
+        &factory_contract,
+        &router_contract,
+        &factory_chain_uid,
+    )
+    .unwrap();
+
+    let liquidity_query: GetLiquidityQueryResponse = vlp_contract
+        .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
+        .unwrap();
+    assert_eq!(
+        liquidity_query,
+        GetLiquidityQueryResponse {
+            pair: Pair {
+                token_1: token_a.token.clone(),
+                token_2: token_b.token.clone(),
+            },
+            token_1_reserve: Uint128::new(10_000u128 * 2),
+            token_2_reserve: Uint128::new(100_000u128 * 2),
+            total_lp_tokens: Uint128::new(31622u128 * 2),
+        }
+    );
+    let lp_token_balance_response = lp_token_contract
+        .balance(factory_chain.sender.clone())
+        .unwrap();
+    let user_lp_balance = lp_token_balance_response.balance;
+    assert_eq!(user_lp_balance, Uint128::from(62244u128));
+    // Euclid escrow contract
+    let escrow_query: EscrowStateResponse = escrow_token_a
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: token_a.token.clone(),
+            factory_address: factory_contract.address().unwrap(),
+            total_amount: Uint128::from(10_000u128 * 2),
+        }
+    );
+    // Osmo escrow contract
+    let escrow_query: EscrowStateResponse = escrow_token_b
+        .query(&euclid::msgs::escrow::QueryMsg::State {})
+        .unwrap();
+    assert_eq!(
+        escrow_query,
+        EscrowStateResponse {
+            token: token_b.token.clone(),
+            factory_address: factory_contract.address().unwrap(),
+            total_amount: Uint128::from(100_000u128 * 2),
+        }
+    );
+    let remove_msg = FactoryCw20HookMsg::RemoveLiquidity {
+        pair: Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap(),
+        recipient: CrossChainUser::new(factory_chain_uid.clone(), factory_chain.sender.to_string()),
+        cross_chain_config: CrossChainConfig::default(),
+    };
+    // let lp_to_remove = Uint128::from(1000u128);
+    let lp_to_remove = user_lp_balance;
+    let remove_request = lp_token_contract
+        .send(
+            lp_to_remove.u128(),
+            factory_contract.address().unwrap(),
+            to_json_binary(&remove_msg).unwrap(),
+        )
+        .unwrap();
+    println!("remove_request: {:?}", remove_request.events);
+    relay_factory_router_factory(
+        remove_request.events,
+        &factory_contract,
+        &router_contract,
+        &factory_chain_uid,
+    )
+    .unwrap();
+
+    let lp_token_balance_response = lp_token_contract
+        .balance(factory_chain.sender.clone())
+        .unwrap();
+    let user_lp_balance = lp_token_balance_response.balance;
+    assert_eq!(user_lp_balance, Uint128::zero());
+
+    let liquidity_query: GetLiquidityQueryResponse = vlp_contract
+        .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
+        .unwrap();
+    assert_eq!(liquidity_query.total_lp_tokens, Uint128::new(1000));
 }
 
 #[test]
