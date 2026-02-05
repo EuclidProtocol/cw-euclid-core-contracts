@@ -48,20 +48,28 @@ pub fn execute_send_packet(
     );
 
     let sequence = CROSS_CHAIN_LATEST_SEQUENCE_COUNT
-        .load(deps.storage)
+        .load(deps.storage, chain.chain_uid.clone())
         .unwrap_or(0);
 
     CROSS_CHAIN_PENDING_SEND_PACKETS.save(
         deps.storage,
-        sequence,
+        (chain.chain_uid.clone(), sequence),
         &PendingPacket {
             chain_uid: chain.chain_uid.clone(),
             original_msg: msg.clone(),
             ack_response,
         },
     )?;
-    CROSS_CHAIN_PENDING_PACKET_SENDER.save(deps.storage, sequence, &sender)?;
-    CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(deps.storage, &sequence.add(1))?;
+    CROSS_CHAIN_PENDING_PACKET_SENDER.save(
+        deps.storage,
+        (chain.chain_uid.clone(), sequence),
+        &sender,
+    )?;
+    CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(
+        deps.storage,
+        chain.chain_uid.clone(),
+        &sequence.add(1),
+    )?;
 
     let source_port = format!("vsl.{}", env.contract.address.to_string().to_lowercase());
     let destination_port = format!(
@@ -119,7 +127,8 @@ pub fn execute_receive_packet(
         ContractError::new("Invalid destination port")
     );
 
-    let processed_sequence_key = CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS.key(sequence);
+    let processed_sequence_key =
+        CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS.key((chain_uid.clone(), sequence));
     ensure!(
         !processed_sequence_key.has(deps.storage),
         ContractError::Generic {
@@ -200,8 +209,10 @@ pub fn execute_receive_acknowledgement(
         destination_port == format!("vsl.{router}", router = env.contract.address),
         ContractError::new("Invalid destination port")
     );
-    let _existing_request = CROSS_CHAIN_PENDING_SEND_PACKETS.load(deps.storage, sequence)?;
-    let _sender = CROSS_CHAIN_PENDING_PACKET_SENDER.load(deps.storage, sequence)?;
+    let _existing_request =
+        CROSS_CHAIN_PENDING_SEND_PACKETS.load(deps.storage, (chain_uid.clone(), sequence))?;
+    let _sender =
+        CROSS_CHAIN_PENDING_PACKET_SENDER.load(deps.storage, (chain_uid.clone(), sequence))?;
 
     // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
     // ensure!(
@@ -210,8 +221,8 @@ pub fn execute_receive_acknowledgement(
     // );
 
     // Remove the existing request as its already relayed now
-    CROSS_CHAIN_PENDING_SEND_PACKETS.remove(deps.storage, sequence);
-    CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, sequence);
+    CROSS_CHAIN_PENDING_SEND_PACKETS.remove(deps.storage, (chain_uid.clone(), sequence));
+    CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, (chain_uid.clone(), sequence));
 
     let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
 
