@@ -394,7 +394,7 @@ pub fn remove_liquidity_request(
             deps,
             &env,
             state.router_contract,
-            info.sender.clone(),
+            sender_addr.clone(),
             state.chain_uid,
             chain_type,
             cross_chain_config.timeout,
