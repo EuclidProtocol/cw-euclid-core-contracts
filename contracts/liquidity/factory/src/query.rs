@@ -5,17 +5,18 @@ use euclid::{
     error::ContractError,
     msgs::factory::{
         AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
-        GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
-        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
-        PoolVlpResponse, StateResponse,
+        GetLatestPingResponse, GetLatestPongResponse, GetPendingLiquidityResponse,
+        GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse, GetVlpResponse,
+        PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse, PingInfoResponse,
+        PongInfoResponse, PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
 };
 
 use crate::state::{
-    FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE,
-    TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+    FEE_STATE, LATEST_PING, LATEST_PONG, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
 };
 
 // Returns the VLP address
@@ -77,6 +78,28 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         lp_code_id: state.lp_code_id,
         is_native: state.is_native,
     })?)
+}
+
+pub fn get_latest_ping(deps: Deps) -> Result<Binary, ContractError> {
+    let ping = LATEST_PING
+        .may_load(deps.storage)?
+        .map(|ping| PingInfoResponse {
+            tx_id: ping.tx_id,
+            block_height: ping.block_height,
+            timestamp: ping.timestamp,
+        });
+    Ok(to_json_binary(&GetLatestPingResponse { ping })?)
+}
+
+pub fn get_latest_pong(deps: Deps) -> Result<Binary, ContractError> {
+    let pong = LATEST_PONG
+        .may_load(deps.storage)?
+        .map(|pong| PongInfoResponse {
+            tx_id: pong.tx_id,
+            block_height: pong.block_height,
+            timestamp: pong.timestamp,
+        });
+    Ok(to_json_binary(&GetLatestPongResponse { pong })?)
 }
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
     let pools: Vec<PoolVlpResponse> = PAIR_TO_VLP

@@ -1,7 +1,10 @@
-use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, MessageInfo, Response};
 use euclid::{chain::ChainUid, error::ContractError};
 
-use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
+use euclid_ibc::{
+    ack::AcknowledgementMsg,
+    router_ibc::{PongResponse, RouterCrossChainExecuteMsg},
+};
 
 use crate::{
     ibc::receive::{
@@ -121,6 +124,23 @@ pub fn reusable_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
             ibc_execute_swap(deps.branch(), env, msg)?
+        }
+        RouterCrossChainExecuteMsg::Ping {
+            block_height,
+            timestamp,
+            ..
+        } => {
+            let ack = AcknowledgementMsg::Ok(PongResponse {
+                block_height: env.block.height,
+                timestamp: env.block.time.seconds(),
+            });
+            Response::new()
+                .add_attribute("method", "ping")
+                .add_attribute("factory_block_height", block_height.to_string())
+                .add_attribute("factory_timestamp", timestamp.to_string())
+                .add_attribute("router_block_height", env.block.height.to_string())
+                .add_attribute("router_timestamp", env.block.time.seconds().to_string())
+                .set_data(to_json_binary(&ack)?)
         }
     };
     response = response.add_attribute("tx_id", tx_id);

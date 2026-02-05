@@ -12,6 +12,7 @@ use euclid::fee::DenomFees;
 use euclid::token::TokenType;
 use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 
+use crate::execute::ping::execute_ping_router;
 use crate::execute::pool::{add_liquidity_request, execute_request_pool_creation};
 use crate::execute::relay::{
     execute_native_receive_callback, execute_receive_acknowledgement, execute_receive_packet,
@@ -24,8 +25,9 @@ use crate::execute::token::{
 };
 use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_native};
 use crate::query::{
-    get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
-    pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
+    get_escrow, get_latest_ping, get_latest_pong, get_lp_token_address,
+    get_partner_fees_collected, get_vlp, pending_liquidity, pending_remove_liquidity,
+    pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
@@ -222,6 +224,9 @@ pub fn execute(
                 msg.partner_fee,
             )
         }
+        ExecuteMsg::PingRouter { cross_chain_config } => {
+            execute_ping_router(&mut deps, env, info, cross_chain_config)
+        }
         ExecuteMsg::ManageFactoryState(msg) => execute_manage_factory_state(deps, info, msg),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
@@ -293,6 +298,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
+        QueryMsg::GetLatestPing {} => get_latest_ping(deps),
+        QueryMsg::GetLatestPong {} => get_latest_pong(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

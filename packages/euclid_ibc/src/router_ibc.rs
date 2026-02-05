@@ -66,6 +66,12 @@ pub enum RouterCrossChainExecuteMsg {
 
     // Swap tokens on VLP
     Swap(RouterCrossChainSwapExecuteMsg),
+    Ping {
+        // Unique per tx
+        tx_id: String,
+        block_height: u64,
+        timestamp: u64,
+    },
 }
 
 impl RouterCrossChainExecuteMsg {
@@ -79,6 +85,7 @@ impl RouterCrossChainExecuteMsg {
             Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
+            Self::Ping { tx_id, .. } => tx_id.clone(),
         }
     }
 
@@ -158,6 +165,12 @@ impl RouterCrossChainExecuteMsg {
 }
 
 #[cw_serde]
+pub struct PongResponse {
+    pub block_height: u64,
+    pub timestamp: u64,
+}
+
+#[cw_serde]
 pub struct RouterCrossChainRemoveLiquidityExecuteMsg {
     // Factory will set this using info.sender
     pub sender: CrossChainUser,
@@ -211,4 +224,35 @@ pub struct RouterCrossChainDepositTokenExecuteMsg {
     pub recipients: Vec<Recipient>,
     // Unique per tx
     pub tx_id: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::{from_json, to_json_binary};
+
+    #[test]
+    fn ping_round_trip() {
+        let msg = RouterCrossChainExecuteMsg::Ping {
+            tx_id: "ping-tx-1".to_string(),
+            block_height: 123,
+            timestamp: 456,
+        };
+        assert_eq!(msg.get_tx_id(), "ping-tx-1".to_string());
+
+        let bin = to_json_binary(&msg).unwrap();
+        let decoded: RouterCrossChainExecuteMsg = from_json(bin).unwrap();
+        match decoded {
+            RouterCrossChainExecuteMsg::Ping {
+                tx_id,
+                block_height,
+                timestamp,
+            } => {
+                assert_eq!(tx_id, "ping-tx-1".to_string());
+                assert_eq!(block_height, 123);
+                assert_eq!(timestamp, 456);
+            }
+            _ => panic!("unexpected variant"),
+        }
+    }
 }

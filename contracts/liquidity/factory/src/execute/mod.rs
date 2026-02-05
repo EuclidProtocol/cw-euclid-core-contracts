@@ -1,4 +1,5 @@
 pub mod base;
+pub mod ping;
 pub mod pool;
 pub mod relay;
 pub mod swap;

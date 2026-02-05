@@ -69,6 +69,9 @@ pub enum ExecuteMsg {
         cross_chain_config: CrossChainConfig,
     },
     ExecuteSwapRequest(ExecuteSwapRequest),
+    PingRouter {
+        cross_chain_config: CrossChainConfig,
+    },
 
     // Recieve CW20 TOKENS structure
     Receive(Cw20ReceiveMsg),
@@ -167,6 +170,12 @@ pub enum QueryMsg {
 
     #[returns(GetEscrowResponse)]
     GetEscrow { token_id: String },
+
+    #[returns(GetLatestPingResponse)]
+    GetLatestPing {},
+
+    #[returns(GetLatestPongResponse)]
+    GetLatestPong {},
 }
 
 #[cw_serde]
@@ -183,6 +192,30 @@ pub struct GetLPTokenResponse {
 pub struct GetEscrowResponse {
     pub escrow_address: Option<Addr>,
     pub denoms: Vec<TokenType>,
+}
+
+#[cw_serde]
+pub struct PingInfoResponse {
+    pub tx_id: String,
+    pub block_height: u64,
+    pub timestamp: u64,
+}
+
+#[cw_serde]
+pub struct PongInfoResponse {
+    pub tx_id: String,
+    pub block_height: u64,
+    pub timestamp: u64,
+}
+
+#[cw_serde]
+pub struct GetLatestPingResponse {
+    pub ping: Option<PingInfoResponse>,
+}
+
+#[cw_serde]
+pub struct GetLatestPongResponse {
+    pub pong: Option<PongInfoResponse>,
 }
 // We define a custom struct for each query response
 #[cw_serde]
