@@ -39,9 +39,12 @@ mod tests {
     use crate::tests_reusable::factory_register::setup_factory;
     use cw_orch_interchain::mock::MockInterchainEnv;
     use euclid::token::{Token, TokenType};
+    use rstest::rstest;
 
-    #[test]
-    fn test_register_denom() {
+    #[rstest]
+    #[case("native")]
+    #[case("smart")]
+    fn test_register_denom(#[case] token_type_case: &str) {
         let sender = "sender_for_all_chains";
         let factory_chain_id = "nibiru";
         let router_chain_id = "nibiru";
@@ -51,11 +54,21 @@ mod tests {
         let factory =
             setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
 
-        let token = TokenWithDenom {
-            token: Token::create("eucl".to_string()).unwrap(),
-            token_type: TokenType::Native {
+        let token_type = match token_type_case {
+            "native" => TokenType::Native {
                 denom: "eucl".to_string(),
             },
+            "smart" => TokenType::Smart {
+                contract_address: factory
+                    .environment()
+                    .addr_make("token_contract")
+                    .to_string(),
+            },
+            _ => unreachable!("unexpected token type case"),
+        };
+        let token = TokenWithDenom {
+            token: Token::create("eucl".to_string()).unwrap(),
+            token_type,
         };
 
         register_denom(&factory, &router, token.clone()).unwrap();

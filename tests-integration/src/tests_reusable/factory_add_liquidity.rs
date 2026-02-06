@@ -10,6 +10,7 @@ use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
+use euclid::msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::recipient::Recipient;
 use euclid::token::TokenWithDenom;
 use euclid::utils::pagination::Pagination;
@@ -50,13 +51,20 @@ pub fn deposit_token(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::setup_router;
+    use crate::helpers::chains::{get_virtual_balance, setup_router};
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register_denom::register_denom;
+    use euclid::cross_chain_user::CrossChainUser;
+    use euclid::limit::Limit;
     use euclid::token::{Token, TokenType};
+    use euclid::voucher::BalanceKey;
+    use rstest::rstest;
 
-    #[test]
-    fn deposit_token_updates_router_and_escrow_balances() {
+    #[rstest]
+    #[case("empty")]
+    #[case("single_voucher")]
+    #[case("two_voucher")]
+    fn deposit_token_updates_router_and_escrow_balances(#[case] recipient_case: &str) {
         let sender = "sender_for_all_chains";
         let factory_chain_id = "nibiru";
         let router_chain_id = "nibiru";
@@ -89,7 +97,42 @@ mod tests {
         };
 
         let amount = Uint128::from(10_000u128);
-        deposit_token(&factory, &router, token.clone(), amount, vec![]).unwrap();
+        let recipient_one = CrossChainUser::new(
+            factory_chain_uid.clone(),
+            factory.environment().addr_make("recipient_one").to_string(),
+        );
+        let recipient_two = CrossChainUser::new(
+            factory_chain_uid.clone(),
+            factory.environment().addr_make("recipient_two").to_string(),
+        );
+        let (recipients, expected_balances) = match recipient_case {
+            "empty" => (vec![], vec![]),
+            "single_voucher" => (
+                vec![Recipient::default_voucher_recipient(
+                    recipient_one.clone(),
+                    Limit::Dynamic(Uint128::zero()),
+                )],
+                vec![(recipient_one.clone(), amount)],
+            ),
+            "two_voucher" => (
+                vec![
+                    Recipient::default_voucher_recipient(
+                        recipient_one.clone(),
+                        Limit::Dynamic(Uint128::zero()),
+                    ),
+                    Recipient::default_voucher_recipient(
+                        recipient_two.clone(),
+                        Limit::Dynamic(Uint128::zero()),
+                    ),
+                ],
+                vec![
+                    (recipient_one.clone(), amount),
+                    (recipient_two.clone(), Uint128::zero()),
+                ],
+            ),
+            _ => unreachable!("unexpected recipient case"),
+        };
+        deposit_token(&factory, &router, token.clone(), amount, recipients).unwrap();
 
         let new_router_escrow_balance = router
             .query_token_escrows(
@@ -112,5 +155,22 @@ mod tests {
             old_escrow_balance.total_amount + amount,
             "Escrow balance not updated properly"
         );
+
+        let virtual_balance_contract = get_virtual_balance(
+            router.environment(),
+            &router.get_state().unwrap().virtual_balance_address,
+        );
+        for (recipient, expected_amount) in expected_balances {
+            let balance = virtual_balance_contract
+                .get_balance(BalanceKey {
+                    cross_chain_user: recipient.clone(),
+                    token_id: token.token.to_string(),
+                })
+                .unwrap();
+            assert_eq!(
+                balance.amount, expected_amount,
+                "Recipient balance mismatch"
+            );
+        }
     }
 }
