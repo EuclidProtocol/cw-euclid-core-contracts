@@ -60,14 +60,16 @@ fn relay_factory_send_packet_inner(
             destination_port: packet.destination_port.clone(),
             timeout: None,
         };
+        let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             router.address().unwrap(),
             format!(
                 "{}-{}-{}-receive",
-                packet.source_port, packet.destination_port, packet.sequence
+                packet.source_port, packet.destination_port, packet.sequence,
             ),
             &router.environment().app.borrow(),
+            source_chain_uid,
         );
 
         let response = relayer.execute_meta_transaction(signed_data)?;
@@ -116,6 +118,7 @@ pub fn relay_router_send_packet(
             timeout: None,
         };
 
+        let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             factory.address().unwrap(),
@@ -124,6 +127,7 @@ pub fn relay_router_send_packet(
                 packet.source_port, packet.destination_port, packet.sequence
             ),
             &factory.environment().app.borrow(),
+            source_chain_uid,
         );
 
         let response = relayer.execute_meta_transaction(signed_data)?;
@@ -169,6 +173,7 @@ pub fn relay_factory_ack_packet(
             ack: packet.ack,
         };
 
+        let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             factory.address().unwrap(),
@@ -177,6 +182,7 @@ pub fn relay_factory_ack_packet(
                 packet.source_port, packet.destination_port, packet.sequence
             ),
             &factory.environment().app.borrow(),
+            source_chain_uid,
         );
 
         let response = relayer.execute_meta_transaction(signed_data)?;
@@ -211,6 +217,7 @@ pub fn relay_router_ack_packet(
             sequence: packet.sequence,
             ack: packet.ack,
         };
+        let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             router.address().unwrap(),
@@ -219,6 +226,7 @@ pub fn relay_router_ack_packet(
                 packet.source_port, packet.destination_port, packet.sequence
             ),
             &router.environment().app.borrow(),
+            source_chain_uid,
         );
 
         let response = relayer.execute_meta_transaction(signed_data);
@@ -264,12 +272,13 @@ pub fn ack_register_factory_evm(
         sequence,
         ack: ack_binary,
     };
-
+    let source_chain_uid = chain_uid.as_str();
     let signed_data = sign_relay_messsage(
         to_json_binary(&call_data).unwrap(),
         router.address().unwrap(),
         format!("{}-{}-{}-ack", evm_port, vsl_port, 0,),
         &router.environment().app.borrow(),
+        source_chain_uid,
     );
 
     let response = relayer.execute_meta_transaction(signed_data);
@@ -347,6 +356,7 @@ pub fn sign_relay_messsage(
     target: Addr,
     nonce: String,
     app: &App,
+    source_chain_uid: &str,
 ) -> RelayerMetaTransaction {
     let meta_tx_data = RelayerMetaTransactionData {
         call_data,
@@ -373,6 +383,7 @@ pub fn sign_relay_messsage(
             signature: admin_signature,
             expiry: app.block_info().time.plus_seconds(60).seconds(),
         }],
+        chain_uid: ChainUid::create(source_chain_uid.to_string()).unwrap(),
     }
 }
 

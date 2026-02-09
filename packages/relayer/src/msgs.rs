@@ -1,11 +1,11 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary};
+use euclid::chain::ChainUid;
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub message_signer: Validator,
     pub signature_threshold: u8,
-    pub validators: Vec<Validator>,
 }
 
 #[cw_serde]
@@ -14,8 +14,14 @@ pub enum ExecuteMsg {
     ExecuteMetaTransaction(MetaTransaction),
     UpdateState(UpdateStateMsg),
     UpdateAdmin(UpdateAdminMsg),
-    AddValidator { validator: Validator },
-    RemoveValidator { validator: Validator },
+    AddValidator {
+        validator: Validator,
+        chain_uid: ChainUid,
+    },
+    RemoveValidator {
+        validator: Validator,
+        chain_uid: ChainUid,
+    },
 }
 
 #[cw_serde]
@@ -57,6 +63,7 @@ pub struct MetaTransaction {
     pub expiry: u64,
     pub admin_signature: Binary,
     pub validator_signatures: Vec<ValidatorSignature>,
+    pub chain_uid: ChainUid,
 }
 
 #[cw_serde]
@@ -78,8 +85,14 @@ pub struct UpdateAdminMsg {
 }
 
 #[cw_serde]
+pub struct ValidatorsResponseItem {
+    pub validator: Validator,
+    pub chain_uid: ChainUid,
+}
+
+#[cw_serde]
 pub struct ValidatorsResponse {
-    pub validators: Vec<Validator>,
+    pub validators: Vec<ValidatorsResponseItem>,
 }
 
 #[cw_serde]

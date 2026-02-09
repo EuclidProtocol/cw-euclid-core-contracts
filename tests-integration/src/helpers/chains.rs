@@ -20,6 +20,7 @@ use factory::FactoryContract;
 use lp_token::LpTokenContract;
 use meta_transaction::MetaTransactionContract;
 use relayer::verify::cosmos_address_from_pubkey;
+use relayer::ExecuteMsgFns as RelayerExecuteMsgFns;
 use relayer::Validator;
 use router::RouterContract;
 use stable_vlp::StableVlpContract;
@@ -84,7 +85,7 @@ fn setup_factory_inner(
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let lp_token = LpTokenContract::new(chain.clone());
-    let relayer = setup_relayer(&chain)?;
+    let relayer = setup_relayer(&chain, vec![ChainUid::vsl_chain_uid().unwrap().as_str()])?;
 
     let string_length = factory_chain_id.len();
 
@@ -177,12 +178,15 @@ fn setup_factory_inner(
     Ok(factory)
 }
 
-pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrchError> {
+pub fn setup_router(
+    chain: &MockBase,
+    factory_chains: Vec<&str>,
+) -> Result<RouterContract<MockBase>, CwOrchError> {
     let router = RouterContract::new(chain.clone());
     let virtual_balance = VirtualBalanceContract::new(chain.clone());
     let vlp = VlpContract::new(chain.clone());
     let stable_vlp = StableVlpContract::new(chain.clone());
-    let relayer = setup_relayer(chain)?;
+    let relayer = setup_relayer(chain, factory_chains)?;
 
     router.upload().unwrap();
     virtual_balance.upload().unwrap();
@@ -210,7 +214,10 @@ pub fn setup_router(chain: &MockBase) -> Result<RouterContract<MockBase>, CwOrch
     Ok(router)
 }
 
-pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOrchError> {
+pub fn setup_relayer(
+    chain: &MockBase,
+    chain_uids: Vec<&str>,
+) -> Result<RelayerContract<MockBase>, CwOrchError> {
     let relayer = RelayerContract::new(chain.clone());
     let (_, pubkey_binary) = get_signer_key();
 
@@ -227,12 +234,17 @@ pub fn setup_relayer(chain: &MockBase) -> Result<RelayerContract<MockBase>, CwOr
         &relayer::msgs::InstantiateMsg {
             message_signer: validator.clone(),
             signature_threshold: 1,
-            validators: vec![validator],
         },
         Some(&chain.sender),
         &[],
     )?;
-
+    // Add validators to all chains
+    for chain_uid in chain_uids {
+        relayer.add_validator(
+            ChainUid::create(chain_uid.to_string()).unwrap(),
+            validator.clone(),
+        )?;
+    }
     Ok(relayer)
 }
 
