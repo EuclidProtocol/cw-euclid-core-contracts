@@ -101,7 +101,7 @@ pub fn execute_meta_transaction(
 
     let verified = verify_signature(
         deps.as_ref(),
-        &expiry_call_data(&msg.data, msg.expiry),
+        &expiry_call_data(&msg.data, msg.expiry, msg.chain_uid.as_str()),
         &msg.admin_signature,
         &state.message_signer.pubkey,
     )?;
@@ -122,7 +122,7 @@ pub fn execute_meta_transaction(
         }
         let verified = verify_signature(
             deps.as_ref(),
-            &expiry_call_data(&msg.data, signature.expiry),
+            &expiry_call_data(&msg.data, signature.expiry, msg.chain_uid.as_str()),
             &signature.signature,
             &signature.pubkey,
         )?;
@@ -157,8 +157,13 @@ pub fn execute_meta_transaction(
         .add_attribute("relayer_sender", info.sender.to_string()))
 }
 
-fn expiry_call_data(data: &str, expiry: u64) -> String {
-    let expiry_call_data = format!("{data},{expiry}", data = data, expiry = expiry);
+fn expiry_call_data(data: &str, expiry: u64, chain_uid: &str) -> String {
+    let expiry_call_data = format!(
+        "{data},{expiry},{chain_uid}",
+        data = data,
+        expiry = expiry,
+        chain_uid = chain_uid
+    );
     expiry_call_data
 }
 
