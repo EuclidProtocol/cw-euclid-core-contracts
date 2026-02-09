@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, DepsMut, Uint128};
+use cosmwasm_std::{ensure, Addr, DepsMut, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::error::ContractError;
 
@@ -21,28 +21,24 @@ pub const USER_TOTAL_PACKETS_COUNT: Map<Addr, u128> = Map::new("user_total_packe
 
 pub const USER_PENDING_PACKETS_COUNT: Map<Addr, u128> = Map::new("user_pending_packets_count");
 
-pub fn calc_fee(
-    deps: &DepsMut,
-    count: u128,
-    free_limit: Option<u128>,
-) -> Result<Uint128, ContractError> {
+pub fn ensure_rate_limit_exceeded(deps: &DepsMut, sender: Addr) -> Result<(), ContractError> {
     let state = RATE_LIMIT_STATE.load(deps.storage)?;
-    let free_limit = free_limit.unwrap_or(state.free_limit);
+    let user_free_limit = USER_FREE_LIMIT.may_load(deps.storage, sender.clone())?;
 
-    // If count is less than or equal to free limit, return zero fee
-    if count.le(&free_limit) {
-        return Ok(Uint128::zero());
+    let pending_count = USER_PENDING_PACKETS_COUNT
+        .load(deps.storage, sender.clone())
+        .unwrap_or(0);
+
+    if let Some(user_free_limit) = user_free_limit {
+        ensure!(
+            pending_count < user_free_limit,
+            ContractError::RateLimitExceeded {}
+        );
+    } else {
+        ensure!(
+            pending_count < state.free_limit,
+            ContractError::RateLimitExceeded {}
+        );
     }
-
-    // If count is greater than free limit, calculate fee
-    let fee_brackets = state.fee_brackets;
-
-    // Loop from last to first fee bracket and return on the first that is less than count
-    for bracket in fee_brackets.iter().rev() {
-        if count >= bracket.threshold {
-            return Ok(bracket.fee);
-        }
-    }
-
-    Ok(Uint128::zero())
+    Ok(())
 }
