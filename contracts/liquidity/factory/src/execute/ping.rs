@@ -1,9 +1,7 @@
 use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response};
 use euclid::{
-    cross_chain_user::CrossChainUser,
-    error::ContractError,
-    msgs::cross_chain_config::CrossChainConfig,
-    utils::tx::generate_tx,
+    cross_chain_user::CrossChainUser, error::ContractError,
+    msgs::cross_chain_config::CrossChainConfig, utils::tx::generate_tx,
 };
 use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
 

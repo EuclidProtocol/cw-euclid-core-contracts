@@ -25,9 +25,9 @@ use crate::execute::token::{
 };
 use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_native};
 use crate::query::{
-    get_escrow, get_latest_ping, get_latest_pong, get_lp_token_address,
-    get_partner_fees_collected, get_vlp, pending_liquidity, pending_remove_liquidity,
-    pending_swaps, query_all_pools, query_all_tokens, query_state,
+    get_escrow, get_latest_ping, get_latest_pong, get_lp_token_address, get_partner_fees_collected,
+    get_vlp, pending_liquidity, pending_remove_liquidity, pending_swaps, query_all_pools,
+    query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
