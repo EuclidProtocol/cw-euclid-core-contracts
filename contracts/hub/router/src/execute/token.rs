@@ -1,9 +1,11 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Binary, DepsMut, Env, Response, SubMsg, Uint128, WasmMsg,
+    ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, Response, SubMsg, Uint128,
+    WasmMsg,
 };
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
+    events::simple_event,
     limit::Limit,
     msgs::{cross_chain_config::CrossChainConfig, router::TokenDenom},
     recipient::Recipient,
@@ -64,7 +66,7 @@ pub fn execute_transfer_voucher(
 ) -> Result<Response, ContractError> {
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?.into_string();
 
-    let mut response = Response::new();
+    let mut response = Response::new().add_attribute("recipients", to_json_string(&recipients)?);
 
     let mut remaining_withdraw_amount = amount;
 
