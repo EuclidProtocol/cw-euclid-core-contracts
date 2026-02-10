@@ -12,7 +12,7 @@ use crate::{
         execute_update_admin, execute_update_state,
     },
     query::{get_state, get_validators, nonce_relayed},
-    state::{STATE, VALIDATORS},
+    state::STATE,
 };
 
 // version info for migration info

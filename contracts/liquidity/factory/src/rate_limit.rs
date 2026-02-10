@@ -50,6 +50,7 @@ pub fn ensure_rate_limit_exceeded(deps: &DepsMut, sender: Addr) -> Result<(), Co
     Ok(())
 }
 
+#[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::mock_dependencies;
 
