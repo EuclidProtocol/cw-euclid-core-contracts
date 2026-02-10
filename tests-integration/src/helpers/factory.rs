@@ -255,6 +255,7 @@ pub fn swap_request(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     asset_in: TokenWithDenom,
+    amount_in: Uint128,
     asset_out: Token,
     min_amount_out: Uint128,
     swaps: Vec<NextSwapPair>,
@@ -264,6 +265,7 @@ pub fn swap_request(
 ) -> Result<(), CwOrchError> {
     let tx_response = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            amount_in,
             recipients,
             asset_in,
             asset_out,

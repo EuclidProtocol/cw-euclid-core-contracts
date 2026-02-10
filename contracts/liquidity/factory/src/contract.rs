@@ -192,7 +192,7 @@ pub fn execute(
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
 
-            let mut amount_in = Uint128::zero();
+            let mut amount_in = msg.amount_in;
             // If this asset is native, lets get the actual amount of funds sent because these amount can vary depending on forwarding contract swaps
             if let TokenType::Native { denom } = &msg.asset_in.token_type {
                 amount_in = info
@@ -203,7 +203,7 @@ pub fn execute(
                     .amount;
             }
             ensure!(
-                amount_in.gt(&Uint128::zero()),
+                amount_in.ge(&msg.amount_in),
                 ContractError::InsufficientFunds {}
             );
 
