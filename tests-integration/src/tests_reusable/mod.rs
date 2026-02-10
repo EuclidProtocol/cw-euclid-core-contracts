@@ -5,3 +5,4 @@ pub mod factory_create_pool;
 pub mod factory_full;
 pub mod factory_register;
 pub mod factory_register_denom;
+pub mod factory_swap;

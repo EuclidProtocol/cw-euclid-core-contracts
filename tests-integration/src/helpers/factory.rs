@@ -1,12 +1,22 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use super::chains::get_virtual_balance;
+use crate::helpers::chains::get_escrow;
+use crate::helpers::relayer::relay_factory_router_factory;
 use cosmwasm_std::{coin, Uint128};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
+use cw_orch_interchain::prelude::MockInterchainEnv;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
+use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
+use euclid::msgs::factory::msg::ExecuteMsgFns as FactoryExecuteMsgFns;
+use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::factory::ExecuteSwapRequest;
+use euclid::msgs::lp_token::msg::ExecuteMsgFns as LpTokenExecuteMsgFns;
+use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
+use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::recipient::Recipient;
 use euclid::swap::NextSwapPair;
@@ -14,24 +24,11 @@ use euclid::token::PairWithDenomAndAmount;
 use euclid::token::Token;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
-
-use cw_orch_interchain::prelude::MockInterchainEnv;
-use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
-use euclid::msgs::factory::msg::ExecuteMsgFns as FactoryExecuteMsgFns;
-use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
-use euclid::msgs::lp_token::msg::ExecuteMsgFns as LpTokenExecuteMsgFns;
-use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
-use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::utils::pagination::Pagination;
 use euclid::voucher::BalanceKey;
 use factory::FactoryContract;
 use lp_token::LpTokenContract;
 use router::RouterContract;
-
-use crate::helpers::chains::get_escrow;
-use crate::helpers::relayer::relay_factory_router_factory;
-
-use super::chains::get_virtual_balance;
 
 pub fn register_token(
     factory: &FactoryContract<MockBase>,

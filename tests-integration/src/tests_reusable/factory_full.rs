@@ -4,12 +4,15 @@ use crate::tests_reusable::factory_add_liquidity::deposit_token;
 use crate::tests_reusable::factory_create_pool::create_pool;
 use crate::tests_reusable::factory_register::{setup_factory, setup_factory_evm, FactorySetupMode};
 use crate::tests_reusable::factory_register_denom::register_denom;
+use crate::tests_reusable::factory_swap::swap_request;
 use cosmwasm_std::Uint128;
 use cw_orch::mock::MockBase;
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
+use euclid::fee::PartnerFee;
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::recipient::Recipient;
+use euclid::swap::NextSwapPair;
 use euclid::token::{
     PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
 };
@@ -28,7 +31,11 @@ pub(crate) fn setup_factory_full_flow(
     pool_type: PoolConfig,
     factory_chain_id: &str,
     router_chain_id: &str,
-) -> (FactoryContract<MockBase>, RouterContract<MockBase>) {
+) -> (
+    MockInterchainEnv,
+    FactoryContract<MockBase>,
+    RouterContract<MockBase>,
+) {
     let mut chains = vec![(router_chain_id, sender)];
     if router_chain_id != factory_chain_id {
         chains.push((factory_chain_id, sender));
@@ -59,14 +66,14 @@ pub(crate) fn setup_factory_full_flow(
     deposit_token(&factory, &router, token_2.clone(), amount_2, recipients).unwrap();
     let pair_with_denom_and_amount = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
-            token: token_1.token,
+            token: token_1.token.clone(),
             amount: amount_1,
-            token_type: token_1.token_type,
+            token_type: token_1.token_type.clone(),
         },
         token_2: TokenWithDenomAndAmount {
-            token: token_2.token,
+            token: token_2.token.clone(),
             amount: amount_2,
-            token_type: token_2.token_type,
+            token_type: token_2.token_type.clone(),
         },
     };
     let slippage_tolerance_bps = 100;
@@ -78,7 +85,8 @@ pub(crate) fn setup_factory_full_flow(
         pool_type,
     )
     .unwrap();
-    (factory, router)
+
+    (interchain, factory, router)
 }
 
 #[cfg(test)]
@@ -151,7 +159,7 @@ mod tests {
             ],
             _ => unreachable!("unexpected recipient case"),
         };
-        let (factory, router) = setup_factory_full_flow(
+        let (interchain, factory, router) = setup_factory_full_flow(
             sender,
             token_1.clone(),
             token_2.clone(),
@@ -310,5 +318,148 @@ mod tests {
             }
             _ => unreachable!("unexpected recipient case"),
         }
+
+        // --- Swap with partner fee ---
+
+        let swap_amount = Uint128::new(1_000);
+        let partner_fee_bps: u64 = 30;
+        let sender_addr = factory.environment().sender.to_string();
+
+        // Partner fee: checked_mul_ceil(1000, 0.003) = ceil(3.0) = 3
+        let partner_fee_amount = swap_amount
+            .checked_mul_ceil(cosmwasm_std::Decimal::bps(partner_fee_bps))
+            .unwrap();
+        let net_swap_amount = swap_amount - partner_fee_amount;
+
+        // Record pre-swap state
+        let escrow_in_before = get_escrow(&factory, token_1.token.as_str())
+            .state()
+            .unwrap()
+            .total_amount;
+
+        let router_escrow_in_before = router
+            .query_token_escrows(
+                Pagination::new(Some(chain_uid.clone()), None, None, Some(1)),
+                token_1.token.clone(),
+            )
+            .unwrap()
+            .chains
+            .first()
+            .map(|c| c.balance)
+            .unwrap_or(Uint128::zero());
+
+        let sender_user = CrossChainUser::new(chain_uid.clone(), sender_addr.clone());
+        let vb_out_before = virtual_balance_contract
+            .get_balance(BalanceKey {
+                cross_chain_user: sender_user.clone(),
+                token_id: token_2.token.to_string(),
+            })
+            .unwrap()
+            .amount;
+
+        let partner_native_balance_before = factory
+            .environment()
+            .query_balance(
+                &cosmwasm_std::Addr::unchecked(sender_addr.clone()),
+                token_1.token.to_string().as_str(),
+            )
+            .unwrap();
+
+        // Execute the swap
+        let mut swap_funds = vec![];
+        crate::helpers::factory::faucet(
+            factory.environment(),
+            factory.environment().sender.as_str(),
+            swap_amount.u128(),
+            token_1.token_type.clone(),
+            &mut swap_funds,
+        );
+        swap_request(
+            &interchain,
+            &factory,
+            &router,
+            token_1.clone(),
+            token_2.clone().token,
+            Uint128::new(1),
+            vec![NextSwapPair {
+                token_in: token_1.token.clone(),
+                token_out: token_2.token.clone(),
+                test_fail: None,
+            }],
+            vec![],
+            Some(PartnerFee {
+                partner_fee_bps,
+                recipient: sender_addr.clone(),
+            }),
+            swap_funds,
+        )
+        .unwrap();
+
+        // --- Post-swap assertions ---
+
+        // 1. Input token escrow increased by net swap amount (after partner fee deduction)
+        let escrow_in_after = get_escrow(&factory, token_1.token.as_str())
+            .state()
+            .unwrap()
+            .total_amount;
+        assert_eq!(
+            escrow_in_after,
+            escrow_in_before + net_swap_amount,
+            "Escrow for input token should increase by net swap amount (swap_amount - partner_fee)"
+        );
+
+        // 2. Router escrow balance for input token increased by net swap amount
+        let router_escrow_in_after = router
+            .query_token_escrows(
+                Pagination::new(Some(chain_uid.clone()), None, None, Some(1)),
+                token_1.token.clone(),
+            )
+            .unwrap()
+            .chains
+            .first()
+            .map(|c| c.balance)
+            .unwrap_or(Uint128::zero());
+        assert_eq!(
+            router_escrow_in_after,
+            router_escrow_in_before + net_swap_amount,
+            "Router escrow balance for input token should increase by net swap amount"
+        );
+
+        // 3. Sender received output tokens as virtual balance
+        let vb_out_after = virtual_balance_contract
+            .get_balance(BalanceKey {
+                cross_chain_user: sender_user.clone(),
+                token_id: token_2.token.to_string(),
+            })
+            .unwrap()
+            .amount;
+        let amount_received = vb_out_after - vb_out_before;
+        assert!(
+            amount_received > Uint128::zero(),
+            "Sender should have received output tokens as virtual balance, got 0"
+        );
+
+        // 4. Output amount should be less than net input (AMM pricing with equal reserves)
+        assert!(
+            amount_received < net_swap_amount,
+            "Amount received ({}) should be less than net input ({}) for equal-reserve pools",
+            amount_received,
+            net_swap_amount
+        );
+
+        // 5. Partner fee recipient received the fee as native tokens
+        let partner_native_balance_after = factory
+            .environment()
+            .query_balance(
+                &cosmwasm_std::Addr::unchecked(sender_addr.clone()),
+                token_1.token.to_string().as_str(),
+            )
+            .unwrap();
+        assert_eq!(
+            partner_native_balance_after,
+            partner_native_balance_before + partner_fee_amount,
+            "Partner fee recipient should have received {} native input tokens as fee",
+            partner_fee_amount
+        );
     }
 }
