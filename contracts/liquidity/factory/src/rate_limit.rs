@@ -32,13 +32,19 @@ pub fn ensure_rate_limit_exceeded(deps: &DepsMut, sender: Addr) -> Result<(), Co
     if let Some(user_free_limit) = user_free_limit {
         ensure!(
             pending_count < user_free_limit,
-            ContractError::RateLimitExceeded {}
+            ContractError::RateLimitExceeded {
+                limit: user_free_limit,
+                actual: pending_count,
+            }
         );
     } else {
         let state = RATE_LIMIT_STATE.load(deps.storage)?;
         ensure!(
             pending_count < state.free_limit,
-            ContractError::RateLimitExceeded {}
+            ContractError::RateLimitExceeded {
+                limit: state.free_limit,
+                actual: pending_count,
+            }
         );
     }
     Ok(())

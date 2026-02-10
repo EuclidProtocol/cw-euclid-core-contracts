@@ -109,7 +109,7 @@ pub fn execute_meta_transaction(
     ensure!(verified, ContractError::new("Invalid admin signature"));
     let validators = VALIDATORS
         .load(deps.storage, msg.chain_uid.clone())
-        .unwrap_or(vec![]);
+        .map_err(|_| ContractError::new("Validators not found for chain"))?;
     let mut visited = vec![false; validators.len()];
     let mut valid_signatures = 0;
     for signature in msg.validator_signatures {

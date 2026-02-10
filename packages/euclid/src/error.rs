@@ -275,8 +275,8 @@ pub enum ContractError {
     #[error("Balance not found for key: {key}")]
     BalanceNotFound { key: String },
 
-    #[error("Rate limit exceeded")]
-    RateLimitExceeded {},
+    #[error("Rate limit exceeded: limit {limit}, actual {actual}")]
+    RateLimitExceeded { limit: u128, actual: u128 },
 }
 
 impl ContractError {
