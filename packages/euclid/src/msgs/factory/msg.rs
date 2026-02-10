@@ -117,6 +117,7 @@ pub enum ManageFactoryState {
 #[cw_serde]
 pub struct ExecuteSwapRequest {
     pub asset_in: TokenWithDenom,
+    pub amount_in: Uint128,
     pub asset_out: Token,
     pub min_amount_out: Uint128,
     pub swaps: Vec<NextSwapPair>,
