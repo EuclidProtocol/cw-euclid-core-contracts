@@ -43,7 +43,7 @@ fn setup_claimer_and_factory() -> (
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let osmosis_factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
     let vcoin_address = get_virtual_balance(
         &router_chain,
@@ -60,7 +60,7 @@ fn test_proper_instantiation() {
     let _factory_chain = interchain.get_chain("osmosis").unwrap();
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let vcoin_address = get_virtual_balance(
         &router_chain,
         &router.get_state().unwrap().virtual_balance_address,

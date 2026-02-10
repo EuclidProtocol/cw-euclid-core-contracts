@@ -5,7 +5,6 @@ use cosmwasm_std::{
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    events::simple_event,
     limit::Limit,
     msgs::{cross_chain_config::CrossChainConfig, router::TokenDenom},
     recipient::Recipient,

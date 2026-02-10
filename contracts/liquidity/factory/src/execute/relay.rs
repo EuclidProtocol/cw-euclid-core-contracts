@@ -22,7 +22,9 @@ use euclid_ibc::{
 
 use crate::{
     ibc::{ack_and_timeout, receive},
-    rate_limit::{calc_fee, USER_FREE_LIMIT, USER_PENDING_PACKETS_COUNT, USER_TOTAL_PACKETS_COUNT},
+    rate_limit::{
+        ensure_rate_limit_exceeded, USER_PENDING_PACKETS_COUNT, USER_TOTAL_PACKETS_COUNT,
+    },
     relay_state::{
         CROSS_CHAIN_LATEST_SEQUENCE_COUNT, CROSS_CHAIN_PENDING_PACKET_SENDER,
         CROSS_CHAIN_PENDING_SEND_PACKETS, CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS,
@@ -54,15 +56,7 @@ pub fn execute_send_packet(
 
     let factory_state = STATE.load(deps.storage)?;
 
-    let user_pending_packets_count = USER_PENDING_PACKETS_COUNT
-        .load(deps.storage, sender.clone())
-        .unwrap_or(0);
-
-    let user_free_limit = USER_FREE_LIMIT.may_load(deps.storage, sender.clone())?;
-    let rate_limit_fee = calc_fee(&deps, user_pending_packets_count, user_free_limit)?;
-    if rate_limit_fee.gt(&Uint128::zero()) {
-        // TODO: Deduct rate limit credits from the user
-    }
+    ensure_rate_limit_exceeded(&deps, sender.clone())?;
 
     let sequence = CROSS_CHAIN_LATEST_SEQUENCE_COUNT
         .load(deps.storage)
@@ -79,6 +73,10 @@ pub fn execute_send_packet(
     )?;
     CROSS_CHAIN_PENDING_PACKET_SENDER.save(deps.storage, sequence, &sender)?;
     CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(deps.storage, &sequence.add(1))?;
+
+    let user_pending_packets_count = USER_PENDING_PACKETS_COUNT
+        .load(deps.storage, sender.clone())
+        .unwrap_or(0);
 
     // Update user pending packets count
     USER_PENDING_PACKETS_COUNT.save(

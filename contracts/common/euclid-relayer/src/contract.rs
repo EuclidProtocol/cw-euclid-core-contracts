@@ -12,7 +12,7 @@ use crate::{
         execute_update_admin, execute_update_state,
     },
     query::{get_state, get_validators, nonce_relayed},
-    state::{STATE, VALIDATORS},
+    state::STATE,
 };
 
 // version info for migration info
@@ -33,7 +33,6 @@ pub fn instantiate(
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    VALIDATORS.save(deps.storage, &msg.validators)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute(
@@ -60,12 +59,14 @@ pub fn execute(
         }
         ExecuteMsg::UpdateState(msg) => execute_update_state(&mut deps, &info, msg),
         ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
-        ExecuteMsg::AddValidator { validator } => {
-            execute_add_validator(&mut deps, &info, validator)
-        }
-        ExecuteMsg::RemoveValidator { validator } => {
-            execute_remove_validator(&mut deps, &info, validator)
-        }
+        ExecuteMsg::AddValidator {
+            validator,
+            chain_uid,
+        } => execute_add_validator(&mut deps, &info, validator, chain_uid),
+        ExecuteMsg::RemoveValidator {
+            validator,
+            chain_uid,
+        } => execute_remove_validator(&mut deps, &info, validator, chain_uid),
     }
 }
 
