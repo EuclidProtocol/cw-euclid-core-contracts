@@ -14,7 +14,7 @@ use euclid::msgs::vlp::base::PoolConfig;
 use euclid::recipient::Recipient;
 use euclid::swap::NextSwapPair;
 use euclid::token::{
-    PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
+    Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
 };
 use factory::FactoryContract;
 use router::RouterContract;
@@ -93,6 +93,8 @@ pub(crate) fn setup_factory_full_flow(
 mod tests {
     use super::*;
     use crate::helpers::chains::{get_escrow, get_virtual_balance};
+    use crate::tests_reusable::state_sync::sync_state;
+    use crate::tests_reusable::state_sync::UserFundsQuery;
     use cosmwasm_std::Uint64;
     use cw_orch::prelude::Environment;
     use euclid::chain::ChainUid;
@@ -159,17 +161,37 @@ mod tests {
             ],
             _ => unreachable!("unexpected recipient case"),
         };
+        let recipients_for_checks = recipients.clone();
         let (interchain, factory, router) = setup_factory_full_flow(
             sender,
             token_1.clone(),
             token_2.clone(),
             amount_1,
             amount_2,
-            recipients,
+            recipients.clone(),
             mode,
             pool_type,
             factory_chain_id,
             router_chain_id,
+        );
+        let pool_pair = Pair::new(token_1.token.clone(), token_2.token.clone()).unwrap();
+        let tracked_recipients = if recipients_for_checks.is_empty() {
+            vec![Recipient::default_voucher_recipient(
+                CrossChainUser::new(chain_uid.clone(), factory.environment().sender.to_string()),
+                Limit::Dynamic(Uint128::zero()),
+            )]
+        } else {
+            recipients_for_checks.clone()
+        };
+        let initial_state = sync_state(
+            &factory,
+            &router,
+            tracked_recipients,
+            vec![token_1.token.clone(), token_2.token.clone()],
+            vec![],
+            vec![token_1.token.clone()],
+            chain_uid.clone(),
+            vec![pool_pair.clone()],
         );
 
         // Assert factory chain is registered on the router
@@ -194,30 +216,20 @@ mod tests {
         );
 
         // Assert escrow balance equals the deposited amount
-        let escrow_contract = get_escrow(&factory, token_1.token.as_str());
-        let escrow_state = escrow_contract.state().unwrap();
+        let escrow_state = initial_state
+            .escrow_balance(&chain_uid, &token_1.token)
+            .expect("Escrow state for token should exist");
         assert_eq!(
-            escrow_state.total_amount,
+            escrow_state.factory_escrow_balance,
             amount_1 + amount_2,
-            "Escrow total amount should equal deposited amount"
+            "Escrow total amount should equal deposited amount",
         );
 
         // Assert router tracks correct escrow balance for this chain
-        let token_escrows = router
-            .query_token_escrows(
-                Pagination::new(Some(chain_uid.clone()), None, None, Some(1)),
-                token_1.token.clone(),
-            )
-            .unwrap();
-        let chain_escrow = token_escrows
-            .chains
-            .iter()
-            .find(|c| c.chain_uid == chain_uid)
-            .expect("Factory chain should have escrow balance on router");
         assert_eq!(
-            chain_escrow.balance,
+            escrow_state.router_escrow_balance,
             amount_1 + amount_2,
-            "Router escrow balance should match deposited amount"
+            "Router escrow balance should match deposited amount",
         );
 
         // Assert token is registered on the router
@@ -251,28 +263,22 @@ mod tests {
                     chain_uid.clone(),
                     factory.environment().sender.to_string(),
                 );
-                let sender_balance = virtual_balance_contract
-                    .get_balance(BalanceKey {
-                        cross_chain_user: sender_user,
-                        token_id: token_1.token.to_string(),
-                    })
-                    .unwrap();
+                let sender_amount = initial_state
+                    .voucher_balance(&sender_user, &token_1.token)
+                    .expect("Sender voucher balance should exist in synced state");
                 assert_eq!(
-                    sender_balance.amount, amount_1,
+                    sender_amount, amount_1,
                     "Sender should receive full virtual balance when no recipients specified"
                 );
             }
             "single_voucher" => {
                 let recipient_one =
                     CrossChainUser::new(chain_uid.clone(), "recipient_one".to_string());
-                let balance = virtual_balance_contract
-                    .get_balance(BalanceKey {
-                        cross_chain_user: recipient_one,
-                        token_id: token_1.token.to_string(),
-                    })
-                    .unwrap();
+                let recipient_balance = initial_state
+                    .voucher_balance(&recipient_one, &token_1.token)
+                    .expect("Recipient voucher balance should exist in synced state");
                 assert_eq!(
-                    balance.amount, amount_1,
+                    recipient_balance, amount_1,
                     "Single recipient should receive entire virtual balance"
                 );
             }
@@ -281,37 +287,21 @@ mod tests {
                     CrossChainUser::new(chain_uid.clone(), "recipient_one".to_string());
                 let recipient_two =
                     CrossChainUser::new(chain_uid.clone(), "recipient_two".to_string());
-                let balance_one = virtual_balance_contract
-                    .get_balance(BalanceKey {
-                        cross_chain_user: recipient_one.clone(),
-                        token_id: token_1.token.to_string(),
-                    })
-                    .unwrap();
-                let balance_two = virtual_balance_contract
-                    .get_balance(BalanceKey {
-                        cross_chain_user: recipient_two.clone(),
-                        token_id: token_1.token.to_string(),
-                    })
-                    .unwrap();
-
-                let balance_three = virtual_balance_contract
-                    .get_balance(BalanceKey {
-                        cross_chain_user: recipient_one,
-                        token_id: token_2.token.to_string(),
-                    })
-                    .unwrap();
-                let balance_four = virtual_balance_contract
-                    .get_balance(BalanceKey {
-                        cross_chain_user: recipient_two,
-                        token_id: token_2.token.to_string(),
-                    })
-                    .unwrap();
+                let balance_one = initial_state
+                    .voucher_balance(&recipient_one, &token_1.token)
+                    .expect("Recipient one token_1 balance should exist");
+                let balance_two = initial_state
+                    .voucher_balance(&recipient_two, &token_1.token)
+                    .expect("Recipient two token_1 balance should exist");
+                let balance_three = initial_state
+                    .voucher_balance(&recipient_one, &token_2.token)
+                    .expect("Recipient one token_2 balance should exist");
+                let balance_four = initial_state
+                    .voucher_balance(&recipient_two, &token_2.token)
+                    .expect("Recipient two token_2 balance should exist");
                 // Total distributed across recipients should equal the deposited amount
                 assert_eq!(
-                    balance_one.amount
-                        + balance_two.amount
-                        + balance_three.amount
-                        + balance_four.amount,
+                    balance_one + balance_two + balance_three + balance_four,
                     amount_1 + amount_2,
                     "Total virtual balance across recipients should equal deposited amount"
                 );
@@ -397,42 +387,44 @@ mod tests {
 
         // --- Post-swap assertions ---
 
-        // 1. Input token escrow increased by net swap amount (after partner fee deduction)
-        let escrow_in_after = get_escrow(&factory, token_1.token.as_str())
-            .state()
-            .unwrap()
-            .total_amount;
+        let post_swap_state = sync_state(
+            &factory,
+            &router,
+            vec![Recipient::default_voucher_recipient(
+                sender_user.clone(),
+                Limit::Dynamic(Uint128::zero()),
+            )],
+            vec![token_2.token.clone()],
+            vec![UserFundsQuery {
+                chain_uid: chain_uid.clone(),
+                chain: factory.environment().clone(),
+                user_addr: sender_addr.clone(),
+                denom: token_1.token.to_string(),
+            }],
+            vec![token_1.token.clone()],
+            chain_uid.clone(),
+            vec![pool_pair],
+        );
+
+        // 1-2. Escrow balances for input token increased by net swap amount
+        let post_swap_escrow = post_swap_state
+            .escrow_balance(&chain_uid, &token_1.token)
+            .expect("Post-swap escrow state for token should exist");
         assert_eq!(
-            escrow_in_after,
+            post_swap_escrow.factory_escrow_balance,
             escrow_in_before + net_swap_amount,
             "Escrow for input token should increase by net swap amount (swap_amount - partner_fee)"
         );
-
-        // 2. Router escrow balance for input token increased by net swap amount
-        let router_escrow_in_after = router
-            .query_token_escrows(
-                Pagination::new(Some(chain_uid.clone()), None, None, Some(1)),
-                token_1.token.clone(),
-            )
-            .unwrap()
-            .chains
-            .first()
-            .map(|c| c.balance)
-            .unwrap_or(Uint128::zero());
         assert_eq!(
-            router_escrow_in_after,
+            post_swap_escrow.router_escrow_balance,
             router_escrow_in_before + net_swap_amount,
             "Router escrow balance for input token should increase by net swap amount"
         );
 
         // 3. Sender received output tokens as virtual balance
-        let vb_out_after = virtual_balance_contract
-            .get_balance(BalanceKey {
-                cross_chain_user: sender_user.clone(),
-                token_id: token_2.token.to_string(),
-            })
-            .unwrap()
-            .amount;
+        let vb_out_after = post_swap_state
+            .voucher_balance(&sender_user, &token_2.token)
+            .expect("Sender output token voucher balance should exist");
         let amount_received = vb_out_after - vb_out_before;
         assert!(
             amount_received > Uint128::zero(),
@@ -448,13 +440,9 @@ mod tests {
         );
 
         // 5. Partner fee recipient received the fee as native tokens
-        let partner_native_balance_after = factory
-            .environment()
-            .query_balance(
-                &cosmwasm_std::Addr::unchecked(sender_addr.clone()),
-                token_1.token.to_string().as_str(),
-            )
-            .unwrap();
+        let partner_native_balance_after = post_swap_state
+            .user_funds(&chain_uid, &sender_addr, token_1.token.to_string().as_str())
+            .expect("Partner fee recipient native balance should exist");
         assert_eq!(
             partner_native_balance_after,
             partner_native_balance_before + partner_fee_amount,

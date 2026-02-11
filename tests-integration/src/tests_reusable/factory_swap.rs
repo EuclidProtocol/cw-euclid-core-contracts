@@ -16,7 +16,7 @@ use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::recipient::Recipient;
 use euclid::swap::NextSwapPair;
-use euclid::token::{PairWithDenomAndAmount, Token, TokenType, TokenWithDenom};
+use euclid::token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom};
 
 use factory::FactoryContract;
 use router::RouterContract;
@@ -57,12 +57,14 @@ pub fn swap_request(
 mod tests {
     use super::*;
     use crate::helpers::chains::{get_escrow, get_virtual_balance, setup_router};
+    use crate::tests_reusable::state_sync::sync_state;
     use crate::tests_reusable::factory_add_liquidity::deposit_token;
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register_denom::register_denom;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
+    use euclid::limit::Limit;
     use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
     use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
     use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
@@ -197,49 +199,55 @@ mod tests {
             asset_in.clone(),
             asset_out.token.clone(),
             Uint128::new(1),
-            swaps,
+            swaps.clone(),
             vec![],
             None,
             swap_funds,
         )
         .unwrap();
 
-        // --- Assertions ---
+        // --- Query post-swap state ---
+        let recipients_for_sync = vec![Recipient::default_voucher_recipient(
+            sender_user.clone(),
+            Limit::Dynamic(Uint128::zero()),
+        )];
+        let vlp_pairs = swaps
+            .clone()
+            .iter()
+            .map(|swap| Pair::new(swap.token_in.clone(), swap.token_out.clone()).unwrap())
+            .collect();
+        let state_sync = sync_state(
+            &factory,
+            &router,
+            recipients_for_sync,
+            vec![asset_out.token.clone()],
+            vec![],
+            vec![asset_in.token.clone()],
+            chain_uid.clone(),
+            vlp_pairs,
+        );
 
         // 1. Escrow balance for input token should have increased by swap_amount
-        let escrow_in_after = escrow_in.state().unwrap().total_amount;
+        let escrow_state = state_sync
+            .escrow_balance(&chain_uid, &asset_in.token)
+            .expect("Escrow state for input token should exist");
         assert_eq!(
-            escrow_in_after,
+            escrow_state.factory_escrow_balance,
             escrow_in_before + Uint128::new(swap_amount),
             "Escrow balance for input token should increase by swap amount"
         );
 
         // 2. Router escrow balance for input token should have increased by swap_amount
-        let router_escrow_after = router
-            .query_token_escrows(
-                Pagination::new(Some(chain_uid.clone()), None, None, Some(1)),
-                asset_in.token.clone(),
-            )
-            .unwrap();
-        let router_escrow_in_after = router_escrow_after
-            .chains
-            .first()
-            .map(|c| c.balance)
-            .unwrap_or(Uint128::zero());
         assert_eq!(
-            router_escrow_in_after,
+            escrow_state.router_escrow_balance,
             router_escrow_in_before + Uint128::new(swap_amount),
             "Router escrow balance for input token should increase by swap amount"
         );
 
         // 3. Sender should have received output tokens as virtual balance (> 0 increase)
-        let vb_out_after = virtual_balance_contract
-            .get_balance(BalanceKey {
-                cross_chain_user: sender_user.clone(),
-                token_id: asset_out.token.to_string(),
-            })
-            .unwrap()
-            .amount;
+        let vb_out_after = state_sync
+            .voucher_balance(&sender_user, &asset_out.token)
+            .expect("Voucher balance for sender and output token should exist");
         let amount_received = vb_out_after - vb_out_before;
         assert!(
             amount_received > Uint128::zero(),

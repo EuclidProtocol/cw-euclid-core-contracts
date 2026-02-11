@@ -10,7 +10,6 @@ use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
-use euclid::msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::recipient::Recipient;
 use euclid::token::TokenWithDenom;
 use euclid::utils::pagination::Pagination;
@@ -51,13 +50,13 @@ pub fn deposit_token(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::{get_virtual_balance, setup_router};
+    use crate::helpers::chains::setup_router;
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register_denom::register_denom;
+    use crate::tests_reusable::state_sync::sync_state;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
     use euclid::token::{Token, TokenType};
-    use euclid::voucher::BalanceKey;
     use rstest::rstest;
 
     #[rstest]
@@ -132,45 +131,39 @@ mod tests {
             ),
             _ => unreachable!("unexpected recipient case"),
         };
+        let recipients_for_sync = recipients.clone();
         deposit_token(&factory, &router, token.clone(), amount, recipients).unwrap();
 
-        let new_router_escrow_balance = router
-            .query_token_escrows(
-                Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
-                token.token.clone(),
-            )
-            .unwrap();
-        let new_balance = match new_router_escrow_balance.chains.first() {
-            Some(chain) => chain.balance,
-            None => Uint128::zero(),
-        };
+        let synced_state = sync_state(
+            &factory,
+            &router,
+            recipients_for_sync,
+            vec![token.token.clone()],
+            vec![],
+            vec![token.token.clone()],
+            factory_chain_uid.clone(),
+            vec![],
+        );
+
+        let escrow_state = synced_state
+            .escrow_balance(&factory_chain_uid, &token.token)
+            .expect("Escrow state should exist for deposited token");
         assert_eq!(
-            new_balance,
+            escrow_state.router_escrow_balance,
             old_balance + amount,
             "Router escrow balance not updated properly"
         );
-        let new_escrow_balance = escrow_contract.state().unwrap();
         assert_eq!(
-            new_escrow_balance.total_amount,
+            escrow_state.factory_escrow_balance,
             old_escrow_balance.total_amount + amount,
             "Escrow balance not updated properly"
         );
 
-        let virtual_balance_contract = get_virtual_balance(
-            router.environment(),
-            &router.get_state().unwrap().virtual_balance_address,
-        );
         for (recipient, expected_amount) in expected_balances {
-            let balance = virtual_balance_contract
-                .get_balance(BalanceKey {
-                    cross_chain_user: recipient.clone(),
-                    token_id: token.token.to_string(),
-                })
-                .unwrap();
-            assert_eq!(
-                balance.amount, expected_amount,
-                "Recipient balance mismatch"
-            );
+            let balance = synced_state
+                .voucher_balance(&recipient, &token.token)
+                .expect("Expected voucher balance for recipient is missing");
+            assert_eq!(balance, expected_amount, "Recipient balance mismatch");
         }
     }
 }
