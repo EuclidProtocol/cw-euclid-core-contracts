@@ -7,7 +7,6 @@ use cw_orch::mock::MockBase;
 use cw_orch::prelude::CwOrchError;
 use cw_orch::prelude::CwOrchExecute;
 use cw_orch::prelude::Environment;
-use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
@@ -23,7 +22,6 @@ use router::RouterContract;
 use rstest::rstest;
 
 pub fn swap_request(
-    _interchain: &MockInterchainEnv,
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     asset_in: TokenWithDenom,
@@ -56,12 +54,13 @@ pub fn swap_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::{get_escrow, get_virtual_balance, setup_router};
-    use crate::tests_reusable::state_sync::sync_state;
+    use crate::helpers::chains::{get_escrow, get_virtual_balance, setup_interchain, setup_router};
+    use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
     use crate::tests_reusable::factory_add_liquidity::deposit_token;
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register_denom::register_denom;
+    use crate::tests_reusable::state_sync::sync_state;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
@@ -82,18 +81,23 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_swap(1)]
-    #[case::two_hop_swap(2)]
-    #[case::three_hop_swap(3)]
-    fn test_swap_with_n_hops(#[case] num_swaps: usize) {
+    #[case::single_swap(1, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::single_swap(1, FACTORY_CHAIN_ID_IBC)]
+    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_IBC)]
+    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_IBC)]
+    // #[case::single_swap(1, FACTORY_CHAIN_ID_EVM)]
+    // #[case::two_hop_swap(2, FACTORY_CHAIN_ID_EVM)]
+    // #[case::three_hop_swap(3, FACTORY_CHAIN_ID_EVM)]
+    fn test_swap_with_n_hops(#[case] num_swaps: usize, #[case] factory_chain_id: &str) {
+        use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
+
         let sender = "sender_for_all_chains";
-        let factory_chain_id = "nibiru";
-        let router_chain_id = "nibiru";
-        let interchain = MockInterchainEnv::new(vec![(router_chain_id, sender)]);
-        let router_chain = interchain.get_chain(router_chain_id).unwrap();
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
         let router = setup_router(&router_chain).unwrap();
-        let factory =
-            setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
 
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
 
@@ -193,7 +197,6 @@ mod tests {
         );
 
         swap_request(
-            &interchain,
             &factory,
             &router,
             asset_in.clone(),

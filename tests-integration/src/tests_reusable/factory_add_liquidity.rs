@@ -64,14 +64,14 @@ mod tests {
     #[case("single_voucher")]
     #[case("two_voucher")]
     fn deposit_token_updates_router_and_escrow_balances(#[case] recipient_case: &str) {
+        use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
+
         let sender = "sender_for_all_chains";
         let factory_chain_id = "nibiru";
-        let router_chain_id = "nibiru";
-        let interchain = MockInterchainEnv::new(vec![(router_chain_id, sender)]);
-        let router_chain = interchain.get_chain(router_chain_id).unwrap();
+        let interchain = MockInterchainEnv::new(vec![(ROUTER_CHAIN_ID, sender)]);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
         let router = setup_router(&router_chain).unwrap();
-        let factory =
-            setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
 
         let token = TokenWithDenom {
             token: Token::create("eucl".to_string()).unwrap(),

@@ -20,6 +20,7 @@ use crate::helpers::relayer::{
     ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
     relay_router_send_packet,
 };
+use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
 #[derive(Clone, Copy, Debug)]
 pub enum FactorySetupMode {
@@ -31,42 +32,32 @@ pub enum FactorySetupMode {
 pub fn setup_factory(
     interchain: &MockInterchainEnv,
     factory_chain_id: &str,
-    router_chain_id: &str,
     router: &RouterContract<MockBase>,
 ) -> Result<FactoryContract<MockBase>, CwOrchError> {
-    let mode = if router_chain_id == factory_chain_id {
+    let mode = if ROUTER_CHAIN_ID == factory_chain_id {
         FactorySetupMode::Native
     } else {
         FactorySetupMode::Ibc
     };
-    setup_factory_with_mode(interchain, factory_chain_id, router_chain_id, router, mode)
+    setup_factory_with_mode(interchain, factory_chain_id, router, mode)
 }
 
 pub fn setup_factory_evm(
     interchain: &MockInterchainEnv,
     factory_chain_id: &str,
-    router_chain_id: &str,
     router: &RouterContract<MockBase>,
 ) -> Result<FactoryContract<MockBase>, CwOrchError> {
-    setup_factory_with_mode(
-        interchain,
-        factory_chain_id,
-        router_chain_id,
-        router,
-        FactorySetupMode::Evm,
-    )
+    setup_factory_with_mode(interchain, factory_chain_id, router, FactorySetupMode::Evm)
 }
 
 pub fn setup_factory_with_mode(
     interchain: &MockInterchainEnv,
     factory_chain_id: &str,
-    router_chain_id: &str,
     router: &RouterContract<MockBase>,
     mode: FactorySetupMode,
 ) -> Result<FactoryContract<MockBase>, CwOrchError> {
     let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let chain = interchain.get_chain(factory_chain_id).unwrap();
-    let _router_chain = interchain.get_chain(router_chain_id).unwrap();
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let lp_token = LpTokenContract::new(chain.clone());
@@ -156,35 +147,31 @@ pub fn setup_factory_with_mode(
 mod tests {
     use super::*;
     use crate::helpers::chains::setup_router;
+    use crate::tests_reusable::constants::{
+        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
+    };
     use rstest::rstest;
 
     #[rstest]
-    #[case(FactorySetupMode::Native, "nibiru", "nibiru")]
-    #[case(FactorySetupMode::Ibc, "nibiru", "osmosis")]
-    #[case(FactorySetupMode::Evm, "evm1", "osmosis")]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
     fn setup_factory_registers_chain(
         #[case] mode: FactorySetupMode,
         #[case] factory_chain_id: &str,
-        #[case] router_chain_id: &str,
     ) {
         let sender = "sender_for_all_chains";
-        let mut chains = vec![(router_chain_id, sender)];
-        if router_chain_id != factory_chain_id {
+        let mut chains = vec![(ROUTER_CHAIN_ID, sender)];
+        if ROUTER_CHAIN_ID != factory_chain_id {
             chains.push((factory_chain_id, sender));
         }
 
         let interchain = MockInterchainEnv::new(chains);
-        let router_chain = interchain.get_chain(router_chain_id).unwrap();
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
         let router = setup_router(&router_chain).unwrap();
 
-        let _factory = setup_factory_with_mode(
-            &interchain,
-            factory_chain_id,
-            router_chain_id,
-            &router,
-            mode,
-        )
-        .unwrap();
+        let _factory =
+            setup_factory_with_mode(&interchain, factory_chain_id, &router, mode).unwrap();
 
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
         let all_chains = router.get_all_chains().unwrap();

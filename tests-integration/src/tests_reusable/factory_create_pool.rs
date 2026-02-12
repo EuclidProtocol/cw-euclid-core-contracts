@@ -6,7 +6,6 @@ use cw_orch::mock::MockBase;
 use cw_orch::prelude::CwOrchError;
 use cw_orch::prelude::CwOrchExecute;
 use cw_orch::prelude::Environment;
-use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
@@ -58,23 +57,27 @@ pub fn create_pool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::setup_router;
+    use crate::helpers::chains::{setup_interchain, setup_router};
+    use crate::tests_reusable::constants::{
+        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
+    };
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register_denom::register_denom;
     use cosmwasm_std::Uint64;
 
     #[rstest]
-    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
-    #[case::constant_product(PoolConfig::ConstantProduct {})]
-    fn test_create_pool(#[case] pool_config: PoolConfig) {
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_IBC)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_IBC)]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_EVM)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_EVM)]
+    fn test_create_pool(#[case] pool_config: PoolConfig, #[case] factory_chain_id: &str) {
         let sender = "sender_for_all_chains";
-        let factory_chain_id = "nibiru";
-        let router_chain_id = "nibiru";
-        let interchain = MockInterchainEnv::new(vec![(router_chain_id, sender)]);
-        let router_chain = interchain.get_chain(router_chain_id).unwrap();
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
         let router = setup_router(&router_chain).unwrap();
-        let factory =
-            setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
 
         let token_a = TokenWithDenom {
             token: Token::create("tokena".to_string()).unwrap(),

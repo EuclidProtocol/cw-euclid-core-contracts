@@ -34,8 +34,17 @@ use crate::helpers::relayer::{
     ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
     relay_router_send_packet,
 };
+use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
 use super::relayer::get_signer_key;
+
+pub fn setup_interchain(sender: &str, factory_chain_id: &str) -> MockInterchainEnv {
+    let mut chains = vec![(ROUTER_CHAIN_ID, sender)];
+    if ROUTER_CHAIN_ID != factory_chain_id {
+        chains.push((factory_chain_id, sender));
+    }
+    MockInterchainEnv::new(chains)
+}
 
 pub fn setup_factory(
     interchain: &MockInterchainEnv,

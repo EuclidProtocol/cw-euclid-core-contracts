@@ -35,24 +35,31 @@ pub fn deregister_denom(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::setup_router;
+    use crate::helpers::chains::setup_interchain;
     use crate::tests_reusable::factory_register::setup_factory;
+    use crate::{
+        helpers::chains::setup_router,
+        tests_reusable::constants::{
+            FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
+        },
+    };
     use cw_orch_interchain::mock::MockInterchainEnv;
     use euclid::token::{Token, TokenType};
     use rstest::rstest;
 
     #[rstest]
-    #[case("native")]
-    #[case("smart")]
-    fn test_register_denom(#[case] token_type_case: &str) {
+    #[case("native", FACTORY_CHAIN_ID_LOCAL)]
+    #[case("smart", FACTORY_CHAIN_ID_LOCAL)]
+    #[case("native", FACTORY_CHAIN_ID_IBC)]
+    #[case("smart", FACTORY_CHAIN_ID_IBC)]
+    #[case("native", FACTORY_CHAIN_ID_EVM)]
+    #[case("smart", FACTORY_CHAIN_ID_EVM)]
+    fn test_register_denom(#[case] token_type_case: &str, #[case] factory_chain_id: &str) {
         let sender = "sender_for_all_chains";
-        let factory_chain_id = "nibiru";
-        let router_chain_id = "nibiru";
-        let interchain = MockInterchainEnv::new(vec![(router_chain_id, sender)]);
-        let router_chain = interchain.get_chain(router_chain_id).unwrap();
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
         let router = setup_router(&router_chain).unwrap();
-        let factory =
-            setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
 
         let token_type = match token_type_case {
             "native" => TokenType::Native {
@@ -87,12 +94,10 @@ mod tests {
     fn test_deregister_denom() {
         let sender = "sender_for_all_chains";
         let factory_chain_id = "nibiru";
-        let router_chain_id = "nibiru";
-        let interchain = MockInterchainEnv::new(vec![(router_chain_id, sender)]);
-        let router_chain = interchain.get_chain(router_chain_id).unwrap();
+        let interchain = MockInterchainEnv::new(vec![(ROUTER_CHAIN_ID, sender)]);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
         let router = setup_router(&router_chain).unwrap();
-        let factory =
-            setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
 
         let token = TokenWithDenom {
             token: Token::create("eucl".to_string()).unwrap(),

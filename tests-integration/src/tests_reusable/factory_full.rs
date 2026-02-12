@@ -45,11 +45,9 @@ pub(crate) fn setup_factory_full_flow(
     let router = setup_router(&router_chain).unwrap();
     let factory = match mode {
         FactorySetupMode::Native | FactorySetupMode::Ibc => {
-            setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap()
+            setup_factory(&interchain, factory_chain_id, &router).unwrap()
         }
-        FactorySetupMode::Evm => {
-            setup_factory_evm(&interchain, factory_chain_id, router_chain_id, &router).unwrap()
-        }
+        FactorySetupMode::Evm => setup_factory_evm(&interchain, factory_chain_id, &router).unwrap(),
     };
 
     register_denom(&factory, &router, token_1.clone()).unwrap();
@@ -93,6 +91,9 @@ pub(crate) fn setup_factory_full_flow(
 mod tests {
     use super::*;
     use crate::helpers::chains::{get_escrow, get_virtual_balance};
+    use crate::tests_reusable::constants::{
+        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
+    };
     use crate::tests_reusable::state_sync::sync_state;
     use crate::tests_reusable::state_sync::UserFundsQuery;
     use cosmwasm_std::Uint64;
@@ -108,22 +109,21 @@ mod tests {
     use euclid::voucher::BalanceKey;
 
     #[rstest]
-    #[case(FactorySetupMode::Native, "nibiru", "nibiru", "empty", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Native, "nibiru", "nibiru", "single_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Native, "nibiru", "nibiru", "two_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Ibc, "nibiru", "osmosis", "empty", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Ibc, "nibiru", "osmosis", "single_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Ibc, "nibiru", "osmosis", "two_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Evm, "evm1", "osmosis", "empty", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Evm, "evm1", "osmosis", "single_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Evm, "evm1", "osmosis", "two_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Native, "nibiru", "nibiru", "empty", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
-    #[case(FactorySetupMode::Ibc, "nibiru", "osmosis", "single_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
-    #[case(FactorySetupMode::Evm, "evm1", "osmosis", "two_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "single_voucher", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "two_voucher", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "empty", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "single_voucher", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "two_voucher", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "empty", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "single_voucher", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "two_voucher", PoolConfig::ConstantProduct {})]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "single_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM, "two_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
     fn factory_full_flow_register_denom_and_deposit(
         #[case] mode: FactorySetupMode,
         #[case] factory_chain_id: &str,
-        #[case] router_chain_id: &str,
         #[case] recipient_case: &str,
         #[case] pool_type: PoolConfig,
     ) {
@@ -162,7 +162,7 @@ mod tests {
             _ => unreachable!("unexpected recipient case"),
         };
         let recipients_for_checks = recipients.clone();
-        let (interchain, factory, router) = setup_factory_full_flow(
+        let (_interchain, factory, router) = setup_factory_full_flow(
             sender,
             token_1.clone(),
             token_2.clone(),
@@ -172,7 +172,7 @@ mod tests {
             mode,
             pool_type,
             factory_chain_id,
-            router_chain_id,
+            ROUTER_CHAIN_ID,
         );
         let pool_pair = Pair::new(token_1.token.clone(), token_2.token.clone()).unwrap();
         let tracked_recipients = if recipients_for_checks.is_empty() {
@@ -365,7 +365,6 @@ mod tests {
             &mut swap_funds,
         );
         swap_request(
-            &interchain,
             &factory,
             &router,
             token_1.clone(),
