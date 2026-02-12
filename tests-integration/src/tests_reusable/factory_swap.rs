@@ -1,23 +1,33 @@
 #![cfg(not(target_arch = "wasm32"))]
 use crate::helpers::factory::faucet;
 use crate::helpers::relayer::relay_factory_router_factory;
+use cosmwasm_std::to_json_binary;
+use cosmwasm_std::Addr;
 use cosmwasm_std::Coin;
 use cosmwasm_std::Uint128;
+use cw20::{Cw20Coin, MinterResponse};
 use cw_orch::mock::MockBase;
+use cw_orch::prelude::ContractInstance as _;
 use cw_orch::prelude::CwOrchError;
+use cw_orch::prelude::CwOrchExecute;
+use cw_orch::prelude::CwOrchInstantiate;
+use cw_orch::prelude::CwOrchUpload;
 use cw_orch::prelude::Environment;
 use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
+use euclid::msgs::factory::cw20::FactoryCw20HookMsg;
 use euclid::msgs::factory::ExecuteMsgFns;
 use euclid::msgs::factory::ExecuteSwapRequest;
 use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
+use euclid::msgs::lp_token::msg::InstantiateMsg as LpTokenInstantiateMsg;
+use euclid::msgs::lp_token::msg::QueryMsgFns;
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::recipient::Recipient;
 use euclid::swap::NextSwapPair;
 use euclid::token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom};
-
 use factory::FactoryContract;
+use lp_token::LpTokenContract;
 use router::RouterContract;
 use rstest::rstest;
 
@@ -30,20 +40,46 @@ pub fn swap_request(
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,
     partner_fee: Option<PartnerFee>,
+    amount_in: Uint128,
     funds: Vec<Coin>,
 ) -> Result<(), CwOrchError> {
-    let tx_response = factory.execute_swap_request(
-        ExecuteSwapRequest {
-            recipients,
-            asset_in,
-            asset_out,
-            min_amount_out,
-            swaps,
-            partner_fee,
-            cross_chain_config: CrossChainConfig::default(),
-        },
-        &funds,
-    )?;
+    let tx_response = if asset_in.token_type.is_smart() {
+        let smart_contract = match &asset_in.token_type {
+            TokenType::Smart { contract_address } => contract_address.clone(),
+            _ => unreachable!("asset_in.token_type already checked as smart"),
+        };
+        let cw20 = LpTokenContract::new(factory.environment().clone());
+        cw20.set_address(&Addr::unchecked(smart_contract));
+        cw20.execute(
+            &euclid::msgs::lp_token::msg::ExecuteMsg::Send {
+                contract: factory.address()?.to_string(),
+                amount: amount_in,
+                msg: to_json_binary(&FactoryCw20HookMsg::Swap {
+                    recipients,
+                    asset_in,
+                    asset_out,
+                    min_amount_out,
+                    swaps,
+                    partner_fee,
+                    cross_chain_config: CrossChainConfig::default(),
+                })?,
+            },
+            &[],
+        )?
+    } else {
+        factory.execute_swap_request(
+            ExecuteSwapRequest {
+                recipients,
+                asset_in,
+                asset_out,
+                min_amount_out,
+                swaps,
+                partner_fee,
+                cross_chain_config: CrossChainConfig::default(),
+            },
+            &funds,
+        )?
+    };
 
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
@@ -54,7 +90,9 @@ pub fn swap_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::{get_escrow, get_virtual_balance, setup_interchain, setup_router};
+    use crate::helpers::chains::{
+        get_escrow, get_lp_token, get_virtual_balance, setup_interchain, setup_router,
+    };
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
     };
@@ -82,17 +120,64 @@ mod tests {
         }
     }
 
+    fn setup_smart_denom_token(
+        factory: &FactoryContract<MockBase>,
+        token: Token,
+    ) -> TokenWithDenom {
+        let sender = factory.environment().sender.to_string();
+        let chain = factory.environment();
+        let cw20 = LpTokenContract::new(chain.clone());
+        cw20.upload().unwrap();
+
+        let aux_token = Token::create(format!("{}.aux", token)).unwrap();
+        let token_pair = Pair::new(token.clone(), aux_token).unwrap();
+        cw20.instantiate(
+            &LpTokenInstantiateMsg {
+                name: format!("{}_cw20", token),
+                symbol: "SWAPIN".to_string(),
+                decimals: 6,
+                initial_balances: vec![Cw20Coin {
+                    address: sender.clone(),
+                    amount: Uint128::new(1_000_000_000),
+                }],
+                mint: Some(MinterResponse {
+                    minter: sender,
+                    cap: None,
+                }),
+                marketing: None,
+                vlp: chain.addr_make("dummy_vlp").to_string(),
+                factory: chain.addr_make("dummy_factory"),
+                token_pair,
+            },
+            None,
+            &[],
+        )
+        .unwrap();
+
+        TokenWithDenom {
+            token,
+            token_type: TokenType::Smart {
+                contract_address: cw20.address().unwrap().to_string(),
+            },
+        }
+    }
+
     #[rstest]
-    #[case::single_swap(1, FACTORY_CHAIN_ID_LOCAL)]
-    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_LOCAL)]
-    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_LOCAL)]
-    #[case::single_swap(1, FACTORY_CHAIN_ID_IBC)]
-    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_IBC)]
-    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_IBC)]
-    #[case::single_swap(1, FACTORY_CHAIN_ID_EVM)]
-    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_EVM)]
-    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_EVM)]
-    fn test_swap_with_n_hops(#[case] num_swaps: usize, #[case] factory_chain_id: &str) {
+    #[case::single_swap(1, FACTORY_CHAIN_ID_LOCAL, false)]
+    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_LOCAL, false)]
+    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_LOCAL, false)]
+    #[case::single_swap(1, FACTORY_CHAIN_ID_IBC, false)]
+    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_IBC, false)]
+    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_IBC, false)]
+    #[case::single_swap(1, FACTORY_CHAIN_ID_EVM, false)]
+    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_EVM, false)]
+    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_EVM, false)]
+    #[case::single_swap_smart_in(1, FACTORY_CHAIN_ID_LOCAL, true)]
+    fn test_swap_with_n_hops(
+        #[case] num_swaps: usize,
+        #[case] factory_chain_id: &str,
+        #[case] use_smart_asset_in: bool,
+    ) {
         use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
         let sender = "sender_for_all_chains";
@@ -152,9 +237,32 @@ mod tests {
             })
             .collect();
 
-        let asset_in = tokens.first().unwrap().clone();
+        let asset_in_native = tokens.first().unwrap().clone();
+        let asset_in = if use_smart_asset_in {
+            let smart_asset_in = setup_smart_denom_token(&factory, asset_in_native.token.clone());
+            register_denom(&factory, &router, smart_asset_in.clone()).unwrap();
+            smart_asset_in
+        } else {
+            asset_in_native
+        };
         let asset_out = tokens.last().unwrap().clone();
         let swap_amount = 1_000u128;
+        let sender_addr = factory.environment().sender.to_string();
+        let smart_cw20_contract = match &asset_in.token_type {
+            TokenType::Smart { contract_address } => Some(get_lp_token(
+                factory.environment(),
+                &Addr::unchecked(contract_address.clone()),
+            )),
+            _ => None,
+        };
+        let cw20_sender_balance_before = smart_cw20_contract
+            .as_ref()
+            .map(|cw20| cw20.balance(sender_addr.clone()).unwrap().balance);
+        let cw20_factory_balance_before = smart_cw20_contract.as_ref().map(|cw20| {
+            cw20.balance(factory.address().unwrap().to_string())
+                .unwrap()
+                .balance
+        });
 
         // Record escrow balance for input token before swap
         let escrow_in = get_escrow(&factory, asset_in.token.as_str());
@@ -190,13 +298,15 @@ mod tests {
 
         // Faucet for the swap itself
         let mut swap_funds = vec![];
-        faucet(
-            factory.environment(),
-            factory.environment().sender.as_str(),
-            swap_amount,
-            asset_in.token_type.clone(),
-            &mut swap_funds,
-        );
+        if asset_in.token_type.is_native() {
+            faucet(
+                factory.environment(),
+                factory.environment().sender.as_str(),
+                swap_amount,
+                asset_in.token_type.clone(),
+                &mut swap_funds,
+            );
+        }
 
         swap_request(
             &factory,
@@ -207,6 +317,7 @@ mod tests {
             swaps.clone(),
             vec![],
             None,
+            Uint128::new(swap_amount),
             swap_funds,
         )
         .unwrap();
@@ -267,5 +378,27 @@ mod tests {
             amount_received,
             swap_amount
         );
+
+        // 5. For smart swaps, assert CW20 movement from sender and no residual factory balance.
+        if let (Some(cw20), Some(sender_before), Some(factory_before)) = (
+            smart_cw20_contract.as_ref(),
+            cw20_sender_balance_before,
+            cw20_factory_balance_before,
+        ) {
+            let sender_after = cw20.balance(sender_addr).unwrap().balance;
+            let factory_after = cw20
+                .balance(factory.address().unwrap().to_string())
+                .unwrap()
+                .balance;
+            assert_eq!(
+                sender_after,
+                sender_before - Uint128::new(swap_amount),
+                "Sender CW20 balance should decrease by swap amount for smart-token swaps"
+            );
+            assert_eq!(
+                factory_after, factory_before,
+                "Factory should not retain smart input tokens after swap execution"
+            );
+        }
     }
 }

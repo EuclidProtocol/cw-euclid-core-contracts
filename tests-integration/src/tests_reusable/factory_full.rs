@@ -380,6 +380,7 @@ mod tests {
                 partner_fee_bps,
                 recipient: sender_addr.clone(),
             }),
+            swap_amount,
             swap_funds,
         )
         .unwrap();
