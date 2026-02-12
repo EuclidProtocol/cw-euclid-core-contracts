@@ -90,11 +90,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_deregister_denom() {
+    #[rstest]
+    #[case(FACTORY_CHAIN_ID_LOCAL)]
+    #[case(FACTORY_CHAIN_ID_LOCAL)]
+    #[case(FACTORY_CHAIN_ID_IBC)]
+    #[case(FACTORY_CHAIN_ID_IBC)]
+    #[case(FACTORY_CHAIN_ID_EVM)]
+    #[case(FACTORY_CHAIN_ID_EVM)]
+    fn test_deregister_denom(#[case] factory_chain_id: &str) {
         let sender = "sender_for_all_chains";
-        let factory_chain_id = "nibiru";
-        let interchain = MockInterchainEnv::new(vec![(ROUTER_CHAIN_ID, sender)]);
+        let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
         let router = setup_router(&router_chain).unwrap();
         let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();

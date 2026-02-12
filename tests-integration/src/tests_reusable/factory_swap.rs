@@ -55,7 +55,9 @@ pub fn swap_request(
 mod tests {
     use super::*;
     use crate::helpers::chains::{get_escrow, get_virtual_balance, setup_interchain, setup_router};
-    use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
+    use crate::tests_reusable::constants::{
+        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
+    };
     use crate::tests_reusable::factory_add_liquidity::deposit_token;
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::setup_factory;
@@ -87,9 +89,9 @@ mod tests {
     #[case::single_swap(1, FACTORY_CHAIN_ID_IBC)]
     #[case::two_hop_swap(2, FACTORY_CHAIN_ID_IBC)]
     #[case::three_hop_swap(3, FACTORY_CHAIN_ID_IBC)]
-    // #[case::single_swap(1, FACTORY_CHAIN_ID_EVM)]
-    // #[case::two_hop_swap(2, FACTORY_CHAIN_ID_EVM)]
-    // #[case::three_hop_swap(3, FACTORY_CHAIN_ID_EVM)]
+    #[case::single_swap(1, FACTORY_CHAIN_ID_EVM)]
+    #[case::two_hop_swap(2, FACTORY_CHAIN_ID_EVM)]
+    #[case::three_hop_swap(3, FACTORY_CHAIN_ID_EVM)]
     fn test_swap_with_n_hops(#[case] num_swaps: usize, #[case] factory_chain_id: &str) {
         use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 

@@ -4,7 +4,6 @@ use crate::helpers::factory::faucet;
 use cosmwasm_std::Uint128;
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
-use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
@@ -51,6 +50,7 @@ pub fn deposit_token(
 mod tests {
     use super::*;
     use crate::helpers::chains::setup_router;
+    use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register_denom::register_denom;
     use crate::tests_reusable::state_sync::sync_state;
@@ -60,15 +60,21 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    #[case("empty")]
-    #[case("single_voucher")]
-    #[case("two_voucher")]
-    fn deposit_token_updates_router_and_escrow_balances(#[case] recipient_case: &str) {
+    #[case("empty", FACTORY_CHAIN_ID_LOCAL)]
+    #[case("single_voucher", FACTORY_CHAIN_ID_LOCAL)]
+    #[case("two_voucher", FACTORY_CHAIN_ID_LOCAL)]
+    #[case("empty", FACTORY_CHAIN_ID_IBC)]
+    #[case("single_voucher", FACTORY_CHAIN_ID_IBC)]
+    #[case("two_voucher", FACTORY_CHAIN_ID_IBC)]
+    fn deposit_token_updates_router_and_escrow_balances(
+        #[case] recipient_case: &str,
+        #[case] factory_chain_id: &str,
+    ) {
+        use crate::helpers::chains::setup_interchain;
         use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
         let sender = "sender_for_all_chains";
-        let factory_chain_id = "nibiru";
-        let interchain = MockInterchainEnv::new(vec![(ROUTER_CHAIN_ID, sender)]);
+        let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
         let router = setup_router(&router_chain).unwrap();
         let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
