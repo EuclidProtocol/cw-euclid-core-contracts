@@ -98,9 +98,11 @@ pub fn execute_transfer_voucher(
             if transfer_amount.is_zero() {
                 continue;
             }
-            response = response
-                .add_submessages(transfer_voucher_msgs)
-                .add_attribute(transfer_amount_event_key, transfer_amount.to_string());
+            if !transfer_voucher_msgs.is_empty() {
+                response = response.add_submessages(transfer_voucher_msgs);
+            }
+            response =
+                response.add_attribute(transfer_amount_event_key, transfer_amount.to_string());
             remaining_withdraw_amount = remaining_withdraw_amount.checked_sub(transfer_amount)?;
             transferred_amount = transferred_amount.checked_add(transfer_amount)?;
         } else {
