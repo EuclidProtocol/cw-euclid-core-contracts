@@ -271,12 +271,9 @@ pub fn execute_withdraw(
     )?;
 
     let ack_msg = ReleaseEscrowResponse {
-        factory_address: state.factory_address.to_string(),
-        chain_id: env.block.chain_id,
         amount,
-        token: state.token_id.clone(),
         to_address: recipient.to_string(),
-        denom,
+        escrow_balance: denom_balance,
     };
     let ack = to_json_binary(&AcknowledgementMsg::Ok(ack_msg))?;
 

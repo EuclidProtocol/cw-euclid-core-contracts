@@ -181,6 +181,10 @@ pub fn _transfer_voucher_as_voucher(
         Some(msg) => Some(Binary::from_base64(msg.as_str())?),
         None => None,
     };
+    // If sender is the same as recipient, we don't need to transfer the voucher but return the amount that would have been transferred if it was different so next recipient will be calculated accordingly.
+    if sender == recipient.recipient {
+        return Ok((vec![], amount));
+    }
     let transfer_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
         euclid::msgs::virtual_balance::msg::ExecuteTransfer {
             amount,
@@ -324,8 +328,9 @@ pub fn _release_voucher(
         &escrow_balance.checked_sub(release_amount_after_fee)?,
     )?;
 
+    // Order matters here because we want to burn the vouchers before releasing to prevent any reentrancy attacks.
     Ok((
-        vec![release_ibc_msg, SubMsg::new(burn_voucher_msg)],
+        vec![SubMsg::new(burn_voucher_msg), release_ibc_msg],
         release_amount,
     ))
 }
