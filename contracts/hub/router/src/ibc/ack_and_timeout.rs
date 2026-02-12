@@ -114,8 +114,9 @@ pub fn ibc_ack_release_escrow(
         AcknowledgementMsg::Ok(data) => {
             let mut response = response
                 .add_attribute("method", "release_escrow_success")
-                .add_attribute("factory_chain", data.chain_id)
-                .add_attribute("factory_address", data.factory_address)
+                .add_attribute("amount", amount.to_string())
+                .add_attribute("recipient", data.to_address)
+                .add_attribute("updated_escrow_balance", data.escrow_balance.to_string())
                 .add_attribute("chain_uid", sender.chain_uid.to_string());
 
             if !pending_release_voucher.release_fee_amount.is_zero() {

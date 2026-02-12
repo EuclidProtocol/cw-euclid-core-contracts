@@ -238,12 +238,9 @@ pub struct ReleaseEscrowDenomsResponse {
 
 #[cw_serde]
 pub struct ReleaseEscrowResponse {
-    pub factory_address: String,
-    pub chain_id: String,
     pub amount: Uint128,
-    pub token: Token,
     pub to_address: String,
-    pub denom: TokenType,
+    pub escrow_balance: Uint128,
 }
 
 #[cw_serde]
