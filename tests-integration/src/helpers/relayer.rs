@@ -58,7 +58,7 @@ fn relay_factory_send_packet_inner(
             sequence: packet.sequence,
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
-            timeout: None,
+            timeout: packet.timeout,
         };
         let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
@@ -115,7 +115,7 @@ pub fn relay_router_send_packet(
             sequence: packet.sequence,
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
-            timeout: None,
+            timeout: packet.timeout,
         };
 
         let source_chain_uid = packet.source_port.split('.').next().unwrap();
@@ -397,6 +397,7 @@ pub struct SendPacketEvent {
     pub sequence: u128,
     pub source_port: String,
     pub destination_port: String,
+    pub timeout: u64,
 }
 pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
     let mut send_packet_events = vec![];
@@ -431,11 +432,18 @@ pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
             .iter()
             .find(|attr| attr.key == "destination_port")
             .unwrap();
+        let timeout = event
+            .attributes
+            .iter()
+            .find(|attr| attr.key == "timeout")
+            .unwrap();
+        let timeout = str::parse::<u64>(timeout.value.as_str()).unwrap();
         send_packet_events.push(SendPacketEvent {
             msg: msg_binary,
             sequence,
             source_port: source_port.value.clone(),
             destination_port: destination_port.value.clone(),
+            timeout,
         });
     }
     send_packet_events

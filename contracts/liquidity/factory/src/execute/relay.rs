@@ -127,7 +127,7 @@ pub fn execute_receive_packet(
     sequence: u128,
     source_port: String,
     destination_port: String,
-    _timeout: Option<u64>,
+    timeout: u64,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
@@ -163,7 +163,10 @@ pub fn execute_receive_packet(
         &msg.to_string(),
     );
 
-    let internal_msg = ExecuteMsg::ReceivePacketInternalCallback { msg: msg.clone() };
+    let internal_msg = ExecuteMsg::ReceivePacketInternalCallback {
+        msg: msg.clone(),
+        timeout,
+    };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
         msg: to_json_binary(&internal_msg)?,
@@ -192,10 +195,18 @@ pub fn execute_receive_packet_internal_callback(
     env: Env,
     info: MessageInfo,
     msg: Binary,
+    timeout: u64,
 ) -> Result<Response, ContractError> {
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
+    );
+    ensure!(
+        timeout >= env.block.time.seconds(),
+        ContractError::PacketTimedOut {
+            timeout,
+            block_time: env.block.time.seconds()
+        }
     );
     let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
     receive::reusable_internal_call(deps, env, msg)

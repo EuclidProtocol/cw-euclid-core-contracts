@@ -50,12 +50,13 @@ pub enum ExecuteMsg {
         destination_port: String,
         msg: Binary,
         sequence: u128,
-        timeout: Option<u64>,
+        timeout: u64,
     },
 
     ReceivePacketInternalCallback {
         msg: Binary,
         chain_uid: ChainUid,
+        timeout: u64,
     },
 
     AcknowledgePacket {

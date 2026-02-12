@@ -172,8 +172,11 @@ pub enum ContractError {
     #[error("Invalid Liquidity Ratio")]
     InvalidLiquidityRatio {},
 
-    #[error("Invalid Timeout")]
-    InvalidTimeout {},
+    #[error("Minimum Timeout Not Met: {timeout} < {minimum}")]
+    MinimumTimeoutNotMet { timeout: u64, minimum: u64 },
+
+    #[error("Packet timed out: {timeout} < {block_time}")]
+    PacketTimedOut { timeout: u64, block_time: u64 },
 
     #[error("Slippage Tolerance must be between 0 and 100")]
     InvalidSlippageTolerance {},

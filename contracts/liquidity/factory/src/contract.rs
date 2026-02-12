@@ -251,8 +251,8 @@ pub fn execute(
             timeout,
         ),
 
-        ExecuteMsg::ReceivePacketInternalCallback { msg } => {
-            execute_receive_packet_internal_callback(&mut deps, env, info, msg)
+        ExecuteMsg::ReceivePacketInternalCallback { msg, timeout } => {
+            execute_receive_packet_internal_callback(&mut deps, env, info, msg, timeout)
         }
         ExecuteMsg::AcknowledgePacket {
             msg,
