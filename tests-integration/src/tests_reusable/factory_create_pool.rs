@@ -4,10 +4,10 @@ use crate::helpers::relayer::relay_factory_router_factory;
 use cosmwasm_std::Uint128;
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::CwOrchError;
-use cw_orch::prelude::CwOrchExecute;
 use cw_orch::prelude::Environment;
 use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
+use euclid::msgs::factory::ExecuteMsgFns as FactoryExecuteMsgFns;
 use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::token::{
@@ -35,19 +35,19 @@ pub fn create_pool(
             &mut funds,
         );
     }
-    let tx_response = factory.execute(
-        &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
-            pair_with_denom_and_amount: pair_with_denom.clone(),
-            slippage_tolerance_bps,
-            lp_token_name: "LPNAME".to_string(),
-            lp_token_symbol: "LPSYMBOL".to_string(),
-            lp_token_decimal: 6,
-            lp_token_marketing: None,
+    let tx_response = factory
+        .request_pool_creation(
+            CrossChainConfig::default(),
+            6,
+            "LPSYMBOL".to_string(),
+            "LPSYMBOL".to_string(),
+            pair_with_denom.clone(),
             pool_config,
-            cross_chain_config: CrossChainConfig::default(),
-        },
-        &funds,
-    )?;
+            slippage_tolerance_bps,
+            None,
+            &funds.to_vec(),
+        )
+        .unwrap();
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 

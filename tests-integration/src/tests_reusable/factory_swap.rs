@@ -5,11 +5,11 @@ use cosmwasm_std::Coin;
 use cosmwasm_std::Uint128;
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::CwOrchError;
-use cw_orch::prelude::CwOrchExecute;
 use cw_orch::prelude::Environment;
 use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
+use euclid::msgs::factory::ExecuteMsgFns;
 use euclid::msgs::factory::ExecuteSwapRequest;
 use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::vlp::base::PoolConfig;
@@ -32,8 +32,8 @@ pub fn swap_request(
     partner_fee: Option<PartnerFee>,
     funds: Vec<Coin>,
 ) -> Result<(), CwOrchError> {
-    let tx_response = factory.execute(
-        &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+    let tx_response = factory.execute_swap_request(
+        ExecuteSwapRequest {
             recipients,
             asset_in,
             asset_out,
@@ -41,7 +41,7 @@ pub fn swap_request(
             swaps,
             partner_fee,
             cross_chain_config: CrossChainConfig::default(),
-        }),
+        },
         &funds,
     )?;
 

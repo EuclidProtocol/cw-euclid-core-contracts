@@ -43,7 +43,6 @@ mod tests {
             FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
         },
     };
-    use cw_orch_interchain::mock::MockInterchainEnv;
     use euclid::token::{Token, TokenType};
     use rstest::rstest;
 

@@ -8,6 +8,7 @@ use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
+use euclid::msgs::factory::ExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::recipient::Recipient;
 use euclid::token::TokenWithDenom;
@@ -33,15 +34,15 @@ pub fn deposit_token(
         token.token_type.clone(),
         &mut funds,
     );
-    let tx_response = factory.execute(
-        &euclid::msgs::factory::msg::ExecuteMsg::DepositToken {
-            asset_in: token.clone(),
-            amount_in: amount,
+    let tx_response = factory
+        .deposit_token(
+            amount,
+            token.clone(),
+            CrossChainConfig::default(),
             recipients,
-            cross_chain_config: CrossChainConfig::default(),
-        },
-        &funds,
-    )?;
+            &funds.to_vec(),
+        )
+        .unwrap();
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
     Ok(())
 }
