@@ -90,42 +90,91 @@ pub(crate) fn setup_factory_full_flow(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::{get_escrow, get_virtual_balance};
+    use crate::helpers::chains::{get_escrow, get_lp_token, get_virtual_balance};
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
     use crate::tests_reusable::state_sync::sync_state;
     use crate::tests_reusable::state_sync::UserFundsQuery;
     use cosmwasm_std::Uint64;
+    use cw20::{Cw20Coin, MinterResponse};
     use cw_orch::prelude::Environment;
+    use cw_orch::prelude::{ContractInstance as _, CwOrchInstantiate, CwOrchUpload};
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
     use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
     use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
+    use euclid::msgs::lp_token::msg::InstantiateMsg as LpTokenInstantiateMsg;
+    use euclid::msgs::lp_token::msg::QueryMsgFns as LpTokenQueryMsgFns;
     use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
     use euclid::msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns;
     use euclid::utils::pagination::Pagination;
     use euclid::voucher::BalanceKey;
+    use lp_token::LpTokenContract;
+
+    fn setup_smart_denom_token(
+        factory: &FactoryContract<MockBase>,
+        token: Token,
+    ) -> TokenWithDenom {
+        let sender = factory.environment().sender.to_string();
+        let chain = factory.environment();
+        let cw20 = LpTokenContract::new(chain.clone());
+        cw20.upload().unwrap();
+
+        let aux_token = Token::create(format!("{}.aux", token)).unwrap();
+        let token_pair = Pair::new(token.clone(), aux_token).unwrap();
+        cw20.instantiate(
+            &LpTokenInstantiateMsg {
+                name: format!("{}_cw20", token),
+                symbol: "SWAPIN".to_string(),
+                decimals: 6,
+                initial_balances: vec![Cw20Coin {
+                    address: sender.clone(),
+                    amount: Uint128::new(1_000_000_000),
+                }],
+                mint: Some(MinterResponse {
+                    minter: sender,
+                    cap: None,
+                }),
+                marketing: None,
+                vlp: chain.addr_make("dummy_vlp").to_string(),
+                factory: chain.addr_make("dummy_factory"),
+                token_pair,
+            },
+            None,
+            &[],
+        )
+        .unwrap();
+
+        TokenWithDenom {
+            token,
+            token_type: TokenType::Smart {
+                contract_address: cw20.address().unwrap().to_string(),
+            },
+        }
+    }
 
     #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "single_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "two_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "empty", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "single_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "two_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "empty", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "single_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "two_voucher", PoolConfig::ConstantProduct {})]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "single_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM, "two_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "single_voucher", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "two_voucher", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "empty", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "single_voucher", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "two_voucher", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "empty", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "single_voucher", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "two_voucher", PoolConfig::ConstantProduct {}, false)]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, false)]
+    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "single_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, false)]
+    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM, "two_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, false)]
+    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::ConstantProduct {}, true)]
     fn factory_full_flow_register_denom_and_deposit(
         #[case] mode: FactorySetupMode,
         #[case] factory_chain_id: &str,
         #[case] recipient_case: &str,
         #[case] pool_type: PoolConfig,
+        #[case] use_smart_asset_in: bool,
     ) {
         let sender = "sender_for_all_chains";
         let token_1 = TokenWithDenom {
@@ -314,12 +363,34 @@ mod tests {
         let swap_amount = Uint128::new(1_000);
         let partner_fee_bps: u64 = 30;
         let sender_addr = factory.environment().sender.to_string();
+        let swap_asset_in = if use_smart_asset_in {
+            let smart_asset_in = setup_smart_denom_token(&factory, token_1.token.clone());
+            register_denom(&factory, &router, smart_asset_in.clone()).unwrap();
+            smart_asset_in
+        } else {
+            token_1.clone()
+        };
 
         // Partner fee: checked_mul_ceil(1000, 0.003) = ceil(3.0) = 3
         let partner_fee_amount = swap_amount
             .checked_mul_ceil(cosmwasm_std::Decimal::bps(partner_fee_bps))
             .unwrap();
         let net_swap_amount = swap_amount - partner_fee_amount;
+        let smart_cw20_contract = match &swap_asset_in.token_type {
+            TokenType::Smart { contract_address } => Some(get_lp_token(
+                factory.environment(),
+                &cosmwasm_std::Addr::unchecked(contract_address.clone()),
+            )),
+            _ => None,
+        };
+        let cw20_sender_balance_before = smart_cw20_contract
+            .as_ref()
+            .map(|cw20| cw20.balance(sender_addr.clone()).unwrap().balance);
+        let cw20_factory_balance_before = smart_cw20_contract.as_ref().map(|cw20| {
+            cw20.balance(factory.address().unwrap().to_string())
+                .unwrap()
+                .balance
+        });
 
         // Record pre-swap state
         let escrow_in_before = get_escrow(&factory, token_1.token.as_str())
@@ -347,28 +418,27 @@ mod tests {
             .unwrap()
             .amount;
 
-        let partner_native_balance_before = factory
-            .environment()
-            .query_balance(
-                &cosmwasm_std::Addr::unchecked(sender_addr.clone()),
-                token_1.token.to_string().as_str(),
+        let partner_native_balance_before = if swap_asset_in.token_type.is_native() {
+            Some(
+                factory
+                    .environment()
+                    .query_balance(
+                        &cosmwasm_std::Addr::unchecked(sender_addr.clone()),
+                        token_1.token.to_string().as_str(),
+                    )
+                    .unwrap(),
             )
-            .unwrap();
+        } else {
+            None
+        };
 
         // Execute the swap
-        let mut swap_funds = vec![];
-        crate::helpers::factory::faucet(
-            factory.environment(),
-            factory.environment().sender.as_str(),
-            swap_amount.u128(),
-            token_1.token_type.clone(),
-            &mut swap_funds,
-        );
         swap_request(
             &factory,
             &router,
-            token_1.clone(),
+            swap_asset_in.clone(),
             token_2.clone().token,
+            swap_amount,
             Uint128::new(1),
             vec![NextSwapPair {
                 token_in: token_1.token.clone(),
@@ -380,10 +450,19 @@ mod tests {
                 partner_fee_bps,
                 recipient: sender_addr.clone(),
             }),
-            swap_amount,
-            swap_funds,
         )
         .unwrap();
+
+        let user_funds_queries = if swap_asset_in.token_type.is_native() {
+            vec![UserFundsQuery {
+                chain_uid: chain_uid.clone(),
+                chain: factory.environment().clone(),
+                user_addr: sender_addr.clone(),
+                denom: token_1.token.to_string(),
+            }]
+        } else {
+            vec![]
+        };
 
         // --- Post-swap assertions ---
 
@@ -395,12 +474,7 @@ mod tests {
                 Limit::Dynamic(Uint128::zero()),
             )],
             vec![token_2.token.clone()],
-            vec![UserFundsQuery {
-                chain_uid: chain_uid.clone(),
-                chain: factory.environment().clone(),
-                user_addr: sender_addr.clone(),
-                denom: token_1.token.to_string(),
-            }],
+            user_funds_queries,
             vec![token_1.token.clone()],
             chain_uid.clone(),
             vec![pool_pair],
@@ -439,15 +513,37 @@ mod tests {
             net_swap_amount
         );
 
-        // 5. Partner fee recipient received the fee as native tokens
-        let partner_native_balance_after = post_swap_state
-            .user_funds(&chain_uid, &sender_addr, token_1.token.to_string().as_str())
-            .expect("Partner fee recipient native balance should exist");
-        assert_eq!(
-            partner_native_balance_after,
-            partner_native_balance_before + partner_fee_amount,
-            "Partner fee recipient should have received {} native input tokens as fee",
-            partner_fee_amount
-        );
+        // 5. Partner fee recipient receives fee in the input token type.
+        if let Some(native_before) = partner_native_balance_before {
+            let partner_native_balance_after = post_swap_state
+                .user_funds(&chain_uid, &sender_addr, token_1.token.to_string().as_str())
+                .expect("Partner fee recipient native balance should exist");
+            assert_eq!(
+                partner_native_balance_after,
+                native_before + partner_fee_amount,
+                "Partner fee recipient should have received {} native input tokens as fee",
+                partner_fee_amount
+            );
+        }
+        if let (Some(cw20), Some(sender_before), Some(factory_before)) = (
+            smart_cw20_contract.as_ref(),
+            cw20_sender_balance_before,
+            cw20_factory_balance_before,
+        ) {
+            let sender_after = cw20.balance(sender_addr).unwrap().balance;
+            let factory_after = cw20
+                .balance(factory.address().unwrap().to_string())
+                .unwrap()
+                .balance;
+            assert_eq!(
+                sender_after,
+                sender_before - net_swap_amount,
+                "Sender CW20 balance should decrease by net swap amount when partner fee recipient is sender"
+            );
+            assert_eq!(
+                factory_after, factory_before,
+                "Factory should not retain smart input tokens after swap execution"
+            );
+        }
     }
 }

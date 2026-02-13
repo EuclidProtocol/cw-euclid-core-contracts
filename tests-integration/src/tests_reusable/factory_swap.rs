@@ -1,9 +1,9 @@
 #![cfg(not(target_arch = "wasm32"))]
 use crate::helpers::factory::faucet;
 use crate::helpers::relayer::relay_factory_router_factory;
+use cosmwasm_std::coin;
 use cosmwasm_std::to_json_binary;
 use cosmwasm_std::Addr;
-use cosmwasm_std::Coin;
 use cosmwasm_std::Uint128;
 use cw20::{Cw20Coin, MinterResponse};
 use cw_orch::mock::MockBase;
@@ -36,12 +36,11 @@ pub fn swap_request(
     router: &RouterContract<MockBase>,
     asset_in: TokenWithDenom,
     asset_out: Token,
+    amount_in: Uint128,
     min_amount_out: Uint128,
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,
     partner_fee: Option<PartnerFee>,
-    amount_in: Uint128,
-    funds: Vec<Coin>,
 ) -> Result<(), CwOrchError> {
     let tx_response = if asset_in.token_type.is_smart() {
         let smart_contract = match &asset_in.token_type {
@@ -67,17 +66,27 @@ pub fn swap_request(
             &[],
         )?
     } else {
+        faucet(
+            factory.environment(),
+            factory.environment().sender.as_str(),
+            amount_in.u128(),
+            asset_in.token_type.clone(),
+            &mut vec![],
+        );
         factory.execute_swap_request(
             ExecuteSwapRequest {
                 recipients,
-                asset_in,
+                asset_in: asset_in.clone(),
                 asset_out,
                 min_amount_out,
                 swaps,
                 partner_fee,
                 cross_chain_config: CrossChainConfig::default(),
             },
-            &funds,
+            &vec![coin(
+                amount_in.u128(),
+                asset_in.token_type.get_denom().unwrap(),
+            )],
         )?
     };
 
@@ -296,29 +305,16 @@ mod tests {
             .unwrap()
             .amount;
 
-        // Faucet for the swap itself
-        let mut swap_funds = vec![];
-        if asset_in.token_type.is_native() {
-            faucet(
-                factory.environment(),
-                factory.environment().sender.as_str(),
-                swap_amount,
-                asset_in.token_type.clone(),
-                &mut swap_funds,
-            );
-        }
-
         swap_request(
             &factory,
             &router,
             asset_in.clone(),
             asset_out.token.clone(),
+            Uint128::new(swap_amount),
             Uint128::new(1),
             swaps.clone(),
             vec![],
             None,
-            Uint128::new(swap_amount),
-            swap_funds,
         )
         .unwrap();
 
