@@ -3521,6 +3521,7 @@ dependencies = [
  "cw-orch-interchain",
  "cw-storage-plus 2.0.0",
  "cw-utils 2.0.0",
+ "cw20 2.0.0",
  "escrow",
  "euclid",
  "euclid-ibc",

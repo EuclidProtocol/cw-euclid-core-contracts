@@ -35,8 +35,17 @@ use crate::helpers::relayer::{
     ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
     relay_router_send_packet,
 };
+use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
 use super::relayer::get_signer_key;
+
+pub fn setup_interchain(sender: &str, factory_chain_id: &str) -> MockInterchainEnv {
+    let mut chains = vec![(ROUTER_CHAIN_ID, sender)];
+    if ROUTER_CHAIN_ID != factory_chain_id {
+        chains.push((factory_chain_id, sender));
+    }
+    MockInterchainEnv::new(chains)
+}
 
 pub fn setup_factory(
     interchain: &MockInterchainEnv,
@@ -80,12 +89,13 @@ fn setup_factory_inner(
     chain_type: ChainType,
 ) -> Result<FactoryContract<MockBase>, CwOrchError> {
     let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
+    let vsl_chain_uid = ChainUid::vsl_chain_uid().unwrap();
     let chain = interchain.get_chain(factory_chain_id).unwrap();
     let _router_chain = interchain.get_chain(router_chain_id).unwrap();
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let lp_token = LpTokenContract::new(chain.clone());
-    let relayer = setup_relayer(&chain, vec![ChainUid::vsl_chain_uid().unwrap().as_str()])?;
+    let relayer = setup_relayer(&chain, vec![vsl_chain_uid.as_str(), chain_uid.as_str()])?;
 
     let string_length = factory_chain_id.len();
 

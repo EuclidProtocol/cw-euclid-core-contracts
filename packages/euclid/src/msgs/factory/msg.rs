@@ -39,6 +39,7 @@ pub enum ExecuteMsg {
         token_with_denom: TokenWithDenom,
         cross_chain_config: CrossChainConfig,
     },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     DepositToken {
         asset_in: TokenWithDenom,
         amount_in: Uint128,
@@ -53,6 +54,7 @@ pub enum ExecuteMsg {
         recipients: Vec<Recipient>,
         cross_chain_config: CrossChainConfig,
     },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     RequestPoolCreation {
         pair_with_denom_and_amount: PairWithDenomAndAmount,
         pool_config: PoolConfig,
@@ -68,6 +70,7 @@ pub enum ExecuteMsg {
         slippage_tolerance_bps: u64,
         cross_chain_config: CrossChainConfig,
     },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     ExecuteSwapRequest(ExecuteSwapRequest),
 
     // Recieve CW20 TOKENS structure
