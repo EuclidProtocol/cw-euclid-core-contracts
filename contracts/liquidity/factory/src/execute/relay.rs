@@ -248,6 +248,16 @@ pub fn execute_receive_acknowledgement(
     // Remove the existing request as its already relayed now
     CROSS_CHAIN_PENDING_SEND_PACKETS.remove(deps.storage, sequence);
     CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, sequence);
+    USER_PENDING_PACKETS_COUNT.update(
+        deps.storage,
+        sender.clone(),
+        |count| -> Result<_, ContractError> {
+            count
+                .unwrap_or(0)
+                .checked_sub(1)
+                .ok_or(ContractError::new("Overflow"))
+        },
+    )?;
 
     let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
 
