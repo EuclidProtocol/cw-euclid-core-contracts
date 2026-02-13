@@ -57,7 +57,7 @@ mod tests {
         let sender = "sender_for_all_chains";
         let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
-        let router = setup_router(&router_chain).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
         let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
 
         let token_type = match token_type_case {
@@ -100,7 +100,7 @@ mod tests {
         let sender = "sender_for_all_chains";
         let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
-        let router = setup_router(&router_chain).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
         let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
 
         let token = TokenWithDenom {

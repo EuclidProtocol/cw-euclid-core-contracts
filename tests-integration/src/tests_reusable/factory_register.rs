@@ -57,11 +57,12 @@ pub fn setup_factory_with_mode(
     mode: FactorySetupMode,
 ) -> Result<FactoryContract<MockBase>, CwOrchError> {
     let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
+    let vsl_chain_uid = ChainUid::vsl_chain_uid().unwrap();
     let chain = interchain.get_chain(factory_chain_id).unwrap();
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let lp_token = LpTokenContract::new(chain.clone());
-    let relayer = setup_relayer(&chain)?;
+    let relayer = setup_relayer(&chain, vec![vsl_chain_uid.as_str(), chain_uid.as_str()])?;
 
     let string_length = factory_chain_id.len();
 
@@ -168,7 +169,7 @@ mod tests {
 
         let interchain = MockInterchainEnv::new(chains);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
-        let router = setup_router(&router_chain).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
 
         let _factory =
             setup_factory_with_mode(&interchain, factory_chain_id, &router, mode).unwrap();

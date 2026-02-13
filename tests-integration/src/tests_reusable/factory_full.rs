@@ -42,7 +42,7 @@ pub(crate) fn setup_factory_full_flow(
     }
     let interchain = MockInterchainEnv::new(chains);
     let router_chain = interchain.get_chain(router_chain_id).unwrap();
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
     let factory = match mode {
         FactorySetupMode::Native | FactorySetupMode::Ibc => {
             setup_factory(&interchain, factory_chain_id, &router).unwrap()
