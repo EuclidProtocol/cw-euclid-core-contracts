@@ -214,7 +214,7 @@ pub fn execute_receive_packet_internal_callback(
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute_receive_acknowledgement(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
     msg: Binary,
@@ -248,6 +248,16 @@ pub fn execute_receive_acknowledgement(
     // Remove the existing request as its already relayed now
     CROSS_CHAIN_PENDING_SEND_PACKETS.remove(deps.storage, sequence);
     CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, sequence);
+    USER_PENDING_PACKETS_COUNT.update(
+        deps.storage,
+        sender.clone(),
+        |count| -> Result<_, ContractError> {
+            count
+                .unwrap_or(0)
+                .checked_sub(1)
+                .ok_or(ContractError::new("Overflow"))
+        },
+    )?;
 
     let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
 
@@ -257,18 +267,24 @@ pub fn execute_receive_acknowledgement(
     let mut response = response.add_event(ack_event);
 
     if let Some(ack_response) = existing_request.ack_response {
-        let ack_hook_msg = EuclidAcknowledgement {
-            ack,
-            msg: ack_response,
+        let is_contract = deps
+            .querier
+            .query_wasm_contract_info(sender.to_string())
+            .is_ok();
+        if is_contract {
+            let ack_hook_msg = EuclidAcknowledgement {
+                ack,
+                msg: ack_response,
+            }
+            .to_receiver_msg();
+            let msg = WasmMsg::Execute {
+                contract_addr: sender.to_string(),
+                msg: ack_hook_msg?,
+                funds: vec![],
+            };
+            // This is a never reply message, so we don't need to wait for a response
+            response = response.add_submessage(SubMsg::reply_never(msg));
         }
-        .to_receiver_msg();
-        let msg = WasmMsg::Execute {
-            contract_addr: sender.to_string(),
-            msg: ack_hook_msg?,
-            funds: vec![],
-        };
-        // This is a never reply message, so we don't need to wait for a response
-        response = response.add_submessage(SubMsg::reply_never(msg));
     }
 
     Ok(response)
