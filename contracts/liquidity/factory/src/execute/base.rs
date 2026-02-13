@@ -168,14 +168,20 @@ pub fn receive_euclid_native(
             cross_chain_config,
             partner_fee,
         } => {
-            ensure!(
-                asset_in.token_type.is_native(),
-                ContractError::InvalidAsset {
+            let amount_in = if let TokenType::Native { denom } = &asset_in.token_type {
+                info.funds
+                    .iter()
+                    .find(|fund| fund.denom == *denom)
+                    .ok_or(ContractError::InsufficientFunds {})?
+                    .amount
+            } else {
+                return Err(ContractError::InvalidAsset {
                     asset: asset_in.token.to_string(),
-                }
-            );
+                });
+            };
             let swap_msg = ExecuteSwapRequest {
                 asset_in,
+                amount_in,
                 asset_out,
                 min_amount_out,
                 swaps,

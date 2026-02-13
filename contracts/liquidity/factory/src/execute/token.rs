@@ -199,6 +199,7 @@ pub fn execute_deposit_token(
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    let sender_addr = deps.api.addr_validate(&sender.address)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         !asset_in.token_type.is_voucher(),
@@ -216,7 +217,7 @@ pub fn execute_deposit_token(
     let tx_id = generate_tx(deps, &env, &sender)?;
 
     ensure!(
-        !PENDING_TOKEN_DEPOSIT.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_TOKEN_DEPOSIT.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
     // Verify that this asset is allowed
@@ -262,7 +263,7 @@ pub fn execute_deposit_token(
 
     PENDING_TOKEN_DEPOSIT.save(
         deps.storage,
-        (info.sender.clone(), tx_id.clone()),
+        (sender_addr.clone(), tx_id.clone()),
         &deposit_token_info,
     )?;
 
@@ -280,7 +281,7 @@ pub fn execute_deposit_token(
             deps,
             &env,
             state.clone().router_contract,
-            info.sender.clone(),
+            sender_addr.clone(),
             state.clone().chain_uid,
             chain_type,
             cross_chain_config.timeout,
@@ -291,7 +292,7 @@ pub fn execute_deposit_token(
     Ok(Response::new()
         .add_event(tx_event(
             &tx_id,
-            info.sender.as_str(),
+            sender_addr.as_str(),
             euclid::events::TxType::DepositToken,
         ))
         .add_event(deposit_token_event(&tx_id, &deposit_token_info))

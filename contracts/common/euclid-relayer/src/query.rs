@@ -1,6 +1,6 @@
-use cosmwasm_std::Deps;
+use cosmwasm_std::{Deps, Order};
 use euclid::error::ContractError;
-use relayer::{msgs::State, ValidatorsResponse};
+use relayer::{msgs::State, ValidatorsResponse, ValidatorsResponseItem};
 
 use crate::state::{NONCES, STATE, VALIDATORS};
 
@@ -14,6 +14,16 @@ pub fn nonce_relayed(deps: &Deps, nonce: String) -> Result<bool, ContractError> 
 }
 
 pub fn get_validators(deps: &Deps) -> Result<ValidatorsResponse, ContractError> {
-    let validators = VALIDATORS.load(deps.storage)?;
+    let mut validators = vec![];
+    let iter = VALIDATORS.range(deps.storage, None, None, Order::Ascending);
+    for v in iter {
+        let (chain_uid, chain_validators) = v?;
+        for validator in chain_validators.iter() {
+            validators.push(ValidatorsResponseItem {
+                validator: validator.clone(),
+                chain_uid: chain_uid.clone(),
+            });
+        }
+    }
     Ok(ValidatorsResponse { validators })
 }

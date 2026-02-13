@@ -169,9 +169,13 @@ pub fn execute(
                     destination_port,
                     timeout,
                 ),
-                ExecuteMsg::ReceivePacketInternalCallback { msg, chain_uid } => {
-                    execute_receive_packet_internal_callback(&mut deps, env, info, msg, chain_uid)
-                }
+                ExecuteMsg::ReceivePacketInternalCallback {
+                    msg,
+                    chain_uid,
+                    timeout,
+                } => execute_receive_packet_internal_callback(
+                    &mut deps, env, info, msg, chain_uid, timeout,
+                ),
                 ExecuteMsg::AcknowledgePacket {
                     source_port,
                     destination_port,

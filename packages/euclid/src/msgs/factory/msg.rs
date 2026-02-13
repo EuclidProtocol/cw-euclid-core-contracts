@@ -94,11 +94,12 @@ pub enum ExecuteMsg {
         destination_port: String,
         msg: Binary,
         sequence: u128,
-        timeout: Option<u64>,
+        timeout: u64,
     },
 
     ReceivePacketInternalCallback {
         msg: Binary,
+        timeout: u64,
     },
     AcknowledgePacket {
         source_port: String,
@@ -120,6 +121,7 @@ pub enum ManageFactoryState {
 #[cw_serde]
 pub struct ExecuteSwapRequest {
     pub asset_in: TokenWithDenom,
+    pub amount_in: Uint128,
     pub asset_out: Token,
     pub min_amount_out: Uint128,
     pub swaps: Vec<NextSwapPair>,
@@ -240,12 +242,9 @@ pub struct ReleaseEscrowDenomsResponse {
 
 #[cw_serde]
 pub struct ReleaseEscrowResponse {
-    pub factory_address: String,
-    pub chain_id: String,
     pub amount: Uint128,
-    pub token: Token,
     pub to_address: String,
-    pub denom: TokenType,
+    pub escrow_balance: Uint128,
 }
 
 #[cw_serde]

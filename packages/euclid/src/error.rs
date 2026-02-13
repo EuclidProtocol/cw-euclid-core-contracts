@@ -172,8 +172,11 @@ pub enum ContractError {
     #[error("Invalid Liquidity Ratio")]
     InvalidLiquidityRatio {},
 
-    #[error("Invalid Timeout")]
-    InvalidTimeout {},
+    #[error("Minimum Timeout Not Met: {timeout} < {minimum}")]
+    MinimumTimeoutNotMet { timeout: u64, minimum: u64 },
+
+    #[error("Packet timed out: {timeout} < {block_time}")]
+    PacketTimedOut { timeout: u64, block_time: u64 },
 
     #[error("Slippage Tolerance must be between 0 and 100")]
     InvalidSlippageTolerance {},
@@ -274,6 +277,9 @@ pub enum ContractError {
 
     #[error("Balance not found for key: {key}")]
     BalanceNotFound { key: String },
+
+    #[error("Rate limit exceeded: limit {limit}, actual {actual}")]
+    RateLimitExceeded { limit: u128, actual: u128 },
 }
 
 impl ContractError {

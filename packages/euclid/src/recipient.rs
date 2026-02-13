@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::ensure;
+use cosmwasm_std::{ensure, to_json_string};
 
 use crate::{
     chain::ChainUid, cross_chain_user::CrossChainUser, error::ContractError, limit::Limit,
@@ -45,5 +45,9 @@ impl Recipient {
             forwarding_message: None,
             unsafe_refund_as_voucher: None,
         }
+    }
+
+    pub fn to_event_string(&self) -> Result<String, ContractError> {
+        return to_json_string(self).map_err(|e| ContractError::new(e.to_string().as_str()));
     }
 }

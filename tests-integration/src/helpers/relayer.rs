@@ -58,16 +58,18 @@ fn relay_factory_send_packet_inner(
             sequence: packet.sequence,
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
-            timeout: None,
+            timeout: packet.timeout,
         };
+        let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             router.address().unwrap(),
             format!(
                 "{}-{}-{}-receive",
-                packet.source_port, packet.destination_port, packet.sequence
+                packet.source_port, packet.destination_port, packet.sequence,
             ),
             &router.environment().app.borrow(),
+            source_chain_uid,
         );
 
         let response = relayer.execute_meta_transaction(signed_data)?;
@@ -113,9 +115,10 @@ pub fn relay_router_send_packet(
             sequence: packet.sequence,
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
-            timeout: None,
+            timeout: packet.timeout,
         };
 
+        let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             factory.address().unwrap(),
@@ -124,6 +127,7 @@ pub fn relay_router_send_packet(
                 packet.source_port, packet.destination_port, packet.sequence
             ),
             &factory.environment().app.borrow(),
+            source_chain_uid,
         );
 
         let response = relayer.execute_meta_transaction(signed_data)?;
@@ -169,6 +173,7 @@ pub fn relay_factory_ack_packet(
             ack: packet.ack,
         };
 
+        let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             factory.address().unwrap(),
@@ -177,6 +182,7 @@ pub fn relay_factory_ack_packet(
                 packet.source_port, packet.destination_port, packet.sequence
             ),
             &factory.environment().app.borrow(),
+            source_chain_uid,
         );
 
         let response = relayer.execute_meta_transaction(signed_data)?;
@@ -211,6 +217,7 @@ pub fn relay_router_ack_packet(
             sequence: packet.sequence,
             ack: packet.ack,
         };
+        let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
             to_json_binary(&call_data).unwrap(),
             router.address().unwrap(),
@@ -219,6 +226,7 @@ pub fn relay_router_ack_packet(
                 packet.source_port, packet.destination_port, packet.sequence
             ),
             &router.environment().app.borrow(),
+            source_chain_uid,
         );
 
         let response = relayer.execute_meta_transaction(signed_data);
@@ -264,12 +272,13 @@ pub fn ack_register_factory_evm(
         sequence,
         ack: ack_binary,
     };
-
+    let source_chain_uid = chain_uid.as_str();
     let signed_data = sign_relay_messsage(
         to_json_binary(&call_data).unwrap(),
         router.address().unwrap(),
         format!("{}-{}-{}-ack", evm_port, vsl_port, 0,),
         &router.environment().app.borrow(),
+        source_chain_uid,
     );
 
     let response = relayer.execute_meta_transaction(signed_data);
@@ -347,6 +356,7 @@ pub fn sign_relay_messsage(
     target: Addr,
     nonce: String,
     app: &App,
+    source_chain_uid: &str,
 ) -> RelayerMetaTransaction {
     let meta_tx_data = RelayerMetaTransactionData {
         call_data,
@@ -355,7 +365,12 @@ pub fn sign_relay_messsage(
     };
     let expiry = app.block_info().time.plus_seconds(60).seconds();
     let msg = to_json_string(&meta_tx_data).unwrap();
-    let expiry_call_data = format!("{msg},{expiry}", msg = msg, expiry = expiry);
+    let expiry_call_data = format!(
+        "{msg},{expiry},{source_chain_uid}",
+        msg = msg,
+        expiry = expiry,
+        source_chain_uid = source_chain_uid
+    );
     let message_digest = Sha256::new().chain(expiry_call_data.as_bytes());
 
     let (secret_key, pubkey) = get_signer_key();
@@ -373,6 +388,7 @@ pub fn sign_relay_messsage(
             signature: admin_signature,
             expiry: app.block_info().time.plus_seconds(60).seconds(),
         }],
+        chain_uid: ChainUid::create(source_chain_uid.to_string()).unwrap(),
     }
 }
 
@@ -381,6 +397,7 @@ pub struct SendPacketEvent {
     pub sequence: u128,
     pub source_port: String,
     pub destination_port: String,
+    pub timeout: u64,
 }
 pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
     let mut send_packet_events = vec![];
@@ -415,11 +432,18 @@ pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
             .iter()
             .find(|attr| attr.key == "destination_port")
             .unwrap();
+        let timeout = event
+            .attributes
+            .iter()
+            .find(|attr| attr.key == "timeout")
+            .unwrap();
+        let timeout = str::parse::<u64>(timeout.value.as_str()).unwrap();
         send_packet_events.push(SendPacketEvent {
             msg: msg_binary,
             sequence,
             source_port: source_port.value.clone(),
             destination_port: destination_port.value.clone(),
+            timeout,
         });
     }
     send_packet_events

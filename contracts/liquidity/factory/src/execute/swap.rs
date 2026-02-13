@@ -163,7 +163,7 @@ pub fn execute_swap_request(
         deps,
         &env,
         state.router_contract.clone(),
-        info.sender.clone(),
+        sender_addr.clone(),
         state.chain_uid.clone(),
         chain_type,
         cross_chain_config.timeout,
