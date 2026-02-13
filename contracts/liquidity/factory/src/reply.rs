@@ -116,7 +116,7 @@ pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
 }
 
 pub fn on_reply_native_ibc_wrapper_call(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     msg: Reply,
 ) -> Result<Response, ContractError> {
