@@ -2,6 +2,13 @@
 
 use cosmwasm_std::{to_json_binary, to_json_string, Binary, Empty, Uint128};
 use cw_multi_test::{App, Contract, ContractWrapper, Executor};
+use euclid::msgs::orderbook_deposits::{
+    AssetDepositResponse, AssetTotal, ExecuteMsg as OrderbookExecuteMsg,
+    InstantiateMsg as OrderbookInstantiateMsg, MerkleProofStep, Permit, PermitData, ProofPosition,
+    QueryMsg as OrderbookQueryMsg, StateResponse, UserDepositResponse,
+    VirtualBalanceReceiveHookMsg, WhitelistListResponse, WithdrawalLeaf,
+};
+
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
@@ -12,15 +19,6 @@ use euclid::{
     voucher::BalanceKey,
 };
 use k256::ecdsa::SigningKey;
-use orderbook_deposits::msg::{
-    AssetDepositResponse, MerkleProofStep, Permit, PermitData, ProofPosition,
-    QueryMsg as OrderbookQueryMsg, StateResponse, UserDepositResponse,
-    VirtualBalanceReceiveHookMsg, WhitelistListResponse, WithdrawalLeaf,
-};
-use orderbook_deposits::msg::{
-    ExecuteMsg as OrderbookExecuteMsg, InstantiateMsg as OrderbookInstantiateMsg,
-};
-use orderbook_deposits::state::AssetTotal;
 use relayer::verify::{MsgSignData, MsgSignDataMsg, MsgSignDataValue};
 use sha2::{digest::Update, Digest, Sha256};
 

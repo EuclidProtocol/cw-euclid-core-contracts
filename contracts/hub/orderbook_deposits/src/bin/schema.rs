@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use orderbook_deposits::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::orderbook_deposits::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     write_api! {

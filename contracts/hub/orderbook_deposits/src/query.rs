@@ -1,13 +1,12 @@
 use crate::error::ContractError;
 use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
 use cw_storage_plus::Bound;
+use euclid::msgs::orderbook_deposits::OrderbookDepositsStatus;
 
-use crate::msg::{
+use crate::state::{ASSET_DEPOSITS, CURRENT_ROOT, STATE, USER_DEPOSITS, WHITELISTED_ASSETS};
+use euclid::msgs::orderbook_deposits::{
     AssetDepositResponse, QueryMsg, RootResponse, StateResponse, UserDepositResponse,
     WhitelistListResponse, WhitelistResponse,
-};
-use crate::state::{
-    OrderbookDepositsStatus, ASSET_DEPOSITS, CURRENT_ROOT, STATE, USER_DEPOSITS, WHITELISTED_ASSETS,
 };
 
 pub fn query(deps: Deps, msg: QueryMsg) -> Result<Binary, ContractError> {

@@ -2,7 +2,7 @@ use cosmwasm_std::{entry_point, DepsMut, Env, Response};
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::MigrateMsg;
+use euclid::msgs::orderbook_deposits::MigrateMsg;
 
 const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");

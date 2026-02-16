@@ -5,9 +5,11 @@ use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::execute;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query;
-use crate::state::{OrderbookDepositsStatus, RootConfig, State, ROOT_CONFIG, STATE};
+use crate::state::{RootConfig, State, ROOT_CONFIG, STATE};
+use euclid::msgs::orderbook_deposits::{
+    ExecuteMsg, InstantiateMsg, OrderbookDepositsStatus, QueryMsg,
+};
 
 const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");

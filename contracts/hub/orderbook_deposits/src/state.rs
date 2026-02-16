@@ -2,20 +2,8 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Binary, Uint128};
 use cw_storage_plus::{Item, Map};
 
-#[cw_serde]
-pub enum OrderbookDepositsStatus {
-    Active,
-    Paused,
-    Stopped,
-}
-
+use euclid::msgs::orderbook_deposits::{AssetTotal, OrderbookDepositsStatus};
 pub type AssetId = String;
-
-#[cw_serde]
-pub struct AssetTotal {
-    pub token_id: String,
-    pub amount: Uint128,
-}
 
 #[cw_serde]
 pub struct State {

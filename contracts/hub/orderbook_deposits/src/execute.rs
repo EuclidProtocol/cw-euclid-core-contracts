@@ -7,6 +7,10 @@ use euclid::{
     cross_chain_user::CrossChainUser,
     msgs::{
         hook::VoucherReceive,
+        orderbook_deposits::{
+            AssetTotal, ExecuteMsg, MerkleProofStep, OrderbookDepositsStatus, Permit, PermitData,
+            ProofPosition, VirtualBalanceReceiveHookMsg, WithdrawalLeaf,
+        },
         virtual_balance::{ExecuteMsg as VirtualBalanceExecuteMsg, ExecuteTransfer},
     },
     token::Token,
@@ -16,14 +20,9 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     error::ContractError,
-    msg::{
-        ExecuteMsg, MerkleProofStep, Permit, PermitData, ProofPosition,
-        VirtualBalanceReceiveHookMsg, WithdrawalLeaf,
-    },
     state::{
-        AssetTotal, OrderbookDepositsStatus, RootConfig, RootInfo, ASSET_DEPOSITS, CURRENT_ROOT,
-        NULLIFIERS, PENDING_ROOT, ROOT_CONFIG, STATE, USED_PERMITS, USER_DEPOSITS,
-        WHITELISTED_ASSETS,
+        RootConfig, RootInfo, ASSET_DEPOSITS, CURRENT_ROOT, NULLIFIERS, PENDING_ROOT, ROOT_CONFIG,
+        STATE, USED_PERMITS, USER_DEPOSITS, WHITELISTED_ASSETS,
     },
 };
 
