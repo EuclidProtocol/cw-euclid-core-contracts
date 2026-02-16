@@ -100,9 +100,9 @@ impl StateSync {
             .find(|entry| &entry.chain_uid == chain_uid && &entry.token == token)
     }
 
-    pub fn vlp_balance(&self, pair: &Pair) -> Option<&VlpBalanceState> {
-        self.vlp_balances.iter().find(|entry| &entry.pair == pair)
-    }
+    // pub fn vlp_balance(&self, pair: &Pair) -> Option<&VlpBalanceState> {
+    //     self.vlp_balances.iter().find(|entry| &entry.pair == pair)
+    // }
 }
 
 pub(crate) fn sync_state(

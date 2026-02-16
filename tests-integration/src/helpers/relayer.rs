@@ -194,7 +194,7 @@ pub fn relay_factory_ack_packet(
 
 pub fn relay_router_ack_packet(
     router: &RouterContract<MockBase>,
-    chain_uid: &ChainUid,
+    _chain_uid: &ChainUid,
     events: Vec<Event>,
 ) -> Result<Vec<Event>, CwEnvError> {
     let mut responses = Vec::new();

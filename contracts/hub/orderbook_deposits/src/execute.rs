@@ -182,6 +182,7 @@ fn execute_set_whitelist(
     ]))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_update_config(
     deps: DepsMut,
     info: MessageInfo,
@@ -230,6 +231,7 @@ fn execute_update_config(
     Ok(Response::new().add_attribute("action", "update_config"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_propose_root(
     deps: DepsMut,
     env: Env,
@@ -318,6 +320,7 @@ fn execute_activate_root(
     ]))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_withdraw(
     deps: DepsMut,
     env: Env,
@@ -475,7 +478,7 @@ fn is_authorized_poster(
     config: &RootConfig,
     sender: &cosmwasm_std::Addr,
 ) -> bool {
-    sender == &state.admin || config.authorized_posters.contains(sender)
+    sender == state.admin || config.authorized_posters.contains(sender)
 }
 
 fn validate_asset_totals(deps: Deps, per_asset_totals: &[AssetTotal]) -> Result<(), ContractError> {
@@ -496,6 +499,7 @@ fn validate_asset_totals(deps: Deps, per_asset_totals: &[AssetTotal]) -> Result<
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn verify_permit(
     deps: Deps,
     env: &Env,

@@ -1,4 +1,5 @@
-use cosmwasm_std::{to_json_binary, Binary, Deps, StdResult, Uint128};
+use crate::error::ContractError;
+use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
 use cw_storage_plus::Bound;
 
 use crate::msg::{
@@ -9,24 +10,24 @@ use crate::state::{
     OrderbookDepositsStatus, ASSET_DEPOSITS, CURRENT_ROOT, STATE, USER_DEPOSITS, WHITELISTED_ASSETS,
 };
 
-pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::State {} => to_json_binary(&query_state(deps)?),
+        QueryMsg::State {} => Ok(to_json_binary(&query_state(deps)?)?),
         QueryMsg::AssetDeposit { token_id } => {
-            to_json_binary(&query_asset_deposit(deps, token_id)?)
+            Ok(to_json_binary(&query_asset_deposit(deps, token_id)?)?)
         }
         QueryMsg::UserDeposit { user, token_id } => {
-            to_json_binary(&query_user_deposit(deps, user, token_id)?)
+            Ok(to_json_binary(&query_user_deposit(deps, user, token_id)?)?)
         }
-        QueryMsg::Whitelist { token_id } => to_json_binary(&query_whitelist(deps, token_id)?),
-        QueryMsg::WhitelistedAssets { start_after, limit } => {
-            to_json_binary(&query_whitelisted_assets(deps, start_after, limit)?)
-        }
-        QueryMsg::CurrentRoot {} => to_json_binary(&query_current_root(deps)?),
+        QueryMsg::Whitelist { token_id } => Ok(to_json_binary(&query_whitelist(deps, token_id)?)?),
+        QueryMsg::WhitelistedAssets { start_after, limit } => Ok(to_json_binary(
+            &query_whitelisted_assets(deps, start_after, limit),
+        )?),
+        QueryMsg::CurrentRoot {} => Ok(to_json_binary(&query_current_root(deps)?)?),
     }
 }
 
-fn query_state(deps: Deps) -> StdResult<StateResponse> {
+fn query_state(deps: Deps) -> Result<StateResponse, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(StateResponse {
         admin: state.admin.to_string(),
@@ -39,7 +40,10 @@ fn query_state(deps: Deps) -> StdResult<StateResponse> {
     })
 }
 
-fn query_asset_deposit(deps: Deps, token_id: String) -> StdResult<AssetDepositResponse> {
+fn query_asset_deposit(
+    deps: Deps,
+    token_id: String,
+) -> Result<AssetDepositResponse, ContractError> {
     let amount = ASSET_DEPOSITS
         .may_load(deps.storage, token_id.clone())?
         .unwrap_or_else(Uint128::zero);
@@ -50,19 +54,19 @@ fn query_user_deposit(
     deps: Deps,
     user: String,
     token_id: String,
-) -> StdResult<UserDepositResponse> {
+) -> Result<UserDepositResponse, ContractError> {
     let amount = USER_DEPOSITS
         .may_load(deps.storage, (user.clone(), token_id.clone()))?
         .unwrap_or_else(Uint128::zero);
 
     Ok(UserDepositResponse {
-        user: user.to_string(),
+        user: user.clone(),
         token_id,
         amount,
     })
 }
 
-fn query_whitelist(deps: Deps, token_id: String) -> StdResult<WhitelistResponse> {
+fn query_whitelist(deps: Deps, token_id: String) -> Result<WhitelistResponse, ContractError> {
     let whitelisted = WHITELISTED_ASSETS
         .may_load(deps.storage, token_id.clone())?
         .unwrap_or(false);
@@ -76,13 +80,13 @@ fn query_whitelisted_assets(
     deps: Deps,
     start_after: Option<String>,
     limit: Option<u32>,
-) -> StdResult<WhitelistListResponse> {
+) -> WhitelistListResponse {
     let limit = limit.unwrap_or(50).min(200) as usize;
     let start = start_after.map(Bound::exclusive);
 
     let assets: Vec<WhitelistResponse> = WHITELISTED_ASSETS
         .range(deps.storage, start, None, cosmwasm_std::Order::Ascending)
-        .filter_map(|item| item.ok())
+        .filter_map(Result::ok)
         .filter(|(_, whitelisted)| *whitelisted)
         .take(limit)
         .map(|(token_id, _)| WhitelistResponse {
@@ -91,10 +95,10 @@ fn query_whitelisted_assets(
         })
         .collect();
 
-    Ok(WhitelistListResponse { assets })
+    WhitelistListResponse { assets }
 }
 
-fn query_current_root(deps: Deps) -> StdResult<RootResponse> {
+fn query_current_root(deps: Deps) -> Result<RootResponse, ContractError> {
     let root = CURRENT_ROOT.load(deps.storage)?;
     Ok(RootResponse {
         root_id: root.root_id,
