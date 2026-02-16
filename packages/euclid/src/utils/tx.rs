@@ -1,12 +1,12 @@
 use cosmwasm_std::{DepsMut, Env};
 use cw_storage_plus::Item;
 
-use crate::{chain::CrossChainUser, error::ContractError};
+use crate::{cross_chain_user::CrossChainUser, error::ContractError};
 
 const TX_NONCE: Item<u128> = Item::new("tx_nonce");
 
 pub fn generate_tx(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: &Env,
     sender: &CrossChainUser,
 ) -> Result<String, ContractError> {

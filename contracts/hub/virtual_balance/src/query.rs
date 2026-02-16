@@ -3,11 +3,11 @@ use cw_storage_plus::Bound;
 use euclid::{
     chain::ChainUid,
     error::ContractError,
-    msgs::virtual_balance::{
+    msgs::virtual_balance::msg::{
         GetBalanceResponse, GetStateResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
     },
     utils::pagination::Pagination,
-    virtual_balance::BalanceKey,
+    voucher::BalanceKey,
 };
 
 use crate::state::{BALANCES, STATE};

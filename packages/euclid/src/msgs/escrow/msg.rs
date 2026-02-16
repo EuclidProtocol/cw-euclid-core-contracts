@@ -1,7 +1,4 @@
-use crate::{
-    msgs::hook::EuclidReceive,
-    token::{Pair, Token, TokenType},
-};
+use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
@@ -33,9 +30,8 @@ pub enum ExecuteMsg {
     Withdraw {
         recipient: Addr,
         amount: Uint128,
-        preferred_denom: Option<TokenType>,
-        forwarding_message: Option<EuclidReceive>,
-        refund_address: Option<String>,
+        denom: TokenType,
+        forwarding_message: Option<String>,
     },
 }
 

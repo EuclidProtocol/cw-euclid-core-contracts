@@ -1,8 +1,6 @@
 use crate::state::{ForwardingState, FORWARDING_STATE};
-use cosmwasm_std::{
-    ensure, to_json_binary, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult,
-};
-use forwarding::msgs::common_old::{EuclidReceiverMsg, TokenType};
+use cosmwasm_std::{ensure, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult};
+use forwarding::msgs::common_old::{EuclidReceive, TokenType};
 use forwarding::msgs::errors_old::ContractError;
 use swaprouter::msg::Slippage as OsmosisSlippage;
 
@@ -74,9 +72,9 @@ pub fn on_osmo_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Respons
             // );
 
             let forwading_msg = match swap_msg.forwarding_msg {
-                Some(forwarding_msg) => Some(to_json_binary(&EuclidReceiverMsg::EuclidReceive(
-                    forwarding_msg,
-                ))?),
+                Some(forwarding_msg) => {
+                    Some(EuclidReceive::from_msg(&forwarding_msg).to_receiver_msg()?)
+                }
                 None => None,
             };
 

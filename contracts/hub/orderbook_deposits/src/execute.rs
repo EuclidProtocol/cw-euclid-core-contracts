@@ -3,9 +3,10 @@ use cosmwasm_std::{
     Response, StdError, Timestamp, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     msgs::{
-        hook::VirtualBalanceReceive,
+        hook::VoucherReceive,
         virtual_balance::{ExecuteMsg as VirtualBalanceExecuteMsg, ExecuteTransfer},
     },
     token::Token,
@@ -20,8 +21,8 @@ use crate::{
         VirtualBalanceReceiveHookMsg, WithdrawalLeaf,
     },
     state::{
-        AssetTotal, OrderbookDepositsStatus, RootInfo, RootConfig, ASSET_DEPOSITS, CURRENT_ROOT,
-        NULLIFIERS, PENDING_ROOT, ROOT_CONFIG, STATE, USER_DEPOSITS, USED_PERMITS,
+        AssetTotal, OrderbookDepositsStatus, RootConfig, RootInfo, ASSET_DEPOSITS, CURRENT_ROOT,
+        NULLIFIERS, PENDING_ROOT, ROOT_CONFIG, STATE, USED_PERMITS, USER_DEPOSITS,
         WHITELISTED_ASSETS,
     },
 };
@@ -37,9 +38,8 @@ pub fn execute(
             token_id,
             whitelisted,
         } => execute_set_whitelist(deps, info, token_id, whitelisted),
-        ExecuteMsg::VirtualBalanceReceive(msg) => {
-            execute_virtual_balance_receive(deps, env, info, msg)
-        }
+
+        ExecuteMsg::VoucherReceive(msg) => execute_virtual_balance_receive(deps, env, info, msg),
         ExecuteMsg::UpdateConfig {
             admin,
             status,
@@ -102,7 +102,7 @@ fn execute_virtual_balance_receive(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    transfer: VirtualBalanceReceive,
+    transfer: VoucherReceive,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
@@ -301,7 +301,9 @@ fn execute_activate_root(
         .ok_or(ContractError::PendingRootNotFound {})?;
     ensure!(pending.root_id == root_id, ContractError::RootIdMismatch {});
 
-    let ready_at = pending.proposed_at.saturating_add(config.root_challenge_period);
+    let ready_at = pending
+        .proposed_at
+        .saturating_add(config.root_challenge_period);
     ensure!(
         env.block.time.seconds() >= ready_at,
         ContractError::RootNotReady {}
@@ -333,7 +335,10 @@ fn execute_withdraw(
         !destination_chain_uid.is_empty(),
         ContractError::InvalidDestination {}
     );
-    ensure!(!destination.is_empty(), ContractError::InvalidDestination {});
+    ensure!(
+        !destination.is_empty(),
+        ContractError::InvalidDestination {}
+    );
 
     let state = STATE.load(deps.storage)?;
     ensure!(
@@ -344,7 +349,10 @@ fn execute_withdraw(
     let current_root = CURRENT_ROOT
         .may_load(deps.storage)?
         .ok_or(ContractError::RootNotFound {})?;
-    ensure!(current_root.root_id == root_id, ContractError::RootIdMismatch {});
+    ensure!(
+        current_root.root_id == root_id,
+        ContractError::RootIdMismatch {}
+    );
     ensure!(
         current_root.root_hash.len() == 32,
         ContractError::InvalidRootHash {}
@@ -376,7 +384,8 @@ fn execute_withdraw(
 
     let permit_key = permit_id(&permit);
     ensure!(
-        !USED_PERMITS.may_load(deps.storage, permit_key.clone())?
+        !USED_PERMITS
+            .may_load(deps.storage, permit_key.clone())?
             .unwrap_or(false),
         ContractError::PermitAlreadyUsed {}
     );
@@ -389,12 +398,7 @@ fn execute_withdraw(
         ContractError::InvalidMerkleProof {}
     );
 
-    let nullifier_key = nullifier_key(
-        &root_id,
-        &permit_data.user,
-        &permit_data.token_id,
-        nonce,
-    );
+    let nullifier_key = nullifier_key(&root_id, &permit_data.user, &permit_data.token_id, nonce);
     let already_withdrawn = NULLIFIERS
         .may_load(deps.storage, nullifier_key.clone())?
         .unwrap_or_default();
@@ -406,7 +410,9 @@ fn execute_withdraw(
         amount <= remaining,
         ContractError::InsufficientWithdrawableBalance {}
     );
-    let new_withdrawn = already_withdrawn.checked_add(amount).map_err(StdError::from)?;
+    let new_withdrawn = already_withdrawn
+        .checked_add(amount)
+        .map_err(StdError::from)?;
     NULLIFIERS.save(deps.storage, nullifier_key, &new_withdrawn)?;
 
     let asset_total = ASSET_DEPOSITS
@@ -452,21 +458,23 @@ fn execute_withdraw(
     }
     .into();
 
-    Ok(Response::new()
-        .add_message(send_msg)
-        .add_attributes(vec![
-            attr("action", "withdrawal_completed"),
-            attr("root_id", root_id),
-            attr("user", permit_data.user),
-            attr("token_id", permit_data.token_id),
-            attr("amount", amount.to_string()),
-            attr("nonce", nonce.to_string()),
-            attr("destination_chain_uid", permit_data.destination_chain_uid),
-            attr("destination", destination),
-        ]))
+    Ok(Response::new().add_message(send_msg).add_attributes(vec![
+        attr("action", "withdrawal_completed"),
+        attr("root_id", root_id),
+        attr("user", permit_data.user),
+        attr("token_id", permit_data.token_id),
+        attr("amount", amount.to_string()),
+        attr("nonce", nonce.to_string()),
+        attr("destination_chain_uid", permit_data.destination_chain_uid),
+        attr("destination", destination),
+    ]))
 }
 
-fn is_authorized_poster(state: &crate::state::State, config: &RootConfig, sender: &cosmwasm_std::Addr) -> bool {
+fn is_authorized_poster(
+    state: &crate::state::State,
+    config: &RootConfig,
+    sender: &cosmwasm_std::Addr,
+) -> bool {
     sender == &state.admin || config.authorized_posters.contains(sender)
 }
 

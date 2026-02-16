@@ -13,10 +13,11 @@ use crate::query::{
 use crate::reply;
 use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE};
 use euclid::error::ContractError;
-use euclid::msgs::stable_vlp::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
-use euclid::pool::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state, State,
-    SwapCalculationMethod, NEXT_SWAP_REPLY_ID,
+use euclid::msgs::vlp::base::{State, NEXT_SWAP_REPLY_ID};
+use euclid::msgs::vlp::stable::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
+use euclid_pool::{
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_amp_factor, update_fee,
+    update_state, SwapCalculationMethod,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
@@ -34,8 +35,8 @@ pub fn instantiate(
 
     let state = State {
         pair: msg.pair,
-        virtual_balance: msg.virtual_balance,
-        router: info.sender.to_string(),
+        virtual_balance_contract: msg.virtual_balance_contract,
+        router: info.sender.clone(),
         fee: msg.fee,
         total_fees_collected: TotalFees {
             lp_fees: DenomFees {
@@ -62,20 +63,16 @@ pub fn instantiate(
     let response =
         msg.execute
             .map_or(Ok(Response::default()), |execute_msg| match execute_msg {
-                ExecuteMsg::RegisterPool {
-                    sender,
-                    pair,
-                    tx_id,
-                } => register_pool(
+                ExecuteMsg::RegisterPool(register_pool_msg) => register_pool(
                     deps,
                     env.clone(),
                     info.clone(),
                     &STATE,
                     &CHAIN_LP_TOKENS,
                     Some(amp_factor),
-                    sender,
-                    pair,
-                    tx_id,
+                    register_pool_msg.sender,
+                    register_pool_msg.pair,
+                    register_pool_msg.tx_id,
                 ),
                 _ => Err(ContractError::Unauthorized {}),
             })?;
@@ -94,11 +91,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RegisterPool {
-            sender,
-            pair,
-            tx_id,
-        } => {
+        ExecuteMsg::RegisterPool(register_pool_msg) => {
             let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
             register_pool(
                 deps,
@@ -107,9 +100,9 @@ pub fn execute(
                 &STATE,
                 &CHAIN_LP_TOKENS,
                 Some(amp_factor),
-                sender,
-                pair,
-                tx_id,
+                register_pool_msg.sender,
+                register_pool_msg.pair,
+                register_pool_msg.tx_id,
             )
         }
         ExecuteMsg::UpdateFee {
@@ -117,12 +110,7 @@ pub fn execute(
             euclid_fee_bps,
             recipient,
         } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
-        ExecuteMsg::AddLiquidity {
-            sender,
-            tx_id,
-            slippage_tolerance_bps,
-            liquidity,
-        } => add_liquidity(
+        ExecuteMsg::AddLiquidity(add_liquidity_msg) => add_liquidity(
             deps,
             env,
             info,
@@ -130,35 +118,23 @@ pub fn execute(
             &BALANCES,
             &CHAIN_LP_TOKENS,
             &COLLATERAL_LP_TOKENS,
-            sender,
-            liquidity,
-            slippage_tolerance_bps,
-            tx_id,
+            add_liquidity_msg.sender,
+            add_liquidity_msg.liquidity,
+            add_liquidity_msg.slippage_tolerance_bps,
+            add_liquidity_msg.tx_id,
         ),
-        ExecuteMsg::RemoveLiquidity {
-            sender,
-            lp_allocation,
-            tx_id,
-        } => remove_liquidity(
+        ExecuteMsg::RemoveLiquidity(remove_liquidity_msg) => remove_liquidity(
             deps,
             env,
             info,
             &STATE,
             &BALANCES,
             &CHAIN_LP_TOKENS,
-            sender,
-            lp_allocation,
-            tx_id,
+            remove_liquidity_msg.sender,
+            remove_liquidity_msg.lp_allocation,
+            remove_liquidity_msg.tx_id,
         ),
-        ExecuteMsg::Swap {
-            sender,
-            asset_in,
-            amount_in,
-            min_token_out,
-            tx_id,
-            next_swaps,
-            test_fail,
-        } => {
+        ExecuteMsg::Swap(swap_msg) => {
             let amp_factor = AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR);
             execute_swap(
                 deps,
@@ -166,35 +142,20 @@ pub fn execute(
                 info,
                 &STATE,
                 &BALANCES,
-                sender,
-                asset_in,
-                amount_in,
-                min_token_out,
-                tx_id,
-                next_swaps,
+                swap_msg.sender,
+                swap_msg.asset_in,
+                swap_msg.amount_in,
+                swap_msg.min_token_out,
+                swap_msg.tx_id,
+                swap_msg.next_swaps,
                 SwapCalculationMethod::Stable(amp_factor),
-                test_fail,
+                swap_msg.test_fail,
             )
         }
-        ExecuteMsg::UpdateState {
-            router,
-            virtual_balance,
-            fee,
-            last_updated,
-            admin,
-            amp_factor,
-        } => update_state(
-            deps,
-            info,
-            &STATE,
-            Some(&AMP_FACTOR),
-            router,
-            virtual_balance,
-            fee,
-            last_updated,
-            admin,
-            amp_factor,
-        ),
+        ExecuteMsg::UpdateState { admin } => update_state(deps, info, &STATE, admin),
+        ExecuteMsg::UpdateAmpFactor { amp_factor } => {
+            update_amp_factor(deps, info, &STATE, &AMP_FACTOR, amp_factor)
+        }
     }
 }
 
@@ -202,11 +163,12 @@ pub fn execute(
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::State {} => query_state(deps),
-        QueryMsg::SimulateSwap {
-            asset,
-            asset_amount,
-            swaps,
-        } => query_simulate_swap(deps, asset, asset_amount, swaps),
+        QueryMsg::SimulateSwap(simulate_swap_msg) => query_simulate_swap(
+            deps,
+            simulate_swap_msg.asset,
+            simulate_swap_msg.asset_amount,
+            simulate_swap_msg.swaps,
+        ),
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),

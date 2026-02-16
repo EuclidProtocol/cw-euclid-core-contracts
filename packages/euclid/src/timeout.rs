@@ -7,8 +7,11 @@ pub fn get_timeout(timeout: Option<u64>) -> Result<u64, ContractError> {
     if let Some(timeout) = timeout {
         // Validate that the timeout is between 30 and 240 seconds inclusive
         ensure!(
-            timeout.ge(&30) && timeout.le(&240),
-            ContractError::InvalidTimeout {}
+            timeout.ge(&30),
+            ContractError::MinimumTimeoutNotMet {
+                timeout,
+                minimum: 30
+            }
         );
         Ok(timeout)
     } else {
@@ -40,13 +43,10 @@ mod tests {
             TestGetTimeout {
                 name: "Timeout below 30",
                 timeout: Some(29),
-                expected_error: Some(ContractError::InvalidTimeout {}),
-                expected_result: None,
-            },
-            TestGetTimeout {
-                name: "Timeout above 240",
-                timeout: Some(241),
-                expected_error: Some(ContractError::InvalidTimeout {}),
+                expected_error: Some(ContractError::MinimumTimeoutNotMet {
+                    timeout: 29,
+                    minimum: 30,
+                }),
                 expected_result: None,
             },
             TestGetTimeout {

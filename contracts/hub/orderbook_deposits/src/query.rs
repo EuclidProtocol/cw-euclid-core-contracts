@@ -6,8 +6,7 @@ use crate::msg::{
     WhitelistListResponse, WhitelistResponse,
 };
 use crate::state::{
-    OrderbookDepositsStatus, ASSET_DEPOSITS, CURRENT_ROOT, STATE, USER_DEPOSITS,
-    WHITELISTED_ASSETS,
+    OrderbookDepositsStatus, ASSET_DEPOSITS, CURRENT_ROOT, STATE, USER_DEPOSITS, WHITELISTED_ASSETS,
 };
 
 pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
@@ -52,7 +51,6 @@ fn query_user_deposit(
     user: String,
     token_id: String,
 ) -> StdResult<UserDepositResponse> {
-    
     let amount = USER_DEPOSITS
         .may_load(deps.storage, (user.clone(), token_id.clone()))?
         .unwrap_or_else(Uint128::zero);

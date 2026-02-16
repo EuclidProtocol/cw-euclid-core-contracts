@@ -3,12 +3,13 @@
 use cosmwasm_std::{to_json_binary, to_json_string, Binary, Empty, Uint128};
 use cw_multi_test::{App, Contract, ContractWrapper, Executor};
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     msgs::virtual_balance::{
         ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg, GetBalanceResponse,
         InstantiateMsg as VirtualBalanceInstantiateMsg, QueryMsg as VirtualBalanceQueryMsg,
     },
-    virtual_balance::BalanceKey,
+    voucher::BalanceKey,
 };
 use k256::ecdsa::SigningKey;
 use orderbook_deposits::msg::{
@@ -361,7 +362,10 @@ fn withdraw_with_merkle_and_permit() {
             virtual_balance_addr.clone(),
             &VirtualBalanceQueryMsg::GetBalance {
                 balance_key: BalanceKey {
-                    cross_chain_user: CrossChainUser::new(chain_uid.clone(), destination.to_string()),
+                    cross_chain_user: CrossChainUser::new(
+                        chain_uid.clone(),
+                        destination.to_string(),
+                    ),
                     token_id: token_id.clone(),
                 },
             },
@@ -580,11 +584,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
     assert!(bad_hash.is_err());
 }
 
-fn sign_permit(
-    signer_key: &SigningKey,
-    signer_address: String,
-    permit_data: PermitData,
-) -> Permit {
+fn sign_permit(signer_key: &SigningKey, signer_address: String, permit_data: PermitData) -> Permit {
     let msg = MsgSignDataMsg::new(MsgSignDataValue::new(
         to_json_binary(&permit_data).unwrap(),
         signer_address,

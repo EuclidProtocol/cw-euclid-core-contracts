@@ -8,9 +8,8 @@ use cosmwasm_std::{
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
-use crate::chain::CrossChainUser;
+use crate::cross_chain_user::CrossChainUser;
 use crate::error::ContractError;
-use crate::msgs::virtual_balance::ExecuteTransfer;
 
 // Token asset that represents an identifier for a token
 #[cw_serde]
@@ -53,6 +52,7 @@ impl Token {
     }
     pub fn validate(&self) -> Result<&Self, ContractError> {
         ensure!(!self.is_empty(), ContractError::InvalidTokenID {});
+        ensure!(self.0.len() <= 64, ContractError::InvalidTokenID {});
 
         for c in self.0.chars() {
             if !c.is_ascii_alphanumeric() && c != '.' {
@@ -64,7 +64,7 @@ impl Token {
         Ok(self)
     }
 
-    pub fn create_virtual_balance_transfer_msg(
+    pub fn create_voucher_transfer_msg(
         &self,
         virtual_balance_address: String,
         amount: Uint128,
@@ -76,14 +76,16 @@ impl Token {
         // Msg will trigger send variant of transfer
         msg: Option<Binary>,
     ) -> Result<WasmMsg, ContractError> {
-        let transfer_msg = crate::msgs::virtual_balance::ExecuteMsg::Transfer(ExecuteTransfer {
-            amount,
-            sender,
-            token_id: self.0.clone(),
-            to,
-            from,
-            msg,
-        });
+        let transfer_msg = crate::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
+            crate::msgs::virtual_balance::msg::ExecuteTransfer {
+                amount,
+                sender,
+                token_id: self.0.clone(),
+                to,
+                from,
+                msg,
+            },
+        );
 
         let transfer_msg = WasmMsg::Execute {
             contract_addr: virtual_balance_address,
@@ -115,13 +117,13 @@ impl PrimaryKey<'_> for Token {
     type Suffix = Self;
     type SuperSuffix = Self;
 
-    fn key(&self) -> Vec<Key> {
+    fn key(&self) -> Vec<Key<'_>> {
         vec![Key::Ref(self.as_bytes())]
     }
 }
 
 impl Prefixer<'_> for Token {
-    fn prefix(&self) -> Vec<Key> {
+    fn prefix(&self) -> Vec<Key<'_>> {
         vec![Key::Ref(self.as_bytes())]
     }
 }
@@ -246,7 +248,7 @@ impl PrimaryKey<'_> for Pair {
     type Suffix = Token;
     type SuperSuffix = Self;
 
-    fn key(&self) -> Vec<Key> {
+    fn key(&self) -> Vec<Key<'_>> {
         let token_1_key_size = self.token_1.joined_key().len();
         assert!(
             token_1_key_size <= u16::MAX as usize,

@@ -1,6 +1,6 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Binary, Uint128};
-use euclid::msgs::hook::VirtualBalanceReceive;
+use euclid::msgs::hook::VoucherReceive;
 
 use crate::state::{AssetTotal, OrderbookDepositsStatus};
 
@@ -16,8 +16,11 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    SetWhitelist { token_id: String, whitelisted: bool },
-    VirtualBalanceReceive(VirtualBalanceReceive),
+    SetWhitelist {
+        token_id: String,
+        whitelisted: bool,
+    },
+    VoucherReceive(VoucherReceive),
     UpdateConfig {
         admin: Option<String>,
         status: Option<OrderbookDepositsStatus>,
@@ -33,7 +36,9 @@ pub enum ExecuteMsg {
         da_hash: Option<Binary>,
         da_url: Option<String>,
     },
-    ActivateRoot { root_id: String },
+    ActivateRoot {
+        root_id: String,
+    },
     Withdraw {
         root_id: String,
         amount: Uint128,

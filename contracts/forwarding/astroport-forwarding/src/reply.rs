@@ -1,5 +1,5 @@
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Reply, Response, SubMsgResult};
-use forwarding::msgs::common_old::EuclidReceiverMsg;
+use cosmwasm_std::{ensure, DepsMut, Env, Reply, Response, SubMsgResult};
+use forwarding::msgs::common_old::EuclidReceive;
 use forwarding::msgs::errors_old::ContractError;
 
 use crate::state::{ForwardingState, FORWARDING_STATE};
@@ -37,9 +37,9 @@ pub fn on_astro_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Respon
             );
 
             let forwading_msg = match swap_msg.forwarding_msg {
-                Some(forwarding_msg) => Some(to_json_binary(&EuclidReceiverMsg::EuclidReceive(
-                    forwarding_msg,
-                ))?),
+                Some(forwarding_msg) => {
+                    Some(EuclidReceive::from_msg(&forwarding_msg).to_receiver_msg()?)
+                }
                 None => None,
             };
 

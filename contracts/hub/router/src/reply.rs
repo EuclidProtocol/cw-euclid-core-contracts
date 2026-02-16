@@ -1,25 +1,31 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, CosmosMsg, DepsMut, Env, Event, Reply, Response, SubMsg,
-    SubMsgResult, WasmMsg,
+    ensure, from_json, to_json_binary, DepsMut, Env, Event, Reply, Response, SubMsgResult,
 };
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::{
     error::ContractError,
-    events::simple_event,
+    events::{simple_event, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT},
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
-    msgs::{self, router::ExecuteMsg},
-    pool::{PoolCreationResponse, VlpRemoveLiquidityResponse, VlpSwapResponse},
+    msgs::{
+        self,
+        vlp::base::{PoolCreationResponse, VlpRemoveLiquidityResponse, VlpSwapResponse},
+    },
     swap::SwapResponse,
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
-    msg::HUB_IBC_EXECUTE_MSG_QUEUE,
+    factory_ibc::FactoryCrossChainExecuteMsg,
+    state::NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE,
 };
 use function_name::named;
 
 use crate::{
-    ibc::{self, receive::ibc_execute_add_liquidity},
-    state::{FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE, SWAP_ID_TO_MSG, TOKEN_VLPS, VLPS},
+    execute::token::execute_transfer_voucher,
+    ibc::{self, receive::pool::ibc_execute_add_liquidity},
+    state::{
+        FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS, VIRTUAL_BALANCE_CONTRACT,
+        VLPS,
+    },
 };
 
 pub const VLP_INSTANTIATE_REPLY_ID: u64 = 1;
@@ -31,24 +37,12 @@ pub const SWAP_REPLY_ID: u64 = 5;
 pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 
-pub const IBC_RECEIVE_REPLY_ID: u64 = 11;
-pub const IBC_ACK_AND_TIMEOUT_REPLY_ID: u64 = 12;
-
-pub const EVM_RECEIVE_REPLY_ID: u64 = 13;
-pub const EVM_ACK_AND_TIMEOUT_REPLY_ID: u64 = 14;
-
-pub const SOLANA_RECEIVE_REPLY_ID: u64 = 15;
-pub const SOLANA_ACK_AND_TIMEOUT_REPLY_ID: u64 = 16;
-
-pub const COSMOS_RECEIVE_REPLY_ID: u64 = 17;
-pub const COSMOS_ACK_AND_TIMEOUT_REPLY_ID: u64 = 18;
+pub const CROSS_CHAIN_RECEIVE_REPLY_ID: u64 = 8;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::InstantiateError { err }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -58,10 +52,13 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 })?;
 
             let vlp_address = instantiate_data.contract_address;
+            let vlp_address = deps.api.addr_validate(&vlp_address)?;
 
-            let liquidity: msgs::vlp::GetLiquidityResponse = deps
-                .querier
-                .query_wasm_smart(vlp_address.clone(), &msgs::vlp::QueryMsg::Liquidity {})?;
+            let liquidity: msgs::vlp::base::GetLiquidityQueryResponse =
+                deps.querier.query_wasm_smart(
+                    vlp_address.to_string(),
+                    &msgs::vlp::base::QueryMsg::Liquidity {},
+                )?;
 
             for token in &liquidity.pair.get_vec_token() {
                 let key = TOKEN_VLPS.key(token.clone());
@@ -187,7 +184,7 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
 #[named]
 pub fn on_remove_liquidity_reply(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     msg: Reply,
 ) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -196,7 +193,7 @@ pub fn on_remove_liquidity_reply(
             err,
         }),
         SubMsgResult::Ok(..) => {
-            let mut response = Response::new().add_attribute("action", "reply_remove_liquidity");
+            let response = Response::new().add_attribute("action", "reply_remove_liquidity");
 
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
@@ -210,37 +207,9 @@ pub fn on_remove_liquidity_reply(
             let vlp_liquidity_response: VlpRemoveLiquidityResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
 
-            let req_key = PENDING_REMOVE_LIQUIDITY.key((
-                vlp_liquidity_response.sender.chain_uid.clone(),
-                vlp_liquidity_response.sender.address.clone(),
-                vlp_liquidity_response.tx_id.clone(),
-            ));
-            let remove_liquidity_tx = req_key.load(deps.storage)?;
+            let req_key = PENDING_REMOVE_LIQUIDITY.key(vlp_liquidity_response.tx_id.clone());
+            let _remove_liquidity_tx = req_key.load(deps.storage)?;
             req_key.remove(deps.storage);
-
-            for token in vlp_liquidity_response.liquidity_released.get_vec_token() {
-                let token_escrow_release_msg =
-                    euclid::msgs::router::ExecuteMsg::ReleaseEscrowInternal {
-                        sender: remove_liquidity_tx.sender.clone(),
-                        token: token.token.clone(),
-                        amount: Some(token.amount),
-                        cross_chain_addresses: remove_liquidity_tx.cross_chain_addresses.clone(),
-                        timeout: None,
-                        tx_id: vlp_liquidity_response.tx_id.clone(),
-                    };
-
-                let token_escrow_release_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: env.contract.address.to_string(),
-                    msg: to_json_binary(&token_escrow_release_msg)?,
-                    funds: vec![],
-                });
-                response = response
-                    .add_message(token_escrow_release_msg)
-                    .add_attribute(
-                        format!("token_removed_{}", token.token),
-                        token.amount.to_string(),
-                    );
-            }
 
             let liquidity_response = RemoveLiquidityResponse {
                 burn_lp_tokens: vlp_liquidity_response.burn_lp_tokens,
@@ -259,7 +228,7 @@ pub fn on_remove_liquidity_reply(
 }
 
 #[named]
-pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_swap_reply(deps: &mut DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
@@ -278,11 +247,7 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
             let vlp_swap_response: VlpSwapResponse =
                 from_json(execute_data.data.unwrap_or_default())?;
 
-            let swap_req_key = SWAP_ID_TO_MSG.key((
-                vlp_swap_response.sender.chain_uid,
-                vlp_swap_response.sender.address,
-                vlp_swap_response.tx_id.clone(),
-            ));
+            let swap_req_key = PENDING_SWAPS.key(vlp_swap_response.tx_id.clone());
             let swap_msg = swap_req_key.load(deps.storage)?;
             swap_req_key.remove(deps.storage);
 
@@ -304,28 +269,18 @@ pub fn on_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Co
                 tx_id: vlp_swap_response.tx_id,
             };
 
-            // Prepare burn msg
-            let release_msg = ExecuteMsg::ReleaseEscrowInternal {
-                sender: swap_msg.sender,
-                token: swap_msg.asset_out.clone(),
-                amount: Some(swap_response.amount_out),
-                cross_chain_addresses: swap_msg.cross_chain_addresses,
-                timeout: None,
-                tx_id: swap_msg.tx_id.clone(),
-            };
-            let swap_response = SwapResponse {
-                amount_out: swap_response.amount_out,
-                tx_id: swap_msg.tx_id,
-            };
+            let response = execute_transfer_voucher(
+                deps,
+                env,
+                swap_msg.sender.clone(),
+                swap_msg.asset_out.clone(),
+                swap_response.amount_out,
+                swap_msg.recipients.clone(),
+            )?;
 
             let ack = AcknowledgementMsg::Ok(swap_response.clone());
 
-            Ok(Response::new()
-                .add_submessage(SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: env.contract.address.to_string(),
-                    msg: to_json_binary(&release_msg)?,
-                    funds: vec![],
-                })))
+            Ok(response
                 .add_attribute("action", "reply_swap")
                 .add_attribute("swap", format!("{swap_response:?}"))
                 .add_attribute("amount_out", swap_response.amount_out)
@@ -359,59 +314,13 @@ pub fn on_virtual_balance_instantiate_reply(
                     err: res.to_string(),
                 })?;
 
-            let mut state = STATE.load(deps.storage)?;
-            state.virtual_balance_address =
-                Some(deps.api.addr_validate(&instantiate_data.contract_address)?);
-            STATE.save(deps.storage, &state)?;
+            let verified_vcoin_address =
+                deps.api.addr_validate(&instantiate_data.contract_address)?;
+            VIRTUAL_BALANCE_CONTRACT.save(deps.storage, &verified_vcoin_address)?;
 
             Ok(Response::new()
                 .add_attribute("action", "reply_virtual_balance_instantiate")
                 .add_attribute("virtual_balance_address", instantiate_data.contract_address))
-        }
-    }
-}
-
-pub fn on_ibc_ack_and_timeout_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => Ok(Response::new()
-            .add_attribute("reply_on_ibc_ack_or_timeout_processing", "error")
-            .add_attribute("error", err)),
-        SubMsgResult::Ok(res) => {
-            #[allow(deprecated)]
-            let data = res
-                .data
-                .map(|data| {
-                    parse_execute_response_data(&data)
-                        .map(|d| d.data.unwrap_or_default())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
-            Ok(Response::new()
-                .add_attribute("reply_on_ibc_ack_or_timeout_processing", "success")
-                .set_data(data))
-        }
-    }
-}
-
-pub fn on_ibc_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => Ok(Response::new()
-            .add_attribute("reply_on_ibc_receive_processing", "error")
-            .add_attribute("error", err.clone())
-            .set_data(make_ack_fail(err)?)),
-        SubMsgResult::Ok(res) => {
-            #[allow(deprecated)]
-            let data = res
-                .data
-                .map(|data| {
-                    parse_execute_response_data(&data)
-                        .map(|d| d.data.unwrap_or_default())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
-            Ok(Response::new()
-                .add_attribute("reply_on_ibc_receive_processing", "success")
-                .set_data(data))
         }
     }
 }
@@ -422,20 +331,22 @@ pub fn on_reply_native_ibc_wrapper_call(
     msg: Reply,
 ) -> Result<Response, ContractError> {
     let chain_type = euclid::chain::ChainType::Native {};
-    let original_msg = HUB_IBC_EXECUTE_MSG_QUEUE.load(deps.storage, msg.id)?;
-    HUB_IBC_EXECUTE_MSG_QUEUE.remove(deps.storage, msg.id);
+    let original_packet = NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.load(deps.storage, msg.id)?;
+    NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.remove(deps.storage, msg.id);
+    let original_msg: FactoryCrossChainExecuteMsg = from_json(original_packet.original_msg)?;
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
             let ack = make_ack_fail(err.clone())?;
             let response = ibc::ack_and_timeout::reusable_internal_ack_call(
                 deps,
                 env,
+                original_packet.chain_uid,
                 original_msg,
                 ack,
                 chain_type,
             )?;
             Ok(response
-                .add_attribute("reply_on_ibc_receive_processing", "err")
+                .add_attribute("reply_on_native_ibc_wrapper_call_processing", "err")
                 .add_attribute("err", err))
         }
         SubMsgResult::Ok(res) => {
@@ -451,64 +362,26 @@ pub fn on_reply_native_ibc_wrapper_call(
             let response = ibc::ack_and_timeout::reusable_internal_ack_call(
                 deps,
                 env,
+                original_packet.chain_uid,
                 original_msg,
                 data,
                 chain_type,
             )?;
-            Ok(response.add_attribute("reply_on_ibc_receive_processing", "success"))
+            Ok(response.add_attribute("reply_on_native_ibc_wrapper_call_processing", "success"))
         }
     }
 }
 
-pub fn on_evm_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+pub fn on_cross_chain_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
         SubMsgResult::Err(err) => {
-            let euclid_event = simple_event().add_attribute("action", "evm-relay");
+            let euclid_event = simple_event().add_attribute("action", "cross-chain-receive");
 
-            let write_acknowledge_event = Event::new("euclid-evm-write-acknowledgement")
+            let write_acknowledge_event = Event::new(EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
                 .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
 
             Ok(Response::new()
-                .add_attribute("reply_on_evm_receive_processing", "error")
-                .add_attribute("error", err.clone())
-                .add_event(euclid_event)
-                .add_event(write_acknowledge_event))
-        }
-        SubMsgResult::Ok(res) => {
-            #[allow(deprecated)]
-            let data = res
-                .data
-                .map(|data| {
-                    parse_execute_response_data(&data)
-                        .map(|d| d.data.unwrap_or_default())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
-
-            let euclid_event = simple_event().add_attribute("action", "evm-write-acknowledgement");
-
-            let write_acknowledge_event = Event::new("euclid-evm-write-acknowledgement")
-                .add_attribute("ack", data.to_string());
-
-            Ok(Response::new()
-                .add_attribute("reply_on_evm_receive_processing", "success")
-                .add_event(euclid_event)
-                .add_event(write_acknowledge_event)
-                .set_data(data))
-        }
-    }
-}
-
-pub fn on_solana_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => {
-            let euclid_event = simple_event().add_attribute("action", "evm-relay");
-
-            let write_acknowledge_event = Event::new("euclid-solana-write-acknowledgement")
-                .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
-
-            Ok(Response::new()
-                .add_attribute("reply_on_solana_receive_processing", "error")
+                .add_attribute("reply_on_receive_processing", "error")
                 .add_attribute("error", err.clone())
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event))
@@ -525,53 +398,13 @@ pub fn on_solana_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
                 .unwrap_or_default();
 
             let euclid_event =
-                simple_event().add_attribute("action", "solana-write-acknowledgement");
+                simple_event().add_attribute("action", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT);
 
-            let write_acknowledge_event = Event::new("euclid-solana-write-acknowledgement")
+            let write_acknowledge_event = Event::new(EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
                 .add_attribute("ack", data.to_string());
 
             Ok(Response::new()
-                .add_attribute("reply_on_solana_receive_processing", "success")
-                .add_event(euclid_event)
-                .add_event(write_acknowledge_event)
-                .set_data(data))
-        }
-    }
-}
-
-pub fn on_cosmos_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => {
-            let euclid_event = simple_event().add_attribute("action", "cosmos-relay");
-
-            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
-                .add_attribute("ack", make_ack_fail(err.clone())?.to_string());
-
-            Ok(Response::new()
-                .add_attribute("reply_on_cosmos_receive_processing", "error")
-                .add_attribute("error", err.clone())
-                .add_event(euclid_event)
-                .add_event(write_acknowledge_event))
-        }
-        SubMsgResult::Ok(res) => {
-            #[allow(deprecated)]
-            let data = res
-                .data
-                .map(|data| {
-                    parse_execute_response_data(&data)
-                        .map(|d| d.data.unwrap_or_default())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
-
-            let euclid_event =
-                simple_event().add_attribute("action", "cosmos-write-acknowledgement");
-
-            let write_acknowledge_event = Event::new("euclid-cosmos-write-acknowledgement")
-                .add_attribute("ack", data.to_string());
-
-            Ok(Response::new()
-                .add_attribute("reply_on_cosmos_receive_processing", "success")
+                .add_attribute("reply_on_receive_processing", "success")
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event)
                 .set_data(data))

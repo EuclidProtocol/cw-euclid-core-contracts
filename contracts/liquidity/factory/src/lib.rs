@@ -6,6 +6,8 @@ pub mod helpers;
 pub mod ibc;
 pub mod migrate;
 pub mod query;
+pub mod rate_limit;
+pub mod relay_state;
 pub mod reply;
 pub mod state;
 
