@@ -12,8 +12,8 @@ use cw_orch_interchain::prelude::IbcQueryHandler;
 use euclid::msgs::orderbook_deposits::{
     AssetDepositResponse, AssetTotal, ExecuteMsg as OrderbookExecuteMsg,
     InstantiateMsg as OrderbookInstantiateMsg, MerkleProofStep, Permit, PermitData, ProofPosition,
-    QueryMsg as OrderbookQueryMsg, StateResponse, UserDepositResponse,
-    VirtualBalanceReceiveHookMsg, WhitelistListResponse, WithdrawalLeaf,
+    QueryMsg as OrderbookQueryMsg, StateResponse, UserDepositResponse, VoucherReceiveHookMsg,
+    WhitelistListResponse, WithdrawalLeaf,
 };
 use euclid::msgs::router::QueryMsgFns;
 use euclid::{
@@ -95,7 +95,7 @@ fn deposit_and_query_flow() {
         .unwrap();
 
     // Deposit via virtual balance transfer with hook
-    let hook_msg = cosmwasm_std::to_json_binary(&VirtualBalanceReceiveHookMsg::Deposit {}).unwrap();
+    let hook_msg = cosmwasm_std::to_json_binary(&VoucherReceiveHookMsg::Deposit {}).unwrap();
 
     virutal_balance_contract.set_sender(&depositor);
     virutal_balance_contract
@@ -223,7 +223,7 @@ fn withdraw_with_merkle_and_permit() {
         )
         .unwrap();
 
-    let hook_msg = to_json_binary(&VirtualBalanceReceiveHookMsg::Deposit {}).unwrap();
+    let hook_msg = to_json_binary(&VoucherReceiveHookMsg::Deposit {}).unwrap();
     virutal_balance_contract.set_sender(&depositor);
     virutal_balance_contract
         .execute(
@@ -406,7 +406,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
         )
         .unwrap();
 
-    let hook_msg = to_json_binary(&VirtualBalanceReceiveHookMsg::Deposit {}).unwrap();
+    let hook_msg = to_json_binary(&VoucherReceiveHookMsg::Deposit {}).unwrap();
     virutal_balance_contract.set_sender(&depositor);
     virutal_balance_contract
         .execute(

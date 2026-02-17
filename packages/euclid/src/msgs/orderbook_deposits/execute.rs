@@ -90,6 +90,6 @@ pub struct PermitData {
 }
 
 #[cw_serde]
-pub enum VirtualBalanceReceiveHookMsg {
+pub enum VoucherReceiveHookMsg {
     Deposit {},
 }

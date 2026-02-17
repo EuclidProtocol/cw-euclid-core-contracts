@@ -9,7 +9,7 @@ use euclid::{
         hook::VoucherReceive,
         orderbook_deposits::{
             AssetTotal, ExecuteMsg, MerkleProofStep, OrderbookDepositsStatus, Permit, PermitData,
-            ProofPosition, VirtualBalanceReceiveHookMsg, WithdrawalLeaf,
+            ProofPosition, VoucherReceiveHookMsg, WithdrawalLeaf,
         },
         virtual_balance::{ExecuteMsg as VirtualBalanceExecuteMsg, ExecuteTransfer},
     },
@@ -38,7 +38,7 @@ pub fn execute(
             whitelisted,
         } => execute_set_whitelist(deps, info, token_id, whitelisted),
 
-        ExecuteMsg::VoucherReceive(msg) => execute_virtual_balance_receive(deps, env, info, msg),
+        ExecuteMsg::VoucherReceive(msg) => execute_voucher_receive(deps, env, info, msg),
         ExecuteMsg::UpdateConfig {
             admin,
             status,
@@ -97,7 +97,7 @@ pub fn execute(
     }
 }
 
-fn execute_virtual_balance_receive(
+fn execute_voucher_receive(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
@@ -113,9 +113,9 @@ fn execute_virtual_balance_receive(
         ContractError::ContractPaused {}
     );
 
-    let hook: VirtualBalanceReceiveHookMsg = from_json(transfer.msg.clone())?;
+    let hook: VoucherReceiveHookMsg = from_json(transfer.msg.clone())?;
     match hook {
-        VirtualBalanceReceiveHookMsg::Deposit {} => {
+        VoucherReceiveHookMsg::Deposit {} => {
             execute_deposit(deps, transfer.token_id, transfer.amount, transfer.sender)
         }
     }
