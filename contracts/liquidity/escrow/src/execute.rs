@@ -215,7 +215,7 @@ pub fn execute_deposit_cw20(
 
 pub fn execute_withdraw(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     recipient: Addr,
     amount: Uint128,

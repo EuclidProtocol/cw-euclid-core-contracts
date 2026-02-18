@@ -19,6 +19,7 @@ lp_token = { path = "../contracts/liquidity/lp_token" }
 euclid-relayer = { path = "../contracts/common/euclid-relayer" }
 claimer = { path = "../contracts/hub_utilities/claimer" }
 meta-transaction = { path = "../contracts/hub/meta_transaction" }
+orderbook_deposits = { path = "../contracts/hub_utilities/orderbook_deposits" } 
 
 #Other Crates
 euclid = { path = "../packages/euclid" }

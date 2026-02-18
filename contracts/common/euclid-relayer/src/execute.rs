@@ -177,7 +177,7 @@ pub fn execute_add_validator(
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     let mut validators = VALIDATORS
         .load(deps.storage, chain_uid.clone())
-        .unwrap_or(vec![]);
+        .unwrap_or_default();
     ensure!(
         !validators.contains(&validator),
         ContractError::new("Validator already exists")
@@ -197,7 +197,7 @@ pub fn execute_remove_validator(
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
     let mut validators = VALIDATORS
         .load(deps.storage, chain_uid.clone())
-        .unwrap_or(vec![]);
+        .unwrap_or_default();
     let index = validators
         .iter()
         .position(|v| v.address == validator.address);

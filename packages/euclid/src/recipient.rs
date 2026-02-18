@@ -48,6 +48,6 @@ impl Recipient {
     }
 
     pub fn to_event_string(&self) -> Result<String, ContractError> {
-        return to_json_string(self).map_err(|e| ContractError::new(e.to_string().as_str()));
+        to_json_string(self).map_err(|e| ContractError::new(e.to_string().as_str()))
     }
 }
