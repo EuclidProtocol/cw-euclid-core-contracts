@@ -1,5 +1,3 @@
-use std::ops::Add;
-
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response,
     StdError, SubMsg, Uint128, WasmMsg,
@@ -17,14 +15,13 @@ use euclid::{
 };
 use euclid_ibc::{
     ack::make_ack_fail, factory_ibc::FactoryCrossChainExecuteMsg,
-    router_ibc::RouterCrossChainExecuteMsg, state::PendingPacket,
+    router_ibc::RouterCrossChainExecuteMsg,
 };
 
 use crate::{
     ibc::{ack_and_timeout, receive},
     relay_state::{
-        CROSS_CHAIN_LATEST_SEQUENCE_COUNT, CROSS_CHAIN_PENDING_PACKETS_COUNT,
-        CROSS_CHAIN_PENDING_PACKET_SENDER, CROSS_CHAIN_PENDING_SEND_PACKETS,
+        create_pending_packet_and_update_sequence, remove_pending_packet_and_decrement_count,
         CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS,
     },
     reply::CROSS_CHAIN_RECEIVE_REPLY_ID,
@@ -48,40 +45,12 @@ pub fn execute_send_packet(
         ContractError::Unauthorized {}
     );
 
-    let chain_uid = chain.chain_uid.clone();
-    let sequence = CROSS_CHAIN_LATEST_SEQUENCE_COUNT
-        .load(deps.storage, chain_uid.clone())
-        .unwrap_or(0);
-    let pending_packet_key = (chain_uid.clone(), sequence);
-
-    // Make sure that the potential pending packet doesn't already exist
-    ensure!(
-        !CROSS_CHAIN_PENDING_SEND_PACKETS.has(deps.storage, pending_packet_key.clone()),
-        ContractError::Generic {
-            err: "Pending packet already exists".to_string()
-        }
-    );
-
-    CROSS_CHAIN_PENDING_SEND_PACKETS.save(
+    let (chain_uid, sequence) = create_pending_packet_and_update_sequence(
         deps.storage,
-        pending_packet_key.clone(),
-        &PendingPacket {
-            chain_uid: chain_uid.clone(),
-            original_msg: msg.clone(),
-            ack_response,
-        },
-    )?;
-    CROSS_CHAIN_PENDING_PACKET_SENDER.save(deps.storage, pending_packet_key, &sender)?;
-    CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
-
-    let count = CROSS_CHAIN_PENDING_PACKETS_COUNT
-        .may_load(deps.storage, chain_uid.clone())?
-        .unwrap_or(0);
-
-    CROSS_CHAIN_PENDING_PACKETS_COUNT.save(
-        deps.storage,
-        chain_uid.clone(),
-        &count.checked_add(1).ok_or(ContractError::new("Overflow"))?,
+        &chain,
+        &msg,
+        ack_response,
+        &sender,
     )?;
 
     let source_port = format!("vsl.{}", env.contract.address.to_string().to_lowercase());
@@ -231,32 +200,13 @@ pub fn execute_receive_acknowledgement(
         destination_port == format!("vsl.{router}", router = env.contract.address),
         ContractError::new("Invalid destination port")
     );
-    let _existing_request =
-        CROSS_CHAIN_PENDING_SEND_PACKETS.load(deps.storage, (chain_uid.clone(), sequence))?;
-    let _sender =
-        CROSS_CHAIN_PENDING_PACKET_SENDER.load(deps.storage, (chain_uid.clone(), sequence))?;
+    remove_pending_packet_and_decrement_count(deps.storage, &chain_uid, sequence)?;
 
     // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
     // ensure!(
     //     existing_request == msg,
     //     ContractError::new("Ack source msg doesn't match with existing request")
     // );
-
-    // Remove the existing request as its already relayed now
-    CROSS_CHAIN_PENDING_SEND_PACKETS.remove(deps.storage, (chain_uid.clone(), sequence));
-    CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, (chain_uid.clone(), sequence));
-
-    // Decrease the pending packets count as this packet is already processed
-    let count = CROSS_CHAIN_PENDING_PACKETS_COUNT
-        .may_load(deps.storage, chain_uid.clone())?
-        // Getting to a point where the item wasn't loaded shouldn't be possible, but just in case, we're defaulting to 1 to avoid overflow error in the next operation
-        .unwrap_or(1);
-
-    CROSS_CHAIN_PENDING_PACKETS_COUNT.save(
-        deps.storage,
-        chain_uid.clone(),
-        &count.checked_sub(1).ok_or(ContractError::new("Overflow"))?,
-    )?;
 
     let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
 
