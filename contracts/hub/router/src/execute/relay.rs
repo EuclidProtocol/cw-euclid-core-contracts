@@ -48,44 +48,54 @@ pub fn execute_send_packet(
         ContractError::Unauthorized {}
     );
 
+    let chain_uid = chain.chain_uid.clone();
     let sequence = CROSS_CHAIN_LATEST_SEQUENCE_COUNT
-        .load(deps.storage, chain.chain_uid.clone())
+        .load(deps.storage, chain_uid.clone())
         .unwrap_or(0);
+    let pending_packet_key = (chain_uid.clone(), sequence);
+
+    // Make sure that the potential pending packet doesn't already exist
+    ensure!(
+        !CROSS_CHAIN_PENDING_SEND_PACKETS.has(deps.storage, pending_packet_key.clone()),
+        ContractError::Generic {
+            err: "Pending packet already exists".to_string()
+        }
+    );
 
     CROSS_CHAIN_PENDING_SEND_PACKETS.save(
         deps.storage,
-        (chain.chain_uid.clone(), sequence),
+        pending_packet_key.clone(),
         &PendingPacket {
-            chain_uid: chain.chain_uid.clone(),
+            chain_uid: chain_uid.clone(),
             original_msg: msg.clone(),
             ack_response,
         },
     )?;
     CROSS_CHAIN_PENDING_PACKET_SENDER.save(
         deps.storage,
-        (chain.chain_uid.clone(), sequence),
+        pending_packet_key,
         &sender,
     )?;
     CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(
         deps.storage,
-        chain.chain_uid.clone(),
+        chain_uid.clone(),
         &sequence.add(1),
     )?;
 
     let count = CROSS_CHAIN_PENDING_PACKETS_COUNT
-        .may_load(deps.storage, chain.chain_uid.clone())?
+        .may_load(deps.storage, chain_uid.clone())?
         .unwrap_or(0);
 
     CROSS_CHAIN_PENDING_PACKETS_COUNT.save(
         deps.storage,
-        chain.chain_uid.clone(),
+        chain_uid.clone(),
         &count.checked_add(1).ok_or(ContractError::new("Overflow"))?,
     )?;
 
     let source_port = format!("vsl.{}", env.contract.address.to_string().to_lowercase());
     let destination_port = format!(
         "{}.{}",
-        chain.chain_uid.as_str(),
+        chain_uid.as_str(),
         chain.factory_address.to_lowercase()
     );
 

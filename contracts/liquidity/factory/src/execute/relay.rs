@@ -63,6 +63,14 @@ pub fn execute_send_packet(
         .load(deps.storage)
         .unwrap_or(0);
 
+    // Make sure the sequence is not already used, this is just an extra check to avoid duplicate sequence which can cause issues in receive packet event
+    ensure!(
+        !CROSS_CHAIN_PENDING_SEND_PACKETS.has(deps.storage, sequence),
+        ContractError::Generic {
+            err: "Sequence already exists".to_string()
+        }
+    );
+
     CROSS_CHAIN_PENDING_SEND_PACKETS.save(
         deps.storage,
         sequence,
