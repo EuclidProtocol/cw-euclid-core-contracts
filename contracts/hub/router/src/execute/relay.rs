@@ -71,16 +71,8 @@ pub fn execute_send_packet(
             ack_response,
         },
     )?;
-    CROSS_CHAIN_PENDING_PACKET_SENDER.save(
-        deps.storage,
-        pending_packet_key,
-        &sender,
-    )?;
-    CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(
-        deps.storage,
-        chain_uid.clone(),
-        &sequence.add(1),
-    )?;
+    CROSS_CHAIN_PENDING_PACKET_SENDER.save(deps.storage, pending_packet_key, &sender)?;
+    CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(deps.storage, chain_uid.clone(), &sequence.add(1))?;
 
     let count = CROSS_CHAIN_PENDING_PACKETS_COUNT
         .may_load(deps.storage, chain_uid.clone())?
