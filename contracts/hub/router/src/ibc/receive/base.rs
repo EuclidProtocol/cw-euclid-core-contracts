@@ -6,8 +6,9 @@ use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
 use crate::{
     ibc::receive::{
         pool::{
-            ibc_execute_add_liquidity, ibc_execute_remove_liquidity,
-            ibc_execute_request_pool_creation,
+            ibc_execute_add_concentrated_liquidity, ibc_execute_add_liquidity,
+            ibc_execute_remove_concentrated_liquidity, ibc_execute_remove_liquidity,
+            ibc_execute_request_concentrated_pool_creation, ibc_execute_request_pool_creation,
         },
         swap::ibc_execute_swap,
         token::{
@@ -94,6 +95,21 @@ pub fn reusable_internal_call(
                 slippage_tolerance_bps,
             )?
         }
+        RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            ibc_execute_request_concentrated_pool_creation(
+                deps.branch(),
+                env,
+                msg.sender,
+                msg.pair,
+                msg.pool_key,
+                msg.tx_id,
+                msg.slippage_tolerance_bps,
+            )?
+        }
 
         RouterCrossChainExecuteMsg::AddLiquidity {
             slippage_tolerance_bps,
@@ -108,12 +124,26 @@ pub fn reusable_internal_call(
             );
             ibc_execute_add_liquidity(deps.branch(), sender, pair, slippage_tolerance_bps, tx_id)?
         }
+        RouterCrossChainExecuteMsg::AddConcentratedLiquidity(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            ibc_execute_add_concentrated_liquidity(deps.branch(), msg)?
+        }
         RouterCrossChainExecuteMsg::RemoveLiquidity(msg) => {
             ensure!(
                 msg.sender.chain_uid == chain_uid,
                 ContractError::new("Chain UID mismatch")
             );
             ibc_execute_remove_liquidity(deps.branch(), env, msg)?
+        }
+        RouterCrossChainExecuteMsg::RemoveConcentratedLiquidity(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            ibc_execute_remove_concentrated_liquidity(deps.branch(), env, msg)?
         }
         RouterCrossChainExecuteMsg::Swap(msg) => {
             ensure!(

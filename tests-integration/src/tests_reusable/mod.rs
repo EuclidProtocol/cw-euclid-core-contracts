@@ -9,3 +9,8 @@ pub mod factory_swap;
 pub mod state_sync;
 
 pub mod constants;
+pub mod concentrated_create_pool;
+pub mod concentrated_failures;
+pub mod concentrated_fees;
+pub mod concentrated_positions;
+pub mod concentrated_swap;

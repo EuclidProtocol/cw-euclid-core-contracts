@@ -218,10 +218,19 @@ pub fn execute_receive_acknowledgement(
         destination_port == format!("vsl.{router}", router = env.contract.address),
         ContractError::new("Invalid destination port")
     );
-    let _existing_request =
-        CROSS_CHAIN_PENDING_SEND_PACKETS.load(deps.storage, (chain_uid.clone(), sequence))?;
-    let _sender =
-        CROSS_CHAIN_PENDING_PACKET_SENDER.load(deps.storage, (chain_uid.clone(), sequence))?;
+    let has_pending = CROSS_CHAIN_PENDING_SEND_PACKETS.may_load(
+        deps.storage,
+        (chain_uid.clone(), sequence),
+    )?;
+    if has_pending.is_none() {
+        return Ok(Response::new()
+            .add_attribute("method", "receive_acknowledgement_idempotent")
+            .add_attribute("sequence", sequence.to_string()));
+    }
+
+    let _sender = CROSS_CHAIN_PENDING_PACKET_SENDER
+        .may_load(deps.storage, (chain_uid.clone(), sequence))?
+        .ok_or(ContractError::new("Missing sender for pending packet"))?;
 
     // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
     // ensure!(

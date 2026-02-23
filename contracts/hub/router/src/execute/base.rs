@@ -41,10 +41,13 @@ pub fn execute_manage_router_state(
         ManageRouterState::Vlp {
             vlp_code_id,
             stable_vlp_code_id,
+            concentrated_vlp_code_id,
         } => {
             state.constant_product_vlp_code_id =
                 vlp_code_id.unwrap_or(state.constant_product_vlp_code_id);
             state.stable_vlp_code_id = stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id);
+            state.concentrated_vlp_code_id =
+                concentrated_vlp_code_id.unwrap_or(state.concentrated_vlp_code_id);
             STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("method", "update_vlp_code_id"))
         }

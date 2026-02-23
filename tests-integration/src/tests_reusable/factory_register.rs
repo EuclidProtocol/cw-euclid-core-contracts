@@ -6,6 +6,7 @@ use cw_orch_interchain::prelude::IbcQueryHandler;
 use cw_orch_interchain::prelude::InterchainEnv;
 use escrow::EscrowContract;
 use euclid::chain::ChainType;
+use euclid::msgs::factory::msg::ExecuteMsgFns as FactoryExecuteMsgFns;
 use euclid::msgs::router::execute::ExecuteMsgFns as RouterExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::router::{RegisterFactoryChainCosmos, RegisterFactoryChainNative};
@@ -13,6 +14,7 @@ use euclid::{chain::ChainUid, msgs::router::RegisterFactoryChainEvm};
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 use factory::FactoryContract;
 use lp_token::LpTokenContract;
+use position_token::PositionTokenContract;
 use router::RouterContract;
 
 use crate::helpers::chains::setup_relayer;
@@ -62,6 +64,7 @@ pub fn setup_factory_with_mode(
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let lp_token = LpTokenContract::new(chain.clone());
+    let position_token = PositionTokenContract::new(chain.clone());
     let relayer = setup_relayer(&chain, vec![vsl_chain_uid.as_str(), chain_uid.as_str()])?;
 
     let string_length = factory_chain_id.len();
@@ -69,6 +72,7 @@ pub fn setup_factory_with_mode(
     factory.upload().unwrap();
     escrow.upload().unwrap();
     lp_token.upload().unwrap();
+    position_token.upload().unwrap();
 
     let is_native = matches!(mode, FactorySetupMode::Native);
 
@@ -90,6 +94,20 @@ pub fn setup_factory_with_mode(
             &[],
         )?;
     }
+
+    position_token.instantiate(
+        &position_token::msg::InstantiateMsg {
+            name: "Euclid Concentrated Positions".to_string(),
+            symbol: "EUPOS".to_string(),
+            minter: factory.address().unwrap(),
+            admin: chain.addr_make("position_token_admin"),
+        },
+        None,
+        &[],
+    )?;
+    factory.manage_factory_state(euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
+        position_token_contract: position_token.address().unwrap().to_string(),
+    })?;
 
     if !is_native {
         match mode {

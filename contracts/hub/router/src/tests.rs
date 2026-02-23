@@ -26,6 +26,7 @@ mod tests {
             default_fee_recipient: Addr::unchecked("default_fee_recipient"),
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
+            concentrated_vlp_code_id: 4,
             virtual_balance_code_id: 2,
         };
         instantiate(deps, mock_env(), info, msg).unwrap()
@@ -41,6 +42,7 @@ mod tests {
             admin: creator,
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
+            concentrated_vlp_code_id: 4,
             locked: false,
         };
         let state = STATE.load(deps.as_ref().storage).unwrap();
@@ -60,6 +62,7 @@ mod tests {
         let msg = InstantiateMsg {
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
+            concentrated_vlp_code_id: 4,
             virtual_balance_code_id: 2,
             relayer_contract: Addr::unchecked("relayer"),
             release_fee_recipient: Addr::unchecked("release_fee_recipient"),

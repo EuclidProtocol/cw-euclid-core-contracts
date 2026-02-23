@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Uint128};
 
 use crate::{
     cross_chain_user::CrossChainUser,
+    msgs::vlp::base::PoolKey,
     token::{Pair, PairWithAmount, PairWithDenomAndAmount},
 };
 
@@ -37,4 +38,27 @@ pub struct RemoveLiquidityResponse {
     pub liquidity_removed: PairWithAmount,
     pub burn_lp_tokens: Uint128,
     pub vlp_address: String,
+}
+
+#[cw_serde]
+pub struct ConcentratedAddLiquidityResponse {
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub liquidity_delta: Uint128,
+    pub mint_lp_tokens: Uint128,
+    pub vlp_address: String,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+}
+
+#[cw_serde]
+pub struct ConcentratedRemoveLiquidityResponse {
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub liquidity_removed: PairWithAmount,
+    pub liquidity_delta: Uint128,
+    pub burn_lp_tokens: Uint128,
+    pub vlp_address: String,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
 }

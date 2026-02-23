@@ -3,10 +3,12 @@ use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
+    msgs::vlp::base::{PoolKey, PoolType},
     msgs::router::TokenDenom,
     token::{PairWithDenomAndAmount, Token},
 };
 use euclid_ibc::router_ibc::{
+    RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
     RouterCrossChainRemoveLiquidityExecuteMsg, RouterCrossChainSwapExecuteMsg,
 };
 
@@ -17,6 +19,7 @@ pub struct State {
     // Pools
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
+    pub concentrated_vlp_code_id: u64,
 
     pub locked: bool,
 }
@@ -36,6 +39,7 @@ pub const FEE_STATE: Item<FeeState> = Item::new("fee_state");
 
 // Convert it to multi index map?
 pub const VLPS: Map<(String, String), Addr> = Map::new("vlps");
+pub const CONCENTRATED_VLPS: Map<String, Addr> = Map::new("concentrated_vlps");
 
 // Store all vlps related to a token
 pub const TOKEN_VLPS: Map<Token, Vec<Addr>> = Map::new("token_vlps");
@@ -56,6 +60,22 @@ pub const PENDING_SWAPS: Map<String, RouterCrossChainSwapExecuteMsg> = Map::new(
 // Tx Id to Remove Liquidity Request
 pub const PENDING_REMOVE_LIQUIDITY: Map<String, RouterCrossChainRemoveLiquidityExecuteMsg> =
     Map::new("pending_remove_liquidity");
+pub const PENDING_CONCENTRATED_REMOVE_LIQUIDITY: Map<
+    String,
+    RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
+> = Map::new("pending_concentrated_remove_liquidity");
+
+#[cw_serde]
+pub struct ConcentratedFundsInfo {
+    pub pair_with_denom: PairWithDenomAndAmount,
+    pub slippage_tolerance_bps: u64,
+    pub pool_key: PoolKey,
+    pub lower_tick_index: i64,
+    pub upper_tick_index: i64,
+    pub position_id: Option<Uint128>,
+}
+pub const CONCENTRATED_FUNDS_INFO: Item<ConcentratedFundsInfo> =
+    Item::new("concentrated_funds_info");
 
 #[cw_serde]
 pub struct PendingReleaseVoucher {
@@ -72,3 +92,29 @@ pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_inf
 /// The key is TokenID_ChainUID
 pub const RELEASE_FEES: Map<(Token, ChainUid), Decimal> = Map::new("release_fees");
 pub const DEFAULT_RELEASE_FEE: Item<Decimal> = Item::new("default_release_fee");
+
+pub fn pool_key_to_map_key(pool_key: &PoolKey) -> String {
+    let (fee_tier_bps, tick_spacing) = match pool_key.pool_type {
+        PoolType::Concentrated {
+            fee_tier_bps,
+            tick_spacing,
+        } => (fee_tier_bps, tick_spacing),
+        _ => (0, 0),
+    };
+    format!(
+        "{}\0{}\0{}\0{}",
+        pool_key.pair.token_1, pool_key.pair.token_2, fee_tier_bps, tick_spacing
+    )
+}
+
+pub fn map_key_to_pool_parts(key: &str) -> Option<(String, String, u64, u64)> {
+    let mut parts = key.split('\0');
+    let token_1 = parts.next()?.to_string();
+    let token_2 = parts.next()?.to_string();
+    let fee_tier_bps = parts.next()?.parse::<u64>().ok()?;
+    let tick_spacing = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((token_1, token_2, fee_tier_bps, tick_spacing))
+}

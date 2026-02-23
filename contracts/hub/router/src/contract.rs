@@ -19,8 +19,8 @@ use crate::execute::{execute_manage_router_state, execute_meta_receive, execute_
 
 use crate::query::{
     self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_relayer_addresses, query_release_fees, query_state, query_token_denoms,
-    query_token_escrows, query_vlp,
+    query_relayer_addresses, query_release_fees, query_state, query_token_denoms, query_token_escrows,
+    query_vlp, query_vlp_by_pool_key,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID,
@@ -44,6 +44,7 @@ pub fn instantiate(
     let state = State {
         constant_product_vlp_code_id: msg.constant_product_vlp_code_id,
         stable_vlp_code_id: msg.stable_vlp_code_id,
+        concentrated_vlp_code_id: msg.concentrated_vlp_code_id,
         admin: info.sender.clone(),
         locked: false,
     };
@@ -206,6 +207,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetChain { chain_uid } => query_chain(deps, chain_uid),
         QueryMsg::GetAllChains {} => query_all_chains(deps),
         QueryMsg::GetVlp { pair } => query_vlp(deps, pair),
+        QueryMsg::GetVlpByPoolKey { pool_key } => query_vlp_by_pool_key(deps, pool_key),
         QueryMsg::GetAllVlps { pagination } => query_all_vlps(deps, pagination),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
         QueryMsg::QueryTokenEscrows { token, pagination } => {

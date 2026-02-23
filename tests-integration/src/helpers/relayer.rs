@@ -450,11 +450,11 @@ pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
 }
 
 pub struct AckPacketEvent {
-    msg: Binary,
-    ack: Binary,
-    sequence: u128,
-    source_port: String,
-    destination_port: String,
+    pub msg: Binary,
+    pub ack: Binary,
+    pub sequence: u128,
+    pub source_port: String,
+    pub destination_port: String,
 }
 pub fn extract_ack_packet_events(events: &[Event]) -> Vec<AckPacketEvent> {
     let mut ack_packet_events = vec![];

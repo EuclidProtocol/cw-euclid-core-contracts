@@ -6,6 +6,7 @@ use euclid::{
     deposit::DepositTokenRequest,
     fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    msgs::vlp::base::PoolKey,
     swap::SwapRequest,
     token::{PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
 };
@@ -45,6 +46,7 @@ pub const FEE_STATE: Item<FeeState> = Item::new("fee_state");
 
 // Map Pair to vlp address
 pub const PAIR_TO_VLP: Map<(String, String), String> = Map::new("pair_to_vlp");
+pub const POOL_KEY_TO_VLP: Map<String, String> = Map::new("pool_key_to_vlp");
 
 // Map vlp to LP Allocations
 pub const VLP_TO_LP_SHARES: Map<String, Int256> = Map::new("vlp_to_lp_shares");
@@ -54,6 +56,18 @@ pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 
 // New LP Token states
 pub const VLP_TO_LP_TOKEN: Map<String, Addr> = Map::new("vlp_to_lp_token");
+pub const POSITION_TOKEN_CONTRACT: Item<Addr> = Item::new("position_token_contract");
+
+#[cw_serde]
+pub struct ConcentratedPositionMetadata {
+    pub owner: Addr,
+    pub pool_key: PoolKey,
+    pub liquidity: cosmwasm_std::Uint128,
+    pub vlp_address: String,
+}
+pub const POSITION_ID_TO_METADATA: Map<u128, ConcentratedPositionMetadata> =
+    Map::new("position_id_to_metadata");
+pub const OWNER_TO_POSITIONS: Map<Addr, Vec<u128>> = Map::new("owner_to_positions");
 
 #[cw_serde]
 pub struct PoolCreateRequest {
@@ -91,5 +105,67 @@ pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
 pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> =
     Map::new("pending_remove_liquidity");
 
+#[cw_serde]
+pub struct ConcentratedPoolCreateRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pair_info: PairWithDenomAndAmount,
+    pub pool_key: PoolKey,
+}
+pub const PENDING_CONCENTRATED_POOL_REQUESTS: Map<(Addr, String), ConcentratedPoolCreateRequest> =
+    Map::new("pending_concentrated_pool_requests");
+
+#[cw_serde]
+pub struct ConcentratedAddLiquidityRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pair_info: PairWithDenomAndAmount,
+    pub pool_key: PoolKey,
+    pub lower_tick_index: i64,
+    pub upper_tick_index: i64,
+    pub position_id: Option<u128>,
+}
+pub const PENDING_CONCENTRATED_ADD_LIQUIDITY: Map<(Addr, String), ConcentratedAddLiquidityRequest> =
+    Map::new("pending_concentrated_add_liquidity");
+
+#[cw_serde]
+pub struct ConcentratedRemoveLiquidityRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pool_key: PoolKey,
+    pub position_id: u128,
+    pub lp_allocation: cosmwasm_std::Uint128,
+}
+pub const PENDING_CONCENTRATED_REMOVE_LIQUIDITY: Map<
+    (Addr, String),
+    ConcentratedRemoveLiquidityRequest,
+> = Map::new("pending_concentrated_remove_liquidity");
+
 pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
     Map::new("pending_deposit_token");
+
+pub fn pool_key_to_map_key(pool_key: &PoolKey) -> String {
+    let (fee_tier_bps, tick_spacing) = match pool_key.pool_type {
+        euclid::msgs::vlp::base::PoolType::Concentrated {
+            fee_tier_bps,
+            tick_spacing,
+        } => (fee_tier_bps, tick_spacing),
+        _ => (0, 0),
+    };
+    format!(
+        "{}\0{}\0{}\0{}",
+        pool_key.pair.token_1, pool_key.pair.token_2, fee_tier_bps, tick_spacing
+    )
+}
+
+pub fn map_key_to_pool_parts(key: &str) -> Option<(String, String, u64, u64)> {
+    let mut parts = key.split('\0');
+    let token_1 = parts.next()?.to_string();
+    let token_2 = parts.next()?.to_string();
+    let fee_tier_bps = parts.next()?.parse::<u64>().ok()?;
+    let tick_spacing = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((token_1, token_2, fee_tier_bps, tick_spacing))
+}

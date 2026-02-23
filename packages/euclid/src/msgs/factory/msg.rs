@@ -2,8 +2,11 @@ use crate::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     fee::{DenomFees, PartnerFee},
-    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    msgs::vlp::base::PoolConfig,
+    liquidity::{
+        AddLiquidityRequest, ConcentratedAddLiquidityResponse, ConcentratedRemoveLiquidityResponse,
+        RemoveLiquidityRequest,
+    },
+    msgs::vlp::base::{PoolConfig, PoolKey},
     msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive},
     recipient::Recipient,
     swap::{NextSwapPair, SwapRequest},
@@ -65,9 +68,37 @@ pub enum ExecuteMsg {
         lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
         cross_chain_config: CrossChainConfig,
     },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
+    RequestConcentratedPoolCreation {
+        pair_with_denom_and_amount: PairWithDenomAndAmount,
+        fee_tier_bps: u64,
+        tick_spacing: u64,
+        lp_token_name: String,
+        lp_token_symbol: String,
+        lp_token_decimal: u8,
+        slippage_tolerance_bps: u64,
+        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+        cross_chain_config: CrossChainConfig,
+    },
     AddLiquidity {
         pair_with_denom_and_amount: PairWithDenomAndAmount,
         slippage_tolerance_bps: u64,
+        cross_chain_config: CrossChainConfig,
+    },
+    AddConcentratedLiquidity {
+        pair_with_denom_and_amount: PairWithDenomAndAmount,
+        pool_key: PoolKey,
+        lower_tick_index: i64,
+        upper_tick_index: i64,
+        position_id: Option<Uint128>,
+        slippage_tolerance_bps: u64,
+        cross_chain_config: CrossChainConfig,
+    },
+    RemoveConcentratedLiquidity {
+        pool_key: PoolKey,
+        position_id: Uint128,
+        lp_allocation: Uint128,
+        recipient: CrossChainUser,
         cross_chain_config: CrossChainConfig,
     },
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
@@ -116,6 +147,7 @@ pub enum ManageFactoryState {
     UpdateEscrowCodeId { escrow_code_id: u64 },
     UpdateLPCodeId { lp_code_id: u64 },
     UpdateRelayerAddress { relayer_address: String },
+    UpdatePositionTokenContract { position_token_contract: String },
 }
 
 #[cw_serde]
@@ -136,6 +168,9 @@ pub enum QueryMsg {
     #[returns(GetVlpResponse)]
     GetVlp { pair: Pair },
 
+    #[returns(GetConcentratedVlpResponse)]
+    GetConcentratedVlp { pool_key: PoolKey },
+
     #[returns(GetLPTokenResponse)]
     GetLPToken { vlp: String },
 
@@ -148,6 +183,10 @@ pub enum QueryMsg {
     // Query to get all pools in the factory
     #[returns(AllPoolsResponse)]
     GetAllPools {},
+
+    // Query to get all concentrated pools in the factory
+    #[returns(AllConcentratedPoolsResponse)]
+    GetAllConcentratedPools {},
 
     // Query to get all pools in the factory
     #[returns(AllTokensResponse)]
@@ -172,11 +211,20 @@ pub enum QueryMsg {
 
     #[returns(GetEscrowResponse)]
     GetEscrow { token_id: String },
+
+    #[returns(GetPositionTokenContractResponse)]
+    GetPositionTokenContract {},
 }
 
 #[cw_serde]
 pub struct GetVlpResponse {
     pub vlp_address: String,
+}
+
+#[cw_serde]
+pub struct GetConcentratedVlpResponse {
+    pub vlp_address: String,
+    pub pool_key: PoolKey,
 }
 
 #[cw_serde]
@@ -188,6 +236,11 @@ pub struct GetLPTokenResponse {
 pub struct GetEscrowResponse {
     pub escrow_address: Option<Addr>,
     pub denoms: Vec<TokenType>,
+}
+
+#[cw_serde]
+pub struct GetPositionTokenContractResponse {
+    pub position_token_contract: Option<Addr>,
 }
 // We define a custom struct for each query response
 #[cw_serde]
@@ -220,6 +273,17 @@ pub struct AllPoolsResponse {
 #[cw_serde]
 pub struct PoolVlpResponse {
     pub pair: Pair,
+    pub vlp: String,
+}
+
+#[cw_serde]
+pub struct AllConcentratedPoolsResponse {
+    pub pools: Vec<ConcentratedPoolVlpResponse>,
+}
+
+#[cw_serde]
+pub struct ConcentratedPoolVlpResponse {
+    pub pool_key: PoolKey,
     pub vlp: String,
 }
 
@@ -259,6 +323,28 @@ pub struct GetPendingLiquidityResponse {
 #[cw_serde]
 pub struct GetPendingRemoveLiquidityResponse {
     pub pending_remove_liquidity: Vec<RemoveLiquidityRequest>,
+}
+
+#[cw_serde]
+pub struct RequestConcentratedPoolCreationResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub vlp_address: String,
+    pub pool_key: PoolKey,
+}
+
+#[cw_serde]
+pub struct AddConcentratedLiquidityMsgResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub response: ConcentratedAddLiquidityResponse,
+}
+
+#[cw_serde]
+pub struct RemoveConcentratedLiquidityMsgResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub response: ConcentratedRemoveLiquidityResponse,
 }
 
 #[cw_serde]

@@ -50,6 +50,7 @@ fn test_proper_instantiation() {
     let virtual_balance_code_id = 2;
     let vlp_code_id = 3;
     let stable_vlp_code_id = 4;
+    let concentrated_vlp_code_id = 5;
 
     let mock_router = MockRouter::instantiate(
         &mut vlp,
@@ -57,6 +58,7 @@ fn test_proper_instantiation() {
         owner.clone(),
         vlp_code_id,
         stable_vlp_code_id,
+        concentrated_vlp_code_id,
         virtual_balance_code_id,
         Addr::unchecked("relayer_contract"),
         Addr::unchecked("release_fee_recipient"),

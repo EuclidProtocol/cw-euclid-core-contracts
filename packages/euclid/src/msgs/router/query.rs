@@ -3,6 +3,7 @@ use cosmwasm_std::{Addr, Decimal, Uint128};
 
 use crate::{
     chain::{Chain, ChainUid},
+    msgs::vlp::base::PoolKey,
     swap::NextSwapPair,
     token::{Pair, Token, TokenType},
     utils::pagination::Pagination,
@@ -19,6 +20,8 @@ pub enum QueryMsg {
     GetAllChains {},
     #[returns(VlpResponse)]
     GetVlp { pair: Pair },
+    #[returns(PoolKeyVlpResponse)]
+    GetVlpByPoolKey { pool_key: PoolKey },
     #[returns(AllVlpResponse)]
     GetAllVlps {
         pagination: Pagination<(String, String)>,
@@ -62,6 +65,7 @@ pub struct StateResponse {
     pub admin: Addr,
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
+    pub concentrated_vlp_code_id: u64,
     pub virtual_balance_address: Addr,
     pub locked: bool,
 }
@@ -76,6 +80,12 @@ pub struct VlpResponse {
     pub vlp: String,
     pub token_1: Token,
     pub token_2: Token,
+}
+
+#[cw_serde]
+pub struct PoolKeyVlpResponse {
+    pub vlp: String,
+    pub pool_key: PoolKey,
 }
 
 #[cw_serde]

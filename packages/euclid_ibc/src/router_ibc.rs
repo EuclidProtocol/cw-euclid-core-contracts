@@ -6,7 +6,7 @@ use euclid::{
     chain::{ChainType, ChainUid},
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    msgs::vlp::base::PoolConfig,
+    msgs::vlp::base::{PoolConfig, PoolKey},
     msgs::{factory, router},
     recipient::Recipient,
     swap::NextSwapPair,
@@ -48,6 +48,7 @@ pub enum RouterCrossChainExecuteMsg {
         // User will provide this data
         slippage_tolerance_bps: u64,
     },
+    RequestConcentratedPoolCreation(RouterCrossChainConcentratedRequestPoolCreationExecuteMsg),
     AddLiquidity {
         // Factory will set this using info.sender
         sender: CrossChainUser,
@@ -60,9 +61,11 @@ pub enum RouterCrossChainExecuteMsg {
         // Unique per tx
         tx_id: String,
     },
+    AddConcentratedLiquidity(RouterCrossChainConcentratedAddLiquidityExecuteMsg),
 
     // Remove liquidity from a chain pool to VLP
     RemoveLiquidity(RouterCrossChainRemoveLiquidityExecuteMsg),
+    RemoveConcentratedLiquidity(RouterCrossChainConcentratedRemoveLiquidityExecuteMsg),
 
     // Swap tokens on VLP
     Swap(RouterCrossChainSwapExecuteMsg),
@@ -76,8 +79,11 @@ impl RouterCrossChainExecuteMsg {
             Self::DepositToken(msg) => msg.tx_id.clone(),
             Self::TransferVoucher(msg) => msg.tx_id.clone(),
             Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
+            Self::RequestConcentratedPoolCreation(msg) => msg.tx_id.clone(),
             Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
+            Self::AddConcentratedLiquidity(msg) => msg.tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
+            Self::RemoveConcentratedLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
         }
     }
@@ -165,6 +171,37 @@ pub struct RouterCrossChainRemoveLiquidityExecuteMsg {
     pub pair: Pair,
     pub recipient: CrossChainUser,
     // Unique per tx
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedRequestPoolCreationExecuteMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pair: PairWithDenomAndAmount,
+    pub pool_key: PoolKey,
+    pub slippage_tolerance_bps: u64,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedAddLiquidityExecuteMsg {
+    pub sender: CrossChainUser,
+    pub pair: PairWithDenomAndAmount,
+    pub pool_key: PoolKey,
+    pub lower_tick_index: i64,
+    pub upper_tick_index: i64,
+    pub position_id: Option<Uint128>,
+    pub slippage_tolerance_bps: u64,
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedRemoveLiquidityExecuteMsg {
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub lp_allocation: Uint128,
+    pub recipient: CrossChainUser,
     pub tx_id: String,
 }
 

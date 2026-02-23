@@ -1,0 +1,223 @@
+#![cfg(not(target_arch = "wasm32"))]
+
+use cosmwasm_std::{Addr, Uint128};
+use cw_orch::prelude::*;
+use euclid::cross_chain_user::CrossChainUser;
+use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
+use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
+use euclid::msgs::virtual_balance::msg::{
+    ExecuteApprove, ExecuteMsg as VirtualBalanceExecuteMsg, QueryMsgFns as VirtualBalanceQueryMsgFns,
+};
+use euclid::msgs::vlp::base::{VlpSimulateSwapMsg, VlpSwapMsg};
+use euclid::msgs::vlp::concentrated::msg::QueryMsg as ConcentratedQueryMsg;
+use euclid::voucher::BalanceKey;
+use rstest::rstest;
+
+use crate::helpers::chains::{get_concentrated_vlp, get_virtual_balance};
+use crate::helpers::factory::{
+    add_concentrated_liquidity, create_concentrated_pool, deposit_token,
+};
+use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
+use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
+use crate::tests_reusable::factory_register::FactorySetupMode;
+
+pub fn execute_concentrated_swap(
+    factory: &factory::FactoryContract<cw_orch::mock::MockBase>,
+    router: &router::RouterContract<cw_orch::mock::MockBase>,
+    pool_key: euclid::msgs::vlp::base::PoolKey,
+    asset_in: euclid::token::TokenWithDenom,
+    asset_out: euclid::token::Token,
+    amount_in: Uint128,
+) -> Uint128 {
+    let chain_uid = factory.get_state().unwrap().chain_uid;
+    let sender = CrossChainUser::new(chain_uid, factory.environment().sender.to_string());
+    deposit_token(factory, router, asset_in.clone(), amount_in, vec![]).unwrap();
+
+    let vlp_address = router
+        .get_vlp_by_pool_key(pool_key.clone())
+        .unwrap()
+        .vlp;
+    let mut vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address.clone()));
+
+    let mut virtual_balance = get_virtual_balance(
+        router.environment(),
+        &router.get_state().unwrap().virtual_balance_address,
+    );
+    virtual_balance.set_sender(&router.address().unwrap());
+    virtual_balance
+        .execute(
+            &VirtualBalanceExecuteMsg::Approve(ExecuteApprove {
+                amount: amount_in,
+                token_id: asset_in.token.to_string(),
+                spender: CrossChainUser::new(
+                    euclid::chain::ChainUid::vsl_chain_uid().unwrap(),
+                    vlp_address.clone(),
+                ),
+                owner: sender.clone(),
+            }),
+            &[],
+        )
+        .unwrap();
+
+    let before_out = virtual_balance
+        .get_balance(BalanceKey {
+            cross_chain_user: sender.clone(),
+            token_id: asset_out.to_string(),
+        })
+        .unwrap()
+        .amount;
+
+    vlp.set_sender(&router.address().unwrap());
+    vlp.execute(
+        &euclid::msgs::vlp::concentrated::msg::ExecuteMsg::Swap(VlpSwapMsg {
+            sender: sender.clone(),
+            tx_id: "concentrated_swap".to_string(),
+            asset_in: asset_in.token,
+            amount_in,
+            min_token_out: Uint128::one(),
+            next_swaps: vec![],
+            test_fail: None,
+        }),
+        &[],
+    )
+    .unwrap();
+
+    let after_out = virtual_balance
+        .get_balance(BalanceKey {
+            cross_chain_user: sender,
+            token_id: asset_out.to_string(),
+        })
+        .unwrap()
+        .amount;
+    after_out - before_out
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_swap_single_range(#[case] mode: FactorySetupMode, #[case] factory_chain_id: &str) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
+
+    let vlp_address = router
+        .get_vlp_by_pool_key(pool_key.clone())
+        .unwrap()
+        .vlp;
+    let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
+    let simulation: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
+        .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
+            asset: token_a.token.clone(),
+            asset_amount: Uint128::new(1_000),
+            swaps: vec![],
+        }))
+        .unwrap();
+
+    let amount_out = execute_concentrated_swap(
+        &factory,
+        &router,
+        pool_key,
+        token_a.clone(),
+        token_b.token.clone(),
+        Uint128::new(1_000),
+    );
+    assert_eq!(amount_out, simulation.amount_out);
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_swap_crosses_ticks(#[case] mode: FactorySetupMode, #[case] factory_chain_id: &str) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 40_000, 40_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
+
+    add_concentrated_liquidity(
+        &factory,
+        &router,
+        pair_with_amounts(&token_a, &token_b, 20_000, 20_000),
+        pool_key.clone(),
+        -120,
+        120,
+        None,
+        100,
+    )
+    .unwrap();
+
+    let vlp_address = router
+        .get_vlp_by_pool_key(pool_key.clone())
+        .unwrap()
+        .vlp;
+    let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
+    let chain_uid = factory.get_state().unwrap().chain_uid;
+    let before: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse = vlp
+        .query(&ConcentratedQueryMsg::Pool {
+            chain_uid: chain_uid.clone(),
+            pool_key: pool_key.clone(),
+        })
+        .unwrap();
+
+    let amount_out = execute_concentrated_swap(
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_a.clone(),
+        token_b.token.clone(),
+        Uint128::new(8_000),
+    );
+    assert!(amount_out > Uint128::zero());
+
+    let after: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse = vlp
+        .query(&ConcentratedQueryMsg::Pool { chain_uid, pool_key })
+        .unwrap();
+
+    assert!(after.reserve_1 > before.reserve_1, "input reserve should increase");
+    assert!(after.reserve_2 < before.reserve_2, "output reserve should decrease");
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_swap_explicit_fee_tier_routing(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+    let pool_500 = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
+    let pool_3000 =
+        create_concentrated_pool(&factory, &router, pair.clone(), 3_000, 60, 100).unwrap();
+
+    let vlp_500 = get_concentrated_vlp(
+        router.environment(),
+        &Addr::unchecked(router.get_vlp_by_pool_key(pool_500).unwrap().vlp),
+    );
+    let vlp_3000 = get_concentrated_vlp(
+        router.environment(),
+        &Addr::unchecked(router.get_vlp_by_pool_key(pool_3000).unwrap().vlp),
+    );
+
+    let sim_500: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp_500
+        .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
+            asset: token_a.token.clone(),
+            asset_amount: Uint128::new(1_000),
+            swaps: vec![],
+        }))
+        .unwrap();
+    let sim_3000: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp_3000
+        .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
+            asset: token_a.token.clone(),
+            asset_amount: Uint128::new(1_000),
+            swaps: vec![],
+        }))
+        .unwrap();
+
+    assert_ne!(sim_500.amount_out, sim_3000.amount_out);
+    assert!(
+        sim_500.amount_out > sim_3000.amount_out,
+        "lower fee tier should return more output for same reserves",
+    );
+}

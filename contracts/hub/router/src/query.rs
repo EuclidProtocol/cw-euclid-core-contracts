@@ -6,12 +6,12 @@ use euclid::{
     error::ContractError,
     msgs::{
         router::{
-            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-            EscrowResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
+            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse, EscrowResponse,
+            PoolKeyVlpResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
             QueryTokenDenomsResponse, ReleaseFee, ReleaseFeesQueryResponse, SimulateSwapResponse,
             StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
         },
-        vlp::base::VlpSimulateSwapMsg,
+        vlp::base::{PoolKey, VlpSimulateSwapMsg},
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -19,7 +19,8 @@ use euclid::{
 };
 
 use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS,
+    map_key_to_pool_parts, pool_key_to_map_key, CHAIN_UID_TO_CHAIN, CONCENTRATED_VLPS,
+    ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS,
     VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
@@ -29,6 +30,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         admin: state.admin,
         constant_product_vlp_code_id: state.constant_product_vlp_code_id,
         stable_vlp_code_id: state.stable_vlp_code_id,
+        concentrated_vlp_code_id: state.concentrated_vlp_code_id,
         virtual_balance_address: VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?,
         locked: state.locked,
     })?)
@@ -48,7 +50,7 @@ pub fn query_all_vlps(
     let start = start.map(Bound::inclusive);
     let end = end.map(Bound::exclusive);
 
-    let vlps: Result<_, ContractError> = VLPS
+    let mut vlps: Vec<VlpResponse> = VLPS
         .range(deps.storage, start, end, Order::Ascending)
         .skip(skip.unwrap_or(0) as usize)
         .take(limit.unwrap_or(10) as usize)
@@ -60,9 +62,25 @@ pub fn query_all_vlps(
                 token_2: Token::create(v.0 .1)?,
             })
         })
-        .collect();
+        .collect::<Result<_, ContractError>>()?;
 
-    Ok(to_json_binary(&AllVlpResponse { vlps: vlps? })?)
+    let concentrated_vlps: Result<Vec<_>, ContractError> = CONCENTRATED_VLPS
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|v| {
+            let v = v?;
+            let (token_1, token_2, _, _) = map_key_to_pool_parts(&v.0).ok_or(
+                ContractError::new("invalid concentrated pool key in state"),
+            )?;
+            Ok(VlpResponse {
+                vlp: v.1.to_string(),
+                token_1: Token::create(token_1)?,
+                token_2: Token::create(token_2)?,
+            })
+        })
+        .collect();
+    vlps.extend(concentrated_vlps?);
+
+    Ok(to_json_binary(&AllVlpResponse { vlps })?)
 }
 
 pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
@@ -73,6 +91,15 @@ pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
         vlp: vlp.to_string(),
         token_1: Token::create(key.0)?,
         token_2: Token::create(key.1)?,
+    })?)
+}
+
+pub fn query_vlp_by_pool_key(deps: Deps, pool_key: PoolKey) -> Result<Binary, ContractError> {
+    let key = pool_key_to_map_key(&pool_key);
+    let vlp = CONCENTRATED_VLPS.load(deps.storage, key)?;
+    Ok(to_json_binary(&PoolKeyVlpResponse {
+        vlp: vlp.to_string(),
+        pool_key,
     })?)
 }
 

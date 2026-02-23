@@ -62,10 +62,38 @@ pub struct VlpRegisterPoolMsg {
 }
 
 #[cw_serde]
+pub struct VlpConcentratedRegisterPoolMsg {
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
+    pub tx_id: String,
+}
+
+#[cw_serde]
 pub struct VlpSimulateSwapMsg {
     pub asset: Token,
     pub asset_amount: Uint128,
     pub swaps: Vec<NextSwapVlp>,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedAddLiquidityMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pool_key: PoolKey,
+    pub liquidity: PairWithAmount,
+    pub lower_tick_index: i64,
+    pub upper_tick_index: i64,
+    pub position_id: Option<Uint128>,
+    pub slippage_tolerance_bps: u64,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedRemoveLiquidityMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub lp_allocation: Uint128,
 }
 
 #[cw_serde]
@@ -91,6 +119,14 @@ pub struct PoolCreationResponse {
     pub tx_id: String,
     pub mint_lp_tokens: Uint128,
     pub sender: CrossChainUser,
+}
+
+#[cw_serde]
+pub struct ConcentratedPoolCreationResponse {
+    pub vlp_contract: String,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
 }
 
 #[cw_serde]
@@ -120,15 +156,59 @@ pub struct VlpRemoveLiquidityResponse {
 }
 
 #[cw_serde]
+pub struct VlpConcentratedAddLiquidityResponse {
+    pub liquidity_added: PairWithAmount,
+    pub liquidity_delta: Uint128,
+    pub position_id: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub vlp_address: String,
+    pub pool_key: PoolKey,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedRemoveLiquidityResponse {
+    pub liquidity_released: PairWithAmount,
+    pub liquidity_delta: Uint128,
+    pub position_id: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub vlp_address: String,
+    pub pool_key: PoolKey,
+}
+
+#[cw_serde]
 pub struct RegisterDenomResponse {}
 
 #[cw_serde]
 pub struct DeregisterDenomResponse {}
 
 #[cw_serde]
-pub enum PoolConfig {
-    Stable { amp_factor: Option<Uint64> },
+pub enum PoolType {
     ConstantProduct {},
+    Stable {},
+    Concentrated {
+        fee_tier_bps: u64,
+        tick_spacing: u64,
+    },
+}
+
+#[cw_serde]
+pub struct PoolKey {
+    pub pair: Pair,
+    pub pool_type: PoolType,
+}
+
+#[cw_serde]
+pub enum PoolConfig {
+    Stable {
+        amp_factor: Option<Uint64>,
+    },
+    ConstantProduct {},
+    Concentrated {
+        fee_tier_bps: u64,
+        tick_spacing: u64,
+    },
 }
 
 #[cw_serde]
@@ -140,7 +220,10 @@ pub enum QueryMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     RegisterPool(VlpRegisterPoolMsg),
+    RegisterConcentratedPool(VlpConcentratedRegisterPoolMsg),
     AddLiquidity(VlpAddLiquidityMsg),
+    AddConcentratedLiquidity(VlpConcentratedAddLiquidityMsg),
     RemoveLiquidity(VlpRemoveLiquidityMsg),
+    RemoveConcentratedLiquidity(VlpConcentratedRemoveLiquidityMsg),
     Swap(VlpSwapMsg),
 }

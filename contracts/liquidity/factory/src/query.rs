@@ -4,9 +4,11 @@ use euclid::{
     chain::{ChainType, CosmosChain},
     error::ContractError,
     msgs::factory::{
-        AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
-        GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
-        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
+        AllConcentratedPoolsResponse, AllPoolsResponse, AllTokensResponse, ConcentratedPoolVlpResponse,
+        GetConcentratedVlpResponse, GetEscrowResponse, GetLPTokenResponse,
+        GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse,
+        GetPendingSwapsResponse, GetPositionTokenContractResponse, GetVlpResponse,
+        PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
         PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
@@ -14,8 +16,9 @@ use euclid::{
 };
 
 use crate::state::{
-    FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE,
-    TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+    map_key_to_pool_parts, pool_key_to_map_key, FEE_STATE, PAIR_TO_VLP, POOL_KEY_TO_VLP,
+    PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW,
+    VLP_TO_LP_TOKEN, POSITION_TOKEN_CONTRACT,
 };
 
 // Returns the VLP address
@@ -78,6 +81,12 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         is_native: state.is_native,
     })?)
 }
+
+pub fn get_position_token_contract(deps: Deps) -> Result<Binary, ContractError> {
+    Ok(to_json_binary(&GetPositionTokenContractResponse {
+        position_token_contract: POSITION_TOKEN_CONTRACT.may_load(deps.storage)?,
+    })?)
+}
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
     let pools: Vec<PoolVlpResponse> = PAIR_TO_VLP
         .range(deps.storage, None, None, Order::Ascending)
@@ -91,6 +100,40 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
         .collect::<Result<_, ContractError>>()?;
 
     to_json_binary(&AllPoolsResponse { pools }).map_err(Into::into)
+}
+
+pub fn get_concentrated_vlp(
+    deps: Deps,
+    pool_key: euclid::msgs::vlp::base::PoolKey,
+) -> Result<Binary, ContractError> {
+    let vlp_address = POOL_KEY_TO_VLP.load(deps.storage, pool_key_to_map_key(&pool_key))?;
+    Ok(to_json_binary(&GetConcentratedVlpResponse {
+        vlp_address,
+        pool_key,
+    })?)
+}
+
+pub fn query_all_concentrated_pools(deps: Deps) -> Result<Binary, ContractError> {
+    let pools: Vec<ConcentratedPoolVlpResponse> = POOL_KEY_TO_VLP
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|item| {
+            let (key, vlp) = item?;
+            let (token_1, token_2, fee_tier_bps, tick_spacing) = map_key_to_pool_parts(&key)
+                .ok_or(ContractError::new("invalid concentrated pool key in state"))?;
+            Ok(ConcentratedPoolVlpResponse {
+                pool_key: euclid::msgs::vlp::base::PoolKey {
+                    pair: Pair::new(Token::create(token_1)?, Token::create(token_2)?)?,
+                    pool_type: euclid::msgs::vlp::base::PoolType::Concentrated {
+                        fee_tier_bps,
+                        tick_spacing,
+                    },
+                },
+                vlp,
+            })
+        })
+        .collect::<Result<_, ContractError>>()?;
+
+    to_json_binary(&AllConcentratedPoolsResponse { pools }).map_err(Into::into)
 }
 
 pub fn query_all_tokens(deps: Deps) -> Result<Binary, ContractError> {

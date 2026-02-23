@@ -532,6 +532,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "concentrated_vlp"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema 2.2.2",
+ "cosmwasm-std 2.2.2",
+ "cw-multi-test",
+ "cw-orch",
+ "cw-storage-plus 2.0.0",
+ "cw-utils 2.0.0",
+ "cw2 2.0.0",
+ "euclid",
+ "euclid-pool",
+ "function_name",
+ "mock",
+ "schemars",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1661,6 +1681,7 @@ dependencies = [
  "euclid-ibc",
  "function_name",
  "mock",
+ "position_token",
  "schemars",
  "serde",
  "thiserror 1.0.69",
@@ -2613,6 +2634,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "position_token"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema 2.2.2",
+ "cosmwasm-std 2.2.2",
+ "cw-multi-test",
+ "cw-orch",
+ "cw-storage-plus 2.0.0",
+ "cw2 2.0.0",
+ "euclid",
+ "schemars",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3532,6 +3569,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "claimer",
+ "concentrated_vlp",
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
  "cp_vlp",
@@ -3553,6 +3591,7 @@ dependencies = [
  "meta-transaction",
  "mock",
  "orderbook_deposits",
+ "position_token",
  "relayer",
  "router",
  "rstest",

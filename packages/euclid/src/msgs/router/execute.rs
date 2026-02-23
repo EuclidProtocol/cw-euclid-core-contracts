@@ -78,6 +78,7 @@ pub enum ManageRouterState {
     Vlp {
         vlp_code_id: Option<u64>,
         stable_vlp_code_id: Option<u64>,
+        concentrated_vlp_code_id: Option<u64>,
     },
     LockState {
         locked: bool,

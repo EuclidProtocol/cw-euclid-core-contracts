@@ -17,7 +17,7 @@ use crate::{
     execute::{
         pool::remove_liquidity_request, swap::execute_swap_request, token::execute_deposit_token,
     },
-    state::STATE,
+    state::{POSITION_TOKEN_CONTRACT, STATE},
 };
 
 pub fn execute_manage_factory_state(
@@ -53,6 +53,13 @@ pub fn execute_manage_factory_state(
             state.relayer_contract = relayer_address.clone();
             STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("relayer_address", relayer_address))
+        }
+        ManageFactoryState::UpdatePositionTokenContract {
+            position_token_contract,
+        } => {
+            let position_token_contract = deps.api.addr_validate(position_token_contract.as_str())?;
+            POSITION_TOKEN_CONTRACT.save(deps.storage, &position_token_contract)?;
+            Ok(Response::new().add_attribute("position_token_contract", position_token_contract))
         }
     }
 }

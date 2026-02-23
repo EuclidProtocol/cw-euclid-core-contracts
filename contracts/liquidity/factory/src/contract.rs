@@ -10,7 +10,11 @@ use euclid::fee::DenomFees;
 use euclid::token::TokenType;
 use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 
-use crate::execute::pool::{add_liquidity_request, execute_request_pool_creation};
+use crate::execute::pool::{
+    add_concentrated_liquidity_request, add_liquidity_request,
+    execute_request_concentrated_pool_creation, execute_request_pool_creation,
+    remove_concentrated_liquidity_request,
+};
 use crate::execute::relay::{
     execute_native_receive_callback, execute_receive_acknowledgement, execute_receive_packet,
     execute_receive_packet_internal_callback, execute_send_packet,
@@ -22,8 +26,9 @@ use crate::execute::token::{
 };
 use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_native};
 use crate::query::{
-    get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
-    pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
+    get_concentrated_vlp, get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp,
+    get_position_token_contract, pending_liquidity, pending_remove_liquidity, pending_swaps,
+    query_all_concentrated_pools, query_all_pools, query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
@@ -174,6 +179,23 @@ pub fn execute(
             slippage_tolerance_bps,
             cross_chain_config,
         ),
+        ExecuteMsg::RequestConcentratedPoolCreation {
+            pair_with_denom_and_amount,
+            fee_tier_bps,
+            tick_spacing,
+            slippage_tolerance_bps,
+            cross_chain_config,
+            ..
+        } => execute_request_concentrated_pool_creation(
+            &mut deps,
+            env,
+            info,
+            pair_with_denom_and_amount,
+            fee_tier_bps,
+            tick_spacing,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        ),
         ExecuteMsg::AddLiquidity {
             pair_with_denom_and_amount,
             slippage_tolerance_bps,
@@ -186,6 +208,47 @@ pub fn execute(
             slippage_tolerance_bps,
             cross_chain_config,
         ),
+        ExecuteMsg::AddConcentratedLiquidity {
+            pair_with_denom_and_amount,
+            pool_key,
+            lower_tick_index,
+            upper_tick_index,
+            position_id,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        } => add_concentrated_liquidity_request(
+            &mut deps,
+            info,
+            env,
+            pair_with_denom_and_amount,
+            pool_key,
+            lower_tick_index,
+            upper_tick_index,
+            position_id,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        ),
+        ExecuteMsg::RemoveConcentratedLiquidity {
+            pool_key,
+            position_id,
+            lp_allocation,
+            recipient,
+            cross_chain_config,
+        } => {
+            let state = STATE.load(deps.storage)?;
+            let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
+            remove_concentrated_liquidity_request(
+                &mut deps,
+                info,
+                env,
+                sender,
+                pool_key,
+                position_id,
+                lp_allocation,
+                recipient,
+                cross_chain_config,
+            )
+        }
         ExecuteMsg::ExecuteSwapRequest(msg) => {
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
@@ -277,10 +340,12 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetVlp { pair } => get_vlp(deps, pair),
+        QueryMsg::GetConcentratedVlp { pool_key } => get_concentrated_vlp(deps, pool_key),
         QueryMsg::GetLPToken { vlp } => get_lp_token_address(deps, vlp),
         QueryMsg::GetEscrow { token_id } => get_escrow(deps, token_id),
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
+        QueryMsg::GetAllConcentratedPools {} => query_all_concentrated_pools(deps),
         // Pool Queries //
         QueryMsg::PendingSwapsUser { user, pagination } => pending_swaps(deps, user, pagination),
         QueryMsg::PendingLiquidity { user, pagination } => {
@@ -291,6 +356,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
+        QueryMsg::GetPositionTokenContract {} => get_position_token_contract(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
