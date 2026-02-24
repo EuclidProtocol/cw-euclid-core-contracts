@@ -26,7 +26,7 @@ use crate::state::{
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
-        admin: state.admin,
+        admins: state.admins,
         constant_product_vlp_code_id: state.constant_product_vlp_code_id,
         stable_vlp_code_id: state.stable_vlp_code_id,
         virtual_balance_address: VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?,

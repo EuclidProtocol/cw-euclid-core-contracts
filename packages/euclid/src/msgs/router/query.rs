@@ -2,6 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 
 use crate::{
+    admin::EuclidAdmin,
     chain::{Chain, ChainUid},
     swap::NextSwapPair,
     token::{Pair, Token, TokenType},
@@ -59,7 +60,7 @@ pub struct QuerySimulateSwap {
 
 #[cw_serde]
 pub struct StateResponse {
-    pub admin: Addr,
+    pub admins: EuclidAdmin,
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
     pub virtual_balance_address: Addr,

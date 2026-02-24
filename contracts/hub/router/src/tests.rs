@@ -6,6 +6,7 @@ mod tests {
     use crate::state::{State, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
     use cosmwasm_std::{from_json, Addr, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Response};
+    use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
     use euclid::msgs::router::{
@@ -38,7 +39,7 @@ mod tests {
         let info = message_info(&creator, &[]);
         init(deps.as_mut(), info);
         let expected_state = State {
-            admin: creator,
+            admins: EuclidAdmin::default(creator),
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
             locked: false,

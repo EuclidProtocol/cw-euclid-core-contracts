@@ -135,7 +135,7 @@ pub fn ibc_execute_request_pool_creation(
         );
         let msg = match pool_config {
             PoolConfig::Stable { amp_factor } => WasmMsg::Instantiate {
-                admin: Some(state.admin.to_string()),
+                admin: Some(state.admins.migration_admin.to_string()),
                 code_id: state.stable_vlp_code_id,
                 msg: to_json_binary(&msgs::vlp::stable::msg::InstantiateMsg {
                     router: env.contract.address,
@@ -149,14 +149,14 @@ pub fn ibc_execute_request_pool_creation(
                             tx_id: tx_id.clone(),
                         },
                     )),
-                    admin: state.admin,
+                    admin: state.admins.general_admin,
                     amp_factor,
                 })?,
                 funds: vec![],
                 label: "Stable VLP".to_string(),
             },
             PoolConfig::ConstantProduct {} => WasmMsg::Instantiate {
-                admin: Some(state.admin.to_string()),
+                admin: Some(state.admins.general_admin.to_string()),
                 code_id: state.constant_product_vlp_code_id,
                 msg: to_json_binary(&msgs::vlp::cp::msg::InstantiateMsg {
                     router: env.contract.address,
@@ -170,7 +170,7 @@ pub fn ibc_execute_request_pool_creation(
                             tx_id: tx_id.clone(),
                         },
                     )),
-                    admin: state.admin,
+                    admin: state.admins.general_admin,
                 })?,
                 funds: vec![],
                 label: "Constant Product VLP".to_string(),

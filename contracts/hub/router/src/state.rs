@@ -2,6 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
+    admin::EuclidAdmin,
     chain::{Chain, ChainUid},
     msgs::router::TokenDenom,
     token::{PairWithDenomAndAmount, Token},
@@ -13,7 +14,7 @@ use euclid_ibc::router_ibc::{
 #[cw_serde]
 pub struct State {
     // Contract admin
-    pub admin: Addr,
+    pub admins: EuclidAdmin,
     // Pools
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,

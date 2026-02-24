@@ -5,6 +5,7 @@ use cosmwasm_std::{
     SubMsg, WasmMsg,
 };
 use cw2::set_contract_version;
+use euclid::admin::EuclidAdmin;
 use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
@@ -44,7 +45,7 @@ pub fn instantiate(
     let state = State {
         constant_product_vlp_code_id: msg.constant_product_vlp_code_id,
         stable_vlp_code_id: msg.stable_vlp_code_id,
-        admin: info.sender.clone(),
+        admins: EuclidAdmin::default(info.sender.clone()),
         locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -94,7 +95,7 @@ pub fn execute(
     // If the contract is locked and the message isn't UpdateLock, return error
 
     match msg {
-        ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, info, msg),
+        ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, env, info, msg),
         _ => {
             // Only allow these messages if the contract is not locked
             ensure!(
@@ -102,7 +103,9 @@ pub fn execute(
                 ContractError::ContractLocked {}
             );
             match msg {
-                ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, info, msg),
+                ExecuteMsg::ManageRouterState(msg) => {
+                    execute_manage_router_state(deps, env, info, msg)
+                }
                 ExecuteMsg::RegisterFactory {
                     chain_uid,
                     chain_info,

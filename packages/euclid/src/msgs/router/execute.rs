@@ -2,6 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Binary, Decimal, Uint128};
 
 use crate::{
+    admin::AdminType,
     chain::{ChainType, ChainUid, CosmosChain, EvmChain},
     error::ContractError,
     msgs::{cross_chain_config::CrossChainConfig, hook::MetaReceive},
@@ -71,8 +72,9 @@ pub enum ExecuteMsg {
 #[cw_serde]
 pub enum ManageRouterState {
     // Contract admin
-    Admin {
-        admin: Addr,
+    Admins {
+        admin_type: AdminType,
+        admin: String,
     },
     // Pool Code ID
     Vlp {
