@@ -1,9 +1,9 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use super::chains::get_virtual_balance;
-use crate::helpers::chains::get_escrow;
+use super::chains::{get_virtual_balance, migrate_concentrated_vlp, upload_concentrated_vlp_code};
+use crate::helpers::chains::{get_escrow, query_concentrated_migration_status};
 use crate::helpers::relayer::relay_factory_router_factory;
-use cosmwasm_std::{coin, Uint128};
+use cosmwasm_std::{coin, Addr, Uint128};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 use cw_orch_interchain::prelude::MockInterchainEnv;
@@ -18,6 +18,9 @@ use euclid::msgs::lp_token::msg::ExecuteMsgFns as LpTokenExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::base::{PoolConfig, PoolKey, PoolType};
+use euclid::msgs::vlp::concentrated::msg::{
+    LegacyLiquidityMode, MigrateMsg as ConcentratedMigrateMsg, MigrationStatusResponse,
+};
 use euclid::recipient::Recipient;
 use euclid::swap::NextSwapPair;
 use euclid::token::PairWithDenomAndAmount;
@@ -347,6 +350,84 @@ pub fn remove_concentrated_liquidity(
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
     Ok(())
+}
+
+pub fn collect_concentrated_fees(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    pool_key: PoolKey,
+    position_id: Uint128,
+    recipient: CrossChainUser,
+) -> Result<(), CwOrchError> {
+    let tx_response = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::CollectConcentratedFees {
+            pool_key,
+            position_id,
+            recipient,
+            cross_chain_config: CrossChainConfig::default(),
+        },
+        &[],
+    )?;
+
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+    Ok(())
+}
+
+pub fn collect_concentrated_protocol_fees(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    pool_key: PoolKey,
+    recipient: CrossChainUser,
+    amount_0_requested: Uint128,
+    amount_1_requested: Uint128,
+) -> Result<(), CwOrchError> {
+    let tx_response = factory.execute(
+        &euclid::msgs::factory::ExecuteMsg::CollectConcentratedProtocolFees {
+            pool_key,
+            recipient,
+            amount_0_requested,
+            amount_1_requested,
+            cross_chain_config: CrossChainConfig::default(),
+        },
+        &[],
+    )?;
+
+    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+    Ok(())
+}
+
+pub fn migrate_concentrated_pool(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    pool_key: PoolKey,
+    legacy_liquidity_mode: LegacyLiquidityMode,
+    expected_prev_version: Option<String>,
+    force_rebuild: Option<bool>,
+) -> Result<(), CwOrchError> {
+    let vlp_address = factory.get_concentrated_vlp(pool_key)?.vlp_address;
+    let new_code_id = upload_concentrated_vlp_code(router.environment())?;
+    migrate_concentrated_vlp(
+        router.environment(),
+        &Addr::unchecked(vlp_address),
+        new_code_id,
+        ConcentratedMigrateMsg {
+            legacy_liquidity_mode,
+            expected_prev_version,
+            force_rebuild,
+        },
+    )?;
+    Ok(())
+}
+
+pub fn query_concentrated_pool_migration_status(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    pool_key: PoolKey,
+) -> Result<MigrationStatusResponse, CwOrchError> {
+    let vlp_address = factory.get_concentrated_vlp(pool_key)?.vlp_address;
+    query_concentrated_migration_status(router.environment(), &Addr::unchecked(vlp_address))
 }
 
 pub fn get_position_token(

@@ -8,7 +8,7 @@ use euclid::{
     token::Pair,
 };
 
-use crate::contract::{execute, instantiate, query, reply};
+use crate::{contract::{execute, instantiate, query, reply}, migrate::migrate};
 use mock::mock::MockApp;
 
 pub struct MockConcentratedVlp(Addr);
@@ -54,7 +54,9 @@ impl MockConcentratedVlp {
 }
 
 pub fn mock_concentrated_vlp() -> Box<dyn Contract<Empty>> {
-    let contract = ContractWrapper::new_with_empty(execute, instantiate, query).with_reply(reply);
+    let contract = ContractWrapper::new_with_empty(execute, instantiate, query)
+        .with_reply(reply)
+        .with_migrate(migrate);
     Box::new(contract)
 }
 

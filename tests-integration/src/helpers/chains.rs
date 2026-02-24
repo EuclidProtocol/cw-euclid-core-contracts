@@ -13,6 +13,10 @@ use euclid::msgs::router::{
 };
 use euclid::{
     chain::{ChainType, ChainUid},
+    msgs::vlp::concentrated::msg::{
+        MigrateMsg as ConcentratedMigrateMsg, MigrationStatusResponse,
+        QueryMsg as ConcentratedQueryMsg,
+    },
     msgs::router::RegisterFactoryChainEvm,
 };
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
@@ -343,6 +347,31 @@ pub fn get_concentrated_vlp(
     concentrated_vlp.as_instance_mut().id = format!("concentrated_vlp_{}", address);
     concentrated_vlp.set_address(address);
     concentrated_vlp
+}
+
+pub fn upload_concentrated_vlp_code(chain: &MockBase) -> Result<u64, CwOrchError> {
+    let concentrated_vlp = ConcentratedVlpContract::new(chain.clone());
+    concentrated_vlp.upload()?;
+    concentrated_vlp.code_id()
+}
+
+pub fn migrate_concentrated_vlp(
+    chain: &MockBase,
+    address: &Addr,
+    new_code_id: u64,
+    msg: ConcentratedMigrateMsg,
+) -> Result<(), CwOrchError> {
+    let vlp = get_concentrated_vlp(chain, address);
+    vlp.migrate(&msg, new_code_id)?;
+    Ok(())
+}
+
+pub fn query_concentrated_migration_status(
+    chain: &MockBase,
+    address: &Addr,
+) -> Result<MigrationStatusResponse, CwOrchError> {
+    let vlp = get_concentrated_vlp(chain, address);
+    vlp.query(&ConcentratedQueryMsg::MigrationStatus {})
 }
 
 pub fn get_lp_token(chain: &MockBase, address: &Addr) -> LpTokenContract<MockBase> {

@@ -66,6 +66,8 @@ pub enum RouterCrossChainExecuteMsg {
     // Remove liquidity from a chain pool to VLP
     RemoveLiquidity(RouterCrossChainRemoveLiquidityExecuteMsg),
     RemoveConcentratedLiquidity(RouterCrossChainConcentratedRemoveLiquidityExecuteMsg),
+    CollectConcentratedFees(RouterCrossChainConcentratedCollectFeesExecuteMsg),
+    CollectConcentratedProtocolFees(RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg),
 
     // Swap tokens on VLP
     Swap(RouterCrossChainSwapExecuteMsg),
@@ -84,6 +86,8 @@ impl RouterCrossChainExecuteMsg {
             Self::AddConcentratedLiquidity(msg) => msg.tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::RemoveConcentratedLiquidity(msg) => msg.tx_id.clone(),
+            Self::CollectConcentratedFees(msg) => msg.tx_id.clone(),
+            Self::CollectConcentratedProtocolFees(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
         }
     }
@@ -202,6 +206,25 @@ pub struct RouterCrossChainConcentratedRemoveLiquidityExecuteMsg {
     pub position_id: Uint128,
     pub lp_allocation: Uint128,
     pub recipient: CrossChainUser,
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedCollectFeesExecuteMsg {
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub recipient: CrossChainUser,
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg {
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
+    pub recipient: CrossChainUser,
+    pub amount_0_requested: Uint128,
+    pub amount_1_requested: Uint128,
     pub tx_id: String,
 }
 

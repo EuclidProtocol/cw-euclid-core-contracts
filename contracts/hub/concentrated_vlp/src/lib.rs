@@ -1,4 +1,5 @@
 pub mod contract;
+pub mod math;
 pub mod migrate;
 pub mod query;
 pub mod reply;

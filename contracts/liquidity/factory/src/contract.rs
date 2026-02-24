@@ -12,6 +12,7 @@ use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 
 use crate::execute::pool::{
     add_concentrated_liquidity_request, add_liquidity_request,
+    collect_concentrated_fees_request, collect_concentrated_protocol_fees_request,
     execute_request_concentrated_pool_creation, execute_request_pool_creation,
     remove_concentrated_liquidity_request,
 };
@@ -249,6 +250,36 @@ pub fn execute(
                 cross_chain_config,
             )
         }
+        ExecuteMsg::CollectConcentratedFees {
+            pool_key,
+            position_id,
+            recipient,
+            cross_chain_config,
+        } => collect_concentrated_fees_request(
+            &mut deps,
+            info,
+            env,
+            pool_key,
+            position_id,
+            recipient,
+            cross_chain_config,
+        ),
+        ExecuteMsg::CollectConcentratedProtocolFees {
+            pool_key,
+            recipient,
+            amount_0_requested,
+            amount_1_requested,
+            cross_chain_config,
+        } => collect_concentrated_protocol_fees_request(
+            &mut deps,
+            info,
+            env,
+            pool_key,
+            recipient,
+            amount_0_requested,
+            amount_1_requested,
+            cross_chain_config,
+        ),
         ExecuteMsg::ExecuteSwapRequest(msg) => {
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());

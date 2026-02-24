@@ -443,6 +443,7 @@ mod tests {
             vec![NextSwapPair {
                 token_in: token_1.token.clone(),
                 token_out: token_2.token.clone(),
+                pool_key: None,
                 test_fail: None,
             }],
             vec![],

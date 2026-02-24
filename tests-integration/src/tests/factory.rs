@@ -1504,6 +1504,7 @@ pub fn run_test_swap_request_reusable(
             swaps: vec![NextSwapPair {
                 token_in: token_a.token.clone(),
                 token_out: token_b.token.clone(),
+                pool_key: None,
                 test_fail: None,
             }],
             recipients,
@@ -1637,11 +1638,13 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
                     NextSwapPair {
                         token_in: token_a.token.clone(),
                         token_out: token_b.token.clone(),
+                        pool_key: None,
                         test_fail: None,
                     },
                     NextSwapPair {
                         token_in: token_b.token.clone(),
                         token_out: token_c.token.clone(),
+                        pool_key: None,
                         test_fail: None,
                     },
                 ],
@@ -1797,6 +1800,7 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],
@@ -1918,6 +1922,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],
@@ -2033,6 +2038,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],
@@ -2141,6 +2147,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],
@@ -2248,6 +2255,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         vec![NextSwapPair {
             token_in: Token::create("osmo".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![Recipient {
@@ -2513,6 +2521,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
                 swaps: vec![NextSwapPair {
                     token_in: token_a.token.clone(),
                     token_out: token_b.token.clone(),
+                    pool_key: None,
                     test_fail: None,
                 }],
                 recipients: vec![],

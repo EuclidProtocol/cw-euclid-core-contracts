@@ -9,7 +9,8 @@ use euclid::{
     error::ContractError,
     events::{deposit_token_event, swap_event},
     liquidity::{
-        AddLiquidityResponse, ConcentratedAddLiquidityResponse, ConcentratedRemoveLiquidityResponse,
+        AddLiquidityResponse, ConcentratedAddLiquidityResponse, ConcentratedCollectFeesResponse,
+        ConcentratedCollectProtocolFeesResponse, ConcentratedRemoveLiquidityResponse,
         RemoveLiquidityResponse,
     },
     msgs::{
@@ -32,6 +33,7 @@ use crate::{
         pool_key_to_map_key, FEE_STATE, OWNER_TO_POSITIONS, PAIR_TO_VLP, POOL_KEY_TO_VLP,
         POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT, PENDING_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_ADD_LIQUIDITY, PENDING_CONCENTRATED_POOL_REQUESTS,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
         PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
         PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
@@ -88,6 +90,20 @@ pub fn reusable_internal_ack_call(
         RouterCrossChainExecuteMsg::RemoveConcentratedLiquidity(msg) => {
             let res: AcknowledgementMsg<ConcentratedRemoveLiquidityResponse> = from_json(ack)?;
             ack_remove_concentrated_liquidity(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
+        }
+        RouterCrossChainExecuteMsg::CollectConcentratedFees(msg) => {
+            let res: AcknowledgementMsg<ConcentratedCollectFeesResponse> = from_json(ack)?;
+            ack_collect_concentrated_fees(deps.branch(), res, msg.sender.address, msg.tx_id, is_native)
+        }
+        RouterCrossChainExecuteMsg::CollectConcentratedProtocolFees(msg) => {
+            let res: AcknowledgementMsg<ConcentratedCollectProtocolFeesResponse> = from_json(ack)?;
+            ack_collect_concentrated_protocol_fees(
                 deps.branch(),
                 res,
                 msg.sender.address,
@@ -845,6 +861,109 @@ fn ack_remove_concentrated_liquidity(
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("position_id", liquidity_info.position_id.to_string())
+                .add_attribute("error", err))
+        }
+    }
+}
+
+fn ack_collect_concentrated_fees(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedCollectFeesResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let collect_info =
+        match PENDING_CONCENTRATED_COLLECT_FEES.may_load(deps.storage, req_key.clone())? {
+            Some(info) => info,
+            None => {
+                return Ok(Response::new()
+                    .add_attribute("method", "ack_collect_concentrated_fees_idempotent")
+                    .add_attribute("tx_id", tx_id)
+                    .add_attribute("sender", sender));
+            }
+        };
+    PENDING_CONCENTRATED_COLLECT_FEES.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            ensure!(
+                data.pool_key == collect_info.pool_key,
+                ContractError::new("Pool key mismatch")
+            );
+            ensure!(
+                data.position_id.u128() == collect_info.position_id,
+                ContractError::new("Position id mismatch")
+            );
+
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_fees")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", data.position_id)
+                .add_attribute("amount_0", data.amount_0)
+                .add_attribute("amount_1", data.amount_1))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_fees_error")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", collect_info.position_id.to_string())
+                .add_attribute("error", err))
+        }
+    }
+}
+
+fn ack_collect_concentrated_protocol_fees(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedCollectProtocolFeesResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let collect_info = match PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES
+        .may_load(deps.storage, req_key.clone())?
+    {
+        Some(info) => info,
+        None => {
+            return Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_protocol_fees_idempotent")
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("sender", sender));
+        }
+    };
+    PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            ensure!(
+                data.pool_key == collect_info.pool_key,
+                ContractError::new("Pool key mismatch")
+            );
+
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_protocol_fees")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("amount_0", data.amount_0)
+                .add_attribute("amount_1", data.amount_1))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_protocol_fees_error")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
                 .add_attribute("error", err))
         }
     }

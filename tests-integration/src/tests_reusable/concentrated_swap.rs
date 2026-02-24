@@ -221,3 +221,87 @@ fn test_swap_explicit_fee_tier_routing(
         "lower fee tier should return more output for same reserves",
     );
 }
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_larger_swap_has_worse_effective_price(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 40_000, 40_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
+
+    let vlp_address = router
+        .get_vlp_by_pool_key(pool_key)
+        .unwrap()
+        .vlp;
+    let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
+    let small_in = Uint128::new(1_000);
+    let large_in = Uint128::new(5_000);
+
+    let small: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
+        .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
+            asset: token_a.token.clone(),
+            asset_amount: small_in,
+            swaps: vec![],
+        }))
+        .unwrap();
+    let large: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
+        .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
+            asset: token_a.token.clone(),
+            asset_amount: large_in,
+            swaps: vec![],
+        }))
+        .unwrap();
+
+    assert!(small.amount_out > Uint128::zero());
+    assert!(large.amount_out > Uint128::zero());
+
+    let small_effective_numerator = small.amount_out.u128() * large_in.u128();
+    let large_effective_numerator = large.amount_out.u128() * small_in.u128();
+    assert!(
+        small_effective_numerator > large_effective_numerator,
+        "larger trades should receive a worse effective price due to curve impact",
+    );
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_round_trip_swap_loses_value(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 40_000, 40_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
+
+    let amount_in = Uint128::new(2_000);
+    let amount_out = execute_concentrated_swap(
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_a.clone(),
+        token_b.token.clone(),
+        amount_in,
+    );
+    assert!(amount_out > Uint128::zero());
+
+    let amount_back = execute_concentrated_swap(
+        &factory,
+        &router,
+        pool_key,
+        token_b.clone(),
+        token_a.token.clone(),
+        amount_out,
+    );
+
+    assert!(
+        amount_back < amount_in,
+        "round-trip should lose value from swap fees/price impact",
+    );
+}

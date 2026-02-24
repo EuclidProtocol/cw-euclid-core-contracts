@@ -1,8 +1,9 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Int256, Uint512};
+use cosmwasm_std::{Addr, Int256, Uint128, Uint512};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
     fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
@@ -140,6 +141,31 @@ pub const PENDING_CONCENTRATED_REMOVE_LIQUIDITY: Map<
     (Addr, String),
     ConcentratedRemoveLiquidityRequest,
 > = Map::new("pending_concentrated_remove_liquidity");
+
+#[cw_serde]
+pub struct ConcentratedCollectFeesRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pool_key: PoolKey,
+    pub position_id: u128,
+    pub recipient: CrossChainUser,
+}
+pub const PENDING_CONCENTRATED_COLLECT_FEES: Map<(Addr, String), ConcentratedCollectFeesRequest> =
+    Map::new("pending_concentrated_collect_fees");
+
+#[cw_serde]
+pub struct ConcentratedCollectProtocolFeesRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pool_key: PoolKey,
+    pub recipient: CrossChainUser,
+    pub amount_0_requested: Uint128,
+    pub amount_1_requested: Uint128,
+}
+pub const PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES: Map<
+    (Addr, String),
+    ConcentratedCollectProtocolFeesRequest,
+> = Map::new("pending_concentrated_collect_protocol_fees");
 
 pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
     Map::new("pending_deposit_token");

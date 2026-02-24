@@ -11,7 +11,7 @@ use euclid::{
             QueryTokenDenomsResponse, ReleaseFee, ReleaseFeesQueryResponse, SimulateSwapResponse,
             StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
         },
-        vlp::base::{PoolKey, VlpSimulateSwapMsg},
+        vlp::base::{PoolKey, PoolType, VlpSimulateSwapMsg},
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -184,7 +184,24 @@ pub fn validate_swap_pairs(
         .iter()
         .map(|swap| -> Result<_, ContractError> {
             let pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
-            let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
+            let vlp_address = if let Some(pool_key) = &swap.pool_key {
+                ensure!(
+                    matches!(pool_key.pool_type, PoolType::Concentrated { .. }),
+                    ContractError::new("pool_key must reference a concentrated pool")
+                );
+                ensure!(
+                    pair.get_tupple() == pool_key.pair.get_tupple(),
+                    ContractError::new("swap hop tokens do not match pool_key pair")
+                );
+
+                let key = pool_key_to_map_key(pool_key);
+                CONCENTRATED_VLPS
+                    .load(deps.storage, key)
+                    .map_err(|_| ContractError::new("concentrated pool for provided pool_key is not registered"))?
+            } else {
+                VLPS.load(deps.storage, pair.get_tupple())?
+            };
+
             Ok(NextSwapVlp {
                 vlp_address: vlp_address.to_string(),
                 test_fail: swap.test_fail,

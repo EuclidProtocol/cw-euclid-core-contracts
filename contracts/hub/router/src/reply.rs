@@ -6,13 +6,15 @@ use euclid::{
     error::ContractError,
     events::{simple_event, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT},
     liquidity::{
-        AddLiquidityResponse, ConcentratedAddLiquidityResponse, ConcentratedRemoveLiquidityResponse,
+        AddLiquidityResponse, ConcentratedAddLiquidityResponse, ConcentratedCollectFeesResponse,
+        ConcentratedCollectProtocolFeesResponse, ConcentratedRemoveLiquidityResponse,
         RemoveLiquidityResponse,
     },
     msgs::{
         self,
         vlp::base::{
             ConcentratedPoolCreationResponse, VlpConcentratedAddLiquidityResponse,
+            VlpConcentratedCollectFeesResponse, VlpConcentratedCollectProtocolFeesResponse,
             VlpConcentratedRemoveLiquidityResponse, PoolCreationResponse, VlpRemoveLiquidityResponse,
             VlpSwapResponse,
         },
@@ -34,6 +36,7 @@ use crate::{
     },
     state::{
         pool_key_to_map_key, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, FUNDS_INFO,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS,
         VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
@@ -44,6 +47,7 @@ pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
 pub const ADD_LIQUIDITY_REPLY_ID: u64 = 3;
 pub const REMOVE_LIQUIDITY_REPLY_ID: u64 = 4;
 pub const SWAP_REPLY_ID: u64 = 5;
+pub const COLLECT_CONCENTRATED_REPLY_ID: u64 = 9;
 
 pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
@@ -312,6 +316,7 @@ pub fn on_remove_liquidity_reply(
                     position_id: vlp_liquidity_response.position_id,
                     liquidity_removed: vlp_liquidity_response.liquidity_released,
                     liquidity_delta: vlp_liquidity_response.liquidity_delta,
+                    liquidity_after: vlp_liquidity_response.liquidity_after,
                     burn_lp_tokens: vlp_liquidity_response.liquidity_delta,
                     vlp_address: vlp_liquidity_response.vlp_address,
                     tx_id: vlp_liquidity_response.tx_id,
@@ -346,6 +351,84 @@ pub fn on_remove_liquidity_reply(
                 .add_attribute("liquidity", format!("{liquidity_response:?}"))
                 .add_attribute("lp_burned", liquidity_response.burn_lp_tokens.to_string())
                 .set_data(to_json_binary(&ack)?))
+        }
+    }
+}
+
+#[named]
+pub fn on_collect_concentrated_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
+        SubMsgResult::Ok(..) => {
+            let response = Response::new().add_attribute("action", "reply_collect_concentrated");
+
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
+            let execute_data =
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+            let data = execute_data.data.unwrap_or_default();
+
+            if let Ok(vlp_collect_response) = from_json::<VlpConcentratedCollectFeesResponse>(data.clone()) {
+                let req_key = PENDING_CONCENTRATED_COLLECT_FEES.key(vlp_collect_response.tx_id.clone());
+                let _req = req_key.load(deps.storage)?;
+                req_key.remove(deps.storage);
+
+                let collect_response = ConcentratedCollectFeesResponse {
+                    pool_key: vlp_collect_response.pool_key,
+                    position_id: vlp_collect_response.position_id,
+                    amount_0: vlp_collect_response.amount_0,
+                    amount_1: vlp_collect_response.amount_1,
+                    vlp_address: vlp_collect_response.vlp_address,
+                    tx_id: vlp_collect_response.tx_id,
+                    sender: vlp_collect_response.sender,
+                    recipient: vlp_collect_response.recipient,
+                };
+                let ack = AcknowledgementMsg::Ok(collect_response.clone());
+
+                return Ok(response
+                    .add_attribute("collect_type", "position_fees")
+                    .add_attribute("amount_0", collect_response.amount_0)
+                    .add_attribute("amount_1", collect_response.amount_1)
+                    .set_data(to_json_binary(&ack)?));
+            }
+
+            if let Ok(vlp_collect_response) =
+                from_json::<VlpConcentratedCollectProtocolFeesResponse>(data.clone())
+            {
+                let req_key =
+                    PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.key(vlp_collect_response.tx_id.clone());
+                let _req = req_key.load(deps.storage)?;
+                req_key.remove(deps.storage);
+
+                let collect_response = ConcentratedCollectProtocolFeesResponse {
+                    pool_key: vlp_collect_response.pool_key,
+                    amount_0: vlp_collect_response.amount_0,
+                    amount_1: vlp_collect_response.amount_1,
+                    vlp_address: vlp_collect_response.vlp_address,
+                    tx_id: vlp_collect_response.tx_id,
+                    sender: vlp_collect_response.sender,
+                    recipient: vlp_collect_response.recipient,
+                };
+                let ack = AcknowledgementMsg::Ok(collect_response.clone());
+
+                return Ok(response
+                    .add_attribute("collect_type", "protocol_fees")
+                    .add_attribute("amount_0", collect_response.amount_0)
+                    .add_attribute("amount_1", collect_response.amount_1)
+                    .set_data(to_json_binary(&ack)?));
+            }
+
+            Err(ContractError::new(
+                "invalid concentrated collect reply payload",
+            ))
         }
     }
 }

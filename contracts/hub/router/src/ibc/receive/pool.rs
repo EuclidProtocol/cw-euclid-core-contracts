@@ -12,6 +12,7 @@ use euclid::{
         vlp::concentrated::msg::ExecuteMsg as ConcentratedVlpExecuteMsg,
         vlp::base::{
             PoolConfig, PoolKey, PoolType, VlpAddLiquidityMsg, VlpConcentratedAddLiquidityMsg,
+            VlpConcentratedCollectFeesMsg, VlpConcentratedCollectProtocolFeesMsg,
             VlpConcentratedRegisterPoolMsg, VlpConcentratedRemoveLiquidityMsg, VlpRegisterPoolMsg,
             VlpRemoveLiquidityMsg,
         },
@@ -21,19 +22,22 @@ use euclid::{
 };
 use euclid_ibc::router_ibc::{
     RouterCrossChainConcentratedAddLiquidityExecuteMsg,
+    RouterCrossChainConcentratedCollectFeesExecuteMsg,
+    RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
     RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
     RouterCrossChainRemoveLiquidityExecuteMsg,
 };
 
 use crate::{
     reply::{
-        ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
+        ADD_LIQUIDITY_REPLY_ID, COLLECT_CONCENTRATED_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
         VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
         pool_key_to_map_key, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, ESCROW_BALANCES, FEE_STATE,
-        FUNDS_INFO, PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, STATE,
-        TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+        FUNDS_INFO, PENDING_CONCENTRATED_COLLECT_FEES,
+        PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
+        PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
 
@@ -60,6 +64,16 @@ fn validate_concentrated_fee_and_spacing(
         )
     );
     Ok(())
+}
+
+fn default_aligned_tick_bounds(tick_spacing: u64) -> (i64, i64) {
+    const MIN_TICK: i64 = -887_272;
+    const MAX_TICK: i64 = 887_272;
+    let spacing = tick_spacing as i64;
+    let lower = (MIN_TICK / spacing) * spacing;
+    let lower = if lower < MIN_TICK { lower + spacing } else { lower };
+    let upper = (MAX_TICK / spacing) * spacing;
+    (lower, upper)
 }
 
 pub fn ibc_execute_request_pool_creation(
@@ -159,14 +173,19 @@ pub fn ibc_execute_request_pool_creation(
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     if let Some(pool_key) = concentrated_pool_key {
+        let tick_spacing = match pool_key.pool_type {
+            PoolType::Concentrated { tick_spacing, .. } => tick_spacing,
+            _ => 1,
+        };
+        let (lower_tick_index, upper_tick_index) = default_aligned_tick_bounds(tick_spacing);
         CONCENTRATED_FUNDS_INFO.save(
             deps.storage,
             &crate::state::ConcentratedFundsInfo {
                 pair_with_denom: pair_with_denom.clone(),
                 slippage_tolerance_bps,
                 pool_key: pool_key.clone(),
-                lower_tick_index: -1_000_000,
-                upper_tick_index: 1_000_000,
+                lower_tick_index,
+                upper_tick_index,
                 position_id: None,
             },
         )?;
@@ -563,7 +582,7 @@ pub fn ibc_execute_remove_concentrated_liquidity(
             sender: msg.sender,
             pool_key: msg.pool_key,
             position_id: msg.position_id,
-            lp_allocation: msg.lp_allocation,
+            liquidity_delta: msg.lp_allocation,
             tx_id: msg.tx_id,
         });
 
@@ -573,4 +592,85 @@ pub fn ibc_execute_remove_concentrated_liquidity(
         funds: vec![],
     };
     Ok(response.add_submessage(SubMsg::reply_always(exec_msg, REMOVE_LIQUIDITY_REPLY_ID)))
+}
+
+pub fn ibc_execute_collect_concentrated_fees(
+    deps: DepsMut,
+    _env: Env,
+    msg: RouterCrossChainConcentratedCollectFeesExecuteMsg,
+) -> Result<Response, ContractError> {
+    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, pool_key_to_map_key(&msg.pool_key))?;
+    let response = Response::new()
+        .add_event(tx_event(
+            &msg.tx_id,
+            &msg.sender.to_sender_string(),
+            TxType::TransferVoucher,
+        ))
+        .add_attribute("tx_id", msg.tx_id.clone());
+
+    let req_key = PENDING_CONCENTRATED_COLLECT_FEES.key(msg.tx_id.clone());
+    ensure!(
+        !req_key.has(deps.storage),
+        ContractError::new("tx already present")
+    );
+    req_key.save(deps.storage, &msg.clone())?;
+
+    let collect_msg = ConcentratedVlpExecuteMsg::CollectFees(VlpConcentratedCollectFeesMsg {
+        sender: msg.sender,
+        tx_id: msg.tx_id,
+        pool_key: msg.pool_key,
+        position_id: msg.position_id,
+        recipient: msg.recipient,
+    });
+    let exec_msg = WasmMsg::Execute {
+        contract_addr: vlp_address.to_string(),
+        msg: to_json_binary(&collect_msg)?,
+        funds: vec![],
+    };
+    Ok(response.add_submessage(SubMsg::reply_always(
+        exec_msg,
+        COLLECT_CONCENTRATED_REPLY_ID,
+    )))
+}
+
+pub fn ibc_execute_collect_concentrated_protocol_fees(
+    deps: DepsMut,
+    _env: Env,
+    msg: RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
+) -> Result<Response, ContractError> {
+    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, pool_key_to_map_key(&msg.pool_key))?;
+    let response = Response::new()
+        .add_event(tx_event(
+            &msg.tx_id,
+            &msg.sender.to_sender_string(),
+            TxType::TransferVoucher,
+        ))
+        .add_attribute("tx_id", msg.tx_id.clone());
+
+    let req_key = PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.key(msg.tx_id.clone());
+    ensure!(
+        !req_key.has(deps.storage),
+        ContractError::new("tx already present")
+    );
+    req_key.save(deps.storage, &msg.clone())?;
+
+    let collect_msg = ConcentratedVlpExecuteMsg::CollectProtocolFees(
+        VlpConcentratedCollectProtocolFeesMsg {
+            sender: msg.sender,
+            tx_id: msg.tx_id,
+            pool_key: msg.pool_key,
+            recipient: msg.recipient,
+            amount_0_requested: msg.amount_0_requested,
+            amount_1_requested: msg.amount_1_requested,
+        },
+    );
+    let exec_msg = WasmMsg::Execute {
+        contract_addr: vlp_address.to_string(),
+        msg: to_json_binary(&collect_msg)?,
+        funds: vec![],
+    };
+    Ok(response.add_submessage(SubMsg::reply_always(
+        exec_msg,
+        COLLECT_CONCENTRATED_REPLY_ID,
+    )))
 }

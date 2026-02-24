@@ -6,6 +6,7 @@ use euclid::msgs::vlp::concentrated::msg::QueryMsg as ConcentratedQueryMsg;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use rstest::rstest;
+use std::collections::HashSet;
 
 use crate::helpers::chains::get_concentrated_vlp;
 use crate::helpers::factory::{
@@ -84,13 +85,24 @@ fn test_increase_liquidity_updates_same_position(
     let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
     let initial_position_id = first_position_id(&factory);
+    let vlp_address = router
+        .get_vlp_by_pool_key(pool_key.clone())
+        .unwrap()
+        .vlp;
+    let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
+    let initial_position: euclid::msgs::vlp::concentrated::msg::PositionResponse = vlp
+        .query(&ConcentratedQueryMsg::Position {
+            position_id: initial_position_id,
+        })
+        .unwrap();
+
     add_concentrated_liquidity(
         &factory,
         &router,
         pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
         pool_key,
-        -120,
-        120,
+        initial_position.lower_tick_index,
+        initial_position.upper_tick_index,
         Some(initial_position_id),
         100,
     )
@@ -182,4 +194,66 @@ fn test_only_owner_can_modify_or_collect() {
         !remove_err.to_string().is_empty(),
         "expected unauthorized remove liquidity to fail",
     );
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+#[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
+fn test_multiple_positions_different_ranges_are_independent(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
+
+    let first_ids = list_position_ids(&factory).unwrap();
+    assert_eq!(first_ids.len(), 1);
+    let first_id = Uint128::new(first_ids[0].parse::<u128>().unwrap());
+
+    let lp_before_second = pool_lp_shares(&factory, &router, pool_key.clone());
+    add_concentrated_liquidity(
+        &factory,
+        &router,
+        // Current tick is centered around 0 after pool creation.
+        // This range is entirely below spot, so one side will be mostly unused.
+        pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+        pool_key.clone(),
+        -240,
+        -120,
+        None,
+        10_000,
+    )
+    .unwrap();
+    let lp_after_second = pool_lp_shares(&factory, &router, pool_key.clone());
+    let second_position_liquidity = lp_after_second.checked_sub(lp_before_second).unwrap();
+    assert!(
+        second_position_liquidity > Uint128::zero(),
+        "second range should mint non-zero liquidity",
+    );
+
+    let second_ids = list_position_ids(&factory).unwrap();
+    assert_eq!(second_ids.len(), 2, "adding with None position_id should mint a new NFT");
+
+    let first_id_set: HashSet<&str> = first_ids.iter().map(String::as_str).collect();
+    let second_id = second_ids
+        .iter()
+        .find(|id| !first_id_set.contains(id.as_str()))
+        .expect("must contain a newly minted position id");
+    let second_id = Uint128::new(second_id.parse::<u128>().unwrap());
+
+    remove_concentrated_liquidity(
+        &factory,
+        &router,
+        pool_key,
+        second_id,
+        second_position_liquidity,
+    )
+    .unwrap();
+
+    let final_ids = list_position_ids(&factory).unwrap();
+    assert_eq!(final_ids.len(), 1, "removing second position should not remove first");
+    assert_eq!(final_ids[0], first_id.to_string());
 }

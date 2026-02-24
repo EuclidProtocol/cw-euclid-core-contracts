@@ -5,16 +5,17 @@ use euclid::{
     events::{simple_event, swap_event, tx_event},
     fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     msgs::cross_chain_config::CrossChainConfig,
+    msgs::vlp::base::PoolType,
     recipient::Recipient,
     swap::{NextSwapPair, SwapRequest},
-    token::{Token, TokenType, TokenWithDenom},
+    token::{Pair, Token, TokenType, TokenWithDenom},
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::router_ibc::{RouterCrossChainExecuteMsg, RouterCrossChainSwapExecuteMsg};
 
 use crate::{
     query::get_chain_type,
-    state::{PENDING_SWAPS, STATE, TOKEN_TO_ESCROW},
+    state::{pool_key_to_map_key, POOL_KEY_TO_VLP, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW},
 };
 
 pub fn execute_swap_request(
@@ -117,6 +118,24 @@ pub fn execute_swap_request(
         last_swap.token_out == asset_out,
         ContractError::new("Token out doesn't match swap route")
     );
+
+    for swap in &swaps {
+        if let Some(pool_key) = &swap.pool_key {
+            ensure!(
+                matches!(pool_key.pool_type, PoolType::Concentrated { .. }),
+                ContractError::new("swap hop pool_key must be concentrated")
+            );
+            let hop_pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
+            ensure!(
+                hop_pair.get_tupple() == pool_key.pair.get_tupple(),
+                ContractError::new("swap hop tokens do not match pool_key pair")
+            );
+            ensure!(
+                POOL_KEY_TO_VLP.has(deps.storage, pool_key_to_map_key(pool_key)),
+                ContractError::new("swap hop concentrated pool_key is not registered on factory")
+            );
+        }
+    }
 
     let partner_fee_recipient = partner_fee
         .clone()

@@ -1,19 +1,22 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use cosmwasm_std::Uint128;
 use cw_orch::prelude::*;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
+use euclid::swap::NextSwapPair;
 use euclid::token::{Token, TokenType, TokenWithDenom};
 use rstest::rstest;
 
-use crate::helpers::factory::{faucet, get_position_token};
+use crate::helpers::factory::{add_concentrated_liquidity, create_concentrated_pool, faucet, get_position_token};
 use crate::helpers::relayer::{
     extract_ack_packet_events, relay_factory_ack_packet, relay_factory_send_packet,
     relay_factory_router_factory,
 };
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
-use crate::tests_reusable::constants::FACTORY_CHAIN_ID_IBC;
+use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
 use crate::tests_reusable::factory_register::FactorySetupMode;
+use crate::tests_reusable::factory_swap::swap_request;
 
 #[test]
 fn test_no_ack_does_not_finalize_position() {
@@ -199,4 +202,129 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
 
     assert_eq!(tokens_after_first, tokens_after_second);
     assert_eq!(pools_after_first, pools_after_second);
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_add_liquidity_invalid_tick_range_rejected(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
+
+    let err_equal = add_concentrated_liquidity(
+        &factory,
+        &router,
+        pair.clone(),
+        pool_key.clone(),
+        120,
+        120,
+        None,
+        100,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        !err_equal.is_empty(),
+        "expected add liquidity to fail when lower_tick_index == upper_tick_index",
+    );
+
+    let err_reversed = add_concentrated_liquidity(
+        &factory, &router, pair, pool_key, 120, -120, None, 100,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        !err_reversed.is_empty(),
+        "expected add liquidity to fail when lower_tick_index > upper_tick_index",
+    );
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_add_liquidity_misaligned_tick_spacing_rejected(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
+
+    let err = add_concentrated_liquidity(&factory, &router, pair, pool_key, -125, 125, None, 100)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        !err.is_empty(),
+        "expected add liquidity with non-aligned ticks to fail",
+    );
+}
+
+#[test]
+fn test_concentrated_swap_rejects_zero_amount() {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL);
+    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
+
+    let err = swap_request(
+        &factory,
+        &router,
+        token_a.clone(),
+        token_b.token.clone(),
+        Uint128::zero(),
+        Uint128::one(),
+        vec![NextSwapPair {
+            token_in: token_a.token.clone(),
+            token_out: token_b.token.clone(),
+            pool_key: Some(pool_key),
+            test_fail: None,
+        }],
+        vec![],
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        !err.is_empty(),
+        "expected concentrated swap with zero amount to fail",
+    );
+}
+
+#[test]
+fn test_concentrated_swap_rejects_unreachable_min_amount_out() {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL);
+    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
+
+    let err = swap_request(
+        &factory,
+        &router,
+        token_a.clone(),
+        token_b.token.clone(),
+        Uint128::new(1_000),
+        Uint128::new(1_000_000_000),
+        vec![NextSwapPair {
+            token_in: token_a.token.clone(),
+            token_out: token_b.token.clone(),
+            pool_key: Some(pool_key),
+            test_fail: None,
+        }],
+        vec![],
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        !err.is_empty(),
+        "expected concentrated swap to fail when min_amount_out is unreachable",
+    );
 }

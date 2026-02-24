@@ -7,13 +7,17 @@ use euclid::{
     fee::BPS_100_PERCENT,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::{
-        cross_chain_config::CrossChainConfig, escrow::AllowedTokenResponse, vlp::base::PoolConfig,
+        cross_chain_config::CrossChainConfig,
+        escrow::AllowedTokenResponse,
+        vlp::base::{PoolConfig, PoolType},
     },
     token::{Pair, PairWithDenomAndAmount, TokenType},
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::router_ibc::{
     RouterCrossChainConcentratedAddLiquidityExecuteMsg,
+    RouterCrossChainConcentratedCollectFeesExecuteMsg,
+    RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
     RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
     RouterCrossChainConcentratedRequestPoolCreationExecuteMsg,
     RouterCrossChainExecuteMsg, RouterCrossChainRemoveLiquidityExecuteMsg,
@@ -22,12 +26,13 @@ use euclid_ibc::router_ibc::{
 use crate::{
     query::get_chain_type,
     state::{
-        pool_key_to_map_key, ConcentratedAddLiquidityRequest, ConcentratedPoolCreateRequest,
-        ConcentratedRemoveLiquidityRequest, PAIR_TO_VLP, POOL_KEY_TO_VLP,
-        POSITION_ID_TO_METADATA, PoolCreateRequest, PENDING_ADD_LIQUIDITY,
-        PENDING_CONCENTRATED_ADD_LIQUIDITY, PENDING_CONCENTRATED_POOL_REQUESTS,
-        PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY,
-        STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+        pool_key_to_map_key, ConcentratedAddLiquidityRequest, ConcentratedCollectFeesRequest,
+        ConcentratedCollectProtocolFeesRequest, ConcentratedPoolCreateRequest,
+        ConcentratedRemoveLiquidityRequest, PAIR_TO_VLP, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA,
+        PoolCreateRequest, PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
+        PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
+        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -545,9 +550,25 @@ pub fn add_concentrated_liquidity_request(
         lower_tick_index < upper_tick_index,
         ContractError::new("Invalid tick range")
     );
+    let tick_spacing = match pool_key.pool_type {
+        PoolType::Concentrated { tick_spacing, .. } => tick_spacing,
+        _ => return Err(ContractError::new("Pool key must be concentrated")),
+    };
+    ensure!(tick_spacing > 0, ContractError::new("Invalid tick spacing"));
+    let tick_spacing_i64 =
+        i64::try_from(tick_spacing).map_err(|_| ContractError::new("Invalid tick spacing"))?;
+    ensure!(
+        lower_tick_index.rem_euclid(tick_spacing_i64) == 0
+            && upper_tick_index.rem_euclid(tick_spacing_i64) == 0,
+        ContractError::new("Tick indexes must align with pool tick spacing")
+    );
     ensure!(
         (1..=BPS_100_PERCENT).contains(&slippage_tolerance_bps),
         ContractError::InvalidSlippageTolerance {}
+    );
+    ensure!(
+        pair_info.get_pair()?.get_tupple() == pool_key.pair.get_tupple(),
+        ContractError::new("Pair does not match pool key")
     );
 
     let state = STATE.load(deps.storage)?;
@@ -731,4 +752,151 @@ pub fn remove_concentrated_liquidity_request(
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "remove_concentrated_liquidity_request")
         .add_submessage(remove_msg))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn collect_concentrated_fees_request(
+    deps: &mut DepsMut,
+    info: MessageInfo,
+    env: Env,
+    pool_key: euclid::msgs::vlp::base::PoolKey,
+    position_id: Uint128,
+    recipient: CrossChainUser,
+    cross_chain_config: CrossChainConfig,
+) -> Result<Response, ContractError> {
+    recipient.validate()?;
+
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
+    let sender_addr = deps.api.addr_validate(&sender.address)?;
+    let tx_id = generate_tx(deps, &env, &sender)?;
+
+    ensure!(
+        !PENDING_CONCENTRATED_COLLECT_FEES.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    ensure!(
+        POOL_KEY_TO_VLP.has(deps.storage, pool_key_to_map_key(&pool_key)),
+        ContractError::PoolDoesNotExist {}
+    );
+
+    if let Some(position_meta) = POSITION_ID_TO_METADATA.may_load(deps.storage, position_id.u128())? {
+        ensure!(position_meta.owner == info.sender, ContractError::Unauthorized {});
+        ensure!(
+            position_meta.pool_key == pool_key,
+            ContractError::new("Pool key mismatch")
+        );
+    }
+
+    let req = ConcentratedCollectFeesRequest {
+        tx_id: tx_id.clone(),
+        sender: sender_addr.clone(),
+        pool_key: pool_key.clone(),
+        position_id: position_id.u128(),
+        recipient: recipient.clone(),
+    };
+    PENDING_CONCENTRATED_COLLECT_FEES.save(deps.storage, (sender_addr.clone(), tx_id.clone()), &req)?;
+
+    let chain_type = get_chain_type(deps.as_ref(), &env)?;
+    let collect_msg = RouterCrossChainExecuteMsg::CollectConcentratedFees(
+        RouterCrossChainConcentratedCollectFeesExecuteMsg {
+            sender,
+            pool_key,
+            position_id,
+            recipient,
+            tx_id: tx_id.clone(),
+        },
+    )
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        sender_addr.clone(),
+        state.chain_uid,
+        chain_type,
+        cross_chain_config.timeout,
+        cross_chain_config.ack_response,
+    )?;
+
+    Ok(Response::new()
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "collect_concentrated_fees_request")
+        .add_submessage(collect_msg))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn collect_concentrated_protocol_fees_request(
+    deps: &mut DepsMut,
+    info: MessageInfo,
+    env: Env,
+    pool_key: euclid::msgs::vlp::base::PoolKey,
+    recipient: CrossChainUser,
+    amount_0_requested: Uint128,
+    amount_1_requested: Uint128,
+    cross_chain_config: CrossChainConfig,
+) -> Result<Response, ContractError> {
+    recipient.validate()?;
+    ensure!(
+        !(amount_0_requested.is_zero() && amount_1_requested.is_zero()),
+        ContractError::ZeroAssetAmount {}
+    );
+
+    let state = STATE.load(deps.storage)?;
+    let admin = deps.api.addr_validate(&state.admin)?;
+    ensure!(info.sender == admin, ContractError::Unauthorized {});
+
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
+    let sender_addr = deps.api.addr_validate(&sender.address)?;
+    let tx_id = generate_tx(deps, &env, &sender)?;
+
+    ensure!(
+        !PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES
+            .has(deps.storage, (sender_addr.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    ensure!(
+        POOL_KEY_TO_VLP.has(deps.storage, pool_key_to_map_key(&pool_key)),
+        ContractError::PoolDoesNotExist {}
+    );
+
+    let req = ConcentratedCollectProtocolFeesRequest {
+        tx_id: tx_id.clone(),
+        sender: sender_addr.clone(),
+        pool_key: pool_key.clone(),
+        recipient: recipient.clone(),
+        amount_0_requested,
+        amount_1_requested,
+    };
+    PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.save(
+        deps.storage,
+        (sender_addr.clone(), tx_id.clone()),
+        &req,
+    )?;
+
+    let chain_type = get_chain_type(deps.as_ref(), &env)?;
+    let collect_msg = RouterCrossChainExecuteMsg::CollectConcentratedProtocolFees(
+        RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg {
+            sender,
+            pool_key,
+            recipient,
+            amount_0_requested,
+            amount_1_requested,
+            tx_id: tx_id.clone(),
+        },
+    )
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        sender_addr.clone(),
+        state.chain_uid,
+        chain_type,
+        cross_chain_config.timeout,
+        cross_chain_config.ack_response,
+    )?;
+
+    Ok(Response::new()
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "collect_concentrated_protocol_fees_request")
+        .add_submessage(collect_msg))
 }

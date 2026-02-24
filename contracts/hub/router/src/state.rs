@@ -8,6 +8,8 @@ use euclid::{
     token::{PairWithDenomAndAmount, Token},
 };
 use euclid_ibc::router_ibc::{
+    RouterCrossChainConcentratedCollectFeesExecuteMsg,
+    RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
     RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
     RouterCrossChainRemoveLiquidityExecuteMsg, RouterCrossChainSwapExecuteMsg,
 };
@@ -64,6 +66,14 @@ pub const PENDING_CONCENTRATED_REMOVE_LIQUIDITY: Map<
     String,
     RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
 > = Map::new("pending_concentrated_remove_liquidity");
+pub const PENDING_CONCENTRATED_COLLECT_FEES: Map<
+    String,
+    RouterCrossChainConcentratedCollectFeesExecuteMsg,
+> = Map::new("pending_concentrated_collect_fees");
+pub const PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES: Map<
+    String,
+    RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
+> = Map::new("pending_concentrated_collect_protocol_fees");
 
 #[cw_serde]
 pub struct ConcentratedFundsInfo {

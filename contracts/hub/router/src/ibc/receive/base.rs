@@ -7,6 +7,8 @@ use crate::{
     ibc::receive::{
         pool::{
             ibc_execute_add_concentrated_liquidity, ibc_execute_add_liquidity,
+            ibc_execute_collect_concentrated_fees,
+            ibc_execute_collect_concentrated_protocol_fees,
             ibc_execute_remove_concentrated_liquidity, ibc_execute_remove_liquidity,
             ibc_execute_request_concentrated_pool_creation, ibc_execute_request_pool_creation,
         },
@@ -144,6 +146,20 @@ pub fn reusable_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
             ibc_execute_remove_concentrated_liquidity(deps.branch(), env, msg)?
+        }
+        RouterCrossChainExecuteMsg::CollectConcentratedFees(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            ibc_execute_collect_concentrated_fees(deps.branch(), env, msg)?
+        }
+        RouterCrossChainExecuteMsg::CollectConcentratedProtocolFees(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            ibc_execute_collect_concentrated_protocol_fees(deps.branch(), env, msg)?
         }
         RouterCrossChainExecuteMsg::Swap(msg) => {
             ensure!(

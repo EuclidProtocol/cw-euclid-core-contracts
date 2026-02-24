@@ -243,6 +243,7 @@ mod tests {
             .map(|w| NextSwapPair {
                 token_in: w[0].token.clone(),
                 token_out: w[1].token.clone(),
+                pool_key: None,
                 test_fail: None,
             })
             .collect();

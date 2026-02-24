@@ -3,7 +3,8 @@ use crate::{
     cross_chain_user::CrossChainUser,
     fee::{DenomFees, PartnerFee},
     liquidity::{
-        AddLiquidityRequest, ConcentratedAddLiquidityResponse, ConcentratedRemoveLiquidityResponse,
+        AddLiquidityRequest, ConcentratedAddLiquidityResponse, ConcentratedCollectFeesResponse,
+        ConcentratedCollectProtocolFeesResponse, ConcentratedRemoveLiquidityResponse,
         RemoveLiquidityRequest,
     },
     msgs::vlp::base::{PoolConfig, PoolKey},
@@ -99,6 +100,19 @@ pub enum ExecuteMsg {
         position_id: Uint128,
         lp_allocation: Uint128,
         recipient: CrossChainUser,
+        cross_chain_config: CrossChainConfig,
+    },
+    CollectConcentratedFees {
+        pool_key: PoolKey,
+        position_id: Uint128,
+        recipient: CrossChainUser,
+        cross_chain_config: CrossChainConfig,
+    },
+    CollectConcentratedProtocolFees {
+        pool_key: PoolKey,
+        recipient: CrossChainUser,
+        amount_0_requested: Uint128,
+        amount_1_requested: Uint128,
         cross_chain_config: CrossChainConfig,
     },
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
@@ -345,6 +359,20 @@ pub struct RemoveConcentratedLiquidityMsgResponse {
     pub tx_id: String,
     pub sender: CrossChainUser,
     pub response: ConcentratedRemoveLiquidityResponse,
+}
+
+#[cw_serde]
+pub struct CollectConcentratedFeesMsgResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub response: ConcentratedCollectFeesResponse,
+}
+
+#[cw_serde]
+pub struct CollectConcentratedProtocolFeesMsgResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub response: ConcentratedCollectProtocolFeesResponse,
 }
 
 #[cw_serde]

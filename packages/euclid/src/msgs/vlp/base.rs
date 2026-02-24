@@ -93,7 +93,27 @@ pub struct VlpConcentratedRemoveLiquidityMsg {
     pub tx_id: String,
     pub pool_key: PoolKey,
     pub position_id: Uint128,
-    pub lp_allocation: Uint128,
+    #[serde(alias = "lp_allocation")]
+    pub liquidity_delta: Uint128,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedCollectFeesMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub recipient: CrossChainUser,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedCollectProtocolFeesMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pool_key: PoolKey,
+    pub recipient: CrossChainUser,
+    pub amount_0_requested: Uint128,
+    pub amount_1_requested: Uint128,
 }
 
 #[cw_serde]
@@ -170,11 +190,35 @@ pub struct VlpConcentratedAddLiquidityResponse {
 pub struct VlpConcentratedRemoveLiquidityResponse {
     pub liquidity_released: PairWithAmount,
     pub liquidity_delta: Uint128,
+    pub liquidity_after: Uint128,
     pub position_id: Uint128,
     pub tx_id: String,
     pub sender: CrossChainUser,
     pub vlp_address: String,
     pub pool_key: PoolKey,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedCollectFeesResponse {
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub amount_0: Uint128,
+    pub amount_1: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub recipient: CrossChainUser,
+    pub vlp_address: String,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedCollectProtocolFeesResponse {
+    pub pool_key: PoolKey,
+    pub amount_0: Uint128,
+    pub amount_1: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub recipient: CrossChainUser,
+    pub vlp_address: String,
 }
 
 #[cw_serde]
@@ -225,5 +269,7 @@ pub enum ExecuteMsg {
     AddConcentratedLiquidity(VlpConcentratedAddLiquidityMsg),
     RemoveLiquidity(VlpRemoveLiquidityMsg),
     RemoveConcentratedLiquidity(VlpConcentratedRemoveLiquidityMsg),
+    CollectConcentratedFees(VlpConcentratedCollectFeesMsg),
+    CollectConcentratedProtocolFees(VlpConcentratedCollectProtocolFeesMsg),
     Swap(VlpSwapMsg),
 }

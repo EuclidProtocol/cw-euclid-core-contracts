@@ -97,6 +97,7 @@ fn test_cp_stable_regression_smoke(#[case] mode: FactorySetupMode, #[case] facto
         vec![NextSwapPair {
             token_in: token_a.token.clone(),
             token_out: token_b.token.clone(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],

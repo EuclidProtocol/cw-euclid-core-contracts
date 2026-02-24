@@ -11,7 +11,8 @@ impl<Chain> Uploadable for ConcentratedVlpContract<Chain> {
     fn wrapper() -> Box<dyn MockContract<Empty>> {
         Box::new(
             ContractWrapper::new_with_empty(execute, instantiate, query)
-                .with_reply(crate::contract::reply),
+                .with_reply(crate::contract::reply)
+                .with_migrate(crate::migrate::migrate),
         )
     }
 }
