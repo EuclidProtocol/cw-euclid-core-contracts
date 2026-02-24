@@ -37,7 +37,7 @@ pub fn execute_request_register_denom(
 
     let state = STATE.load(deps.storage)?;
     ensure!(
-        state.admin == info.sender.to_string(),
+        state.admin.general_admin == info.sender,
         ContractError::Unauthorized {}
     );
 
@@ -123,7 +123,7 @@ pub fn execute_request_deregister_denom(
 
     let state = STATE.load(deps.storage)?;
     ensure!(
-        state.admin == info.sender.to_string(),
+        state.admin.general_admin == info.sender,
         ContractError::Unauthorized {}
     );
 

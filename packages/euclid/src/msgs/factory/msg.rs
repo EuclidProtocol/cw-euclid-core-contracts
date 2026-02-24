@@ -1,10 +1,10 @@
 use crate::{
+    admin::{AdminType, EuclidAdmin},
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     fee::{DenomFees, PartnerFee},
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    msgs::vlp::base::PoolConfig,
-    msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive},
+    msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive, vlp::base::PoolConfig},
     recipient::Recipient,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
@@ -112,10 +112,19 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 pub enum ManageFactoryState {
-    UpdateAdmin { admin: String },
-    UpdateEscrowCodeId { escrow_code_id: u64 },
-    UpdateLPCodeId { lp_code_id: u64 },
-    UpdateRelayerAddress { relayer_address: String },
+    UpdateAdmin {
+        admin: String,
+        admin_type: AdminType,
+    },
+    UpdateEscrowCodeId {
+        escrow_code_id: u64,
+    },
+    UpdateLPCodeId {
+        lp_code_id: u64,
+    },
+    UpdateRelayerAddress {
+        relayer_address: String,
+    },
 }
 
 #[cw_serde]
@@ -195,7 +204,7 @@ pub struct StateResponse {
     pub chain_uid: ChainUid,
     pub router_contract: String,
     pub relayer_contract: Addr,
-    pub admin: String,
+    pub admin: EuclidAdmin,
     // Escrow Code ID
     pub escrow_code_id: u64,
     // CW20 Code ID

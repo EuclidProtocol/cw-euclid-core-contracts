@@ -155,7 +155,7 @@ fn ack_pool_creation(
                     // Instantiate escrow if one doesn't exist
                     None => {
                         let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                            admin: Some(state.admin.clone()),
+                            admin: Some(state.admin.migration_admin.clone().into_string()),
                             code_id: escrow_code_id,
                             msg: to_json_binary(&EscrowInstantiateMsg {
                                 token_id: token.clone().token,
@@ -178,7 +178,7 @@ fn ack_pool_creation(
             let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
             // Instantiate cw20
             let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                admin: Some(state.admin.clone()),
+                admin: Some(state.admin.migration_admin.into_string()),
                 code_id: cw20_code_id,
                 msg: to_json_binary(&euclid::msgs::lp_token::msg::InstantiateMsg {
                     name: lp_token_instantiate_data.name,
@@ -282,7 +282,7 @@ fn ack_register_denom(
             } else {
                 // Instantiate escrow
                 let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                    admin: Some(state.admin.clone()),
+                    admin: Some(state.admin.migration_admin.into_string()),
                     code_id: escrow_code_id,
                     msg: to_json_binary(&EscrowInstantiateMsg {
                         token_id: token.token,

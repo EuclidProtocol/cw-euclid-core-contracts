@@ -6,6 +6,7 @@ mod tests {
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
+    use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::msgs::factory::InstantiateMsg;
 
@@ -14,7 +15,7 @@ mod tests {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             router_contract: "router_contract".to_string(),
             relayer_contract: Addr::unchecked("relayer_contract"),
-            admin: "admin".to_string(),
+            admin: EuclidAdmin::default(Addr::unchecked("admin")),
             escrow_code_id: 1,
             lp_code_id: 2,
             is_native: true,
@@ -54,7 +55,7 @@ mod tests {
         let expected_state = State {
             router_contract: "router".to_string(),
             relayer_contract: Addr::unchecked("relayer_contract"),
-            admin: owner.to_string(),
+            admin: EuclidAdmin::default(owner),
             escrow_code_id: 1,
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             lp_code_id: 2,
