@@ -1,7 +1,7 @@
-use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, Uint128, WasmMsg};
+use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, Uint128};
 use cw20::Cw20ReceiveMsg;
 use euclid::{
-    admin::AdminType,
+    admin,
     cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::{
@@ -30,24 +30,15 @@ pub fn execute_manage_factory_state(
     let mut state = STATE.load(deps.storage)?;
     match msg {
         ManageFactoryState::UpdateAdmin { admin, admin_type } => {
-            state
-                .admin
-                .verify_update_access(&info.sender, &admin_type)?;
-
-            let validated_admin = deps.api.addr_validate(admin.as_str())?;
-            let mut response = Response::new().add_attribute("method", "update_admin");
-            match admin_type {
-                AdminType::GeneralAdmin => state.admin.general_admin = validated_admin,
-                AdminType::FeeAdmin => state.admin.fee_admin = validated_admin,
-                AdminType::MigrationAdmin => {
-                    let migrate_msg = WasmMsg::UpdateAdmin {
-                        contract_addr: env.contract.address.into_string(),
-                        admin: validated_admin.to_string(),
-                    };
-                    state.admin.migration_admin = validated_admin;
-                    response = response.add_message(migrate_msg);
-                }
-            }
+            let (updated_admins, response) = admin::update_admin(
+                &state.admin,
+                &deps,
+                &env,
+                &info.sender,
+                admin,
+                admin_type,
+            )?;
+            state.admin = updated_admins;
             STATE.save(deps.storage, &state)?;
             Ok(response)
         }

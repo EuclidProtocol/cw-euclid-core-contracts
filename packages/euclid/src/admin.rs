@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, DepsMut, Env, Response, WasmMsg};
 
 use crate::error::ContractError;
 
@@ -68,4 +68,33 @@ impl EuclidAdmin {
             AdminType::MigrationAdmin => "migration admin",
         }
     }
+}
+
+pub fn update_admin(
+    admins: &EuclidAdmin,
+    deps: &DepsMut,
+    env: &Env,
+    sender: &Addr,
+    admin: String,
+    admin_type: AdminType,
+) -> Result<(EuclidAdmin, Response), ContractError> {
+    admins.verify_update_access(sender, &admin_type)?;
+
+    let mut updated_admins = admins.clone();
+    let validated_admin = deps.api.addr_validate(admin.as_str())?;
+    let mut response = Response::new().add_attribute("method", "update_admin");
+    match admin_type {
+        AdminType::GeneralAdmin => updated_admins.general_admin = validated_admin,
+        AdminType::FeeAdmin => updated_admins.fee_admin = validated_admin,
+        AdminType::MigrationAdmin => {
+            let migrate_msg = WasmMsg::UpdateAdmin {
+                contract_addr: env.contract.address.to_string(),
+                admin: validated_admin.to_string(),
+            };
+            updated_admins.migration_admin = validated_admin;
+            response = response.add_message(migrate_msg);
+        }
+    }
+
+    Ok((updated_admins, response))
 }

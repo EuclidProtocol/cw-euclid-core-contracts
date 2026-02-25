@@ -16,8 +16,8 @@ use euclid::error::ContractError;
 use euclid::msgs::vlp::base::{State, NEXT_SWAP_REPLY_ID};
 use euclid::msgs::vlp::stable::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
 use euclid_pool::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_amp_factor, update_fee,
-    update_state, SwapCalculationMethod,
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_admin, update_amp_factor,
+    update_fee, SwapCalculationMethod,
 };
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:stable_vlp";
@@ -152,7 +152,9 @@ pub fn execute(
                 swap_msg.test_fail,
             )
         }
-        ExecuteMsg::UpdateState { admin } => update_state(deps, info, &STATE, admin),
+        ExecuteMsg::UpdateAdmin { admin, admin_type } => {
+            update_admin(deps, env, info, &STATE, admin, admin_type)
+        }
         ExecuteMsg::UpdateAmpFactor { amp_factor } => {
             update_amp_factor(deps, info, &STATE, &AMP_FACTOR, amp_factor)
         }

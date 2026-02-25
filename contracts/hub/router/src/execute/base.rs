@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, WasmMsg};
+use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response};
 use euclid_ibc::{
     factory_ibc::FactoryCrossChainExecuteMsg,
     router_ibc::{
@@ -9,7 +9,7 @@ use euclid_ibc::{
 
 use crate::state::{LOCKED_CHAINS, RELAYER_CONTRACT};
 use euclid::{
-    admin::AdminType,
+    admin,
     chain::{Chain, ChainUid, CosmosChain, EvmChain},
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -35,24 +35,15 @@ pub fn execute_manage_router_state(
     let mut state = STATE.load(deps.storage)?;
     match msg {
         ManageRouterState::Admins { admin_type, admin } => {
-            state
-                .admins
-                .verify_update_access(&info.sender, &admin_type)?;
-
-            let validated_admin = deps.api.addr_validate(admin.as_str())?;
-            let mut response = Response::new().add_attribute("method", "update_admin");
-            match admin_type {
-                AdminType::GeneralAdmin => state.admins.general_admin = validated_admin,
-                AdminType::FeeAdmin => state.admins.fee_admin = validated_admin,
-                AdminType::MigrationAdmin => {
-                    let migrate_msg = WasmMsg::UpdateAdmin {
-                        contract_addr: env.contract.address.into_string(),
-                        admin: validated_admin.to_string(),
-                    };
-                    state.admins.migration_admin = validated_admin;
-                    response = response.add_message(migrate_msg);
-                }
-            }
+            let (updated_admins, response) = admin::update_admin(
+                &state.admins,
+                &deps,
+                &env,
+                &info.sender,
+                admin,
+                admin_type,
+            )?;
+            state.admins = updated_admins;
             STATE.save(deps.storage, &state)?;
             Ok(response)
         }

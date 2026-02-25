@@ -1,4 +1,5 @@
 use euclid::{
+    admin::{self},
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -16,8 +17,8 @@ use euclid::{
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    ensure, to_json_binary, Addr, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo,
-    Response, SubMsg, Uint128, Uint512, Uint64, WasmMsg,
+    ensure, to_json_binary, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo, Response,
+    SubMsg, Uint128, Uint512, Uint64, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use euclid::msgs::vlp::base::PoolCreationResponse;
@@ -125,13 +126,16 @@ pub fn assert_slippage_tolerance(
 pub fn update_fee(
     deps: DepsMut,
     info: MessageInfo,
-    state_storage: &Item<State>, // Pass as a reference
+    state_storage: &Item<State>,
     lp_fee_bps: Option<u64>,
     euclid_fee_bps: Option<u64>,
     recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender == state.admin.fee_admin,
+        ContractError::Unauthorized {}
+    );
 
     state.fee.lp_fee_bps = lp_fee_bps.unwrap_or(state.fee.lp_fee_bps);
     ensure!(
@@ -165,7 +169,10 @@ pub fn update_amp_factor(
     amp_factor: Uint64,
 ) -> Result<Response, ContractError> {
     let state = state_storage.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender == state.admin.general_admin,
+        ContractError::Unauthorized {}
+    );
     amp_factor_storage.save(deps.storage, &amp_factor)?;
     Ok(Response::new()
         .add_attribute("action", "update_amp_factor")
@@ -173,24 +180,21 @@ pub fn update_amp_factor(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn update_state(
+pub fn update_admin(
     deps: DepsMut,
+    env: Env,
     info: MessageInfo,
     state_storage: &Item<State>, // Reference to STATE
-    admin: Option<Addr>,
+    admin: String,
+    admin_type: admin::AdminType,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
-    // Validate and update admin address
-    if let Some(admin) = admin {
-        deps.api.addr_validate(admin.as_str())?;
-        state.admin = admin;
-    };
-
+    let (updated_admins, response) =
+        admin::update_admin(&state.admin, &deps, &env, &info.sender, admin, admin_type)?;
+    state.admin = updated_admins;
     state_storage.save(deps.storage, &state)?;
 
-    let response = Response::new().add_attribute("action", "update_state");
     Ok(response)
 }
 

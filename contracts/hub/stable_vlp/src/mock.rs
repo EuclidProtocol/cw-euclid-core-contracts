@@ -3,6 +3,7 @@
 use crate::contract::{execute, instantiate, query, reply};
 use cosmwasm_std::{Addr, Empty, Uint64};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
+use euclid::admin::EuclidAdmin;
 use euclid::fee::Fee;
 use euclid::msgs::vlp::stable::msg::QueryMsg;
 use euclid::msgs::vlp::stable::msg::{ExecuteMsg, GetStateResponse, InstantiateMsg};
@@ -25,7 +26,7 @@ impl MockStableVlp {
         pair: Pair,
         fee: Fee,
         execute: Option<ExecuteMsg>,
-        admin: Addr,
+        admin: EuclidAdmin,
         amp_factor: Option<Uint64>,
     ) -> Self {
         let msg = mock_stable_vlp_instantiate_msg(
@@ -69,7 +70,7 @@ pub fn mock_stable_vlp_instantiate_msg(
     pair: Pair,
     fee: Fee,
     execute: Option<ExecuteMsg>,
-    admin: Addr,
+    admin: EuclidAdmin,
     amp_factor: Option<Uint64>,
 ) -> InstantiateMsg {
     InstantiateMsg {

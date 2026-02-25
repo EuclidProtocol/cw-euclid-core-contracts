@@ -14,7 +14,7 @@ use euclid::{
     },
 };
 use euclid_pool::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_admin, update_fee,
     SwapCalculationMethod,
 };
 
@@ -151,7 +151,9 @@ pub fn execute(
             euclid_fee_bps,
             recipient,
         } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
-        ExecuteMsg::UpdateState { admin } => update_state(deps, info, &STATE, admin),
+        ExecuteMsg::UpdateAdmin { admin, admin_type } => {
+            update_admin(deps, env, info, &STATE, admin, admin_type)
+        }
     }
 }
 

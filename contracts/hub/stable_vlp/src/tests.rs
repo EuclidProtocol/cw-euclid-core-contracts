@@ -11,6 +11,7 @@ mod tests {
         Addr, Decimal256, Response, Uint128, Uint64,
     };
     use euclid::{
+        admin::EuclidAdmin,
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         error::ContractError,
@@ -32,7 +33,7 @@ mod tests {
         >,
     ) -> Response {
         let router = deps.api.addr_make("router");
-        let admin = deps.api.addr_make("admin");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
         let msg = InstantiateMsg {
             router: Addr::unchecked("router"),
             virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
@@ -63,7 +64,7 @@ mod tests {
         let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
         let router = deps.api.addr_make("router");
-        let admin = deps.api.addr_make("admin");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
         let expected_state = State {
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),

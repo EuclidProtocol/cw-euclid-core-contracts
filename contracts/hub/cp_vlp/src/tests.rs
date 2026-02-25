@@ -6,6 +6,7 @@ mod tests {
     use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{coins, from_json, Addr, Response, Uint128};
+    use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
@@ -22,7 +23,7 @@ mod tests {
             MockQuerier,
         >,
     ) -> Response {
-        let admin = deps.api.addr_make("admin");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
 
         let msg = InstantiateMsg {
             router: Addr::unchecked("router"),
@@ -53,7 +54,7 @@ mod tests {
         let router = deps.api.addr_make("router");
         let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
-        let admin = deps.api.addr_make("admin");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
         let expected_state = State {
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
@@ -232,7 +233,7 @@ mod tests {
             },
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
-            admin: Addr::unchecked("admin"),
+            admin: EuclidAdmin::default(deps.api.addr_make("admin")),
         };
 
         STATE.save(deps.as_mut().storage, &state).unwrap();
@@ -306,7 +307,7 @@ mod tests {
             },
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
-            admin: Addr::unchecked("admin"),
+            admin: EuclidAdmin::default(deps.api.addr_make("admin")),
         };
 
         STATE.save(deps.as_mut().storage, &state).unwrap();
