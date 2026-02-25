@@ -2,12 +2,12 @@ use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    events::{TxType, liquidity_event, simple_event, tx_event},
+    events::{liquidity_event, simple_event, tx_event, TxType},
     fee::{BPS_50_PERCENT, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
     msgs::vlp::base::{
-        GetSwapQueryResponse, NEXT_SWAP_REPLY_ID, State, VlpRemoveLiquidityResponse, VlpSwapMsg,
-        VlpSwapResponse,
+        GetSwapQueryResponse, State, VlpRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse,
+        NEXT_SWAP_REPLY_ID,
     },
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
@@ -16,8 +16,8 @@ use euclid::{
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    Addr, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo, Response, SubMsg, Uint64,
-    Uint128, Uint512, WasmMsg, ensure, to_json_binary,
+    ensure, to_json_binary, Addr, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo,
+    Response, SubMsg, Uint128, Uint512, Uint64, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use euclid::msgs::vlp::base::PoolCreationResponse;

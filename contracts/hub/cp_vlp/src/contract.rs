@@ -2,20 +2,20 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
-    Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, entry_point,
+    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
 };
 use cw2::set_contract_version;
 use euclid::{
     error::ContractError,
     fee::{DenomFees, TotalFees},
     msgs::vlp::{
-        base::{NEXT_SWAP_REPLY_ID, State},
+        base::{State, NEXT_SWAP_REPLY_ID},
         cp::msg::{ExecuteMsg, InstantiateMsg, QueryMsg},
     },
 };
 use euclid_pool::{
-    SwapCalculationMethod, add_liquidity, execute_swap, register_pool, remove_liquidity,
-    update_fee, update_state,
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
+    SwapCalculationMethod,
 };
 
 use crate::{

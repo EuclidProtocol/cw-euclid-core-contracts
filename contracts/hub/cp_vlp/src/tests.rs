@@ -4,8 +4,8 @@ mod tests {
     use crate::contract::{execute, instantiate};
     use crate::query::query_simulate_swap;
     use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
-    use cosmwasm_std::testing::{MockQuerier, message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{Addr, Response, Uint128, coins, from_json};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
+    use cosmwasm_std::{coins, from_json, Addr, Response, Uint128};
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
