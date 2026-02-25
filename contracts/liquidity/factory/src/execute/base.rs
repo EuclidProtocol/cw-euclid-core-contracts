@@ -30,14 +30,8 @@ pub fn execute_manage_factory_state(
     let mut state = STATE.load(deps.storage)?;
     match msg {
         ManageFactoryState::UpdateAdmin { admin, admin_type } => {
-            let (updated_admins, response) = admin::update_admin(
-                &state.admin,
-                &deps,
-                &env,
-                &info.sender,
-                admin,
-                admin_type,
-            )?;
+            let (updated_admins, response) =
+                admin::update_admin(&state.admin, &deps, &env, &info.sender, admin, admin_type)?;
             state.admin = updated_admins;
             STATE.save(deps.storage, &state)?;
             Ok(response)

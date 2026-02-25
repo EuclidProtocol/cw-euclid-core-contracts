@@ -35,14 +35,8 @@ pub fn execute_manage_router_state(
     let mut state = STATE.load(deps.storage)?;
     match msg {
         ManageRouterState::Admins { admin_type, admin } => {
-            let (updated_admins, response) = admin::update_admin(
-                &state.admins,
-                &deps,
-                &env,
-                &info.sender,
-                admin,
-                admin_type,
-            )?;
+            let (updated_admins, response) =
+                admin::update_admin(&state.admins, &deps, &env, &info.sender, admin, admin_type)?;
             state.admins = updated_admins;
             STATE.save(deps.storage, &state)?;
             Ok(response)
