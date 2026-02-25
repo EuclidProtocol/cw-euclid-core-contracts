@@ -1,6 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cosmwasm_std::coin;
 use cosmwasm_std::Addr;
+use euclid::admin::EuclidAdmin;
 use euclid::msgs::virtual_balance::{GetStateResponse, State};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::mock::mock_router;
@@ -52,7 +53,7 @@ fn test_proper_instantiation() {
     let expected_token_id = GetStateResponse {
         state: State {
             router: mock_router.addr().clone(),
-            admin: mock_router.addr().to_owned(),
+            admin: EuclidAdmin::default(mock_router.addr().clone()),
         },
     };
     assert_eq!(token_id_response, expected_token_id);

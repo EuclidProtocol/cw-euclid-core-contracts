@@ -2,10 +2,11 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
+use euclid::admin::EuclidAdmin;
 
 use crate::execute::{
     execute_approve, execute_burn, execute_mint, execute_remove_zero_state_values,
-    execute_transfer, execute_update_state,
+    execute_transfer, execute_update_admin, execute_update_router,
 };
 use crate::query::{query_balance, query_state, query_user_balances};
 use crate::state::STATE;
@@ -27,7 +28,7 @@ pub fn instantiate(
 
     let state = State {
         router: info.sender.clone(),
-        admin: msg.admin.unwrap_or(info.sender),
+        admin: msg.admin.unwrap_or(EuclidAdmin::default(info.sender)),
     };
 
     STATE.save(deps.storage, &state)?;
@@ -35,13 +36,13 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("token_balance_address", env.contract.address)
-        .add_attribute("admin", state.admin))
+        .add_attribute("admin", state.admin.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     mut deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
@@ -49,9 +50,11 @@ pub fn execute(
         ExecuteMsg::Mint(msg) => execute_mint(deps, info, msg),
         ExecuteMsg::Burn(msg) => execute_burn(deps, info, msg),
         ExecuteMsg::Transfer(msg) => execute_transfer(&mut deps, info, msg),
-        ExecuteMsg::UpdateState { router, admin } => {
-            execute_update_state(deps, info, router, admin)
-        }
+        ExecuteMsg::UpdateAdmin {
+            new_admin,
+            admin_type,
+        } => execute_update_admin(deps, env, info, new_admin, admin_type),
+        ExecuteMsg::UpdateRouter { router } => execute_update_router(deps, info, router),
         ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
         ExecuteMsg::RemoveZeroStateValues { start_after, limit } => {
             execute_remove_zero_state_values(deps, info, start_after, limit)

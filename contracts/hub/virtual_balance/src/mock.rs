@@ -3,7 +3,10 @@
 use crate::contract::{execute, instantiate, query};
 use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
-use euclid::msgs::virtual_balance::msg::{GetStateResponse, InstantiateMsg, QueryMsg};
+use euclid::{
+    admin::EuclidAdmin,
+    msgs::virtual_balance::msg::{GetStateResponse, InstantiateMsg, QueryMsg},
+};
 use mock::mock::MockApp;
 
 pub struct MockVirtualBalance(Addr);
@@ -19,7 +22,7 @@ impl MockVirtualBalance {
         code_id: u64,
         sender: Addr,
         router: Addr,
-        admin: Option<Addr>,
+        admin: Option<EuclidAdmin>,
     ) -> Self {
         let msg = mock_virtual_balance_instantiate_msg(router, admin);
         let res =
@@ -49,7 +52,10 @@ pub fn mock_virtual_balance() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
-pub fn mock_virtual_balance_instantiate_msg(router: Addr, admin: Option<Addr>) -> InstantiateMsg {
+pub fn mock_virtual_balance_instantiate_msg(
+    router: Addr,
+    admin: Option<EuclidAdmin>,
+) -> InstantiateMsg {
     InstantiateMsg { router, admin }
 }
 

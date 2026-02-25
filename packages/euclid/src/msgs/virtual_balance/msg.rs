@@ -2,6 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
+    admin::{AdminType, EuclidAdmin},
     cross_chain_user::CrossChainUser,
     utils::pagination::Pagination,
     voucher::{BalanceKey, SerializedBalanceKey},
@@ -10,14 +11,14 @@ use crate::{
 #[cw_serde]
 pub struct State {
     pub router: Addr,
-    pub admin: Addr,
+    pub admin: EuclidAdmin,
 }
 
 #[cw_serde]
 
 pub struct InstantiateMsg {
     pub router: Addr,
-    pub admin: Option<Addr>,
+    pub admin: Option<EuclidAdmin>,
 }
 
 #[cw_serde]
@@ -26,9 +27,12 @@ pub enum ExecuteMsg {
     Mint(ExecuteMint),
     Transfer(ExecuteTransfer),
     Burn(ExecuteBurn),
-    UpdateState {
-        router: Option<Addr>,
-        admin: Option<Addr>,
+    UpdateAdmin {
+        new_admin: String,
+        admin_type: AdminType,
+    },
+    UpdateRouter {
+        router: Addr,
     },
     RemoveZeroStateValues {
         start_after: Option<SerializedBalanceKey>,
