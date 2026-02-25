@@ -3,6 +3,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 
 use cw2::set_contract_version;
+use euclid::admin::EuclidAdmin;
 use euclid::error::ContractError;
 use euclid::msgs::meta_transaction::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
@@ -23,7 +24,7 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     let state = State {
         router_contract: msg.router_contract.clone(),
-        admin: info.sender,
+        admin: EuclidAdmin::default(info.sender),
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -40,7 +41,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
+        ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, env, &info, msg),
         ExecuteMsg::ExecuteMetaTransaction(msg) => {
             execute_meta_transaction(&mut deps, &env, &info, msg)
         }

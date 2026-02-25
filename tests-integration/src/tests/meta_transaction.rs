@@ -9,6 +9,7 @@ use cw_orch::{
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::*;
 use euclid::{
+    admin::{AdminType, EuclidAdmin},
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     fee::BPS_10_PERCENT,
@@ -282,7 +283,7 @@ fn test_meta_transaction_instantiation() {
 
     let state = meta_tx_contract.get_state().unwrap();
     assert_eq!(state.router_contract, router.address().unwrap());
-    assert_eq!(state.admin, chain.sender);
+    assert_eq!(state.admin, EuclidAdmin::default(chain.sender));
 }
 
 #[test]
@@ -298,7 +299,8 @@ fn test_update_admin() {
         .execute(
             &euclid::msgs::meta_transaction::ExecuteMsg::UpdateAdmin(
                 euclid::msgs::meta_transaction::UpdateAdminMsg {
-                    new_admin: new_admin.clone(),
+                    new_admin: new_admin.to_string(),
+                    admin_type: AdminType::GeneralAdmin,
                 },
             ),
             &[],
@@ -306,6 +308,7 @@ fn test_update_admin() {
         .unwrap();
 
     // Verify admin was updated
+    let new_admin = EuclidAdmin::new(new_admin, chain.sender.clone(), chain.sender);
     let state = meta_tx_contract.get_state().unwrap();
     assert_eq!(state.admin, new_admin);
 }

@@ -1,5 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, DepsMut, Env, Response, WasmMsg};
+use std::fmt;
 
 use crate::error::ContractError;
 
@@ -8,6 +9,16 @@ pub struct EuclidAdmin {
     pub general_admin: Addr,
     pub fee_admin: Addr,
     pub migration_admin: Addr,
+}
+
+impl fmt::Display for EuclidAdmin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "general_admin: {}, fee_admin: {}, migration_admin: {}",
+            self.general_admin, self.fee_admin, self.migration_admin
+        )
+    }
 }
 
 #[cw_serde]

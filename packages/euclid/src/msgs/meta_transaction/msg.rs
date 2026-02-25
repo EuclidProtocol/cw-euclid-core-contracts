@@ -1,7 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 
-use crate::chain::ChainUid;
+use crate::{
+    admin::{AdminType, EuclidAdmin},
+    chain::ChainUid,
+};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -28,12 +31,13 @@ pub enum QueryMsg {
 #[cw_serde]
 pub struct State {
     pub router_contract: Addr,
-    pub admin: Addr,
+    pub admin: EuclidAdmin,
 }
 
 #[cw_serde]
 pub struct UpdateAdminMsg {
-    pub new_admin: Addr,
+    pub new_admin: String,
+    pub admin_type: AdminType,
 }
 
 #[cw_serde]

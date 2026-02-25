@@ -2,6 +2,7 @@ use cosmwasm_std::{
     ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, HexBinary, MessageInfo,
     QueryRequest, Response, Timestamp, Uint128, WasmMsg, WasmQuery,
 };
+use euclid::admin;
 use euclid::chain::ChainType;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
@@ -17,20 +18,23 @@ use crate::state::{NONCES, STATE};
 
 pub fn execute_update_admin(
     deps: &mut DepsMut,
+    env: Env,
     info: &MessageInfo,
     msg: UpdateAdminMsg,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-    // Ensure the sender is the current admin
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let (updated_admins, response) = admin::update_admin(
+        &state.admin,
+        &deps,
+        &env,
+        &info.sender,
+        msg.new_admin.clone(),
+        msg.admin_type,
+    )?;
 
-    deps.api.addr_validate(msg.new_admin.as_str())?;
-
-    state.admin = msg.new_admin.clone();
+    state.admin = updated_admins;
     STATE.save(deps.storage, &state)?;
-    Ok(Response::new()
-        .add_attribute("old_admin", state.admin.to_string())
-        .add_attribute("new_admin", msg.new_admin.to_string()))
+    Ok(response.add_attribute("new_admin", state.admin.to_string()))
 }
 
 pub fn execute_meta_transaction(
