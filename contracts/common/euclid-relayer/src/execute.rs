@@ -1,7 +1,7 @@
 use cosmwasm_std::{
     ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128, WasmMsg,
 };
-use euclid::error::ContractError;
+use euclid::{chain::ChainUid, error::ContractError};
 use relayer::{
     msgs::{MetaTransaction, UpdateAdminMsg, UpdateStateMsg},
     verify::verify_signature,
@@ -101,13 +101,15 @@ pub fn execute_meta_transaction(
 
     let verified = verify_signature(
         deps.as_ref(),
-        &expiry_call_data(&msg.data, msg.expiry),
+        &expiry_call_data(&msg.data, msg.expiry, msg.chain_uid.as_str()),
         &msg.admin_signature,
         &state.message_signer.pubkey,
     )?;
 
     ensure!(verified, ContractError::new("Invalid admin signature"));
-    let validators = VALIDATORS.load(deps.storage)?;
+    let validators = VALIDATORS
+        .load(deps.storage, msg.chain_uid.clone())
+        .map_err(|_| ContractError::new("Validators not found for chain"))?;
     let mut visited = vec![false; validators.len()];
     let mut valid_signatures = 0;
     for signature in msg.validator_signatures {
@@ -120,7 +122,7 @@ pub fn execute_meta_transaction(
         }
         let verified = verify_signature(
             deps.as_ref(),
-            &expiry_call_data(&msg.data, signature.expiry),
+            &expiry_call_data(&msg.data, signature.expiry, msg.chain_uid.as_str()),
             &signature.signature,
             &signature.pubkey,
         )?;
@@ -155,8 +157,13 @@ pub fn execute_meta_transaction(
         .add_attribute("relayer_sender", info.sender.to_string()))
 }
 
-fn expiry_call_data(data: &str, expiry: u64) -> String {
-    let expiry_call_data = format!("{data},{expiry}", data = data, expiry = expiry);
+fn expiry_call_data(data: &str, expiry: u64, chain_uid: &str) -> String {
+    let expiry_call_data = format!(
+        "{data},{expiry},{chain_uid}",
+        data = data,
+        expiry = expiry,
+        chain_uid = chain_uid
+    );
     expiry_call_data
 }
 
@@ -164,16 +171,19 @@ pub fn execute_add_validator(
     deps: &mut DepsMut,
     info: &MessageInfo,
     validator: Validator,
+    chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-    let mut validators = VALIDATORS.load(deps.storage)?;
+    let mut validators = VALIDATORS
+        .load(deps.storage, chain_uid.clone())
+        .unwrap_or_default();
     ensure!(
         !validators.contains(&validator),
         ContractError::new("Validator already exists")
     );
     validators.push(validator.clone());
-    VALIDATORS.save(deps.storage, &validators)?;
+    VALIDATORS.save(deps.storage, chain_uid, &validators)?;
     Ok(Response::new().add_attribute("validator_added", validator.address.to_string()))
 }
 
@@ -181,10 +191,13 @@ pub fn execute_remove_validator(
     deps: &mut DepsMut,
     info: &MessageInfo,
     validator: Validator,
+    chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.admin, ContractError::Unauthorized {});
-    let mut validators = VALIDATORS.load(deps.storage)?;
+    let mut validators = VALIDATORS
+        .load(deps.storage, chain_uid.clone())
+        .unwrap_or_default();
     let index = validators
         .iter()
         .position(|v| v.address == validator.address);
@@ -193,6 +206,6 @@ pub fn execute_remove_validator(
     } else {
         return Err(ContractError::new("Validator does not exist"));
     }
-    VALIDATORS.save(deps.storage, &validators)?;
+    VALIDATORS.save(deps.storage, chain_uid, &validators)?;
     Ok(Response::new().add_attribute("validator_removed", validator.address.clone()))
 }

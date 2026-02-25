@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128, Uint512,
-};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint512};
 use cw2::set_contract_version;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
@@ -194,7 +192,7 @@ pub fn execute(
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
 
-            let mut amount_in = Uint128::zero();
+            let mut amount_in = msg.amount_in;
             // If this asset is native, lets get the actual amount of funds sent because these amount can vary depending on forwarding contract swaps
             if let TokenType::Native { denom } = &msg.asset_in.token_type {
                 amount_in = info
@@ -205,7 +203,7 @@ pub fn execute(
                     .amount;
             }
             ensure!(
-                amount_in.gt(&Uint128::zero()),
+                amount_in.ge(&msg.amount_in),
                 ContractError::InsufficientFunds {}
             );
 
@@ -258,8 +256,8 @@ pub fn execute(
             timeout,
         ),
 
-        ExecuteMsg::ReceivePacketInternalCallback { msg } => {
-            execute_receive_packet_internal_callback(&mut deps, env, info, msg)
+        ExecuteMsg::ReceivePacketInternalCallback { msg, timeout } => {
+            execute_receive_packet_internal_callback(&mut deps, env, info, msg, timeout)
         }
         ExecuteMsg::AcknowledgePacket {
             msg,
@@ -268,7 +266,7 @@ pub fn execute(
             destination_port,
             ack,
         } => execute_receive_acknowledgement(
-            deps,
+            &mut deps,
             info,
             env,
             msg,
@@ -303,20 +301,20 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     // If reply id is in CHAIN_IBC_EXECUTE_MSG_QUEUE_RANGE range of IDS, process it for native ibc wrapper ack call
     // Pros - This way we can reuse existing ack_and _timeout calls instead of managing two flow for native and ibc
     // Cons - Error messages are lost in reply which makes it hard to debug why there was an error. This is fixed from cosmwasm 2.0 probably
     if msg.id.ge(&NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0)
         && msg.id.le(&NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.1)
     {
-        return reply::on_reply_native_ibc_wrapper_call(deps, env, msg);
+        return reply::on_reply_native_ibc_wrapper_call(&mut deps, env, msg);
     }
     match msg.id {
-        ESCROW_INSTANTIATE_REPLY_ID => on_escrow_instantiate_reply(deps, msg),
-        LP_INSTANTIATE_REPLY_ID => on_lp_instantiate_reply(deps, msg),
-        RELEASE_ESCROW_REPLY_ID => on_release_escrow_reply(deps, msg),
-        CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps, msg),
+        ESCROW_INSTANTIATE_REPLY_ID => on_escrow_instantiate_reply(deps.branch(), msg),
+        LP_INSTANTIATE_REPLY_ID => on_lp_instantiate_reply(deps.branch(), msg),
+        RELEASE_ESCROW_REPLY_ID => on_release_escrow_reply(deps.branch(), msg),
+        CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps.branch(), msg),
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",

@@ -39,6 +39,7 @@ pub enum ExecuteMsg {
         token_with_denom: TokenWithDenom,
         cross_chain_config: CrossChainConfig,
     },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     DepositToken {
         asset_in: TokenWithDenom,
         amount_in: Uint128,
@@ -53,6 +54,7 @@ pub enum ExecuteMsg {
         recipients: Vec<Recipient>,
         cross_chain_config: CrossChainConfig,
     },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     RequestPoolCreation {
         pair_with_denom_and_amount: PairWithDenomAndAmount,
         pool_config: PoolConfig,
@@ -68,6 +70,7 @@ pub enum ExecuteMsg {
         slippage_tolerance_bps: u64,
         cross_chain_config: CrossChainConfig,
     },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     ExecuteSwapRequest(ExecuteSwapRequest),
     PingRouter {
         cross_chain_config: CrossChainConfig,
@@ -94,11 +97,12 @@ pub enum ExecuteMsg {
         destination_port: String,
         msg: Binary,
         sequence: u128,
-        timeout: Option<u64>,
+        timeout: u64,
     },
 
     ReceivePacketInternalCallback {
         msg: Binary,
+        timeout: u64,
     },
     AcknowledgePacket {
         source_port: String,
@@ -120,6 +124,7 @@ pub enum ManageFactoryState {
 #[cw_serde]
 pub struct ExecuteSwapRequest {
     pub asset_in: TokenWithDenom,
+    pub amount_in: Uint128,
     pub asset_out: Token,
     pub min_amount_out: Uint128,
     pub swaps: Vec<NextSwapPair>,
@@ -270,12 +275,9 @@ pub struct ReleaseEscrowDenomsResponse {
 
 #[cw_serde]
 pub struct ReleaseEscrowResponse {
-    pub factory_address: String,
-    pub chain_id: String,
     pub amount: Uint128,
-    pub token: Token,
     pub to_address: String,
-    pub denom: TokenType,
+    pub escrow_balance: Uint128,
 }
 
 #[cw_serde]

@@ -22,7 +22,9 @@ use euclid_ibc::{
 
 use crate::{
     ibc::{ack_and_timeout, receive},
-    rate_limit::{calc_fee, USER_FREE_LIMIT, USER_PENDING_PACKETS_COUNT, USER_TOTAL_PACKETS_COUNT},
+    rate_limit::{
+        ensure_rate_limit_exceeded, USER_PENDING_PACKETS_COUNT, USER_TOTAL_PACKETS_COUNT,
+    },
     relay_state::{
         CROSS_CHAIN_LATEST_SEQUENCE_COUNT, CROSS_CHAIN_PENDING_PACKET_SENDER,
         CROSS_CHAIN_PENDING_SEND_PACKETS, CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS,
@@ -54,15 +56,7 @@ pub fn execute_send_packet(
 
     let factory_state = STATE.load(deps.storage)?;
 
-    let user_pending_packets_count = USER_PENDING_PACKETS_COUNT
-        .load(deps.storage, sender.clone())
-        .unwrap_or(0);
-
-    let user_free_limit = USER_FREE_LIMIT.may_load(deps.storage, sender.clone())?;
-    let rate_limit_fee = calc_fee(&deps, user_pending_packets_count, user_free_limit)?;
-    if rate_limit_fee.gt(&Uint128::zero()) {
-        // TODO: Deduct rate limit credits from the user
-    }
+    ensure_rate_limit_exceeded(&deps, sender.clone())?;
 
     let sequence = CROSS_CHAIN_LATEST_SEQUENCE_COUNT
         .load(deps.storage)
@@ -79,6 +73,10 @@ pub fn execute_send_packet(
     )?;
     CROSS_CHAIN_PENDING_PACKET_SENDER.save(deps.storage, sequence, &sender)?;
     CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(deps.storage, &sequence.add(1))?;
+
+    let user_pending_packets_count = USER_PENDING_PACKETS_COUNT
+        .load(deps.storage, sender.clone())
+        .unwrap_or(0);
 
     // Update user pending packets count
     USER_PENDING_PACKETS_COUNT.save(
@@ -129,7 +127,7 @@ pub fn execute_receive_packet(
     sequence: u128,
     source_port: String,
     destination_port: String,
-    _timeout: Option<u64>,
+    timeout: u64,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(
@@ -165,7 +163,10 @@ pub fn execute_receive_packet(
         &msg.to_string(),
     );
 
-    let internal_msg = ExecuteMsg::ReceivePacketInternalCallback { msg: msg.clone() };
+    let internal_msg = ExecuteMsg::ReceivePacketInternalCallback {
+        msg: msg.clone(),
+        timeout,
+    };
     let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
         msg: to_json_binary(&internal_msg)?,
@@ -194,10 +195,18 @@ pub fn execute_receive_packet_internal_callback(
     env: Env,
     info: MessageInfo,
     msg: Binary,
+    timeout: u64,
 ) -> Result<Response, ContractError> {
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
+    );
+    ensure!(
+        timeout >= env.block.time.seconds(),
+        ContractError::PacketTimedOut {
+            timeout,
+            block_time: env.block.time.seconds()
+        }
     );
     let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
     receive::reusable_internal_call(deps, env, msg)
@@ -205,7 +214,7 @@ pub fn execute_receive_packet_internal_callback(
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute_receive_acknowledgement(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
     msg: Binary,
@@ -239,6 +248,16 @@ pub fn execute_receive_acknowledgement(
     // Remove the existing request as its already relayed now
     CROSS_CHAIN_PENDING_SEND_PACKETS.remove(deps.storage, sequence);
     CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, sequence);
+    USER_PENDING_PACKETS_COUNT.update(
+        deps.storage,
+        sender.clone(),
+        |count| -> Result<_, ContractError> {
+            count
+                .unwrap_or(0)
+                .checked_sub(1)
+                .ok_or(ContractError::new("Overflow"))
+        },
+    )?;
 
     let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
 
@@ -248,18 +267,24 @@ pub fn execute_receive_acknowledgement(
     let mut response = response.add_event(ack_event);
 
     if let Some(ack_response) = existing_request.ack_response {
-        let ack_hook_msg = EuclidAcknowledgement {
-            ack,
-            msg: ack_response,
+        let is_contract = deps
+            .querier
+            .query_wasm_contract_info(sender.to_string())
+            .is_ok();
+        if is_contract {
+            let ack_hook_msg = EuclidAcknowledgement {
+                ack,
+                msg: ack_response,
+            }
+            .to_receiver_msg();
+            let msg = WasmMsg::Execute {
+                contract_addr: sender.to_string(),
+                msg: ack_hook_msg?,
+                funds: vec![],
+            };
+            // This is a never reply message, so we don't need to wait for a response
+            response = response.add_submessage(SubMsg::reply_never(msg));
         }
-        .to_receiver_msg();
-        let msg = WasmMsg::Execute {
-            contract_addr: sender.to_string(),
-            msg: ack_hook_msg?,
-            funds: vec![],
-        };
-        // This is a never reply message, so we don't need to wait for a response
-        response = response.add_submessage(SubMsg::reply_never(msg));
     }
 
     Ok(response)

@@ -35,6 +35,7 @@ pub fn execute_manage_router_state(
     match msg {
         ManageRouterState::Admin { admin } => {
             state.admin = admin;
+            STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("method", "update_admin"))
         }
         ManageRouterState::Vlp {
@@ -44,10 +45,12 @@ pub fn execute_manage_router_state(
             state.constant_product_vlp_code_id =
                 vlp_code_id.unwrap_or(state.constant_product_vlp_code_id);
             state.stable_vlp_code_id = stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id);
+            STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("method", "update_vlp_code_id"))
         }
         ManageRouterState::LockState { locked } => {
             state.locked = locked;
+            STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("method", "update_lock_state"))
         }
         ManageRouterState::RelayerContract { relayer_contract } => {

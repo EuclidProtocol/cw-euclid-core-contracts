@@ -212,7 +212,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         )
         .unwrap();
 
-    let router_contract = setup_router(&router).unwrap();
+    let router_contract = setup_router(&router, vec![factory_chain_id]).unwrap();
     let router_state = router_contract.get_state().unwrap();
 
     let _virtual_balance_router =
@@ -539,7 +539,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         )
         .unwrap();
 
-    let router_contract = setup_router(&router_chain).unwrap();
+    let router_contract = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
     let _router_state = router_contract.get_state().unwrap();
 
     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
@@ -759,7 +759,7 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
     let _factory_chain = interchain.get_chain("osmosis").unwrap();
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -813,7 +813,7 @@ fn test_add_liquidity_fails_when_pool_does_not_exit() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -868,7 +868,7 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -931,7 +931,7 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -979,7 +979,7 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let mut pair_info = PairWithDenomAndAmount {
@@ -1047,7 +1047,7 @@ fn test_add_liquidity_fails_with_extra_funds() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -1160,7 +1160,7 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         )
         .unwrap();
 
-    let router_contract = setup_router(&router_chain).unwrap();
+    let router_contract = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
     let _router_state = router_contract.get_state().unwrap();
 
     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
@@ -1440,7 +1440,7 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
     }
     let interchain = MockInterchainEnv::new(chains);
     let router_chain = interchain.get_chain(router_chain_id).unwrap();
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
 
     let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
 
@@ -1559,6 +1559,7 @@ pub fn run_test_swap_request_reusable(
 
     let swap_request_msg = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            amount_in,
             asset_in: token_a.clone(),
             asset_out: token_b.token.clone(),
             min_amount_out: Uint128::new(50),
@@ -1603,7 +1604,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
     let factory_chain = interchain.get_chain(factory_chain_id).unwrap();
     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let router_chain = interchain.get_chain(router_chain_id).unwrap();
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
 
     let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
 
@@ -1691,6 +1692,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         .execute(
             &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
                 asset_in: token_a.clone(),
+                amount_in: Uint128::new(100),
                 asset_out: token_c.token.clone(),
                 min_amount_out: Uint128::new(50),
                 swaps: vec![
@@ -1764,7 +1766,7 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
     let interchain = MockInterchainEnv::new(chains);
     let router_chain = interchain.get_chain(router_chain_id).unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
     let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -1849,6 +1851,7 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
         &factory,
         &router,
         asset_in,
+        amount_in,
         Token::create("nibi".to_string()).unwrap(),
         Uint128::new(50),
         // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
@@ -1884,7 +1887,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -1946,10 +1949,11 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     .unwrap();
 
     funds.clear();
+    let amount_in = Uint128::new(1000);
     faucet(
         &chain,
         chain.sender.as_str(),
-        1000,
+        amount_in.u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -1970,6 +1974,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         &factory,
         &router,
         asset_in,
+        amount_in,
         Token::create("nibi".to_string()).unwrap(),
         Uint128::new(50),
         vec![NextSwapPair {
@@ -2001,7 +2006,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -2084,6 +2089,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         &factory,
         &router,
         asset_in,
+        amount_in,
         Token::create("nibi".to_string()).unwrap(),
         Uint128::new(50),
         vec![NextSwapPair {
@@ -2114,7 +2120,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -2176,10 +2182,11 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
     .unwrap();
 
     funds.clear();
+    let amount_in = Uint128::new(1000);
     faucet(
         &chain,
         chain.sender.as_str(),
-        1000,
+        amount_in.u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -2190,6 +2197,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         &factory,
         &router,
         asset_in,
+        amount_in,
         Token::create("nibi".to_string()).unwrap(),
         Uint128::new(0),
         vec![NextSwapPair {
@@ -2211,7 +2219,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory = setup_factory(&interchain, "osmosis", "nibiru", &router).unwrap();
 
     let pair_info = PairWithDenomAndAmount {
@@ -2273,10 +2281,11 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     .unwrap();
 
     funds.clear();
+    let amount_in = Uint128::new(1000);
     faucet(
         &chain,
         chain.sender.as_str(),
-        1000,
+        amount_in.u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -2293,6 +2302,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         &factory,
         &router,
         asset_in,
+        amount_in,
         Token::create("nibi".to_string()).unwrap(),
         Uint128::new(50),
         // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
@@ -2457,7 +2467,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
     let factory_chain = interchain.get_chain(factory_chain_id).unwrap();
     let factory_chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let router_chain = interchain.get_chain(router_chain_id).unwrap();
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
 
     let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
 
@@ -2559,6 +2569,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
         .execute(
             &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
                 asset_in: token_a.clone(),
+                amount_in: Uint128::new(100),
                 asset_out: token_b.token.clone(),
                 min_amount_out: Uint128::new(50),
                 swaps: vec![NextSwapPair {
@@ -2589,7 +2600,7 @@ fn test_deposit_and_withdraw() {
     let interchain = MockInterchainEnv::new(vec![("osmosis", &sender), ("nibiru", &sender)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
     let factory = setup_factory(&interchain, &factory_chain_uid, "nibiru", &router).unwrap();
 
@@ -2685,7 +2696,7 @@ fn test_deposit_and_withdraw_with_failure() {
         MockInterchainEnv::new(vec![("osmosis", &sender_label), ("nibiru", &sender_label)]);
     let router_chain = interchain.get_chain("nibiru").unwrap();
 
-    let router = setup_router(&router_chain).unwrap();
+    let router = setup_router(&router_chain, vec!["osmosis", "nibiru"]).unwrap();
     let factory_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
     let factory = setup_factory(&interchain, &factory_chain_uid, "nibiru", &router).unwrap();
 

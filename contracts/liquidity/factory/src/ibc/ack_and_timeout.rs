@@ -32,7 +32,7 @@ use crate::{
 };
 
 pub fn reusable_internal_ack_call(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
     msg: RouterCrossChainExecuteMsg,
     ack: Binary,
@@ -44,41 +44,47 @@ pub fn reusable_internal_ack_call(
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
 
-            ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
+            ack_pool_creation(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
 
         RouterCrossChainExecuteMsg::RegisterDenom { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<RegisterDenomResponse> = from_json(ack)?;
 
-            ack_register_denom(deps, env, sender.address, res, tx_id, is_native)
+            ack_register_denom(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
         RouterCrossChainExecuteMsg::DeregisterDenom { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<DeregisterDenomResponse> = from_json(ack)?;
 
-            ack_deregister_denom(deps, env, sender.address, res, tx_id, is_native)
+            ack_deregister_denom(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
 
         RouterCrossChainExecuteMsg::AddLiquidity { tx_id, sender, .. } => {
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
-            ack_add_liquidity(deps, res, sender.address, tx_id, is_native)
+            ack_add_liquidity(deps.branch(), res, sender.address, tx_id, is_native)
         }
         RouterCrossChainExecuteMsg::RemoveLiquidity(msg) => {
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<RemoveLiquidityResponse> = from_json(ack)?;
-            ack_remove_liquidity(deps, res, msg.sender.address, msg.tx_id, is_native)
+            ack_remove_liquidity(deps.branch(), res, msg.sender.address, msg.tx_id, is_native)
         }
         RouterCrossChainExecuteMsg::Swap(swap) => {
             // Process acknowledgment for swap
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack)?;
-            ack_swap_request(deps, res, swap.sender.address, swap.tx_id, is_native)
+            ack_swap_request(
+                deps.branch(),
+                res,
+                swap.sender.address,
+                swap.tx_id,
+                is_native,
+            )
         }
         RouterCrossChainExecuteMsg::TransferVoucher(msg) => {
             let res: AcknowledgementMsg<TransferVoucherResponse> = from_json(ack)?;
             ack_transfer_request(
-                deps,
+                deps.branch(),
                 res,
                 msg.sender.address,
                 msg.token,
@@ -89,7 +95,13 @@ pub fn reusable_internal_ack_call(
         RouterCrossChainExecuteMsg::DepositToken(deposit) => {
             // Process acknowledgment for deposit
             let res: AcknowledgementMsg<DepositTokenResponse> = from_json(ack)?;
-            ack_deposit_token_request(deps, res, deposit.sender.address, deposit.tx_id, is_native)
+            ack_deposit_token_request(
+                deps.branch(),
+                res,
+                deposit.sender.address,
+                deposit.tx_id,
+                is_native,
+            )
         }
         RouterCrossChainExecuteMsg::Ping { tx_id, .. } => {
             let res: AcknowledgementMsg<PongResponse> = from_json(ack)?;
