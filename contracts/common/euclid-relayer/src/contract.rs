@@ -3,7 +3,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 
 use cw2::set_contract_version;
-use euclid::error::ContractError;
+use euclid::{admin::EuclidAdmin, error::ContractError};
 use relayer::msgs::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 use crate::{
@@ -29,7 +29,7 @@ pub fn instantiate(
     let state = State {
         message_signer: msg.message_signer,
         signature_threshold: msg.signature_threshold,
-        admin: info.sender,
+        admin: EuclidAdmin::default(info.sender),
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -58,7 +58,7 @@ pub fn execute(
             execute_meta_transaction(&mut deps, &env, &info, msg)
         }
         ExecuteMsg::UpdateState(msg) => execute_update_state(&mut deps, &info, msg),
-        ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
+        ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, env, &info, msg),
         ExecuteMsg::AddValidator {
             validator,
             chain_uid,

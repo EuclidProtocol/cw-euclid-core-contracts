@@ -1,5 +1,6 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary};
+use euclid::admin::{AdminType, EuclidAdmin};
 use euclid::chain::ChainUid;
 
 #[cw_serde]
@@ -47,7 +48,7 @@ pub struct Validator {
 pub struct State {
     pub message_signer: Validator,
     pub signature_threshold: u8,
-    pub admin: Addr,
+    pub admin: EuclidAdmin,
 }
 
 #[cw_serde]
@@ -81,7 +82,8 @@ pub struct UpdateStateMsg {
 
 #[cw_serde]
 pub struct UpdateAdminMsg {
-    pub new_admin: Addr,
+    pub new_admin: String,
+    pub admin_type: AdminType,
 }
 
 #[cw_serde]

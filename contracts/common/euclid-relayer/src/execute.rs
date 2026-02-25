@@ -1,7 +1,7 @@
 use cosmwasm_std::{
     ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128, WasmMsg,
 };
-use euclid::{chain::ChainUid, error::ContractError};
+use euclid::{admin, chain::ChainUid, error::ContractError};
 use relayer::{
     msgs::{MetaTransaction, UpdateAdminMsg, UpdateStateMsg},
     verify::verify_signature,
@@ -16,7 +16,10 @@ pub fn execute_update_state(
     msg: UpdateStateMsg,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender == state.admin.general_admin,
+        ContractError::Unauthorized {}
+    );
     let mut response = Response::new();
     if let Some(message_signer) = msg.message_signer {
         state.message_signer = message_signer.clone();
@@ -57,18 +60,23 @@ pub fn execute_update_state(
 
 pub fn execute_update_admin(
     deps: &mut DepsMut,
+    env: Env,
     info: &MessageInfo,
     msg: UpdateAdminMsg,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-    // Ensure the sender is the current admin
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let (updated_admins, response) = admin::update_admin(
+        &state.admin,
+        &deps,
+        &env,
+        &info.sender,
+        msg.new_admin.clone(),
+        msg.admin_type,
+    )?;
 
-    deps.api.addr_validate(msg.new_admin.as_str())?;
-
-    state.admin = msg.new_admin.clone();
+    state.admin = updated_admins;
     STATE.save(deps.storage, &state)?;
-    Ok(Response::new()
+    Ok(response
         .add_attribute("old_admin", state.admin.to_string())
         .add_attribute("new_admin", msg.new_admin.to_string()))
 }
@@ -174,7 +182,10 @@ pub fn execute_add_validator(
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender == state.admin.general_admin,
+        ContractError::Unauthorized {}
+    );
     let mut validators = VALIDATORS
         .load(deps.storage, chain_uid.clone())
         .unwrap_or_default();
@@ -194,7 +205,10 @@ pub fn execute_remove_validator(
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(
+        info.sender == state.admin.general_admin,
+        ContractError::Unauthorized {}
+    );
     let mut validators = VALIDATORS
         .load(deps.storage, chain_uid.clone())
         .unwrap_or_default();
