@@ -5,7 +5,7 @@ use cosmwasm_std::{
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use forwarding::msgs::{
     astroport::SwapMsg,
-    common_old::{simple_event, EuclidReceive, TokenType},
+    common_old::{EuclidReceive, TokenType},
     cw20::Cw20HookMsg,
     errors_old::ContractError,
     euclid_receive::AstroportEuclidReceiveHook,
@@ -57,11 +57,7 @@ pub fn receive_euclid_native(
                 info.clone(),
                 forwarding::msgs::astroport::ExecuteMsg::Swap(swap_msg),
             )?;
-            let event = simple_event().add_attribute(
-                "meta",
-                euclid_receive.meta.clone().unwrap_or("no_meta".to_string()),
-            );
-            Ok(response.add_event(event))
+            Ok(response)
         }
     }
 }
@@ -80,11 +76,7 @@ pub fn receive_euclid_cw20(
                 contract_address: sender.to_string(),
             };
             let response = swap(deps, env, swap_msg, from_token, amount)?;
-            let event = simple_event().add_attribute(
-                "meta",
-                euclid_receive.meta.clone().unwrap_or("no_meta".to_string()),
-            );
-            Ok(response.add_event(event))
+            Ok(response)
         }
     }
 }

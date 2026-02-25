@@ -1,10 +1,11 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Binary, Uint128};
+use cosmwasm_std::Uint128;
 
 use crate::{
-    chain::{CrossChainUser, CrossChainUserWithLimit},
+    cross_chain_user::CrossChainUser,
     fee::PartnerFee,
-    msgs::hook::EuclidReceive,
+    msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive},
+    recipient::Recipient,
     swap::NextSwapPair,
     token::{Pair, Token, TokenWithDenom},
 };
@@ -13,26 +14,22 @@ use crate::{
 pub enum FactoryCw20HookMsg {
     Deposit {
         token: Token,
-        timeout: Option<u64>,
-        recipient: Option<CrossChainUser>,
-        msg: Option<Binary>,
+        recipients: Vec<Recipient>,
+        cross_chain_config: CrossChainConfig,
+    },
+    RemoveLiquidity {
+        pair: Pair,
+        recipient: CrossChainUser,
+        cross_chain_config: CrossChainConfig,
     },
     Swap {
         asset_in: TokenWithDenom,
         asset_out: Token,
         min_amount_out: Uint128,
         swaps: Vec<NextSwapPair>,
-        timeout: Option<u64>,
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        recipients: Vec<Recipient>,
         partner_fee: Option<PartnerFee>,
-        meta: Option<String>,
-    },
-    RemoveLiquidity {
-        pair: Pair,
-        lp_allocation: Uint128,
-        timeout: Option<u64>,
-        // First element in array has highest priority
-        cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+        cross_chain_config: CrossChainConfig,
     },
     EuclidReceive(EuclidReceive),
 }

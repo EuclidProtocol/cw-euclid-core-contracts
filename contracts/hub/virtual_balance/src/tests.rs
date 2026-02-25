@@ -5,13 +5,14 @@ mod tests {
     use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, MessageInfo, Response, Uint128};
-    use euclid::chain::{ChainUid, CrossChainUser};
+    use euclid::chain::ChainUid;
+    use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
-    use euclid::msgs::virtual_balance::{
+    use euclid::msgs::virtual_balance::msg::{
         ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer, InstantiateMsg,
         State,
     };
-    use euclid::virtual_balance::BalanceKey;
+    use euclid::voucher::BalanceKey;
 
     fn init(
         deps: &mut cosmwasm_std::OwnedDeps<
@@ -39,8 +40,8 @@ mod tests {
         let admin = deps.api.addr_make("admin");
 
         let expected_state = State {
-            router: router.to_string(),
-            admin,
+            router: router.clone(),
+            admin: admin.clone(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -170,7 +171,7 @@ mod tests {
         let router = Addr::unchecked("router");
         let admin = Addr::unchecked("admin");
         let state = State {
-            router: router.to_string(),
+            router: router.clone(),
             admin: admin.clone(),
         };
         STATE.save(&mut deps.storage, &state).unwrap();
@@ -348,7 +349,7 @@ mod tests {
         let router = Addr::unchecked("router");
         let admin = Addr::unchecked("admin");
         let state = State {
-            router: router.to_string(),
+            router: router.clone(),
             admin: admin.clone(),
         };
         STATE.save(&mut deps.storage, &state).unwrap();
@@ -448,7 +449,7 @@ mod tests {
             .save(
                 &mut deps.storage,
                 &State {
-                    router: router.to_string(),
+                    router: router.clone(),
                     admin: admin.clone(),
                 },
             )

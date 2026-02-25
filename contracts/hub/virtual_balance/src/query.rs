@@ -4,11 +4,14 @@ use euclid::{
     chain::ChainUid,
     error::ContractError,
     msgs::virtual_balance::{
-        GetAllPausedTokensResponse, GetBalanceResponse, GetPausedTokenHeightResponse,
-        GetStateResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
+        msg::{
+            GetBalanceResponse, GetStateResponse, GetUserBalancesResponse,
+            GetUserBalancesResponseItem,
+        },
+        GetAllPausedTokensResponse, GetPausedTokenHeightResponse,
     },
     utils::pagination::Pagination,
-    virtual_balance::BalanceKey,
+    voucher::BalanceKey,
 };
 
 use crate::state::{BALANCES, PAUSED_TOKENS, STATE};

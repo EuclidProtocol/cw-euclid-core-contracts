@@ -14,7 +14,7 @@ use crate::query::{
 };
 use crate::state::STATE;
 use euclid::error::ContractError;
-use euclid::msgs::virtual_balance::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
+use euclid::msgs::virtual_balance::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:virtual_balance";
@@ -30,8 +30,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     let state = State {
-        router: info.sender.to_string(),
-        // The admin is set by the router contract from its instantiate function
+        router: info.sender.clone(),
         admin: msg.admin,
     };
 

@@ -1,9 +1,7 @@
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, IbcAcknowledgement,
-    IbcBasicResponse, IbcPacketAckMsg, IbcPacketTimeoutMsg, Int256, MessageInfo, ReplyOn, Response,
-    StdError, StdResult, SubMsg, WasmMsg,
+    from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response, SubMsg,
+    WasmMsg,
 };
 use cw20::Cw20Coin;
 use euclid::{
@@ -12,122 +10,77 @@ use euclid::{
     events::{deposit_token_event, swap_event},
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
-        cw20::ExecuteMsg as Cw20ExecuteMsg, escrow::InstantiateMsg as EscrowInstantiateMsg,
-        factory::ExecuteMsg,
+        escrow::InstantiateMsg as EscrowInstantiateMsg,
+        vlp::base::{DeregisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
     },
-    pool::{DeRegisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
-    swap::{SwapResponse, TransferResponse, WithdrawResponse},
+    swap::{SwapResponse, TransferVoucherResponse},
     token::Token,
 };
-use euclid_ibc::{ack::AcknowledgementMsg, msg::ChainIbcExecuteMsg};
+use euclid_ibc::{ack::AcknowledgementMsg, router_ibc::RouterCrossChainExecuteMsg};
 
 use crate::{
-    reply::{CW20_INSTANTIATE_REPLY_ID, ESCROW_INSTANTIATE_REPLY_ID, IBC_ACK_AND_TIMEOUT_REPLY_ID},
+    reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
-        PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
+        FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
         PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20, VLP_TO_LP_SHARES,
+        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
 };
 
-use super::channel::TIMEOUT_COUNTS;
-
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn ibc_packet_ack(
-    _deps: DepsMut,
-    env: Env,
-    ack: IbcPacketAckMsg,
-) -> Result<IbcBasicResponse, ContractError> {
-    let internal_msg = ExecuteMsg::IbcCallbackAckAndTimeout { ack: ack.clone() };
-    let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: env.contract.address.to_string(),
-        msg: to_json_binary(&internal_msg)?,
-        funds: vec![],
-    });
-    let msg: Result<ChainIbcExecuteMsg, StdError> = from_json(&ack.original_packet.data);
-    let tx_id = msg
-        .map(|m| m.get_tx_id())
-        .unwrap_or("tx_id_not_found".to_string());
-
-    let sub_msg = SubMsg::reply_always(internal_msg, IBC_ACK_AND_TIMEOUT_REPLY_ID);
-    Ok(IbcBasicResponse::new()
-        .add_attribute("ibc_ack", ack.acknowledgement.data.to_string())
-        .add_attribute("tx_id", tx_id)
-        .add_submessage(sub_msg))
-}
-
-pub fn ibc_ack_packet_internal_call(
-    deps: DepsMut,
-    info: MessageInfo,
-    env: Env,
-    ack: IbcPacketAckMsg,
-) -> Result<Response, ContractError> {
-    ensure!(
-        info.sender == env.contract.address,
-        ContractError::Unauthorized {}
-    );
-    let msg: ChainIbcExecuteMsg = from_json(&ack.original_packet.data)?;
-    reusable_internal_ack_call(deps, env, msg, ack.acknowledgement.data, false)
-}
 pub fn reusable_internal_ack_call(
-    deps: DepsMut,
+    deps: &mut DepsMut,
     env: Env,
-    msg: ChainIbcExecuteMsg,
+    msg: RouterCrossChainExecuteMsg,
     ack: Binary,
     is_native: bool,
 ) -> Result<Response, ContractError> {
     // Parse the ack based on request
     match msg {
-        ChainIbcExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
+        RouterCrossChainExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
 
-            ack_pool_creation(deps, env, sender.address, res, tx_id, is_native)
+            ack_pool_creation(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
 
-        ChainIbcExecuteMsg::RegisterDenom { tx_id, sender, .. } => {
+        RouterCrossChainExecuteMsg::RegisterDenom { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<RegisterDenomResponse> = from_json(ack)?;
 
-            ack_register_denom(deps, env, sender.address, res, tx_id, is_native)
+            ack_register_denom(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
-        ChainIbcExecuteMsg::DeRegisterDenom { tx_id, sender, .. } => {
+        RouterCrossChainExecuteMsg::DeregisterDenom { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<DeRegisterDenomResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<DeregisterDenomResponse> = from_json(ack)?;
 
-            ack_deregister_denom(deps, env, sender.address, res, tx_id, is_native)
+            ack_deregister_denom(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
 
-        ChainIbcExecuteMsg::AddLiquidity { tx_id, sender, .. } => {
+        RouterCrossChainExecuteMsg::AddLiquidity { tx_id, sender, .. } => {
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
-            ack_add_liquidity(deps, res, sender.address, tx_id, is_native)
+            ack_add_liquidity(deps.branch(), res, sender.address, tx_id, is_native)
         }
-        ChainIbcExecuteMsg::RemoveLiquidity(msg) => {
+        RouterCrossChainExecuteMsg::RemoveLiquidity(msg) => {
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<RemoveLiquidityResponse> = from_json(ack)?;
-            ack_remove_liquidity(deps, res, msg.sender.address, msg.tx_id, is_native)
+            ack_remove_liquidity(deps.branch(), res, msg.sender.address, msg.tx_id, is_native)
         }
-        ChainIbcExecuteMsg::Swap(swap) => {
+        RouterCrossChainExecuteMsg::Swap(swap) => {
             // Process acknowledgment for swap
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack)?;
-            ack_swap_request(deps, res, swap.sender.address, swap.tx_id, is_native)
-        }
-        ChainIbcExecuteMsg::Withdraw(msg) => {
-            let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack)?;
-            ack_withdraw_request(
-                deps,
+            ack_swap_request(
+                deps.branch(),
                 res,
-                msg.sender.address,
-                msg.token,
-                msg.tx_id,
+                swap.sender.address,
+                swap.tx_id,
                 is_native,
             )
         }
-        ChainIbcExecuteMsg::Transfer(msg) => {
-            let res: AcknowledgementMsg<TransferResponse> = from_json(ack)?;
+        RouterCrossChainExecuteMsg::TransferVoucher(msg) => {
+            let res: AcknowledgementMsg<TransferVoucherResponse> = from_json(ack)?;
             ack_transfer_request(
-                deps,
+                deps.branch(),
                 res,
                 msg.sender.address,
                 msg.token,
@@ -135,49 +88,18 @@ pub fn reusable_internal_ack_call(
                 is_native,
             )
         }
-        ChainIbcExecuteMsg::DepositToken(deposit) => {
+        RouterCrossChainExecuteMsg::DepositToken(deposit) => {
             // Process acknowledgment for deposit
             let res: AcknowledgementMsg<DepositTokenResponse> = from_json(ack)?;
-            ack_deposit_token_request(deps, res, deposit.sender.address, deposit.tx_id, is_native)
-        } // ChainIbcExecuteMsg::RequestWithdraw {
-          //     token_id, tx_id, ..
-          // } => {
-          //     let res: AcknowledgementMsg<WithdrawResponse> = from_json(ack.acknowledgement.data)?;
-          //     ack_request_withdraw(deps, res, token_id, tx_id)
-          // }
-          // ChainIbcExecuteMsg::RequestEscrowCreation { token, tx_id, .. } => {
-          //     let res: AcknowledgementMsg<InstantiateEscrowResponse> =
-          //         from_json(ack.acknowledgement.data)?;
-          //     ack_request_instantiate_escrow(deps, env, res, token)
-          // }
+            ack_deposit_token_request(
+                deps.branch(),
+                res,
+                deposit.sender.address,
+                deposit.tx_id,
+                is_native,
+            )
+        }
     }
-}
-
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn ibc_packet_timeout(
-    deps: DepsMut,
-    env: Env,
-    msg: IbcPacketTimeoutMsg,
-) -> Result<IbcBasicResponse, ContractError> {
-    TIMEOUT_COUNTS.update(
-        deps.storage,
-        // timed out packets are sent by us, so lookup based on packet
-        // source, not destination.
-        msg.packet.src.channel_id.clone(),
-        |count| -> StdResult<_> { Ok(count.unwrap_or_default() + 1) },
-    )?;
-    let failed_ack = IbcAcknowledgement::new(to_json_binary(&AcknowledgementMsg::Error::<()>(
-        "Timeout".to_string(),
-    ))?);
-
-    let failed_ack_simulation = IbcPacketAckMsg::new(failed_ack, msg.packet, msg.relayer);
-
-    // We want to handle timeout in same way we handle failed acknowledgement
-    let result = ibc_packet_ack(deps, env, failed_ack_simulation);
-
-    result.or(Ok(
-        IbcBasicResponse::new().add_attribute("method", "ibc_packet_timeout")
-    ))
 }
 
 // Function to create pool
@@ -204,7 +126,7 @@ fn ack_pool_creation(
             // Load state to get escrow code id in case we need to instantiate
             let state = STATE.load(deps.storage)?;
             let escrow_code_id = state.escrow_code_id;
-            let cw20_code_id = state.cw20_code_id;
+            let cw20_code_id = state.lp_code_id;
 
             PAIR_TO_VLP.save(
                 deps.storage,
@@ -225,26 +147,6 @@ fn ack_pool_creation(
                 let escrow_contract =
                     TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
 
-                // Instantiate escrow if one doesn't exist
-                // if escrow_contract.is_none() {
-                //     let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                //         admin: Some(state.admin.clone()),
-                //         code_id: escrow_code_id,
-                //         msg: to_json_binary(&EscrowInstantiateMsg {
-                //             token_id: token.token,
-                //             allowed_denom: Some(token.token_type),
-                //         })?,
-                //         funds: vec![],
-                //         label: "escrow".to_string(),
-                //     });
-
-                //     res = res.add_submessage(SubMsg {
-                //         id: ESCROW_INSTANTIATE_REPLY_ID,
-                //         msg: init_msg,
-                //         gas_limit: None,
-                //         reply_on: ReplyOn::Always,
-                //     });
-                // }
                 match escrow_contract {
                     Some(address) => {
                         let send_msg = token.token_type.create_escrow_msg(token.amount, address)?;
@@ -278,7 +180,7 @@ fn ack_pool_creation(
             let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                 admin: Some(state.admin.clone()),
                 code_id: cw20_code_id,
-                msg: to_json_binary(&euclid::msgs::cw20::InstantiateMsg {
+                msg: to_json_binary(&euclid::msgs::lp_token::msg::InstantiateMsg {
                     name: lp_token_instantiate_data.name,
                     symbol: lp_token_instantiate_data.symbol,
                     decimals: lp_token_instantiate_data.decimals,
@@ -299,7 +201,7 @@ fn ack_pool_creation(
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_contract, &data.mint_lp_tokens.into())?;
 
             Ok(res.add_submessage(SubMsg {
-                id: CW20_INSTANTIATE_REPLY_ID,
+                id: LP_INSTANTIATE_REPLY_ID,
                 msg: init_cw20_msg,
                 gas_limit: None,
                 reply_on: ReplyOn::Always,
@@ -419,7 +321,7 @@ fn ack_deregister_denom(
     deps: DepsMut,
     _env: Env,
     sender: String,
-    res: AcknowledgementMsg<DeRegisterDenomResponse>,
+    res: AcknowledgementMsg<DeregisterDenomResponse>,
     tx_id: String,
     is_native: bool,
 ) -> Result<Response, ContractError> {
@@ -512,12 +414,12 @@ fn ack_add_liquidity(
 
             // Mint cw20 tokens for sender //
             // Get cw20 contract address
-            let cw20_address = VLP_TO_CW20.load(deps.storage, data.vlp_address)?;
+            let lp_token_address = VLP_TO_LP_TOKEN.load(deps.storage, data.vlp_address)?;
 
             // Send mint msg
-            let cw20_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: cw20_address.into_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Mint {
+            let lp_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: lp_token_address.into_string(),
+                msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Mint {
                     recipient: liquidity_info.sender,
                     amount: data.mint_lp_tokens,
                 })?,
@@ -525,7 +427,7 @@ fn ack_add_liquidity(
             });
 
             Ok(res
-                .add_message(cw20_mint_msg)
+                .add_message(lp_mint_msg)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("sender", sender))
         }
@@ -588,19 +490,19 @@ fn ack_remove_liquidity(
 
             // Burn cw20 tokens for sender //
             // Get cw20 contract address
-            let cw20_address = VLP_TO_CW20.load(deps.storage, data.vlp_address)?;
+            let lp_token_address = VLP_TO_LP_TOKEN.load(deps.storage, data.vlp_address)?;
 
             // Send burn msg
-            let cw20_burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: cw20_address.into_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Burn {
+            let lp_burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: lp_token_address.into_string(),
+                msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Burn {
                     amount: liquidity_info.lp_allocation,
                 })?,
                 funds: vec![],
             });
 
             Ok(res
-                .add_message(cw20_burn_msg)
+                .add_message(lp_burn_msg)
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id))
         }
@@ -611,16 +513,16 @@ fn ack_remove_liquidity(
                 return Err(ContractError::new(&err));
             }
             // Send back cw20 to original sender
-            let cw20_send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: liquidity_info.cw20.to_string(),
-                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+            let lp_send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: liquidity_info.lp_token.to_string(),
+                msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Transfer {
                     recipient: sender.clone().into_string(),
                     amount: liquidity_info.lp_allocation,
                 })?,
                 funds: vec![],
             });
             Ok(Response::new()
-                .add_message(cw20_send_msg)
+                .add_message(lp_send_msg)
                 .add_attribute("method", "liquidity_tx_err_refund")
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id)
@@ -658,15 +560,15 @@ fn ack_swap_request(
                 .add_attribute("partner_fee_recipient", &swap_info.partner_fee_recipient);
 
             if !swap_info.partner_fee_amount.is_zero() {
-                let mut state = STATE.load(deps.storage)?;
+                let mut fee_state = FEE_STATE.load(deps.storage)?;
 
                 // Add partner fee collected to the total
-                state
+                fee_state
                     .partner_fees_collected
                     .add_fee(asset_in.token.to_string(), swap_info.partner_fee_amount);
 
                 // Save new total partner fees collected to state
-                STATE.save(deps.storage, &state)?;
+                FEE_STATE.save(deps.storage, &fee_state)?;
             }
             if !asset_in.token_type.is_voucher() {
                 let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, asset_in.token.clone())?;
@@ -775,38 +677,9 @@ fn ack_deposit_token_request(
     }
 }
 
-fn ack_withdraw_request(
-    _deps: DepsMut,
-    res: AcknowledgementMsg<WithdrawResponse>,
-    _sender: String,
-    token_id: Token,
-    _tx_id: String,
-    is_native: bool,
-) -> Result<Response, ContractError> {
-    match res {
-        AcknowledgementMsg::Ok(_data) => {
-            // Use it for logging, Router will send packets instead of ack to release tokens from escrow
-            // Here you will get a response of escrows that router is going to release so it can be used in frontend
-
-            Ok(Response::new()
-                .add_attribute("method", "request_withdraw_submitted")
-                .add_attribute("token", token_id.to_string()))
-        }
-        AcknowledgementMsg::Error(err) => {
-            // Its a native call so you can return error to reject complete execution call
-            if is_native {
-                return Err(ContractError::new(&err));
-            }
-            Ok(Response::new()
-                .add_attribute("method", "request_withdraw_error")
-                .add_attribute("error", err.clone()))
-        }
-    }
-}
-
 fn ack_transfer_request(
     _deps: DepsMut,
-    res: AcknowledgementMsg<TransferResponse>,
+    res: AcknowledgementMsg<TransferVoucherResponse>,
     _sender: String,
     token_id: Token,
     _tx_id: String,

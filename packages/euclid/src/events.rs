@@ -43,7 +43,6 @@ pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
         .add_attribute("amount_in", swap.amount_in)
         .add_attribute("min_amount_out", swap.min_amount_out)
         .add_attribute("swaps", format!("{swaps:?}", swaps = swap.swaps))
-        .add_attribute("timeout", format!("{timeout:?}", timeout = swap.timeout))
 }
 
 pub fn deposit_token_event(tx_id: &str, deposit: &DepositTokenRequest) -> Event {
@@ -53,7 +52,6 @@ pub fn deposit_token_event(tx_id: &str, deposit: &DepositTokenRequest) -> Event 
         .add_attribute("asset_in", deposit.asset_in.token.to_string())
         .add_attribute("asset_in_denom", deposit.asset_in.token_type.get_key())
         .add_attribute("amount_in", deposit.amount_in)
-        .add_attribute("timeout", format!("{timeout:?}", timeout = deposit.timeout))
 }
 
 pub fn register_factory_event(
@@ -80,7 +78,7 @@ pub enum TxType {
     RegisterDenom,
     DeregisterDenom,
     EscrowRelease,
-    TransferVirtualBalance,
+    TransferVoucher,
     EscrowWithdraw,
     RegisterFactory,
     UpdateFactoryChannel,
@@ -99,7 +97,7 @@ impl fmt::Display for TxType {
             TxType::RegisterDenom => "register_denom",
             TxType::DeregisterDenom => "deregister_denom",
             TxType::EscrowRelease => "escrow_release",
-            TxType::TransferVirtualBalance => "transfer_virtual_balance",
+            TxType::TransferVoucher => "transfer_voucher",
             TxType::EscrowWithdraw => "escrow_withdraw",
             TxType::RegisterFactory => "register_factory",
             TxType::UpdateFactoryChannel => "update_factory_channel",
@@ -135,4 +133,60 @@ pub fn deregister_denom_event(token: &Token, chain_uid: &str, denom: &TokenType)
         .add_attribute("token", token.to_string())
         .add_attribute(format!("{}_chain_uid", token), chain_uid)
         .add_attribute(format!("{}_denom", token), denom.get_key())
+}
+
+pub const EUCLID_SEND_PACKET_EVENT: &str = "euclid-send-packet";
+pub const EUCLID_RECEIVE_PACKET_EVENT: &str = "euclid-receive-packet";
+pub const EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT: &str = "euclid-write-acknowledgement";
+pub const EUCLID_RECEIVE_ACKNOWLEDGEMENT_EVENT: &str = "euclid-receive-acknowledgement";
+
+pub fn send_packet_event(
+    source_port: &str,
+    destination_port: &str,
+    msg: &str,
+    sequence: u128,
+    timeout: u64,
+    destination_chain_type: &str,
+) -> Event {
+    Event::new(EUCLID_SEND_PACKET_EVENT)
+        .add_attribute("source_port", source_port)
+        .add_attribute("destination_port", destination_port)
+        .add_attribute("msg", msg)
+        .add_attribute("sequence", sequence.to_string())
+        .add_attribute("timeout", timeout.to_string())
+        .add_attribute("destination_chain_type", destination_chain_type)
+}
+
+pub fn receive_packet_event(sequence: u128, source_port: &str, destination_port: &str) -> Event {
+    Event::new(EUCLID_RECEIVE_PACKET_EVENT)
+        .add_attribute("sequence", sequence.to_string())
+        .add_attribute("source_port", source_port)
+        .add_attribute("destination_port", destination_port)
+}
+
+// Write acknowledgement event is triggered by the contract itself after receiving a packet. This will also have ack msg but its not present at the time this event is released and hence will be added later.
+pub fn write_acknowledgement_event(
+    sequence: u128,
+    source_port: &str,
+    destination_port: &str,
+    destination_chain_type: &str,
+    msg: &str,
+) -> Event {
+    Event::new(EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
+        .add_attribute("sequence", sequence.to_string())
+        .add_attribute("source_port", source_port)
+        .add_attribute("destination_port", destination_port)
+        .add_attribute("destination_chain_type", destination_chain_type)
+        .add_attribute("msg", msg)
+}
+
+pub fn receive_acknowledgement_event(
+    sequence: u128,
+    source_port: &str,
+    destination_port: &str,
+) -> Event {
+    Event::new(EUCLID_RECEIVE_ACKNOWLEDGEMENT_EVENT)
+        .add_attribute("sequence", sequence.to_string())
+        .add_attribute("source_port", source_port)
+        .add_attribute("destination_port", destination_port)
 }

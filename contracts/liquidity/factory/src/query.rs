@@ -1,21 +1,21 @@
-use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Order, Uint128};
+use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Env, Order, Uint128};
 use cw_storage_plus::Bound;
 use euclid::{
-    chain::{ChainType, IbcChain},
+    chain::{ChainType, CosmosChain},
     error::ContractError,
     msgs::factory::{
         AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
         GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
-        GetRelayerResponse, GetVlpResponse, PartnerFeesCollectedPerDenomResponse,
-        PartnerFeesCollectedResponse, PoolVlpResponse, StateResponse,
+        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
+        PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
 };
 
 use crate::state::{
-    HUB_CHANNEL, MOCK_RELAYER_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
-    PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_CW20,
+    FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE,
+    TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
 };
 
 // Returns the VLP address
@@ -26,9 +26,9 @@ pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
 
 // Returns the total partner fees collected
 pub fn get_partner_fees_collected(deps: Deps) -> Result<Binary, ContractError> {
-    let state = STATE.load(deps.storage)?;
+    let fee_state = FEE_STATE.load(deps.storage)?;
     Ok(to_json_binary(&PartnerFeesCollectedResponse {
-        total: state.partner_fees_collected,
+        total: fee_state.partner_fees_collected,
     })?)
 }
 
@@ -36,7 +36,7 @@ pub fn get_partner_fees_collected_per_denom(
     deps: Deps,
     denom: String,
 ) -> Result<Binary, ContractError> {
-    let partner_fees_collected = STATE.load(deps.storage)?.partner_fees_collected;
+    let partner_fees_collected = FEE_STATE.load(deps.storage)?.partner_fees_collected;
 
     Ok(to_json_binary(&PartnerFeesCollectedPerDenomResponse {
         total: partner_fees_collected.get_fee(denom.as_str()),
@@ -45,7 +45,7 @@ pub fn get_partner_fees_collected_per_denom(
 
 // Returns the LP token address
 pub fn get_lp_token_address(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
-    let token_address = VLP_TO_CW20.load(deps.storage, vlp)?;
+    let token_address = VLP_TO_LP_TOKEN.load(deps.storage, vlp)?;
     Ok(to_json_binary(&GetLPTokenResponse { token_address })?)
 }
 
@@ -56,9 +56,9 @@ pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError>
         escrow_address: escrow_address.clone(),
         denoms: vec![],
     };
-    if escrow_address.is_some() {
+    if let Some(escrow_address) = escrow_address {
         let denoms: euclid::msgs::escrow::AllowedDenomsResponse = deps.querier.query_wasm_smart(
-            escrow_address.unwrap(),
+            escrow_address,
             &euclid::msgs::escrow::QueryMsg::AllowedDenoms {},
         )?;
         response.denoms = denoms.denoms;
@@ -68,16 +68,14 @@ pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError>
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
-    let hub = HUB_CHANNEL.may_load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
         chain_uid: state.chain_uid,
         router_contract: state.router_contract,
+        relayer_contract: state.relayer_contract,
         admin: state.admin,
-        hub_channel: hub,
         escrow_code_id: state.escrow_code_id,
-        cw20_code_id: state.cw20_code_id,
+        lp_code_id: state.lp_code_id,
         is_native: state.is_native,
-        partner_fees_collected: state.partner_fees_collected,
     })?)
 }
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
@@ -169,22 +167,13 @@ pub fn pending_remove_liquidity(
     })?)
 }
 
-pub fn get_chain_type(deps: Deps) -> Result<ChainType, ContractError> {
+pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError> {
     let state = STATE.load(deps.storage)?;
     if state.is_native {
         Ok(ChainType::Native {})
     } else {
-        let channel = HUB_CHANNEL.load(deps.storage)?;
-        Ok(ChainType::Ibc(IbcChain {
-            from_hub_channel: "not-implemented".to_string(),
-            from_factory_channel: channel,
+        Ok(ChainType::Cosmos(CosmosChain {
+            chain_id: env.block.chain_id.clone(),
         }))
     }
-}
-
-pub fn query_relayer(deps: Deps) -> Result<Binary, ContractError> {
-    let relayer = MOCK_RELAYER_ADDRESS.load(deps.storage)?;
-    Ok(to_json_binary(&GetRelayerResponse {
-        relayer_address: relayer.to_string(),
-    })?)
 }

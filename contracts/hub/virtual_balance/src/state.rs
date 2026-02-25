@@ -2,15 +2,13 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{ensure, Storage, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
-    chain::{ChainUid, CrossChainUser},
-    error::ContractError,
-    msgs::virtual_balance::State,
-    virtual_balance::SerializedBalanceKey,
+    chain::ChainUid, cross_chain_user::CrossChainUser, error::ContractError,
+    msgs::virtual_balance::msg::State, voucher::SerializedBalanceKey,
 };
 
 pub const STATE: Item<State> = Item::new("state");
 
-pub const BALANCES: Map<SerializedBalanceKey, Uint128> = Map::new("snapshot_balances");
+pub const BALANCES: Map<SerializedBalanceKey, Uint128> = Map::new("balances");
 
 #[cw_serde]
 pub struct Allowance {

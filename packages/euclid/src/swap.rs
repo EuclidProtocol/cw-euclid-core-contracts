@@ -1,8 +1,8 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, IbcTimeout, Uint128};
+use cosmwasm_std::{Addr, Uint128};
 
 use crate::{
-    chain::CrossChainUserWithLimit,
+    recipient::Recipient,
     token::{Token, TokenWithDenom},
 };
 
@@ -22,10 +22,8 @@ pub struct SwapRequest {
     pub min_amount_out: Uint128,
     // All the swaps needed for assent_in <> asset_out
     pub swaps: Vec<NextSwapPair>,
-    // The timeout specified for the swap
-    pub timeout: IbcTimeout,
 
-    pub cross_chain_addresses: Vec<CrossChainUserWithLimit>,
+    pub recipients: Vec<Recipient>,
 
     pub partner_fee_amount: Uint128,
     pub partner_fee_recipient: Addr,
@@ -51,13 +49,7 @@ pub struct SwapResponse {
 }
 
 #[cw_serde]
-pub struct WithdrawResponse {
-    pub token: Token,
-    pub tx_id: String,
-}
-
-#[cw_serde]
-pub struct TransferResponse {
+pub struct TransferVoucherResponse {
     pub token: Token,
     pub tx_id: String,
 }

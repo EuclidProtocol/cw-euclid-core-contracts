@@ -4,7 +4,7 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Resp
 
 use cw2::set_contract_version;
 use euclid::error::ContractError;
-use euclid::msgs::meta_transaction::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
+use euclid::msgs::meta_transaction::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 use crate::execute::execute_meta_transaction;
 use crate::query::get_nonce;

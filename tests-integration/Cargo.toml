@@ -11,14 +11,15 @@ modules = []
 [dev-dependencies]
 router = { path = "../contracts/hub/router" }
 virtual_balance = { path = "../contracts/hub/virtual_balance" }
-vlp = { path = "../contracts/hub/vlp" }
+cp_vlp = { path = "../contracts/hub/cp_vlp" }
 stable_vlp = { path = "../contracts/hub/stable_vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }
-cw20 = { path = "../contracts/liquidity/cw20" }
+lp_token = { path = "../contracts/liquidity/lp_token" }
 euclid-relayer = { path = "../contracts/common/euclid-relayer" }
-claimer = { path = "../contracts/liquidity/claimer" }
+claimer = { path = "../contracts/hub_utilities/claimer" }
 meta-transaction = { path = "../contracts/hub/meta_transaction" }
+orderbook_deposits = { path = "../contracts/hub_utilities/orderbook_deposits" } 
 
 #Other Crates
 euclid = { path = "../packages/euclid" }
@@ -32,6 +33,7 @@ cw-storage-plus = { workspace = true }
 itertools = { workspace = true }
 cosmwasm-schema = { workspace = true }
 cw-utils = { workspace = true }
+cw20 = { workspace = true }
 cw-orch = { workspace = true }
 cw-orch-interchain = "0.9.0"
 ibc-relayer-types = "0.32.1"

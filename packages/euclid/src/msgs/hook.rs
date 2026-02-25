@@ -1,13 +1,11 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{to_json_binary, Binary, Uint128};
 
-use crate::{chain::CrossChainUser, error::ContractError};
+use crate::{cross_chain_user::CrossChainUser, error::ContractError};
 
 #[cw_serde]
 pub struct EuclidReceive {
-    pub data: Binary,
-    // Metadata to be logged into events for some off chain oracle/analytics
-    pub meta: Option<String>,
+    pub msg: Binary,
 }
 
 // This is just a helper to properly serialize the above message
@@ -22,10 +20,14 @@ impl EuclidReceive {
             self.clone(),
         ))?)
     }
+
+    pub fn from_msg(binary: Binary) -> Self {
+        Self { msg: binary }
+    }
 }
 
 #[cw_serde]
-pub struct VirtualBalanceReceive {
+pub struct VoucherReceive {
     pub sender: CrossChainUser,
     pub amount: Uint128,
     pub token_id: String,
@@ -34,15 +36,15 @@ pub struct VirtualBalanceReceive {
 
 // This is just a helper to properly serialize the above message
 #[cw_serde]
-pub enum VirtualBalanceReceiverMsg {
-    VirtualBalanceReceive(VirtualBalanceReceive),
+pub enum VoucherReceiverMsg {
+    VoucherReceive(VoucherReceive),
 }
 
-impl VirtualBalanceReceive {
+impl VoucherReceive {
     pub fn to_receiver_msg(&self) -> Result<Binary, ContractError> {
-        Ok(to_json_binary(
-            &VirtualBalanceReceiverMsg::VirtualBalanceReceive(self.clone()),
-        )?)
+        Ok(to_json_binary(&VoucherReceiverMsg::VoucherReceive(
+            self.clone(),
+        ))?)
     }
 }
 
@@ -60,5 +62,25 @@ pub enum MetaReceiverMsg {
 impl MetaReceive {
     pub fn to_receiver_msg(&self) -> Result<Binary, ContractError> {
         Ok(to_json_binary(&MetaReceiverMsg::MetaReceive(self.clone()))?)
+    }
+}
+
+#[cw_serde]
+pub struct EuclidAcknowledgement {
+    pub ack: Binary,
+    pub msg: Binary,
+}
+
+// This is just a helper to properly serialize the above message
+#[cw_serde]
+pub enum EuclidAcknowledgementMsg {
+    EuclidAcknowledgement(EuclidAcknowledgement),
+}
+
+impl EuclidAcknowledgement {
+    pub fn to_receiver_msg(&self) -> Result<Binary, ContractError> {
+        Ok(to_json_binary(
+            &EuclidAcknowledgementMsg::EuclidAcknowledgement(self.clone()),
+        )?)
     }
 }

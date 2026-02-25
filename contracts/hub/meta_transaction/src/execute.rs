@@ -2,10 +2,11 @@ use cosmwasm_std::{
     ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, HexBinary, MessageInfo,
     QueryRequest, Response, Timestamp, Uint128, WasmMsg, WasmQuery,
 };
-use euclid::chain::{ChainType, CrossChainUser};
+use euclid::chain::ChainType;
+use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
 use euclid::msgs::hook::MetaReceive;
-use euclid::msgs::meta_transaction::{MetaTransaction, UpdateAdminMsg};
+use euclid::msgs::meta_transaction::msg::{MetaTransaction, UpdateAdminMsg};
 use euclid::msgs::router;
 use relayer::verify::{
     add_eth_prefix, cosmos_address_from_pubkey, eth_address_from_pubkey, msg_to_sign_data,
@@ -60,7 +61,7 @@ pub fn execute_meta_transaction(
 
     // Derive address from public key and verify it matches the claimed address
     let derived_address = match chain_type {
-        ChainType::Ibc(_) | ChainType::Native {} => {
+        ChainType::Cosmos(_) | ChainType::Native {} => {
             let pubkey = Binary::from_base64(meta_transaction.signer_pubkey.as_str())?;
             let bech32 = meta_transaction.data.signer_prefix.clone();
 
@@ -95,11 +96,6 @@ pub fn execute_meta_transaction(
 
             eth_address_from_pubkey(&pubkey)
                 .map_err(|e| ContractError::new(&format!("Failed to derive EVM address: {}", e)))?
-        }
-        ChainType::Solana(_) => {
-            return Err(ContractError::new(
-                "Solana chain type not yet supported for meta transactions",
-            ));
         }
     };
 

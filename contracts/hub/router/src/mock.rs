@@ -15,6 +15,7 @@ impl MockRouter {
 }
 
 impl MockRouter {
+    #[allow(clippy::too_many_arguments)]
     pub fn instantiate(
         app: &mut MockApp,
         code_id: u64,
@@ -22,12 +23,17 @@ impl MockRouter {
         vlp_code_id: u64,
         stable_vlp_code_id: u64,
         virtual_balance_code_id: u64,
+        relayer_contract: Addr,
+        release_fee_recipient: Addr,
+        default_fee_recipient: Addr,
     ) -> Self {
         let msg = mock_router_instantiate_msg(
             vlp_code_id,
             stable_vlp_code_id,
             virtual_balance_code_id,
-            Some(vec![sender.to_string()]),
+            relayer_contract,
+            release_fee_recipient,
+            default_fee_recipient,
         );
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid router", None);
 
@@ -65,13 +71,17 @@ pub fn mock_router_instantiate_msg(
     constant_product_vlp_code_id: u64,
     stable_vlp_code_id: u64,
     virtual_balance_code_id: u64,
-    mock_relayer_addresses: Option<Vec<String>>,
+    relayer_contract: Addr,
+    release_fee_recipient: Addr,
+    default_fee_recipient: Addr,
 ) -> InstantiateMsg {
     InstantiateMsg {
         constant_product_vlp_code_id,
         stable_vlp_code_id,
         virtual_balance_code_id,
-        mock_relayer_addresses,
+        relayer_contract,
+        release_fee_recipient,
+        default_fee_recipient,
     }
 }
 

@@ -1,80 +1,74 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     chain::{Chain, ChainUid},
     msgs::router::TokenDenom,
     token::{PairWithDenomAndAmount, Token},
 };
-use euclid_ibc::msg::{ChainIbcRemoveLiquidityExecuteMsg, ChainIbcSwapExecuteMsg};
+use euclid_ibc::router_ibc::{
+    RouterCrossChainRemoveLiquidityExecuteMsg, RouterCrossChainSwapExecuteMsg,
+};
 
 #[cw_serde]
 pub struct State {
     // Contract admin
-    pub admin: String,
-    // Pool Code ID
+    pub admin: Addr,
+    // Pools
     pub constant_product_vlp_code_id: u64,
-    // Stable Pool Code ID
     pub stable_vlp_code_id: u64,
-    pub virtual_balance_address: Option<Addr>,
+
     pub locked: bool,
 }
 
 pub const STATE: Item<State> = Item::new("state");
 
-pub const MOCK_RELAYER_ADDRESSES: Item<Vec<String>> = Item::new("mock_relayer_addresses");
+pub const META_TRANSACTION_CONTRACT: Item<Addr> = Item::new("meta_transaction_contract");
+pub const VIRTUAL_BALANCE_CONTRACT: Item<Addr> = Item::new("virtual_balance_contract");
+pub const RELAYER_CONTRACT: Item<Addr> = Item::new("relayer_contract");
 
-pub const VLPS: Map<(String, String), String> = Map::new("vlps");
+#[cw_serde]
+pub struct FeeState {
+    pub release_fee_recipient: Addr,
+    pub default_fee_recipient: Addr,
+}
+pub const FEE_STATE: Item<FeeState> = Item::new("fee_state");
 
-// Store all tokens in a map for easy access
-pub const TOKEN_VLPS: Map<Token, Vec<String>> = Map::new("token_vlps");
+// Convert it to multi index map?
+pub const VLPS: Map<(String, String), Addr> = Map::new("vlps");
+
+// Store all vlps related to a token
+pub const TOKEN_VLPS: Map<Token, Vec<Addr>> = Map::new("token_vlps");
 
 // Store all tokens in a map for easy access
 pub const TOKEN_DENOMS: Map<Token, Vec<TokenDenom>> = Map::new("token_denoms");
 
-// Token escrow balance on each chain
+// Token escrow balance on each chain. Mapping of (token, chain_uid) to balance
 pub const ESCROW_BALANCES: Map<(String, ChainUid), Uint128> = Map::new("escrow_balances");
 
+// Store info of chain against chain uid
 pub const CHAIN_UID_TO_CHAIN: Map<ChainUid, Chain> = Map::new("chain_uid_to_chain");
-pub const CHANNEL_TO_CHAIN_UID: Map<String, ChainUid> = Map::new("channel_to_chain_uid");
-pub const DEREGISTERED_CHAINS: Item<Vec<ChainUid>> = Item::new("deregistered_chains");
+pub const LOCKED_CHAINS: Item<Vec<ChainUid>> = Item::new("locked_chains");
 
-// Map for (ChainUID ,Sender, TX ID)
-pub const SWAP_ID_TO_MSG: Map<(ChainUid, String, String), ChainIbcSwapExecuteMsg> =
-    Map::new("swap_id_to_msg");
+// Tx Id to Swap Request
+pub const PENDING_SWAPS: Map<String, RouterCrossChainSwapExecuteMsg> = Map::new("pending_swaps");
 
-// Map for (ChainUID ,Sender, TX ID)
-pub const PENDING_REMOVE_LIQUIDITY: Map<
-    (ChainUid, String, String),
-    ChainIbcRemoveLiquidityExecuteMsg,
-> = Map::new("pending_remove_liquidity");
+// Tx Id to Remove Liquidity Request
+pub const PENDING_REMOVE_LIQUIDITY: Map<String, RouterCrossChainRemoveLiquidityExecuteMsg> =
+    Map::new("pending_remove_liquidity");
+
+#[cw_serde]
+pub struct PendingReleaseVoucher {
+    pub total_amount: Uint128,
+    pub release_fee_amount: Uint128,
+    pub unsafe_refund_voucher: bool,
+}
+// Tx Id to Release Voucher Request
+pub const PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher> =
+    Map::new("pending_release_voucher");
 
 pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
 
-//EVM Relay sequence map
-pub const EVM_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> = Map::new("evm_packet_relay_map");
-
-//EVM Relay sequence count
-pub const EVM_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
-    Map::new("evm_packet_relay_sequence_count");
-
-//SOLANA Relay sequence map
-pub const SOLANA_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
-    Map::new("solana_packet_relay_map");
-
-//SOLANA Relay sequence count
-pub const SOLANA_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
-    Map::new("solana_packet_relay_sequence_count");
-
-//COSMOS Relay sequence map
-pub const COSMOS_PACKET_RELAY_MAP: Map<(ChainUid, u128), Binary> =
-    Map::new("cosmos_packet_relay_map");
-
-//Cosmos Relay sequence count
-pub const COSMOS_PACKET_RELAY_SEQUENCE_COUNT: Map<ChainUid, u128> =
-    Map::new("cosmos_packet_relay_sequence_count");
-
-pub const PROCESSED_PACKET_SEQUENCE: Map<(ChainUid, u128), Uint128> =
-    Map::new("processed_packet_sequence");
-
-pub const META_TRANSACTION_CONTRACT: Item<Addr> = Item::new("meta_transaction_contract");
+/// The key is TokenID_ChainUID
+pub const RELEASE_FEES: Map<(Token, ChainUid), Decimal> = Map::new("release_fees");
+pub const DEFAULT_RELEASE_FEE: Item<Decimal> = Item::new("default_release_fee");

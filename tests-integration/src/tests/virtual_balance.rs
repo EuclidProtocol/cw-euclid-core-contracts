@@ -1,5 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 use cosmwasm_std::coin;
+use cosmwasm_std::Addr;
 use euclid::msgs::virtual_balance::{GetStateResponse, State};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::mock::mock_router;
@@ -33,6 +34,9 @@ fn test_proper_instantiation() {
         vlp_code_id,
         0,
         virtual_balance_code_id,
+        Addr::unchecked("relayer_contract"),
+        Addr::unchecked("release_fee_recipient"),
+        Addr::unchecked("default_fee_recipient"),
     );
 
     let mock_virtual_balance = MockVirtualBalance::instantiate(
@@ -47,8 +51,8 @@ fn test_proper_instantiation() {
         MockVirtualBalance::query_state(&mock_virtual_balance, &virtual_balance);
     let expected_token_id = GetStateResponse {
         state: State {
-            router: mock_router.addr().clone().into_string(),
-            admin: owner.clone(),
+            router: mock_router.addr().clone(),
+            admin: owner.to_owned(),
         },
     };
     assert_eq!(token_id_response, expected_token_id);

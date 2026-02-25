@@ -1,6 +1,6 @@
 use super::common_old::{EuclidReceive, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, Binary};
 use cw20::Cw20ReceiveMsg;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 use swaprouter::msg::Slippage as OsmosisSlippage;
@@ -26,7 +26,7 @@ pub enum QueryMsg {}
 pub struct SwapMsg {
     pub slippage: OsmosisSlippage,
     pub route: Vec<SwapRoute>,
-    pub forwarding_msg: Option<EuclidReceive>,
+    pub forwarding_msg: Option<Binary>,
     pub to_token: TokenType,
     pub recipient: String,
 }

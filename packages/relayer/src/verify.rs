@@ -239,24 +239,44 @@ mod tests {
         assert!(verified);
     }
 
+    struct TestVerifyEvmSignature {
+        msg_str: String,
+        signature: String,
+        pub_key: String,
+    }
+
     #[test]
     fn test_verify_evm_signature() {
-        let msg_str = "Hello, world!";
-        let combined_msg = add_eth_prefix(msg_str);
-        println!("combined_msg: {:?}", combined_msg);
+        let tests = vec![
+            TestVerifyEvmSignature {
+                msg_str: String::from("Hello, world!"),
+                signature: String::from("68b37e2f523d414669be3e57f2c8232d26e78e9a7c7ff2e2690b15b72d21b4f740babfa1e165920ee6f2a490de47ceb91760a72f2e2ec7fc4169f2d154198a1e1b"),
+                pub_key: String::from("044089a9fb9f67cdac85610900f61d69e2adc7e5da37036585955ca85d0ea148202a1e1750d26b825efb5c3e9aff92c6faf37bb1865c9b9612b064e89c6806e408")
+            },
+            TestVerifyEvmSignature {
+                msg_str: String::from(r#"{"signer_address":"0x887e4aac216674d2c432798f851c1ea5d505b2e1","signer_prefix":"0x","signer_chain_uid":"somnia","call_data":[{"target":"euclid1yvgh8xeju5dyr0zxlkvq09htvhjj20fncp5g58np4u25g8rkpgjsy5hngy","call_data":"{\"execute_swap_request\":{\"amount_in\":\"1000000000000000000\",\"asset_in\":{\"token\":\"stt\",\"token_type\":{\"voucher\":{}}},\"asset_out\":\"mon\",\"cross_chain_addresses\":[],\"min_amount_out\":\"2299751846672827\",\"partner_fee\":null,\"swaps\":[{\"token_in\":\"stt\",\"token_out\":\"weuclid\"},{\"token_in\":\"weuclid\",\"token_out\":\"euclid\"},{\"token_in\":\"euclid\",\"token_out\":\"mon\"}]}}"}],"expiry":1765897937,"nonce":"1765897877"}"#),
+                signature: String::from("6c943497a66306ef5024728a42c8c5352a76a125e8495de16339ec51874f924a03a580a974e3f7a80239504e6982d443ffeb84b71cec30506b2c16d91872879b1b"),
+                pub_key: String::from("0437c6e8362883ef2497eed6adefa91e8d11783a1f4d535334d6e9d3040bbbd3cba65033a064647d202020e7741595630c67062bc1cc0f585659e2469231b3112f")
+            },
+        ];
 
-        let signature = "68b37e2f523d414669be3e57f2c8232d26e78e9a7c7ff2e2690b15b72d21b4f740babfa1e165920ee6f2a490de47ceb91760a72f2e2ec7fc4169f2d154198a1e1b";
-        let signature = HexBinary::from_hex(signature).unwrap();
+        for test in tests {
+            let msg_str = test.msg_str;
+            let combined_msg = add_eth_prefix(&msg_str);
+            println!("combined_msg: {:?}", combined_msg);
+            let signature = test.signature;
+            let signature = HexBinary::from_hex(signature.as_str()).unwrap();
+            println!("signature length: {:?}", signature.len());
 
-        println!("signature length: {:?}", signature.len());
+            let pub_key = test.pub_key;
+            let pub_key = HexBinary::from_hex(pub_key.as_str()).unwrap();
+            let deps = mock_dependencies();
 
-        let pub_key = "044089a9fb9f67cdac85610900f61d69e2adc7e5da37036585955ca85d0ea148202a1e1750d26b825efb5c3e9aff92c6faf37bb1865c9b9612b064e89c6806e408";
-        let pub_key = HexBinary::from_hex(pub_key).unwrap();
-        let deps = mock_dependencies();
-
-        let verified =
-            verify_keccak256_signature(deps.as_ref(), &combined_msg, &signature, &pub_key).unwrap();
-        assert!(verified);
+            let verified =
+                verify_keccak256_signature(deps.as_ref(), &combined_msg, &signature, &pub_key)
+                    .unwrap();
+            assert!(verified);
+        }
     }
 
     #[test]
@@ -274,11 +294,31 @@ mod tests {
         assert_eq!(address, "euclid1uqt6umzd4z25zx8djq6yz9t88vujfkg76sq299");
     }
 
+    struct TestEthAddressFromPubkey {
+        pub_key: String,
+        address: String,
+    }
+
     #[test]
     fn test_eth_address_from_pubkey() {
-        let pub_key = "044089a9fb9f67cdac85610900f61d69e2adc7e5da37036585955ca85d0ea148202a1e1750d26b825efb5c3e9aff92c6faf37bb1865c9b9612b064e89c6806e408";
-        let pub_key = HexBinary::from_hex(pub_key).unwrap();
-        let address = eth_address_from_pubkey(&pub_key).unwrap();
-        assert_eq!(address, "0x20c863d309b5e56cd7502301b89b9223829fa7b5");
+        let tests = vec![
+            TestEthAddressFromPubkey {
+                pub_key: String::from("044089a9fb9f67cdac85610900f61d69e2adc7e5da37036585955ca85d0ea148202a1e1750d26b825efb5c3e9aff92c6faf37bb1865c9b9612b064e89c6806e408"),
+                address: String::from("0x20c863d309b5e56cd7502301b89b9223829fa7b5")
+            },
+            TestEthAddressFromPubkey {
+                pub_key: String::from("4089a9fb9f67cdac85610900f61d69e2adc7e5da37036585955ca85d0ea148202a1e1750d26b825efb5c3e9aff92c6faf37bb1865c9b9612b064e89c6806e408"),
+                address: String::from("0x20c863d309b5e56cd7502301b89b9223829fa7b5")
+            },
+        ];
+        for test in tests {
+            let pub_key = HexBinary::from_hex(test.pub_key.as_str()).unwrap();
+            let address = eth_address_from_pubkey(&pub_key).unwrap();
+            assert_eq!(
+                address, test.address,
+                "Failed to derive EVM address for pubkey: {}, expected: {}, got: {}",
+                test.pub_key, test.address, address
+            );
+        }
     }
 }

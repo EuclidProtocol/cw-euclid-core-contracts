@@ -8,11 +8,11 @@ use relayer::msgs::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 use crate::{
     execute::{
-        execute_authorized_transaction, execute_meta_transaction, execute_update_admin,
-        execute_update_state,
+        execute_add_validator, execute_meta_transaction, execute_remove_validator,
+        execute_update_admin, execute_update_state,
     },
-    query::{get_state, nonce_relayed},
-    state::{AUTHORIZED_ADDRESSES, STATE},
+    query::{get_state, get_validators, nonce_relayed},
+    state::STATE,
 };
 
 // version info for migration info
@@ -27,16 +27,23 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
-        relayer_pubkey: msg.relayer_pubkey,
-        relayer_address: msg.relayer_address.clone(),
+        message_signer: msg.message_signer,
+        signature_threshold: msg.signature_threshold,
         admin: info.sender,
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    AUTHORIZED_ADDRESSES.save(deps.storage, &msg.authorized_addresses)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("relayer_address", msg.relayer_address))
+        .add_attribute(
+            "message_signer_pubkey",
+            state.message_signer.pubkey.to_string(),
+        )
+        .add_attribute(
+            "message_signer_address",
+            state.message_signer.address.to_string(),
+        )
+        .add_attribute("signature_threshold", msg.signature_threshold.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -50,11 +57,16 @@ pub fn execute(
         ExecuteMsg::ExecuteMetaTransaction(msg) => {
             execute_meta_transaction(&mut deps, &env, &info, msg)
         }
-        ExecuteMsg::ExecuteAuthorizedTransaction(msg) => {
-            execute_authorized_transaction(&mut deps, &env, &info, msg)
-        }
         ExecuteMsg::UpdateState(msg) => execute_update_state(&mut deps, &info, msg),
         ExecuteMsg::UpdateAdmin(msg) => execute_update_admin(&mut deps, &info, msg),
+        ExecuteMsg::AddValidator {
+            validator,
+            chain_uid,
+        } => execute_add_validator(&mut deps, &info, validator, chain_uid),
+        ExecuteMsg::RemoveValidator {
+            validator,
+            chain_uid,
+        } => execute_remove_validator(&mut deps, &info, validator, chain_uid),
     }
 }
 
@@ -63,5 +75,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     match msg {
         QueryMsg::GetState {} => Ok(to_json_binary(&get_state(&deps)?)?),
         QueryMsg::NonceRelayed { nonce } => Ok(to_json_binary(&nonce_relayed(&deps, nonce)?)?),
+        QueryMsg::Validators {} => Ok(to_json_binary(&get_validators(&deps)?)?),
     }
 }

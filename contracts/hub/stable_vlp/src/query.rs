@@ -1,18 +1,18 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps, Env, Uint128};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
-use euclid::msgs::stable_vlp::{
-    AllStablePoolsResponse, FeeResponse, GetLiquidityResponse, GetStateResponse, StablePoolInfo,
-    StablePoolResponse, TotalFeesPerDenomResponse, TotalFeesResponse, DEFAULT_AMP_FACTOR,
-};
-use euclid::pool::{
-    calculate_amount_from_shares, simulate_swap, GetSwapResponse, PoolConfig, SwapCalculationMethod,
+use euclid::msgs::vlp::stable::msg::{
+    AllStablePoolsResponse, FeeResponse, GetStateResponse, StablePoolInfo, StablePoolResponse,
+    TotalFeesPerDenomResponse, TotalFeesResponse, DEFAULT_AMP_FACTOR,
 };
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
+use euclid_pool::{calculate_amount_from_shares, simulate_swap, SwapCalculationMethod};
 
 use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
-use euclid::pool::State;
+use euclid::msgs::vlp::base::{
+    GetLiquidityQueryResponse, GetSwapQueryResponse, PoolConfig, State, VlpSimulateSwapMsg,
+};
 // Function to simulate swap in a query
 pub fn query_simulate_swap(
     deps: Deps,
@@ -30,13 +30,13 @@ pub fn query_simulate_swap(
     )?;
     let response = match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
-            let next_swap_response: GetSwapResponse = deps.querier.query_wasm_smart(
+            let next_swap_response: GetSwapQueryResponse = deps.querier.query_wasm_smart(
                 next_swap.vlp_address.clone(),
-                &euclid::msgs::vlp::QueryMsg::SimulateSwap {
+                &euclid::msgs::vlp::stable::msg::QueryMsg::SimulateSwap(VlpSimulateSwapMsg {
                     asset: swap_response.asset_out,
                     asset_amount: swap_response.amount_out,
                     swaps: forward_swaps.to_vec(),
-                },
+                }),
             )?;
             Ok(to_json_binary(&next_swap_response)?)
         }
@@ -49,7 +49,7 @@ pub fn query_simulate_swap(
 pub fn query_liquidity(deps: Deps, _env: Env) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
     let pair = state.pair.clone();
-    Ok(to_json_binary(&GetLiquidityResponse {
+    Ok(to_json_binary(&GetLiquidityQueryResponse {
         pair,
         token_1_reserve: BALANCES
             .may_load(deps.storage, state.pair.token_1)?
@@ -92,7 +92,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&GetStateResponse {
         pair: state.pair,
         router: state.router,
-        virtual_balance: state.virtual_balance,
+        virtual_balance_contract: state.virtual_balance_contract,
         fee: state.fee,
         total_fees_collected: state.total_fees_collected,
         last_updated: state.last_updated,
