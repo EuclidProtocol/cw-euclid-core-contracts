@@ -25,6 +25,7 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     UpdateState {
         admin: Option<Addr>,
+        paused: Option<bool>,
     },
     UpdateFee {
         lp_fee_bps: Option<u64>,

@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, Addr, Attribute, DepsMut, MessageInfo, Order, Response, Uint128, WasmMsg,
+    ensure, Addr, Attribute, DepsMut, Env, MessageInfo, Order, Response, Uint128, WasmMsg,
 };
 use cw_storage_plus::Bound;
 use euclid::{
@@ -13,7 +13,7 @@ use euclid::{
     voucher::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
+use crate::state::{token_pause_check, Allowance, ALLOWANCES, BALANCES, PAUSED_TOKENS, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -25,6 +25,13 @@ pub fn execute_mint(
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Check if token is paused
+    token_pause_check(
+        deps.storage,
+        ChainUid::vsl_chain_uid()?,
+        msg.balance_key.token_id.clone(),
+    )?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
@@ -115,6 +122,14 @@ pub fn execute_transfer(
     } else {
         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
     };
+
+    // Check if voucher is paused
+    token_pause_check(
+        deps.storage,
+        //TODO What do we do in case the sender in transfer_msg is empty?
+        sender.chain_uid.clone(),
+        transfer_msg.token_id.clone(),
+    )?;
 
     let mut response = if let Some(from) = transfer_msg.from {
         let attributes = _deduct_allowance(
@@ -416,4 +431,50 @@ pub fn execute_remove_zero_state_values(
     }
 
     Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
+}
+
+pub fn execute_pause_token(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    chain_uid: ChainUid,
+    token_id: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+    let current_block = env.block.height;
+
+    token_pause_check(deps.storage, chain_uid.clone(), token_id.clone())?;
+    PAUSED_TOKENS.save(
+        deps.storage,
+        (chain_uid.clone(), token_id.clone()),
+        &current_block,
+    )?;
+
+    Ok(Response::new()
+        .add_attribute("action", "execute_pause_token")
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("token_id", token_id))
+}
+
+pub fn execute_unpause_token(
+    deps: DepsMut,
+    info: MessageInfo,
+    chain_uid: ChainUid,
+    token_id: String,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+
+    ensure!(
+        token_pause_check(deps.storage, chain_uid.clone(), token_id.clone()).is_err(),
+        ContractError::TokenNotPaused {}
+    );
+
+    PAUSED_TOKENS.remove(deps.storage, (chain_uid.clone(), token_id.clone()));
+
+    Ok(Response::new()
+        .add_attribute("action", "execute_unpause_token")
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("token_id", token_id))
 }

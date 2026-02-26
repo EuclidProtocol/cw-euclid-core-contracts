@@ -1432,6 +1432,28 @@ fn test_swap_request_native() {
     run_test_swap_request("nibiru", "nibiru");
 }
 
+// Cannot access error message
+// #[test]
+// fn test_swap_request_paused_vlp_ibc() {
+//     run_test_swap_request_paused_vlp("osmosis", "nibiru");
+// }
+
+#[test]
+fn test_swap_request_paused_vlp_native() {
+    run_test_swap_request_paused_vlp("nibiru", "nibiru");
+}
+
+// Cannot access error message
+// #[test]
+// fn test_swap_request_paused_token_ibc() {
+//     run_test_swap_request_paused_token("osmosis", "nibiru");
+// }
+
+#[test]
+fn test_swap_request_paused_token_native() {
+    run_test_swap_request_paused_token("nibiru", "nibiru");
+}
+
 fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
     let sender = "sender_for_all_chains";
     let mut chains = vec![(factory_chain_id, sender)];
@@ -1444,9 +1466,44 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
 
     let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
 
-    run_test_swap_request_reusable(sender, &factory, &router, vec![]).unwrap();
+    run_test_swap_request_reusable(sender, &factory, &router, false, false, vec![]).unwrap();
 }
 
+fn run_test_swap_request_paused_vlp(factory_chain_id: &str, router_chain_id: &str) {
+    let sender = "sender_for_all_chains";
+    let mut chains = vec![(factory_chain_id, sender)];
+    if factory_chain_id != router_chain_id {
+        chains.push((router_chain_id, sender));
+    }
+    let interchain = MockInterchainEnv::new(chains);
+    let router_chain = interchain.get_chain(router_chain_id).unwrap();
+    let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+
+    let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+    let err =
+        run_test_swap_request_reusable(sender, &factory, &router, true, true, vec![]).unwrap_err();
+
+    assert!(err.root().to_string().contains("Contract Paused"));
+}
+
+fn run_test_swap_request_paused_token(factory_chain_id: &str, router_chain_id: &str) {
+    let sender = "sender_for_all_chains";
+    let mut chains = vec![(factory_chain_id, sender)];
+    if factory_chain_id != router_chain_id {
+        chains.push((router_chain_id, sender));
+    }
+    let interchain = MockInterchainEnv::new(chains);
+    let router_chain = interchain.get_chain(router_chain_id).unwrap();
+    let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+
+    let factory = setup_factory(&interchain, factory_chain_id, router_chain_id, &router).unwrap();
+    let err =
+        run_test_swap_request_reusable(sender, &factory, &router, false, true, vec![]).unwrap_err();
+
+    assert!(err.root().to_string().contains("Token is paused"));
+}
+
+#[derive(Debug)]
 pub struct SwapTestReusableOutput {
     // pub token_in: TokenWithDenom,
     pub token_out: TokenWithDenom,
@@ -1457,6 +1514,8 @@ pub fn run_test_swap_request_reusable(
     sender: &str,
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
+    paused_vlp: bool,
+    paused_token: bool,
     recipients: Vec<Recipient>,
 ) -> Result<SwapTestReusableOutput, CwEnvError> {
     let factory_chain = factory.environment();
@@ -1512,6 +1571,35 @@ pub fn run_test_swap_request_reusable(
         router.get_vlp(Pair::new(token_a.token.clone(), token_b.token.clone()).unwrap())?;
 
     let vlp_contract = get_vlp(router_chain, &Addr::unchecked(vlp_query.vlp));
+
+    if paused_vlp {
+        vlp_contract
+            .execute(
+                &euclid::msgs::vlp::cp::ExecuteMsg::UpdateState {
+                    paused: Some(true),
+                    admin: None,
+                },
+                &[],
+            )
+            .unwrap();
+    };
+
+    if paused_token {
+        // Get virtual balance contract
+        let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
+        let virtual_balance_contract =
+            get_virtual_balance(router.environment(), &virtual_balance_address);
+
+        virtual_balance_contract
+            .execute(
+                &euclid::msgs::virtual_balance::ExecuteMsg::PauseToken {
+                    chain_uid: ChainUid::vsl_chain_uid().unwrap(),
+                    token_id: token_b.token.to_string(),
+                },
+                &[],
+            )
+            .unwrap();
+    }
 
     let liquidity_query: GetLiquidityQueryResponse =
         vlp_contract.query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})?;
@@ -1577,11 +1665,7 @@ pub fn run_test_swap_request_reusable(
 
     relay_factory_router_factory(swap_request_msg.events, factory, router, &factory_chain_uid)?;
 
-    Ok(SwapTestReusableOutput {
-        // token_in: token_a,
-        token_out: token_b,
-        // amount_in,
-    })
+    Ok(SwapTestReusableOutput { token_out: token_b })
 }
 
 #[test]

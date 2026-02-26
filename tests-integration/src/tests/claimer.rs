@@ -234,9 +234,15 @@ fn test_create_claim_using_swap() {
         forwarding_message: Some(to_json_binary(&claim_obj).unwrap().to_base64()),
         unsafe_refund_as_voucher: None,
     }];
-    let swap_test_output =
-        run_test_swap_request_reusable(sender.as_str(), &osmosis_factory, &router, recipients)
-            .unwrap();
+    let swap_test_output = run_test_swap_request_reusable(
+        sender.as_str(),
+        &osmosis_factory,
+        &router,
+        false,
+        false,
+        recipients,
+    )
+    .unwrap();
 
     let claims = claimer
         .get_user_claims(1, 0, pubkey_binary.clone())

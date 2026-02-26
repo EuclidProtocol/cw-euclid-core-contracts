@@ -48,6 +48,7 @@ pub fn instantiate(
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
+        paused: false,
         admin: msg.admin,
     };
 
@@ -152,7 +153,9 @@ pub fn execute(
                 swap_msg.test_fail,
             )
         }
-        ExecuteMsg::UpdateState { admin } => update_state(deps, info, &STATE, admin),
+        ExecuteMsg::UpdateState { admin, paused } => {
+            update_state(deps, info, &STATE, paused, admin)
+        }
         ExecuteMsg::UpdateAmpFactor { amp_factor } => {
             update_amp_factor(deps, info, &STATE, &AMP_FACTOR, amp_factor)
         }

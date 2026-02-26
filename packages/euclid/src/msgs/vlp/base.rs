@@ -25,6 +25,7 @@ pub struct State {
     pub last_updated: u64,
     // total number of LP tokens issued
     pub total_lp_tokens: Uint128,
+    pub paused: bool,
     pub admin: Addr,
 }
 

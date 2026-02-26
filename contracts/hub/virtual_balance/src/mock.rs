@@ -19,7 +19,7 @@ impl MockVirtualBalance {
         code_id: u64,
         sender: Addr,
         router: Addr,
-        admin: Option<Addr>,
+        admin: Addr,
     ) -> Self {
         let msg = mock_virtual_balance_instantiate_msg(router, admin);
         let res =
@@ -49,7 +49,7 @@ pub fn mock_virtual_balance() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
-pub fn mock_virtual_balance_instantiate_msg(router: Addr, admin: Option<Addr>) -> InstantiateMsg {
+pub fn mock_virtual_balance_instantiate_msg(router: Addr, admin: Addr) -> InstantiateMsg {
     InstantiateMsg { router, admin }
 }
 
