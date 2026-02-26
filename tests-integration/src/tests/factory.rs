@@ -112,11 +112,11 @@ fn test_ping_pong_flow_ibc() {
     ]);
     let router = interchain.get_chain("nibiru").unwrap();
     let factory = interchain.get_chain("osmosis").unwrap();
+    let factory_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
 
-    let router_contract = setup_router(&router).unwrap();
+    let router_contract = setup_router(&router, vec!["osmosis"]).unwrap();
     let mut factory_contract =
         setup_factory(&interchain, "osmosis", "nibiru", &router_contract).unwrap();
-    let factory_chain_uid = ChainUid::create("osmosis".to_string()).unwrap();
 
     let factory_block = factory_contract.environment().app.borrow().block_info();
     let not_admin = factory.addr_make("not_admin");
