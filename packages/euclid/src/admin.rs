@@ -115,20 +115,27 @@ mod tests {
     use super::*;
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env},
-        CosmosMsg,
+        CosmosMsg, MemoryStorage, OwnedDeps,
     };
 
-    fn sample_admins() -> EuclidAdmin {
+    type TestDeps = OwnedDeps<
+        MemoryStorage,
+        cosmwasm_std::testing::MockApi,
+        cosmwasm_std::testing::MockQuerier,
+    >;
+
+    fn sample_admins(deps: &TestDeps) -> EuclidAdmin {
         EuclidAdmin::new(
-            Addr::unchecked("general_admin"),
-            Addr::unchecked("fee_admin"),
-            Addr::unchecked("migration_admin"),
+            deps.api.addr_make("general_admin"),
+            deps.api.addr_make("fee_admin"),
+            deps.api.addr_make("migration_admin"),
         )
     }
 
     #[test]
     fn default_sets_all_admins_to_same_value() {
-        let admin = Addr::unchecked("same_admin");
+        let deps = mock_dependencies();
+        let admin = deps.api.addr_make("same_admin");
         let admins = EuclidAdmin::default(admin.clone());
 
         assert_eq!(admins.general_admin, admin);
@@ -138,32 +145,32 @@ mod tests {
 
     #[test]
     fn verify_update_access_accepts_matching_role_sender() {
-        let admins = sample_admins();
+        let deps = mock_dependencies();
+        let admins = sample_admins(&deps);
 
         assert!(admins
-            .verify_update_access(&Addr::unchecked("general_admin"), &AdminType::GeneralAdmin)
+            .verify_update_access(&admins.general_admin, &AdminType::GeneralAdmin)
             .is_ok());
         assert!(admins
-            .verify_update_access(&Addr::unchecked("fee_admin"), &AdminType::FeeAdmin)
+            .verify_update_access(&admins.fee_admin, &AdminType::FeeAdmin)
             .is_ok());
         assert!(admins
-            .verify_update_access(
-                &Addr::unchecked("migration_admin"),
-                &AdminType::MigrationAdmin
-            )
+            .verify_update_access(&admins.migration_admin, &AdminType::MigrationAdmin)
             .is_ok());
     }
 
     #[test]
     fn verify_update_access_rejects_non_matching_sender() {
-        let admins = sample_admins();
+        let deps = mock_dependencies();
+        let admins = sample_admins(&deps);
+        let not_fee_admin = deps.api.addr_make("not_fee_admin");
         let err = admins
-            .verify_update_access(&Addr::unchecked("not_fee_admin"), &AdminType::FeeAdmin)
+            .verify_update_access(&not_fee_admin, &AdminType::FeeAdmin)
             .unwrap_err();
 
         match err {
             ContractError::UnauthorizedWithMsg { msg } => {
-                assert!(msg.contains("only fee_admin can update fee admin"))
+                assert!(msg.contains(&format!("only {} can update fee admin", admins.fee_admin)))
             }
             _ => panic!("unexpected error variant"),
         }
@@ -172,63 +179,73 @@ mod tests {
     #[test]
     fn update_admin_updates_general_admin_without_messages() {
         let mut deps = mock_dependencies();
-        let deps_mut = deps.as_mut();
         let env = mock_env();
-        let admins = sample_admins();
+        let general_admin = deps.api.addr_make("general_admin");
+        let fee_admin = deps.api.addr_make("fee_admin");
+        let migration_admin = deps.api.addr_make("migration_admin");
+        let expected_new_general_admin = deps.api.addr_make("new_general_admin");
+
+        let admins = EuclidAdmin::new(general_admin, fee_admin, migration_admin);
+        let deps_mut = deps.as_mut();
 
         let (updated, response) = update_admin(
             &admins,
             &deps_mut,
             &env,
-            &Addr::unchecked("general_admin"),
-            "new_general_admin".to_string(),
+            &admins.general_admin,
+            expected_new_general_admin.to_string(),
             AdminType::GeneralAdmin,
         )
         .unwrap();
 
-        assert_eq!(updated.general_admin, Addr::unchecked("new_general_admin"));
-        assert_eq!(updated.fee_admin, Addr::unchecked("fee_admin"));
-        assert_eq!(updated.migration_admin, Addr::unchecked("migration_admin"));
+        assert_eq!(updated.general_admin, expected_new_general_admin);
+        assert_eq!(updated.fee_admin, admins.fee_admin);
+        assert_eq!(updated.migration_admin, admins.migration_admin);
         assert!(response.messages.is_empty());
     }
 
     #[test]
     fn update_admin_updates_migration_admin_and_emits_update_admin_msg() {
         let mut deps = mock_dependencies();
-        let deps_mut = deps.as_mut();
         let env = mock_env();
-        let admins = sample_admins();
+        let expected_new_migration_admin = deps.api.addr_make("new_migration_admin");
+        let admins = sample_admins(&deps);
+        let deps_mut = deps.as_mut();
 
         let (updated, response) = update_admin(
             &admins,
             &deps_mut,
             &env,
-            &Addr::unchecked("migration_admin"),
-            "new_migration_admin".to_string(),
+            &admins.migration_admin,
+            expected_new_migration_admin.to_string(),
             AdminType::MigrationAdmin,
         )
         .unwrap();
 
         assert_eq!(
             updated.migration_admin,
-            Addr::unchecked("new_migration_admin")
+            expected_new_migration_admin.clone()
         );
         assert_eq!(response.messages.len(), 1);
         assert_eq!(
             response.messages[0].msg,
             CosmosMsg::Wasm(WasmMsg::UpdateAdmin {
                 contract_addr: env.contract.address.to_string(),
-                admin: "new_migration_admin".to_string(),
+                admin: expected_new_migration_admin.to_string(),
             })
         );
     }
 
     #[test]
     fn display_formats_all_roles() {
-        let admins = sample_admins();
+        let deps = mock_dependencies();
+        let admins = sample_admins(&deps);
         assert_eq!(
             admins.to_string(),
-            "general_admin: general_admin, fee_admin: fee_admin, migration_admin: migration_admin"
+            format!(
+                "general_admin: {}, fee_admin: {}, migration_admin: {}",
+                admins.general_admin, admins.fee_admin, admins.migration_admin
+            )
         );
     }
 }
