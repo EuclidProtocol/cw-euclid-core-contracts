@@ -2,6 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
+    chain::ChainUid,
     cross_chain_user::CrossChainUser,
     utils::pagination::Pagination,
     voucher::{BalanceKey, SerializedBalanceKey},
@@ -17,7 +18,7 @@ pub struct State {
 
 pub struct InstantiateMsg {
     pub router: Addr,
-    pub admin: Option<Addr>,
+    pub admin: Addr,
 }
 
 #[cw_serde]
@@ -35,6 +36,14 @@ pub enum ExecuteMsg {
         limit: Option<u32>,
     },
     Approve(ExecuteApprove),
+    PauseToken {
+        chain_uid: ChainUid,
+        token_id: String,
+    },
+    UnpauseToken {
+        chain_uid: ChainUid,
+        token_id: String,
+    },
 }
 
 #[cw_serde]
@@ -92,6 +101,16 @@ pub enum QueryMsg {
         user: CrossChainUser,
         pagination: Option<Pagination<Uint128>>,
     },
+
+    #[returns(GetPausedTokenHeightResponse)]
+    GetPausedTokenHeight {
+        chain_uid: ChainUid,
+        token_id: String,
+    },
+    #[returns(GetAllPausedTokensResponse)]
+    GetAllPausedTokens {
+        pagination: Option<Pagination<(ChainUid, String)>>,
+    },
 }
 
 // We define a custom struct for each query response
@@ -114,4 +133,14 @@ pub struct GetUserBalancesResponse {
 pub struct GetUserBalancesResponseItem {
     pub amount: Uint128,
     pub token_id: String,
+}
+
+#[cw_serde]
+pub struct GetPausedTokenHeightResponse {
+    pub paused_token_height: u64,
+}
+
+#[cw_serde]
+pub struct GetAllPausedTokensResponse {
+    pub paused_tokens: Vec<(ChainUid, String)>,
 }

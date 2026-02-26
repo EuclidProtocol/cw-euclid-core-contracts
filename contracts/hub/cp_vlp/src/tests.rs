@@ -10,9 +10,12 @@ mod tests {
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
     use euclid::fee::{DenomFees, Fee, TotalFees};
-    use euclid::msgs::vlp::base::{GetSwapQueryResponse, State, VlpRegisterPoolMsg};
+    use euclid::msgs::vlp::base::{
+        GetSwapQueryResponse, State, VlpAddLiquidityMsg, VlpRegisterPoolMsg, VlpRemoveLiquidityMsg,
+        VlpSwapMsg,
+    };
     use euclid::msgs::vlp::cp::msg::{ExecuteMsg, InstantiateMsg};
-    use euclid::token::{Pair, Token};
+    use euclid::token::{Pair, PairWithAmount, Token};
     use std::collections::HashMap;
 
     fn init(
@@ -79,6 +82,7 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
+            paused: false,
             admin,
         };
         let state = STATE.load(&deps.storage).unwrap();
@@ -200,6 +204,142 @@ mod tests {
     }
 
     #[test]
+    fn test_paused_blocks_actions() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        init(&mut deps);
+
+        let router = deps.api.addr_make("router");
+        let admin = deps.api.addr_make("admin");
+
+        let pair = Pair {
+            token_1: Token::create("token1".to_string()).unwrap(),
+            token_2: Token::create("token2".to_string()).unwrap(),
+        };
+
+        let sender = CrossChainUser::new(
+            ChainUid::create("1".to_string()).unwrap(),
+            "sender_address".to_string(),
+        );
+
+        // Set up initial pool and liquidity while unpaused
+        let register_msg = ExecuteMsg::RegisterPool(VlpRegisterPoolMsg {
+            sender: sender.clone(),
+            pair: pair.clone(),
+            tx_id: "register_tx".to_string(),
+        });
+
+        let register_info = message_info(&router, &[]);
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            register_info.clone(),
+            register_msg,
+        )
+        .unwrap();
+
+        let liquidity = PairWithAmount::new(
+            pair.token_1.with_amount(Uint128::new(100)),
+            pair.token_2.with_amount(Uint128::new(100)),
+        )
+        .unwrap();
+
+        let lp_allocation = CHAIN_LP_TOKENS
+            .load(&deps.storage, sender.chain_uid.clone())
+            .unwrap();
+
+        // Pause the contract
+        let pause_msg = ExecuteMsg::UpdateState {
+            admin: None,
+            paused: Some(true),
+        };
+        let admin_info = message_info(&admin, &[]);
+        execute(deps.as_mut(), env.clone(), admin_info.clone(), pause_msg).unwrap();
+
+        // Actions should be blocked when paused
+        let err = execute(
+            deps.as_mut(),
+            env.clone(),
+            register_info.clone(),
+            ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
+                sender: sender.clone(),
+                tx_id: "add_paused".to_string(),
+                liquidity: liquidity.clone(),
+                slippage_tolerance_bps: 10,
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::ContractPaused {});
+
+        let err = execute(
+            deps.as_mut(),
+            env.clone(),
+            register_info.clone(),
+            ExecuteMsg::RemoveLiquidity(VlpRemoveLiquidityMsg {
+                sender: sender.clone(),
+                lp_allocation,
+                tx_id: "remove_paused".to_string(),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::ContractPaused {});
+
+        let err = execute(
+            deps.as_mut(),
+            env.clone(),
+            register_info.clone(),
+            ExecuteMsg::Swap(VlpSwapMsg {
+                sender: sender.clone(),
+                tx_id: "swap_paused".to_string(),
+                asset_in: pair.token_1.clone(),
+                amount_in: Uint128::new(10),
+                min_token_out: Uint128::new(1),
+                next_swaps: vec![],
+                test_fail: None,
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::ContractPaused {});
+
+        // UpdateFee is not affected by pause
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            admin_info.clone(),
+            ExecuteMsg::UpdateFee {
+                lp_fee_bps: Some(2),
+                euclid_fee_bps: Some(1),
+                recipient: Some(sender.clone()),
+            },
+        )
+        .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            env.clone(),
+            register_info,
+            ExecuteMsg::RegisterPool(VlpRegisterPoolMsg {
+                sender: CrossChainUser::new(
+                    ChainUid::create("2".to_string()).unwrap(),
+                    "second_sender".to_string(),
+                ),
+                pair: pair.clone(),
+                tx_id: "register_paused".to_string(),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::ContractPaused {});
+
+        // UpdateState should remain allowed even when paused
+        let unpause_msg = ExecuteMsg::UpdateState {
+            admin: None,
+            paused: Some(false),
+        };
+        execute(deps.as_mut(), env, admin_info, unpause_msg).unwrap();
+    }
+
+    #[test]
     fn test_simulate_swap_with_spread() {
         let mut deps = mock_dependencies();
         let env = mock_env();
@@ -232,6 +372,7 @@ mod tests {
             },
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
+            paused: false,
             admin: Addr::unchecked("admin"),
         };
 
@@ -306,6 +447,7 @@ mod tests {
             },
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
+            paused: false,
             admin: Addr::unchecked("admin"),
         };
 

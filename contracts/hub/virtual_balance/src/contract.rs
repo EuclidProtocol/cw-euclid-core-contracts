@@ -4,10 +4,14 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
 use crate::execute::{
-    execute_approve, execute_burn, execute_mint, execute_remove_zero_state_values,
-    execute_transfer, execute_update_state,
+    execute_approve, execute_burn, execute_mint, execute_pause_token,
+    execute_remove_zero_state_values, execute_transfer, execute_unpause_token,
+    execute_update_state,
 };
-use crate::query::{query_balance, query_state, query_user_balances};
+use crate::query::{
+    query_all_paused_tokens, query_balance, query_paused_token_height, query_state,
+    query_user_balances,
+};
 use crate::state::STATE;
 use euclid::error::ContractError;
 use euclid::msgs::virtual_balance::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
@@ -27,7 +31,7 @@ pub fn instantiate(
 
     let state = State {
         router: info.sender.clone(),
-        admin: msg.admin.unwrap_or(info.sender),
+        admin: msg.admin,
     };
 
     STATE.save(deps.storage, &state)?;
@@ -41,7 +45,7 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     mut deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
@@ -56,6 +60,14 @@ pub fn execute(
         ExecuteMsg::RemoveZeroStateValues { start_after, limit } => {
             execute_remove_zero_state_values(deps, info, start_after, limit)
         }
+        ExecuteMsg::PauseToken {
+            chain_uid,
+            token_id,
+        } => execute_pause_token(deps, env, info, chain_uid, token_id),
+        ExecuteMsg::UnpauseToken {
+            chain_uid,
+            token_id,
+        } => execute_unpause_token(deps, info, chain_uid, token_id),
     }
 }
 
@@ -67,5 +79,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetUserBalances { user, pagination } => {
             query_user_balances(deps, user.chain_uid, user.address, pagination)
         }
+        QueryMsg::GetPausedTokenHeight {
+            chain_uid,
+            token_id,
+        } => query_paused_token_height(deps, chain_uid, token_id),
+        QueryMsg::GetAllPausedTokens { pagination } => query_all_paused_tokens(deps, pagination),
     }
 }

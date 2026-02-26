@@ -16,14 +16,18 @@ use euclid::{
     swap::{SwapResponse, TransferVoucherResponse},
     token::Token,
 };
-use euclid_ibc::{ack::AcknowledgementMsg, router_ibc::RouterCrossChainExecuteMsg};
+use euclid_ibc::{
+    ack::AcknowledgementMsg,
+    router_ibc::{PongResponse, RouterCrossChainExecuteMsg},
+};
 
 use crate::{
     reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
-        FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
-        PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
+        PongInfo, FEE_STATE, LATEST_PONG, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -98,6 +102,35 @@ pub fn reusable_internal_ack_call(
                 deposit.tx_id,
                 is_native,
             )
+        }
+        RouterCrossChainExecuteMsg::Ping { tx_id, .. } => {
+            let res: AcknowledgementMsg<PongResponse> = from_json(ack)?;
+            match res {
+                AcknowledgementMsg::Ok(data) => {
+                    LATEST_PONG.save(
+                        deps.storage,
+                        &PongInfo {
+                            tx_id: tx_id.clone(),
+                            block_height: data.block_height,
+                            timestamp: data.timestamp,
+                        },
+                    )?;
+                    Ok(Response::new()
+                        .add_attribute("method", "ping_ack")
+                        .add_attribute("tx_id", tx_id)
+                        .add_attribute("router_block_height", data.block_height.to_string())
+                        .add_attribute("router_timestamp", data.timestamp.to_string()))
+                }
+                AcknowledgementMsg::Error(err) => {
+                    if is_native {
+                        return Err(ContractError::new(&err));
+                    }
+                    Ok(Response::new()
+                        .add_attribute("method", "ping_ack_error")
+                        .add_attribute("tx_id", tx_id)
+                        .add_attribute("error", err))
+                }
+            }
         }
     }
 }

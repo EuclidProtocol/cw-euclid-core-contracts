@@ -63,7 +63,7 @@ pub fn instantiate(
 
     let virtual_balance_instantiate_msg = euclid::msgs::virtual_balance::msg::InstantiateMsg {
         router: env.contract.address.clone(),
-        admin: Some(info.sender.clone()),
+        admin: info.sender.clone(),
     };
     let virtual_balance_instantiate_msg = WasmMsg::Instantiate {
         admin: Some(info.sender.to_string()),
@@ -91,8 +91,6 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    // If the contract is locked and the message isn't UpdateLock, return error
-
     match msg {
         ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, info, msg),
         _ => {

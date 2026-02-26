@@ -56,6 +56,15 @@ pub enum ContractError {
     #[error("Token already exist")]
     TokenAlreadyExist {},
 
+    #[error("Token already paused")]
+    TokenAlreadyPaused {},
+
+    #[error("Token not paused")]
+    TokenNotPaused {},
+
+    #[error("Token is paused")]
+    TokenPaused { msg: String },
+
     #[error("Chain already exist")]
     ChainAlreadyExist {},
 
@@ -103,6 +112,12 @@ pub enum ContractError {
 
     #[error("UnsupportedOperation")]
     UnsupportedOperation {},
+
+    #[error("VlpAlreadyPaused")]
+    VlpAlreadyPaused {},
+
+    #[error("VlpNotPaused")]
+    VlpNotPaused {},
 
     #[error("Not Implemented")]
     NotImplemented {},
@@ -222,6 +237,9 @@ pub enum ContractError {
 
     #[error("ContractLocked")]
     ContractLocked {},
+
+    #[error("Contract Paused")]
+    ContractPaused {},
 
     // BEGIN CW20 ERRORS
     #[error("Cannot set to own account")]

@@ -68,7 +68,7 @@ fn test_proper_instantiation() {
         virtual_balance_code_id,
         mock_router.addr().clone(),
         mock_router.addr().clone(),
-        None,
+        owner.clone(),
     );
 
     let pair = Pair::new(

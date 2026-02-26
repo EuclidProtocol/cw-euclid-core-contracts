@@ -1,7 +1,20 @@
 #[cfg(test)]
 mod tests {
-    use crate::{calculate_amount_from_shares, calculate_lp_allocation};
-    use cosmwasm_std::Uint128;
+    use crate::{
+        add_liquidity, calculate_amount_from_shares, calculate_lp_allocation, register_pool,
+        remove_liquidity, update_state,
+    };
+
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
+    use cosmwasm_std::{Addr, Uint128};
+    use cw_storage_plus::{Item, Map};
+    use euclid::chain::ChainUid;
+    use euclid::cross_chain_user::CrossChainUser;
+    use euclid::error::ContractError;
+    use euclid::fee::{DenomFees, Fee, TotalFees};
+    use euclid::msgs::vlp::base::State;
+    use euclid::token::{Pair, PairWithAmount, Token};
+    use std::collections::HashMap;
 
     #[test]
     fn test_calculate_lp_allocation() {
@@ -168,5 +181,122 @@ mod tests {
 
         // For subsequent provisions with large amounts
         assert_eq!(lp_tokens, Uint128::new(5_000_000_000_000_000_000_000_000));
+    }
+
+    #[test]
+    fn test_paused_blocks_actions_except_update_state() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let router = deps.api.addr_make("router");
+        let admin = deps.api.addr_make("admin");
+
+        let state_storage: Item<State> = Item::new("state");
+        let chain_lp_tokens: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
+        let balances: Map<Token, Uint128> = Map::new("balances");
+        let collateral_lp_tokens: Item<Uint128> = Item::new("collateral_lp_tokens");
+
+        let pair = Pair {
+            token_1: Token::create("token1".to_string()).unwrap(),
+            token_2: Token::create("token2".to_string()).unwrap(),
+        };
+
+        let state = State {
+            pair: pair.clone(),
+            virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
+            router: router.clone(),
+            fee: Fee::new(
+                1,
+                1,
+                CrossChainUser::new(
+                    ChainUid::create("1".to_string()).unwrap(),
+                    "addr".to_string(),
+                ),
+            ),
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+            },
+            last_updated: env.block.time.seconds(),
+            total_lp_tokens: Uint128::zero(),
+            paused: true,
+            admin: admin.clone(),
+        };
+
+        state_storage.save(deps.as_mut().storage, &state).unwrap();
+
+        let sender = CrossChainUser::new(
+            ChainUid::create("1".to_string()).unwrap(),
+            "sender_address".to_string(),
+        );
+
+        // register_pool should fail when paused
+        let err = register_pool(
+            deps.as_mut(),
+            env.clone(),
+            message_info(&router, &[]),
+            &state_storage,
+            &chain_lp_tokens,
+            None,
+            sender.clone(),
+            pair.clone(),
+            "tx".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::ContractPaused {});
+
+        // add_liquidity should fail when paused
+        let liquidity = PairWithAmount::new(
+            pair.token_1.with_amount(Uint128::new(100)),
+            pair.token_2.with_amount(Uint128::new(100)),
+        )
+        .unwrap();
+
+        let err = add_liquidity(
+            deps.as_mut(),
+            env.clone(),
+            message_info(&router, &[]),
+            &state_storage,
+            &balances,
+            &chain_lp_tokens,
+            &collateral_lp_tokens,
+            sender.clone(),
+            liquidity,
+            10,
+            "tx_add".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::ContractPaused {});
+
+        // remove_liquidity should fail when paused
+        let err = remove_liquidity(
+            deps.as_mut(),
+            env.clone(),
+            message_info(&router, &[]),
+            &state_storage,
+            &balances,
+            &chain_lp_tokens,
+            sender.clone(),
+            Uint128::new(50),
+            "tx_remove".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::ContractPaused {});
+
+        // update_state should remain allowed even when paused
+        update_state(
+            deps.as_mut(),
+            message_info(&admin, &[]),
+            &state_storage,
+            Some(false),
+            None,
+        )
+        .unwrap();
+
+        let updated = state_storage.load(&deps.storage).unwrap();
+        assert!(!updated.paused);
     }
 }

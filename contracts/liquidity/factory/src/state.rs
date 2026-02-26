@@ -43,6 +43,23 @@ pub struct FeeState {
 
 pub const FEE_STATE: Item<FeeState> = Item::new("fee_state");
 
+#[cw_serde]
+pub struct PingInfo {
+    pub tx_id: String,
+    pub block_height: u64,
+    pub timestamp: u64,
+}
+
+#[cw_serde]
+pub struct PongInfo {
+    pub tx_id: String,
+    pub block_height: u64,
+    pub timestamp: u64,
+}
+
+pub const LATEST_PING: Item<PingInfo> = Item::new("latest_ping");
+pub const LATEST_PONG: Item<PongInfo> = Item::new("latest_pong");
+
 // Map Pair to vlp address
 pub const PAIR_TO_VLP: Map<(String, String), String> = Map::new("pair_to_vlp");
 

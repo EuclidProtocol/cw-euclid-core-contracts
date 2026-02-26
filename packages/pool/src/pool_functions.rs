@@ -177,6 +177,7 @@ pub fn update_state(
     deps: DepsMut,
     info: MessageInfo,
     state_storage: &Item<State>, // Reference to STATE
+    paused: Option<bool>,
     admin: Option<Addr>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
@@ -187,6 +188,13 @@ pub fn update_state(
         deps.api.addr_validate(admin.as_str())?;
         state.admin = admin;
     };
+
+    let verified_paused = if let Some(paused) = paused {
+        paused
+    } else {
+        state.paused
+    };
+    state.paused = verified_paused;
 
     state_storage.save(deps.storage, &state)?;
 
@@ -207,6 +215,7 @@ pub fn register_pool(
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let state = state_storage.load(deps.storage)?;
+    ensure!(!state.paused, ContractError::ContractPaused {});
 
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
 
@@ -270,6 +279,7 @@ pub fn remove_liquidity(
     // Get the pool for the chain_id provided
     let mut state = state_storage.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(!state.paused, ContractError::ContractPaused {});
     let pair = state.pair.clone();
 
     let mut total_reserve_1 = balances_storage.load(deps.storage, pair.token_1.clone())?;
@@ -371,6 +381,8 @@ pub fn add_liquidity(
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
+    ensure!(!state.paused, ContractError::ContractPaused {});
+
     let mut response = Response::new();
 
     // Ensure tokens are received by VLP
@@ -598,7 +610,7 @@ pub fn execute_swap(
     test_fail: Option<bool>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
-
+    ensure!(!state.paused, ContractError::ContractPaused {});
     // If the sender is the router, use the sender as the voucher sender
     // Otherwise, use the last contract caller as the voucher sender
     let voucher_sender = if info.sender == state.router {

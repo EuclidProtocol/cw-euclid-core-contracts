@@ -89,6 +89,7 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
+            paused: false,
             admin,
         };
         let state = STATE.load(&deps.storage).unwrap();

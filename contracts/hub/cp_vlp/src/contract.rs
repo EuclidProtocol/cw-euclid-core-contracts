@@ -55,6 +55,7 @@ pub fn instantiate(
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
+        paused: false,
         admin: msg.admin,
     };
 
@@ -151,7 +152,9 @@ pub fn execute(
             euclid_fee_bps,
             recipient,
         } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
-        ExecuteMsg::UpdateState { admin } => update_state(deps, info, &STATE, admin),
+        ExecuteMsg::UpdateState { admin, paused } => {
+            update_state(deps, info, &STATE, paused, admin)
+        }
     }
 }
 
