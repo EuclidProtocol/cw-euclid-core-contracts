@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Decimal, Uint128};
+use cosmwasm_std::{Addr, Uint128};
 
 use crate::{
     chain::{Chain, ChainUid},
@@ -127,7 +127,7 @@ pub struct AllTokensResponse {
 pub struct ReleaseFee {
     pub token: Token,
     pub chain_uid: ChainUid,
-    pub fee: Decimal,
+    pub fee: Uint128,
 }
 
 #[cw_serde]
