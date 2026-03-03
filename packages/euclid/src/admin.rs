@@ -48,6 +48,7 @@ impl EuclidAdmin {
     }
 
     /// Verifies that the sender has the appropriate admin access based on the specified `AdminType`.
+    /// Only the admin corresponding to the `AdminType` can perform updates for that role. For example, only the `general_admin` can update the general admin address, and same for the rest.
     pub fn verify_update_access(
         &self,
         sender: &Addr,
@@ -98,6 +99,7 @@ pub fn update_admin(
         AdminType::GeneralAdmin => updated_admins.general_admin = validated_admin,
         AdminType::FeeAdmin => updated_admins.fee_admin = validated_admin,
         AdminType::MigrationAdmin => {
+            // Sends a chain-level message to update the contract's admin to the new migration admin address.
             let migrate_msg = WasmMsg::UpdateAdmin {
                 contract_addr: env.contract.address.to_string(),
                 admin: validated_admin.to_string(),
