@@ -16,8 +16,20 @@ pub fn register_denom(
     token: TokenWithDenom,
 ) -> Result<(), CwOrchError> {
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    println!("Execute Register Denom {:?}", token);
     let tx_response = factory.register_denom(CrossChainConfig::default(), token.clone())?;
+    println!("Relay Register Denom");
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+    // Ensure the denom is registered
+    let escrow_response = factory.get_escrow(token.token.to_string()).unwrap();
+    assert!(
+        escrow_response
+            .denoms
+            .iter()
+            .any(|d| d == &token.token_type),
+        "Escrow found but denom not registered"
+    );
+    println!("Register Denom Success {:?}", escrow_response);
     Ok(())
 }
 
