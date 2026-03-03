@@ -7,7 +7,9 @@ use euclid_ibc::{
     },
 };
 
-use crate::state::{CHAIN_TIMEOUT_SECONDS, LOCKED_CHAINS, RELAYER_CONTRACT};
+use crate::state::{
+    CHAIN_TIMEOUT_SECONDS, DEFAULT_RELEASE_FEE, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT,
+};
 use euclid::{
     chain::{Chain, ChainUid, CosmosChain, EvmChain},
     cross_chain_user::CrossChainUser,
@@ -73,6 +75,29 @@ pub fn execute_manage_router_state(
                     meta_transaction_contract.to_string(),
                 ))
         }
+        ManageRouterState::UpdateFeeState {
+            release_fee_recipient,
+            default_fee_recipient,
+        } => {
+            let mut fee_state = FEE_STATE.load(deps.storage)?;
+            if let Some(release_fee_recipient) = release_fee_recipient {
+                fee_state.release_fee_recipient = release_fee_recipient;
+            }
+            if let Some(default_fee_recipient) = default_fee_recipient {
+                fee_state.default_fee_recipient = default_fee_recipient;
+            }
+            FEE_STATE.save(deps.storage, &fee_state)?;
+            Ok(Response::new()
+                .add_attribute("method", "update_fee_state")
+                .add_attribute(
+                    "release_fee_recipient",
+                    fee_state.release_fee_recipient.to_string(),
+                )
+                .add_attribute(
+                    "default_fee_recipient",
+                    fee_state.default_fee_recipient.to_string(),
+                ))
+        }
         ManageRouterState::UpdateReleaseFee {
             token,
             chain_uid,
@@ -88,6 +113,14 @@ pub fn execute_manage_router_state(
                 .add_attribute("token", token.to_string())
                 .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("release_fee", release_fee.to_string()))
+        }
+        ManageRouterState::UpdateDefaultReleaseFee {
+            default_release_fee,
+        } => {
+            DEFAULT_RELEASE_FEE.save(deps.storage, &default_release_fee)?;
+            Ok(Response::new()
+                .add_attribute("method", "update_default_release_fee")
+                .add_attribute("default_release_fee", default_release_fee.to_string()))
         }
         ManageRouterState::LockChain { chain } => {
             let mut locked_chains = LOCKED_CHAINS.load(deps.storage)?;

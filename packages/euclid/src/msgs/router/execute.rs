@@ -88,10 +88,17 @@ pub enum ManageRouterState {
     MetaTransactionContract {
         meta_transaction_contract: Addr,
     },
+    UpdateFeeState {
+        release_fee_recipient: Option<Addr>,
+        default_fee_recipient: Option<Addr>,
+    },
     UpdateReleaseFee {
         token: Token,
         chain_uid: ChainUid,
         release_fee: Uint128,
+    },
+    UpdateDefaultReleaseFee {
+        default_release_fee: Uint128,
     },
     LockChain {
         chain: ChainUid,
