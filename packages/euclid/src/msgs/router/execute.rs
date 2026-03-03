@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Decimal, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
     chain::{ChainType, ChainUid, CosmosChain, EvmChain},
@@ -88,16 +88,27 @@ pub enum ManageRouterState {
     MetaTransactionContract {
         meta_transaction_contract: Addr,
     },
+    UpdateFeeState {
+        release_fee_recipient: Option<Addr>,
+        default_fee_recipient: Option<Addr>,
+    },
     UpdateReleaseFee {
         token: Token,
         chain_uid: ChainUid,
-        release_fee: Decimal,
+        release_fee: Uint128,
+    },
+    UpdateDefaultReleaseFee {
+        default_release_fee: Uint128,
     },
     LockChain {
         chain: ChainUid,
     },
     UnlockChain {
         chain: ChainUid,
+    },
+    UpdateChainTimeout {
+        chain_uid: ChainUid,
+        timeout: u64,
     },
 }
 

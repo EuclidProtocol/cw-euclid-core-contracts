@@ -44,7 +44,7 @@ fn relay_factory_send_packet_inner(
     let send_packets = extract_send_packet_events(&events);
 
     println!("Relay factory send packets to router:");
-    println!("packet count: {:?}", send_packets.len());
+    println!("send packet count: {:?}", send_packets.len());
 
     let relayer_address = router.query_relayer_addresses().unwrap().relayer_contract;
     let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
@@ -88,7 +88,7 @@ pub fn relay_router_send_packet(
     let send_packets = extract_send_packet_events(&events);
 
     println!("Relay router send packets to factory:");
-    println!("packet count: {:?}", send_packets.len());
+    println!("send packet count: {:?}", send_packets.len());
 
     let relayer_address = factory.get_state().unwrap().relayer_contract;
     let relayer = get_relayer(factory.environment(), &Addr::unchecked(relayer_address));
@@ -146,7 +146,7 @@ pub fn relay_factory_ack_packet(
 
     let write_ack_packets = extract_ack_packet_events(&events);
     println!("Relay factory acknowledge packets:");
-    println!("packet count: {:?}", write_ack_packets.len());
+    println!("write ack packet count: {:?}", write_ack_packets.len());
     let relayer_address = factory.get_state().unwrap().relayer_contract;
     let relayer = get_relayer(factory.environment(), &Addr::unchecked(relayer_address));
 
@@ -201,7 +201,7 @@ pub fn relay_router_ack_packet(
 
     let write_ack_packets = extract_ack_packet_events(&events);
     println!("Relay router acknowledge packets:");
-    println!("packet count: {:?}", write_ack_packets.len());
+    println!("write ack packet count: {:?}", write_ack_packets.len());
     let relayer_address = router.query_relayer_addresses().unwrap().relayer_contract;
     let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
 
@@ -450,11 +450,11 @@ pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
 }
 
 pub struct AckPacketEvent {
-    msg: Binary,
-    ack: Binary,
-    sequence: u128,
-    source_port: String,
-    destination_port: String,
+    pub msg: Binary,
+    pub ack: Binary,
+    pub sequence: u128,
+    pub source_port: String,
+    pub destination_port: String,
 }
 pub fn extract_ack_packet_events(events: &[Event]) -> Vec<AckPacketEvent> {
     let mut ack_packet_events = vec![];

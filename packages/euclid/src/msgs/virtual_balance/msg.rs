@@ -2,6 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
+    chain::ChainUid,
     cross_chain_user::CrossChainUser,
     utils::pagination::Pagination,
     voucher::{BalanceKey, SerializedBalanceKey},
@@ -92,6 +93,15 @@ pub enum QueryMsg {
         user: CrossChainUser,
         pagination: Option<Pagination<Uint128>>,
     },
+    #[returns(GetAllBalancesResponse)]
+    GetAllBalances {
+        pagination: Option<Pagination<Uint128>>,
+    },
+    #[returns(GetTokenBalancesResponse)]
+    GetTokenBalances {
+        token_id: String,
+        pagination: Option<Pagination<Uint128>>,
+    },
 }
 
 // We define a custom struct for each query response
@@ -114,4 +124,28 @@ pub struct GetUserBalancesResponse {
 pub struct GetUserBalancesResponseItem {
     pub amount: Uint128,
     pub token_id: String,
+}
+
+#[cw_serde]
+pub struct GetAllBalancesResponse {
+    pub balances: Vec<GetAllBalancesResponseItem>,
+}
+
+#[cw_serde]
+pub struct GetAllBalancesResponseItem {
+    pub balance: Uint128,
+    pub address: String,
+    pub token_id: String,
+    pub chain_uid: ChainUid,
+}
+
+#[cw_serde]
+pub struct GetTokenBalancesResponse {
+    pub balances: Vec<GetTokenBalancesResponseItem>,
+}
+
+#[cw_serde]
+pub struct GetTokenBalancesResponseItem {
+    pub balance: Uint128,
+    pub chain_uid: ChainUid,
 }
