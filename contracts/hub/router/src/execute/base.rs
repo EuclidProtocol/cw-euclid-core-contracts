@@ -46,7 +46,7 @@ pub fn execute_manage_router_state(
             stable_vlp_code_id,
         } => {
             ensure!(
-                info.sender == state.admins.general_admin,
+                info.sender == state.admins.migration_admin,
                 ContractError::Unauthorized {}
             );
             state.constant_product_vlp_code_id =

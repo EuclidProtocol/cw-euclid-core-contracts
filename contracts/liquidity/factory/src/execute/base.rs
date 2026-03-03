@@ -38,7 +38,7 @@ pub fn execute_manage_factory_state(
         }
         ManageFactoryState::UpdateEscrowCodeId { escrow_code_id } => {
             ensure!(
-                state.admin.general_admin == info.sender,
+                state.admin.migration_admin == info.sender,
                 ContractError::Unauthorized {}
             );
             state.escrow_code_id = escrow_code_id;
@@ -47,7 +47,7 @@ pub fn execute_manage_factory_state(
         }
         ManageFactoryState::UpdateLPCodeId { lp_code_id } => {
             ensure!(
-                state.admin.general_admin == info.sender,
+                state.admin.migration_admin == info.sender,
                 ContractError::Unauthorized {}
             );
             state.lp_code_id = lp_code_id;
