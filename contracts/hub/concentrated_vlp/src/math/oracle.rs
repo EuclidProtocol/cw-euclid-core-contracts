@@ -24,6 +24,33 @@ pub fn initialize_observation(
     Ok(())
 }
 
+/// Advances the oracle cumulative values by the given time delta.
+///
+/// tick_cumulative += current_tick * delta (wrapping i128)
+/// seconds_per_liquidity_cumulative += delta * 2^128 / liquidity (wrapping Uint256)
+///
+/// Both use wrapping arithmetic to match Uniswap V3's model — the absolute
+/// values are meaningless, only differences between two observations matter.
+pub fn advance_observation_cumulatives(
+    tick_cumulative: i128,
+    seconds_per_liquidity_cumulative_x128: Uint256,
+    current_tick: i64,
+    liquidity: Uint128,
+    delta: u64,
+) -> Result<(i128, Uint256), ContractError> {
+    let new_tick_cumulative =
+        tick_cumulative.wrapping_add((current_tick as i128).wrapping_mul(delta as i128));
+    let seconds_per_liquidity_delta = if liquidity.is_zero() {
+        Uint256::zero()
+    } else {
+        Uint256::from(delta as u128)
+            .checked_mul(q128())?
+            .checked_div(Uint256::from(liquidity.u128()))?
+    };
+    let new_spl = seconds_per_liquidity_cumulative_x128.wrapping_add(seconds_per_liquidity_delta);
+    Ok((new_tick_cumulative, new_spl))
+}
+
 pub fn write_observation(
     storage: &mut dyn Storage,
     block_timestamp: u64,
@@ -45,19 +72,14 @@ pub fn write_observation(
     }
 
     let delta = block_timestamp.saturating_sub(last.block_timestamp);
-    let tick_cumulative = last
-        .tick_cumulative
-        .saturating_add((current_tick as i128).saturating_mul(delta as i128));
-    let seconds_per_liquidity_delta = if liquidity.is_zero() {
-        Uint256::zero()
-    } else {
-        Uint256::from(delta as u128)
-            .checked_mul(q128())?
-            .checked_div(Uint256::from(liquidity.u128()))?
-    };
-    let seconds_per_liquidity_cumulative_x128 = last
-        .seconds_per_liquidity_cumulative_x128
-        .checked_add(seconds_per_liquidity_delta)?;
+    let (tick_cumulative, seconds_per_liquidity_cumulative_x128) =
+        advance_observation_cumulatives(
+            last.tick_cumulative,
+            last.seconds_per_liquidity_cumulative_x128,
+            current_tick,
+            liquidity,
+            delta,
+        )?;
 
     let mut cardinality = slot0.observation_cardinality;
     if cardinality < slot0.observation_cardinality_next {
@@ -97,25 +119,24 @@ fn interpolate(left: &Observation, right: &Observation, target: u64) -> Observat
     let total = right.block_timestamp - left.block_timestamp;
     let elapsed = target - left.block_timestamp;
 
-    let tick_delta = right.tick_cumulative.saturating_sub(left.tick_cumulative);
-    let tick_interp = left.tick_cumulative.saturating_add(
-        tick_delta.saturating_mul(elapsed as i128) / (total as i128),
+    // Wrapping arithmetic — cumulative values may have wrapped
+    let tick_delta = right.tick_cumulative.wrapping_sub(left.tick_cumulative);
+    let tick_interp = left.tick_cumulative.wrapping_add(
+        tick_delta.wrapping_mul(elapsed as i128) / (total as i128),
     );
 
     let spl_delta = right
         .seconds_per_liquidity_cumulative_x128
-        .checked_sub(left.seconds_per_liquidity_cumulative_x128)
-        .unwrap_or_default();
+        .wrapping_sub(left.seconds_per_liquidity_cumulative_x128);
     let spl_interp = left
         .seconds_per_liquidity_cumulative_x128
-        .checked_add(
+        .wrapping_add(
             spl_delta
                 .checked_mul(Uint256::from(elapsed as u128))
                 .unwrap_or_default()
                 .checked_div(Uint256::from(total as u128))
                 .unwrap_or_default(),
-        )
-        .unwrap_or(left.seconds_per_liquidity_cumulative_x128);
+        );
 
     Observation {
         block_timestamp: target,
@@ -175,4 +196,140 @@ pub fn observe(
     }
 
     Ok((tick_cumulatives, seconds_per_liquidity))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn advance_observation_cumulatives_table() {
+        struct Case {
+            name: &'static str,
+            tick_cumulative: i128,
+            spl_cumulative: Uint256,
+            current_tick: i64,
+            liquidity: Uint128,
+            delta: u64,
+            expected_tick: i128,
+            expected_spl: Uint256,
+        }
+
+        let q128 = Uint256::one() << 128u32;
+
+        let cases = vec![
+            Case {
+                name: "normal — positive tick",
+                tick_cumulative: 0,
+                spl_cumulative: Uint256::zero(),
+                current_tick: 100,
+                liquidity: Uint128::new(1000),
+                delta: 10,
+                // tick_cum = 0 + 100 * 10 = 1000
+                // spl = 0 + 10 * 2^128 / 1000
+                expected_tick: 1000,
+                expected_spl: Uint256::from(10u128) * q128 / Uint256::from(1000u128),
+            },
+            Case {
+                name: "normal — negative tick",
+                tick_cumulative: 0,
+                spl_cumulative: Uint256::zero(),
+                current_tick: -500,
+                liquidity: Uint128::new(1),
+                delta: 5,
+                expected_tick: -2500,
+                expected_spl: Uint256::from(5u128) * q128,
+            },
+            Case {
+                name: "zero delta — no change",
+                tick_cumulative: 1000,
+                spl_cumulative: Uint256::from(999u128),
+                current_tick: 100,
+                liquidity: Uint128::new(1),
+                delta: 0,
+                expected_tick: 1000,
+                expected_spl: Uint256::from(999u128),
+            },
+            Case {
+                name: "zero liquidity — spl unchanged",
+                tick_cumulative: 0,
+                spl_cumulative: Uint256::from(50u128),
+                current_tick: 10,
+                liquidity: Uint128::zero(),
+                delta: 100,
+                expected_tick: 1000,
+                expected_spl: Uint256::from(50u128),
+            },
+            Case {
+                name: "tick_cumulative wraps i128",
+                tick_cumulative: i128::MAX - 500,
+                spl_cumulative: Uint256::zero(),
+                current_tick: 1,
+                liquidity: Uint128::new(1),
+                delta: 1000,
+                // (MAX - 500) + 1000 wraps to MIN + 499
+                expected_tick: i128::MAX.wrapping_add(500),
+                expected_spl: Uint256::from(1000u128) * q128,
+            },
+            Case {
+                name: "spl_cumulative wraps Uint256",
+                tick_cumulative: 0,
+                spl_cumulative: Uint256::MAX - Uint256::from(100u128),
+                current_tick: 0,
+                liquidity: Uint128::new(1),
+                delta: 1,
+                // (MAX - 100) + 2^128 wraps
+                expected_tick: 0,
+                expected_spl: (Uint256::MAX - Uint256::from(100u128)).wrapping_add(q128),
+            },
+        ];
+
+        for case in cases {
+            let (tick, spl) = advance_observation_cumulatives(
+                case.tick_cumulative,
+                case.spl_cumulative,
+                case.current_tick,
+                case.liquidity,
+                case.delta,
+            )
+            .unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
+            assert_eq!(tick, case.expected_tick, "FAILED tick: {}", case.name);
+            assert_eq!(spl, case.expected_spl, "FAILED spl: {}", case.name);
+        }
+    }
+
+    #[test]
+    fn interpolate_wraps_correctly() {
+        // Left observation has tick_cumulative near i128::MAX, right has wrapped past it
+        let left = Observation {
+            block_timestamp: 100,
+            tick_cumulative: i128::MAX - 10,
+            seconds_per_liquidity_cumulative_x128: Uint256::MAX - Uint256::from(20u128),
+            initialized: true,
+        };
+        let right = Observation {
+            block_timestamp: 200,
+            // Wrapped: (MAX-10) + 100 * 1 tick = wraps
+            tick_cumulative: (i128::MAX - 10).wrapping_add(100),
+            seconds_per_liquidity_cumulative_x128: (Uint256::MAX - Uint256::from(20u128))
+                .wrapping_add(Uint256::from(200u128)),
+            initialized: true,
+        };
+
+        // Interpolate at midpoint (t=150)
+        let result = interpolate(&left, &right, 150);
+
+        // tick delta (wrapping) = 100, half = 50
+        // interpolated = (MAX-10) + 50 wrapping
+        let expected_tick = (i128::MAX - 10).wrapping_add(50);
+        assert_eq!(result.tick_cumulative, expected_tick);
+
+        // spl delta (wrapping) = 200, half = 100
+        let expected_spl = (Uint256::MAX - Uint256::from(20u128))
+            .wrapping_add(Uint256::from(100u128));
+        assert_eq!(
+            result.seconds_per_liquidity_cumulative_x128,
+            expected_spl
+        );
+    }
 }
