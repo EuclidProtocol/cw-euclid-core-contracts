@@ -91,11 +91,34 @@ pub fn fees_owed(
     Uint128::try_from(amount).map_err(|_| ContractError::new("fees owed overflow"))
 }
 
+/// Accumulates fee growth into the global accumulator.
+///
+/// Computes: fee_growth_global += lp_fee * 2^128 / active_liquidity (mod 2^256)
+///
+/// The multiplication by 2^128 converts the raw fee amount into the Q128
+/// per-unit-of-liquidity representation. The addition wraps because the
+/// global accumulator is designed to overflow — only deltas matter.
+pub fn accumulate_fee_growth(
+    fee_growth_global_x128: Uint256,
+    lp_fee: Uint256,
+    active_liquidity: Uint128,
+) -> Result<Uint256, ContractError> {
+    if lp_fee.is_zero() || active_liquidity.is_zero() {
+        return Ok(fee_growth_global_x128);
+    }
+    // Step 1: fee_growth_delta = lp_fee * 2^128 / active_liquidity
+    let fee_growth_delta = lp_fee
+        .checked_mul(q128())?
+        .checked_div(Uint256::from(active_liquidity.u128()))?;
+    // Step 2: fee_growth_global += fee_growth_delta (mod 2^256)
+    Ok(fee_growth_global_x128.wrapping_add(fee_growth_delta))
+}
+
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{Uint128, Uint256};
 
-    use crate::math::position_math::{fee_growth_inside, fees_owed};
+    use crate::math::position_math::{accumulate_fee_growth, fee_growth_inside, fees_owed};
     use crate::state::TickInfo;
 
     #[test]
@@ -221,5 +244,95 @@ mod tests {
             result > Uint128::zero(),
             "fees_owed should return non-zero fees after fee_growth wraps"
         );
+    }
+
+    /// Table-driven tests for accumulate_fee_growth covering normal accumulation,
+    /// zero-value short-circuits, and wrapping overflow.
+    #[test]
+    fn accumulate_fee_growth_table() {
+        let q128 = Uint256::one() << 128u32;
+
+        struct Case {
+            name: &'static str,
+            global: Uint256,
+            lp_fee: Uint256,
+            liquidity: Uint128,
+            expected: Uint256,
+        }
+
+        let cases = vec![
+            Case {
+                name: "zero fee — no change",
+                global: Uint256::from(1000u128),
+                lp_fee: Uint256::zero(),
+                liquidity: Uint128::new(500),
+                expected: Uint256::from(1000u128),
+            },
+            Case {
+                name: "zero liquidity — no change",
+                global: Uint256::from(1000u128),
+                lp_fee: Uint256::from(50u128),
+                liquidity: Uint128::zero(),
+                expected: Uint256::from(1000u128),
+            },
+            Case {
+                name: "normal accumulation — fee=100, liquidity=1",
+                // delta = 100 * 2^128 / 1 = 100 * 2^128
+                global: Uint256::zero(),
+                lp_fee: Uint256::from(100u128),
+                liquidity: Uint128::new(1),
+                expected: Uint256::from(100u128) * q128,
+            },
+            Case {
+                name: "normal accumulation — fee=100, liquidity=50",
+                // delta = 100 * 2^128 / 50 = 2 * 2^128
+                global: Uint256::zero(),
+                lp_fee: Uint256::from(100u128),
+                liquidity: Uint128::new(50),
+                expected: Uint256::from(2u128) * q128,
+            },
+            Case {
+                name: "rounds down — fee=10, liquidity=3",
+                // delta = 10 * 2^128 / 3 = 3 * 2^128 + remainder (truncated)
+                // 10 * 2^128 = 3402823669209384634633746074317682114560
+                // / 3 = 1134274556403128211544582024772560704853 (truncated)
+                global: Uint256::zero(),
+                lp_fee: Uint256::from(10u128),
+                liquidity: Uint128::new(3),
+                expected: Uint256::from(10u128) * q128 / Uint256::from(3u128),
+            },
+            Case {
+                name: "accumulates on top of existing global",
+                // delta = 10 * 2^128 / 10 = 2^128
+                global: Uint256::from(500u128),
+                lp_fee: Uint256::from(10u128),
+                liquidity: Uint128::new(10),
+                expected: Uint256::from(500u128) + q128,
+            },
+            Case {
+                name: "wrapping overflow — global near MAX",
+                // delta = 1 * 2^128 / 1 = 2^128
+                // (MAX - 100) + 2^128 wraps to 2^128 - 101
+                global: Uint256::MAX - Uint256::from(100u128),
+                lp_fee: Uint256::one(),
+                liquidity: Uint128::new(1),
+                expected: q128 - Uint256::from(101u128),
+            },
+            Case {
+                name: "wrapping overflow — global is MAX",
+                // delta = 1 * 2^128 / 1 = 2^128
+                // MAX + 2^128 wraps to 2^128 - 1
+                global: Uint256::MAX,
+                lp_fee: Uint256::one(),
+                liquidity: Uint128::new(1),
+                expected: q128 - Uint256::one(),
+            },
+        ];
+
+        for case in cases {
+            let result = accumulate_fee_growth(case.global, case.lp_fee, case.liquidity)
+                .unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
+            assert_eq!(result, case.expected, "FAILED: {}", case.name);
+        }
     }
 }
