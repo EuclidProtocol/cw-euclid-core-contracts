@@ -35,7 +35,7 @@ use crate::{
     math::{
         liquidity_amounts::{get_amounts_for_liquidity, get_liquidity_for_amounts},
         oracle::{initialize_observation, observe, write_observation},
-        position_math::{accumulate_fee_growth, fee_growth_inside, fees_owed},
+        position_math::{accumulate_fee_growth, fee_growth_inside, fees_owed, flip_fee_growth_outside},
         swap_math::{compute_swap_step_exact_input, FEE_DENOMINATOR_PIPS},
         tick_bitmap,
         tick_math::{get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio},
@@ -989,9 +989,9 @@ fn run_swap_simulation(
             if initialized {
                 if let Some(info) = TICKS.may_load(deps.storage, target_tick)? {
                     let new_fee_growth_outside_0_x128 =
-                        fee_growth_global_0_x128.checked_sub(info.fee_growth_outside_0_x128)?;
+                        flip_fee_growth_outside(fee_growth_global_0_x128, info.fee_growth_outside_0_x128);
                     let new_fee_growth_outside_1_x128 =
-                        fee_growth_global_1_x128.checked_sub(info.fee_growth_outside_1_x128)?;
+                        flip_fee_growth_outside(fee_growth_global_1_x128, info.fee_growth_outside_1_x128);
                     crossed_ticks.push(CrossedTickUpdate {
                         tick: target_tick,
                         fee_growth_outside_0_x128: new_fee_growth_outside_0_x128,

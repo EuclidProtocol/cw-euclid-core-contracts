@@ -114,11 +114,28 @@ pub fn accumulate_fee_growth(
     Ok(fee_growth_global_x128.wrapping_add(fee_growth_delta))
 }
 
+/// Flips a tick's fee_growth_outside when the tick is crossed during a swap.
+///
+/// Formula: new_outside = fee_growth_global - old_outside (mod 2^256)
+///
+/// This "flips" which side of the tick the outside accumulator refers to.
+/// Before crossing, outside tracks fees on one side; after crossing, the
+/// current price is on the opposite side, so we subtract to get the complement.
+/// Uses wrapping_sub because the global accumulator may have wrapped.
+pub fn flip_fee_growth_outside(
+    fee_growth_global_x128: Uint256,
+    fee_growth_outside_x128: Uint256,
+) -> Uint256 {
+    fee_growth_global_x128.wrapping_sub(fee_growth_outside_x128)
+}
+
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{Uint128, Uint256};
 
-    use crate::math::position_math::{accumulate_fee_growth, fee_growth_inside, fees_owed};
+    use crate::math::position_math::{
+        accumulate_fee_growth, fee_growth_inside, fees_owed, flip_fee_growth_outside,
+    };
     use crate::state::TickInfo;
 
     #[test]
@@ -334,5 +351,71 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
             assert_eq!(result, case.expected, "FAILED: {}", case.name);
         }
+    }
+
+    /// H-2: Tick crossing flips fee_growth_outside via global - outside (mod 2^256).
+    /// Must not revert when global has wrapped past outside.
+    #[test]
+    fn flip_fee_growth_outside_table() {
+        struct Case {
+            name: &'static str,
+            global: Uint256,
+            outside: Uint256,
+            expected: Uint256,
+        }
+
+        let cases = vec![
+            Case {
+                name: "normal — global > outside",
+                global: Uint256::from(1000u128),
+                outside: Uint256::from(300u128),
+                expected: Uint256::from(700u128),
+            },
+            Case {
+                name: "equal — no fees on either side",
+                global: Uint256::from(500u128),
+                outside: Uint256::from(500u128),
+                expected: Uint256::zero(),
+            },
+            Case {
+                name: "outside is zero",
+                global: Uint256::from(1000u128),
+                outside: Uint256::zero(),
+                expected: Uint256::from(1000u128),
+            },
+            Case {
+                name: "global is zero, outside is zero",
+                global: Uint256::zero(),
+                outside: Uint256::zero(),
+                expected: Uint256::zero(),
+            },
+            Case {
+                name: "wrapped — global < outside after overflow",
+                // global wrapped to 50, outside was set at MAX - 100 before wrap
+                // 50 - (MAX - 100) mod 2^256 = 151
+                global: Uint256::from(50u128),
+                outside: Uint256::MAX - Uint256::from(100u128),
+                expected: Uint256::from(151u128),
+            },
+            Case {
+                name: "double flip is identity",
+                global: Uint256::from(50u128),
+                outside: Uint256::MAX - Uint256::from(100u128),
+                // flip once: 151, flip again: 50 - 151 mod 2^256 = MAX - 100
+                expected: Uint256::from(151u128),
+            },
+        ];
+
+        for case in cases {
+            let result = flip_fee_growth_outside(case.global, case.outside);
+            assert_eq!(result, case.expected, "FAILED: {}", case.name);
+        }
+
+        // Verify double-flip invariant: flip(flip(outside)) == outside
+        let global = Uint256::from(50u128);
+        let outside = Uint256::MAX - Uint256::from(100u128);
+        let flipped = flip_fee_growth_outside(global, outside);
+        let double_flipped = flip_fee_growth_outside(global, flipped);
+        assert_eq!(double_flipped, outside, "double flip should restore original");
     }
 }
