@@ -241,6 +241,17 @@ mod tests {
                 expected_spl: Uint256::from(5u128) * q128,
             },
             Case {
+                name: "extreme negative tick (V3 min tick)",
+                tick_cumulative: 0,
+                spl_cumulative: Uint256::zero(),
+                current_tick: -887272,
+                liquidity: Uint128::new(1),
+                delta: 1000,
+                // -887272 * 1000 = -887_272_000 — fits comfortably in i128
+                expected_tick: -887_272_000,
+                expected_spl: Uint256::from(1000u128) * q128,
+            },
+            Case {
                 name: "zero delta — no change",
                 tick_cumulative: 1000,
                 spl_cumulative: Uint256::from(999u128),
@@ -261,7 +272,7 @@ mod tests {
                 expected_spl: Uint256::from(50u128),
             },
             Case {
-                name: "tick_cumulative wraps i128",
+                name: "tick_cumulative wraps i128 upward",
                 tick_cumulative: i128::MAX - 500,
                 spl_cumulative: Uint256::zero(),
                 current_tick: 1,
@@ -269,6 +280,18 @@ mod tests {
                 delta: 1000,
                 // (MAX - 500) + 1000 wraps to MIN + 499
                 expected_tick: i128::MAX.wrapping_add(500),
+                expected_spl: Uint256::from(1000u128) * q128,
+            },
+            Case {
+                name: "tick_cumulative wraps i128 downward",
+                // Near MIN, negative tick pushes it past MIN
+                tick_cumulative: i128::MIN + 500,
+                spl_cumulative: Uint256::zero(),
+                current_tick: -1,
+                liquidity: Uint128::new(1),
+                delta: 1000,
+                // (MIN + 500) + (-1 * 1000) = MIN - 500 wraps to MAX - 499
+                expected_tick: (i128::MIN + 500).wrapping_add(-1000),
                 expected_spl: Uint256::from(1000u128) * q128,
             },
             Case {
@@ -299,37 +322,123 @@ mod tests {
     }
 
     #[test]
-    fn interpolate_wraps_correctly() {
-        // Left observation has tick_cumulative near i128::MAX, right has wrapped past it
-        let left = Observation {
-            block_timestamp: 100,
-            tick_cumulative: i128::MAX - 10,
-            seconds_per_liquidity_cumulative_x128: Uint256::MAX - Uint256::from(20u128),
-            initialized: true,
-        };
-        let right = Observation {
-            block_timestamp: 200,
-            // Wrapped: (MAX-10) + 100 * 1 tick = wraps
-            tick_cumulative: (i128::MAX - 10).wrapping_add(100),
-            seconds_per_liquidity_cumulative_x128: (Uint256::MAX - Uint256::from(20u128))
-                .wrapping_add(Uint256::from(200u128)),
-            initialized: true,
-        };
+    fn interpolate_table() {
+        struct Case {
+            name: &'static str,
+            left: Observation,
+            right: Observation,
+            target: u64,
+            expected_tick: i128,
+            expected_spl: Uint256,
+        }
 
-        // Interpolate at midpoint (t=150)
-        let result = interpolate(&left, &right, 150);
+        let cases = vec![
+            Case {
+                name: "normal midpoint",
+                left: Observation {
+                    block_timestamp: 100,
+                    tick_cumulative: 1000,
+                    seconds_per_liquidity_cumulative_x128: Uint256::from(500u128),
+                    initialized: true,
+                },
+                right: Observation {
+                    block_timestamp: 200,
+                    tick_cumulative: 3000,
+                    seconds_per_liquidity_cumulative_x128: Uint256::from(900u128),
+                    initialized: true,
+                },
+                target: 150,
+                // tick: 1000 + (3000-1000) * 50/100 = 2000
+                // spl: 500 + (900-500) * 50/100 = 700
+                expected_tick: 2000,
+                expected_spl: Uint256::from(700u128),
+            },
+            Case {
+                name: "target at left boundary — returns left",
+                left: Observation {
+                    block_timestamp: 100,
+                    tick_cumulative: 1000,
+                    seconds_per_liquidity_cumulative_x128: Uint256::from(500u128),
+                    initialized: true,
+                },
+                right: Observation {
+                    block_timestamp: 200,
+                    tick_cumulative: 3000,
+                    seconds_per_liquidity_cumulative_x128: Uint256::from(900u128),
+                    initialized: true,
+                },
+                target: 100,
+                expected_tick: 1000,
+                expected_spl: Uint256::from(500u128),
+            },
+            Case {
+                name: "target at right boundary — returns right",
+                left: Observation {
+                    block_timestamp: 100,
+                    tick_cumulative: 1000,
+                    seconds_per_liquidity_cumulative_x128: Uint256::from(500u128),
+                    initialized: true,
+                },
+                right: Observation {
+                    block_timestamp: 200,
+                    tick_cumulative: 3000,
+                    seconds_per_liquidity_cumulative_x128: Uint256::from(900u128),
+                    initialized: true,
+                },
+                target: 200,
+                expected_tick: 3000,
+                expected_spl: Uint256::from(900u128),
+            },
+            Case {
+                name: "negative tick delta",
+                left: Observation {
+                    block_timestamp: 100,
+                    tick_cumulative: 5000,
+                    seconds_per_liquidity_cumulative_x128: Uint256::from(500u128),
+                    initialized: true,
+                },
+                right: Observation {
+                    block_timestamp: 200,
+                    tick_cumulative: 3000,
+                    seconds_per_liquidity_cumulative_x128: Uint256::from(900u128),
+                    initialized: true,
+                },
+                target: 150,
+                // tick: 5000 + (3000-5000) * 50/100 = 4000
+                expected_tick: 4000,
+                expected_spl: Uint256::from(700u128),
+            },
+            Case {
+                name: "wrapping tick and spl at midpoint",
+                left: Observation {
+                    block_timestamp: 100,
+                    tick_cumulative: i128::MAX - 10,
+                    seconds_per_liquidity_cumulative_x128: Uint256::MAX - Uint256::from(20u128),
+                    initialized: true,
+                },
+                right: Observation {
+                    block_timestamp: 200,
+                    tick_cumulative: (i128::MAX - 10).wrapping_add(100),
+                    seconds_per_liquidity_cumulative_x128: (Uint256::MAX - Uint256::from(20u128))
+                        .wrapping_add(Uint256::from(200u128)),
+                    initialized: true,
+                },
+                target: 150,
+                // tick delta (wrapping) = 100, half = 50
+                expected_tick: (i128::MAX - 10).wrapping_add(50),
+                // spl delta (wrapping) = 200, half = 100
+                expected_spl: (Uint256::MAX - Uint256::from(20u128))
+                    .wrapping_add(Uint256::from(100u128)),
+            },
+        ];
 
-        // tick delta (wrapping) = 100, half = 50
-        // interpolated = (MAX-10) + 50 wrapping
-        let expected_tick = (i128::MAX - 10).wrapping_add(50);
-        assert_eq!(result.tick_cumulative, expected_tick);
-
-        // spl delta (wrapping) = 200, half = 100
-        let expected_spl = (Uint256::MAX - Uint256::from(20u128))
-            .wrapping_add(Uint256::from(100u128));
-        assert_eq!(
-            result.seconds_per_liquidity_cumulative_x128,
-            expected_spl
-        );
+        for case in cases {
+            let result = interpolate(&case.left, &case.right, case.target);
+            assert_eq!(result.tick_cumulative, case.expected_tick, "FAILED tick: {}", case.name);
+            assert_eq!(
+                result.seconds_per_liquidity_cumulative_x128, case.expected_spl,
+                "FAILED spl: {}", case.name
+            );
+        }
     }
 }

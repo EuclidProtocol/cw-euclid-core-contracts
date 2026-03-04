@@ -139,7 +139,11 @@ mod tests {
     use crate::state::TickInfo;
 
     #[test]
-    fn fee_growth_inside_calculation_vectors() {
+    fn fee_growth_inside_normal_in_range() {
+        // current_tick(0) is between lower(-10) and upper(10)
+        // below_0 = lower.outside = 10, above_0 = upper.outside = 30
+        // inside_0 = 100 - 10 - 30 = 60
+        // inside_1 = 200 - 20 - 40 = 140
         let lower = TickInfo {
             initialized: true,
             liquidity_gross: Uint128::new(1),
@@ -155,112 +159,176 @@ mod tests {
             fee_growth_outside_1_x128: Uint256::from(40u128),
         };
         let (inside_0, inside_1) = fee_growth_inside(
-            0,
-            -10,
-            10,
-            Uint256::from(100u128),
-            Uint256::from(200u128),
-            Some(lower),
-            Some(upper),
-        )
-        .unwrap();
+            0, -10, 10,
+            Uint256::from(100u128), Uint256::from(200u128),
+            Some(lower), Some(upper),
+        ).unwrap();
         assert_eq!(inside_0, Uint256::from(60u128));
         assert_eq!(inside_1, Uint256::from(140u128));
-        assert_eq!(
-            fees_owed(Uint128::new(10_000), inside_0, Uint256::from(0u128)).unwrap(),
-            Uint128::zero()
-        );
     }
 
-    /// fee_growth_inside reverts when global accumulator has wrapped past a
-    /// tick's fee_growth_outside value.
-    ///
-    /// Scenario: A pool with minimum liquidity (1) accumulates enough fees to
-    /// push fee_growth_global past Uint256::MAX and wrap around to a small
-    /// value. The lower tick was initialized when fee_growth_global was large
-    /// (pre-wrap), so its fee_growth_outside is larger than the current global.
     #[test]
-    fn fee_growth_inside_reverts_on_wrapped_global() {
-        // Pre-wrap: global was near MAX, tick was initialized with outside = MAX - 100
-        // Post-wrap: global wrapped to 50
-        // True fee growth on the "inside" of the lower tick = 50 - 0 (below) = 50,
-        // but computing "below" requires global(50) - outside(MAX-100) which underflows.
-        let fee_growth_global = Uint256::from(50u128);
-        let fee_growth_outside_large = Uint256::MAX - Uint256::from(100u128);
+    fn fee_growth_inside_none_ticks_use_default() {
+        // None ticks default to all-zero TickInfo
+        // below = 0 (current >= lower), above = 0 (current < upper)
+        // inside = global - 0 - 0 = global
+        let (inside_0, inside_1) = fee_growth_inside(
+            0, -10, 10,
+            Uint256::from(500u128), Uint256::from(700u128),
+            None, None,
+        ).unwrap();
+        assert_eq!(inside_0, Uint256::from(500u128));
+        assert_eq!(inside_1, Uint256::from(700u128));
+    }
+
+    /// Wrapping when current_tick < lower_tick (fee_growth_below branch).
+    /// global(50) - lower.outside(MAX-100) wraps to 151.
+    /// inside = global(50) - below(151) - above(0) wraps to MAX-100.
+    #[test]
+    fn fee_growth_inside_wrapping_below_lower_tick() {
+        let global_0 = Uint256::from(50u128);
+        let global_1 = Uint256::from(75u128);
+        let outside_large_0 = Uint256::MAX - Uint256::from(100u128);
+        let outside_large_1 = Uint256::MAX - Uint256::from(200u128);
 
         let lower = TickInfo {
             initialized: true,
             liquidity_gross: Uint128::new(1),
             liquidity_net: 1,
-            fee_growth_outside_0_x128: fee_growth_outside_large,
-            fee_growth_outside_1_x128: Uint256::zero(),
+            fee_growth_outside_0_x128: outside_large_0,
+            fee_growth_outside_1_x128: outside_large_1,
         };
+        let upper = TickInfo::default();
+
+        let (inside_0, inside_1) = fee_growth_inside(
+            -20, -10, 10, // current below lower
+            global_0, global_1,
+            Some(lower), Some(upper),
+        ).expect("wrapping_sub should not revert");
+
+        // below_0 = 50 - (MAX-100) mod 2^256 = 151
+        // above_0 = upper.outside = 0 (current < upper)
+        // inside_0 = 50 - 151 - 0 mod 2^256 = MAX - 100
+        assert_eq!(inside_0, Uint256::MAX - Uint256::from(100u128));
+        // below_1 = 75 - (MAX-200) mod 2^256 = 276
+        // inside_1 = 75 - 276 - 0 mod 2^256 = MAX - 200
+        assert_eq!(inside_1, Uint256::MAX - Uint256::from(200u128));
+    }
+
+    /// Wrapping when current_tick >= upper_tick (fee_growth_above branch).
+    /// global(50) - upper.outside(MAX-100) wraps to 151.
+    #[test]
+    fn fee_growth_inside_wrapping_above_upper_tick() {
+        let global_0 = Uint256::from(50u128);
+        let global_1 = Uint256::from(75u128);
+        let outside_large_0 = Uint256::MAX - Uint256::from(100u128);
+        let outside_large_1 = Uint256::MAX - Uint256::from(200u128);
+
+        let lower = TickInfo::default();
         let upper = TickInfo {
             initialized: true,
             liquidity_gross: Uint128::new(1),
             liquidity_net: -1,
-            fee_growth_outside_0_x128: Uint256::zero(),
-            fee_growth_outside_1_x128: Uint256::zero(),
+            fee_growth_outside_0_x128: outside_large_0,
+            fee_growth_outside_1_x128: outside_large_1,
         };
 
-        // Current tick is BELOW lower_tick, so the code path hits:
-        //   fee_growth_below_0 = global.checked_sub(lower.outside) → REVERTS
-        // With wrapping_sub it would correctly return 151 (50 - (MAX-100) mod 2^256 = 151)
-        let result = fee_growth_inside(
-            -20, // current_tick below lower
-            -10, // lower_tick
-            10,  // upper_tick
-            fee_growth_global,
-            Uint256::zero(),
-            Some(lower),
-            Some(upper),
-        );
+        let (inside_0, inside_1) = fee_growth_inside(
+            20, -10, 10, // current above upper
+            global_0, global_1,
+            Some(lower), Some(upper),
+        ).expect("wrapping_sub should not revert");
 
-        // With wrapping_sub: fee_growth_below_0 = 50 - (MAX-100) mod 2^256 = 151
-        // fee_growth_above_0 = upper.outside = 0 (current_tick < upper_tick)
-        // inside_0 = global(50) - below(151) - above(0) — this also wraps
-        // = 50 - 151 mod 2^256 = MAX - 100
-        // But we mainly need this to NOT revert.
-        let (inside_0, _inside_1) = result.expect("should not revert with wrapping subtraction");
-
-        // Verify the wrapping math produces a coherent value (not zero — fees were accrued)
-        assert!(
-            !inside_0.is_zero(),
-            "fee_growth_inside should be non-zero after wrap"
-        );
+        // below_0 = lower.outside = 0 (current >= lower)
+        // above_0 = 50 - (MAX-100) mod 2^256 = 151
+        // inside_0 = 50 - 0 - 151 mod 2^256 = MAX - 100
+        assert_eq!(inside_0, Uint256::MAX - Uint256::from(100u128));
+        // inside_1 = 75 - 0 - 276 mod 2^256 = MAX - 200
+        assert_eq!(inside_1, Uint256::MAX - Uint256::from(200u128));
     }
 
-    /// fees_owed early-return guard masks wrapped delta.
+    /// fees_owed correctly computes fees when fee_growth_inside has wrapped
+    /// past fee_growth_inside_last.
     ///
-    /// Even if fee_growth_inside uses wrapping_sub correctly, fees_owed has a
-    /// guard: `if fee_growth_inside <= fee_growth_inside_last { return 0 }`.
-    /// After a wrap, the current inside value (e.g. 5) can be numerically less
-    /// than the last snapshot (e.g. MAX-10), yet 16 fees were truly accrued.
-    /// The guard incorrectly returns zero.
+    /// Wrapping delta = 2^128, so fees = liquidity * 2^128 / 2^128 = liquidity.
     #[test]
-    fn fees_owed_guard_masks_wrapped_fee_growth() {
+    fn fees_owed_wrapping_delta() {
         let liquidity = Uint128::new(1_000_000);
-        // Position's last snapshot was near MAX
         let fee_growth_inside_last = Uint256::MAX - Uint256::from(10u128);
-        // Current fee_growth_inside wrapped to a value that gives a meaningful Q128 result
-        // True delta (wrapping) = fee_growth_inside_now - fee_growth_inside_last mod 2^256
-        // = (MAX - 10 + 1) + fee_growth_inside_now = 11 + large_offset
-        // We need delta * liquidity / 2^128 > 0, so delta must be >= 2^128 / liquidity
-        // 2^128 / 1_000_000 ≈ 3.4e32, so set a delta well above that.
-        // Use fee_growth_inside_now such that wrapping delta = 2^128 (yields fees = liquidity = 1_000_000)
+        // Wrapping delta = 2^128
         let fee_growth_inside_now = fee_growth_inside_last.wrapping_add(Uint256::one() << 128u32);
 
         let result = fees_owed(liquidity, fee_growth_inside_now, fee_growth_inside_last).unwrap();
 
-        // True delta (wrapping): 5 - (MAX-10) mod 2^256 = 16
-        // fees = liquidity(1_000_000) * 16 / 2^128 — rounds to 0 due to Q128 scaling.
-        // Use larger values to get a non-zero result:
-        // We'll check this separately below with scaled values.
-        // For now, just verify it doesn't return zero from the guard.
-        assert!(
-            result > Uint128::zero(),
-            "fees_owed should return non-zero fees after fee_growth wraps"
-        );
+        // fees = 1_000_000 * 2^128 / 2^128 = 1_000_000
+        assert_eq!(result, Uint128::new(1_000_000));
+    }
+
+    /// fees_owed returns zero for zero liquidity even with a wrapping delta.
+    #[test]
+    fn fees_owed_zero_liquidity_with_wrapping_delta() {
+        let fee_growth_inside_last = Uint256::MAX - Uint256::from(10u128);
+        let fee_growth_inside_now = fee_growth_inside_last.wrapping_add(Uint256::one() << 128u32);
+
+        let result = fees_owed(Uint128::zero(), fee_growth_inside_now, fee_growth_inside_last).unwrap();
+        assert_eq!(result, Uint128::zero());
+    }
+
+    /// End-to-end: fee_growth_inside with wrapped globals → fees_owed → non-zero fees.
+    ///
+    /// Simulates a position that was opened before a fee growth wrap and is
+    /// now collecting fees after the wrap.
+    #[test]
+    fn fee_growth_inside_to_fees_owed_end_to_end_wrap() {
+        let q128 = Uint256::one() << 128u32;
+
+        // Pool state: global has wrapped to a small value
+        let global_0 = Uint256::from(500u128) * q128;
+        let global_1 = Uint256::from(300u128) * q128;
+
+        // Ticks with small outside values (initialized after the wrap)
+        let lower = TickInfo {
+            initialized: true,
+            liquidity_gross: Uint128::new(1000),
+            liquidity_net: 1000,
+            fee_growth_outside_0_x128: Uint256::from(100u128) * q128,
+            fee_growth_outside_1_x128: Uint256::from(50u128) * q128,
+        };
+        let upper = TickInfo {
+            initialized: true,
+            liquidity_gross: Uint128::new(1000),
+            liquidity_net: -1000,
+            fee_growth_outside_0_x128: Uint256::from(50u128) * q128,
+            fee_growth_outside_1_x128: Uint256::from(30u128) * q128,
+        };
+
+        // current_tick in range → below = lower.outside, above = upper.outside
+        // inside_0 = 500*q128 - 100*q128 - 50*q128 = 350*q128
+        // inside_1 = 300*q128 - 50*q128 - 30*q128 = 220*q128
+        let (inside_0, inside_1) = fee_growth_inside(
+            0, -10, 10,
+            global_0, global_1,
+            Some(lower), Some(upper),
+        ).unwrap();
+
+        assert_eq!(inside_0, Uint256::from(350u128) * q128);
+        assert_eq!(inside_1, Uint256::from(220u128) * q128);
+
+        // Position's last snapshot was before the wrap — near MAX.
+        // Wrapping delta for token0: inside_0 - last_0 mod 2^256
+        // Set last so that wrapping delta = 200 * q128
+        let last_0 = inside_0.wrapping_sub(Uint256::from(200u128) * q128);
+        let last_1 = inside_1.wrapping_sub(Uint256::from(100u128) * q128);
+
+        let liquidity = Uint128::new(5_000);
+
+        // fees_0 = 5000 * 200*q128 / q128 = 5000 * 200 = 1_000_000
+        let fees_0 = fees_owed(liquidity, inside_0, last_0).unwrap();
+        assert_eq!(fees_0, Uint128::new(1_000_000));
+
+        // fees_1 = 5000 * 100*q128 / q128 = 5000 * 100 = 500_000
+        let fees_1 = fees_owed(liquidity, inside_1, last_1).unwrap();
+        assert_eq!(fees_1, Uint128::new(500_000));
     }
 
     /// Table-driven tests for accumulate_fee_growth covering normal accumulation,
