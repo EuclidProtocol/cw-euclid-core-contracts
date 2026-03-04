@@ -6,6 +6,18 @@ use crate::{
     state::TickInfo,
 };
 
+/// Computes the fee growth accrued inside a tick range [lower_tick, upper_tick).
+///
+/// All subtractions use `wrapping_sub` because fee growth accumulators are
+/// monotonically increasing Uint256 values that are *designed to overflow*
+/// (mod 2^256). The absolute values are
+/// meaningless — only the *difference* between two snapshots matters, and
+/// wrapping subtraction always produces the correct delta regardless of
+/// whether the accumulator has wrapped around.
+///
+/// Using `checked_sub` here would cause transactions to revert once the
+/// global accumulator wraps past any tick's `fee_growth_outside` value,
+/// permanently bricking the pool.
 pub fn fee_growth_inside(
     current_tick: i64,
     lower_tick: i64,
@@ -18,6 +30,9 @@ pub fn fee_growth_inside(
     let lower = lower.unwrap_or_default();
     let upper = upper.unwrap_or_default();
 
+    // Step 1: fee_growth_below = fees accrued below the lower tick.
+    //   If current_tick >= lower_tick, the lower tick's "outside" IS the below side.
+    //   Otherwise: fee_growth_below = fee_growth_global - fee_growth_outside (mod 2^256)
     let fee_growth_below_0 = if current_tick >= lower_tick {
         lower.fee_growth_outside_0_x128
     } else {
@@ -29,6 +44,9 @@ pub fn fee_growth_inside(
         fee_growth_global_1_x128.wrapping_sub(lower.fee_growth_outside_1_x128)
     };
 
+    // Step 2: fee_growth_above = fees accrued above the upper tick.
+    //   If current_tick < upper_tick, the upper tick's "outside" IS the above side.
+    //   Otherwise: fee_growth_above = fee_growth_global - fee_growth_outside (mod 2^256)
     let fee_growth_above_0 = if current_tick < upper_tick {
         upper.fee_growth_outside_0_x128
     } else {
@@ -40,6 +58,7 @@ pub fn fee_growth_inside(
         fee_growth_global_1_x128.wrapping_sub(upper.fee_growth_outside_1_x128)
     };
 
+    // Step 3: fee_growth_inside = fee_growth_global - fee_growth_below - fee_growth_above (mod 2^256)
     let inside_0 = fee_growth_global_0_x128
         .wrapping_sub(fee_growth_below_0)
         .wrapping_sub(fee_growth_above_0);
@@ -50,6 +69,12 @@ pub fn fee_growth_inside(
     Ok((inside_0, inside_1))
 }
 
+/// Computes the fees owed to a position since its last snapshot.
+///
+/// Uses `wrapping_sub` for the same reason as `fee_growth_inside`: fee growth
+/// values are mod-2^256 accumulators where only deltas matter. After a wrap,
+/// the current value may be numerically smaller than the last snapshot, but
+/// the wrapping difference is still the true accrued amount.
 pub fn fees_owed(
     liquidity: Uint128,
     fee_growth_inside_x128: Uint256,
@@ -58,7 +83,10 @@ pub fn fees_owed(
     if liquidity.is_zero() {
         return Ok(Uint128::zero());
     }
+    // Step 1: delta = fee_growth_inside_now - fee_growth_inside_last (mod 2^256)
     let delta = fee_growth_inside_x128.wrapping_sub(fee_growth_inside_last_x128);
+    // Step 2: fees = liquidity * delta / 2^128
+    //   delta is in Q128 (per unit of liquidity), so dividing by 2^128 gives the raw token amount.
     let amount = mul_div(Uint256::from(liquidity.u128()), delta, q128())?;
     Uint128::try_from(amount).map_err(|_| ContractError::new("fees owed overflow"))
 }
