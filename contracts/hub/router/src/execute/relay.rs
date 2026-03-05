@@ -1,5 +1,3 @@
-use std::ops::Add;
-
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response,
     StdError, SubMsg, Uint128, WasmMsg,
@@ -17,14 +15,14 @@ use euclid::{
 };
 use euclid_ibc::{
     ack::make_ack_fail, factory_ibc::FactoryCrossChainExecuteMsg,
-    router_ibc::RouterCrossChainExecuteMsg, state::PendingPacket,
+    router_ibc::RouterCrossChainExecuteMsg,
 };
 
 use crate::{
     ibc::{ack_and_timeout, receive},
     relay_state::{
-        CROSS_CHAIN_LATEST_SEQUENCE_COUNT, CROSS_CHAIN_PENDING_PACKET_SENDER,
-        CROSS_CHAIN_PENDING_SEND_PACKETS, CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS,
+        create_pending_packet_and_update_sequence, remove_pending_packet_and_decrement_count,
+        CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS,
     },
     reply::CROSS_CHAIN_RECEIVE_REPLY_ID,
     state::{CHAIN_UID_TO_CHAIN, RELAYER_CONTRACT},
@@ -47,34 +45,18 @@ pub fn execute_send_packet(
         ContractError::Unauthorized {}
     );
 
-    let sequence = CROSS_CHAIN_LATEST_SEQUENCE_COUNT
-        .load(deps.storage, chain.chain_uid.clone())
-        .unwrap_or(0);
-
-    CROSS_CHAIN_PENDING_SEND_PACKETS.save(
+    let (chain_uid, sequence) = create_pending_packet_and_update_sequence(
         deps.storage,
-        (chain.chain_uid.clone(), sequence),
-        &PendingPacket {
-            chain_uid: chain.chain_uid.clone(),
-            original_msg: msg.clone(),
-            ack_response,
-        },
-    )?;
-    CROSS_CHAIN_PENDING_PACKET_SENDER.save(
-        deps.storage,
-        (chain.chain_uid.clone(), sequence),
+        &chain,
+        &msg,
+        ack_response,
         &sender,
-    )?;
-    CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(
-        deps.storage,
-        chain.chain_uid.clone(),
-        &sequence.add(1),
     )?;
 
     let source_port = format!("vsl.{}", env.contract.address.to_string().to_lowercase());
     let destination_port = format!(
         "{}.{}",
-        chain.chain_uid.as_str(),
+        chain_uid.as_str(),
         chain.factory_address.to_lowercase()
     );
 
@@ -218,20 +200,13 @@ pub fn execute_receive_acknowledgement(
         destination_port == format!("vsl.{router}", router = env.contract.address),
         ContractError::new("Invalid destination port")
     );
-    let _existing_request =
-        CROSS_CHAIN_PENDING_SEND_PACKETS.load(deps.storage, (chain_uid.clone(), sequence))?;
-    let _sender =
-        CROSS_CHAIN_PENDING_PACKET_SENDER.load(deps.storage, (chain_uid.clone(), sequence))?;
+    remove_pending_packet_and_decrement_count(deps.storage, &chain_uid, sequence)?;
 
     // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
     // ensure!(
     //     existing_request == msg,
     //     ContractError::new("Ack source msg doesn't match with existing request")
     // );
-
-    // Remove the existing request as its already relayed now
-    CROSS_CHAIN_PENDING_SEND_PACKETS.remove(deps.storage, (chain_uid.clone(), sequence));
-    CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, (chain_uid.clone(), sequence));
 
     let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
 
