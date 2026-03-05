@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn,
-    Response, SubMsg, WasmMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response,
+    SubMsg, WasmMsg,
 };
 use cw20::Cw20Coin;
 use euclid::{
@@ -15,28 +15,28 @@ use euclid::{
     },
     msgs::{
         escrow::InstantiateMsg as EscrowInstantiateMsg,
-        vlp::base::{
-            DeregisterDenomResponse, PoolCreationResponse, RegisterDenomResponse,
-        },
+        vlp::base::{DeregisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
     },
     swap::{SwapResponse, TransferVoucherResponse},
     token::Token,
 };
 use euclid_ibc::{
     ack::AcknowledgementMsg,
-    router_ibc::{RouterCrossChainConcentratedRequestPoolCreationExecuteMsg, RouterCrossChainExecuteMsg},
+    router_ibc::{
+        RouterCrossChainConcentratedRequestPoolCreationExecuteMsg, RouterCrossChainExecuteMsg,
+    },
 };
 
 use crate::{
     reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
-        pool_key_to_map_key, FEE_STATE, OWNER_TO_POSITIONS, PAIR_TO_VLP, POOL_KEY_TO_VLP,
-        POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT, PENDING_ADD_LIQUIDITY,
-        PENDING_CONCENTRATED_ADD_LIQUIDITY, PENDING_CONCENTRATED_POOL_REQUESTS,
-        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
+        pool_key_to_map_key, FEE_STATE, OWNER_TO_POSITIONS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        PENDING_CONCENTRATED_ADD_LIQUIDITY, PENDING_CONCENTRATED_COLLECT_FEES,
+        PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES, PENDING_CONCENTRATED_POOL_REQUESTS,
         PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
         PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
+        PENDING_TOKEN_DEPOSIT, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT,
+        STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -80,7 +80,13 @@ pub fn reusable_internal_ack_call(
         }
         RouterCrossChainExecuteMsg::AddConcentratedLiquidity(msg) => {
             let res: AcknowledgementMsg<ConcentratedAddLiquidityResponse> = from_json(ack)?;
-            ack_add_concentrated_liquidity(deps.branch(), res, msg.sender.address, msg.tx_id, is_native)
+            ack_add_concentrated_liquidity(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
         }
         RouterCrossChainExecuteMsg::RemoveLiquidity(msg) => {
             // Process acknowledgment for add liquidity
@@ -99,7 +105,13 @@ pub fn reusable_internal_ack_call(
         }
         RouterCrossChainExecuteMsg::CollectConcentratedFees(msg) => {
             let res: AcknowledgementMsg<ConcentratedCollectFeesResponse> = from_json(ack)?;
-            ack_collect_concentrated_fees(deps.branch(), res, msg.sender.address, msg.tx_id, is_native)
+            ack_collect_concentrated_fees(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
         }
         RouterCrossChainExecuteMsg::CollectConcentratedProtocolFees(msg) => {
             let res: AcknowledgementMsg<ConcentratedCollectProtocolFeesResponse> = from_json(ack)?;
@@ -290,14 +302,15 @@ fn ack_concentrated_pool_creation(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&msg.sender.address)?;
     let req_key = (sender.clone(), msg.tx_id.clone());
-    let existing_req = match PENDING_CONCENTRATED_POOL_REQUESTS.may_load(deps.storage, req_key.clone())? {
-        Some(req) => req,
-        None => {
-            return Ok(Response::new()
-                .add_attribute("method", "ack_concentrated_pool_creation_idempotent")
-                .add_attribute("tx_id", msg.tx_id));
-        }
-    };
+    let existing_req =
+        match PENDING_CONCENTRATED_POOL_REQUESTS.may_load(deps.storage, req_key.clone())? {
+            Some(req) => req,
+            None => {
+                return Ok(Response::new()
+                    .add_attribute("method", "ack_concentrated_pool_creation_idempotent")
+                    .add_attribute("tx_id", msg.tx_id));
+            }
+        };
     PENDING_CONCENTRATED_POOL_REQUESTS.remove(deps.storage, req_key);
 
     match res {
@@ -314,7 +327,8 @@ fn ack_concentrated_pool_creation(
                     continue;
                 }
 
-                let escrow_contract = TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
+                let escrow_contract =
+                    TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
                 let send_msg = token_info
                     .token_type
                     .create_escrow_msg(token_info.amount, escrow_contract)?;
@@ -340,18 +354,17 @@ fn ack_concentrated_pool_creation(
                 OWNER_TO_POSITIONS.save(deps.storage, sender.clone(), &owner_positions)?;
             }
 
-            if let Some(position_token_contract) = POSITION_TOKEN_CONTRACT.may_load(deps.storage)? {
-                let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: position_token_contract.to_string(),
-                    msg: to_json_binary(&position_token::msg::ExecuteMsg::Mint {
-                        token_id: data.position_id.to_string(),
-                        owner: sender.to_string(),
-                        token_uri: None,
-                    })?,
-                    funds: vec![],
-                });
-                res = res.add_message(mint_msg);
-            }
+            let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+            let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: position_token_contract.to_string(),
+                msg: to_json_binary(&position_token::msg::ExecuteMsg::Mint {
+                    token_id: data.position_id.to_string(),
+                    owner: sender.to_string(),
+                    token_uri: None,
+                })?,
+                funds: vec![],
+            });
+            res = res.add_message(mint_msg);
 
             Ok(res
                 .add_attribute("tx_id", msg.tx_id)
@@ -621,15 +634,16 @@ fn ack_add_concentrated_liquidity(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
-    let liquidity_info = match PENDING_CONCENTRATED_ADD_LIQUIDITY.may_load(deps.storage, req_key.clone())? {
-        Some(info) => info,
-        None => {
-            return Ok(Response::new()
-                .add_attribute("method", "ack_add_concentrated_liquidity_idempotent")
-                .add_attribute("tx_id", tx_id)
-                .add_attribute("sender", sender));
-        }
-    };
+    let liquidity_info =
+        match PENDING_CONCENTRATED_ADD_LIQUIDITY.may_load(deps.storage, req_key.clone())? {
+            Some(info) => info,
+            None => {
+                return Ok(Response::new()
+                    .add_attribute("method", "ack_add_concentrated_liquidity_idempotent")
+                    .add_attribute("tx_id", tx_id)
+                    .add_attribute("sender", sender));
+            }
+        };
     PENDING_CONCENTRATED_ADD_LIQUIDITY.remove(deps.storage, req_key);
 
     match res {
@@ -652,7 +666,10 @@ fn ack_add_concentrated_liquidity(
             match existing_meta {
                 Some(mut meta) => {
                     ensure!(meta.owner == sender, ContractError::Unauthorized {});
-                    ensure!(meta.pool_key == data.pool_key, ContractError::new("Pool key mismatch"));
+                    ensure!(
+                        meta.pool_key == data.pool_key,
+                        ContractError::new("Pool key mismatch")
+                    );
                     meta.liquidity = meta.liquidity.checked_add(data.liquidity_delta)?;
                     meta.vlp_address = data.vlp_address.clone();
                     POSITION_ID_TO_METADATA.save(deps.storage, position_id, &meta)?;
@@ -677,18 +694,17 @@ fn ack_add_concentrated_liquidity(
                         OWNER_TO_POSITIONS.save(deps.storage, sender.clone(), &owner_positions)?;
                     }
 
-                    if let Some(position_token_contract) = POSITION_TOKEN_CONTRACT.may_load(deps.storage)? {
-                        let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: position_token_contract.to_string(),
-                            msg: to_json_binary(&position_token::msg::ExecuteMsg::Mint {
-                                token_id: data.position_id.to_string(),
-                                owner: sender.to_string(),
-                                token_uri: None,
-                            })?,
-                            funds: vec![],
-                        });
-                        res = res.add_message(mint_msg);
-                    }
+                    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+                    let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: position_token_contract.to_string(),
+                        msg: to_json_binary(&position_token::msg::ExecuteMsg::Mint {
+                            token_id: data.position_id.to_string(),
+                            owner: sender.to_string(),
+                            token_uri: None,
+                        })?,
+                        funds: vec![],
+                    });
+                    res = res.add_message(mint_msg);
                 }
             }
 
@@ -706,9 +722,12 @@ fn ack_add_concentrated_liquidity(
                 if token_info.token_type.is_voucher() {
                     continue;
                 }
-                let msg = token_info
-                    .token_type
-                    .create_transfer_msg(token_info.amount, sender.to_string(), None, None)?;
+                let msg = token_info.token_type.create_transfer_msg(
+                    token_info.amount,
+                    sender.to_string(),
+                    None,
+                    None,
+                )?;
                 msgs.push(msg);
             }
             Ok(Response::new()
@@ -799,23 +818,22 @@ fn ack_remove_concentrated_liquidity(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
-    let liquidity_info = match PENDING_CONCENTRATED_REMOVE_LIQUIDITY
-        .may_load(deps.storage, req_key.clone())?
-    {
-        Some(info) => info,
-        None => {
-            return Ok(Response::new()
-                .add_attribute("method", "ack_remove_concentrated_liquidity_idempotent")
-                .add_attribute("tx_id", tx_id)
-                .add_attribute("sender", sender));
-        }
-    };
+    let liquidity_info =
+        match PENDING_CONCENTRATED_REMOVE_LIQUIDITY.may_load(deps.storage, req_key.clone())? {
+            Some(info) => info,
+            None => {
+                return Ok(Response::new()
+                    .add_attribute("method", "ack_remove_concentrated_liquidity_idempotent")
+                    .add_attribute("tx_id", tx_id)
+                    .add_attribute("sender", sender));
+            }
+        };
     PENDING_CONCENTRATED_REMOVE_LIQUIDITY.remove(deps.storage, req_key.clone());
 
     match res {
         AcknowledgementMsg::Ok(data) => {
-            if let Some(mut meta) = POSITION_ID_TO_METADATA
-                .may_load(deps.storage, data.position_id.u128())?
+            if let Some(mut meta) =
+                POSITION_ID_TO_METADATA.may_load(deps.storage, data.position_id.u128())?
             {
                 meta.liquidity = meta.liquidity.checked_sub(data.liquidity_delta)?;
                 if meta.liquidity.is_zero() {
@@ -826,22 +844,19 @@ fn ack_remove_concentrated_liquidity(
                         owner_positions.retain(|id| *id != data.position_id.u128());
                         OWNER_TO_POSITIONS.save(deps.storage, sender.clone(), &owner_positions)?;
                     }
-                    if let Some(position_token_contract) =
-                        POSITION_TOKEN_CONTRACT.may_load(deps.storage)?
-                    {
-                        let burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: position_token_contract.to_string(),
-                            msg: to_json_binary(&position_token::msg::ExecuteMsg::Burn {
-                                token_id: data.position_id.to_string(),
-                            })?,
-                            funds: vec![],
-                        });
-                        return Ok(Response::new()
-                            .add_message(burn_msg)
-                            .add_attribute("method", "ack_remove_concentrated_liquidity")
-                            .add_attribute("tx_id", tx_id)
-                            .add_attribute("position_id", data.position_id));
-                    }
+                    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+                    let burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: position_token_contract.to_string(),
+                        msg: to_json_binary(&position_token::msg::ExecuteMsg::Burn {
+                            token_id: data.position_id.to_string(),
+                        })?,
+                        funds: vec![],
+                    });
+                    return Ok(Response::new()
+                        .add_message(burn_msg)
+                        .add_attribute("method", "ack_remove_concentrated_liquidity")
+                        .add_attribute("tx_id", tx_id)
+                        .add_attribute("position_id", data.position_id));
                 } else {
                     POSITION_ID_TO_METADATA.save(deps.storage, data.position_id.u128(), &meta)?;
                 }
@@ -929,17 +944,19 @@ fn ack_collect_concentrated_protocol_fees(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
-    let collect_info = match PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES
-        .may_load(deps.storage, req_key.clone())?
-    {
-        Some(info) => info,
-        None => {
-            return Ok(Response::new()
-                .add_attribute("method", "ack_collect_concentrated_protocol_fees_idempotent")
-                .add_attribute("tx_id", tx_id)
-                .add_attribute("sender", sender));
-        }
-    };
+    let collect_info =
+        match PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.may_load(deps.storage, req_key.clone())? {
+            Some(info) => info,
+            None => {
+                return Ok(Response::new()
+                    .add_attribute(
+                        "method",
+                        "ack_collect_concentrated_protocol_fees_idempotent",
+                    )
+                    .add_attribute("tx_id", tx_id)
+                    .add_attribute("sender", sender));
+            }
+        };
     PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.remove(deps.storage, req_key);
 
     match res {

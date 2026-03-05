@@ -3,8 +3,8 @@ use std::collections::HashMap;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, SubMsg,
-    Uint128, Uint256, WasmMsg,
+    ensure, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Storage,
+    SubMsg, Uint128, Uint256, WasmMsg,
 };
 use cw2::set_contract_version;
 use euclid::{
@@ -17,7 +17,8 @@ use euclid::{
         base::{
             GetSwapQueryResponse, PoolType, State, VlpConcentratedAddLiquidityResponse,
             VlpConcentratedCollectFeesResponse, VlpConcentratedCollectProtocolFeesResponse,
-            VlpConcentratedRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse, NEXT_SWAP_REPLY_ID,
+            VlpConcentratedRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse,
+            NEXT_SWAP_REPLY_ID,
         },
         concentrated::msg::{
             ExecuteMsg, InstantiateMsg, LegacyLiquidityMode, MigrationStatusResponse,
@@ -49,8 +50,8 @@ use crate::{
         initialize_position_nonce, next_position_id, ConcentratedPosition, MigrationMetadata,
         Slot0, TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
         FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIGRATION_METADATA,
-        MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1,
-        SLOT0, STATE, TICK_BITMAP, TICKS,
+        MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0,
+        STATE, TICKS, TICK_BITMAP,
     },
 };
 
@@ -58,6 +59,21 @@ const CONTRACT_NAME: &str = "crates.io:concentrated_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MAX_SWAP_STEPS: u32 = 4096;
 const MAX_LIQUIDITY_ADJUSTMENT_STEPS: u32 = 1024;
+
+pub(crate) fn lock(storage: &mut dyn Storage) -> Result<(), ContractError> {
+    let mut slot0 = SLOT0.load(storage)?;
+    ensure!(slot0.unlocked, ContractError::new("locked"));
+    slot0.unlocked = false;
+    SLOT0.save(storage, &slot0)?;
+    Ok(())
+}
+
+pub(crate) fn unlock(storage: &mut dyn Storage) -> Result<(), ContractError> {
+    let mut slot0 = SLOT0.load(storage)?;
+    slot0.unlocked = true;
+    SLOT0.save(storage, &slot0)?;
+    Ok(())
+}
 
 #[derive(Clone)]
 struct CrossedTickUpdate {
@@ -223,9 +239,7 @@ pub fn execute(
             execute_remove_concentrated_liquidity(deps, env, info, remove_liquidity_msg)
         }
         ExecuteMsg::CollectFees(msg) => execute_collect_fees(deps, env, info, msg),
-        ExecuteMsg::CollectProtocolFees(msg) => {
-            execute_collect_protocol_fees(deps, env, info, msg)
-        }
+        ExecuteMsg::CollectProtocolFees(msg) => execute_collect_protocol_fees(deps, env, info, msg),
         ExecuteMsg::IncreaseObservationCardinalityNext {
             observation_cardinality_next,
         } => increase_observation_cardinality_next(deps, info, observation_cardinality_next),
@@ -243,12 +257,17 @@ pub fn execute(
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::State {} => query_state(deps),
-        QueryMsg::SimulateSwap(msg) => query_clp_simulate_swap(deps, msg.asset, msg.asset_amount, msg.swaps),
+        QueryMsg::SimulateSwap(msg) => {
+            query_clp_simulate_swap(deps, msg.asset, msg.asset_amount, msg.swaps)
+        }
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
         QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps, denom),
-        QueryMsg::Pool { chain_uid, pool_key } => query_pool(deps, chain_uid, pool_key),
+        QueryMsg::Pool {
+            chain_uid,
+            pool_key,
+        } => query_pool(deps, chain_uid, pool_key),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
         QueryMsg::Slot0 {} => to_json_binary(&query_slot0(deps)?).map_err(ContractError::from),
         QueryMsg::Position { position_id } => {
@@ -350,6 +369,7 @@ fn execute_add_concentrated_liquidity(
     info: MessageInfo,
     add_liquidity_msg: euclid::msgs::vlp::base::VlpConcentratedAddLiquidityMsg,
 ) -> Result<Response, ContractError> {
+    lock(deps.storage)?;
     let mut state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
     ensure!(
@@ -405,14 +425,15 @@ fn execute_add_concentrated_liquidity(
         !target_liquidity_delta.is_zero(),
         ContractError::new("liquidity delta is zero")
     );
-    let (liquidity_delta, amount_0_used, amount_1_used) = amounts_for_position_liquidity_with_bound(
-        sqrt_price_x96,
-        sqrt_lower_x96,
-        sqrt_upper_x96,
-        target_liquidity_delta,
-        provided_0,
-        provided_1,
-    )?;
+    let (liquidity_delta, amount_0_used, amount_1_used) =
+        amounts_for_position_liquidity_with_bound(
+            sqrt_price_x96,
+            sqrt_lower_x96,
+            sqrt_upper_x96,
+            target_liquidity_delta,
+            provided_0,
+            provided_1,
+        )?;
     assert_unused_within_slippage(
         provided_0,
         amount_0_used,
@@ -512,7 +533,7 @@ fn execute_add_concentrated_liquidity(
         pool_key,
     };
 
-    Ok(response
+    let response = response
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
@@ -531,7 +552,9 @@ fn execute_add_concentrated_liquidity(
         .add_attribute("liquidity_delta", liquidity_delta)
         .add_attribute("used_token_1", amount_0_used)
         .add_attribute("used_token_2", amount_1_used)
-        .set_data(to_json_binary(&concentrated_ack)?))
+        .set_data(to_json_binary(&concentrated_ack)?);
+    unlock(deps.storage)?;
+    Ok(response)
 }
 
 fn execute_remove_concentrated_liquidity(
@@ -540,6 +563,7 @@ fn execute_remove_concentrated_liquidity(
     info: MessageInfo,
     remove_liquidity_msg: euclid::msgs::vlp::base::VlpConcentratedRemoveLiquidityMsg,
 ) -> Result<Response, ContractError> {
+    lock(deps.storage)?;
     let mut state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
     ensure!(
@@ -588,11 +612,17 @@ fn execute_remove_concentrated_liquidity(
         .liquidity
         .checked_sub(remove_liquidity_msg.liquidity_delta)?;
     let liquidity_after = position.liquidity;
-    if position.liquidity.is_zero() && position.tokens_owed_0.is_zero() && position.tokens_owed_1.is_zero()
+    if position.liquidity.is_zero()
+        && position.tokens_owed_0.is_zero()
+        && position.tokens_owed_1.is_zero()
     {
         POSITIONS.remove(deps.storage, remove_liquidity_msg.position_id.u128());
     } else {
-        POSITIONS.save(deps.storage, remove_liquidity_msg.position_id.u128(), &position)?;
+        POSITIONS.save(
+            deps.storage,
+            remove_liquidity_msg.position_id.u128(),
+            &position,
+        )?;
     }
 
     let mut chain_lp_tokens =
@@ -616,7 +646,9 @@ fn execute_remove_concentrated_liquidity(
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
-    let liquidity_released = state.pair.get_pair_with_amount(amount_0_out, amount_1_out)?;
+    let liquidity_released = state
+        .pair
+        .get_pair_with_amount(amount_0_out, amount_1_out)?;
     let concentrated_ack = VlpConcentratedRemoveLiquidityResponse {
         liquidity_released: liquidity_released.clone(),
         liquidity_delta: remove_liquidity_msg.liquidity_delta,
@@ -650,7 +682,7 @@ fn execute_remove_concentrated_liquidity(
         )?);
     }
 
-    Ok(response
+    let response = response
         .add_event(tx_event(
             &remove_liquidity_msg.tx_id,
             &remove_liquidity_msg.sender.to_sender_string(),
@@ -667,10 +699,14 @@ fn execute_remove_concentrated_liquidity(
         .add_attribute("action", "remove_concentrated_liquidity")
         .add_attribute("position_id", remove_liquidity_msg.position_id)
         .add_attribute("liquidity_delta", remove_liquidity_msg.liquidity_delta)
-        .set_data(to_json_binary(&concentrated_ack)?))
+        .set_data(to_json_binary(&concentrated_ack)?);
+    unlock(deps.storage)?;
+    Ok(response)
 }
 
-fn tick_spacing_from_pool_key(pool_key: &euclid::msgs::vlp::base::PoolKey) -> Result<u64, ContractError> {
+fn tick_spacing_from_pool_key(
+    pool_key: &euclid::msgs::vlp::base::PoolKey,
+) -> Result<u64, ContractError> {
     match pool_key.pool_type {
         PoolType::Concentrated { tick_spacing, .. } => Ok(tick_spacing),
         _ => Err(ContractError::new("invalid pool type")),
@@ -700,7 +736,9 @@ fn validate_tick_range(
 
 fn add_signed_liquidity(value: Uint128, delta: i128) -> Result<Uint128, ContractError> {
     if delta >= 0 {
-        value.checked_add(Uint128::from(delta as u128)).map_err(ContractError::from)
+        value
+            .checked_add(Uint128::from(delta as u128))
+            .map_err(ContractError::from)
     } else {
         value
             .checked_sub(Uint128::from((-delta) as u128))
@@ -870,7 +908,10 @@ fn run_swap_simulation(
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
     let state = STATE.load(deps.storage)?;
-    ensure!(asset_in.exists(state.pair.clone()), ContractError::AssetDoesNotExist {});
+    ensure!(
+        asset_in.exists(state.pair.clone()),
+        ContractError::AssetDoesNotExist {}
+    );
     let asset_out = state.pair.get_other_token(asset_in.clone());
     let zero_for_one = asset_in == state.pair.token_1;
 
@@ -891,7 +932,10 @@ fn run_swap_simulation(
     let mut protocol_fees_0 = PROTOCOL_FEES_0.load(deps.storage)?;
     let mut protocol_fees_1 = PROTOCOL_FEES_1.load(deps.storage)?;
 
-    ensure!(!liquidity.is_zero(), ContractError::new("no active liquidity"));
+    ensure!(
+        !liquidity.is_zero(),
+        ContractError::new("no active liquidity")
+    );
 
     let mut amount_remaining = Uint256::from(amount_in.u128());
     let mut amount_out_total = Uint256::zero();
@@ -904,7 +948,10 @@ fn run_swap_simulation(
         if amount_remaining.is_zero() {
             break;
         }
-        ensure!(!liquidity.is_zero(), ContractError::new("insufficient liquidity"));
+        ensure!(
+            !liquidity.is_zero(),
+            ContractError::new("insufficient liquidity")
+        );
 
         let (next_tick, initialized) =
             find_next_initialized_tick(deps.storage, slot0.tick, zero_for_one)?;
@@ -944,9 +991,11 @@ fn run_swap_simulation(
                 .checked_mul(q128())?
                 .checked_div(Uint256::from(liquidity.u128()))?;
             if zero_for_one {
-                fee_growth_global_0_x128 = fee_growth_global_0_x128.checked_add(fee_growth_delta)?;
+                fee_growth_global_0_x128 =
+                    fee_growth_global_0_x128.checked_add(fee_growth_delta)?;
             } else {
-                fee_growth_global_1_x128 = fee_growth_global_1_x128.checked_add(fee_growth_delta)?;
+                fee_growth_global_1_x128 =
+                    fee_growth_global_1_x128.checked_add(fee_growth_delta)?;
             }
         }
 
@@ -998,9 +1047,10 @@ fn run_swap_simulation(
         ContractError::new("insufficient range liquidity for amount in")
     );
 
-    let amount_out =
-        Uint128::try_from(amount_out_total).map_err(|_| ContractError::new("amount out overflow"))?;
-    let lp_fee = Uint128::try_from(lp_fee_total).map_err(|_| ContractError::new("lp fee overflow"))?;
+    let amount_out = Uint128::try_from(amount_out_total)
+        .map_err(|_| ContractError::new("amount out overflow"))?;
+    let lp_fee =
+        Uint128::try_from(lp_fee_total).map_err(|_| ContractError::new("lp fee overflow"))?;
     let protocol_fee = Uint128::try_from(protocol_fee_total)
         .map_err(|_| ContractError::new("protocol fee overflow"))?;
 
@@ -1026,7 +1076,8 @@ fn execute_clp_swap(
     info: MessageInfo,
     swap_msg: VlpSwapMsg,
 ) -> Result<Response, ContractError> {
-    let simulation = run_swap_simulation(
+    lock(deps.storage)?;
+    let mut simulation = run_swap_simulation(
         deps.as_ref(),
         swap_msg.asset_in.clone(),
         swap_msg.amount_in,
@@ -1070,6 +1121,7 @@ fn execute_clp_swap(
         }
     }
 
+    simulation.slot0.unlocked = true;
     SLOT0.save(deps.storage, &simulation.slot0)?;
     ACTIVE_LIQUIDITY.save(deps.storage, &simulation.liquidity)?;
     FEE_GROWTH_GLOBAL_0_X128.save(deps.storage, &simulation.fee_growth_global_0_x128)?;
@@ -1105,22 +1157,20 @@ fn execute_clp_swap(
         Some((next_swap, forward_swaps)) => {
             let approve_msg = cosmwasm_std::WasmMsg::Execute {
                 contract_addr: state.virtual_balance_contract.to_string(),
-                msg: to_json_binary(
-                    &euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(
-                        euclid::msgs::virtual_balance::msg::ExecuteApprove {
-                            amount: swap_response.amount_out,
-                            token_id: swap_response.asset_out.to_string(),
-                            owner: CrossChainUser {
-                                address: env.contract.address.to_string(),
-                                chain_uid: ChainUid::vsl_chain_uid()?,
-                            },
-                            spender: CrossChainUser {
-                                address: next_swap.vlp_address.clone(),
-                                chain_uid: ChainUid::vsl_chain_uid()?,
-                            },
+                msg: to_json_binary(&euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(
+                    euclid::msgs::virtual_balance::msg::ExecuteApprove {
+                        amount: swap_response.amount_out,
+                        token_id: swap_response.asset_out.to_string(),
+                        owner: CrossChainUser {
+                            address: env.contract.address.to_string(),
+                            chain_uid: ChainUid::vsl_chain_uid()?,
                         },
-                    ),
-                )?,
+                        spender: CrossChainUser {
+                            address: next_swap.vlp_address.clone(),
+                            chain_uid: ChainUid::vsl_chain_uid()?,
+                        },
+                    },
+                ))?,
                 funds: vec![],
             };
             let next_swap_msg = WasmMsg::Execute {
@@ -1222,6 +1272,7 @@ fn execute_collect_fees(
     info: MessageInfo,
     msg: euclid::msgs::vlp::base::VlpConcentratedCollectFeesMsg,
 ) -> Result<Response, ContractError> {
+    lock(deps.storage)?;
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
 
@@ -1229,7 +1280,10 @@ fn execute_collect_fees(
         .may_load(deps.storage, msg.position_id.u128())?
         .ok_or_else(|| ContractError::new("position not found"))?;
     ensure!(position.owner == msg.sender, ContractError::Unauthorized {});
-    ensure!(position.pool_key == msg.pool_key, ContractError::new("pool key mismatch"));
+    ensure!(
+        position.pool_key == msg.pool_key,
+        ContractError::new("pool key mismatch")
+    );
 
     settle_position_fees(deps.storage, &mut position)?;
 
@@ -1282,7 +1336,9 @@ fn execute_collect_fees(
         recipient: msg.recipient,
         vlp_address: env.contract.address.to_string(),
     };
-    Ok(response.set_data(to_json_binary(&ack)?))
+    let response = response.set_data(to_json_binary(&ack)?);
+    unlock(deps.storage)?;
+    Ok(response)
 }
 
 fn execute_collect_protocol_fees(
@@ -1291,6 +1347,7 @@ fn execute_collect_protocol_fees(
     info: MessageInfo,
     msg: euclid::msgs::vlp::base::VlpConcentratedCollectProtocolFeesMsg,
 ) -> Result<Response, ContractError> {
+    lock(deps.storage)?;
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
     ensure!(
@@ -1345,7 +1402,9 @@ fn execute_collect_protocol_fees(
         recipient: msg.recipient,
         vlp_address: env.contract.address.to_string(),
     };
-    Ok(response.set_data(to_json_binary(&ack)?))
+    let response = response.set_data(to_json_binary(&ack)?);
+    unlock(deps.storage)?;
+    Ok(response)
 }
 
 fn increase_observation_cardinality_next(
@@ -1422,7 +1481,11 @@ fn query_tick(deps: Deps, index: i64) -> Result<TickResponse, ContractError> {
     })
 }
 
-fn query_ticks(deps: Deps, start_after: Option<i64>, limit: u32) -> Result<TicksResponse, ContractError> {
+fn query_ticks(
+    deps: Deps,
+    start_after: Option<i64>,
+    limit: u32,
+) -> Result<TicksResponse, ContractError> {
     let ticks: Result<Vec<_>, ContractError> = TICKS
         .range(
             deps.storage,
@@ -1497,4 +1560,168 @@ fn query_migration_status(deps: Deps) -> Result<MigrationStatusResponse, Contrac
         active_liquidity: ACTIVE_LIQUIDITY.may_load(deps.storage)?.unwrap_or_default(),
         total_liquidity: state.total_lp_tokens,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math::tick_math::get_sqrt_ratio_at_tick;
+    use crate::state::Slot0;
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
+    use euclid::token::Pair;
+
+    fn init_slot0_unlocked(storage: &mut dyn cosmwasm_std::Storage) {
+        SLOT0
+            .save(
+                storage,
+                &Slot0 {
+                    sqrt_price_x96: get_sqrt_ratio_at_tick(0).unwrap(),
+                    tick: 0,
+                    observation_index: 0,
+                    observation_cardinality: 1,
+                    observation_cardinality_next: 1,
+                    unlocked: true,
+                },
+            )
+            .unwrap();
+    }
+
+    fn dummy_user() -> CrossChainUser {
+        CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "user".to_string(),
+        )
+    }
+
+    fn dummy_pool_key() -> euclid::msgs::vlp::base::PoolKey {
+        euclid::msgs::vlp::base::PoolKey {
+            pair: Pair::new(
+                Token::create("tokena".to_string()).unwrap(),
+                Token::create("tokenb".to_string()).unwrap(),
+            )
+            .unwrap(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 500,
+                tick_spacing: 10,
+            },
+        }
+    }
+
+    #[test]
+    fn lock_sets_unlocked_to_false() {
+        let mut deps = mock_dependencies();
+        init_slot0_unlocked(deps.as_mut().storage);
+
+        lock(deps.as_mut().storage).unwrap();
+
+        let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
+        assert!(!slot0.unlocked);
+    }
+
+    #[test]
+    fn lock_rejects_when_already_locked() {
+        let mut deps = mock_dependencies();
+        init_slot0_unlocked(deps.as_mut().storage);
+
+        lock(deps.as_mut().storage).unwrap();
+        let err = lock(deps.as_mut().storage).unwrap_err();
+        assert!(err.to_string().contains("locked"));
+    }
+
+    #[test]
+    fn unlock_restores_unlocked_to_true() {
+        let mut deps = mock_dependencies();
+        init_slot0_unlocked(deps.as_mut().storage);
+
+        lock(deps.as_mut().storage).unwrap();
+        unlock(deps.as_mut().storage).unwrap();
+
+        let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
+        assert!(slot0.unlocked);
+    }
+
+    #[test]
+    fn all_guarded_execute_handlers_reject_when_locked() {
+        let cases: Vec<(&str, ExecuteMsg)> = vec![
+            (
+                "Swap",
+                ExecuteMsg::Swap(VlpSwapMsg {
+                    sender: dummy_user(),
+                    tx_id: "tx1".to_string(),
+                    asset_in: Token::create("tokena".to_string()).unwrap(),
+                    amount_in: Uint128::new(100),
+                    min_token_out: Uint128::zero(),
+                    next_swaps: vec![],
+                    test_fail: None,
+                }),
+            ),
+            (
+                "AddLiquidity",
+                ExecuteMsg::AddLiquidity(euclid::msgs::vlp::base::VlpConcentratedAddLiquidityMsg {
+                    sender: dummy_user(),
+                    pool_key: dummy_pool_key(),
+                    liquidity: Pair::new(
+                        Token::create("tokena".to_string()).unwrap(),
+                        Token::create("tokenb".to_string()).unwrap(),
+                    )
+                    .unwrap()
+                    .get_pair_with_amount(Uint128::new(100), Uint128::new(100))
+                    .unwrap(),
+                    slippage_tolerance_bps: 100,
+                    tx_id: "tx1".to_string(),
+                    lower_tick_index: -10,
+                    upper_tick_index: 10,
+                    position_id: None,
+                }),
+            ),
+            (
+                "RemoveLiquidity",
+                ExecuteMsg::RemoveLiquidity(
+                    euclid::msgs::vlp::base::VlpConcentratedRemoveLiquidityMsg {
+                        sender: dummy_user(),
+                        pool_key: dummy_pool_key(),
+                        liquidity_delta: Uint128::new(100),
+                        position_id: Uint128::new(1),
+                        tx_id: "tx1".to_string(),
+                    },
+                ),
+            ),
+            (
+                "CollectFees",
+                ExecuteMsg::CollectFees(euclid::msgs::vlp::base::VlpConcentratedCollectFeesMsg {
+                    sender: dummy_user(),
+                    pool_key: dummy_pool_key(),
+                    position_id: Uint128::new(1),
+                    tx_id: "tx1".to_string(),
+                    recipient: dummy_user(),
+                }),
+            ),
+            (
+                "CollectProtocolFees",
+                ExecuteMsg::CollectProtocolFees(
+                    euclid::msgs::vlp::base::VlpConcentratedCollectProtocolFeesMsg {
+                        sender: dummy_user(),
+                        pool_key: dummy_pool_key(),
+                        amount_0_requested: Uint128::new(100),
+                        amount_1_requested: Uint128::new(100),
+                        tx_id: "tx1".to_string(),
+                        recipient: dummy_user(),
+                    },
+                ),
+            ),
+        ];
+
+        for (name, msg) in cases {
+            let mut deps = mock_dependencies();
+            init_slot0_unlocked(deps.as_mut().storage);
+            lock(deps.as_mut().storage).unwrap();
+
+            let info = message_info(&deps.api.addr_make("anyone"), &[]);
+            let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+            assert!(
+                err.to_string().contains("locked"),
+                "{name}: expected 'locked' error, got: {err}"
+            );
+        }
+    }
 }
