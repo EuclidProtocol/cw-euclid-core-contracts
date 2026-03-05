@@ -7,7 +7,9 @@ use euclid_ibc::{
     },
 };
 
-use crate::state::{LOCKED_CHAINS, RELAYER_CONTRACT};
+use crate::state::{
+    CHAIN_TIMEOUT_SECONDS, DEFAULT_RELEASE_FEE, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT,
+};
 use euclid::{
     admin,
     chain::{Chain, ChainUid, CosmosChain, EvmChain},
@@ -62,7 +64,9 @@ pub fn execute_manage_router_state(
             );
             state.locked = locked;
             STATE.save(deps.storage, &state)?;
-            Ok(Response::new().add_attribute("method", "update_lock_state"))
+            Ok(Response::new()
+                .add_attribute("method", "update_lock_state")
+                .add_attribute("locked", locked.to_string()))
         }
         ManageRouterState::RelayerContract { relayer_contract } => {
             ensure!(
@@ -83,7 +87,39 @@ pub fn execute_manage_router_state(
             let meta_transaction_contract =
                 deps.api.addr_validate(meta_transaction_contract.as_str())?;
             META_TRANSACTION_CONTRACT.save(deps.storage, &meta_transaction_contract)?;
-            Ok(Response::new().add_attribute("method", "update_meta_transaction_contract"))
+            Ok(Response::new()
+                .add_attribute("method", "update_meta_transaction_contract")
+                .add_attribute(
+                    "meta_transaction_contract",
+                    meta_transaction_contract.to_string(),
+                ))
+        }
+        ManageRouterState::UpdateFeeState {
+            release_fee_recipient,
+            default_fee_recipient,
+        } => {
+            ensure!(
+                info.sender == state.admins.fee_admin,
+                ContractError::Unauthorized {}
+            );
+            let mut fee_state = FEE_STATE.load(deps.storage)?;
+            if let Some(release_fee_recipient) = release_fee_recipient {
+                fee_state.release_fee_recipient = release_fee_recipient;
+            }
+            if let Some(default_fee_recipient) = default_fee_recipient {
+                fee_state.default_fee_recipient = default_fee_recipient;
+            }
+            FEE_STATE.save(deps.storage, &fee_state)?;
+            Ok(Response::new()
+                .add_attribute("method", "update_fee_state")
+                .add_attribute(
+                    "release_fee_recipient",
+                    fee_state.release_fee_recipient.to_string(),
+                )
+                .add_attribute(
+                    "default_fee_recipient",
+                    fee_state.default_fee_recipient.to_string(),
+                ))
         }
         ManageRouterState::UpdateReleaseFee {
             token,
@@ -94,8 +130,24 @@ pub fn execute_manage_router_state(
                 info.sender == state.admins.fee_admin,
                 ContractError::Unauthorized {}
             );
-            RELEASE_FEES.save(deps.storage, (token, chain_uid), &release_fee)?;
-            Ok(Response::new().add_attribute("method", "update_release_fee"))
+            RELEASE_FEES.save(
+                deps.storage,
+                (token.clone(), chain_uid.clone()),
+                &release_fee,
+            )?;
+            Ok(Response::new()
+                .add_attribute("method", "update_release_fee")
+                .add_attribute("token", token.to_string())
+                .add_attribute("chain_uid", chain_uid.to_string())
+                .add_attribute("release_fee", release_fee.to_string()))
+        }
+        ManageRouterState::UpdateDefaultReleaseFee {
+            default_release_fee,
+        } => {
+            DEFAULT_RELEASE_FEE.save(deps.storage, &default_release_fee)?;
+            Ok(Response::new()
+                .add_attribute("method", "update_default_release_fee")
+                .add_attribute("default_release_fee", default_release_fee.to_string()))
         }
         ManageRouterState::LockChain { chain } => {
             ensure!(
@@ -107,9 +159,12 @@ pub fn execute_manage_router_state(
                 !locked_chains.contains(&chain),
                 ContractError::new("Chain already locked")
             );
-            locked_chains.push(chain);
+            locked_chains.push(chain.clone());
             LOCKED_CHAINS.save(deps.storage, &locked_chains)?;
-            Ok(Response::new().add_attribute("method", "lock_chain"))
+            Ok(Response::new()
+                .add_attribute("method", "lock_chain")
+                .add_attribute("chain", chain.to_string())
+                .add_attribute("locked", "true"))
         }
         ManageRouterState::UnlockChain { chain } => {
             ensure!(
@@ -123,7 +178,17 @@ pub fn execute_manage_router_state(
             );
             locked_chains.retain(|x| x != &chain);
             LOCKED_CHAINS.save(deps.storage, &locked_chains)?;
-            Ok(Response::new().add_attribute("method", "unlock_chain"))
+            Ok(Response::new()
+                .add_attribute("method", "unlock_chain")
+                .add_attribute("chain", chain.to_string())
+                .add_attribute("locked", "false"))
+        }
+        ManageRouterState::UpdateChainTimeout { chain_uid, timeout } => {
+            CHAIN_TIMEOUT_SECONDS.save(deps.storage, chain_uid.clone(), &timeout)?;
+            Ok(Response::new()
+                .add_attribute("method", "update_chain_timeout")
+                .add_attribute("chain_uid", chain_uid.to_string())
+                .add_attribute("timeout", timeout.to_string()))
         }
     }
 }

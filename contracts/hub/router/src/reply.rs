@@ -169,7 +169,8 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                     res = res.set_data(to_json_binary(&ack)?);
                 }
                 None => {
-                    let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
+                    let ack: AcknowledgementMsg<AddLiquidityResponse> =
+                        AcknowledgementMsg::Ok(liquidity_response.clone());
                     res = res.set_data(to_json_binary(&ack)?);
                 }
             }

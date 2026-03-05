@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, Uint128};
+use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     admin::EuclidAdmin,
@@ -71,5 +71,8 @@ pub const PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher> =
 pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
 
 /// The key is TokenID_ChainUID
-pub const RELEASE_FEES: Map<(Token, ChainUid), Decimal> = Map::new("release_fees");
-pub const DEFAULT_RELEASE_FEE: Item<Decimal> = Item::new("default_release_fee");
+pub const RELEASE_FEES: Map<(Token, ChainUid), Uint128> = Map::new("release_fees");
+pub const DEFAULT_RELEASE_FEE: Item<Uint128> = Item::new("default_release_fee");
+
+// The key is ChainUid and the value is the timeout in seconds for chain send packets
+pub const CHAIN_TIMEOUT_SECONDS: Map<ChainUid, u64> = Map::new("chains_timeout_seconds");
