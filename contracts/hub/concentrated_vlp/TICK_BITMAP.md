@@ -35,12 +35,17 @@ The inverse (`tick_from_word_and_bit`) reconstructs the tick: `tick = (word_pos 
 
 The within-word scan (`next_initialized_bit_in_word`) operates on the LE byte representation — at most 32 byte checks using `leading_zeros` / `trailing_zeros` — rather than 256 individual `Uint256` operations.
 
-## Why This Is Faster
+## Why Not `TICKS.range()`?
 
-The previous approach used `TICKS.range().next()`, a B-tree seek across every initialized tick's full `TickInfo` struct. The bitmap approach:
-- Reads a single compact `Uint256` per word (vs. a `TickInfo` with liquidity, fee growth fields, etc.)
-- Covers 256 ticks per storage read (common case: one read is enough)
-- Empty words are not stored, so the range fallback skips gaps efficiently
+The previous approach used `TICKS.range().next()` to find the next initialized tick. The bitmap replaces this with a direct key lookup + in-memory scan. The `TickInfo` read still happens when the swap *crosses* a tick — the bitmap only optimizes *finding* it.
+
+For a typical swap crossing 1-2 nearby ticks, the gas difference is small — one direct load vs one iterator seek are both single storage operations. The bitmap's real advantages show up at the edges:
+
+- **Sparse pools:** When the next initialized tick is far away, `TICKS.range()` must seek across the full keyspace. The bitmap skips empty 256-tick regions in one step since empty words aren't stored.
+- **Dense multi-step swaps:** If consecutive ticks fall within the same 256-tick word, the second lookup is a pure in-memory scan with no additional storage access.
+- **Predictable gas:** Cost stays bounded regardless of how many ticks exist in the pool, whereas iterator performance depends on keyspace size.
+
+The bitmap adds a small write cost (`set_bit`/`clear_bit` on tick init/uninit) and storage overhead (~1 `Uint256` per 256 active ticks). Both are negligible — the write happens on a path that already touches storage, and a pool with 1000 ticks needs ~4 extra words (128 bytes).
 
 ## Storage Maintenance
 
