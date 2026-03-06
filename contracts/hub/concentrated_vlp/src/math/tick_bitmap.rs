@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(word_pos, 0);
     }
 
-    // L-3: set_bit and clear_bit must be idempotent (bitwise, not arithmetic).
+    // set_bit and clear_bit must be idempotent (bitwise, not arithmetic).
     #[test]
     fn set_bit_and_clear_bit_are_idempotent() {
         let cases: &[(u8, &str)] = &[
@@ -272,7 +272,7 @@ mod tests {
         assert_eq!(result, word, "re-setting bit 5 corrupted neighbors");
     }
 
-    // L-3: is_set correctness at boundaries and with various bit patterns.
+    // is_set correctness at boundaries and with various bit patterns.
     #[test]
     fn is_set_cases() {
         struct Case { word: Uint256, pos: u8, expected: bool, name: &'static str }
@@ -294,7 +294,7 @@ mod tests {
         }
     }
 
-    // M-8: next_initialized_bit_in_word searches within a single 256-bit word.
+    // next_initialized_bit_in_word searches within a single 256-bit word.
     #[test]
     fn next_initialized_bit_in_word_cases() {
         // Build a word with bits 3, 7, 12 set
@@ -342,7 +342,7 @@ mod tests {
         }
     }
 
-    // M-8: tick_from_word_and_bit is the inverse of position().
+    // tick_from_word_and_bit is the inverse of position().
     #[test]
     fn tick_from_word_and_bit_roundtrips_with_position() {
         for &tick_spacing in &[1u64, 10, 60, 200] {
@@ -359,7 +359,7 @@ mod tests {
         }
     }
 
-    // L-3: Multiple bits set/cleared independently without corruption.
+    // Multiple bits set/cleared independently without corruption.
     #[test]
     fn multiple_bits_set_and_cleared_independently() {
         let mut word = Uint256::zero();

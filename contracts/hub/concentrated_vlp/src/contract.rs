@@ -17,7 +17,8 @@ use euclid::{
         base::{
             GetSwapQueryResponse, PoolType, State, VlpConcentratedAddLiquidityResponse,
             VlpConcentratedCollectFeesResponse, VlpConcentratedCollectProtocolFeesResponse,
-            VlpConcentratedRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse, NEXT_SWAP_REPLY_ID,
+            VlpConcentratedRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse,
+            NEXT_SWAP_REPLY_ID,
         },
         concentrated::msg::{
             ExecuteMsg, InstantiateMsg, LegacyLiquidityMode, MigrationStatusResponse,
@@ -49,8 +50,8 @@ use crate::{
         initialize_position_nonce, next_position_id, ConcentratedPosition, MigrationMetadata,
         Slot0, TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
         FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIGRATION_METADATA,
-        MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1,
-        SLOT0, STATE, TICK_BITMAP, TICKS,
+        MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0,
+        STATE, TICKS, TICK_BITMAP,
     },
 };
 
@@ -223,9 +224,7 @@ pub fn execute(
             execute_remove_concentrated_liquidity(deps, env, info, remove_liquidity_msg)
         }
         ExecuteMsg::CollectFees(msg) => execute_collect_fees(deps, env, info, msg),
-        ExecuteMsg::CollectProtocolFees(msg) => {
-            execute_collect_protocol_fees(deps, env, info, msg)
-        }
+        ExecuteMsg::CollectProtocolFees(msg) => execute_collect_protocol_fees(deps, env, info, msg),
         ExecuteMsg::IncreaseObservationCardinalityNext {
             observation_cardinality_next,
         } => increase_observation_cardinality_next(deps, info, observation_cardinality_next),
@@ -243,12 +242,17 @@ pub fn execute(
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::State {} => query_state(deps),
-        QueryMsg::SimulateSwap(msg) => query_clp_simulate_swap(deps, msg.asset, msg.asset_amount, msg.swaps),
+        QueryMsg::SimulateSwap(msg) => {
+            query_clp_simulate_swap(deps, msg.asset, msg.asset_amount, msg.swaps)
+        }
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
         QueryMsg::TotalFeesPerDenom { denom } => query_total_fees_per_denom(deps, denom),
-        QueryMsg::Pool { chain_uid, pool_key } => query_pool(deps, chain_uid, pool_key),
+        QueryMsg::Pool {
+            chain_uid,
+            pool_key,
+        } => query_pool(deps, chain_uid, pool_key),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
         QueryMsg::Slot0 {} => to_json_binary(&query_slot0(deps)?).map_err(ContractError::from),
         QueryMsg::Position { position_id } => {
@@ -405,14 +409,15 @@ fn execute_add_concentrated_liquidity(
         !target_liquidity_delta.is_zero(),
         ContractError::new("liquidity delta is zero")
     );
-    let (liquidity_delta, amount_0_used, amount_1_used) = amounts_for_position_liquidity_with_bound(
-        sqrt_price_x96,
-        sqrt_lower_x96,
-        sqrt_upper_x96,
-        target_liquidity_delta,
-        provided_0,
-        provided_1,
-    )?;
+    let (liquidity_delta, amount_0_used, amount_1_used) =
+        amounts_for_position_liquidity_with_bound(
+            sqrt_price_x96,
+            sqrt_lower_x96,
+            sqrt_upper_x96,
+            target_liquidity_delta,
+            provided_0,
+            provided_1,
+        )?;
     assert_unused_within_slippage(
         provided_0,
         amount_0_used,
@@ -588,11 +593,17 @@ fn execute_remove_concentrated_liquidity(
         .liquidity
         .checked_sub(remove_liquidity_msg.liquidity_delta)?;
     let liquidity_after = position.liquidity;
-    if position.liquidity.is_zero() && position.tokens_owed_0.is_zero() && position.tokens_owed_1.is_zero()
+    if position.liquidity.is_zero()
+        && position.tokens_owed_0.is_zero()
+        && position.tokens_owed_1.is_zero()
     {
         POSITIONS.remove(deps.storage, remove_liquidity_msg.position_id.u128());
     } else {
-        POSITIONS.save(deps.storage, remove_liquidity_msg.position_id.u128(), &position)?;
+        POSITIONS.save(
+            deps.storage,
+            remove_liquidity_msg.position_id.u128(),
+            &position,
+        )?;
     }
 
     let mut chain_lp_tokens =
@@ -616,7 +627,9 @@ fn execute_remove_concentrated_liquidity(
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
-    let liquidity_released = state.pair.get_pair_with_amount(amount_0_out, amount_1_out)?;
+    let liquidity_released = state
+        .pair
+        .get_pair_with_amount(amount_0_out, amount_1_out)?;
     let concentrated_ack = VlpConcentratedRemoveLiquidityResponse {
         liquidity_released: liquidity_released.clone(),
         liquidity_delta: remove_liquidity_msg.liquidity_delta,
@@ -670,7 +683,9 @@ fn execute_remove_concentrated_liquidity(
         .set_data(to_json_binary(&concentrated_ack)?))
 }
 
-fn tick_spacing_from_pool_key(pool_key: &euclid::msgs::vlp::base::PoolKey) -> Result<u64, ContractError> {
+fn tick_spacing_from_pool_key(
+    pool_key: &euclid::msgs::vlp::base::PoolKey,
+) -> Result<u64, ContractError> {
     match pool_key.pool_type {
         PoolType::Concentrated { tick_spacing, .. } => Ok(tick_spacing),
         _ => Err(ContractError::new("invalid pool type")),
@@ -700,7 +715,9 @@ fn validate_tick_range(
 
 fn add_signed_liquidity(value: Uint128, delta: i128) -> Result<Uint128, ContractError> {
     if delta >= 0 {
-        value.checked_add(Uint128::from(delta as u128)).map_err(ContractError::from)
+        value
+            .checked_add(Uint128::from(delta as u128))
+            .map_err(ContractError::from)
     } else {
         value
             .checked_sub(Uint128::from((-delta) as u128))
@@ -838,7 +855,9 @@ fn find_next_initialized_tick(
     if zero_for_one {
         // Search current word for set bits at or below bit_pos
         let current_word = TICK_BITMAP.may_load(storage, word_pos)?.unwrap_or_default();
-        if let Some(found_bit) = tick_bitmap::next_initialized_bit_in_word(current_word, bit_pos, true) {
+        if let Some(found_bit) =
+            tick_bitmap::next_initialized_bit_in_word(current_word, bit_pos, true)
+        {
             let tick = tick_bitmap::tick_from_word_and_bit(word_pos, found_bit, tick_spacing);
             return Ok((tick, true));
         }
@@ -870,7 +889,9 @@ fn find_next_initialized_tick(
                 bit_pos
             };
             let current_word = TICK_BITMAP.may_load(storage, word_pos)?.unwrap_or_default();
-            if let Some(found_bit) = tick_bitmap::next_initialized_bit_in_word(current_word, search_from, false) {
+            if let Some(found_bit) =
+                tick_bitmap::next_initialized_bit_in_word(current_word, search_from, false)
+            {
                 let tick = tick_bitmap::tick_from_word_and_bit(word_pos, found_bit, tick_spacing);
                 return Ok((tick, true));
             }
@@ -906,13 +927,20 @@ fn run_swap_simulation(
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
 
     let state = STATE.load(deps.storage)?;
-    ensure!(asset_in.exists(state.pair.clone()), ContractError::AssetDoesNotExist {});
+    ensure!(
+        asset_in.exists(state.pair.clone()),
+        ContractError::AssetDoesNotExist {}
+    );
     let asset_out = state.pair.get_other_token(asset_in.clone());
     let zero_for_one = asset_in == state.pair.token_1;
 
     let pool_key = POOL_KEY.load(deps.storage)?;
     let (fee_pips, tick_spacing) = match pool_key.pool_type {
-        PoolType::Concentrated { fee_tier_bps, tick_spacing, .. } => (fee_tier_bps, tick_spacing),
+        PoolType::Concentrated {
+            fee_tier_bps,
+            tick_spacing,
+            ..
+        } => (fee_tier_bps, tick_spacing),
         _ => return Err(ContractError::new("invalid pool type")),
     };
     ensure!(
@@ -927,7 +955,10 @@ fn run_swap_simulation(
     let mut protocol_fees_0 = PROTOCOL_FEES_0.load(deps.storage)?;
     let mut protocol_fees_1 = PROTOCOL_FEES_1.load(deps.storage)?;
 
-    ensure!(!liquidity.is_zero(), ContractError::new("no active liquidity"));
+    ensure!(
+        !liquidity.is_zero(),
+        ContractError::new("no active liquidity")
+    );
 
     let mut amount_remaining = Uint256::from(amount_in.u128());
     let mut amount_out_total = Uint256::zero();
@@ -940,7 +971,10 @@ fn run_swap_simulation(
         if amount_remaining.is_zero() {
             break;
         }
-        ensure!(!liquidity.is_zero(), ContractError::new("insufficient liquidity"));
+        ensure!(
+            !liquidity.is_zero(),
+            ContractError::new("insufficient liquidity")
+        );
 
         let (next_tick, initialized) =
             find_next_initialized_tick(deps.storage, slot0.tick, zero_for_one, tick_spacing)?;
@@ -980,9 +1014,11 @@ fn run_swap_simulation(
                 .checked_mul(q128())?
                 .checked_div(Uint256::from(liquidity.u128()))?;
             if zero_for_one {
-                fee_growth_global_0_x128 = fee_growth_global_0_x128.checked_add(fee_growth_delta)?;
+                fee_growth_global_0_x128 =
+                    fee_growth_global_0_x128.checked_add(fee_growth_delta)?;
             } else {
-                fee_growth_global_1_x128 = fee_growth_global_1_x128.checked_add(fee_growth_delta)?;
+                fee_growth_global_1_x128 =
+                    fee_growth_global_1_x128.checked_add(fee_growth_delta)?;
             }
         }
 
@@ -1034,9 +1070,10 @@ fn run_swap_simulation(
         ContractError::new("insufficient range liquidity for amount in")
     );
 
-    let amount_out =
-        Uint128::try_from(amount_out_total).map_err(|_| ContractError::new("amount out overflow"))?;
-    let lp_fee = Uint128::try_from(lp_fee_total).map_err(|_| ContractError::new("lp fee overflow"))?;
+    let amount_out = Uint128::try_from(amount_out_total)
+        .map_err(|_| ContractError::new("amount out overflow"))?;
+    let lp_fee =
+        Uint128::try_from(lp_fee_total).map_err(|_| ContractError::new("lp fee overflow"))?;
     let protocol_fee = Uint128::try_from(protocol_fee_total)
         .map_err(|_| ContractError::new("protocol fee overflow"))?;
 
@@ -1141,22 +1178,20 @@ fn execute_clp_swap(
         Some((next_swap, forward_swaps)) => {
             let approve_msg = cosmwasm_std::WasmMsg::Execute {
                 contract_addr: state.virtual_balance_contract.to_string(),
-                msg: to_json_binary(
-                    &euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(
-                        euclid::msgs::virtual_balance::msg::ExecuteApprove {
-                            amount: swap_response.amount_out,
-                            token_id: swap_response.asset_out.to_string(),
-                            owner: CrossChainUser {
-                                address: env.contract.address.to_string(),
-                                chain_uid: ChainUid::vsl_chain_uid()?,
-                            },
-                            spender: CrossChainUser {
-                                address: next_swap.vlp_address.clone(),
-                                chain_uid: ChainUid::vsl_chain_uid()?,
-                            },
+                msg: to_json_binary(&euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(
+                    euclid::msgs::virtual_balance::msg::ExecuteApprove {
+                        amount: swap_response.amount_out,
+                        token_id: swap_response.asset_out.to_string(),
+                        owner: CrossChainUser {
+                            address: env.contract.address.to_string(),
+                            chain_uid: ChainUid::vsl_chain_uid()?,
                         },
-                    ),
-                )?,
+                        spender: CrossChainUser {
+                            address: next_swap.vlp_address.clone(),
+                            chain_uid: ChainUid::vsl_chain_uid()?,
+                        },
+                    },
+                ))?,
                 funds: vec![],
             };
             let next_swap_msg = WasmMsg::Execute {
@@ -1265,7 +1300,10 @@ fn execute_collect_fees(
         .may_load(deps.storage, msg.position_id.u128())?
         .ok_or_else(|| ContractError::new("position not found"))?;
     ensure!(position.owner == msg.sender, ContractError::Unauthorized {});
-    ensure!(position.pool_key == msg.pool_key, ContractError::new("pool key mismatch"));
+    ensure!(
+        position.pool_key == msg.pool_key,
+        ContractError::new("pool key mismatch")
+    );
 
     settle_position_fees(deps.storage, &mut position)?;
 
@@ -1458,7 +1496,11 @@ fn query_tick(deps: Deps, index: i64) -> Result<TickResponse, ContractError> {
     })
 }
 
-fn query_ticks(deps: Deps, start_after: Option<i64>, limit: u32) -> Result<TicksResponse, ContractError> {
+fn query_ticks(
+    deps: Deps,
+    start_after: Option<i64>,
+    limit: u32,
+) -> Result<TicksResponse, ContractError> {
     let ticks: Result<Vec<_>, ContractError> = TICKS
         .range(
             deps.storage,
@@ -1536,7 +1578,7 @@ fn query_migration_status(deps: Deps) -> Result<MigrationStatusResponse, Contrac
 }
 
 #[cfg(test)]
-mod find_next_tick_tests {
+mod tests {
     use super::*;
     use cosmwasm_std::testing::mock_dependencies;
 
@@ -1544,7 +1586,10 @@ mod find_next_tick_tests {
 
     fn set_tick(storage: &mut dyn cosmwasm_std::Storage, tick: i64) {
         let (word_pos, bit_pos) = tick_bitmap::position(tick, TICK_SPACING);
-        let word = TICK_BITMAP.may_load(storage, word_pos).unwrap().unwrap_or_default();
+        let word = TICK_BITMAP
+            .may_load(storage, word_pos)
+            .unwrap()
+            .unwrap_or_default();
         let updated = tick_bitmap::set_bit(word, bit_pos);
         TICK_BITMAP.save(storage, word_pos, &updated).unwrap();
     }
@@ -1668,7 +1713,7 @@ mod find_next_tick_tests {
                 expected_tick: -3000,
                 expected_init: true,
             },
-            // I-1: ascending at bit_pos == 255 must still exclude current tick.
+            // Ascending at bit_pos == 255 must still exclude current tick.
             // tick 2550 / spacing 10 = compressed 255 = bit_pos 255 in word 0.
             Case {
                 name: "ascending: excludes current tick at bit 255 boundary",
