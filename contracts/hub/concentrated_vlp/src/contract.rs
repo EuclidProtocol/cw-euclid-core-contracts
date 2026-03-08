@@ -1638,7 +1638,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // M-1: sqrt_price_limit_x96 validation and swap loop clamping
+    // sqrt_price_limit_x96 validation and swap loop clamping
     // ------------------------------------------------------------------
 
     struct PriceLimitValidationCase {

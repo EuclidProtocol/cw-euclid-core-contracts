@@ -243,7 +243,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // M-3 regression: ring buffer wraparound must not include stale data
+    // Regression: ring buffer wraparound must not include stale data
     // ------------------------------------------------------------------
 
     /// Test cases for ring buffer observation reads.
