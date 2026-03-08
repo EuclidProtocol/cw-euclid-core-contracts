@@ -128,4 +128,110 @@ mod tests {
             from_json(query(deps.as_ref(), mock_env(), QueryMsg::State {}).unwrap()).unwrap();
         assert_eq!(state.total_tokens, 0);
     }
+
+    #[test]
+    fn multi_token_transfer_and_burn() {
+        let (mut deps, minter, _, _) = setup();
+
+        let owner = deps.api.addr_make("owner");
+        let recipient = deps.api.addr_make("recipient");
+
+        // Mint 3 tokens to the same owner
+        for id in ["pos-1", "pos-2", "pos-3"] {
+            execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&minter, &[]),
+                ExecuteMsg::Mint {
+                    token_id: id.to_string(),
+                    owner: owner.to_string(),
+                    token_uri: None,
+                },
+            )
+            .expect("mint should succeed");
+        }
+
+        // Verify owner has all 3
+        let owner_tokens: TokensResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::TokensByOwner {
+                    owner: owner.to_string(),
+                },
+            )
+            .expect("query should succeed"),
+        )
+        .expect("deserialize should succeed");
+        assert_eq!(owner_tokens.tokens, vec!["pos-1", "pos-2", "pos-3"]);
+
+        // Transfer pos-2 to recipient
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&owner, &[]),
+            ExecuteMsg::Transfer {
+                token_id: "pos-2".to_string(),
+                recipient: recipient.to_string(),
+            },
+        )
+        .expect("transfer should succeed");
+
+        // Burn pos-1
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&owner, &[]),
+            ExecuteMsg::Burn {
+                token_id: "pos-1".to_string(),
+            },
+        )
+        .expect("burn should succeed");
+
+        // Owner should only have pos-3
+        let owner_tokens: TokensResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::TokensByOwner {
+                    owner: owner.to_string(),
+                },
+            )
+            .expect("query should succeed"),
+        )
+        .expect("deserialize should succeed");
+        assert_eq!(owner_tokens.tokens, vec!["pos-3"]);
+
+        // Recipient should have pos-2
+        let recipient_tokens: TokensResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::TokensByOwner {
+                    owner: recipient.to_string(),
+                },
+            )
+            .expect("query should succeed"),
+        )
+        .expect("deserialize should succeed");
+        assert_eq!(recipient_tokens.tokens, vec!["pos-2"]);
+
+        // AllTokens should have pos-2 and pos-3
+        let all_tokens: TokensResponse =
+            from_json(
+                query(deps.as_ref(), mock_env(), QueryMsg::AllTokens {})
+                    .expect("query should succeed"),
+            )
+            .expect("deserialize should succeed");
+        assert_eq!(all_tokens.tokens, vec!["pos-2", "pos-3"]);
+
+        // Total should be 2
+        let state: StateResponse =
+            from_json(
+                query(deps.as_ref(), mock_env(), QueryMsg::State {})
+                    .expect("query should succeed"),
+            )
+            .expect("deserialize should succeed");
+        assert_eq!(state.total_tokens, 2);
+    }
 }
