@@ -156,6 +156,15 @@ pub fn observe(
 
     // Observations are now in chronological order (oldest to newest).
     // No need to sort — the ring buffer traversal order guarantees this.
+    #[cfg(debug_assertions)]
+    for w in observations.windows(2) {
+        debug_assert!(
+            w[0].block_timestamp <= w[1].block_timestamp,
+            "observations not chronological: {} > {}",
+            w[0].block_timestamp,
+            w[1].block_timestamp
+        );
+    }
 
     let oldest = observations
         .first()

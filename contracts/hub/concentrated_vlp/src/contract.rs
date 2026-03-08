@@ -929,7 +929,12 @@ fn run_swap_simulation(
             break;
         }
         if let Some(limit) = sqrt_price_limit_x96 {
-            if slot0.sqrt_price_x96 == limit {
+            let at_limit = if zero_for_one {
+                slot0.sqrt_price_x96 <= limit
+            } else {
+                slot0.sqrt_price_x96 >= limit
+            };
+            if at_limit {
                 break;
             }
         }
@@ -943,15 +948,18 @@ fn run_swap_simulation(
             next_tick.min(MAX_TICK)
         };
         let sqrt_target = get_sqrt_ratio_at_tick(target_tick)?;
-        // Clamp target to price limit
-        let sqrt_target = if let Some(limit) = sqrt_price_limit_x96 {
+        // Clamp target to price limit; track whether we clamped to avoid
+        // crossing the tick when the step ends at the limit rather than the tick.
+        let (sqrt_target, clamped_to_limit) = if let Some(limit) = sqrt_price_limit_x96 {
             if zero_for_one {
-                sqrt_target.max(limit) // Don't go below limit
+                let clamped = sqrt_target.max(limit);
+                (clamped, clamped != sqrt_target)
             } else {
-                sqrt_target.min(limit) // Don't go above limit
+                let clamped = sqrt_target.min(limit);
+                (clamped, clamped != sqrt_target)
             }
         } else {
-            sqrt_target
+            (sqrt_target, false)
         };
 
         let step = compute_swap_step_exact_input(
@@ -1002,7 +1010,9 @@ fn run_swap_simulation(
         let reached_target = step.sqrt_ratio_next_x96 == sqrt_target;
         slot0.sqrt_price_x96 = step.sqrt_ratio_next_x96;
 
-        if reached_target {
+        // Only cross the tick if we reached the tick target (not clamped to price limit).
+        // When clamped, the step ended at the limit price — not at a tick boundary.
+        if reached_target && !clamped_to_limit {
             if initialized {
                 if let Some(info) = TICKS.may_load(deps.storage, target_tick)? {
                     let new_fee_growth_outside_0_x128 =
