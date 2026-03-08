@@ -38,7 +38,7 @@ use crate::{
         sqrt_price_math::q128,
         swap_math::{compute_swap_step_exact_input, FEE_DENOMINATOR_PIPS},
         tick_bitmap,
-        tick_math::{get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio},
+        tick_math::{get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio, min_sqrt_ratio, max_sqrt_ratio},
     },
     query::{
         extract_token_amount, query_all_pools, query_fee, query_liquidity, query_pool, query_state,
@@ -862,6 +862,7 @@ fn run_swap_simulation(
     asset_in: Token,
     amount_in: Uint128,
     test_fail: Option<bool>,
+    sqrt_price_limit_x96: Option<Uint256>,
 ) -> Result<SwapSimulation, ContractError> {
     ensure!(
         !test_fail.unwrap_or(false),
@@ -893,6 +894,29 @@ fn run_swap_simulation(
 
     ensure!(!liquidity.is_zero(), ContractError::new("no active liquidity"));
 
+    // Validate sqrt_price_limit_x96 if provided
+    if let Some(limit) = sqrt_price_limit_x96 {
+        if zero_for_one {
+            ensure!(
+                limit < slot0.sqrt_price_x96,
+                ContractError::new("sqrt_price_limit_x96 must be less than current price for zero_for_one")
+            );
+            ensure!(
+                limit > min_sqrt_ratio(),
+                ContractError::new("sqrt_price_limit_x96 must be greater than min_sqrt_ratio")
+            );
+        } else {
+            ensure!(
+                limit > slot0.sqrt_price_x96,
+                ContractError::new("sqrt_price_limit_x96 must be greater than current price for one_for_zero")
+            );
+            ensure!(
+                limit < max_sqrt_ratio(),
+                ContractError::new("sqrt_price_limit_x96 must be less than max_sqrt_ratio")
+            );
+        }
+    }
+
     let mut amount_remaining = Uint256::from(amount_in.u128());
     let mut amount_out_total = Uint256::zero();
     let mut lp_fee_total = Uint256::zero();
@@ -904,6 +928,11 @@ fn run_swap_simulation(
         if amount_remaining.is_zero() {
             break;
         }
+        if let Some(limit) = sqrt_price_limit_x96 {
+            if slot0.sqrt_price_x96 == limit {
+                break;
+            }
+        }
         ensure!(!liquidity.is_zero(), ContractError::new("insufficient liquidity"));
 
         let (next_tick, initialized) =
@@ -914,6 +943,16 @@ fn run_swap_simulation(
             next_tick.min(MAX_TICK)
         };
         let sqrt_target = get_sqrt_ratio_at_tick(target_tick)?;
+        // Clamp target to price limit
+        let sqrt_target = if let Some(limit) = sqrt_price_limit_x96 {
+            if zero_for_one {
+                sqrt_target.max(limit) // Don't go below limit
+            } else {
+                sqrt_target.min(limit) // Don't go above limit
+            }
+        } else {
+            sqrt_target
+        };
 
         let step = compute_swap_step_exact_input(
             slot0.sqrt_price_x96,
@@ -993,10 +1032,12 @@ fn run_swap_simulation(
         }
     }
 
-    ensure!(
-        amount_remaining.is_zero(),
-        ContractError::new("insufficient range liquidity for amount in")
-    );
+    if sqrt_price_limit_x96.is_none() {
+        ensure!(
+            amount_remaining.is_zero(),
+            ContractError::new("insufficient range liquidity for amount in")
+        );
+    }
 
     let amount_out =
         Uint128::try_from(amount_out_total).map_err(|_| ContractError::new("amount out overflow"))?;
@@ -1031,6 +1072,7 @@ fn execute_clp_swap(
         swap_msg.asset_in.clone(),
         swap_msg.amount_in,
         swap_msg.test_fail,
+        None,
     )?;
     let mut response = Response::new();
 
@@ -1190,7 +1232,7 @@ fn query_clp_simulate_swap(
     amount_in: Uint128,
     next_swaps: Vec<NextSwapVlp>,
 ) -> Result<Binary, ContractError> {
-    let sim = run_swap_simulation(deps, asset_in, amount_in, None)?;
+    let sim = run_swap_simulation(deps, asset_in, amount_in, None, None)?;
     let response = GetSwapQueryResponse {
         amount_out: sim.amount_out,
         asset_out: sim.asset_out,
@@ -1497,4 +1539,315 @@ fn query_migration_status(deps: Deps) -> Result<MigrationStatusResponse, Contrac
         active_liquidity: ACTIVE_LIQUIDITY.may_load(deps.storage)?.unwrap_or_default(),
         total_liquidity: state.total_lp_tokens,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::testing::mock_dependencies;
+    use cosmwasm_std::{Addr, Uint128, Uint256};
+    use euclid::fee::{DenomFees, Fee, TotalFees};
+    use euclid::msgs::vlp::base::{PoolKey, PoolType};
+    use euclid::token::Pair;
+    use crate::math::tick_math::{get_sqrt_ratio_at_tick, min_sqrt_ratio, max_sqrt_ratio};
+    use crate::state::*;
+
+    /// Set up minimal contract state for `run_swap_simulation` tests.
+    /// Places liquidity across a tick range centered on tick 0.
+    fn setup_pool(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {
+        let token_a = Token::create("alpha".to_string()).expect("token");
+        let token_b = Token::create("beta".to_string()).expect("token");
+        let pair = Pair::new(token_a.clone(), token_b.clone()).expect("pair");
+
+        let state = State {
+            pair: pair.clone(),
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("vb"),
+            fee: Fee::new(3000, 1000, CrossChainUser {
+                chain_uid: ChainUid::create("vsl".to_string()).expect("chain"),
+                address: "fee_recipient".to_string(),
+            }),
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees { totals: HashMap::new() },
+                euclid_fees: DenomFees { totals: HashMap::new() },
+            },
+            last_updated: 0,
+            total_lp_tokens: Uint128::zero(),
+            admin: Addr::unchecked("admin"),
+        };
+        STATE.save(deps.as_mut().storage, &state).expect("save state");
+
+        let pool_key = PoolKey {
+            pair: pair.clone(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 3000, // 0.3%
+                tick_spacing: 60,
+            },
+        };
+        POOL_KEY.save(deps.as_mut().storage, &pool_key).expect("save pool_key");
+
+        // Price at tick 0 = 1:1
+        let sqrt_price = get_sqrt_ratio_at_tick(0).expect("sqrt at 0");
+        let slot0 = Slot0 {
+            sqrt_price_x96: sqrt_price,
+            tick: 0,
+            observation_index: 0,
+            observation_cardinality: 1,
+            observation_cardinality_next: 1,
+            unlocked: true,
+        };
+        SLOT0.save(deps.as_mut().storage, &slot0).expect("save slot0");
+
+        let liquidity = Uint128::new(10_000_000_000);
+        ACTIVE_LIQUIDITY.save(deps.as_mut().storage, &liquidity).expect("save liq");
+
+        FEE_GROWTH_GLOBAL_0_X128.save(deps.as_mut().storage, &Uint256::zero()).expect("save fg0");
+        FEE_GROWTH_GLOBAL_1_X128.save(deps.as_mut().storage, &Uint256::zero()).expect("save fg1");
+        PROTOCOL_FEES_0.save(deps.as_mut().storage, &Uint128::zero()).expect("save pf0");
+        PROTOCOL_FEES_1.save(deps.as_mut().storage, &Uint128::zero()).expect("save pf1");
+
+        // Place initialized ticks at -600 and +600 to create a liquidity range
+        let lower_tick = -600i64;
+        let upper_tick = 600i64;
+        let tick_info = TickInfo {
+            initialized: true,
+            liquidity_gross: liquidity,
+            liquidity_net: liquidity.u128() as i128,
+            fee_growth_outside_0_x128: Uint256::zero(),
+            fee_growth_outside_1_x128: Uint256::zero(),
+        };
+        TICKS.save(deps.as_mut().storage, lower_tick, &tick_info).expect("save lower tick");
+        let upper_info = TickInfo {
+            initialized: true,
+            liquidity_gross: liquidity,
+            liquidity_net: -(liquidity.u128() as i128),
+            fee_growth_outside_0_x128: Uint256::zero(),
+            fee_growth_outside_1_x128: Uint256::zero(),
+        };
+        TICKS.save(deps.as_mut().storage, upper_tick, &upper_info).expect("save upper tick");
+    }
+
+    // ------------------------------------------------------------------
+    // M-1: sqrt_price_limit_x96 validation and swap loop clamping
+    // ------------------------------------------------------------------
+
+    struct PriceLimitValidationCase {
+        name: &'static str,
+        /// true = sell token_1 (price goes down), false = sell token_2 (price goes up)
+        zero_for_one: bool,
+        /// The price limit to pass
+        limit: Uint256,
+        /// Whether the call should succeed
+        expect_ok: bool,
+    }
+
+    #[test]
+    fn sqrt_price_limit_validation() {
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+
+        let slot0 = SLOT0.load(deps.as_ref().storage).expect("load slot0");
+        let current_price = slot0.sqrt_price_x96;
+
+        let cases = vec![
+            // --- zero_for_one: limit must be < current and > min ---
+            PriceLimitValidationCase {
+                name: "z41: valid limit below current price",
+                zero_for_one: true,
+                limit: current_price - Uint256::one(),
+                expect_ok: true,
+            },
+            PriceLimitValidationCase {
+                name: "z41: limit equal to current price rejected",
+                zero_for_one: true,
+                limit: current_price,
+                expect_ok: false,
+            },
+            PriceLimitValidationCase {
+                name: "z41: limit above current price rejected",
+                zero_for_one: true,
+                limit: current_price + Uint256::one(),
+                expect_ok: false,
+            },
+            PriceLimitValidationCase {
+                name: "z41: limit at min_sqrt_ratio rejected",
+                zero_for_one: true,
+                limit: min_sqrt_ratio(),
+                expect_ok: false,
+            },
+            // --- one_for_zero: limit must be > current and < max ---
+            PriceLimitValidationCase {
+                name: "1f0: valid limit above current price",
+                zero_for_one: false,
+                limit: current_price + Uint256::one(),
+                expect_ok: true,
+            },
+            PriceLimitValidationCase {
+                name: "1f0: limit equal to current price rejected",
+                zero_for_one: false,
+                limit: current_price,
+                expect_ok: false,
+            },
+            PriceLimitValidationCase {
+                name: "1f0: limit below current price rejected",
+                zero_for_one: false,
+                limit: current_price - Uint256::one(),
+                expect_ok: false,
+            },
+            PriceLimitValidationCase {
+                name: "1f0: limit at max_sqrt_ratio rejected",
+                zero_for_one: false,
+                limit: max_sqrt_ratio(),
+                expect_ok: false,
+            },
+        ];
+
+        let state = STATE.load(deps.as_ref().storage).expect("load state");
+
+        for case in &cases {
+            let asset_in = if case.zero_for_one {
+                state.pair.token_1.clone()
+            } else {
+                state.pair.token_2.clone()
+            };
+
+            let result = run_swap_simulation(
+                deps.as_ref(),
+                asset_in,
+                Uint128::new(1_000),
+                None,
+                Some(case.limit),
+            );
+
+            assert_eq!(
+                result.is_ok(),
+                case.expect_ok,
+                "case '{}': expected ok={}, got {:?}",
+                case.name,
+                case.expect_ok,
+                result.err()
+            );
+        }
+    }
+
+    #[test]
+    fn swap_stops_at_price_limit() {
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+
+        let state = STATE.load(deps.as_ref().storage).expect("load state");
+        let slot0 = SLOT0.load(deps.as_ref().storage).expect("load slot0");
+
+        // Swap zero_for_one with a price limit slightly below current price.
+        // The limit should cause the swap to stop early, producing less output
+        // than a swap without a limit for the same input amount.
+        let amount_in = Uint128::new(100_000);
+        let asset_in = state.pair.token_1.clone();
+
+        // Unlimited swap
+        let unlimited = run_swap_simulation(
+            deps.as_ref(),
+            asset_in.clone(),
+            amount_in,
+            None,
+            None,
+        )
+        .expect("unlimited swap");
+
+        // Limited swap — set limit near current price so it stops early
+        // Use a price ~halfway between current and the lower tick
+        let lower_sqrt = get_sqrt_ratio_at_tick(-300).expect("sqrt at -300");
+        // Ensure limit is valid (below current, above min)
+        assert!(lower_sqrt < slot0.sqrt_price_x96, "limit must be below current price");
+        assert!(lower_sqrt > min_sqrt_ratio(), "limit must be above min");
+
+        let limited = run_swap_simulation(
+            deps.as_ref(),
+            asset_in,
+            amount_in,
+            None,
+            Some(lower_sqrt),
+        )
+        .expect("limited swap");
+
+        // The limited swap should produce less or equal output
+        assert!(
+            limited.amount_out <= unlimited.amount_out,
+            "limited swap output ({}) should be <= unlimited ({})",
+            limited.amount_out,
+            unlimited.amount_out
+        );
+
+        // The limited swap's final price should not have crossed the limit
+        assert!(
+            limited.slot0.sqrt_price_x96 >= lower_sqrt,
+            "final price ({}) crossed below limit ({})",
+            limited.slot0.sqrt_price_x96,
+            lower_sqrt
+        );
+    }
+
+    #[test]
+    fn no_price_limit_requires_full_consumption() {
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+
+        let state = STATE.load(deps.as_ref().storage).expect("load state");
+
+        // A very large swap with no price limit should fail if liquidity is exhausted
+        let result = run_swap_simulation(
+            deps.as_ref(),
+            state.pair.token_1.clone(),
+            Uint128::new(u128::MAX / 2),
+            None,
+            None,
+        );
+
+        match result {
+            Ok(_) => panic!("unlimited swap with excessive input should fail"),
+            Err(e) => {
+                let err = e.to_string();
+                assert!(
+                    err.contains("insufficient") || err.contains("liquidity"),
+                    "error should mention insufficient liquidity, got: {}",
+                    err
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn price_limit_allows_partial_fill() {
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+
+        let state = STATE.load(deps.as_ref().storage).expect("load state");
+        let slot0 = SLOT0.load(deps.as_ref().storage).expect("load slot0");
+
+        // Set a price limit partway between current price and the lower tick.
+        // This should allow partial fill even with large input.
+        let lower_sqrt = get_sqrt_ratio_at_tick(-100).expect("sqrt at -100");
+        let tight_limit = lower_sqrt;
+        assert!(tight_limit < slot0.sqrt_price_x96);
+        assert!(tight_limit > min_sqrt_ratio());
+
+        let result = run_swap_simulation(
+            deps.as_ref(),
+            state.pair.token_1.clone(),
+            Uint128::new(1_000_000_000),
+            None,
+            Some(tight_limit),
+        );
+
+        // Should succeed (partial fill allowed with price limit)
+        assert!(
+            result.is_ok(),
+            "swap with price limit should allow partial fill, got: {:?}",
+            result.err()
+        );
+
+        let sim = result.expect("simulation");
+        // Output should be small due to tight limit
+        assert!(sim.amount_out > Uint128::zero(), "should have some output");
+    }
 }
