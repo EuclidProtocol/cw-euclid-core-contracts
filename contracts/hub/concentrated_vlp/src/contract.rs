@@ -1515,3 +1515,171 @@ fn query_migration_status(deps: Deps) -> Result<MigrationStatusResponse, Contrac
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::testing::mock_dependencies;
+
+    fn set_tick(storage: &mut dyn cosmwasm_std::Storage, tick: i64) {
+        TICKS
+            .save(
+                storage,
+                tick,
+                &TickInfo {
+                    initialized: true,
+                    liquidity_gross: Uint128::new(1),
+                    liquidity_net: 1,
+                    fee_growth_outside_0_x128: Uint256::zero(),
+                    fee_growth_outside_1_x128: Uint256::zero(),
+                },
+            )
+            .unwrap();
+    }
+
+    struct Case {
+        name: &'static str,
+        initialized_ticks: &'static [i64],
+        current_tick: i64,
+        zero_for_one: bool,
+        expected_tick: i64,
+        expected_init: bool,
+    }
+
+    #[test]
+    fn find_next_initialized_tick_cases() {
+        let cases = [
+            // --- Descending (zero_for_one = true) ---
+            Case {
+                name: "descending: finds nearest below",
+                initialized_ticks: &[100, 500],
+                current_tick: 600,
+                zero_for_one: true,
+                expected_tick: 500,
+                expected_init: true,
+            },
+            Case {
+                name: "descending: inclusive of current tick",
+                initialized_ticks: &[200],
+                current_tick: 200,
+                zero_for_one: true,
+                expected_tick: 200,
+                expected_init: true,
+            },
+            Case {
+                name: "descending: finds negative tick",
+                initialized_ticks: &[-100],
+                current_tick: 50,
+                zero_for_one: true,
+                expected_tick: -100,
+                expected_init: true,
+            },
+            Case {
+                name: "descending: returns MIN_TICK when empty",
+                initialized_ticks: &[],
+                current_tick: 500,
+                zero_for_one: true,
+                expected_tick: MIN_TICK,
+                expected_init: false,
+            },
+            // --- Ascending (zero_for_one = false) ---
+            Case {
+                name: "ascending: finds nearest above",
+                initialized_ticks: &[100, 500],
+                current_tick: 50,
+                zero_for_one: false,
+                expected_tick: 100,
+                expected_init: true,
+            },
+            Case {
+                name: "ascending: excludes current tick",
+                initialized_ticks: &[200, 300],
+                current_tick: 200,
+                zero_for_one: false,
+                expected_tick: 300,
+                expected_init: true,
+            },
+            Case {
+                name: "ascending: includes tick above current",
+                initialized_ticks: &[200],
+                current_tick: 195,
+                zero_for_one: false,
+                expected_tick: 200,
+                expected_init: true,
+            },
+            Case {
+                name: "ascending: finds distant tick",
+                initialized_ticks: &[2600],
+                current_tick: 100,
+                zero_for_one: false,
+                expected_tick: 2600,
+                expected_init: true,
+            },
+            Case {
+                name: "ascending: returns MAX_TICK when empty",
+                initialized_ticks: &[],
+                current_tick: 500,
+                zero_for_one: false,
+                expected_tick: MAX_TICK,
+                expected_init: false,
+            },
+            // --- Multiple ticks / negative ---
+            Case {
+                name: "descending: picks nearest among many",
+                initialized_ticks: &[-500, -200, 100, 400, 700],
+                current_tick: 300,
+                zero_for_one: true,
+                expected_tick: 100,
+                expected_init: true,
+            },
+            Case {
+                name: "ascending: picks nearest among many",
+                initialized_ticks: &[-500, -200, 100, 400, 700],
+                current_tick: 300,
+                zero_for_one: false,
+                expected_tick: 400,
+                expected_init: true,
+            },
+            Case {
+                name: "descending: negative ticks, nearest",
+                initialized_ticks: &[-3000, -100],
+                current_tick: -50,
+                zero_for_one: true,
+                expected_tick: -100,
+                expected_init: true,
+            },
+            Case {
+                name: "descending: negative ticks, skip nearest",
+                initialized_ticks: &[-3000, -100],
+                current_tick: -150,
+                zero_for_one: true,
+                expected_tick: -3000,
+                expected_init: true,
+            },
+            Case {
+                name: "ascending: skips ticks at current position",
+                initialized_ticks: &[2550, 2560],
+                current_tick: 2550,
+                zero_for_one: false,
+                expected_tick: 2560,
+                expected_init: true,
+            },
+        ];
+
+        for case in &cases {
+            let mut deps = mock_dependencies();
+            for &tick in case.initialized_ticks {
+                set_tick(deps.as_mut().storage, tick);
+            }
+            let (tick, init) = find_next_initialized_tick(
+                deps.as_ref().storage,
+                case.current_tick,
+                case.zero_for_one,
+            )
+            .unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
+
+            assert_eq!(tick, case.expected_tick, "{}: wrong tick", case.name);
+            assert_eq!(init, case.expected_init, "{}: wrong init flag", case.name);
+        }
+    }
+}
+
