@@ -25,7 +25,7 @@ pub fn execute_update_admin(
     let mut state = STATE.load(deps.storage)?;
     let (updated_admins, response) = admin::update_admin(
         &state.admin,
-        &deps,
+        deps,
         &env,
         &info.sender,
         msg.new_admin.clone(),

@@ -161,7 +161,7 @@ pub fn query_token_balances(
     let balances: Vec<GetTokenBalancesResponseItem> = token_balances
         .iter()
         .map(|(chain_uid, balance)| GetTokenBalancesResponseItem {
-            balance: balance.clone(),
+            balance: *balance,
             chain_uid: ChainUid::create(chain_uid.clone()).unwrap(),
         })
         .collect();
