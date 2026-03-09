@@ -38,7 +38,6 @@ use crate::{
         position_math::{fee_growth_inside, fees_owed},
         sqrt_price_math::q128,
         swap_math::{compute_swap_step_exact_input, FEE_DENOMINATOR_PIPS},
-        tick_bitmap,
         tick_math::{get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio},
     },
     query::{
@@ -51,7 +50,7 @@ use crate::{
         Slot0, TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
         FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIGRATION_METADATA,
         MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0,
-        STATE, TICKS, TICK_BITMAP,
+        STATE, TICKS,
     },
 };
 
@@ -771,23 +770,6 @@ fn update_tick_state(
         TICKS.remove(storage, tick);
     }
 
-    if was_initialized != is_initialized {
-        let pool_key = POOL_KEY.load(storage)?;
-        let tick_spacing = tick_spacing_from_pool_key(&pool_key)?;
-        let (word_pos, bit_pos) = tick_bitmap::position(tick, tick_spacing);
-        let current_word = TICK_BITMAP.may_load(storage, word_pos)?.unwrap_or_default();
-        let updated = if is_initialized {
-            tick_bitmap::set_bit(current_word, bit_pos)
-        } else {
-            tick_bitmap::clear_bit(current_word, bit_pos)
-        };
-        if updated.is_zero() {
-            TICK_BITMAP.remove(storage, word_pos);
-        } else {
-            TICK_BITMAP.save(storage, word_pos, &updated)?;
-        }
-    }
-
     Ok(())
 }
 
@@ -842,73 +824,33 @@ fn settle_position_fees(
     Ok(())
 }
 
-/// Find the next initialized tick using the tick bitmap. See `math::tick_bitmap`
-/// module docs for the search algorithm and bitmap structure.
 fn find_next_initialized_tick(
     storage: &dyn cosmwasm_std::Storage,
     current_tick: i64,
     zero_for_one: bool,
-    tick_spacing: u64,
 ) -> Result<(i64, bool), ContractError> {
-    let (word_pos, bit_pos) = tick_bitmap::position(current_tick, tick_spacing);
-
     if zero_for_one {
-        // Search current word for set bits at or below bit_pos
-        let current_word = TICK_BITMAP.may_load(storage, word_pos)?.unwrap_or_default();
-        if let Some(found_bit) =
-            tick_bitmap::next_initialized_bit_in_word(current_word, bit_pos, true)
-        {
-            let tick = tick_bitmap::tick_from_word_and_bit(word_pos, found_bit, tick_spacing);
-            return Ok((tick, true));
-        }
-        // Search preceding words
-        let iter = TICK_BITMAP.range(
+        let mut iter = TICKS.range(
             storage,
             None,
-            Some(cw_storage_plus::Bound::exclusive(word_pos)),
+            Some(cw_storage_plus::Bound::inclusive(current_tick)),
             cosmwasm_std::Order::Descending,
         );
-        for item in iter {
-            let (wp, word) = item?;
-            if let Some(found_bit) = tick_bitmap::next_initialized_bit_in_word(word, 255, true) {
-                let tick = tick_bitmap::tick_from_word_and_bit(wp, found_bit, tick_spacing);
-                return Ok((tick, true));
-            }
+        if let Some(item) = iter.next() {
+            let (tick, info) = item?;
+            return Ok((tick, info.initialized));
         }
         Ok((MIN_TICK, false))
     } else {
-        // For ascending: search bits strictly above current_tick in current word.
-        // position() uses floor_div, so bit_pos may map to a tick <= current_tick.
-        // Only exclude the bit if it maps to exactly current_tick.
-        let tick_at_bit = tick_bitmap::tick_from_word_and_bit(word_pos, bit_pos, tick_spacing);
-        let skip_current_word = tick_at_bit == current_tick && bit_pos == 255;
-        if !skip_current_word {
-            let search_from = if tick_at_bit == current_tick {
-                bit_pos + 1 // safe: bit_pos < 255 since skip_current_word is false
-            } else {
-                bit_pos
-            };
-            let current_word = TICK_BITMAP.may_load(storage, word_pos)?.unwrap_or_default();
-            if let Some(found_bit) =
-                tick_bitmap::next_initialized_bit_in_word(current_word, search_from, false)
-            {
-                let tick = tick_bitmap::tick_from_word_and_bit(word_pos, found_bit, tick_spacing);
-                return Ok((tick, true));
-            }
-        }
-        // Search subsequent words
-        let iter = TICK_BITMAP.range(
+        let mut iter = TICKS.range(
             storage,
-            Some(cw_storage_plus::Bound::exclusive(word_pos)),
+            Some(cw_storage_plus::Bound::exclusive(current_tick)),
             None,
             cosmwasm_std::Order::Ascending,
         );
-        for item in iter {
-            let (wp, word) = item?;
-            if let Some(found_bit) = tick_bitmap::next_initialized_bit_in_word(word, 0, false) {
-                let tick = tick_bitmap::tick_from_word_and_bit(wp, found_bit, tick_spacing);
-                return Ok((tick, true));
-            }
+        if let Some(item) = iter.next() {
+            let (tick, info) = item?;
+            return Ok((tick, info.initialized));
         }
         Ok((MAX_TICK, false))
     }
@@ -935,12 +877,8 @@ fn run_swap_simulation(
     let zero_for_one = asset_in == state.pair.token_1;
 
     let pool_key = POOL_KEY.load(deps.storage)?;
-    let (fee_pips, tick_spacing) = match pool_key.pool_type {
-        PoolType::Concentrated {
-            fee_tier_bps,
-            tick_spacing,
-            ..
-        } => (fee_tier_bps, tick_spacing),
+    let fee_pips = match pool_key.pool_type {
+        PoolType::Concentrated { fee_tier_bps, .. } => fee_tier_bps,
         _ => return Err(ContractError::new("invalid pool type")),
     };
     ensure!(
@@ -977,7 +915,7 @@ fn run_swap_simulation(
         );
 
         let (next_tick, initialized) =
-            find_next_initialized_tick(deps.storage, slot0.tick, zero_for_one, tick_spacing)?;
+            find_next_initialized_tick(deps.storage, slot0.tick, zero_for_one)?;
         let target_tick = if zero_for_one {
             next_tick.max(MIN_TICK)
         } else {
@@ -1577,169 +1515,3 @@ fn query_migration_status(deps: Deps) -> Result<MigrationStatusResponse, Contrac
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cosmwasm_std::testing::mock_dependencies;
-
-    const TICK_SPACING: u64 = 10;
-
-    fn set_tick(storage: &mut dyn cosmwasm_std::Storage, tick: i64) {
-        let (word_pos, bit_pos) = tick_bitmap::position(tick, TICK_SPACING);
-        let word = TICK_BITMAP
-            .may_load(storage, word_pos)
-            .unwrap()
-            .unwrap_or_default();
-        let updated = tick_bitmap::set_bit(word, bit_pos);
-        TICK_BITMAP.save(storage, word_pos, &updated).unwrap();
-    }
-
-    struct Case {
-        name: &'static str,
-        initialized_ticks: &'static [i64],
-        current_tick: i64,
-        zero_for_one: bool,
-        expected_tick: i64,
-        expected_init: bool,
-    }
-
-    #[test]
-    fn find_next_initialized_tick_cases() {
-        let cases = [
-            // --- Descending (zero_for_one = true) ---
-            Case {
-                name: "descending: finds nearest in same word",
-                initialized_ticks: &[100, 500],
-                current_tick: 600,
-                zero_for_one: true,
-                expected_tick: 500,
-                expected_init: true,
-            },
-            Case {
-                name: "descending: inclusive of current position",
-                initialized_ticks: &[200],
-                current_tick: 200,
-                zero_for_one: true,
-                expected_tick: 200,
-                expected_init: true,
-            },
-            Case {
-                name: "descending: crosses word boundary",
-                initialized_ticks: &[-100],
-                current_tick: 50,
-                zero_for_one: true,
-                expected_tick: -100,
-                expected_init: true,
-            },
-            Case {
-                name: "descending: returns MIN_TICK when empty",
-                initialized_ticks: &[],
-                current_tick: 500,
-                zero_for_one: true,
-                expected_tick: MIN_TICK,
-                expected_init: false,
-            },
-            // --- Ascending (zero_for_one = false) ---
-            Case {
-                name: "ascending: finds nearest in same word",
-                initialized_ticks: &[100, 500],
-                current_tick: 50,
-                zero_for_one: false,
-                expected_tick: 100,
-                expected_init: true,
-            },
-            Case {
-                name: "ascending: excludes current tick (exact alignment)",
-                initialized_ticks: &[200, 300],
-                current_tick: 200,
-                zero_for_one: false,
-                expected_tick: 300,
-                expected_init: true,
-            },
-            Case {
-                name: "ascending: includes tick when current is unaligned",
-                initialized_ticks: &[200],
-                current_tick: 195,
-                zero_for_one: false,
-                expected_tick: 200,
-                expected_init: true,
-            },
-            Case {
-                name: "ascending: crosses word boundary",
-                initialized_ticks: &[2600],
-                current_tick: 100,
-                zero_for_one: false,
-                expected_tick: 2600,
-                expected_init: true,
-            },
-            Case {
-                name: "ascending: returns MAX_TICK when empty",
-                initialized_ticks: &[],
-                current_tick: 500,
-                zero_for_one: false,
-                expected_tick: MAX_TICK,
-                expected_init: false,
-            },
-            // --- Multiple ticks / negative ---
-            Case {
-                name: "descending: picks nearest among many",
-                initialized_ticks: &[-500, -200, 100, 400, 700],
-                current_tick: 300,
-                zero_for_one: true,
-                expected_tick: 100,
-                expected_init: true,
-            },
-            Case {
-                name: "ascending: picks nearest among many",
-                initialized_ticks: &[-500, -200, 100, 400, 700],
-                current_tick: 300,
-                zero_for_one: false,
-                expected_tick: 400,
-                expected_init: true,
-            },
-            Case {
-                name: "descending: negative ticks, same word",
-                initialized_ticks: &[-3000, -100],
-                current_tick: -50,
-                zero_for_one: true,
-                expected_tick: -100,
-                expected_init: true,
-            },
-            Case {
-                name: "descending: negative ticks, crosses word",
-                initialized_ticks: &[-3000, -100],
-                current_tick: -150,
-                zero_for_one: true,
-                expected_tick: -3000,
-                expected_init: true,
-            },
-            // Ascending at bit_pos == 255 must still exclude current tick.
-            // tick 2550 / spacing 10 = compressed 255 = bit_pos 255 in word 0.
-            Case {
-                name: "ascending: excludes current tick at bit 255 boundary",
-                initialized_ticks: &[2550, 2560],
-                current_tick: 2550,
-                zero_for_one: false,
-                expected_tick: 2560,
-                expected_init: true,
-            },
-        ];
-
-        for case in &cases {
-            let mut deps = mock_dependencies();
-            for &tick in case.initialized_ticks {
-                set_tick(deps.as_mut().storage, tick);
-            }
-            let (tick, init) = find_next_initialized_tick(
-                deps.as_ref().storage,
-                case.current_tick,
-                case.zero_for_one,
-                TICK_SPACING,
-            )
-            .unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
-
-            assert_eq!(tick, case.expected_tick, "{}: wrong tick", case.name);
-            assert_eq!(init, case.expected_init, "{}: wrong init flag", case.name);
-        }
-    }
-}
