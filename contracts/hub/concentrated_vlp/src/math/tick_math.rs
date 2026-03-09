@@ -120,7 +120,8 @@ pub fn get_sqrt_ratio_at_tick(tick: i64) -> Result<Uint256, ContractError> {
     Ok(sqrt_price_x96)
 }
 
-/// Returns the most significant bit position of a Uint256 (0-indexed).
+/// Returns the position of the most significant set bit (0-indexed from LSB).
+/// For example: msb(1) = 0, msb(8) = 3, msb(2^128) = 128.
 /// Returns 0 for input 0.
 fn most_significant_bit(x: Uint256) -> u16 {
     let bytes = x.to_be_bytes();
@@ -132,24 +133,31 @@ fn most_significant_bit(x: Uint256) -> u16 {
     0
 }
 
-/// Two's complement signed 256-bit integer, stored as a raw Uint256.
-/// This matches Solidity's int256 behavior exactly.
+// ---------------------------------------------------------------------------
+// I256: Two's complement signed 256-bit integer
+// ---------------------------------------------------------------------------
+//
+// Rust has no native int256. Solidity's int256 uses two's complement, where
+// negative values are stored as 2^256 - |value|. We replicate this by storing
+// the raw two's complement bits in a Uint256.
+//
+// This is only used within get_tick_at_sqrt_ratio to match V3's int256 math.
+// ---------------------------------------------------------------------------
+
 #[derive(Clone, Copy)]
 struct I256(Uint256);
 
-/// The sign bit: 2^255
 fn sign_bit() -> Uint256 {
     Uint256::one() << 255u32
 }
 
 impl I256 {
+    /// Create from a native signed integer.
+    /// Positive values stored directly; negative values as two's complement.
     fn from_signed(val: i128) -> Self {
         if val >= 0 {
             I256(Uint256::from(val as u128))
         } else {
-            // Two's complement: -x = NOT(x) + 1 = (2^256 - 1 - x) + 1 = 2^256 - x
-            // But Uint256 can't hold 2^256, so: wrapping_sub from 0
-            // In Uint256: 0 - magnitude wraps to 2^256 - magnitude
             let magnitude = Uint256::from(val.unsigned_abs());
             I256(Uint256::zero().wrapping_sub(magnitude))
         }
@@ -159,28 +167,27 @@ impl I256 {
         self.0 >= sign_bit()
     }
 
-    /// Left shift (preserving two's complement semantics).
     fn shl(self, n: u32) -> Self {
         I256(self.0 << n)
     }
 
-    /// Add a Uint256 value (wrapping).
+    /// Wrapping addition of an unsigned value. Used to accumulate fractional
+    /// log2 bits (which are always 0 or 1 shifted to the correct position).
     fn add_uint(self, rhs: Uint256) -> Self {
         I256(self.0.wrapping_add(rhs))
     }
 
-    /// Wrapping multiply: compute self * rhs, wrapping the result to 256 bits.
-    /// Handles sign correctly: multiply absolute values, negate if signs differ.
+    /// Wrapping multiply matching Solidity's unchecked `int256 * int256`.
+    /// Multiplies absolute values in Uint512, truncates to 256 bits, then
+    /// negates if the signs differ.
     fn wrapping_mul(self, rhs: Self) -> Self {
         let self_neg = self.is_negative();
         let rhs_neg = rhs.is_negative();
         let result_neg = self_neg ^ rhs_neg;
 
-        // Get absolute values
         let a = if self_neg { Uint256::zero().wrapping_sub(self.0) } else { self.0 };
         let b = if rhs_neg { Uint256::zero().wrapping_sub(rhs.0) } else { rhs.0 };
 
-        // Multiply in Uint512 for full precision, truncate to 256 bits
         let product = Uint512::from(a)
             .checked_mul(Uint512::from(b))
             .unwrap_or(Uint512::zero());
@@ -190,40 +197,34 @@ impl I256 {
         let magnitude = Uint256::from_le_bytes(result_bytes);
 
         if result_neg && !magnitude.is_zero() {
-            // Negate: two's complement
             I256(Uint256::zero().wrapping_sub(magnitude))
         } else {
             I256(magnitude)
         }
     }
 
-    /// Wrapping subtraction.
     fn wrapping_sub(self, rhs: Self) -> Self {
         I256(self.0.wrapping_sub(rhs.0))
     }
 
-    /// Wrapping addition.
     fn wrapping_add(self, rhs: Self) -> Self {
         I256(self.0.wrapping_add(rhs.0))
     }
 
-    /// Arithmetic shift right by n bits, returning i64.
-    /// In two's complement, arithmetic right shift sign-extends.
+    /// Arithmetic shift right: divides by 2^n, rounding toward negative infinity.
+    /// Returns the result as i64 (sufficient for tick values).
     fn asr(self, n: u32) -> i64 {
         if !self.is_negative() {
-            // Non-negative: just shift right
             let shifted = self.0 >> n;
             let bytes = shifted.to_le_bytes();
             u64::from_le_bytes(bytes[0..8].try_into().expect("8 bytes")) as i64
         } else {
-            // Negative two's complement: negate, shift, negate result.
-            // -x in two's complement: NOT(x) + 1
-            let magnitude = Uint256::zero().wrapping_sub(self.0); // = |value|
+            // For negative: negate → shift → negate back.
+            // If any bits were lost in the shift, subtract 1 (round toward -inf).
+            let magnitude = Uint256::zero().wrapping_sub(self.0);
             let shifted_mag = magnitude >> n;
             let bytes = shifted_mag.to_le_bytes();
             let val = u64::from_le_bytes(bytes[0..8].try_into().expect("8 bytes")) as i64;
-            // For arithmetic shift right of negative numbers, round toward -inf.
-            // Check if any bits were shifted out.
             let remainder = magnitude.wrapping_sub(shifted_mag << n);
             if remainder > Uint256::zero() {
                 -val - 1
@@ -234,38 +235,77 @@ impl I256 {
     }
 }
 
-/// O(1) computation of tick from sqrt price, ported from Uniswap V3's TickMath.sol.
-///
-/// Computes log_{sqrt(1.0001)}(sqrt_price_x96 / 2^96) using fixed-point log2,
-/// then converts to tick space via multiplication by log_{sqrt(1.0001)}(2).
+// ---------------------------------------------------------------------------
+// get_tick_at_sqrt_ratio — O(1) inverse of get_sqrt_ratio_at_tick
+// ---------------------------------------------------------------------------
+//
+// Given a Q96 sqrt price, computes the largest tick t where
+// get_sqrt_ratio_at_tick(t) <= sqrt_price_x96.
+//
+// This is equivalent to t = floor(log_{sqrt(1.0001)}(price)), which we
+// compute in three steps:
+//
+//   1. Compute log2(price) using MSB + repeated squaring
+//   2. Convert to tick space: tick ≈ log2(price) / log2(sqrt(1.0001))
+//   3. Resolve ±1 rounding error with one call to get_sqrt_ratio_at_tick
+//
+// Ported from Uniswap V3's TickMath.sol getTickAtSqrtRatio.
+// ---------------------------------------------------------------------------
+
 pub fn get_tick_at_sqrt_ratio(sqrt_price_x96: Uint256) -> Result<i64, ContractError> {
     if sqrt_price_x96 < min_sqrt_ratio() || sqrt_price_x96 >= max_sqrt_ratio() {
         return Err(ContractError::new("sqrt price out of bounds"));
     }
 
+    // -----------------------------------------------------------------------
+    // Step 1a: Integer part of log2
+    // -----------------------------------------------------------------------
+    // Convert from Q96 to Q128 so the "1.0" baseline sits at bit 128.
+    // The MSB position then directly gives us floor(log2):
+    //   MSB = 128 → value is ~2^0 = 1.0 → log2 = 0
+    //   MSB = 135 → value is ~2^7 = 128  → log2 ≈ 7
+    //   MSB = 64  → value is ~2^-64      → log2 ≈ -64
     let ratio_x128 = sqrt_price_x96 << 32u32;
     let msb = most_significant_bit(ratio_x128);
 
-    // Normalize r into [1, 2) range in Q127 fixed-point.
+    // -----------------------------------------------------------------------
+    // Step 1b: Fractional part of log2 via repeated squaring
+    // -----------------------------------------------------------------------
+    // Normalize r into the range [1.0, 2.0) in Q127 fixed-point by shifting
+    // so the MSB lands at bit 127. This strips out the integer part of log2,
+    // leaving only the fractional remainder to compute.
     let r = if msb >= 128 {
         ratio_x128 >> (msb - 127) as u32
     } else {
         ratio_x128 << (127 - msb) as u32
     };
 
-    // Build log2 as a Q64 fixed-point value (matching V3's `(msb - 128) << 64`).
+    // Start building log2 as a Q64 fixed-point I256. The integer part goes
+    // into bits [64+], leaving bits [63..0] for the fractional part.
     let mut log2 = I256::from_signed(msb as i128 - 128).shl(64);
 
     let mut r = r;
 
-    // Compute 14 fractional bits by repeated squaring (bits 63 down to 50).
+    // Each iteration extracts one fractional bit of log2:
+    //   1. Square r (doubling the exponent: if r = 2^0.3, r*r = 2^0.6)
+    //   2. Check if r >= 2.0 (i.e., bit 128 is set after squaring)
+    //      - If yes: this fractional bit is 1. Divide r by 2 to bring
+    //        it back to [1.0, 2.0) for the next iteration.
+    //      - If no: this fractional bit is 0. r is already in range.
+    //
+    // We compute 14 bits (positions 63 down to 50 in the Q64 representation),
+    // giving ~4 decimal digits of precision — enough to narrow the tick to ±1.
     macro_rules! log2_bit {
         ($bit:expr) => {{
+            // Square r in Q127: (Q127 * Q127) >> 127 = Q127
             let sq = Uint512::from(r).checked_mul(Uint512::from(r))?;
             r = Uint256::try_from(sq >> 127u32)
                 .map_err(|_| ContractError::new("log2 overflow"))?;
+            // f = 1 if r >= 2.0 (bit 128 set), else 0
             let f = r >> 128u32;
+            // Accumulate this bit into the fractional part of log2
             log2 = log2.add_uint(f << $bit);
+            // If f = 1, divide r by 2 to keep it in [1.0, 2.0)
             r >>= f.to_le_bytes()[0] as u32;
         }};
     }
@@ -285,18 +325,33 @@ pub fn get_tick_at_sqrt_ratio(sqrt_price_x96: Uint256) -> Result<i64, ContractEr
     log2_bit!(51u32);
     log2_bit!(50u32);
 
-    // Convert log2 (Q64) to log_{sqrt(1.0001)}.
-    // V3: log_sqrt10001 = log_2 * 255738958999603826347141 (result is "128.128 number")
-    // The product is Q64 * ~78-bit integer. Since V3 uses wrapping int256 multiply,
-    // and the result is described as 128.128, the effective precision is in the
-    // low bits. We use wrapping multiply to match V3.
+    // -----------------------------------------------------------------------
+    // Step 2: Change of base — convert log2 to tick
+    // -----------------------------------------------------------------------
+    // We need: tick = log2(price) / log2(sqrt(1.0001))
+    //
+    // The constant 255738958999603826347141 ≈ 1 / log2(sqrt(1.0001)) scaled
+    // so that the Q64 * integer product gives a Q128 result (128 integer bits
+    // + 128 fractional bits).
     let log_sqrt10001 = log2.wrapping_mul(
         I256(Uint256::from(255738958999603826347141u128)),
     );
 
-    // V3 error margins (int256 constants, both positive, in the same Q representation):
-    //   low:  3402992956809132418596140100660247210
-    //   high: 291339464771989622907027621153398088495
+    // -----------------------------------------------------------------------
+    // Step 3: Resolve rounding — narrow to the exact tick
+    // -----------------------------------------------------------------------
+    // Because we only computed 14 fractional bits, log_sqrt10001 has bounded
+    // error. V3 precomputes two error margins that bracket the worst case:
+    //
+    //   tick_low  = (log_sqrt10001 - err_low)  >> 128   (pessimistic floor)
+    //   tick_high = (log_sqrt10001 + err_high) >> 128   (optimistic floor)
+    //
+    // The >> 128 discards the fractional bits, giving integer ticks.
+    //
+    // If tick_low == tick_high, precision was sufficient — return directly.
+    // Otherwise they differ by exactly 1, and we resolve by checking which
+    // tick's sqrt price is actually <= the input. This costs at most one call
+    // to get_sqrt_ratio_at_tick (vs ~21 in the old binary search).
     let err_low = I256(
         Uint256::from_str("3402992956809132418596140100660247210")
             .expect("valid constant"),
@@ -306,8 +361,6 @@ pub fn get_tick_at_sqrt_ratio(sqrt_price_x96: Uint256) -> Result<i64, ContractEr
             .expect("valid constant"),
     );
 
-    // V3: tickLow = int24((log_sqrt10001 - err_low) >> 128)
-    // V3: tickHi  = int24((log_sqrt10001 + err_high) >> 128)
     let tick_low = log_sqrt10001.wrapping_sub(err_low).asr(128);
     let tick_high = log_sqrt10001.wrapping_add(err_high).asr(128);
 
