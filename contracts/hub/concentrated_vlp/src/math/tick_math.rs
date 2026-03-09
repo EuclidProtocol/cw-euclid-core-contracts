@@ -144,107 +144,51 @@ fn most_significant_bit(x: Uint256) -> u16 {
 }
 
 /// Compute log2(sqrt_price_x96) as a Q64 fixed-point Int256.
-///
-/// 1a. Convert Q96 → Q128, find MSB for the integer part of log2.
-/// 1b. Normalize to [1.0, 2.0) in Q127, then extract 14 fractional bits
-///     via repeated squaring.
+/// See docs/tick_math_algorithm.md for a full walkthrough of the math.
 fn log2_q64(sqrt_price_x96: Uint256) -> Result<Int256, ContractError> {
-    // Convert from Q96 to Q128 so the "1.0" baseline sits at bit 128.
-    // The MSB position then directly gives us floor(log2):
-    //   MSB = 128 → value is ~2^0 = 1.0 → log2 = 0
-    //   MSB = 135 → value is ~2^7 = 128  → log2 ≈ 7
-    //   MSB = 64  → value is ~2^-64      → log2 ≈ -64
+    // Step 1a: Integer part of log2 — convert Q96 → Q128, MSB gives floor(log2)
     let ratio_x128 = sqrt_price_x96 << 32u32;
     let msb = most_significant_bit(ratio_x128);
 
-    // Normalize r into the range [1.0, 2.0) in Q127 fixed-point by shifting
-    // so the MSB lands at bit 127. This strips out the integer part of log2,
-    // leaving only the fractional remainder to compute.
+    // Step 1b: Normalize r to [1.0, 2.0) in Q127 for fractional bit extraction
     let mut r = if msb >= 128 {
         ratio_x128 >> (msb - 127) as u32
     } else {
         ratio_x128 << (127 - msb) as u32
     };
 
-    // Start building log2 as a Q64 fixed-point Int256. The integer part goes
-    // into bits [64+], leaving bits [63..0] for the fractional part.
     let mut log2 = Int256::from(msb as i128 - 128) << 64u32;
 
-    // Each iteration extracts one fractional bit of log2:
-    //   1. Square r (doubling the exponent: if r = 2^0.3, r*r = 2^0.6)
-    //   2. Check if r >= 2.0 (i.e., bit 128 is set after squaring)
-    //      - If yes: this fractional bit is 1. Divide r by 2 to bring
-    //        it back to [1.0, 2.0) for the next iteration.
-    //      - If no: this fractional bit is 0. r is already in range.
-    //
-    // We compute 14 bits (positions 63 down to 50 in the Q64 representation),
-    // giving ~4 decimal digits of precision — enough to narrow the tick to ±1.
+    // Extract 14 fractional bits via repeated squaring (see docs for proof)
     for bit in (50..=63u32).rev() {
-        // Square r in Q127: (Q127 * Q127) >> 127 = Q127
         let sq = Uint512::from(r).checked_mul(Uint512::from(r))?;
         r = Uint256::try_from(sq >> 127u32).map_err(|_| ContractError::new("log2 overflow"))?;
-        // f = 1 if r >= 2.0 (bit 128 set), else 0
-        let f = r >> 128u32;
-        // Accumulate this bit into the fractional part of log2
+        let f = r >> 128u32; // 1 if r >= 2.0, else 0
         let frac_bit = Int256::try_from(f << bit)
             .map_err(|_| ContractError::new("log2 fractional bit overflow"))?;
         log2 = log2.wrapping_add(frac_bit);
-        // If f = 1, divide r by 2 to keep it in [1.0, 2.0)
-        r >>= f.to_le_bytes()[0] as u32;
+        r >>= f.to_le_bytes()[0] as u32; // divide by 2 if f == 1
     }
 
     Ok(log2)
 }
 
-// ---------------------------------------------------------------------------
-// get_tick_at_sqrt_ratio — O(1) inverse of get_sqrt_ratio_at_tick
-// ---------------------------------------------------------------------------
-//
-// Given a Q96 sqrt price, computes the largest tick t where
-// get_sqrt_ratio_at_tick(t) <= sqrt_price_x96.
-//
-// This is equivalent to t = floor(log_{sqrt(1.0001)}(price)), which we
-// compute in three steps:
-//
-//   1. Compute log2(price) using MSB + repeated squaring
-//   2. Convert to tick space: tick ≈ log2(price) / log2(sqrt(1.0001))
-//   3. Resolve ±1 rounding error with one call to get_sqrt_ratio_at_tick
-//
-// Ported from Uniswap V3's TickMath.sol getTickAtSqrtRatio.
-// ---------------------------------------------------------------------------
+/// O(1) inverse of get_sqrt_ratio_at_tick. Returns the largest tick t where
+/// get_sqrt_ratio_at_tick(t) <= sqrt_price_x96.
+/// Ported from Uniswap V3's TickMath.sol. See docs/tick_math_algorithm.md.
 pub fn get_tick_at_sqrt_ratio(sqrt_price_x96: Uint256) -> Result<i64, ContractError> {
     if sqrt_price_x96 < min_sqrt_ratio() || sqrt_price_x96 >= max_sqrt_ratio() {
         return Err(ContractError::new("sqrt price out of bounds"));
     }
 
-    // Step 1: Compute log2(sqrt_price) as Q64 fixed-point
+    // Step 1: log2(sqrt_price) as Q64
     let log2 = log2_q64(sqrt_price_x96)?;
 
-    // -----------------------------------------------------------------------
-    // Step 2: Change of base — convert log2 to tick
-    // -----------------------------------------------------------------------
-    // We need: tick = log2(price) / log2(sqrt(1.0001))
-    //
-    // The constant 255738958999603826347141 ≈ 1 / log2(sqrt(1.0001)) scaled
-    // so that the Q64 * integer product gives a Q128 result (128 integer bits
-    // + 128 fractional bits).
-    let log_sqrt10001 = log2.wrapping_mul(Int256::from(LOG_SQRT10001_SCALE as i128));
+    // Step 2: Change of base — log2 * (1 / log2(sqrt(1.0001))) → Q128 tick
+    let sqrt_price_base = Int256::from(LOG_SQRT10001_SCALE as i128);
+    let log_sqrt10001 = log2.wrapping_mul(sqrt_price_base);
 
-    // -----------------------------------------------------------------------
-    // Step 3: Resolve rounding — narrow to the exact tick
-    // -----------------------------------------------------------------------
-    // Because we only computed 14 fractional bits, log_sqrt10001 has bounded
-    // error. V3 precomputes two error margins that bracket the worst case:
-    //
-    //   tick_low  = (log_sqrt10001 - err_low)  >> 128   (pessimistic floor)
-    //   tick_high = (log_sqrt10001 + err_high) >> 128   (optimistic floor)
-    //
-    // The >> 128 discards the fractional bits, giving integer ticks.
-    //
-    // If tick_low == tick_high, precision was sufficient — return directly.
-    // Otherwise they differ by exactly 1, and we resolve by checking which
-    // tick's sqrt price is actually <= the input. This costs at most one call
-    // to get_sqrt_ratio_at_tick (vs ~21 in the old binary search).
+    // Step 3: Resolve ±1 rounding via precomputed error margins
     let err_low = Int256::from_str(TICK_LOW_ERR).expect("valid constant");
     let err_high = Int256::from_str(TICK_HIGH_ERR).expect("valid constant");
 
@@ -273,7 +217,8 @@ mod tests {
     use cosmwasm_std::{Int256, Uint256};
 
     use super::{
-        get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio, log2_q64, max_sqrt_ratio, min_sqrt_ratio,
+        get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio, log2_q64, max_sqrt_ratio,
+        min_sqrt_ratio, most_significant_bit,
     };
     use crate::state::{MAX_TICK, MIN_TICK};
 
@@ -441,6 +386,33 @@ mod tests {
             assert_eq!(
                 result, expected,
                 "log2_q64({sqrt_str}): got {result}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn most_significant_bit_reference_vectors() {
+        let cases: &[(&str, u16)] = &[
+            ("0", 0),
+            ("1", 0),
+            ("2", 1),
+            ("3", 1),
+            ("8", 3),
+            ("255", 7),
+            ("256", 8),
+            // Powers of 2
+            ("65536", 16),                // 2^16
+            ("4294967296", 32),            // 2^32
+            ("18446744073709551616", 64),  // 2^64
+            ("340282366920938463463374607431768211456", 128), // 2^128
+        ];
+
+        for (val_str, expected_msb) in cases {
+            let val = Uint256::from_str(val_str).expect("valid decimal");
+            assert_eq!(
+                most_significant_bit(val),
+                *expected_msb,
+                "msb({val_str}): expected {expected_msb}"
             );
         }
     }

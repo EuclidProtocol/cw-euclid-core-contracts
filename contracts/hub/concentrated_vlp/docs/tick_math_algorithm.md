@@ -110,9 +110,44 @@ Iteration (bit 62):
   ... 12 more iterations down to bit 50 ...
 ```
 
-**Why squaring works**: After normalization, `r` represents `2^f` in Q127, where
-`f` is the fractional part of log2 we're trying to measure (0 ≤ f < 1). Squaring
-doubles the exponent, which lets us read off one binary digit at a time.
+**Why squaring works — the mathematical proof:**
+
+After normalization, `r` is in [1.0, 2.0), so `log2(r)` is a fraction between
+0 and 1. Write it in binary:
+
+```
+log2(r) = 0.b₁b₂b₃b₄...
+        = b₁/2 + b₂/4 + b₃/8 + ...
+```
+
+We want to extract `b₁`, `b₂` (the bits of the fractional part), etc. one at a time. The key insight is that
+**squaring in real space = doubling in log space** — it shifts the binary
+point right by one position, just like multiplying a binary number by 2:
+
+```
+r  = 2^(0.b₁b₂b₃...)       ← log2 is 0.something (fractional)
+r² = 2^(b₁.b₂b₃b₄...)      ← log2 is b₁.something (b₁ is now the integer part)
+```
+
+Now `b₁` has moved from the fractional part into the integer part, where we
+can read it directly:
+
+- If `b₁ = 1`: `r² = 2^(1.b₂b₃...) ≥ 2.0`
+- If `b₁ = 0`: `r² = 2^(0.b₂b₃...) < 2.0`
+
+So **checking `r² ≥ 2` reads off `b₁`**. When `b₁ = 1`, dividing by 2 strips
+it out and returns r to [1.0, 2.0):
+
+```
+r² / 2 = 2^(1.b₂b₃... − 1) = 2^(0.b₂b₃...)
+```
+
+Now `log2 = 0.b₂b₃...` — the remaining bits. Repeat to extract `b₂`, and so on.
+
+**In short**: squaring is a left-shift in log-space. Each iteration shifts one
+fractional bit into the integer part where we can read it, then we subtract it
+out (divide by 2) to set up for the next bit. It's binary long division, but
+for logarithms.
 
 Concrete example with `f = 0.72` (i.e., `r = 2^0.72` in Q127):
 
@@ -121,7 +156,8 @@ Concrete example with `f = 0.72` (i.e., `r = 2^0.72` in Q127):
 3. Square: `r² = 2^1.76 ≥ 2.0` → bit = 1. Divide by 2: `r = 2^0.76`
 4. Continue...
 
-This extracts the binary expansion `0.1012... ≈ 0.72`.
+This extracts the binary expansion `0.101... ≈ 0.625`, converging toward `0.72`
+with more iterations.
 
 Each iteration extracts one binary digit of the fractional part:
 
