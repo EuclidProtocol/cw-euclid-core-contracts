@@ -23,7 +23,6 @@ use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use crate::{
     math::{
         liquidity_amounts::get_amounts_for_liquidity,
-        tick_bitmap,
         tick_math::get_sqrt_ratio_at_tick,
     },
     migrate::migrate,
@@ -33,7 +32,7 @@ use crate::{
         CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128,
         MIGRATION_METADATA, MIGRATION_REVISION, OBSERVATIONS, POOL_KEY, POSITIONS,
         POSITION_ID_PREFIX, POSITION_NONCE, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE,
-        TICK_BITMAP, TICKS,
+        TICKS,
     },
 };
 
@@ -227,7 +226,7 @@ fn collect_ticks(storage: &dyn Storage) -> Vec<(i64, TickInfo)> {
 }
 
 #[test]
-fn migration_rebuilds_ticks_bitmap_and_active_liquidity_from_positions() {
+fn migration_rebuilds_ticks_and_active_liquidity_from_positions() {
     let mut deps = mock_dependencies();
     let env = mock_env();
 
@@ -290,13 +289,6 @@ fn migration_rebuilds_ticks_bitmap_and_active_liquidity_from_positions() {
     assert_eq!(ticks[2].1.liquidity_gross, Uint128::new(2000));
     assert_eq!(ticks[2].1.liquidity_net, -2000);
     assert!(TICKS.may_load(deps.as_ref().storage, 123).unwrap().is_none());
-
-    let (word_neg10, bit_neg10) = tick_bitmap::position(-10, 10);
-    let (word_10, bit_10) = tick_bitmap::position(10, 10);
-    let word_neg10_val = TICK_BITMAP.load(deps.as_ref().storage, word_neg10).unwrap();
-    let word_10_val = TICK_BITMAP.load(deps.as_ref().storage, word_10).unwrap();
-    assert!(tick_bitmap::is_set(word_neg10_val, bit_neg10));
-    assert!(tick_bitmap::is_set(word_10_val, bit_10));
 
     assert_eq!(
         CHAIN_LP_TOKENS

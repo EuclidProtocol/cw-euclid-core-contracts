@@ -12,14 +12,13 @@ use crate::{
     math::{
         liquidity_amounts::{get_amounts_for_liquidity, get_liquidity_for_amounts},
         oracle::initialize_observation,
-        tick_bitmap,
         tick_math::{get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio},
     },
     state::{
         initialize_position_namespace_if_missing, ConcentratedPosition, MigrationMetadata, Slot0,
         TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128,
         FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA, MIGRATION_REVISION, OBSERVATIONS, POOL_KEY,
-        POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE, TICK_BITMAP, TICKS,
+        POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
     },
 };
 
@@ -150,7 +149,6 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
     }
 
     clear_ticks(deps.storage)?;
-    clear_tick_bitmap(deps.storage)?;
     clear_observations(deps.storage)?;
     clear_chain_lp_tokens(deps.storage)?;
 
@@ -241,8 +239,6 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
     initialize_observation(deps.storage, env.block.time.seconds())?;
 
     let mut rebuilt_tick_count: u64 = 0;
-    let mut rebuilt_bitmap_words: std::collections::BTreeMap<i64, Uint256> =
-        std::collections::BTreeMap::new();
     for (tick_index, mut tick_info) in tick_aggregates {
         if tick_info.liquidity_gross.is_zero() {
             continue;
@@ -252,18 +248,6 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
         tick_info.fee_growth_outside_1_x128 = Uint256::zero();
         TICKS.save(deps.storage, tick_index, &tick_info)?;
         rebuilt_tick_count = rebuilt_tick_count.saturating_add(1);
-
-        let (word_pos, bit_pos) = tick_bitmap::position(
-            tick_index,
-            u64::try_from(tick_spacing).map_err(|_| ContractError::new("tick spacing overflow"))?,
-        );
-        let current_word = rebuilt_bitmap_words
-            .remove(&word_pos)
-            .unwrap_or_else(Uint256::zero);
-        rebuilt_bitmap_words.insert(word_pos, tick_bitmap::set_bit(current_word, bit_pos));
-    }
-    for (word_pos, word) in rebuilt_bitmap_words {
-        TICK_BITMAP.save(deps.storage, word_pos, &word)?;
     }
 
     let mut updated_state = state;
@@ -442,16 +426,6 @@ fn clear_ticks(storage: &mut dyn Storage) -> Result<(), ContractError> {
         .collect::<Result<Vec<_>, _>>()?;
     for key in keys {
         TICKS.remove(storage, key);
-    }
-    Ok(())
-}
-
-fn clear_tick_bitmap(storage: &mut dyn Storage) -> Result<(), ContractError> {
-    let keys: Vec<i64> = TICK_BITMAP
-        .keys(storage, None, None, Order::Ascending)
-        .collect::<Result<Vec<_>, _>>()?;
-    for key in keys {
-        TICK_BITMAP.remove(storage, key);
     }
     Ok(())
 }
