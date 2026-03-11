@@ -13,8 +13,6 @@ use euclid_ibc::router_ibc::{
 
 #[cw_serde]
 pub struct State {
-    // Contract admin
-    pub admins: EuclidAdmin,
     // Pools
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
@@ -23,6 +21,7 @@ pub struct State {
 }
 
 pub const STATE: Item<State> = Item::new("state");
+pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 pub const META_TRANSACTION_CONTRACT: Item<Addr> = Item::new("meta_transaction_contract");
 pub const VIRTUAL_BALANCE_CONTRACT: Item<Addr> = Item::new("virtual_balance_contract");

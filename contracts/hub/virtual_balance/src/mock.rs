@@ -5,7 +5,7 @@ use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
 use euclid::{
     admin::EuclidAdmin,
-    msgs::virtual_balance::msg::{GetStateResponse, InstantiateMsg, QueryMsg},
+    msgs::virtual_balance::msg::{InstantiateMsg, QueryMsg, State},
 };
 use mock::mock::MockApp;
 
@@ -37,11 +37,17 @@ impl MockVirtualBalance {
     //     self.execute(app, &msg, sender, funds)
     // }
 
-    pub fn query_state(&self, app: &MockApp) -> GetStateResponse {
+    pub fn query_state(&self, app: &MockApp) -> State {
         app.wrap()
-            .query_wasm_smart::<GetStateResponse>(
+            .query_wasm_smart::<State>(self.addr().clone().into_string(), &mock_query_get_state())
+            .unwrap()
+    }
+
+    pub fn query_admin(&self, app: &MockApp) -> EuclidAdmin {
+        app.wrap()
+            .query_wasm_smart::<EuclidAdmin>(
                 self.addr().clone().into_string(),
-                &mock_query_get_state(),
+                &QueryMsg::GetAdmin {},
             )
             .unwrap()
     }

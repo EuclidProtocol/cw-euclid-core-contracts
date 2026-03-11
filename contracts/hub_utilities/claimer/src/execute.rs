@@ -15,24 +15,23 @@ use euclid::{
 };
 use relayer::verify::{verify_signature, MsgSignData};
 
-use crate::state::{CLAIMS, CLAIM_ID, STATE};
+use crate::state::{ADMIN, CLAIMS, CLAIM_ID, STATE};
 
 pub fn execute_update_admin(
     deps: &mut DepsMut,
     info: &MessageInfo,
     msg: UpdateAdminMsg,
 ) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
+    let current_admin = ADMIN.load(deps.storage)?;
     // Ensure the sender is the current admin
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    ensure!(info.sender == current_admin, ContractError::Unauthorized {});
 
-    deps.api.addr_validate(msg.new_admin.as_str())?;
+    let new_admin = deps.api.addr_validate(msg.new_admin.as_str())?;
 
-    state.admin = msg.new_admin.clone();
-    STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &new_admin)?;
     Ok(Response::new()
-        .add_attribute("old_admin", state.admin.to_string())
-        .add_attribute("new_admin", msg.new_admin.to_string()))
+        .add_attribute("old_admin", current_admin.to_string())
+        .add_attribute("new_admin", new_admin.to_string()))
 }
 
 pub fn execute_virtual_balance_receive(

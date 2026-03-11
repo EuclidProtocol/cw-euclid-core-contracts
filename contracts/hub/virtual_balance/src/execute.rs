@@ -14,7 +14,7 @@ use euclid::{
     voucher::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
+use crate::state::{Allowance, ADMIN, ALLOWANCES, BALANCES, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -278,9 +278,9 @@ pub fn execute_update_admin(
     new_admin: String,
     admin_type: AdminType,
 ) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
+    let current_admin = ADMIN.load(deps.storage)?;
     let (updated_admins, response) = admin::update_admin(
-        &state.admin,
+        &current_admin,
         &deps,
         &env,
         &info.sender,
@@ -288,10 +288,9 @@ pub fn execute_update_admin(
         admin_type,
     )?;
 
-    state.admin = updated_admins;
-    STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &updated_admins)?;
     Ok(response
-        .add_attribute("old_admin", state.admin.to_string())
+        .add_attribute("old_admin", current_admin.to_string())
         .add_attribute("new_admin", new_admin.to_string()))
 }
 
@@ -300,15 +299,15 @@ pub fn execute_update_router(
     info: MessageInfo,
     router: Addr,
 ) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     ensure!(
-        info.sender == state.admin.general_admin,
+        info.sender == admin.general_admin,
         ContractError::Unauthorized {}
     );
 
     let verified_router = deps.api.addr_validate(router.as_str())?;
+    let mut state = STATE.load(deps.storage)?;
     state.router = verified_router.clone();
-
     STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
@@ -375,9 +374,9 @@ pub fn execute_remove_zero_state_values(
     start_after: Option<SerializedBalanceKey>,
     limit: Option<u32>,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     ensure!(
-        state.admin.general_admin == info.sender,
+        admin.general_admin == info.sender,
         ContractError::Unauthorized {}
     );
 

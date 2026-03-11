@@ -9,7 +9,11 @@ use euclid::msgs::meta_transaction::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, 
 
 use crate::execute::execute_meta_transaction;
 use crate::query::get_nonce;
-use crate::{execute::execute_update_admin, query::get_state, state::STATE};
+use crate::{
+    execute::execute_update_admin,
+    query::get_state,
+    state::{ADMIN, STATE},
+};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:meta-transaction";
@@ -24,9 +28,9 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     let state = State {
         router_contract: msg.router_contract.clone(),
-        admin: EuclidAdmin::default(info.sender),
     };
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender))?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")

@@ -7,11 +7,11 @@ use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
 use crate::query::{
-    query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
-    query_total_fees_collected, query_total_fees_per_denom,
+    query_admin, query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap,
+    query_state, query_total_fees_collected, query_total_fees_per_denom,
 };
 use crate::reply;
-use crate::state::{AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE};
+use crate::state::{ADMIN, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::vlp::base::{State, NEXT_SWAP_REPLY_ID};
 use euclid::msgs::vlp::stable::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
@@ -48,11 +48,11 @@ pub fn instantiate(
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
-        admin: msg.admin,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &msg.admin)?;
 
     BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
     BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
@@ -109,7 +109,15 @@ pub fn execute(
             lp_fee_bps,
             euclid_fee_bps,
             recipient,
-        } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
+        } => update_fee(
+            deps,
+            info,
+            &STATE,
+            &ADMIN,
+            lp_fee_bps,
+            euclid_fee_bps,
+            recipient,
+        ),
         ExecuteMsg::AddLiquidity(add_liquidity_msg) => add_liquidity(
             deps,
             env,
@@ -153,10 +161,10 @@ pub fn execute(
             )
         }
         ExecuteMsg::UpdateAdmin { admin, admin_type } => {
-            update_admin(deps, env, info, &STATE, admin, admin_type)
+            update_admin(deps, env, info, &ADMIN, admin, admin_type)
         }
         ExecuteMsg::UpdateAmpFactor { amp_factor } => {
-            update_amp_factor(deps, info, &STATE, &AMP_FACTOR, amp_factor)
+            update_amp_factor(deps, info, &ADMIN, &AMP_FACTOR, amp_factor)
         }
     }
 }
@@ -165,6 +173,7 @@ pub fn execute(
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::State {} => query_state(deps),
+        QueryMsg::GetAdmin {} => query_admin(deps),
         QueryMsg::SimulateSwap(simulate_swap_msg) => query_simulate_swap(
             deps,
             simulate_swap_msg.asset,

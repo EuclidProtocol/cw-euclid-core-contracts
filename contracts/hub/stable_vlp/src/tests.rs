@@ -3,7 +3,7 @@
 mod tests {
     use crate::{
         contract::{execute, instantiate},
-        state::{BALANCES, CHAIN_LP_TOKENS, STATE},
+        state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, STATE},
     };
     use cosmwasm_std::{
         coins,
@@ -90,10 +90,11 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
-            admin,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
+        let saved_admin = ADMIN.load(&deps.storage).unwrap();
+        assert_eq!(saved_admin, admin);
 
         let balance_1 = BALANCES.load(&deps.storage, state.pair.token_1).unwrap();
         let expected_balance_1 = Uint128::zero();

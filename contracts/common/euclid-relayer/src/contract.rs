@@ -11,8 +11,8 @@ use crate::{
         execute_add_validator, execute_meta_transaction, execute_remove_validator,
         execute_update_admin, execute_update_state,
     },
-    query::{get_state, get_validators, nonce_relayed},
-    state::STATE,
+    query::{get_admin, get_nonce_relayed, get_state, get_validators},
+    state::{ADMIN, STATE},
 };
 
 // version info for migration info
@@ -26,12 +26,13 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    let admin = EuclidAdmin::default(info.sender);
     let state = State {
         message_signer: msg.message_signer,
         signature_threshold: msg.signature_threshold,
-        admin: EuclidAdmin::default(info.sender),
     };
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &admin)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -74,7 +75,8 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => Ok(to_json_binary(&get_state(&deps)?)?),
-        QueryMsg::NonceRelayed { nonce } => Ok(to_json_binary(&nonce_relayed(&deps, nonce)?)?),
+        QueryMsg::GetAdmin {} => Ok(to_json_binary(&get_admin(&deps)?)?),
+        QueryMsg::NonceRelayed { nonce } => Ok(to_json_binary(&get_nonce_relayed(&deps, nonce)?)?),
         QueryMsg::Validators {} => Ok(to_json_binary(&get_validators(&deps)?)?),
     }
 }

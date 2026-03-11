@@ -57,6 +57,15 @@ impl MockStableVlp {
             )
             .unwrap()
     }
+
+    pub fn query_admin(&self, app: &MockApp) -> EuclidAdmin {
+        app.wrap()
+            .query_wasm_smart::<EuclidAdmin>(
+                self.addr().clone().into_string(),
+                &QueryMsg::GetAdmin {},
+            )
+            .unwrap()
+    }
 }
 
 pub fn mock_stable_vlp() -> Box<dyn Contract<Empty>> {

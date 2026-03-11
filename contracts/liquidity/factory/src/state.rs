@@ -16,8 +16,6 @@ pub struct State {
     // The Router Contract Address on the Virtual Settlement Layer
     pub router_contract: String,
     pub relayer_contract: Addr,
-    // Contract admin
-    pub admin: EuclidAdmin,
     // Escrow Code ID
     pub escrow_code_id: u64,
     // LP Token Code ID
@@ -30,6 +28,7 @@ pub struct State {
 }
 
 pub const STATE: Item<State> = Item::new("state");
+pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 #[cw_serde]
 pub struct FeeState {

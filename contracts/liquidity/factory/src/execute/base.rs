@@ -18,7 +18,7 @@ use crate::{
     execute::{
         pool::remove_liquidity_request, swap::execute_swap_request, token::execute_deposit_token,
     },
-    state::STATE,
+    state::{ADMIN, STATE},
 };
 
 pub fn execute_manage_factory_state(
@@ -28,17 +28,18 @@ pub fn execute_manage_factory_state(
     msg: ManageFactoryState,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
+    let mut admins = ADMIN.load(deps.storage)?;
     match msg {
         ManageFactoryState::UpdateAdmin { admin, admin_type } => {
             let (updated_admins, response) =
-                admin::update_admin(&state.admin, &deps, &env, &info.sender, admin, admin_type)?;
-            state.admin = updated_admins;
-            STATE.save(deps.storage, &state)?;
+                admin::update_admin(&admins, &deps, &env, &info.sender, admin, admin_type)?;
+            admins = updated_admins;
+            ADMIN.save(deps.storage, &admins)?;
             Ok(response)
         }
         ManageFactoryState::UpdateEscrowCodeId { escrow_code_id } => {
             ensure!(
-                state.admin.migration_admin == info.sender,
+                admins.migration_admin == info.sender,
                 ContractError::Unauthorized {}
             );
             state.escrow_code_id = escrow_code_id;
@@ -47,7 +48,7 @@ pub fn execute_manage_factory_state(
         }
         ManageFactoryState::UpdateLPCodeId { lp_code_id } => {
             ensure!(
-                state.admin.migration_admin == info.sender,
+                admins.migration_admin == info.sender,
                 ContractError::Unauthorized {}
             );
             state.lp_code_id = lp_code_id;
@@ -56,7 +57,7 @@ pub fn execute_manage_factory_state(
         }
         ManageFactoryState::UpdateRelayerAddress { relayer_address } => {
             ensure!(
-                state.admin.general_admin == info.sender,
+                admins.general_admin == info.sender,
                 ContractError::Unauthorized {}
             );
             let relayer_address = deps.api.addr_validate(relayer_address.as_str())?;

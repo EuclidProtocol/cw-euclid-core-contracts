@@ -8,10 +8,13 @@ use euclid::msgs::claimer::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
 use crate::execute::{execute_claim_voucher, execute_virtual_balance_receive};
 use crate::query::{
-    get_claim, get_claim_by_pseudo_claim_id, get_claims_by_claimer_pubkey, get_claims_by_group_id,
-    get_claims_by_sender,
+    get_admin, get_claim, get_claim_by_pseudo_claim_id, get_claims_by_claimer_pubkey,
+    get_claims_by_group_id, get_claims_by_sender, get_state,
 };
-use crate::{execute::execute_update_admin, query::get_state, state::STATE};
+use crate::{
+    execute::execute_update_admin,
+    state::{ADMIN, STATE},
+};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:euclid-claimer";
@@ -29,9 +32,9 @@ pub fn instantiate(
     let state = State {
         vcoin_address: msg.vcoin_address.clone(),
         router_contract: msg.router_contract.clone(),
-        admin: info.sender,
     };
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &info.sender)?;
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("vcoin_address", msg.vcoin_address.to_string()))
@@ -57,6 +60,7 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => Ok(to_json_binary(&get_state(&deps)?)?),
+        QueryMsg::GetAdmin {} => Ok(to_json_binary(&get_admin(&deps)?)?),
         QueryMsg::GetSenderClaims {
             sender,
             limit,
