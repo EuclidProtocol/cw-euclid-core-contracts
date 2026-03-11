@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Order, Response};
 use cw2::set_contract_version;
 
 use euclid::error::ContractError;
@@ -9,7 +9,7 @@ use crate::msg::{
     ExecuteMsg, InstantiateMsg, OwnerOfResponse, QueryMsg, StateResponse, TokenInfoResponse,
     TokensResponse,
 };
-use crate::state::{State, TokenInfo, ALL_TOKENS, OWNER_TOKENS, STATE, TOKENS};
+use crate::state::{State, TokenInfo, ALL_TOKEN_SET, OWNER_TOKEN_SET, STATE, TOKENS};
 
 const CONTRACT_NAME: &str = "crates.io:position_token";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -42,7 +42,6 @@ pub fn instantiate(
             total_tokens: 0,
         },
     )?;
-    ALL_TOKENS.save(deps.storage, &vec![])?;
 
     Ok(Response::new().add_attribute("action", "instantiate"))
 }
@@ -100,11 +99,8 @@ fn execute_mint(
         },
     )?;
 
-    add_owner_token(deps.storage, &owner_addr, token_id.clone())?;
-
-    let mut all_tokens = ALL_TOKENS.may_load(deps.storage)?.unwrap_or_default();
-    all_tokens.push(token_id.clone());
-    ALL_TOKENS.save(deps.storage, &all_tokens)?;
+    OWNER_TOKEN_SET.save(deps.storage, (&owner_addr, &token_id), &Empty {})?;
+    ALL_TOKEN_SET.save(deps.storage, &token_id, &Empty {})?;
 
     state.total_tokens = state
         .total_tokens
@@ -137,11 +133,8 @@ fn execute_burn(
     );
 
     TOKENS.remove(deps.storage, &token_id);
-    remove_owner_token(deps.storage, &token.owner, &token_id)?;
-
-    let mut all_tokens = ALL_TOKENS.may_load(deps.storage)?.unwrap_or_default();
-    all_tokens.retain(|id| id != &token_id);
-    ALL_TOKENS.save(deps.storage, &all_tokens)?;
+    OWNER_TOKEN_SET.remove(deps.storage, (&token.owner, &token_id));
+    ALL_TOKEN_SET.remove(deps.storage, &token_id);
 
     state.total_tokens = state
         .total_tokens
@@ -175,8 +168,8 @@ fn execute_transfer(
     let recipient_addr = deps.api.addr_validate(recipient.as_str())?;
     ensure!(recipient_addr != token.owner, ContractError::SameAddress {});
 
-    remove_owner_token(deps.storage, &token.owner, &token_id)?;
-    add_owner_token(deps.storage, &recipient_addr, token_id.clone())?;
+    OWNER_TOKEN_SET.remove(deps.storage, (&token.owner, &token_id));
+    OWNER_TOKEN_SET.save(deps.storage, (&recipient_addr, &token_id), &Empty {})?;
 
     token.owner = recipient_addr.clone();
     TOKENS.save(deps.storage, &token_id, &token)?;
@@ -226,15 +219,18 @@ fn query_token_info(deps: Deps, token_id: String) -> Result<Binary, ContractErro
 
 fn query_tokens_by_owner(deps: Deps, owner: String) -> Result<Binary, ContractError> {
     let owner_addr = deps.api.addr_validate(owner.as_str())?;
-    let tokens = OWNER_TOKENS
-        .may_load(deps.storage, &owner_addr)?
-        .unwrap_or_default();
+    let tokens: Vec<String> = OWNER_TOKEN_SET
+        .prefix(&owner_addr)
+        .keys(deps.storage, None, None, Order::Ascending)
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(to_json_binary(&TokensResponse { tokens })?)
 }
 
 fn query_all_tokens(deps: Deps) -> Result<Binary, ContractError> {
-    let tokens = ALL_TOKENS.may_load(deps.storage)?.unwrap_or_default();
+    let tokens: Vec<String> = ALL_TOKEN_SET
+        .keys(deps.storage, None, None, Order::Ascending)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(to_json_binary(&TokensResponse { tokens })?)
 }
 
@@ -247,26 +243,4 @@ fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         admin: state.admin,
         total_tokens: state.total_tokens,
     })?)
-}
-
-fn add_owner_token(
-    storage: &mut dyn cosmwasm_std::Storage,
-    owner: &cosmwasm_std::Addr,
-    token_id: String,
-) -> Result<(), ContractError> {
-    let mut owner_tokens = OWNER_TOKENS.may_load(storage, owner)?.unwrap_or_default();
-    owner_tokens.push(token_id);
-    OWNER_TOKENS.save(storage, owner, &owner_tokens)?;
-    Ok(())
-}
-
-fn remove_owner_token(
-    storage: &mut dyn cosmwasm_std::Storage,
-    owner: &cosmwasm_std::Addr,
-    token_id: &str,
-) -> Result<(), ContractError> {
-    let mut owner_tokens = OWNER_TOKENS.may_load(storage, owner)?.unwrap_or_default();
-    owner_tokens.retain(|id| id != token_id);
-    OWNER_TOKENS.save(storage, owner, &owner_tokens)?;
-    Ok(())
 }
