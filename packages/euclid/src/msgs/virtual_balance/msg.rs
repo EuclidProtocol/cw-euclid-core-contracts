@@ -87,6 +87,9 @@ pub enum QueryMsg {
     #[returns(GetBalanceResponse)]
     GetBalance { balance_key: BalanceKey },
 
+    #[returns(GetAllowanceResponse)]
+    GetAllowance { balance_key: BalanceKey },
+
     // Query to simulate a swap for the asset
     #[returns(GetUserBalancesResponse)]
     GetUserBalances {
@@ -113,6 +116,17 @@ pub struct GetStateResponse {
 #[cw_serde]
 pub struct GetBalanceResponse {
     pub amount: Uint128,
+}
+
+#[cw_serde]
+pub struct Allowance {
+    pub spender: CrossChainUser,
+    pub amount: Uint128,
+}
+
+#[cw_serde]
+pub struct GetAllowanceResponse {
+    pub allowance: Allowance,
 }
 
 #[cw_serde]

@@ -8,12 +8,14 @@ use euclid::{
     error::ContractError,
     msgs::{
         hook::VoucherReceive,
-        virtual_balance::msg::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
+        virtual_balance::msg::{
+            Allowance, ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State,
+        },
     },
     voucher::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
+use crate::state::{ALLOWANCES, BALANCES, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,

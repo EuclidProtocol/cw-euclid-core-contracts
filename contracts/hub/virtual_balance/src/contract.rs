@@ -8,7 +8,8 @@ use crate::execute::{
     execute_transfer, execute_update_state,
 };
 use crate::query::{
-    query_all_balances, query_balance, query_state, query_token_balances, query_user_balances,
+    query_all_balances, query_allowance, query_balance, query_state, query_token_balances,
+    query_user_balances,
 };
 use crate::state::STATE;
 use euclid::error::ContractError;
@@ -66,6 +67,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     match msg {
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetBalance { balance_key } => query_balance(deps, balance_key),
+        QueryMsg::GetAllowance { balance_key } => query_allowance(deps, balance_key),
         QueryMsg::GetUserBalances { user, pagination } => {
             query_user_balances(deps, user.chain_uid, user.address, pagination)
         }
