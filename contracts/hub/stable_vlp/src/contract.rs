@@ -20,8 +20,8 @@ use euclid_pool::{
     update_state, SwapCalculationMethod,
 };
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:stable_vlp";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const CONTRACT_NAME: &str = "crates.io:stable_vlp";
+pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
