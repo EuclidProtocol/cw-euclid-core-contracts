@@ -16,10 +16,7 @@ use euclid_ibc::router_ibc::{
 
 use crate::{
     query::get_chain_type,
-    state::{
-        DenomRegisterDeregisterRequest, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
-    },
+    state::{DenomRequest, PENDING_DENOM_REQUESTS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW},
 };
 
 pub fn execute_request_register_denom(
@@ -45,8 +42,7 @@ pub fn execute_request_register_denom(
     let tx_id = generate_tx(deps, &env, &sender)?;
 
     ensure!(
-        !PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
-            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_DENOM_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
     let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.token.clone())?;
@@ -83,17 +79,13 @@ pub fn execute_request_register_denom(
         cross_chain_config.ack_response,
     )?;
 
-    let req = DenomRegisterDeregisterRequest {
+    let req = DenomRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.clone(),
         token: token.clone(),
     };
 
-    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.save(
-        deps.storage,
-        (info.sender.clone(), tx_id.clone()),
-        &req,
-    )?;
+    PENDING_DENOM_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     Ok(Response::new()
         .add_event(tx_event(
@@ -131,8 +123,7 @@ pub fn execute_request_deregister_denom(
     let tx_id = generate_tx(deps, &env, &sender)?;
 
     ensure!(
-        !PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
-            .has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        !PENDING_DENOM_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
     let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone())?;
@@ -164,17 +155,13 @@ pub fn execute_request_deregister_denom(
         cross_chain_config.ack_response,
     )?;
 
-    let req = DenomRegisterDeregisterRequest {
+    let req = DenomRequest {
         tx_id: tx_id.clone(),
         sender: info.sender.clone(),
         token: token.clone(),
     };
 
-    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.save(
-        deps.storage,
-        (info.sender.clone(), tx_id.clone()),
-        &req,
-    )?;
+    PENDING_DENOM_REQUESTS.save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
 
     Ok(Response::new()
         .add_event(tx_event(

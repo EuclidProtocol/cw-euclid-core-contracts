@@ -67,15 +67,13 @@ pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =
     Map::new("request_to_pool");
 
 #[cw_serde]
-pub struct DenomRegisterDeregisterRequest {
+pub struct DenomRequest {
     pub tx_id: String,
     pub sender: Addr,
     pub token: TokenWithDenom,
 }
-pub const PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS: Map<
-    (Addr, String),
-    DenomRegisterDeregisterRequest,
-> = Map::new("request_denom_register_deregister");
+pub const PENDING_DENOM_REQUESTS: Map<(Addr, String), DenomRequest> =
+    Map::new("pending_denom_requests");
 
 // Map for pending swaps for user
 pub const PENDING_SWAPS: Map<(Addr, String), SwapRequest> = Map::new("pending_swaps");
