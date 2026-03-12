@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "astroport-forwarding"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "astroport",
  "cosmwasm-schema 1.5.11",
@@ -514,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "claimer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "cp_vlp"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -997,7 +997,7 @@ dependencies = [
 
 [[package]]
 name = "cw-multicall"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -1538,7 +1538,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "escrow"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -1605,7 +1605,7 @@ dependencies = [
 
 [[package]]
 name = "euclid-relayer"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -1646,7 +1646,7 @@ dependencies = [
 
 [[package]]
 name = "factory"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -2282,7 +2282,7 @@ checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
 
 [[package]]
 name = "lp_token"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -2312,7 +2312,7 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "meta-transaction"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -2498,7 +2498,7 @@ dependencies = [
 
 [[package]]
 name = "osmosis-forwarding"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema 1.5.11",
  "cosmwasm-std 1.5.11",
@@ -2907,7 +2907,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -3319,7 +3319,7 @@ dependencies = [
 
 [[package]]
 name = "stable_vlp"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -3867,7 +3867,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "virtual_balance"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",

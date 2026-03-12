@@ -1,3 +1,5 @@
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
+use crate::state::{ADMIN, STATE};
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{entry_point, Addr, DepsMut, Env, Response};
 use cw2::set_contract_version;
@@ -7,11 +9,6 @@ use euclid::{
     error::ContractError,
     msgs::virtual_balance::msg::{MigrateMsg, State},
 };
-
-use crate::state::{ADMIN, STATE};
-
-const CONTRACT_NAME: &str = "crates.io:virtual_balance";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cw_serde]
 struct LegacyStateWithEuclidAdmin {

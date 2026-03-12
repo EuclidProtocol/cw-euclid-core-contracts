@@ -92,7 +92,6 @@ mod tests {
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register_denom::register_denom;
     use crate::tests_reusable::state_sync::sync_state;
-    use cosmwasm_std::to_json_string;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
     use euclid::msgs::vlp::base::PoolConfig;

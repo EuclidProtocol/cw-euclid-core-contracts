@@ -1,13 +1,10 @@
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
+use crate::state::{State, ADMIN, STATE};
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{entry_point, DepsMut, Env, Response};
 use cw2::set_contract_version;
 use cw_storage_plus::Item;
 use euclid::{admin::EuclidAdmin, error::ContractError, msgs::factory::MigrateMsg};
-
-use crate::state::{State, ADMIN, STATE};
-
-const CONTRACT_NAME: &str = "crates.io:factory";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cw_serde]
 struct LegacyStateWithEuclidAdmin {

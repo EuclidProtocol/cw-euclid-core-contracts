@@ -7,8 +7,7 @@ use crate::error::ContractError;
 use crate::state::{State, ADMIN, STATE};
 use euclid::msgs::orderbook_deposits::{MigrateMsg, OrderbookDepositsStatus};
 
-const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 
 #[cw_serde]
 struct LegacyState {

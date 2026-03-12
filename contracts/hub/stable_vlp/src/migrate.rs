@@ -10,10 +10,8 @@ use euclid::{
     token::Pair,
 };
 
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 use crate::state::{ADMIN, STATE};
-
-const CONTRACT_NAME: &str = "crates.io:stable_vlp";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cw_serde]
 struct LegacyState {

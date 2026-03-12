@@ -9,8 +9,7 @@ use euclid::{
 
 use crate::state::{ADMIN, STATE};
 
-const CONTRACT_NAME: &str = "crates.io:euclid-claimer";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 
 #[cw_serde]
 struct LegacyState {

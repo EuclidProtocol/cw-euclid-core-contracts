@@ -27,8 +27,8 @@ use crate::{
     state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE},
 };
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:vlp";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const CONTRACT_NAME: &str = "crates.io:vlp";
+pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
