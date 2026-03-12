@@ -1,5 +1,5 @@
 use euclid::{
-    admin::{self},
+    admin::{self, EuclidAdmin},
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -127,13 +127,15 @@ pub fn update_fee(
     deps: DepsMut,
     info: MessageInfo,
     state_storage: &Item<State>,
+    admin_storage: &Item<EuclidAdmin>,
     lp_fee_bps: Option<u64>,
     euclid_fee_bps: Option<u64>,
     recipient: Option<CrossChainUser>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
+    let admin = admin_storage.load(deps.storage)?;
     ensure!(
-        info.sender == state.admin.fee_admin,
+        info.sender == admin.fee_admin,
         ContractError::Unauthorized {}
     );
 
@@ -164,13 +166,13 @@ pub fn update_fee(
 pub fn update_amp_factor(
     deps: DepsMut,
     info: MessageInfo,
-    state_storage: &Item<State>,
+    admin_storage: &Item<EuclidAdmin>,
     amp_factor_storage: &Item<Uint64>,
     amp_factor: Uint64,
 ) -> Result<Response, ContractError> {
-    let state = state_storage.load(deps.storage)?;
+    let admin = admin_storage.load(deps.storage)?;
     ensure!(
-        info.sender == state.admin.general_admin,
+        info.sender == admin.general_admin,
         ContractError::Unauthorized {}
     );
     amp_factor_storage.save(deps.storage, &amp_factor)?;
@@ -179,21 +181,19 @@ pub fn update_amp_factor(
         .add_attribute("amp_factor", amp_factor.to_string()))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn update_admin(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    state_storage: &Item<State>, // Reference to STATE
+    admin_storage: &Item<EuclidAdmin>,
     admin: String,
     admin_type: admin::AdminType,
 ) -> Result<Response, ContractError> {
-    let mut state = state_storage.load(deps.storage)?;
+    let current_admin = admin_storage.load(deps.storage)?;
 
     let (updated_admins, response) =
-        admin::update_admin(&state.admin, &deps, &env, &info.sender, admin, admin_type)?;
-    state.admin = updated_admins;
-    state_storage.save(deps.storage, &state)?;
+        admin::update_admin(&current_admin, &deps, &env, &info.sender, admin, admin_type)?;
+    admin_storage.save(deps.storage, &updated_admins)?;
 
     Ok(response)
 }

@@ -45,6 +45,10 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(GetStateResponse)]
     State {},
+
+    #[returns(EuclidAdmin)]
+    GetAdmin {},
+
     // Query to simulate a swap for the asset
     #[returns(GetSwapQueryResponse)]
     SimulateSwap(VlpSimulateSwapMsg),
@@ -80,7 +84,6 @@ pub struct GetStateResponse {
     pub total_fees_collected: TotalFees,
     pub last_updated: u64,
     pub total_lp_tokens: Uint128,
-    pub admin: EuclidAdmin,
     pub pool_config: PoolConfig,
 }
 

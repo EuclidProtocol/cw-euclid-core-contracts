@@ -14,7 +14,7 @@ use relayer::verify::{
     verify_keccak256_signature, verify_signature,
 };
 
-use crate::state::{NONCES, STATE};
+use crate::state::{ADMIN, NONCES, STATE};
 
 pub fn execute_update_admin(
     deps: &mut DepsMut,
@@ -22,9 +22,9 @@ pub fn execute_update_admin(
     info: &MessageInfo,
     msg: UpdateAdminMsg,
 ) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
+    let mut admins = ADMIN.load(deps.storage)?;
     let (updated_admins, response) = admin::update_admin(
-        &state.admin,
+        &admins,
         deps,
         &env,
         &info.sender,
@@ -32,9 +32,9 @@ pub fn execute_update_admin(
         msg.admin_type,
     )?;
 
-    state.admin = updated_admins;
-    STATE.save(deps.storage, &state)?;
-    Ok(response.add_attribute("new_admin", state.admin.to_string()))
+    admins = updated_admins;
+    ADMIN.save(deps.storage, &admins)?;
+    Ok(response.add_attribute("new_admin", admins.to_string()))
 }
 
 pub fn execute_meta_transaction(

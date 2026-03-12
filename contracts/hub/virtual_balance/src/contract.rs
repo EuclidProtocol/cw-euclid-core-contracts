@@ -9,9 +9,10 @@ use crate::execute::{
     execute_transfer, execute_update_admin, execute_update_router,
 };
 use crate::query::{
-    query_all_balances, query_balance, query_state, query_token_balances, query_user_balances,
+    query_admin, query_all_balances, query_balance, query_state, query_token_balances,
+    query_user_balances,
 };
-use crate::state::STATE;
+use crate::state::{ADMIN, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::virtual_balance::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, State};
 
@@ -28,17 +29,20 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
+    let admin = msg
+        .admin
+        .unwrap_or(EuclidAdmin::default(info.sender.clone()));
     let state = State {
-        router: info.sender.clone(),
-        admin: msg.admin.unwrap_or(EuclidAdmin::default(info.sender)),
+        router: info.sender,
     };
 
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &admin)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("token_balance_address", env.contract.address)
-        .add_attribute("admin", state.admin.to_string()))
+        .add_attribute("admin", admin.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -68,6 +72,7 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetState {} => query_state(deps),
+        QueryMsg::GetAdmin {} => query_admin(deps),
         QueryMsg::GetBalance { balance_key } => query_balance(deps, balance_key),
         QueryMsg::GetUserBalances { user, pagination } => {
             query_user_balances(deps, user.chain_uid, user.address, pagination)

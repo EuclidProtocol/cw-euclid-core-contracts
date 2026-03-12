@@ -21,7 +21,7 @@ pub enum ExecuteMsg {
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
-    #[returns(State)]
+    #[returns(StateResponse)]
     GetState {},
 
     #[returns(NonceRelayedResponse)]
@@ -30,6 +30,11 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct State {
+    pub router_contract: Addr,
+}
+
+#[cw_serde]
+pub struct StateResponse {
     pub router_contract: Addr,
     pub admin: EuclidAdmin,
 }

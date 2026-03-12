@@ -2,7 +2,7 @@
 use cosmwasm_std::coin;
 use cosmwasm_std::Addr;
 use euclid::admin::EuclidAdmin;
-use euclid::msgs::virtual_balance::{GetStateResponse, State};
+use euclid::msgs::virtual_balance::State;
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 use router::mock::mock_router;
 use router::mock::MockRouter;
@@ -50,11 +50,14 @@ fn test_proper_instantiation() {
 
     let token_id_response =
         MockVirtualBalance::query_state(&mock_virtual_balance, &virtual_balance);
-    let expected_token_id = GetStateResponse {
-        state: State {
-            router: mock_router.addr().clone(),
-            admin: EuclidAdmin::default(mock_router.addr().clone()),
-        },
+    let expected_token_id = State {
+        router: mock_router.addr().clone(),
     };
     assert_eq!(token_id_response, expected_token_id);
+
+    let admin_response = MockVirtualBalance::query_admin(&mock_virtual_balance, &virtual_balance);
+    assert_eq!(
+        admin_response,
+        EuclidAdmin::default(mock_router.addr().clone())
+    );
 }

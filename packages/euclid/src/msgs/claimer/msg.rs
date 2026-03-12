@@ -25,6 +25,8 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(State)]
     GetState {},
+    #[returns(Addr)]
+    GetAdmin {},
     #[returns(Vec<(u128, Claim)>)]
     GetSenderClaims {
         sender: CrossChainUser,
@@ -59,7 +61,6 @@ pub enum QueryMsg {
 pub struct State {
     pub vcoin_address: Addr,
     pub router_contract: Addr,
-    pub admin: Addr,
 }
 
 #[cw_serde]

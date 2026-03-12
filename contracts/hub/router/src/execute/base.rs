@@ -25,7 +25,7 @@ use euclid::{
 
 use crate::{
     ibc::receive::reusable_internal_call,
-    state::{CHAIN_UID_TO_CHAIN, META_TRANSACTION_CONTRACT, RELEASE_FEES, STATE},
+    state::{ADMIN, CHAIN_UID_TO_CHAIN, META_TRANSACTION_CONTRACT, RELEASE_FEES, STATE},
 };
 
 pub fn execute_manage_router_state(
@@ -35,12 +35,13 @@ pub fn execute_manage_router_state(
     msg: ManageRouterState,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
+    let mut admins = ADMIN.load(deps.storage)?;
     match msg {
         ManageRouterState::Admins { admin_type, admin } => {
             let (updated_admins, response) =
-                admin::update_admin(&state.admins, &deps, &env, &info.sender, admin, admin_type)?;
-            state.admins = updated_admins;
-            STATE.save(deps.storage, &state)?;
+                admin::update_admin(&admins, &deps, &env, &info.sender, admin, admin_type)?;
+            admins = updated_admins;
+            ADMIN.save(deps.storage, &admins)?;
             Ok(response)
         }
         ManageRouterState::Vlp {
@@ -48,7 +49,7 @@ pub fn execute_manage_router_state(
             stable_vlp_code_id,
         } => {
             ensure!(
-                info.sender == state.admins.migration_admin,
+                info.sender == admins.migration_admin,
                 ContractError::Unauthorized {}
             );
             state.constant_product_vlp_code_id =
@@ -59,7 +60,7 @@ pub fn execute_manage_router_state(
         }
         ManageRouterState::LockState { locked } => {
             ensure!(
-                info.sender == state.admins.general_admin,
+                info.sender == admins.general_admin,
                 ContractError::Unauthorized {}
             );
             state.locked = locked;
@@ -70,7 +71,7 @@ pub fn execute_manage_router_state(
         }
         ManageRouterState::RelayerContract { relayer_contract } => {
             ensure!(
-                info.sender == state.admins.general_admin,
+                info.sender == admins.general_admin,
                 ContractError::Unauthorized {}
             );
             let relayer_contract = deps.api.addr_validate(relayer_contract.as_str())?;
@@ -81,7 +82,7 @@ pub fn execute_manage_router_state(
             meta_transaction_contract,
         } => {
             ensure!(
-                info.sender == state.admins.general_admin,
+                info.sender == admins.general_admin,
                 ContractError::Unauthorized {}
             );
             let meta_transaction_contract =
@@ -99,7 +100,7 @@ pub fn execute_manage_router_state(
             default_fee_recipient,
         } => {
             ensure!(
-                info.sender == state.admins.fee_admin,
+                info.sender == admins.fee_admin,
                 ContractError::Unauthorized {}
             );
             let mut fee_state = FEE_STATE.load(deps.storage)?;
@@ -127,7 +128,7 @@ pub fn execute_manage_router_state(
             release_fee,
         } => {
             ensure!(
-                info.sender == state.admins.fee_admin,
+                info.sender == admins.fee_admin,
                 ContractError::Unauthorized {}
             );
             RELEASE_FEES.save(
@@ -151,7 +152,7 @@ pub fn execute_manage_router_state(
         }
         ManageRouterState::LockChain { chain } => {
             ensure!(
-                info.sender == state.admins.general_admin,
+                info.sender == admins.general_admin,
                 ContractError::Unauthorized {}
             );
             let mut locked_chains = LOCKED_CHAINS.load(deps.storage)?;
@@ -168,7 +169,7 @@ pub fn execute_manage_router_state(
         }
         ManageRouterState::UnlockChain { chain } => {
             ensure!(
-                info.sender == state.admins.general_admin,
+                info.sender == admins.general_admin,
                 ContractError::Unauthorized {}
             );
             let mut locked_chains = LOCKED_CHAINS.load(deps.storage)?;
@@ -200,9 +201,9 @@ pub fn execute_register_factory(
     chain_uid: ChainUid,
     chain_info: RegisterFactoryChainType,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
+    let admins = ADMIN.load(deps.storage)?;
     ensure!(
-        info.sender == state.admins.general_admin,
+        info.sender == admins.general_admin,
         ContractError::Unauthorized {}
     );
 

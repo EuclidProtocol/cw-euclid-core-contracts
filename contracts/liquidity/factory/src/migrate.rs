@@ -4,10 +4,21 @@ use cw2::set_contract_version;
 use cw_storage_plus::Item;
 use euclid::{admin::EuclidAdmin, error::ContractError, msgs::factory::MigrateMsg};
 
-use crate::state::{State, STATE};
+use crate::state::{State, ADMIN, STATE};
 
 const CONTRACT_NAME: &str = "crates.io:factory";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cw_serde]
+struct LegacyStateWithEuclidAdmin {
+    pub router_contract: String,
+    pub relayer_contract: cosmwasm_std::Addr,
+    pub admin: EuclidAdmin,
+    pub escrow_code_id: u64,
+    pub lp_code_id: u64,
+    pub chain_uid: euclid::chain::ChainUid,
+    pub is_native: bool,
+}
 
 #[cw_serde]
 struct LegacyState {
@@ -23,21 +34,35 @@ struct LegacyState {
 /// This is the migrate entry point for the contract.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
-    let migrated = if STATE.load(deps.storage).is_ok() {
+    let migrated = if ADMIN.load(deps.storage).is_ok() {
         false
-    } else {
-        let legacy_state = Item::<LegacyState>::new("state").load(deps.storage)?;
-        let admin = deps.api.addr_validate(&legacy_state.admin)?;
+    } else if let Ok(legacy_state) =
+        Item::<LegacyStateWithEuclidAdmin>::new("state").load(deps.storage)
+    {
         let state = State {
             router_contract: legacy_state.router_contract,
             relayer_contract: legacy_state.relayer_contract,
-            admin: EuclidAdmin::default(admin),
             escrow_code_id: legacy_state.escrow_code_id,
             lp_code_id: legacy_state.lp_code_id,
             chain_uid: legacy_state.chain_uid,
             is_native: legacy_state.is_native,
         };
         STATE.save(deps.storage, &state)?;
+        ADMIN.save(deps.storage, &legacy_state.admin)?;
+        true
+    } else {
+        let legacy_state = Item::<LegacyState>::new("state").load(deps.storage)?;
+        let admin = deps.api.addr_validate(&legacy_state.admin)?;
+        let state = State {
+            router_contract: legacy_state.router_contract,
+            relayer_contract: legacy_state.relayer_contract,
+            escrow_code_id: legacy_state.escrow_code_id,
+            lp_code_id: legacy_state.lp_code_id,
+            chain_uid: legacy_state.chain_uid,
+            is_native: legacy_state.is_native,
+        };
+        STATE.save(deps.storage, &state)?;
+        ADMIN.save(deps.storage, &EuclidAdmin::default(admin))?;
         true
     };
 
@@ -59,6 +84,28 @@ mod tests {
     // Helper: write a LegacyState directly into mock storage.
     // Only `admin` is varied across tests; all other fields are fixed dummies.
     // -------------------------------------------------------------------------
+
+    fn write_legacy_euclid_admin_state(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        admin: EuclidAdmin,
+    ) {
+        let legacy = LegacyStateWithEuclidAdmin {
+            router_contract: "router".to_string(),
+            relayer_contract: deps.api.addr_make("relayer"),
+            admin,
+            escrow_code_id: 1,
+            lp_code_id: 2,
+            chain_uid: ChainUid::create("andr".to_string()).unwrap(),
+            is_native: false,
+        };
+        Item::<LegacyStateWithEuclidAdmin>::new("state")
+            .save(deps.as_mut().storage, &legacy)
+            .unwrap();
+    }
 
     fn write_legacy_state(
         deps: &mut cosmwasm_std::OwnedDeps<
@@ -83,25 +130,18 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Branch 1 – current State already exists → admin not migrated
+    // Branch 1 – current Admin already exists → admin not migrated
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_migrate_skips_when_current_state_exists() {
+    fn test_migrate_skips_when_current_admin_exists() {
         let mut deps = mock_dependencies();
         let env = mock_env();
 
         let admin = deps.api.addr_make("admin");
-        let current_state = State {
-            router_contract: "router".to_string(),
-            relayer_contract: deps.api.addr_make("relayer"),
-            admin: EuclidAdmin::default(admin),
-            escrow_code_id: 1,
-            lp_code_id: 2,
-            chain_uid: ChainUid::create("andr".to_string()).unwrap(),
-            is_native: false,
-        };
-        STATE.save(deps.as_mut().storage, &current_state).unwrap();
+        ADMIN
+            .save(deps.as_mut().storage, &EuclidAdmin::default(admin))
+            .unwrap();
 
         let res = migrate(
             deps.as_mut(),
@@ -122,7 +162,36 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Branch 2 – LegacyState exists → admin is migrated
+    // Branch 2 – LegacyStateWithEuclidAdmin → admin is migrated
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_migrate_promotes_legacy_euclid_admin_to_separate_item() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        let admin = deps.api.addr_make("admin");
+        let euclid_admin = EuclidAdmin::default(admin);
+        write_legacy_euclid_admin_state(&mut deps, euclid_admin.clone());
+
+        migrate(
+            deps.as_mut(),
+            env,
+            MigrateMsg {
+                mock_relayer_address: None,
+            },
+        )
+        .unwrap();
+
+        let saved_admin = ADMIN.load(deps.as_ref().storage).unwrap();
+        assert_eq!(saved_admin, euclid_admin);
+
+        let saved_state = STATE.load(deps.as_ref().storage).unwrap();
+        assert_eq!(saved_state.escrow_code_id, 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Branch 3 – LegacyState exists → admin is migrated
     // -------------------------------------------------------------------------
 
     #[test]
@@ -152,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn test_migrate_promotes_legacy_admin_string_to_euclid_admin() {
+    fn test_migrate_promotes_legacy_admin_string_to_separate_admin_item() {
         let mut deps = mock_dependencies();
         let env = mock_env();
 
@@ -168,8 +237,8 @@ mod tests {
         )
         .unwrap();
 
-        let saved = STATE.load(deps.as_ref().storage).unwrap();
-        assert_eq!(saved.admin, EuclidAdmin::default(admin));
+        let saved = ADMIN.load(deps.as_ref().storage).unwrap();
+        assert_eq!(saved, EuclidAdmin::default(admin));
     }
 
     #[test]

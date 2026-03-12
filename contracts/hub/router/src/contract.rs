@@ -28,7 +28,7 @@ use crate::reply::{
     SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
     VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{FeeState, State, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE};
+use crate::state::{FeeState, State, ADMIN, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -45,7 +45,6 @@ pub fn instantiate(
     let state = State {
         constant_product_vlp_code_id: msg.constant_product_vlp_code_id,
         stable_vlp_code_id: msg.stable_vlp_code_id,
-        admins: EuclidAdmin::default(info.sender.clone()),
         locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -54,6 +53,7 @@ pub fn instantiate(
     LOCKED_CHAINS.save(deps.storage, &vec![])?;
 
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
     FEE_STATE.save(
         deps.storage,
         &FeeState {

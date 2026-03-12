@@ -112,8 +112,10 @@ fn test_proper_instantiation() {
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
-        admin: admin,
         pool_config: PoolConfig::ConstantProduct {},
     };
     assert_eq!(token_id_response, expected_token_id);
+
+    let admin_response = MockCpVlp::query_admin(&mock_vlp, &vlp);
+    assert_eq!(admin_response, admin);
 }

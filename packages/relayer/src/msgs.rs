@@ -31,6 +31,9 @@ pub enum QueryMsg {
     #[returns(State)]
     GetState {},
 
+    #[returns(EuclidAdmin)]
+    GetAdmin {},
+
     #[returns(bool)]
     NonceRelayed { nonce: String },
 
@@ -48,7 +51,6 @@ pub struct Validator {
 pub struct State {
     pub message_signer: Validator,
     pub signature_threshold: u8,
-    pub admin: EuclidAdmin,
 }
 
 #[cw_serde]

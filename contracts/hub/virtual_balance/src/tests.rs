@@ -3,7 +3,7 @@
 mod tests {
 
     use crate::contract::{execute, instantiate};
-    use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
+    use crate::state::{Allowance, ADMIN, ALLOWANCES, BALANCES, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, MessageInfo, Response, Uint128};
@@ -41,9 +41,11 @@ mod tests {
         let router = deps.api.addr_make("router");
         let admin = EuclidAdmin::default(router.clone());
 
-        let expected_state = State { router, admin };
+        let expected_state = State { router };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
+        let saved_admin = ADMIN.load(&deps.storage).unwrap();
+        assert_eq!(saved_admin, admin);
     }
 
     #[test]
@@ -171,9 +173,9 @@ mod tests {
         let admin = EuclidAdmin::default(router.clone());
         let state = State {
             router: router.clone(),
-            admin,
         };
         STATE.save(&mut deps.storage, &state).unwrap();
+        ADMIN.save(&mut deps.storage, &admin).unwrap();
 
         // Setup users
         let owner = CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "owner".to_string());
@@ -349,15 +351,8 @@ mod tests {
         let admin = EuclidAdmin::default(router.clone());
 
         // Save initial state
-        STATE
-            .save(
-                &mut deps.storage,
-                &State {
-                    router,
-                    admin: admin.clone(),
-                },
-            )
-            .unwrap();
+        STATE.save(&mut deps.storage, &State { router }).unwrap();
+        ADMIN.save(&mut deps.storage, &admin).unwrap();
 
         // Helper to create BalanceKey
         let key = |user: &str| {

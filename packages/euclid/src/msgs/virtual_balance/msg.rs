@@ -12,7 +12,6 @@ use crate::{
 #[cw_serde]
 pub struct State {
     pub router: Addr,
-    pub admin: EuclidAdmin,
 }
 
 #[cw_serde]
@@ -84,8 +83,11 @@ pub struct MigrateMsg {}
 #[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     // Query to simulate a swap for the asset
-    #[returns(GetStateResponse)]
+    #[returns(State)]
     GetState {},
+
+    #[returns(EuclidAdmin)]
+    GetAdmin {},
 
     // Query to simulate a swap for the asset
     #[returns(GetBalanceResponse)]
@@ -106,12 +108,6 @@ pub enum QueryMsg {
         token_id: String,
         pagination: Option<Pagination<Uint128>>,
     },
-}
-
-// We define a custom struct for each query response
-#[cw_serde]
-pub struct GetStateResponse {
-    pub state: State,
 }
 
 #[cw_serde]

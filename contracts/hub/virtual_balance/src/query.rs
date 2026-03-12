@@ -4,10 +4,7 @@ use euclid::{
     chain::ChainUid,
     error::ContractError,
     msgs::virtual_balance::{
-        msg::{
-            GetBalanceResponse, GetStateResponse, GetUserBalancesResponse,
-            GetUserBalancesResponseItem,
-        },
+        msg::{GetBalanceResponse, GetUserBalancesResponse, GetUserBalancesResponseItem},
         GetAllBalancesResponse, GetAllBalancesResponseItem, GetTokenBalancesResponse,
         GetTokenBalancesResponseItem,
     },
@@ -16,11 +13,16 @@ use euclid::{
 };
 use schemars::Map;
 
-use crate::state::{BALANCES, STATE};
+use crate::state::{ADMIN, BALANCES, STATE};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
-    Ok(to_json_binary(&GetStateResponse { state })?)
+    Ok(to_json_binary(&state)?)
+}
+
+pub fn query_admin(deps: Deps) -> Result<Binary, ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    Ok(to_json_binary(&admin)?)
 }
 
 pub fn query_balance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, ContractError> {

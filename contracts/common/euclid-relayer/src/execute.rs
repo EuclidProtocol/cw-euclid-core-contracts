@@ -8,7 +8,7 @@ use relayer::{
     MetaTransactionData, Validator,
 };
 
-use crate::state::{NONCES, STATE, VALIDATORS};
+use crate::state::{ADMIN, NONCES, STATE, VALIDATORS};
 
 pub fn execute_update_state(
     deps: &mut DepsMut,
@@ -16,8 +16,9 @@ pub fn execute_update_state(
     msg: UpdateStateMsg,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     ensure!(
-        info.sender == state.admin.general_admin,
+        info.sender == admin.general_admin,
         ContractError::Unauthorized {}
     );
     let mut response = Response::new();
@@ -64,9 +65,9 @@ pub fn execute_update_admin(
     info: &MessageInfo,
     msg: UpdateAdminMsg,
 ) -> Result<Response, ContractError> {
-    let mut state = STATE.load(deps.storage)?;
+    let current_admin = ADMIN.load(deps.storage)?;
     let (updated_admins, response) = admin::update_admin(
-        &state.admin,
+        &current_admin,
         deps,
         &env,
         &info.sender,
@@ -74,10 +75,9 @@ pub fn execute_update_admin(
         msg.admin_type,
     )?;
 
-    state.admin = updated_admins;
-    STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &updated_admins)?;
     Ok(response
-        .add_attribute("old_admin", state.admin.to_string())
+        .add_attribute("old_admin", current_admin.to_string())
         .add_attribute("new_admin", msg.new_admin.to_string()))
 }
 
@@ -181,9 +181,9 @@ pub fn execute_add_validator(
     validator: Validator,
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     ensure!(
-        info.sender == state.admin.general_admin,
+        info.sender == admin.general_admin,
         ContractError::Unauthorized {}
     );
     let mut validators = VALIDATORS
@@ -204,9 +204,9 @@ pub fn execute_remove_validator(
     validator: Validator,
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     ensure!(
-        info.sender == state.admin.general_admin,
+        info.sender == admin.general_admin,
         ContractError::Unauthorized {}
     );
     let mut validators = VALIDATORS

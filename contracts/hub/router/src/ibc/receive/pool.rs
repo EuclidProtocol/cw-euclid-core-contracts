@@ -22,8 +22,8 @@ use crate::{
         VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        ESCROW_BALANCES, FEE_STATE, FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS,
-        VIRTUAL_BALANCE_CONTRACT, VLPS,
+        ADMIN, ESCROW_BALANCES, FEE_STATE, FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE,
+        TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
 
@@ -37,6 +37,7 @@ pub fn ibc_execute_request_pool_creation(
     slippage_tolerance_bps: u64,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let admins = ADMIN.load(deps.storage)?;
 
     let pair = pair_with_denom.get_pair()?;
     pair.validate()?;
@@ -135,7 +136,7 @@ pub fn ibc_execute_request_pool_creation(
         );
         let msg = match pool_config {
             PoolConfig::Stable { amp_factor } => WasmMsg::Instantiate {
-                admin: Some(state.admins.migration_admin.to_string()),
+                admin: Some(admins.migration_admin.to_string()),
                 code_id: state.stable_vlp_code_id,
                 msg: to_json_binary(&msgs::vlp::stable::msg::InstantiateMsg {
                     router: env.contract.address,
@@ -149,14 +150,14 @@ pub fn ibc_execute_request_pool_creation(
                             tx_id: tx_id.clone(),
                         },
                     )),
-                    admin: state.admins,
+                    admin: admins,
                     amp_factor,
                 })?,
                 funds: vec![],
                 label: "Stable VLP".to_string(),
             },
             PoolConfig::ConstantProduct {} => WasmMsg::Instantiate {
-                admin: Some(state.admins.general_admin.to_string()),
+                admin: Some(admins.general_admin.to_string()),
                 code_id: state.constant_product_vlp_code_id,
                 msg: to_json_binary(&msgs::vlp::cp::msg::InstantiateMsg {
                     router: env.contract.address,
@@ -170,7 +171,7 @@ pub fn ibc_execute_request_pool_creation(
                             tx_id: tx_id.clone(),
                         },
                     )),
-                    admin: state.admins,
+                    admin: admins,
                 })?,
                 funds: vec![],
                 label: "Constant Product VLP".to_string(),
