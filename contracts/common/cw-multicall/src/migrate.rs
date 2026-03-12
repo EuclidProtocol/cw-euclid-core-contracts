@@ -3,8 +3,7 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 use euclid_utils::msgs::multicall::MigrateMsg;
 
-const CONTRACT_NAME: &str = "crates.io:cw-multicall";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 
 /// This is the migrate entry point for the contract.
 #[cfg_attr(not(feature = "library"), entry_point)]

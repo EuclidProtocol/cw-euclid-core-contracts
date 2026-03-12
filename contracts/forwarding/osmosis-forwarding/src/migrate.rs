@@ -3,8 +3,7 @@ use cw2::set_contract_version;
 use forwarding::msgs::errors_old::ContractError;
 use forwarding::msgs::osmosis::MigrateMsg;
 
-const CONTRACT_NAME: &str = "crates.io:osmosis-forwarding";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 
 /// This is the migrate entry point for the contract.
 #[cfg_attr(not(feature = "library"), entry_point)]

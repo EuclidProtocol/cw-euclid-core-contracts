@@ -11,8 +11,8 @@ use euclid::msgs::orderbook_deposits::{
     ExecuteMsg, InstantiateMsg, OrderbookDepositsStatus, QueryMsg,
 };
 
-const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
+pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(

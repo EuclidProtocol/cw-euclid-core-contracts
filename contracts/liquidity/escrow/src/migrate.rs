@@ -2,8 +2,7 @@ use cosmwasm_std::{entry_point, DepsMut, Env, Response};
 use cw2::set_contract_version;
 use euclid::{error::ContractError, msgs::escrow::MigrateMsg};
 
-const CONTRACT_NAME: &str = "crates.io:escrow";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 
 /// This is the migrate entry point for the contract.
 #[cfg_attr(not(feature = "library"), entry_point)]

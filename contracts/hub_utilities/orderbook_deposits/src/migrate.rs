@@ -4,8 +4,7 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use euclid::msgs::orderbook_deposits::MigrateMsg;
 
-const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 
 /// Migrate entry point. This can only be called by the chain contract admin.
 #[cfg_attr(not(feature = "library"), entry_point)]
