@@ -9,7 +9,7 @@ use euclid::{
     token::TokenType,
 };
 
-use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
+use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, DISALLOWED_DENOMS, STATE};
 
 use euclid_ibc::ack::AcknowledgementMsg;
 
@@ -77,6 +77,11 @@ pub fn execute_disallow_denom(
     // Remove denom from list
     allowed_denoms.retain(|current_denom| current_denom != &denom);
     ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
+
+    // Add to disallowed denoms
+    let mut disallowed_denoms = DISALLOWED_DENOMS.load(deps.storage).unwrap_or_default();
+    disallowed_denoms.push(denom.clone());
+    DISALLOWED_DENOMS.save(deps.storage, &disallowed_denoms)?;
 
     //TODO refund the disallowed funds
     Ok(Response::new()
@@ -233,9 +238,17 @@ pub fn execute_withdraw(
     // Ensure that the amount desired is above zero
     ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
 
-    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
+    let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
+    let disallowed_denoms = DISALLOWED_DENOMS.load(deps.storage).unwrap_or_default();
+
+    let mut denoms = {
+        let mut v = allowed_denoms;
+        v.extend(disallowed_denoms);
+        v.into_iter().peekable()
+    };
+
     ensure!(
-        allowed_denoms.any(|denom| denom.get_key() == denom.get_key()),
+        denoms.any(|denom| denom.get_key() == denom.get_key()),
         ContractError::UnsupportedDenomination {}
     );
 
