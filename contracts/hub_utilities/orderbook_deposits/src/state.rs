@@ -7,13 +7,13 @@ pub type AssetId = String;
 
 #[cw_serde]
 pub struct State {
-    // Contract admin
-    pub admin: Addr,
     // status of the orderbook deposits
     pub status: OrderbookDepositsStatus,
     // Virtual balance address
     pub virtual_balance: Addr,
 }
+
+pub const ADMIN: Item<Addr> = Item::new("admin");
 
 #[cw_serde]
 pub struct RootConfig {

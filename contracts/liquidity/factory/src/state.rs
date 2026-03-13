@@ -2,6 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Int256, Uint512};
 use cw_storage_plus::{Item, Map};
 use euclid::{
+    admin::EuclidAdmin,
     chain::ChainUid,
     deposit::DepositTokenRequest,
     fee::DenomFees,
@@ -15,8 +16,6 @@ pub struct State {
     // The Router Contract Address on the Virtual Settlement Layer
     pub router_contract: String,
     pub relayer_contract: Addr,
-    // Contract admin
-    pub admin: String,
     // Escrow Code ID
     pub escrow_code_id: u64,
     // LP Token Code ID
@@ -29,6 +28,7 @@ pub struct State {
 }
 
 pub const STATE: Item<State> = Item::new("state");
+pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 #[cw_serde]
 pub struct FeeState {

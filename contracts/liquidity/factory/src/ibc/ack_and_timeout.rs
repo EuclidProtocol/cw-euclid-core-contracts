@@ -21,7 +21,7 @@ use euclid_ibc::{ack::AcknowledgementMsg, router_ibc::RouterCrossChainExecuteMsg
 use crate::{
     reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
-        FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REQUESTS,
+        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REQUESTS,
         PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
         PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
@@ -125,6 +125,7 @@ fn ack_pool_creation(
         AcknowledgementMsg::Ok(data) => {
             // Load state to get escrow code id in case we need to instantiate
             let state = STATE.load(deps.storage)?;
+            let admins = ADMIN.load(deps.storage)?;
             let escrow_code_id = state.escrow_code_id;
             let cw20_code_id = state.lp_code_id;
 
@@ -155,7 +156,7 @@ fn ack_pool_creation(
                     // Instantiate escrow if one doesn't exist
                     None => {
                         let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                            admin: Some(state.admin.clone()),
+                            admin: Some(admins.migration_admin.clone().into_string()),
                             code_id: escrow_code_id,
                             msg: to_json_binary(&EscrowInstantiateMsg {
                                 token_id: token.clone().token,
@@ -178,7 +179,7 @@ fn ack_pool_creation(
             let lp_token_instantiate_data = existing_req.lp_token_instantiate_msg;
             // Instantiate cw20
             let init_cw20_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                admin: Some(state.admin.clone()),
+                admin: Some(admins.migration_admin.into_string()),
                 code_id: cw20_code_id,
                 msg: to_json_binary(&euclid::msgs::lp_token::msg::InstantiateMsg {
                     name: lp_token_instantiate_data.name,
@@ -257,6 +258,7 @@ fn ack_register_denom(
     match res {
         AcknowledgementMsg::Ok(_data) => {
             let state = STATE.load(deps.storage)?;
+            let admins = ADMIN.load(deps.storage)?;
             let escrow_code_id = state.escrow_code_id;
             let token = existing_req.token;
 
@@ -282,7 +284,7 @@ fn ack_register_denom(
             } else {
                 // Instantiate escrow
                 let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                    admin: Some(state.admin.clone()),
+                    admin: Some(admins.migration_admin.into_string()),
                     code_id: escrow_code_id,
                     msg: to_json_binary(&EscrowInstantiateMsg {
                         token_id: token.token,

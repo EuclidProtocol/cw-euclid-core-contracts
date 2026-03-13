@@ -9,6 +9,7 @@ use cw_orch_interchain::core::InterchainEnv;
 use cw_orch_interchain::prelude::*;
 use escrow::mock::mock_escrow;
 use euclid::{
+    admin::EuclidAdmin,
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -95,7 +96,7 @@ fn test_proper_instantiation() {
         chain_uid,
         router_contract,
         relayer_contract,
-        admin: owner.clone().into_string(),
+        admin: EuclidAdmin::default(owner.clone()),
         escrow_code_id,
         lp_code_id: cw20_code_id,
         is_native: true,

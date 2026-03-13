@@ -8,7 +8,7 @@ use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
 use euclid_pool::{calculate_amount_from_shares, simulate_swap, SwapCalculationMethod};
 
-use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
+use crate::state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::msgs::vlp::cp::msg::{
     AllPoolsResponse, FeeResponse, GetStateResponse, PoolInfo, PoolResponse,
     TotalFeesPerDenomResponse, TotalFeesResponse,
@@ -109,9 +109,13 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         total_fees_collected: state.total_fees_collected,
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,
-        admin: state.admin,
         pool_config: PoolConfig::ConstantProduct {},
     })?)
+}
+
+pub fn query_admin(deps: Deps) -> Result<Binary, ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    Ok(to_json_binary(&admin)?)
 }
 
 // Function to query a Euclid Pool Information for this pair

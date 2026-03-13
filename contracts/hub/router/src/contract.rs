@@ -5,6 +5,7 @@ use cosmwasm_std::{
     SubMsg, WasmMsg,
 };
 use cw2::set_contract_version;
+use euclid::admin::EuclidAdmin;
 use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
@@ -27,7 +28,7 @@ use crate::reply::{
     SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
     VLP_POOL_REGISTER_REPLY_ID,
 };
-use crate::state::{FeeState, State, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE};
+use crate::state::{FeeState, State, ADMIN, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
@@ -44,7 +45,6 @@ pub fn instantiate(
     let state = State {
         constant_product_vlp_code_id: msg.constant_product_vlp_code_id,
         stable_vlp_code_id: msg.stable_vlp_code_id,
-        admin: info.sender.clone(),
         locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -53,6 +53,7 @@ pub fn instantiate(
     LOCKED_CHAINS.save(deps.storage, &vec![])?;
 
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
     FEE_STATE.save(
         deps.storage,
         &FeeState {
@@ -63,7 +64,7 @@ pub fn instantiate(
 
     let virtual_balance_instantiate_msg = euclid::msgs::virtual_balance::msg::InstantiateMsg {
         router: env.contract.address.clone(),
-        admin: Some(info.sender.clone()),
+        admin: Some(EuclidAdmin::default(info.sender.clone())),
     };
     let virtual_balance_instantiate_msg = WasmMsg::Instantiate {
         admin: Some(info.sender.to_string()),
@@ -94,7 +95,7 @@ pub fn execute(
     // If the contract is locked and the message isn't UpdateLock, return error
 
     match msg {
-        ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, info, msg),
+        ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, env, info, msg),
         _ => {
             // Only allow these messages if the contract is not locked
             ensure!(
@@ -102,7 +103,9 @@ pub fn execute(
                 ContractError::ContractLocked {}
             );
             match msg {
-                ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, info, msg),
+                ExecuteMsg::ManageRouterState(msg) => {
+                    execute_manage_router_state(deps, env, info, msg)
+                }
                 ExecuteMsg::RegisterFactory {
                     chain_uid,
                     chain_info,

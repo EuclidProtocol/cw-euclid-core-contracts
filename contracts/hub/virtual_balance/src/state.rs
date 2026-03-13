@@ -1,11 +1,13 @@
 use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map};
 use euclid::{
+    admin::EuclidAdmin,
     msgs::virtual_balance::{msg::State, Allowance},
     voucher::SerializedBalanceKey,
 };
 
 pub const STATE: Item<State> = Item::new("state");
+pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 pub const BALANCES: Map<SerializedBalanceKey, Uint128> = Map::new("balances");
 

@@ -2,10 +2,11 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::instantiate;
-    use crate::state::{State, STATE};
+    use crate::state::{State, ADMIN, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
+    use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::msgs::factory::InstantiateMsg;
 
@@ -14,12 +15,17 @@ mod tests {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             router_contract: "router_contract".to_string(),
             relayer_contract: Addr::unchecked("relayer_contract"),
-            admin: "admin".to_string(),
             escrow_code_id: 1,
             lp_code_id: 2,
             is_native: true,
         };
         STATE.save(deps.storage, &state).unwrap();
+        ADMIN
+            .save(
+                deps.storage,
+                &EuclidAdmin::default(Addr::unchecked("admin")),
+            )
+            .unwrap();
     }
 
     fn init(
@@ -54,14 +60,15 @@ mod tests {
         let expected_state = State {
             router_contract: "router".to_string(),
             relayer_contract: Addr::unchecked("relayer_contract"),
-            admin: owner.to_string(),
             escrow_code_id: 1,
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             lp_code_id: 2,
             is_native: true,
         };
         let state = STATE.load(&deps.storage).unwrap();
+        let admin = ADMIN.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
+        assert_eq!(admin, EuclidAdmin::default(owner));
     }
 
     //     #[test]

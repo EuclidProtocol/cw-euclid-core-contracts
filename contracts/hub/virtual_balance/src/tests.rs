@@ -3,10 +3,11 @@
 mod tests {
 
     use crate::contract::{execute, instantiate};
-    use crate::state::{ALLOWANCES, BALANCES, STATE};
+    use crate::state::{ADMIN, ALLOWANCES, BALANCES, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, MessageInfo, Response, Uint128};
+    use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
@@ -38,13 +39,13 @@ mod tests {
         let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
         let router = deps.api.addr_make("router");
+        let admin = EuclidAdmin::default(router.clone());
 
-        let expected_state = State {
-            router: router.clone(),
-            admin: router.clone(),
-        };
+        let expected_state = State { router };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
+        let saved_admin = ADMIN.load(&deps.storage).unwrap();
+        assert_eq!(saved_admin, admin);
     }
 
     #[test]
@@ -168,13 +169,13 @@ mod tests {
         let env = mock_env();
 
         // Setup initial state
-        let router = Addr::unchecked("router");
-        let admin = Addr::unchecked("admin");
+        let router = deps.api.addr_make("router");
+        let admin = EuclidAdmin::default(router.clone());
         let state = State {
             router: router.clone(),
-            admin: admin.clone(),
         };
         STATE.save(&mut deps.storage, &state).unwrap();
+        ADMIN.save(&mut deps.storage, &admin).unwrap();
 
         // Setup users
         let owner = CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "owner".to_string());
@@ -346,19 +347,12 @@ mod tests {
     fn test_remove_zero_state_values() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let router = Addr::unchecked("router");
-        let admin = Addr::unchecked("admin");
+        let router = deps.api.addr_make("router");
+        let admin = EuclidAdmin::default(router.clone());
 
         // Save initial state
-        STATE
-            .save(
-                &mut deps.storage,
-                &State {
-                    router: router.clone(),
-                    admin: admin.clone(),
-                },
-            )
-            .unwrap();
+        STATE.save(&mut deps.storage, &State { router }).unwrap();
+        ADMIN.save(&mut deps.storage, &admin).unwrap();
 
         // Helper to create BalanceKey
         let key = |user: &str| {
@@ -378,7 +372,7 @@ mod tests {
                 deps.as_mut(),
                 env.clone(),
                 MessageInfo {
-                    sender: admin.clone(),
+                    sender: admin.general_admin.clone(),
                     funds: vec![],
                 },
                 ExecuteMsg::RemoveZeroStateValues {

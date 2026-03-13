@@ -19,14 +19,15 @@ use euclid::{
 };
 
 use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS,
-    VIRTUAL_BALANCE_CONTRACT, VLPS,
+    ADMIN, CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE,
+    TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let admins = ADMIN.load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
-        admin: state.admin,
+        admins,
         constant_product_vlp_code_id: state.constant_product_vlp_code_id,
         stable_vlp_code_id: state.stable_vlp_code_id,
         virtual_balance_address: VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?,

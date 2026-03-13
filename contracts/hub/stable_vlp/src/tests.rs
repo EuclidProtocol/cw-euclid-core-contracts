@@ -3,7 +3,7 @@
 mod tests {
     use crate::{
         contract::{execute, instantiate},
-        state::{BALANCES, CHAIN_LP_TOKENS, STATE},
+        state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, STATE},
     };
     use cosmwasm_std::{
         coins,
@@ -11,6 +11,7 @@ mod tests {
         Addr, Decimal256, Response, Uint128, Uint64,
     };
     use euclid::{
+        admin::EuclidAdmin,
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         error::ContractError,
@@ -32,7 +33,7 @@ mod tests {
         >,
     ) -> Response {
         let router = deps.api.addr_make("router");
-        let admin = deps.api.addr_make("admin");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
         let msg = InstantiateMsg {
             router: Addr::unchecked("router"),
             virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
@@ -63,7 +64,7 @@ mod tests {
         let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
         let router = deps.api.addr_make("router");
-        let admin = deps.api.addr_make("admin");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
         let expected_state = State {
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
@@ -89,10 +90,11 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
-            admin,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
+        let saved_admin = ADMIN.load(&deps.storage).unwrap();
+        assert_eq!(saved_admin, admin);
 
         let balance_1 = BALANCES.load(&deps.storage, state.pair.token_1).unwrap();
         let expected_balance_1 = Uint128::zero();
