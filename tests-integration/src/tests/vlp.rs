@@ -6,6 +6,7 @@ use cosmwasm_std::Addr;
 use cosmwasm_std::Uint128;
 use cp_vlp::mock::mock_cp_vlp;
 use cp_vlp::mock::MockCpVlp;
+use euclid::admin::EuclidAdmin;
 use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::fee::DenomFees;
@@ -81,6 +82,8 @@ fn test_proper_instantiation() {
 
     let fee = Fee::new(1, 2, recipient);
 
+    let admin = EuclidAdmin::default(owner.clone());
+
     let mock_vlp = MockCpVlp::instantiate(
         &mut vlp,
         vlp_code_id,
@@ -90,7 +93,7 @@ fn test_proper_instantiation() {
         pair.clone(),
         fee.clone(),
         None,
-        owner.clone(),
+        admin.clone(),
     );
 
     let token_id_response = MockCpVlp::query_state(&mock_vlp, &vlp);
@@ -109,8 +112,10 @@ fn test_proper_instantiation() {
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
-        admin: owner.clone(),
         pool_config: PoolConfig::ConstantProduct {},
     };
     assert_eq!(token_id_response, expected_token_id);
+
+    let admin_response = MockCpVlp::query_admin(&mock_vlp, &vlp);
+    assert_eq!(admin_response, admin);
 }

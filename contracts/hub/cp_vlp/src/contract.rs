@@ -14,17 +14,17 @@ use euclid::{
     },
 };
 use euclid_pool::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_fee, update_state,
+    add_liquidity, execute_swap, register_pool, remove_liquidity, update_admin, update_fee,
     SwapCalculationMethod,
 };
 
 use crate::{
     query::{
-        query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap, query_state,
-        query_total_fees_collected, query_total_fees_per_denom,
+        query_admin, query_all_pools, query_fee, query_liquidity, query_pool, query_simulate_swap,
+        query_state, query_total_fees_collected, query_total_fees_per_denom,
     },
     reply,
-    state::{BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE},
+    state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE},
 };
 // version info for migration info
 pub(crate) const CONTRACT_NAME: &str = "crates.io:vlp";
@@ -55,11 +55,10 @@ pub fn instantiate(
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
-        admin: msg.admin,
     };
-
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &msg.admin)?;
 
     BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
     BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
@@ -150,8 +149,18 @@ pub fn execute(
             lp_fee_bps,
             euclid_fee_bps,
             recipient,
-        } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
-        ExecuteMsg::UpdateState { admin } => update_state(deps, info, &STATE, admin),
+        } => update_fee(
+            deps,
+            info,
+            &STATE,
+            &ADMIN,
+            lp_fee_bps,
+            euclid_fee_bps,
+            recipient,
+        ),
+        ExecuteMsg::UpdateAdmin { admin, admin_type } => {
+            update_admin(deps, env, info, &ADMIN, admin, admin_type)
+        }
     }
 }
 
@@ -159,6 +168,7 @@ pub fn execute(
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::State {} => query_state(deps),
+        QueryMsg::GetAdmin {} => query_admin(deps),
         QueryMsg::SimulateSwap(msg) => {
             query_simulate_swap(deps, msg.asset, msg.asset_amount, msg.swaps)
         }

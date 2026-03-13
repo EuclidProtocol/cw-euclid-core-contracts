@@ -14,8 +14,8 @@ use euclid::{
 };
 
 use crate::state::{
-    FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, STATE,
-    TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+    ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
+    STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
 };
 
 // Returns the VLP address
@@ -68,11 +68,12 @@ pub fn get_escrow(deps: Deps, token_id: String) -> Result<Binary, ContractError>
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
         chain_uid: state.chain_uid,
         router_contract: state.router_contract,
         relayer_contract: state.relayer_contract,
-        admin: state.admin,
+        admin,
         escrow_code_id: state.escrow_code_id,
         lp_code_id: state.lp_code_id,
         is_native: state.is_native,

@@ -3,9 +3,10 @@
 mod tests {
     #[cfg(test)]
     use crate::contract::{execute, instantiate};
-    use crate::state::{State, STATE};
+    use crate::state::{State, ADMIN, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
     use cosmwasm_std::{from_json, Addr, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Response};
+    use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
     use euclid::msgs::router::{
@@ -38,14 +39,15 @@ mod tests {
         let info = message_info(&creator, &[]);
         init(deps.as_mut(), info);
         let expected_state = State {
-            admin: creator,
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
             locked: false,
         };
         let state = STATE.load(deps.as_ref().storage).unwrap();
+        let admins = ADMIN.load(deps.as_ref().storage).unwrap();
 
-        assert_eq!(expected_state, state)
+        assert_eq!(expected_state, state);
+        assert_eq!(admins, EuclidAdmin::default(creator));
     }
 
     #[test]

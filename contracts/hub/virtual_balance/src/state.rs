@@ -2,11 +2,12 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map};
 use euclid::{
-    cross_chain_user::CrossChainUser, msgs::virtual_balance::msg::State,
+    admin::EuclidAdmin, cross_chain_user::CrossChainUser, msgs::virtual_balance::msg::State,
     voucher::SerializedBalanceKey,
 };
 
 pub const STATE: Item<State> = Item::new("state");
+pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 pub const BALANCES: Map<SerializedBalanceKey, Uint128> = Map::new("balances");
 

@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod chain;
 pub mod cross_chain_user;
 pub mod deposit;

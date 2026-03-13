@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint512};
 use cw2::set_contract_version;
+use euclid::admin::EuclidAdmin;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
 use euclid::fee::DenomFees;
@@ -33,7 +34,7 @@ use crate::reply::{
     on_escrow_instantiate_reply, on_release_escrow_reply, ESCROW_INSTANTIATE_REPLY_ID,
     RELEASE_ESCROW_REPLY_ID,
 };
-use crate::state::{FeeState, State, FEE_STATE, STATE};
+use crate::state::{FeeState, State, ADMIN, FEE_STATE, STATE};
 use cosmwasm_std::ensure;
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
@@ -52,7 +53,6 @@ pub fn instantiate(
     let state = State {
         router_contract: msg.router_contract.clone(),
         relayer_contract: msg.relayer_contract.clone(),
-        admin: info.sender.clone().to_string(),
         escrow_code_id: msg.escrow_code_id,
         lp_code_id: msg.lp_code_id,
         chain_uid,
@@ -79,6 +79,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -220,7 +221,7 @@ pub fn execute(
                 msg.partner_fee,
             )
         }
-        ExecuteMsg::ManageFactoryState(msg) => execute_manage_factory_state(deps, info, msg),
+        ExecuteMsg::ManageFactoryState(msg) => execute_manage_factory_state(deps, env, info, msg),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
 
