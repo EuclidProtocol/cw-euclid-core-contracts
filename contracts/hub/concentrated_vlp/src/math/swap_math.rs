@@ -146,8 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn compute_swap_step_exact_output_vectors() {
-        // Exact-output path is not surfaced yet; this test guards zero/overflow regressions.
+    fn compute_swap_step_exact_input_one_for_zero() {
         let sqrt_current = get_sqrt_ratio_at_tick(0).unwrap();
         let sqrt_target = get_sqrt_ratio_at_tick(60).unwrap();
         let step = compute_swap_step_exact_input(
