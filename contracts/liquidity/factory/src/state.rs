@@ -68,7 +68,10 @@ pub struct ConcentratedPositionMetadata {
 }
 pub const POSITION_ID_TO_METADATA: Map<u128, ConcentratedPositionMetadata> =
     Map::new("position_id_to_metadata");
-pub const OWNER_TO_POSITIONS: Map<Addr, Vec<u128>> = Map::new("owner_to_positions");
+/// Per-owner position index. Each (owner, position_id) pair is a separate storage key,
+/// avoiding unbounded Vec deserialization on every operation.
+pub const OWNER_POSITION_SET: Map<(Addr, u128), cosmwasm_std::Empty> =
+    Map::new("owner_position_set");
 
 #[cw_serde]
 pub struct PoolCreateRequest {

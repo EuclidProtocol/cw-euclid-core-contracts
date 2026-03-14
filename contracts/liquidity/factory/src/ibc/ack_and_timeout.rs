@@ -30,7 +30,7 @@ use euclid_ibc::{
 use crate::{
     reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
-        pool_key_to_map_key, FEE_STATE, OWNER_TO_POSITIONS, PAIR_TO_VLP, POOL_KEY_TO_VLP,
+        pool_key_to_map_key, FEE_STATE, OWNER_POSITION_SET, PAIR_TO_VLP, POOL_KEY_TO_VLP,
         POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT, PENDING_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_ADD_LIQUIDITY, PENDING_CONCENTRATED_POOL_REQUESTS,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
@@ -332,13 +332,11 @@ fn ack_concentrated_pool_creation(
                 },
             )?;
 
-            let mut owner_positions = OWNER_TO_POSITIONS
-                .may_load(deps.storage, sender.clone())?
-                .unwrap_or_default();
-            if !owner_positions.contains(&data.position_id.u128()) {
-                owner_positions.push(data.position_id.u128());
-                OWNER_TO_POSITIONS.save(deps.storage, sender.clone(), &owner_positions)?;
-            }
+            OWNER_POSITION_SET.save(
+                deps.storage,
+                (sender.clone(), data.position_id.u128()),
+                &cosmwasm_std::Empty {},
+            )?;
 
             if let Some(position_token_contract) = POSITION_TOKEN_CONTRACT.may_load(deps.storage)? {
                 let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
@@ -669,13 +667,11 @@ fn ack_add_concentrated_liquidity(
                         },
                     )?;
 
-                    let mut owner_positions = OWNER_TO_POSITIONS
-                        .may_load(deps.storage, sender.clone())?
-                        .unwrap_or_default();
-                    if !owner_positions.contains(&position_id) {
-                        owner_positions.push(position_id);
-                        OWNER_TO_POSITIONS.save(deps.storage, sender.clone(), &owner_positions)?;
-                    }
+                    OWNER_POSITION_SET.save(
+                        deps.storage,
+                        (sender.clone(), position_id),
+                        &cosmwasm_std::Empty {},
+                    )?;
 
                     if let Some(position_token_contract) = POSITION_TOKEN_CONTRACT.may_load(deps.storage)? {
                         let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
@@ -820,12 +816,10 @@ fn ack_remove_concentrated_liquidity(
                 meta.liquidity = meta.liquidity.checked_sub(data.liquidity_delta)?;
                 if meta.liquidity.is_zero() {
                     POSITION_ID_TO_METADATA.remove(deps.storage, data.position_id.u128());
-                    if let Some(mut owner_positions) =
-                        OWNER_TO_POSITIONS.may_load(deps.storage, sender.clone())?
-                    {
-                        owner_positions.retain(|id| *id != data.position_id.u128());
-                        OWNER_TO_POSITIONS.save(deps.storage, sender.clone(), &owner_positions)?;
-                    }
+                    OWNER_POSITION_SET.remove(
+                        deps.storage,
+                        (sender.clone(), data.position_id.u128()),
+                    );
                     if let Some(position_token_contract) =
                         POSITION_TOKEN_CONTRACT.may_load(deps.storage)?
                     {
