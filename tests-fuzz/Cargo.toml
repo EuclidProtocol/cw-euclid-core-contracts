@@ -6,7 +6,6 @@ rust-version = "1.75.0"
 publish = false
 
 [dev-dependencies]
-cosmwasm-std = { workspace = true }
 cw-orch = { workspace = true }
 rand = "0.8"
 

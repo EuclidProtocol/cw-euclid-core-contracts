@@ -27,7 +27,7 @@ impl InvariantCheck {
 }
 
 /// Collection of invariant check results
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct InvariantResult {
     pub checks: Vec<InvariantCheck>,
 }

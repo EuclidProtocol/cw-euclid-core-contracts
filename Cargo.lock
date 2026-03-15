@@ -3530,7 +3530,6 @@ dependencies = [
 name = "tests-fuzz"
 version = "1.0.0"
 dependencies = [
- "cosmwasm-std 2.2.2",
  "cw-multi-test",
  "cw-orch",
  "rand",

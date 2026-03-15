@@ -64,7 +64,7 @@ All randomness uses `StdRng` seeded from deterministic `u64` values. When a test
 
 ```
 Snapshot invariant violated at op 42 (Swap { amount: 1234, ... }, seed=314):
-  C2:active_liquidity — slot0.liquidity=500 != sum(in-range positions)=450
+  reserves_valid — reserve_0 is negative
 ```
 
 Re-run with the same seed to reproduce exactly.

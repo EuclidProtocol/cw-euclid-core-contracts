@@ -24,18 +24,18 @@ pub trait FuzzPool: Sized {
     fn setup(config: &Self::Config) -> Self;
     /// Generate a random operation using live pool state for smarter targeting.
     fn random_op(&self, rng: &mut StdRng) -> Self::Op;
-    /// Execute an operation. Returns Err for expected failures (no liquidity, bad ticks).
+    /// Execute an operation. Returns Err for expected failures (e.g. no liquidity).
     fn execute_op(&mut self, op: &Self::Op) -> Result<(), String>;
-    /// Capture full pool state (slot0, all positions, all ticks, reserves, protocol fees).
+    /// Capture full pool state for invariant checking.
     fn snapshot(&self) -> Self::Snapshot;
-    /// Capture lightweight pool state (slot0, reserves, protocol fees — no positions/ticks).
+    /// Capture lightweight pool state for cheap per-op checks.
     /// Default: falls back to full snapshot. Override for O(1) per-op checks.
     fn light_snapshot(&self) -> Self::Snapshot {
         self.snapshot()
     }
     /// Check snapshot invariants (must hold at any point in time).
     fn check_snapshot_invariants(&self, snapshot: &Self::Snapshot) -> InvariantResult;
-    /// Check cheap invariants that only need slot0/reserves data.
+    /// Check cheap invariants using lightweight state data.
     /// Default: falls back to full check. Override for O(1) per-op checks.
     fn check_light_snapshot_invariants(&self, snapshot: &Self::Snapshot) -> InvariantResult {
         self.check_snapshot_invariants(snapshot)
@@ -213,7 +213,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
     }
 
     /// Phased run: seed positions → random ops → drain all → assert clean state.
-    pub fn run_linear(&mut self, num_positions: usize, num_swaps: u64) {
+    pub fn run_linear(&mut self, num_positions: usize, num_ops: u64) {
         println!("Phase 1: Seeding {} positions...", num_positions);
         self.seed(num_positions);
         println!("  Created positions");
@@ -223,8 +223,8 @@ impl<P: FuzzPool> FuzzRunner<P> {
         self.coverage.record(&result);
         result.assert_all_pass();
 
-        println!("Phase 2: Executing {} ops...", num_swaps);
-        for i in 0..num_swaps {
+        println!("Phase 2: Executing {} ops...", num_ops);
+        for i in 0..num_ops {
             let op = self.pool.random_op(&mut self.rng);
             let before = self.pool.snapshot();
             self.execute_checked(&op, before, i, true, true);
@@ -246,11 +246,8 @@ impl<P: FuzzPool> FuzzRunner<P> {
     /// Run random operations on a single pool until wall-clock time expires.
     ///
     /// Uses two-tier invariant checking to maintain throughput at scale:
-    /// - **Every op**: light snapshot (slot0 only, ~3 queries) + cheap invariants
-    /// - **Every Nth op**: full snapshot (all positions + ticks) + all invariants
-    ///
-    /// Transition invariants (fee/protocol fee monotonicity) checked every op
-    /// using light snapshots — they only need slot0 data.
+    /// - **Every op**: light snapshot + cheap invariants
+    /// - **Every Nth op**: full snapshot + all invariants
     ///
     /// Caches snapshots across iterations to avoid redundant queries.
     /// Prints progress every `report_interval` seconds.
