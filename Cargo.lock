@@ -3527,6 +3527,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tests-fuzz"
+version = "1.0.0"
+dependencies = [
+ "cosmwasm-std 2.2.2",
+ "cw-multi-test",
+ "cw-orch",
+ "rand",
+]
+
+[[package]]
 name = "tests-integration"
 version = "1.0.0"
 dependencies = [

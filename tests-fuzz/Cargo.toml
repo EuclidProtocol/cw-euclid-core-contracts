@@ -1,0 +1,14 @@
+[package]
+name = "tests-fuzz"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.75.0"
+publish = false
+
+[dev-dependencies]
+cosmwasm-std = { workspace = true }
+cw-orch = { workspace = true }
+rand = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cw-multi-test = { workspace = true }
