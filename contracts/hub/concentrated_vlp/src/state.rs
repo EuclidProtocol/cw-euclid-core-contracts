@@ -51,7 +51,6 @@ pub struct TickInfo {
 }
 
 pub const TICKS: Map<i64, TickInfo> = Map::new("ticks");
-pub const TICK_BITMAP: Map<i64, Uint256> = Map::new("tick_bitmap");
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct Observation {
