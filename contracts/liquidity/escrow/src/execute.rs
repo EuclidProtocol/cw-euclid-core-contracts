@@ -241,14 +241,11 @@ pub fn execute_withdraw(
     let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
     let disallowed_denoms = DISALLOWED_DENOMS.load(deps.storage).unwrap_or_default();
 
-    let mut denoms = {
-        let mut v = allowed_denoms;
-        v.extend(disallowed_denoms);
-        v.into_iter().peekable()
-    };
+    let mut all_denoms = allowed_denoms;
+    all_denoms.extend(disallowed_denoms);
 
     ensure!(
-        denoms.any(|denom| denom.get_key() == denom.get_key()),
+        all_denoms.iter().any(|d| d.get_key() == denom.get_key()),
         ContractError::UnsupportedDenomination {}
     );
 
