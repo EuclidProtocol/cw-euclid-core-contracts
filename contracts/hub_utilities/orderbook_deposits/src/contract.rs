@@ -6,13 +6,13 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::execute;
 use crate::query;
-use crate::state::{RootConfig, State, ROOT_CONFIG, STATE};
+use crate::state::{RootConfig, State, ADMIN, ROOT_CONFIG, STATE};
 use euclid::msgs::orderbook_deposits::{
     ExecuteMsg, InstantiateMsg, OrderbookDepositsStatus, QueryMsg,
 };
 
-const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const CONTRACT_NAME: &str = "crates.io:orderbook_deposits";
+pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -29,11 +29,11 @@ pub fn instantiate(
     let virtual_balance = deps.api.addr_validate(&msg.virtual_balance)?;
 
     let state = State {
-        admin: admin.clone(),
         status: OrderbookDepositsStatus::Active,
         virtual_balance: virtual_balance.clone(),
     };
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &admin)?;
 
     let authorized_posters = match msg.authorized_posters {
         Some(posters) => posters

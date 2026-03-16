@@ -1,10 +1,11 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Decimal, Uint128};
+use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
+    admin::EuclidAdmin,
     chain::{Chain, ChainUid},
-    msgs::vlp::base::{PoolKey, PoolType},
     msgs::router::TokenDenom,
+    msgs::vlp::base::{PoolKey, PoolType},
     token::{PairWithDenomAndAmount, Token},
 };
 use euclid_ibc::router_ibc::{
@@ -16,8 +17,6 @@ use euclid_ibc::router_ibc::{
 
 #[cw_serde]
 pub struct State {
-    // Contract admin
-    pub admin: Addr,
     // Pools
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
@@ -27,6 +26,7 @@ pub struct State {
 }
 
 pub const STATE: Item<State> = Item::new("state");
+pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 pub const META_TRANSACTION_CONTRACT: Item<Addr> = Item::new("meta_transaction_contract");
 pub const VIRTUAL_BALANCE_CONTRACT: Item<Addr> = Item::new("virtual_balance_contract");
@@ -100,8 +100,8 @@ pub const PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher> =
 pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
 
 /// The key is TokenID_ChainUID
-pub const RELEASE_FEES: Map<(Token, ChainUid), Decimal> = Map::new("release_fees");
-pub const DEFAULT_RELEASE_FEE: Item<Decimal> = Item::new("default_release_fee");
+pub const RELEASE_FEES: Map<(Token, ChainUid), Uint128> = Map::new("release_fees");
+pub const DEFAULT_RELEASE_FEE: Item<Uint128> = Item::new("default_release_fee");
 
 pub fn pool_key_to_map_key(pool_key: &PoolKey) -> String {
     let (fee_tier_bps, tick_spacing) = match pool_key.pool_type {
@@ -128,3 +128,6 @@ pub fn map_key_to_pool_parts(key: &str) -> Option<(String, String, u64, u64)> {
     }
     Some((token_1, token_2, fee_tier_bps, tick_spacing))
 }
+
+// The key is ChainUid and the value is the timeout in seconds for chain send packets
+pub const CHAIN_TIMEOUT_SECONDS: Map<ChainUid, u64> = Map::new("chains_timeout_seconds");

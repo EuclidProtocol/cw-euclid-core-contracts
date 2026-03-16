@@ -1,4 +1,5 @@
 use crate::{
+    admin::AdminType,
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     fee::{Fee, TotalFees},
@@ -27,8 +28,9 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    UpdateState {
-        admin: Option<Addr>,
+    UpdateAdmin {
+        admin: String,
+        admin_type: AdminType,
     },
     UpdateFee {
         lp_fee_bps: Option<u64>,
@@ -40,7 +42,9 @@ pub enum ExecuteMsg {
     RemoveLiquidity(VlpConcentratedRemoveLiquidityMsg),
     CollectFees(VlpConcentratedCollectFeesMsg),
     CollectProtocolFees(VlpConcentratedCollectProtocolFeesMsg),
-    IncreaseObservationCardinalityNext { observation_cardinality_next: u16 },
+    IncreaseObservationCardinalityNext {
+        observation_cardinality_next: u16,
+    },
     Swap(VlpSwapMsg),
 }
 
@@ -100,7 +104,6 @@ pub struct GetStateResponse {
     pub total_fees_collected: TotalFees,
     pub last_updated: u64,
     pub total_lp_tokens: Uint128,
-    pub admin: Addr,
     pub pool_config: PoolConfig,
 }
 
