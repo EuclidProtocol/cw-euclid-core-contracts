@@ -21,3 +21,4 @@ pub mod concentrated_v3_positions;
 pub mod concentrated_v3_swap;
 pub mod concentrated_v3_migration;
 pub mod factory_swap_mixed_concentrated;
+pub mod concentrated_fee_growth_regression;
