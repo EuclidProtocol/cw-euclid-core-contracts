@@ -22,7 +22,7 @@ use crate::{
     rate_limit::ensure_rate_limit_exceeded,
     relay_state::{
         create_pending_packet_and_update_sequence, remove_pending_packet_and_decrement_count,
-        CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS,
+        CROSS_CHAIN_PENDING_SEND_PACKETS, CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS,
     },
     reply::CROSS_CHAIN_RECEIVE_REPLY_ID,
     state::STATE,
@@ -195,6 +195,11 @@ pub fn execute_receive_acknowledgement(
         source_port == format!("vsl.{router}", router = state.router_contract),
         ContractError::new("Invalid source port")
     );
+    if !CROSS_CHAIN_PENDING_SEND_PACKETS.has(deps.storage, sequence) {
+        return Ok(Response::new()
+            .add_attribute("method", "receive_acknowledgement_idempotent")
+            .add_attribute("sequence", sequence.to_string()));
+    }
     let (existing_request, sender) =
         remove_pending_packet_and_decrement_count(deps.storage, sequence)?;
 
