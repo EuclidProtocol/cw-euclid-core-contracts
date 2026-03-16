@@ -18,6 +18,8 @@ use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::vlp::concentrated::msg::{
     PositionResponse, QueryMsg as ConcentratedQueryMsg, Slot0Response, TickResponse,
 };
+use concentrated_vlp::math::position_math::fee_growth_inside;
+use concentrated_vlp::state::TickInfo;
 use rstest::rstest;
 
 use crate::helpers::chains::get_concentrated_vlp;
@@ -30,53 +32,17 @@ use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
 use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
 use crate::tests_reusable::factory_register::FactorySetupMode;
 
-/// Computes fee_growth_inside for a position using the same logic as the contract.
-/// Uses checked_sub to produce clear panics if tick state is inconsistent.
-fn compute_fee_growth_inside(
-    slot0: &Slot0Response,
-    lower_tick: &Option<TickResponse>,
-    upper_tick: &Option<TickResponse>,
-    lower_idx: i64,
-    upper_idx: i64,
-) -> (Uint256, Uint256) {
-    let global_0 = slot0.fee_growth_global_0_x128;
-    let global_1 = slot0.fee_growth_global_1_x128;
-
-    let (lo_out_0, lo_out_1) = lower_tick
-        .as_ref()
-        .map(|t| (t.fee_growth_outside_0_x128, t.fee_growth_outside_1_x128))
-        .unwrap_or((Uint256::zero(), Uint256::zero()));
-    let (hi_out_0, hi_out_1) = upper_tick
-        .as_ref()
-        .map(|t| (t.fee_growth_outside_0_x128, t.fee_growth_outside_1_x128))
-        .unwrap_or((Uint256::zero(), Uint256::zero()));
-
-    let (below_0, below_1) = if slot0.tick >= lower_idx {
-        (lo_out_0, lo_out_1)
-    } else {
-        (
-            global_0.checked_sub(lo_out_0).expect("global_0 >= lower.outside_0"),
-            global_1.checked_sub(lo_out_1).expect("global_1 >= lower.outside_1"),
-        )
-    };
-    let (above_0, above_1) = if slot0.tick < upper_idx {
-        (hi_out_0, hi_out_1)
-    } else {
-        (
-            global_0.checked_sub(hi_out_0).expect("global_0 >= upper.outside_0"),
-            global_1.checked_sub(hi_out_1).expect("global_1 >= upper.outside_1"),
-        )
-    };
-
-    (
-        global_0.checked_sub(below_0).expect("global_0 >= below_0")
-            .checked_sub(above_0).expect("(global_0 - below_0) >= above_0"),
-        global_1.checked_sub(below_1).expect("global_1 >= below_1")
-            .checked_sub(above_1).expect("(global_1 - below_1) >= above_1"),
-    )
+fn tick_response_to_info(t: &TickResponse) -> TickInfo {
+    TickInfo {
+        initialized: t.initialized,
+        liquidity_gross: t.liquidity_gross,
+        liquidity_net: t.liquidity_net,
+        fee_growth_outside_0_x128: t.fee_growth_outside_0_x128,
+        fee_growth_outside_1_x128: t.fee_growth_outside_1_x128,
+    }
 }
 
-/// Helper: query fee_growth_inside components for a position's tick range.
+/// Query tick state and compute fee_growth_inside using the contract's own function.
 fn query_fee_growth_inside(
     vlp: &concentrated_vlp::ConcentratedVlpContract<cw_orch::mock::MockBase>,
     lower_idx: i64,
@@ -89,7 +55,16 @@ fn query_fee_growth_inside(
     let upper_tick: Option<TickResponse> = vlp
         .query(&ConcentratedQueryMsg::Tick { index: upper_idx })
         .ok();
-    compute_fee_growth_inside(&slot0, &lower_tick, &upper_tick, lower_idx, upper_idx)
+    fee_growth_inside(
+        slot0.tick,
+        lower_idx,
+        upper_idx,
+        slot0.fee_growth_global_0_x128,
+        slot0.fee_growth_global_1_x128,
+        lower_tick.as_ref().map(tick_response_to_info),
+        upper_tick.as_ref().map(tick_response_to_info),
+    )
+    .expect("fee_growth_inside should not error for valid tick state")
 }
 
 /// Helper: get the position ID for the last created position.
