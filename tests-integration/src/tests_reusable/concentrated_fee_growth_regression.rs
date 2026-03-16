@@ -12,6 +12,7 @@
 
 use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::prelude::*;
+use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::vlp::concentrated::msg::{
@@ -20,13 +21,17 @@ use euclid::msgs::vlp::concentrated::msg::{
 use rstest::rstest;
 
 use crate::helpers::chains::get_concentrated_vlp;
-use crate::helpers::factory::{add_concentrated_liquidity, create_concentrated_pool, list_position_ids};
+use crate::helpers::factory::{
+    add_concentrated_liquidity, collect_concentrated_fees, create_concentrated_pool,
+    list_position_ids, remove_concentrated_liquidity,
+};
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
 use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
 use crate::tests_reusable::factory_register::FactorySetupMode;
 
 /// Computes fee_growth_inside for a position using the same logic as the contract.
+/// Uses checked_sub to produce clear panics if tick state is inconsistent.
 fn compute_fee_growth_inside(
     slot0: &Slot0Response,
     lower_tick: &Option<TickResponse>,
@@ -49,16 +54,61 @@ fn compute_fee_growth_inside(
     let (below_0, below_1) = if slot0.tick >= lower_idx {
         (lo_out_0, lo_out_1)
     } else {
-        (global_0 - lo_out_0, global_1 - lo_out_1)
+        (
+            global_0.checked_sub(lo_out_0).expect("global_0 >= lower.outside_0"),
+            global_1.checked_sub(lo_out_1).expect("global_1 >= lower.outside_1"),
+        )
     };
     let (above_0, above_1) = if slot0.tick < upper_idx {
         (hi_out_0, hi_out_1)
     } else {
-        (global_0 - hi_out_0, global_1 - hi_out_1)
+        (
+            global_0.checked_sub(hi_out_0).expect("global_0 >= upper.outside_0"),
+            global_1.checked_sub(hi_out_1).expect("global_1 >= upper.outside_1"),
+        )
     };
 
-    (global_0 - below_0 - above_0, global_1 - below_1 - above_1)
+    (
+        global_0.checked_sub(below_0).expect("global_0 >= below_0")
+            .checked_sub(above_0).expect("(global_0 - below_0) >= above_0"),
+        global_1.checked_sub(below_1).expect("global_1 >= below_1")
+            .checked_sub(above_1).expect("(global_1 - below_1) >= above_1"),
+    )
 }
+
+/// Helper: query fee_growth_inside components for a position's tick range.
+fn query_fee_growth_inside(
+    vlp: &concentrated_vlp::ConcentratedVlpContract<cw_orch::mock::MockBase>,
+    lower_idx: i64,
+    upper_idx: i64,
+) -> (Uint256, Uint256) {
+    let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
+    let lower_tick: Option<TickResponse> = vlp
+        .query(&ConcentratedQueryMsg::Tick { index: lower_idx })
+        .ok();
+    let upper_tick: Option<TickResponse> = vlp
+        .query(&ConcentratedQueryMsg::Tick { index: upper_idx })
+        .ok();
+    compute_fee_growth_inside(&slot0, &lower_tick, &upper_tick, lower_idx, upper_idx)
+}
+
+/// Helper: get the position ID for the last created position.
+fn last_position_id(factory: &factory::FactoryContract<cw_orch::mock::MockBase>) -> Uint128 {
+    let ids = list_position_ids(factory).unwrap();
+    Uint128::new(ids.last().unwrap().parse::<u128>().unwrap())
+}
+
+/// Helper: query a position by ID.
+fn query_position(
+    vlp: &concentrated_vlp::ConcentratedVlpContract<cw_orch::mock::MockBase>,
+    position_id: Uint128,
+) -> PositionResponse {
+    vlp.query(&ConcentratedQueryMsg::Position { position_id }).unwrap()
+}
+
+// =============================================================================
+// Test 1: New position at fresh ticks — the primary bug scenario
+// =============================================================================
 
 #[rstest]
 #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
@@ -72,7 +122,7 @@ fn test_fee_growth_inside_consistent_after_add_to_new_ticks(
     let pair = pair_with_amounts(&token_a, &token_b, 50_000, 50_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
-    // Step 1: Swap to accrue fees and move price (one_for_zero pushes tick up).
+    // Step 1: Swap to accrue fees and move price.
     execute_concentrated_swap(
         &factory, &router, pool_key.clone(),
         token_b.clone(), token_a.token.clone(), Uint128::new(30_000),
@@ -102,48 +152,149 @@ fn test_fee_growth_inside_consistent_after_add_to_new_ticks(
     )
     .expect("add liquidity at new ticks should succeed");
 
-    // Step 4: Query the new position and verify fee_growth_inside_last is consistent.
-    let position_ids = list_position_ids(&factory).unwrap();
-    let latest_id = position_ids.last().unwrap().parse::<u128>().unwrap();
-    let pos: PositionResponse = vlp
-        .query(&ConcentratedQueryMsg::Position {
-            position_id: Uint128::new(latest_id),
-        })
-        .unwrap();
+    // Step 4: Verify fee_growth_inside_last matches computed fee_growth_inside.
+    let position_id = last_position_id(&factory);
+    let pos = query_position(&vlp, position_id);
+    let (inside_0, inside_1) = query_fee_growth_inside(&vlp, new_lower, new_upper);
 
-    // Compute what fee_growth_inside should be NOW (after tick initialization).
+    assert_eq!(
+        pos.fee_growth_inside_0_last_x128, inside_0,
+        "fee_growth_inside_0_last should equal computed inside_0"
+    );
+    assert_eq!(
+        pos.fee_growth_inside_1_last_x128, inside_1,
+        "fee_growth_inside_1_last should equal computed inside_1"
+    );
+
+    // Sanity: inside should be <= global.
     let slot0_after: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
-    let lower_tick: Option<TickResponse> = vlp
-        .query(&ConcentratedQueryMsg::Tick { index: new_lower })
-        .ok();
-    let upper_tick: Option<TickResponse> = vlp
-        .query(&ConcentratedQueryMsg::Tick { index: new_upper })
-        .ok();
+    assert!(inside_0 <= slot0_after.fee_growth_global_0_x128);
+    assert!(inside_1 <= slot0_after.fee_growth_global_1_x128);
+}
 
-    let (inside_0, inside_1) = compute_fee_growth_inside(
-        &slot0_after, &lower_tick, &upper_tick, new_lower, new_upper,
+// =============================================================================
+// Test 2: Adding more liquidity to existing position — verify fees are settled
+// =============================================================================
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_fee_growth_consistent_after_add_to_existing_position(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 50_000, 50_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
+    let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
+    let vlp = get_concentrated_vlp(router.environment(), &vlp_addr);
+
+    // The initial pool creation creates a position at the full range.
+    let position_id = last_position_id(&factory);
+
+    // Step 1: Swap to accrue fees inside the position's range.
+    execute_concentrated_swap(
+        &factory, &router, pool_key.clone(),
+        token_b.clone(), token_a.token.clone(), Uint128::new(20_000),
     );
 
-    // The position's last should match the computed inside (both should be 0 for
-    // a brand new position at fresh ticks where lower.outside = global).
-    assert_eq!(
-        pos.fee_growth_inside_0_last_x128, inside_0,
-        "fee_growth_inside_0_last should equal computed inside_0: last={}, computed={}",
-        pos.fee_growth_inside_0_last_x128, inside_0,
-    );
-    assert_eq!(
-        pos.fee_growth_inside_1_last_x128, inside_1,
-        "fee_growth_inside_1_last should equal computed inside_1: last={}, computed={}",
-        pos.fee_growth_inside_1_last_x128, inside_1,
-    );
+    // Step 2: Query position — tokens_owed should be 0 (not yet settled).
+    let pos_before = query_position(&vlp, position_id);
+    assert_eq!(pos_before.tokens_owed_0, Uint128::zero());
+    assert_eq!(pos_before.tokens_owed_1, Uint128::zero());
 
-    // Extra: inside should be <= global (sanity check).
+    // Step 3: Add more liquidity to the SAME position (same ticks, existing position_id).
+    // This triggers settle_position_fees, which should accrue the fees into tokens_owed.
+    let pos_ticks = (pos_before.lower_tick_index, pos_before.upper_tick_index);
+    let pair2 = pair_with_amounts(&token_a, &token_b, 5_000, 5_000);
+    add_concentrated_liquidity(
+        &factory, &router, pair2, pool_key.clone(),
+        pos_ticks.0, pos_ticks.1, Some(position_id), 10_000,
+    )
+    .expect("add to existing position should succeed");
+
+    // Step 4: Verify fees were settled — tokens_owed should be non-zero.
+    let pos_after = query_position(&vlp, position_id);
     assert!(
-        inside_0 <= slot0_after.fee_growth_global_0_x128,
-        "inside_0 should not exceed global_0"
+        pos_after.tokens_owed_0 > Uint128::zero() || pos_after.tokens_owed_1 > Uint128::zero(),
+        "fees should have been settled into tokens_owed after add: owed_0={}, owed_1={}",
+        pos_after.tokens_owed_0, pos_after.tokens_owed_1,
     );
-    assert!(
-        inside_1 <= slot0_after.fee_growth_global_1_x128,
-        "inside_1 should not exceed global_1"
+
+    // Step 5: Verify fee_growth_inside_last is updated correctly.
+    let (inside_0, inside_1) = query_fee_growth_inside(&vlp, pos_ticks.0, pos_ticks.1);
+    assert_eq!(pos_after.fee_growth_inside_0_last_x128, inside_0);
+    assert_eq!(pos_after.fee_growth_inside_1_last_x128, inside_1);
+}
+
+// =============================================================================
+// Test 3: Full lifecycle — add at new ticks, swap, remove, verify consistency
+// =============================================================================
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_remove_after_add_at_new_ticks(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+    let pair = pair_with_amounts(&token_a, &token_b, 50_000, 50_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
+    let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
+    let vlp = get_concentrated_vlp(router.environment(), &vlp_addr);
+
+    // Step 1: Swap to accrue fees.
+    execute_concentrated_swap(
+        &factory, &router, pool_key.clone(),
+        token_b.clone(), token_a.token.clone(), Uint128::new(20_000),
     );
+
+    // Step 2: Add liquidity at new ticks (the formerly buggy path).
+    let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
+    let new_lower = ((slot0.tick - 100) / 10) * 10;
+    let new_upper = ((slot0.tick + 100) / 10) * 10;
+
+    let pair2 = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
+    add_concentrated_liquidity(
+        &factory, &router, pair2, pool_key.clone(),
+        new_lower, new_upper, None, 10_000,
+    )
+    .expect("add at new ticks should succeed");
+
+    let position_id = last_position_id(&factory);
+    let pos = query_position(&vlp, position_id);
+    let liquidity = pos.liquidity;
+    assert!(!liquidity.is_zero());
+
+    // Step 3: Swap again to accrue fees for the new position.
+    execute_concentrated_swap(
+        &factory, &router, pool_key.clone(),
+        token_a.clone(), token_b.token.clone(), Uint128::new(5_000),
+    );
+
+    // Step 4: Collect fees — should not error.
+    let chain_uid = factory.get_state().unwrap().chain_uid;
+    let sender = CrossChainUser::new(chain_uid, factory.environment().sender.to_string());
+    collect_concentrated_fees(
+        &factory, &router, pool_key.clone(), position_id, sender,
+    )
+    .expect("collect fees should succeed");
+
+    // Step 5: Remove all liquidity — should not error (the original bug caused
+    // "Cannot Sub with given operands" here).
+    remove_concentrated_liquidity(
+        &factory, &router, pool_key.clone(), position_id, liquidity,
+    )
+    .expect("remove liquidity should succeed after fix");
+
+    // Step 6: Position should be fully drained.
+    let pos_final: Result<PositionResponse, _> = vlp
+        .query(&ConcentratedQueryMsg::Position { position_id });
+    // Position may be deleted (not found) or have zero liquidity.
+    if let Ok(p) = pos_final {
+        assert!(p.liquidity.is_zero(), "position should be fully drained");
+    }
 }
