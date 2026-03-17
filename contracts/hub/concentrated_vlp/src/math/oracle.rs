@@ -206,8 +206,8 @@ pub fn observe(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::MockStorage;
     use crate::state::Slot0;
+    use cosmwasm_std::testing::MockStorage;
 
     /// Helper: save a Slot0 with the given observation ring buffer metadata.
     fn setup_slot0(storage: &mut dyn Storage, index: u64, cardinality: u16) {
@@ -271,11 +271,7 @@ mod tests {
             // Case 1: Simple linear buffer (no wraparound) — 3 observations
             ObserveCase {
                 name: "linear buffer, no wraparound",
-                observations: vec![
-                    (0, 100, 0),
-                    (1, 200, 1000),
-                    (2, 300, 3000),
-                ],
+                observations: vec![(0, 100, 0), (1, 200, 1000), (2, 300, 3000)],
                 obs_index: 2,
                 cardinality: 3,
                 now: 300,
@@ -290,9 +286,9 @@ mod tests {
                 name: "wrapped buffer ignores stale entries",
                 observations: vec![
                     // Current cycle (valid)
-                    (0, 400, 4000),  // second-newest
-                    (1, 500, 6000),  // newest (obs_index=1)
-                    (2, 300, 2000),  // oldest
+                    (0, 400, 4000), // second-newest
+                    (1, 500, 6000), // newest (obs_index=1)
+                    (2, 300, 2000), // oldest
                     // Stale from previous cycle — should NOT be read
                     (3, 150, 999),
                 ],
@@ -317,11 +313,7 @@ mod tests {
             // Case 4: Wrapped buffer with interpolation between valid entries
             ObserveCase {
                 name: "wrapped buffer with interpolation",
-                observations: vec![
-                    (0, 400, 4000),
-                    (1, 500, 6000),
-                    (2, 300, 2000),
-                ],
+                observations: vec![(0, 400, 4000), (1, 500, 6000), (2, 300, 2000)],
                 obs_index: 1,
                 cardinality: 3,
                 now: 500,
@@ -334,8 +326,8 @@ mod tests {
             ObserveCase {
                 name: "full double-wrap ignores all stale",
                 observations: vec![
-                    (0, 700, 7000),  // newest (obs_index=0)
-                    (1, 600, 5000),  // oldest
+                    (0, 700, 7000), // newest (obs_index=0)
+                    (1, 600, 5000), // oldest
                     // Stale entries outside cardinality
                     (2, 200, 111),
                     (3, 100, 222),
@@ -395,11 +387,11 @@ mod tests {
 
         // Write 5 observations — forces 2 wraparound cycles through a buffer of 3
         let writes: Vec<(u64, i64)> = vec![
-            (200, 10),  // tick=10
-            (300, 20),  // tick=20
-            (400, 30),  // tick=30 — buffer full, next write wraps
-            (500, 40),  // overwrites index 0
-            (600, 50),  // overwrites index 1
+            (200, 10), // tick=10
+            (300, 20), // tick=20
+            (400, 30), // tick=30 — buffer full, next write wraps
+            (500, 40), // overwrites index 0
+            (600, 50), // overwrites index 1
         ];
         let liquidity = Uint128::new(1_000_000);
         for (ts, tick) in &writes {
