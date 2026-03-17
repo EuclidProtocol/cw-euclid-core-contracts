@@ -1,7 +1,8 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Decimal, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
+    admin::AdminType,
     chain::{ChainType, ChainUid, CosmosChain, EvmChain},
     error::ContractError,
     msgs::{cross_chain_config::CrossChainConfig, hook::MetaReceive},
@@ -71,8 +72,9 @@ pub enum ExecuteMsg {
 #[cw_serde]
 pub enum ManageRouterState {
     // Contract admin
-    Admin {
-        admin: Addr,
+    Admins {
+        admin_type: AdminType,
+        admin: String,
     },
     // Pool Code ID
     Vlp {
@@ -89,16 +91,27 @@ pub enum ManageRouterState {
     MetaTransactionContract {
         meta_transaction_contract: Addr,
     },
+    UpdateFeeState {
+        release_fee_recipient: Option<Addr>,
+        default_fee_recipient: Option<Addr>,
+    },
     UpdateReleaseFee {
         token: Token,
         chain_uid: ChainUid,
-        release_fee: Decimal,
+        release_fee: Uint128,
+    },
+    UpdateDefaultReleaseFee {
+        default_release_fee: Uint128,
     },
     LockChain {
         chain: ChainUid,
     },
     UnlockChain {
         chain: ChainUid,
+    },
+    UpdateChainTimeout {
+        chain_uid: ChainUid,
+        timeout: u64,
     },
 }
 

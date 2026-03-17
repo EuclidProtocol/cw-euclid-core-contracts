@@ -28,10 +28,7 @@ fn first_position_id(factory: &factory::FactoryContract<cw_orch::mock::MockBase>
 #[rstest]
 #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
 #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-fn test_collect_fees_is_idempotent(
-    #[case] mode: FactorySetupMode,
-    #[case] factory_chain_id: &str,
-) {
+fn test_collect_fees_is_idempotent(#[case] mode: FactorySetupMode, #[case] factory_chain_id: &str) {
     let (_interchain, factory, router, token_a, token_b) =
         setup_concentrated_env(mode, factory_chain_id);
     let pair = pair_with_amounts(&token_a, &token_b, 40_000, 40_000);

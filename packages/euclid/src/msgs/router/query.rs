@@ -1,7 +1,8 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Decimal, Uint128};
+use cosmwasm_std::{Addr, Uint128};
 
 use crate::{
+    admin::EuclidAdmin,
     chain::{Chain, ChainUid},
     msgs::vlp::base::PoolKey,
     swap::NextSwapPair,
@@ -62,7 +63,7 @@ pub struct QuerySimulateSwap {
 
 #[cw_serde]
 pub struct StateResponse {
-    pub admin: Addr,
+    pub admins: EuclidAdmin,
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
     pub concentrated_vlp_code_id: u64,
@@ -137,7 +138,7 @@ pub struct AllTokensResponse {
 pub struct ReleaseFee {
     pub token: Token,
     pub chain_uid: ChainUid,
-    pub fee: Decimal,
+    pub fee: Uint128,
 }
 
 #[cw_serde]

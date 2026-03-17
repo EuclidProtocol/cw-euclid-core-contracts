@@ -1,6 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Order, Response};
+use cosmwasm_std::{
+    ensure, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Order, Response,
+};
 use cw2::set_contract_version;
 
 use euclid::error::ContractError;

@@ -82,14 +82,7 @@ fn test_collect_position_fees_native_and_ibc(
     let before_0 = voucher_balance(&factory, &router, &token_a.token.to_string());
     let before_1 = voucher_balance(&factory, &router, &token_b.token.to_string());
 
-    collect_concentrated_fees(
-        &factory,
-        &router,
-        pool_key,
-        position_id,
-        sender(&factory),
-    )
-    .unwrap();
+    collect_concentrated_fees(&factory, &router, pool_key, position_id, sender(&factory)).unwrap();
 
     let after_0 = voucher_balance(&factory, &router, &token_a.token.to_string());
     let after_1 = voucher_balance(&factory, &router, &token_b.token.to_string());
@@ -134,7 +127,8 @@ fn test_collect_protocol_fees_admin_native_and_ibc(
         Uint128::new(25_000),
     );
 
-    let before_protocol: ProtocolFeesResponse = vlp.query(&ConcentratedQueryMsg::ProtocolFees {}).unwrap();
+    let before_protocol: ProtocolFeesResponse =
+        vlp.query(&ConcentratedQueryMsg::ProtocolFees {}).unwrap();
 
     let before_0 = voucher_balance(&factory, &router, &token_a.token.to_string());
     let before_1 = voucher_balance(&factory, &router, &token_b.token.to_string());
@@ -144,16 +138,13 @@ fn test_collect_protocol_fees_admin_native_and_ibc(
         &router,
         pool_key,
         sender(&factory),
-        before_protocol
-            .amount_0
-            .max(Uint128::new(1)),
-        before_protocol
-            .amount_1
-            .max(Uint128::new(1)),
+        before_protocol.amount_0.max(Uint128::new(1)),
+        before_protocol.amount_1.max(Uint128::new(1)),
     )
     .unwrap();
 
-    let after_protocol: ProtocolFeesResponse = vlp.query(&ConcentratedQueryMsg::ProtocolFees {}).unwrap();
+    let after_protocol: ProtocolFeesResponse =
+        vlp.query(&ConcentratedQueryMsg::ProtocolFees {}).unwrap();
     assert!(after_protocol.amount_0 <= before_protocol.amount_0);
     assert!(after_protocol.amount_1 <= before_protocol.amount_1);
 

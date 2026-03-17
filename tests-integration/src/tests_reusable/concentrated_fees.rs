@@ -26,8 +26,9 @@ fn test_fee_accrual_and_collect(#[case] mode: FactorySetupMode, #[case] factory_
         router.environment(),
         &Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp),
     );
-    let before: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse =
-        vlp.query(&ConcentratedQueryMsg::TotalFeesCollected {}).unwrap();
+    let before: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse = vlp
+        .query(&ConcentratedQueryMsg::TotalFeesCollected {})
+        .unwrap();
     let before_fee = before
         .total_fees
         .lp_fees
@@ -41,15 +42,22 @@ fn test_fee_accrual_and_collect(#[case] mode: FactorySetupMode, #[case] factory_
         token_b.token.clone(),
         Uint128::new(2_000),
     );
-    assert!(amount_out > Uint128::zero(), "swap must return non-zero output");
+    assert!(
+        amount_out > Uint128::zero(),
+        "swap must return non-zero output"
+    );
 
-    let after: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse =
-        vlp.query(&ConcentratedQueryMsg::TotalFeesCollected {}).unwrap();
+    let after: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse = vlp
+        .query(&ConcentratedQueryMsg::TotalFeesCollected {})
+        .unwrap();
     let after_fee = after
         .total_fees
         .lp_fees
         .get_fee(token_a.token.to_string().as_str());
-    assert!(after_fee > before_fee, "fee accrual should increase after swap");
+    assert!(
+        after_fee > before_fee,
+        "fee accrual should increase after swap"
+    );
 }
 
 #[rstest]
@@ -75,9 +83,14 @@ fn test_collect_idempotency(#[case] mode: FactorySetupMode, #[case] factory_chai
         Uint128::new(1_000),
     );
 
-    let first: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse =
-        vlp.query(&ConcentratedQueryMsg::TotalFeesCollected {}).unwrap();
-    let second: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse =
-        vlp.query(&ConcentratedQueryMsg::TotalFeesCollected {}).unwrap();
-    assert_eq!(first, second, "collect state should be idempotent without new swaps");
+    let first: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse = vlp
+        .query(&ConcentratedQueryMsg::TotalFeesCollected {})
+        .unwrap();
+    let second: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse = vlp
+        .query(&ConcentratedQueryMsg::TotalFeesCollected {})
+        .unwrap();
+    assert_eq!(
+        first, second,
+        "collect state should be idempotent without new swaps"
+    );
 }

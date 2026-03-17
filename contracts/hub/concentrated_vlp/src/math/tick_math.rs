@@ -217,8 +217,8 @@ mod tests {
     use cosmwasm_std::{Int256, Uint256};
 
     use super::{
-        get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio, log2_q64, max_sqrt_ratio,
-        min_sqrt_ratio, most_significant_bit,
+        get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio, log2_q64, max_sqrt_ratio, min_sqrt_ratio,
+        most_significant_bit,
     };
     use crate::state::{MAX_TICK, MIN_TICK};
 
@@ -401,9 +401,9 @@ mod tests {
             ("255", 7),
             ("256", 8),
             // Powers of 2
-            ("65536", 16),                // 2^16
-            ("4294967296", 32),            // 2^32
-            ("18446744073709551616", 64),  // 2^64
+            ("65536", 16),                                    // 2^16
+            ("4294967296", 32),                               // 2^32
+            ("18446744073709551616", 64),                     // 2^64
             ("340282366920938463463374607431768211456", 128), // 2^128
         ];
 

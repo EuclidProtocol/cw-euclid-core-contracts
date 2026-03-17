@@ -5,9 +5,7 @@ use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
-use euclid::msgs::vlp::concentrated::msg::{
-    LegacyLiquidityMode, QueryMsg as ConcentratedQueryMsg,
-};
+use euclid::msgs::vlp::concentrated::msg::{LegacyLiquidityMode, QueryMsg as ConcentratedQueryMsg};
 use rstest::rstest;
 
 use crate::helpers::chains::get_concentrated_vlp;
@@ -67,7 +65,10 @@ fn run_migrate_rebuild_swap_collect(mode: FactorySetupMode, factory_chain_id: &s
         token_b.token.clone(),
         Uint128::new(2_000),
     );
-    assert!(after > Uint128::zero(), "post-migration swap should succeed");
+    assert!(
+        after > Uint128::zero(),
+        "post-migration swap should succeed"
+    );
 
     let sender = CrossChainUser::new(
         factory.get_state().unwrap().chain_uid,
@@ -143,10 +144,7 @@ fn test_migration_status_and_invariants_exposed(
     assert_eq!(status.revision, 2);
     assert!(status.positions_migrated >= 1);
 
-    let vlp_addr = router
-        .get_vlp_by_pool_key(pool_key.clone())
-        .unwrap()
-        .vlp;
+    let vlp_addr = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_addr));
 
     let slot0: euclid::msgs::vlp::concentrated::msg::Slot0Response =

@@ -98,9 +98,9 @@ fn interpolate(left: &Observation, right: &Observation, target: u64) -> Observat
     let elapsed = target - left.block_timestamp;
 
     let tick_delta = right.tick_cumulative.saturating_sub(left.tick_cumulative);
-    let tick_interp = left.tick_cumulative.saturating_add(
-        tick_delta.saturating_mul(elapsed as i128) / (total as i128),
-    );
+    let tick_interp = left
+        .tick_cumulative
+        .saturating_add(tick_delta.saturating_mul(elapsed as i128) / (total as i128));
 
     let spl_delta = right
         .seconds_per_liquidity_cumulative_x128

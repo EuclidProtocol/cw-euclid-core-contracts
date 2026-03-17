@@ -8,6 +8,7 @@ use cosmwasm_std::{
 };
 use cw2::set_contract_version;
 use euclid::{
+    admin::EuclidAdmin,
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -29,7 +30,7 @@ use euclid::{
     swap::NextSwapVlp,
     token::Token,
 };
-use euclid_pool::{register_pool, update_fee, update_state};
+use euclid_pool::{register_pool, update_admin, update_fee};
 
 use crate::{
     math::{
@@ -49,7 +50,7 @@ use crate::{
     reply,
     state::{
         initialize_position_nonce, next_position_id, ConcentratedPosition, MigrationMetadata,
-        Slot0, TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
+        Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
         FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIGRATION_METADATA,
         MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0,
         STATE, TICKS,
@@ -108,11 +109,11 @@ pub fn instantiate(
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
-        admin: msg.admin,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(msg.admin))?;
 
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &Uint128::zero())?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &Uint128::zero())?;
@@ -234,8 +235,18 @@ pub fn execute(
             lp_fee_bps,
             euclid_fee_bps,
             recipient,
-        } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
-        ExecuteMsg::UpdateState { admin } => update_state(deps, info, &STATE, admin),
+        } => update_fee(
+            deps,
+            info,
+            &STATE,
+            &ADMIN,
+            lp_fee_bps,
+            euclid_fee_bps,
+            recipient,
+        ),
+        ExecuteMsg::UpdateAdmin { admin, admin_type } => {
+            update_admin(deps, env, info, &ADMIN, admin, admin_type)
+        }
     }
 }
 
@@ -1363,8 +1374,10 @@ fn execute_collect_protocol_fees(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
+    let admins = ADMIN.load(deps.storage)?;
     ensure!(
-        msg.sender.address == state.admin.to_string(),
+        msg.sender.address == admins.fee_admin.to_string(),
         ContractError::Unauthorized {}
     );
 
@@ -1424,8 +1437,9 @@ fn increase_observation_cardinality_next(
     observation_cardinality_next: u16,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let admins = ADMIN.load(deps.storage)?;
     ensure!(
-        info.sender == state.router || info.sender == state.admin,
+        info.sender == state.router || info.sender == admins.general_admin,
         ContractError::Unauthorized {}
     );
     let mut slot0 = SLOT0.load(deps.storage)?;

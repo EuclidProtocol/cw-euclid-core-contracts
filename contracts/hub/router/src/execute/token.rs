@@ -15,10 +15,10 @@ use euclid::{
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 
 use crate::{
-    helpers::release::{calculate_release_fee, get_release_fee_storage},
+    helpers::release::get_release_fee_storage,
     state::{
-        PendingReleaseVoucher, CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, LOCKED_CHAINS,
-        PENDING_RELEASE_VOUCHER, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
+        PendingReleaseVoucher, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, ESCROW_BALANCES,
+        LOCKED_CHAINS, PENDING_RELEASE_VOUCHER, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
     },
 };
 
@@ -107,6 +107,8 @@ pub fn execute_transfer_voucher(
             transferred_amount = transferred_amount.checked_add(transfer_amount)?;
         } else {
             let tx_id = generate_tx(deps, &env, &sender.clone())?;
+            let timeout = CHAIN_TIMEOUT_SECONDS
+                .may_load(deps.storage, recipient.recipient.chain_uid.clone())?;
             let (release_msgs, release_amount) = _release_voucher(
                 deps,
                 &env,
@@ -117,7 +119,7 @@ pub fn execute_transfer_voucher(
                 remaining_withdraw_amount,
                 recipient.clone(),
                 None,
-                None,
+                timeout,
                 tx_id,
             )?;
             if release_amount.is_zero() {
@@ -277,8 +279,7 @@ pub fn _release_voucher(
         return Ok((vec![], Uint128::zero()));
     }
 
-    let fee = get_release_fee_storage(deps, &token, &recipient.recipient.chain_uid);
-    let release_fee_amount = calculate_release_fee(release_amount, fee)?;
+    let release_fee_amount = get_release_fee_storage(deps, &token, &recipient.recipient.chain_uid);
     let release_amount_after_fee = release_amount.checked_sub(release_fee_amount)?;
 
     PENDING_RELEASE_VOUCHER.save(

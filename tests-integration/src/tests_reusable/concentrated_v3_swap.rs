@@ -90,7 +90,10 @@ fn test_tick_crossing_updates_slot0_liquidity(
     assert!(amount_out > Uint128::zero());
 
     let after: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
-    assert_ne!(before.tick, after.tick, "active tick should move after a large swap");
+    assert_ne!(
+        before.tick, after.tick,
+        "active tick should move after a large swap"
+    );
     assert!(
         after.liquidity <= before.liquidity,
         "crossing out of a narrow range should not increase active liquidity"

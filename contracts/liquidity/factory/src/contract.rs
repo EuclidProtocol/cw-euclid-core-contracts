@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint512};
 use cw2::set_contract_version;
+use euclid::admin::EuclidAdmin;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
 use euclid::fee::DenomFees;
@@ -11,10 +12,9 @@ use euclid::token::TokenType;
 use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 
 use crate::execute::pool::{
-    add_concentrated_liquidity_request, add_liquidity_request,
-    collect_concentrated_fees_request, collect_concentrated_protocol_fees_request,
-    execute_request_concentrated_pool_creation, execute_request_pool_creation,
-    remove_concentrated_liquidity_request,
+    add_concentrated_liquidity_request, add_liquidity_request, collect_concentrated_fees_request,
+    collect_concentrated_protocol_fees_request, execute_request_concentrated_pool_creation,
+    execute_request_pool_creation, remove_concentrated_liquidity_request,
 };
 use crate::execute::relay::{
     execute_native_receive_callback, execute_receive_acknowledgement, execute_receive_packet,
@@ -27,9 +27,9 @@ use crate::execute::token::{
 };
 use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_native};
 use crate::query::{
-    get_concentrated_vlp, get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp,
-    get_position_token_contract, pending_liquidity, pending_remove_liquidity, pending_swaps,
-    query_all_concentrated_pools, query_all_pools, query_all_tokens, query_state,
+    get_concentrated_vlp, get_escrow, get_lp_token_address, get_partner_fees_collected,
+    get_position_token_contract, get_vlp, pending_liquidity, pending_remove_liquidity,
+    pending_swaps, query_all_concentrated_pools, query_all_pools, query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
@@ -39,13 +39,13 @@ use crate::reply::{
     on_escrow_instantiate_reply, on_release_escrow_reply, ESCROW_INSTANTIATE_REPLY_ID,
     RELEASE_ESCROW_REPLY_ID,
 };
-use crate::state::{FeeState, State, FEE_STATE, STATE};
+use crate::state::{FeeState, State, ADMIN, FEE_STATE, STATE};
 use cosmwasm_std::ensure;
 use euclid::msgs::factory::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:factory";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const CONTRACT_NAME: &str = "crates.io:factory";
+pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -58,7 +58,6 @@ pub fn instantiate(
     let state = State {
         router_contract: msg.router_contract.clone(),
         relayer_contract: msg.relayer_contract.clone(),
-        admin: info.sender.clone().to_string(),
         escrow_code_id: msg.escrow_code_id,
         lp_code_id: msg.lp_code_id,
         chain_uid,
@@ -85,6 +84,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -314,7 +314,7 @@ pub fn execute(
                 msg.partner_fee,
             )
         }
-        ExecuteMsg::ManageFactoryState(msg) => execute_manage_factory_state(deps, info, msg),
+        ExecuteMsg::ManageFactoryState(msg) => execute_manage_factory_state(deps, env, info, msg),
         ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::EuclidReceive(msg) => receive_euclid_native(deps, env, info, msg),
 

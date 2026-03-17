@@ -2,6 +2,8 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::{
+    admin::{AdminType, EuclidAdmin},
+    chain::ChainUid,
     cross_chain_user::CrossChainUser,
     utils::pagination::Pagination,
     voucher::{BalanceKey, SerializedBalanceKey},
@@ -10,14 +12,13 @@ use crate::{
 #[cw_serde]
 pub struct State {
     pub router: Addr,
-    pub admin: Addr,
 }
 
 #[cw_serde]
 
 pub struct InstantiateMsg {
     pub router: Addr,
-    pub admin: Option<Addr>,
+    pub admin: Option<EuclidAdmin>,
 }
 
 #[cw_serde]
@@ -26,9 +27,12 @@ pub enum ExecuteMsg {
     Mint(ExecuteMint),
     Transfer(ExecuteTransfer),
     Burn(ExecuteBurn),
-    UpdateState {
-        router: Option<Addr>,
-        admin: Option<Addr>,
+    UpdateAdmin {
+        new_admin: String,
+        admin_type: AdminType,
+    },
+    UpdateRouter {
+        router: Addr,
     },
     RemoveZeroStateValues {
         start_after: Option<SerializedBalanceKey>,
@@ -79,8 +83,11 @@ pub struct MigrateMsg {}
 #[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     // Query to simulate a swap for the asset
-    #[returns(GetStateResponse)]
+    #[returns(State)]
     GetState {},
+
+    #[returns(EuclidAdmin)]
+    GetAdmin {},
 
     // Query to simulate a swap for the asset
     #[returns(GetBalanceResponse)]
@@ -92,12 +99,15 @@ pub enum QueryMsg {
         user: CrossChainUser,
         pagination: Option<Pagination<Uint128>>,
     },
-}
-
-// We define a custom struct for each query response
-#[cw_serde]
-pub struct GetStateResponse {
-    pub state: State,
+    #[returns(GetAllBalancesResponse)]
+    GetAllBalances {
+        pagination: Option<Pagination<Uint128>>,
+    },
+    #[returns(GetTokenBalancesResponse)]
+    GetTokenBalances {
+        token_id: String,
+        pagination: Option<Pagination<Uint128>>,
+    },
 }
 
 #[cw_serde]
@@ -114,4 +124,28 @@ pub struct GetUserBalancesResponse {
 pub struct GetUserBalancesResponseItem {
     pub amount: Uint128,
     pub token_id: String,
+}
+
+#[cw_serde]
+pub struct GetAllBalancesResponse {
+    pub balances: Vec<GetAllBalancesResponseItem>,
+}
+
+#[cw_serde]
+pub struct GetAllBalancesResponseItem {
+    pub balance: Uint128,
+    pub address: String,
+    pub token_id: String,
+    pub chain_uid: ChainUid,
+}
+
+#[cw_serde]
+pub struct GetTokenBalancesResponse {
+    pub balances: Vec<GetTokenBalancesResponseItem>,
+}
+
+#[cw_serde]
+pub struct GetTokenBalancesResponseItem {
+    pub balance: Uint128,
+    pub chain_uid: ChainUid,
 }

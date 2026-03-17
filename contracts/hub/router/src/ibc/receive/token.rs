@@ -50,7 +50,7 @@ pub fn ibc_execute_register_denom(
         chain_uid: sender.chain_uid.clone(),
         token_type: token.token_type.clone(),
     });
-    println!("token key: {:?}", token.token);
+    println!("Register Denom Token Key: {:?}", token.token);
     TOKEN_DENOMS.save(deps.storage, token.token.clone(), &token_denoms)?;
 
     let ack: AcknowledgementMsg<RegisterDenomResponse> =

@@ -15,7 +15,7 @@ use euclid_ibc::router_ibc::{RouterCrossChainExecuteMsg, RouterCrossChainSwapExe
 
 use crate::{
     query::get_chain_type,
-    state::{pool_key_to_map_key, POOL_KEY_TO_VLP, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW},
+    state::{pool_key_to_map_key, PENDING_SWAPS, POOL_KEY_TO_VLP, STATE, TOKEN_TO_ESCROW},
 };
 
 pub fn execute_swap_request(

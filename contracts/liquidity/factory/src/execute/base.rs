@@ -1,6 +1,7 @@
 use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, Uint128};
 use cw20::Cw20ReceiveMsg;
 use euclid::{
+    admin,
     cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::{
@@ -17,38 +18,48 @@ use crate::{
     execute::{
         pool::remove_liquidity_request, swap::execute_swap_request, token::execute_deposit_token,
     },
-    state::{POSITION_TOKEN_CONTRACT, STATE},
+    state::{ADMIN, POSITION_TOKEN_CONTRACT, STATE},
 };
 
 pub fn execute_manage_factory_state(
     deps: DepsMut,
+    env: Env,
     info: MessageInfo,
     msg: ManageFactoryState,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-
-    ensure!(
-        state.admin == info.sender.into_string(),
-        ContractError::Unauthorized {}
-    );
-
+    let mut admins = ADMIN.load(deps.storage)?;
     match msg {
-        ManageFactoryState::UpdateAdmin { admin } => {
-            state.admin = admin.clone();
-            STATE.save(deps.storage, &state)?;
-            Ok(Response::new().add_attribute("admin", admin))
+        ManageFactoryState::UpdateAdmin { admin, admin_type } => {
+            let (updated_admins, response) =
+                admin::update_admin(&admins, &deps, &env, &info.sender, admin, admin_type)?;
+            admins = updated_admins;
+            ADMIN.save(deps.storage, &admins)?;
+            Ok(response)
         }
         ManageFactoryState::UpdateEscrowCodeId { escrow_code_id } => {
+            ensure!(
+                admins.migration_admin == info.sender,
+                ContractError::Unauthorized {}
+            );
             state.escrow_code_id = escrow_code_id;
             STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("escrow_code_id", escrow_code_id.to_string()))
         }
         ManageFactoryState::UpdateLPCodeId { lp_code_id } => {
+            ensure!(
+                admins.migration_admin == info.sender,
+                ContractError::Unauthorized {}
+            );
             state.lp_code_id = lp_code_id;
             STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("lp_code_id", lp_code_id.to_string()))
         }
         ManageFactoryState::UpdateRelayerAddress { relayer_address } => {
+            ensure!(
+                admins.general_admin == info.sender,
+                ContractError::Unauthorized {}
+            );
             let relayer_address = deps.api.addr_validate(relayer_address.as_str())?;
             state.relayer_contract = relayer_address.clone();
             STATE.save(deps.storage, &state)?;
@@ -57,7 +68,8 @@ pub fn execute_manage_factory_state(
         ManageFactoryState::UpdatePositionTokenContract {
             position_token_contract,
         } => {
-            let position_token_contract = deps.api.addr_validate(position_token_contract.as_str())?;
+            let position_token_contract =
+                deps.api.addr_validate(position_token_contract.as_str())?;
             POSITION_TOKEN_CONTRACT.save(deps.storage, &position_token_contract)?;
             Ok(Response::new().add_attribute("position_token_contract", position_token_contract))
         }

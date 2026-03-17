@@ -1,7 +1,9 @@
+use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
 use euclid::msgs::claimer::msg::{Claim, State};
 
 pub const STATE: Item<State> = Item::new("state");
+pub const ADMIN: Item<Addr> = Item::new("admin");
 
 pub const CLAIMS: Map<u128, Claim> = Map::new("claims");
 

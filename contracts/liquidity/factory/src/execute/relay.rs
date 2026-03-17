@@ -1,11 +1,8 @@
-use std::ops::Add;
-
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
     Response, StdError, SubMsg, Uint128, WasmMsg,
 };
 use euclid::{
-    chain::ChainUid,
     error::ContractError,
     events::{
         receive_acknowledgement_event, receive_packet_event, send_packet_event,
@@ -17,16 +14,14 @@ use euclid::{
 };
 use euclid_ibc::{
     ack::make_ack_fail, factory_ibc::FactoryCrossChainExecuteMsg,
-    router_ibc::RouterCrossChainExecuteMsg, state::PendingPacket,
+    router_ibc::RouterCrossChainExecuteMsg,
 };
 
 use crate::{
     ibc::{ack_and_timeout, receive},
-    rate_limit::{
-        ensure_rate_limit_exceeded, USER_PENDING_PACKETS_COUNT, USER_TOTAL_PACKETS_COUNT,
-    },
+    rate_limit::ensure_rate_limit_exceeded,
     relay_state::{
-        CROSS_CHAIN_LATEST_SEQUENCE_COUNT, CROSS_CHAIN_PENDING_PACKET_SENDER,
+        create_pending_packet_and_update_sequence, remove_pending_packet_and_decrement_count,
         CROSS_CHAIN_PENDING_SEND_PACKETS, CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS,
     },
     reply::CROSS_CHAIN_RECEIVE_REPLY_ID,
@@ -58,44 +53,8 @@ pub fn execute_send_packet(
 
     ensure_rate_limit_exceeded(&deps, sender.clone())?;
 
-    let sequence = CROSS_CHAIN_LATEST_SEQUENCE_COUNT
-        .load(deps.storage)
-        .unwrap_or(0);
-
-    CROSS_CHAIN_PENDING_SEND_PACKETS.save(
-        deps.storage,
-        sequence,
-        &PendingPacket {
-            chain_uid: ChainUid::vsl_chain_uid()?,
-            original_msg: msg.clone(),
-            ack_response,
-        },
-    )?;
-    CROSS_CHAIN_PENDING_PACKET_SENDER.save(deps.storage, sequence, &sender)?;
-    CROSS_CHAIN_LATEST_SEQUENCE_COUNT.save(deps.storage, &sequence.add(1))?;
-
-    let user_pending_packets_count = USER_PENDING_PACKETS_COUNT
-        .load(deps.storage, sender.clone())
-        .unwrap_or(0);
-
-    // Update user pending packets count
-    USER_PENDING_PACKETS_COUNT.save(
-        deps.storage,
-        sender.clone(),
-        &user_pending_packets_count
-            .checked_add(1)
-            .ok_or(ContractError::new("Overflow"))?,
-    )?;
-    USER_TOTAL_PACKETS_COUNT.update(
-        deps.storage,
-        sender.clone(),
-        |count| -> Result<_, ContractError> {
-            count
-                .unwrap_or(0)
-                .checked_add(1)
-                .ok_or(ContractError::new("Overflow"))
-        },
-    )?;
+    let sequence =
+        create_pending_packet_and_update_sequence(deps.storage, &msg, ack_response, &sender)?;
 
     let source_port = format!("{}.{}", *factory_state.chain_uid, env.contract.address);
 
@@ -236,38 +195,19 @@ pub fn execute_receive_acknowledgement(
         source_port == format!("vsl.{router}", router = state.router_contract),
         ContractError::new("Invalid source port")
     );
-    let existing_request =
-        match CROSS_CHAIN_PENDING_SEND_PACKETS.may_load(deps.storage, sequence)? {
-            Some(request) => request,
-            None => {
-                return Ok(Response::new()
-                    .add_attribute("method", "receive_acknowledgement_idempotent")
-                    .add_attribute("sequence", sequence.to_string()));
-            }
-        };
-    let sender = CROSS_CHAIN_PENDING_PACKET_SENDER
-        .may_load(deps.storage, sequence)?
-        .ok_or(ContractError::new("Missing sender for pending packet"))?;
+    if !CROSS_CHAIN_PENDING_SEND_PACKETS.has(deps.storage, sequence) {
+        return Ok(Response::new()
+            .add_attribute("method", "receive_acknowledgement_idempotent")
+            .add_attribute("sequence", sequence.to_string()));
+    }
+    let (existing_request, sender) =
+        remove_pending_packet_and_decrement_count(deps.storage, sequence)?;
 
     // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
     // ensure!(
     //     existing_request == msg,
     //     ContractError::new("Ack source msg doesn't match with existing request")
     // );
-
-    // Remove the existing request as its already relayed now
-    CROSS_CHAIN_PENDING_SEND_PACKETS.remove(deps.storage, sequence);
-    CROSS_CHAIN_PENDING_PACKET_SENDER.remove(deps.storage, sequence);
-    USER_PENDING_PACKETS_COUNT.update(
-        deps.storage,
-        sender.clone(),
-        |count| -> Result<_, ContractError> {
-            count
-                .unwrap_or(0)
-                .checked_sub(1)
-                .ok_or(ContractError::new("Overflow"))
-        },
-    )?;
 
     let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
 

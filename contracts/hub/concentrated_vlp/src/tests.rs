@@ -12,8 +12,7 @@ use euclid::{
     msgs::vlp::{
         base::{PoolConfig, PoolKey, PoolType, State, VlpConcentratedRegisterPoolMsg},
         concentrated::msg::{
-            ExecuteMsg, GetStateResponse, InstantiateMsg, LegacyLiquidityMode, MigrateMsg,
-            QueryMsg,
+            ExecuteMsg, GetStateResponse, InstantiateMsg, LegacyLiquidityMode, MigrateMsg, QueryMsg,
         },
     },
     token::{Pair, Token},
@@ -21,18 +20,14 @@ use euclid::{
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 
 use crate::{
-    math::{
-        liquidity_amounts::get_amounts_for_liquidity,
-        tick_math::get_sqrt_ratio_at_tick,
-    },
+    math::{liquidity_amounts::get_amounts_for_liquidity, tick_math::get_sqrt_ratio_at_tick},
     migrate::migrate,
     mock::mock_concentrated_vlp,
     state::{
         ConcentratedPosition, MigrationMetadata, TickInfo, ACTIVE_LIQUIDITY, BALANCES,
-        CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128,
-        MIGRATION_METADATA, MIGRATION_REVISION, OBSERVATIONS, POOL_KEY, POSITIONS,
-        POSITION_ID_PREFIX, POSITION_NONCE, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE,
-        TICKS,
+        CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA,
+        MIGRATION_REVISION, OBSERVATIONS, POOL_KEY, POSITIONS, POSITION_ID_PREFIX, POSITION_NONCE,
+        PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
     },
 };
 
@@ -159,12 +154,14 @@ fn sample_state(pair: Pair, total_lp_tokens: Uint128) -> State {
         },
         last_updated: 0,
         total_lp_tokens,
-        admin: Addr::unchecked("admin"),
     }
 }
 
 fn owner(chain: &str, address: &str) -> CrossChainUser {
-    CrossChainUser::new(ChainUid::create(chain.to_string()).unwrap(), address.to_string())
+    CrossChainUser::new(
+        ChainUid::create(chain.to_string()).unwrap(),
+        address.to_string(),
+    )
 }
 
 fn make_position(
@@ -232,8 +229,20 @@ fn migration_rebuilds_ticks_and_active_liquidity_from_positions() {
 
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
-    let p1 = make_position(owner("andr", "alice"), pool_key.clone(), -10, 10, Uint128::new(1000));
-    let p2 = make_position(owner("sepolia", "bob"), pool_key.clone(), 10, 20, Uint128::new(2000));
+    let p1 = make_position(
+        owner("andr", "alice"),
+        pool_key.clone(),
+        -10,
+        10,
+        Uint128::new(1000),
+    );
+    let p2 = make_position(
+        owner("sepolia", "bob"),
+        pool_key.clone(),
+        10,
+        20,
+        Uint128::new(2000),
+    );
 
     save_legacy_fixture(
         deps.as_mut().storage,
@@ -274,8 +283,14 @@ fn migration_rebuilds_ticks_and_active_liquidity_from_positions() {
     )
     .unwrap();
 
-    assert_eq!(ACTIVE_LIQUIDITY.load(deps.as_ref().storage).unwrap(), Uint128::new(1000));
-    assert_eq!(STATE.load(deps.as_ref().storage).unwrap().total_lp_tokens, Uint128::new(3000));
+    assert_eq!(
+        ACTIVE_LIQUIDITY.load(deps.as_ref().storage).unwrap(),
+        Uint128::new(1000)
+    );
+    assert_eq!(
+        STATE.load(deps.as_ref().storage).unwrap().total_lp_tokens,
+        Uint128::new(3000)
+    );
 
     let ticks = collect_ticks(deps.as_ref().storage);
     assert_eq!(ticks.len(), 3);
@@ -288,7 +303,10 @@ fn migration_rebuilds_ticks_and_active_liquidity_from_positions() {
     assert_eq!(ticks[2].0, 20);
     assert_eq!(ticks[2].1.liquidity_gross, Uint128::new(2000));
     assert_eq!(ticks[2].1.liquidity_net, -2000);
-    assert!(TICKS.may_load(deps.as_ref().storage, 123).unwrap().is_none());
+    assert!(TICKS
+        .may_load(deps.as_ref().storage, 123)
+        .unwrap()
+        .is_none());
 
     assert_eq!(
         CHAIN_LP_TOKENS
@@ -308,15 +326,13 @@ fn migration_rebuilds_ticks_and_active_liquidity_from_positions() {
             .unwrap(),
         Uint128::new(2000)
     );
-    assert!(
-        CHAIN_LP_TOKENS
-            .may_load(
-                deps.as_ref().storage,
-                ChainUid::create("legacy".to_string()).unwrap(),
-            )
-            .unwrap()
-            .is_none()
-    );
+    assert!(CHAIN_LP_TOKENS
+        .may_load(
+            deps.as_ref().storage,
+            ChainUid::create("legacy".to_string()).unwrap(),
+        )
+        .unwrap()
+        .is_none());
 }
 
 #[test]
@@ -326,8 +342,20 @@ fn migration_legacy_share_mode_converts_liquidity_and_recomputes_totals() {
 
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
-    let p1 = make_position(owner("andr", "alice"), pool_key.clone(), -10, 10, Uint128::new(100));
-    let p2 = make_position(owner("andr", "bob"), pool_key.clone(), -10, 10, Uint128::new(300));
+    let p1 = make_position(
+        owner("andr", "alice"),
+        pool_key.clone(),
+        -10,
+        10,
+        Uint128::new(100),
+    );
+    let p2 = make_position(
+        owner("andr", "bob"),
+        pool_key.clone(),
+        -10,
+        10,
+        Uint128::new(300),
+    );
 
     let old_total = Uint128::new(400);
     save_legacy_fixture(
@@ -353,9 +381,15 @@ fn migration_legacy_share_mode_converts_liquidity_and_recomputes_totals() {
 
     assert!(p1_after.liquidity > Uint128::zero());
     assert!(p2_after.liquidity > p1_after.liquidity);
-    assert_eq!(new_total, p1_after.liquidity.checked_add(p2_after.liquidity).unwrap());
+    assert_eq!(
+        new_total,
+        p1_after.liquidity.checked_add(p2_after.liquidity).unwrap()
+    );
     assert_ne!(new_total, old_total);
-    assert_eq!(ACTIVE_LIQUIDITY.load(deps.as_ref().storage).unwrap(), new_total);
+    assert_eq!(
+        ACTIVE_LIQUIDITY.load(deps.as_ref().storage).unwrap(),
+        new_total
+    );
 }
 
 #[test]
@@ -365,7 +399,13 @@ fn migration_assigns_rounding_residuals_to_protocol_fees() {
 
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
-    let position = make_position(owner("andr", "alice"), pool_key.clone(), -10, 10, Uint128::new(1000));
+    let position = make_position(
+        owner("andr", "alice"),
+        pool_key.clone(),
+        -10,
+        10,
+        Uint128::new(1000),
+    );
 
     save_legacy_fixture(
         deps.as_mut().storage,
@@ -394,17 +434,32 @@ fn migration_assigns_rounding_residuals_to_protocol_fees() {
     let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
     let sqrt_lower = get_sqrt_ratio_at_tick(position.lower_tick_index).unwrap();
     let sqrt_upper = get_sqrt_ratio_at_tick(position.upper_tick_index).unwrap();
-    let (implied_0_u256, implied_1_u256) =
-        get_amounts_for_liquidity(slot0.sqrt_price_x96, sqrt_lower, sqrt_upper, position.liquidity, false)
-            .unwrap();
+    let (implied_0_u256, implied_1_u256) = get_amounts_for_liquidity(
+        slot0.sqrt_price_x96,
+        sqrt_lower,
+        sqrt_upper,
+        position.liquidity,
+        false,
+    )
+    .unwrap();
     let implied_0 = Uint128::try_from(implied_0_u256).unwrap();
     let implied_1 = Uint128::try_from(implied_1_u256).unwrap();
 
-    let expected_pf0 = Uint128::new(5).checked_add(Uint128::new(10_000).checked_sub(implied_0).unwrap()).unwrap();
-    let expected_pf1 = Uint128::new(7).checked_add(Uint128::new(10_000).checked_sub(implied_1).unwrap()).unwrap();
+    let expected_pf0 = Uint128::new(5)
+        .checked_add(Uint128::new(10_000).checked_sub(implied_0).unwrap())
+        .unwrap();
+    let expected_pf1 = Uint128::new(7)
+        .checked_add(Uint128::new(10_000).checked_sub(implied_1).unwrap())
+        .unwrap();
 
-    assert_eq!(PROTOCOL_FEES_0.load(deps.as_ref().storage).unwrap(), expected_pf0);
-    assert_eq!(PROTOCOL_FEES_1.load(deps.as_ref().storage).unwrap(), expected_pf1);
+    assert_eq!(
+        PROTOCOL_FEES_0.load(deps.as_ref().storage).unwrap(),
+        expected_pf0
+    );
+    assert_eq!(
+        PROTOCOL_FEES_1.load(deps.as_ref().storage).unwrap(),
+        expected_pf1
+    );
 }
 
 #[test]
@@ -414,7 +469,13 @@ fn migration_rejects_invalid_tick_alignment_or_bounds() {
 
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
-    let invalid_position = make_position(owner("andr", "alice"), pool_key.clone(), -7, 10, Uint128::new(10));
+    let invalid_position = make_position(
+        owner("andr", "alice"),
+        pool_key.clone(),
+        -7,
+        10,
+        Uint128::new(10),
+    );
 
     save_legacy_fixture(
         deps.as_mut().storage,
@@ -459,7 +520,9 @@ fn migration_rejects_unknown_source_version() {
         migrate_msg(LegacyLiquidityMode::AlreadyV3Liquidity),
     )
     .unwrap_err();
-    assert!(err.to_string().contains("unsupported migration source version"));
+    assert!(err
+        .to_string()
+        .contains("unsupported migration source version"));
 }
 
 #[test]
@@ -469,7 +532,13 @@ fn migration_idempotent_noop_without_force() {
 
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
-    let position = make_position(owner("andr", "alice"), pool_key.clone(), -10, 10, Uint128::new(100));
+    let position = make_position(
+        owner("andr", "alice"),
+        pool_key.clone(),
+        -10,
+        10,
+        Uint128::new(100),
+    );
 
     save_legacy_fixture(
         deps.as_mut().storage,
@@ -500,7 +569,10 @@ fn migration_idempotent_noop_without_force() {
         .attributes
         .iter()
         .any(|a| a.key == "action" && a.value == "migrate_concentrated_vlp_noop"));
-    assert_eq!(MIGRATION_METADATA.load(deps.as_ref().storage).unwrap(), metadata_before);
+    assert_eq!(
+        MIGRATION_METADATA.load(deps.as_ref().storage).unwrap(),
+        metadata_before
+    );
 }
 
 #[test]
@@ -510,7 +582,13 @@ fn migration_force_rebuild_is_stable() {
 
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
-    let position = make_position(owner("andr", "alice"), pool_key.clone(), -10, 10, Uint128::new(100));
+    let position = make_position(
+        owner("andr", "alice"),
+        pool_key.clone(),
+        -10,
+        10,
+        Uint128::new(100),
+    );
 
     save_legacy_fixture(
         deps.as_mut().storage,
@@ -540,8 +618,14 @@ fn migration_force_rebuild_is_stable() {
     };
     migrate(deps.as_mut(), env, force_msg).unwrap();
 
-    assert_eq!(STATE.load(deps.as_ref().storage).unwrap().total_lp_tokens, total_before);
-    assert_eq!(ACTIVE_LIQUIDITY.load(deps.as_ref().storage).unwrap(), active_before);
+    assert_eq!(
+        STATE.load(deps.as_ref().storage).unwrap().total_lp_tokens,
+        total_before
+    );
+    assert_eq!(
+        ACTIVE_LIQUIDITY.load(deps.as_ref().storage).unwrap(),
+        active_before
+    );
     assert_eq!(collect_ticks(deps.as_ref().storage), ticks_before);
 }
 
@@ -556,8 +640,20 @@ fn migration_preserves_position_ids_and_owner() {
     let id_1 = (123u128 << 64) | 44u128;
     let id_2 = (123u128 << 64) | 45u128;
 
-    let pos_1 = make_position(owner("andr", "alice"), pool_key.clone(), -10, 10, Uint128::new(150));
-    let pos_2 = make_position(owner("sepolia", "bob"), pool_key.clone(), 10, 20, Uint128::new(200));
+    let pos_1 = make_position(
+        owner("andr", "alice"),
+        pool_key.clone(),
+        -10,
+        10,
+        Uint128::new(150),
+    );
+    let pos_2 = make_position(
+        owner("sepolia", "bob"),
+        pool_key.clone(),
+        10,
+        20,
+        Uint128::new(200),
+    );
 
     save_legacy_fixture(
         deps.as_mut().storage,
@@ -583,8 +679,14 @@ fn migration_preserves_position_ids_and_owner() {
     assert_eq!(out_1.lower_tick_index, pos_1.lower_tick_index);
     assert_eq!(out_2.upper_tick_index, pos_2.upper_tick_index);
 
-    assert!(POSITION_ID_PREFIX.may_load(deps.as_ref().storage).unwrap().is_some());
-    assert!(POSITION_NONCE.may_load(deps.as_ref().storage).unwrap().is_some());
+    assert!(POSITION_ID_PREFIX
+        .may_load(deps.as_ref().storage)
+        .unwrap()
+        .is_some());
+    assert!(POSITION_NONCE
+        .may_load(deps.as_ref().storage)
+        .unwrap()
+        .is_some());
 }
 
 #[test]
@@ -617,7 +719,20 @@ fn migration_status_markers_are_written() {
     assert_eq!(metadata.source_version, "0.1.0");
     assert_eq!(metadata.mode, LegacyLiquidityMode::AlreadyV3Liquidity);
     assert_eq!(metadata.positions_migrated, 0);
-    assert_eq!(FEE_GROWTH_GLOBAL_0_X128.load(deps.as_ref().storage).unwrap(), Uint256::zero());
-    assert_eq!(FEE_GROWTH_GLOBAL_1_X128.load(deps.as_ref().storage).unwrap(), Uint256::zero());
-    assert!(OBSERVATIONS.may_load(deps.as_ref().storage, 0).unwrap().is_some());
+    assert_eq!(
+        FEE_GROWTH_GLOBAL_0_X128
+            .load(deps.as_ref().storage)
+            .unwrap(),
+        Uint256::zero()
+    );
+    assert_eq!(
+        FEE_GROWTH_GLOBAL_1_X128
+            .load(deps.as_ref().storage)
+            .unwrap(),
+        Uint256::zero()
+    );
+    assert!(OBSERVATIONS
+        .may_load(deps.as_ref().storage, 0)
+        .unwrap()
+        .is_some());
 }

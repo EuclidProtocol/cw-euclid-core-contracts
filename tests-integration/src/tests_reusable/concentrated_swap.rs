@@ -6,7 +6,8 @@ use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::virtual_balance::msg::{
-    ExecuteApprove, ExecuteMsg as VirtualBalanceExecuteMsg, QueryMsgFns as VirtualBalanceQueryMsgFns,
+    ExecuteApprove, ExecuteMsg as VirtualBalanceExecuteMsg,
+    QueryMsgFns as VirtualBalanceQueryMsgFns,
 };
 use euclid::msgs::vlp::base::{VlpSimulateSwapMsg, VlpSwapMsg};
 use euclid::msgs::vlp::concentrated::msg::QueryMsg as ConcentratedQueryMsg;
@@ -33,10 +34,7 @@ pub fn execute_concentrated_swap(
     let sender = CrossChainUser::new(chain_uid, factory.environment().sender.to_string());
     deposit_token(factory, router, asset_in.clone(), amount_in, vec![]).unwrap();
 
-    let vlp_address = router
-        .get_vlp_by_pool_key(pool_key.clone())
-        .unwrap()
-        .vlp;
+    let vlp_address = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let mut vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address.clone()));
 
     let mut virtual_balance = get_virtual_balance(
@@ -101,10 +99,7 @@ fn test_swap_single_range(#[case] mode: FactorySetupMode, #[case] factory_chain_
     let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
-    let vlp_address = router
-        .get_vlp_by_pool_key(pool_key.clone())
-        .unwrap()
-        .vlp;
+    let vlp_address = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
     let simulation: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
         .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
@@ -146,10 +141,7 @@ fn test_swap_crosses_ticks(#[case] mode: FactorySetupMode, #[case] factory_chain
     )
     .unwrap();
 
-    let vlp_address = router
-        .get_vlp_by_pool_key(pool_key.clone())
-        .unwrap()
-        .vlp;
+    let vlp_address = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
     let chain_uid = factory.get_state().unwrap().chain_uid;
     let before: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse = vlp
@@ -170,11 +162,20 @@ fn test_swap_crosses_ticks(#[case] mode: FactorySetupMode, #[case] factory_chain
     assert!(amount_out > Uint128::zero());
 
     let after: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse = vlp
-        .query(&ConcentratedQueryMsg::Pool { chain_uid, pool_key })
+        .query(&ConcentratedQueryMsg::Pool {
+            chain_uid,
+            pool_key,
+        })
         .unwrap();
 
-    assert!(after.reserve_1 > before.reserve_1, "input reserve should increase");
-    assert!(after.reserve_2 < before.reserve_2, "output reserve should decrease");
+    assert!(
+        after.reserve_1 > before.reserve_1,
+        "input reserve should increase"
+    );
+    assert!(
+        after.reserve_2 < before.reserve_2,
+        "output reserve should decrease"
+    );
 }
 
 #[rstest]
@@ -234,10 +235,7 @@ fn test_larger_swap_has_worse_effective_price(
     let pair = pair_with_amounts(&token_a, &token_b, 40_000, 40_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
-    let vlp_address = router
-        .get_vlp_by_pool_key(pool_key)
-        .unwrap()
-        .vlp;
+    let vlp_address = router.get_vlp_by_pool_key(pool_key).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
     let small_in = Uint128::new(1_000);
     let large_in = Uint128::new(5_000);

@@ -1,6 +1,6 @@
 [package]
 name = "lp_token"
-version = "0.2.1"
+version = "0.2.2"
 authors = [
   "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
   "Joe Monem <jmonem@icloud.com>",

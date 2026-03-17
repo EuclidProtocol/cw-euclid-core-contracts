@@ -13,11 +13,11 @@ use euclid::msgs::router::{
 };
 use euclid::{
     chain::{ChainType, ChainUid},
+    msgs::router::RegisterFactoryChainEvm,
     msgs::vlp::concentrated::msg::{
         MigrateMsg as ConcentratedMigrateMsg, MigrationStatusResponse,
         QueryMsg as ConcentratedQueryMsg,
     },
-    msgs::router::RegisterFactoryChainEvm,
 };
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 use euclid_relayer::RelayerContract;
@@ -35,7 +35,9 @@ use virtual_balance::VirtualBalanceContract;
 use euclid::msgs::router::execute::ExecuteMsgFns as RouterExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 
-use euclid::msgs::factory::msg::{ExecuteMsgFns as FactoryExecuteMsgFns, QueryMsgFns as FactoryQueryMsgFns};
+use euclid::msgs::factory::msg::{
+    ExecuteMsgFns as FactoryExecuteMsgFns, QueryMsgFns as FactoryQueryMsgFns,
+};
 
 use crate::helpers::relayer::{
     ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
@@ -142,9 +144,11 @@ fn setup_factory_inner(
         None,
         &[],
     )?;
-    factory.manage_factory_state(euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
-        position_token_contract: position_token.address().unwrap().to_string(),
-    })?;
+    factory.manage_factory_state(
+        euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
+            position_token_contract: position_token.address().unwrap().to_string(),
+        },
+    )?;
 
     if !is_native {
         match chain_type {
@@ -339,10 +343,7 @@ pub fn get_virtual_balance(chain: &MockBase, address: &Addr) -> VirtualBalanceCo
     virtual_balance
 }
 
-pub fn get_concentrated_vlp(
-    chain: &MockBase,
-    address: &Addr,
-) -> ConcentratedVlpContract<MockBase> {
+pub fn get_concentrated_vlp(chain: &MockBase, address: &Addr) -> ConcentratedVlpContract<MockBase> {
     let mut concentrated_vlp = ConcentratedVlpContract::new(chain.clone());
     concentrated_vlp.as_instance_mut().id = format!("concentrated_vlp_{}", address);
     concentrated_vlp.set_address(address);

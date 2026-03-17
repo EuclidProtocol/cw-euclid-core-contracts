@@ -14,7 +14,9 @@ use rstest::rstest;
 
 use crate::helpers::chains::setup_router;
 use crate::helpers::factory::{concentrated_pool_key, create_concentrated_pool, faucet};
-use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID};
+use crate::tests_reusable::constants::{
+    FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
+};
 use crate::tests_reusable::factory_register::{setup_factory_with_mode, FactorySetupMode};
 use crate::tests_reusable::factory_register_denom::register_denom;
 

@@ -19,8 +19,8 @@ use euclid_ibc::router_ibc::{
     RouterCrossChainConcentratedCollectFeesExecuteMsg,
     RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
     RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
-    RouterCrossChainConcentratedRequestPoolCreationExecuteMsg,
-    RouterCrossChainExecuteMsg, RouterCrossChainRemoveLiquidityExecuteMsg,
+    RouterCrossChainConcentratedRequestPoolCreationExecuteMsg, RouterCrossChainExecuteMsg,
+    RouterCrossChainRemoveLiquidityExecuteMsg,
 };
 
 use crate::{
@@ -28,11 +28,12 @@ use crate::{
     state::{
         pool_key_to_map_key, ConcentratedAddLiquidityRequest, ConcentratedCollectFeesRequest,
         ConcentratedCollectProtocolFeesRequest, ConcentratedPoolCreateRequest,
-        ConcentratedRemoveLiquidityRequest, PAIR_TO_VLP, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA,
-        PoolCreateRequest, PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
+        ConcentratedRemoveLiquidityRequest, PoolCreateRequest, ADMIN, PAIR_TO_VLP,
+        PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
-        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA,
+        STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -497,8 +498,11 @@ pub fn execute_request_concentrated_pool_creation(
         pool_key: pool_key.clone(),
     };
 
-    PENDING_CONCENTRATED_POOL_REQUESTS
-        .save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
+    PENDING_CONCENTRATED_POOL_REQUESTS.save(
+        deps.storage,
+        (info.sender.clone(), tx_id.clone()),
+        &req,
+    )?;
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
 
@@ -696,19 +700,23 @@ pub fn remove_concentrated_liquidity_request(
     let tx_id = generate_tx(deps, &env, &sender)?;
 
     ensure!(
-        !PENDING_CONCENTRATED_REMOVE_LIQUIDITY.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
+        !PENDING_CONCENTRATED_REMOVE_LIQUIDITY
+            .has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-    ensure!(
-        !lp_allocation.is_zero(),
-        ContractError::ZeroAssetAmount {}
-    );
+    ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
 
     let position_meta = POSITION_ID_TO_METADATA
         .may_load(deps.storage, position_id.u128())?
         .ok_or(ContractError::new("Position not found"))?;
-    ensure!(position_meta.owner == info.sender, ContractError::Unauthorized {});
-    ensure!(position_meta.pool_key == pool_key, ContractError::Unauthorized {});
+    ensure!(
+        position_meta.owner == info.sender,
+        ContractError::Unauthorized {}
+    );
+    ensure!(
+        position_meta.pool_key == pool_key,
+        ContractError::Unauthorized {}
+    );
 
     let req = ConcentratedRemoveLiquidityRequest {
         tx_id: tx_id.clone(),
@@ -718,8 +726,11 @@ pub fn remove_concentrated_liquidity_request(
         lp_allocation,
     };
 
-    PENDING_CONCENTRATED_REMOVE_LIQUIDITY
-        .save(deps.storage, (sender_addr.clone(), tx_id.clone()), &req)?;
+    PENDING_CONCENTRATED_REMOVE_LIQUIDITY.save(
+        deps.storage,
+        (sender_addr.clone(), tx_id.clone()),
+        &req,
+    )?;
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
     let remove_msg = RouterCrossChainExecuteMsg::RemoveConcentratedLiquidity(
@@ -780,8 +791,13 @@ pub fn collect_concentrated_fees_request(
         ContractError::PoolDoesNotExist {}
     );
 
-    if let Some(position_meta) = POSITION_ID_TO_METADATA.may_load(deps.storage, position_id.u128())? {
-        ensure!(position_meta.owner == info.sender, ContractError::Unauthorized {});
+    if let Some(position_meta) =
+        POSITION_ID_TO_METADATA.may_load(deps.storage, position_id.u128())?
+    {
+        ensure!(
+            position_meta.owner == info.sender,
+            ContractError::Unauthorized {}
+        );
         ensure!(
             position_meta.pool_key == pool_key,
             ContractError::new("Pool key mismatch")
@@ -795,7 +811,11 @@ pub fn collect_concentrated_fees_request(
         position_id: position_id.u128(),
         recipient: recipient.clone(),
     };
-    PENDING_CONCENTRATED_COLLECT_FEES.save(deps.storage, (sender_addr.clone(), tx_id.clone()), &req)?;
+    PENDING_CONCENTRATED_COLLECT_FEES.save(
+        deps.storage,
+        (sender_addr.clone(), tx_id.clone()),
+        &req,
+    )?;
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
     let collect_msg = RouterCrossChainExecuteMsg::CollectConcentratedFees(
@@ -842,8 +862,11 @@ pub fn collect_concentrated_protocol_fees_request(
     );
 
     let state = STATE.load(deps.storage)?;
-    let admin = deps.api.addr_validate(&state.admin)?;
-    ensure!(info.sender == admin, ContractError::Unauthorized {});
+    let admins = ADMIN.load(deps.storage)?;
+    ensure!(
+        info.sender == admins.fee_admin,
+        ContractError::Unauthorized {}
+    );
 
     let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let sender_addr = deps.api.addr_validate(&sender.address)?;
