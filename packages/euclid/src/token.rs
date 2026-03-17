@@ -4,10 +4,11 @@ use std::ops::Deref;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     coin, ensure, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, StdError,
-    StdResult, Uint128, WasmMsg,
+    StdResult, Uint128, Uint256, WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
+use crate::chain::ChainUid;
 use crate::cross_chain_user::CrossChainUser;
 use crate::error::ContractError;
 
@@ -67,7 +68,7 @@ impl Token {
     pub fn create_voucher_transfer_msg(
         &self,
         virtual_balance_address: String,
-        amount: Uint128,
+        amount: Uint256,
         // Only router should be able to set the sender
         sender: Option<CrossChainUser>,
         to: CrossChainUser,
@@ -486,6 +487,7 @@ impl TokenType {
     }
 }
 
+
 #[cw_serde]
 pub struct TokenWithAmount {
     pub token: Token,
@@ -647,6 +649,22 @@ impl PairWithDenomAndAmount {
     pub fn get_vec_token_info(&self) -> Vec<TokenWithDenomAndAmount> {
         let tokens: Vec<TokenWithDenomAndAmount> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
+    }
+}
+
+#[cw_serde]
+pub struct TokenMetadata {
+    pub token: Token,
+    pub chain_uid: ChainUid,
+    pub token_type: TokenType,
+    pub decimals: u8,
+    // If false, the token is not allowed to be used in the contract
+    pub allowed: bool,
+}
+
+impl TokenMetadata {
+    pub fn new(token: Token, chain_uid: ChainUid, token_type: TokenType, decimals: u8) -> Self {
+        Self { token, chain_uid, token_type, decimals, allowed: true }
     }
 }
 

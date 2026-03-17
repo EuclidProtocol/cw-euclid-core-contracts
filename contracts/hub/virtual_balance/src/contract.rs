@@ -5,12 +5,13 @@ use cw2::set_contract_version;
 use euclid::admin::EuclidAdmin;
 
 use crate::execute::{
-    execute_approve, execute_burn, execute_mint, execute_remove_zero_state_values,
-    execute_transfer, execute_update_admin, execute_update_router,
+    execute_approve, execute_burn, execute_mint, execute_register_token_metadata,
+    execute_remove_zero_state_values, execute_transfer, execute_update_admin,
+    execute_update_router, execute_update_token_metadata,
 };
 use crate::query::{
-    query_admin, query_all_balances, query_balance, query_state, query_token_balances,
-    query_user_balances,
+    query_admin, query_all_balances, query_balance, query_escrow_balance, query_state,
+    query_token_balances, query_user_balances,
 };
 use crate::state::{ADMIN, STATE};
 use euclid::error::ContractError;
@@ -55,7 +56,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::Mint(msg) => execute_mint(deps, info, msg),
         ExecuteMsg::Burn(msg) => execute_burn(deps, info, msg),
-        ExecuteMsg::Transfer(msg) => execute_transfer(&mut deps, info, msg),
+        ExecuteMsg::Transfer(msg) => execute_transfer(&mut deps, env, info, msg),
         ExecuteMsg::UpdateAdmin {
             new_admin,
             admin_type,
@@ -64,6 +65,12 @@ pub fn execute(
         ExecuteMsg::Approve(msg) => execute_approve(deps, info, msg),
         ExecuteMsg::RemoveZeroStateValues { start_after, limit } => {
             execute_remove_zero_state_values(deps, info, start_after, limit)
+        }
+        ExecuteMsg::RegisterTokenMetadata { token_metadata } => {
+            execute_register_token_metadata(deps, info, token_metadata)
+        }
+        ExecuteMsg::UpdateTokenMetadata { token_metadata } => {
+            execute_update_token_metadata(deps, info, token_metadata)
         }
     }
 }
@@ -82,5 +89,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             token_id,
             pagination,
         } => query_token_balances(deps, token_id, pagination),
+        QueryMsg::GetEscrowBalance {
+            token_id,
+            chain_uid,
+            token_type,
+        } => query_escrow_balance(deps, token_id, chain_uid, token_type),
     }
 }

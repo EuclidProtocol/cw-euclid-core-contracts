@@ -6,7 +6,7 @@ use cosmwasm_std::Event;
 use crate::{
     deposit::DepositTokenRequest,
     swap::SwapRequest,
-    token::{Token, TokenType, TokenWithAmount},
+    token::{Token, TokenMetadata, TokenType, TokenWithAmount},
 };
 
 pub fn liquidity_event(
@@ -189,4 +189,13 @@ pub fn receive_acknowledgement_event(
         .add_attribute("sequence", sequence.to_string())
         .add_attribute("source_port", source_port)
         .add_attribute("destination_port", destination_port)
+}
+
+pub const EUCLID_REGISTER_TOKEN_METADATA_EVENT: &str = "euclid-register-token-metadata";
+pub fn register_token_metadata_event(token_metadata: &TokenMetadata) -> Event {
+    Event::new(EUCLID_REGISTER_TOKEN_METADATA_EVENT)
+        .add_attribute("token", token_metadata.token.to_string())
+        .add_attribute("chain_uid", token_metadata.chain_uid.to_string())
+        .add_attribute("token_type", token_metadata.token_type.get_key())
+        .add_attribute("decimals", token_metadata.decimals.to_string())
 }

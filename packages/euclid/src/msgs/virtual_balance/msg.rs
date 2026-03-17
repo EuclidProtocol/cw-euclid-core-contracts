@@ -1,12 +1,8 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint256};
 
 use crate::{
-    admin::{AdminType, EuclidAdmin},
-    chain::ChainUid,
-    cross_chain_user::CrossChainUser,
-    utils::pagination::Pagination,
-    voucher::{BalanceKey, SerializedBalanceKey},
+    admin::{AdminType, EuclidAdmin}, chain::ChainUid, cross_chain_user::CrossChainUser, token::{TokenMetadata, TokenType}, utils::pagination::Pagination, voucher::{BalanceKey, SerializedBalanceKey}
 };
 
 #[cw_serde]
@@ -39,17 +35,25 @@ pub enum ExecuteMsg {
         limit: Option<u32>,
     },
     Approve(ExecuteApprove),
+    RegisterTokenMetadata {
+        token_metadata: TokenMetadata,
+    },
+    UpdateTokenMetadata {
+        token_metadata: TokenMetadata,
+    },
 }
 
 #[cw_serde]
 pub struct ExecuteMint {
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub balance_key: BalanceKey,
+    pub token_type: TokenType,
+    pub token_source_chain_uid: ChainUid,
 }
 
 #[cw_serde]
 pub struct ExecuteTransfer {
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub token_id: String,
 
     // Only router can set sender
@@ -64,13 +68,15 @@ pub struct ExecuteTransfer {
 
 #[cw_serde]
 pub struct ExecuteBurn {
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub balance_key: BalanceKey,
+    pub token_type: TokenType,
+    pub token_source_chain_uid: ChainUid,
 }
 
 #[cw_serde]
 pub struct ExecuteApprove {
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub token_id: String,
     pub spender: CrossChainUser,
     pub owner: CrossChainUser,
@@ -97,22 +103,28 @@ pub enum QueryMsg {
     #[returns(GetUserBalancesResponse)]
     GetUserBalances {
         user: CrossChainUser,
-        pagination: Option<Pagination<Uint128>>,
+        pagination: Option<Pagination<Uint256>>,
     },
     #[returns(GetAllBalancesResponse)]
     GetAllBalances {
-        pagination: Option<Pagination<Uint128>>,
+        pagination: Option<Pagination<Uint256>>,
     },
     #[returns(GetTokenBalancesResponse)]
     GetTokenBalances {
         token_id: String,
-        pagination: Option<Pagination<Uint128>>,
+        pagination: Option<Pagination<Uint256>>,
+    },
+    #[returns(GetEscrowBalanceResponse)]
+    GetEscrowBalance {
+        token_id: String,
+        chain_uid: ChainUid,
+        token_type: TokenType,
     },
 }
 
 #[cw_serde]
 pub struct GetBalanceResponse {
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
@@ -122,7 +134,7 @@ pub struct GetUserBalancesResponse {
 
 #[cw_serde]
 pub struct GetUserBalancesResponseItem {
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub token_id: String,
 }
 
@@ -133,7 +145,7 @@ pub struct GetAllBalancesResponse {
 
 #[cw_serde]
 pub struct GetAllBalancesResponseItem {
-    pub balance: Uint128,
+    pub balance: Uint256,
     pub address: String,
     pub token_id: String,
     pub chain_uid: ChainUid,
@@ -146,6 +158,11 @@ pub struct GetTokenBalancesResponse {
 
 #[cw_serde]
 pub struct GetTokenBalancesResponseItem {
-    pub balance: Uint128,
+    pub balance: Uint256,
     pub chain_uid: ChainUid,
+}
+
+#[cw_serde]
+pub struct GetEscrowBalanceResponse {
+    pub balance: Uint256,
 }

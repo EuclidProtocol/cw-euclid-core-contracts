@@ -40,9 +40,11 @@ pub const VLPS: Map<(String, String), Addr> = Map::new("vlps");
 // Store all vlps related to a token
 pub const TOKEN_VLPS: Map<Token, Vec<Addr>> = Map::new("token_vlps");
 
+#[deprecated(note = "TOKEN_DENOMS has been moved to virtual_balance contract")]
 // Store all tokens in a map for easy access
 pub const TOKEN_DENOMS: Map<Token, Vec<TokenDenom>> = Map::new("token_denoms");
 
+#[deprecated(note = "ESCROW_BALANCES has been moved to virtual_balance contract")]
 // Token escrow balance on each chain. Mapping of (token, chain_uid) to balance
 pub const ESCROW_BALANCES: Map<(String, ChainUid), Uint128> = Map::new("escrow_balances");
 

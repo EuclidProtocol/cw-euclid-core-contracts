@@ -11,9 +11,10 @@ use euclid::voucher::BalanceKey;
 use euclid_ibc::ack::AcknowledgementMsg;
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 
+use euclid::token::TokenType;
+
 use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, FEE_STATE, PENDING_RELEASE_VOUCHER,
-    VIRTUAL_BALANCE_CONTRACT,
+    CHAIN_UID_TO_CHAIN, FEE_STATE, PENDING_RELEASE_VOUCHER, VIRTUAL_BALANCE_CONTRACT,
 };
 
 pub fn reusable_internal_ack_call(
@@ -39,11 +40,14 @@ pub fn reusable_internal_ack_call(
             token,
             tx_id,
             recipient,
+            denom,
             ..
         } => {
             let res = from_json(ack)?;
             let recipient = CrossChainUser::new(chain_uid, recipient.to_string());
-            ibc_ack_release_escrow(deps, env, sender, amount, token, res, recipient, tx_id)?
+            ibc_ack_release_escrow(
+                deps, env, sender, amount, token, denom, res, recipient, tx_id,
+            )?
         }
     };
     let response = response.add_attribute("tx_id", tx_id);
@@ -98,6 +102,7 @@ pub fn ibc_ack_release_escrow(
     sender: CrossChainUser,
     amount: Uint128,
     token: Token,
+    token_type: TokenType,
     res: AcknowledgementMsg<ReleaseEscrowResponse>,
     recipient: CrossChainUser,
     tx_id: String,
@@ -129,10 +134,12 @@ pub fn ibc_ack_release_escrow(
                     token_id: token.to_string(),
                 };
 
-                // Escrow release failed, mint tokens again for the original cross chain sender
+                // Mint release fee to fee recipient
                 let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                    amount: pending_release_voucher.release_fee_amount,
+                    amount: pending_release_voucher.release_fee_amount.into(),
                     balance_key: balance_key.clone(),
+                    token_type: token_type.clone(),
+                    token_source_chain_uid: recipient.chain_uid.clone(),
                 });
                 let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: virtual_balance_address.to_string(),
@@ -146,11 +153,7 @@ pub fn ibc_ack_release_escrow(
         }
         // Re-mint tokens
         AcknowledgementMsg::Error(err) => {
-            // Escrow release is failed, add the old escrow balance again
-            let escrow_key = ESCROW_BALANCES.key((token.to_string(), recipient.chain_uid.clone()));
-            let new_balance = escrow_key.load(deps.storage)?.checked_add(amount)?;
-            escrow_key.save(deps.storage, &new_balance)?;
-
+            // Escrow release failed: re-mint vouchers (virtual_balance will re-increment escrow)
             let refund_recipient = if pending_release_voucher.unsafe_refund_voucher {
                 recipient.clone()
             } else {
@@ -164,8 +167,10 @@ pub fn ibc_ack_release_escrow(
             let mint_amount = amount.checked_add(pending_release_voucher.release_fee_amount)?;
             // Escrow release failed, mint tokens again for the original cross chain sender
             let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                amount: mint_amount,
+                amount: mint_amount.into(),
                 balance_key: balance_key.clone(),
+                token_type,
+                token_source_chain_uid: recipient.chain_uid.clone(),
             });
             let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: virtual_balance_address.to_string(),

@@ -48,13 +48,19 @@ pub fn execute_virtual_balance_receive(
 
     let claim_msg: VoucherReceiveHookMsg = from_json(transfer_msg.msg.clone())?;
     match claim_msg {
-        VoucherReceiveHookMsg::CreateVoucherClaim(msg) => execute_create_voucher_claim(
-            deps,
-            &transfer_msg.sender,
-            Token::create(transfer_msg.token_id)?,
-            transfer_msg.amount,
-            msg,
-        ),
+        VoucherReceiveHookMsg::CreateVoucherClaim(msg) => {
+            let amount: Uint128 = transfer_msg
+                .amount
+                .try_into()
+                .map_err(|_| ContractError::new("Amount overflow"))?;
+            execute_create_voucher_claim(
+                deps,
+                &transfer_msg.sender,
+                Token::create(transfer_msg.token_id)?,
+                amount,
+                msg,
+            )
+        }
     }
 }
 pub fn execute_create_voucher_claim(

@@ -22,8 +22,8 @@ use crate::{
         VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        ADMIN, ESCROW_BALANCES, FEE_STATE, FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE,
-        TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+        ADMIN, FEE_STATE, FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS,
+        VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
 
@@ -199,28 +199,18 @@ pub fn ibc_execute_add_liquidity(
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     for token in pair.get_vec_token_info() {
-        // Mint if not voucher token
+        // Mint if not voucher token (escrow managed by virtual_balance)
         if !token.token_type.is_voucher() {
-            // Increase Escrow balance
-            let token_escrow_key = (token.token.to_string(), sender.chain_uid.clone());
-            let token_escrow_balance = ESCROW_BALANCES
-                .may_load(deps.storage, token_escrow_key.clone())?
-                .unwrap_or(Uint128::zero());
-
-            ESCROW_BALANCES.save(
-                deps.storage,
-                token_escrow_key,
-                &token_escrow_balance.checked_add(token.amount)?,
-            )?;
-
             // Mint virtual balance for the token
             let mint_virtual_balance_msg =
                 euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(ExecuteMint {
-                    amount: token.amount,
+                    amount: token.amount.into(),
                     balance_key: BalanceKey {
                         cross_chain_user: sender.clone(),
                         token_id: token.token.to_string(),
                     },
+                    token_type: token.token_type.clone(),
+                    token_source_chain_uid: sender.chain_uid.clone(),
                 });
 
             let mint_virtual_balance_msg = WasmMsg::Execute {
@@ -236,7 +226,7 @@ pub fn ibc_execute_add_liquidity(
         // Transfer voucher token to the vlp contract
         let approve_voucher_msg =
             euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(ExecuteApprove {
-                amount: token.amount,
+                amount: token.amount.into(),
                 token_id: token.token.to_string(),
                 spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
                 owner: sender.clone(),

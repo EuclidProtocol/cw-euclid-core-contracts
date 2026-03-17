@@ -24,7 +24,7 @@ use euclid_ibc::{
 
 use crate::{
     execute::token::execute_transfer_voucher,
-    state::{ESCROW_BALANCES, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT},
+    state::{TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT},
 };
 
 pub fn ibc_execute_register_denom(
@@ -122,15 +122,7 @@ pub fn ibc_execute_deposit_token(
 ) -> Result<Response, ContractError> {
     let sender = msg.clone().sender;
 
-    // Add token 1 in escrow balance
-    let token_escrow_key = (msg.asset_in.token.to_string(), sender.chain_uid.clone());
-    let token_escrow_balance = ESCROW_BALANCES
-        .may_load(deps.storage, token_escrow_key.clone())?
-        .unwrap_or(Uint128::zero());
-
-    let new_escrow_balance = token_escrow_balance.checked_add(msg.amount_in)?;
-
-    ESCROW_BALANCES.save(deps.storage, token_escrow_key, &new_escrow_balance)?;
+    // Escrow balance is now managed by virtual_balance contract during mint
 
     let deposit_token_response = DepositTokenResponse {
         amount: msg.amount_in,
@@ -146,11 +138,13 @@ pub fn ibc_execute_deposit_token(
     let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: virtual_balance_address.to_string(),
         msg: to_json_binary(&VirtualBalanceMsg::Mint(ExecuteMint {
-            amount: msg.amount_in,
+            amount: msg.amount_in.into(),
             balance_key: BalanceKey {
                 cross_chain_user: msg.sender.clone(),
                 token_id: msg.asset_in.token.to_string(),
             },
+            token_type: msg.asset_in.token_type.clone(),
+            token_source_chain_uid: msg.sender.chain_uid.clone(),
         }))?,
         funds: vec![],
     });
@@ -178,14 +172,6 @@ pub fn ibc_execute_deposit_token(
                 denom = msg.asset_in.token_type.get_key()
             ),
             msg.amount_in,
-        )
-        .add_attribute(
-            format!(
-                "escrow_balance_token_{token}_denom_{denom}",
-                token = msg.asset_in.token,
-                denom = msg.asset_in.token_type.get_key()
-            ),
-            new_escrow_balance,
         );
 
     let transfer_response = execute_transfer_voucher(

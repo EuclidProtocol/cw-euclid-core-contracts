@@ -320,7 +320,7 @@ pub fn remove_liquidity(
 
     let token_1_transfer_msg = pair.token_1.create_voucher_transfer_msg(
         state.virtual_balance_contract.to_string(),
-        token_1_liquidity,
+        token_1_liquidity.into(),
         None,
         sender.clone(),
         None,
@@ -329,7 +329,7 @@ pub fn remove_liquidity(
 
     let token_2_transfer_msg = pair.token_2.create_voucher_transfer_msg(
         state.virtual_balance_contract.to_string(),
-        token_2_liquidity,
+        token_2_liquidity.into(),
         None,
         sender.clone(),
         None,
@@ -382,7 +382,7 @@ pub fn add_liquidity(
         // Contract should have approval to use voucher tokens on behalf of sender
         let virtual_balance_transfer_msg = token.token.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            token.amount,
+            token.amount.into(),
             None,
             CrossChainUser {
                 address: env.contract.address.to_string(),
@@ -617,7 +617,7 @@ pub fn execute_swap(
     // Swap needs approval to use voucher tokens
     let transfer_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
         euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-            amount: amount_in,
+            amount: amount_in.into(),
             token_id: asset_in.to_string(),
             from: Some(voucher_sender.clone()),
             to: CrossChainUser {
@@ -712,7 +712,7 @@ pub fn execute_swap(
 
         let euclid_fee_transfer_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
             euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-                amount: euclid_fee,
+                amount: euclid_fee.into(),
                 token_id: asset_in.to_string(),
                 to: fee.recipient,
                 from: None,
@@ -736,7 +736,7 @@ pub fn execute_swap(
             let virtual_balance_approve_msg =
                 euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(
                     euclid::msgs::virtual_balance::msg::ExecuteApprove {
-                        amount: swap_response.amount_out,
+                        amount: swap_response.amount_out.into(),
                         token_id: swap_response.asset_out.to_string(),
 
                         owner: CrossChainUser {
@@ -795,7 +795,7 @@ pub fn execute_swap(
             let virtual_balance_transfer_msg =
                 euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
                     euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-                        amount: swap_response.amount_out,
+                        amount: swap_response.amount_out.into(),
                         token_id: swap_response.asset_out.to_string(),
 
                         // Destination Address

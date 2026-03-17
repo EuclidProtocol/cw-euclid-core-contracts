@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint128, Uint256, WasmMsg};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
@@ -16,7 +16,7 @@ use euclid_ibc::router_ibc::RouterCrossChainSwapExecuteMsg;
 use crate::{
     query::validate_swap_pairs,
     reply::SWAP_REPLY_ID,
-    state::{ESCROW_BALANCES, PENDING_SWAPS, VIRTUAL_BALANCE_CONTRACT},
+    state::{PENDING_SWAPS, VIRTUAL_BALANCE_CONTRACT},
 };
 
 pub fn ibc_execute_swap(
@@ -92,27 +92,18 @@ pub fn ibc_execute_swap(
         }
     );
 
-    // Mint voucher token in escrow balance if it is not a voucher token
+    // Mint voucher token if it is not a voucher token (escrow managed by virtual_balance)
     if !msg.asset_in.token_type.is_voucher() {
-        let token_escrow_key = (msg.asset_in.token.to_string(), sender.chain_uid.clone());
-        let token_escrow_balance = ESCROW_BALANCES
-            .may_load(deps.storage, token_escrow_key.clone())?
-            .unwrap_or(Uint128::zero());
-
-        ESCROW_BALANCES.save(
-            deps.storage,
-            token_escrow_key,
-            &token_escrow_balance.checked_add(msg.amount_in)?,
-        )?;
-
         // Mint virtual balance for the first swap vlp so it can start processing tx
         let mint_virtual_balance_msg =
             euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(ExecuteMint {
-                amount: msg.amount_in,
+                amount: msg.amount_in.into(),
                 balance_key: BalanceKey {
                     cross_chain_user: sender.clone(),
                     token_id: msg.asset_in.token.to_string(),
                 },
+                token_type: msg.asset_in.token_type.clone(),
+                token_source_chain_uid: sender.chain_uid.clone(),
             });
 
         let mint_virtual_balance_msg = WasmMsg::Execute {
@@ -140,17 +131,17 @@ pub fn ibc_execute_swap(
             )?;
 
         ensure!(
-            user_voucher_balance_res.amount.ge(&msg.amount_in),
+            user_voucher_balance_res.amount.ge(&Uint256::from(msg.amount_in)),
             ContractError::InsufficientAmount {
                 min_amount: msg.amount_in,
-                amount: user_voucher_balance_res.amount,
+                amount: user_voucher_balance_res.amount.try_into().unwrap_or(Uint128::MAX),
             }
         );
     }
 
     let approve_voucher_msg =
         euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(ExecuteApprove {
-            amount: msg.amount_in,
+            amount: msg.amount_in.into(),
             token_id: msg.asset_in.token.to_string(),
             spender: CrossChainUser::new(
                 ChainUid::vsl_chain_uid()?,
@@ -174,7 +165,7 @@ pub fn ibc_execute_swap(
     {
         let transfer_voucher_msg =
             euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(ExecuteTransfer {
-                amount: msg.partner_fee_amount,
+                amount: msg.partner_fee_amount.into(),
                 token_id: msg.asset_in.token.to_string(),
                 sender: Some(sender.clone()),
                 to: msg.partner_fee_recipient.clone(),

@@ -116,7 +116,12 @@ fn execute_voucher_receive(
     let hook: VoucherReceiveHookMsg = from_json(transfer.msg.clone())?;
     match hook {
         VoucherReceiveHookMsg::Deposit {} => {
-            execute_deposit(deps, transfer.token_id, transfer.amount, transfer.sender)
+            {
+                let amount: Uint128 = transfer.amount.try_into().map_err(|_| {
+                    StdError::generic_err("Amount overflow")
+                })?;
+                execute_deposit(deps, transfer.token_id, amount, transfer.sender)
+            }
         }
     }
 }
@@ -446,7 +451,7 @@ fn execute_withdraw(
     let destination_chain_uid = ChainUid::create(destination_chain_uid)?;
     let destination_user = CrossChainUser::new(destination_chain_uid, destination.clone());
     let transfer_msg = VirtualBalanceExecuteMsg::Transfer(ExecuteTransfer {
-        amount,
+        amount: amount.into(),
         token_id: permit_data.token_id.clone(),
         sender: None,
         to: destination_user,

@@ -280,6 +280,9 @@ pub enum ContractError {
 
     #[error("Rate limit exceeded: limit {limit}, actual {actual}")]
     RateLimitExceeded { limit: u128, actual: u128 },
+
+    #[error("Invalid Decimals: {decimals}")]
+    InvalidDecimals { decimals: u8 },
 }
 
 impl ContractError {

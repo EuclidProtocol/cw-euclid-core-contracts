@@ -14,11 +14,13 @@ use euclid::{
 };
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 
+use euclid::msgs::virtual_balance::msg::{ExecuteBurn, ExecuteMint, GetEscrowBalanceResponse};
+
 use crate::{
     helpers::release::get_release_fee_storage,
     state::{
-        PendingReleaseVoucher, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, ESCROW_BALANCES,
-        LOCKED_CHAINS, PENDING_RELEASE_VOUCHER, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
+        PendingReleaseVoucher, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, LOCKED_CHAINS,
+        PENDING_RELEASE_VOUCHER, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
     },
 };
 
@@ -191,7 +193,7 @@ pub fn _transfer_voucher_as_voucher(
     }
     let transfer_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
         euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-            amount,
+            amount: amount.into(),
             token_id: token.to_string(),
             sender: Some(sender.clone()),
             to: recipient.recipient.clone(),
@@ -242,11 +244,19 @@ pub fn _release_voucher(
         ContractError::InvalidDenom {}
     );
 
-    let escrow_key =
-        ESCROW_BALANCES.key((token.to_string(), recipient.recipient.chain_uid.clone()));
-    let escrow_balance = escrow_key
-        .may_load(deps.storage)?
-        .unwrap_or(Uint128::zero());
+    // Query escrow balance from virtual_balance contract
+    let escrow_balance_res: GetEscrowBalanceResponse = deps.querier.query_wasm_smart(
+        virtual_balance_address.clone(),
+        &euclid::msgs::virtual_balance::msg::QueryMsg::GetEscrowBalance {
+            token_id: token.to_string(),
+            chain_uid: recipient.recipient.chain_uid.clone(),
+            token_type: recipient.denom.clone(),
+        },
+    )?;
+    let escrow_balance: Uint128 = escrow_balance_res
+        .balance
+        .try_into()
+        .unwrap_or(Uint128::MAX);
 
     // We cannot release more than escrow balance
     let max_release_amount = amount.min(escrow_balance);
@@ -310,26 +320,22 @@ pub fn _release_voucher(
         ack_response,
     )?;
 
-    let burn_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Burn(
-        euclid::msgs::virtual_balance::msg::ExecuteBurn {
-            amount: release_amount,
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
-            },
+    let burn_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Burn(ExecuteBurn {
+        amount: release_amount.into(),
+        balance_key: BalanceKey {
+            cross_chain_user: sender.clone(),
+            token_id: token.to_string(),
         },
-    );
+        token_type: recipient.denom.clone(),
+        token_source_chain_uid: recipient.recipient.chain_uid.clone(),
+    });
     let burn_voucher_msg = WasmMsg::Execute {
         contract_addr: virtual_balance_address.clone(),
         msg: to_json_binary(&burn_voucher_msg)?,
         funds: vec![],
     };
 
-    // Update escrow balance state
-    escrow_key.save(
-        deps.storage,
-        &escrow_balance.checked_sub(release_amount_after_fee)?,
-    )?;
+    // Escrow balance is decremented by virtual_balance during burn
 
     // Order matters here because we want to burn the vouchers before releasing to prevent any reentrancy attacks.
     Ok((

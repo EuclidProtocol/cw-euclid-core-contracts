@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, Addr, Attribute, DepsMut, Env, MessageInfo, Order, Response, Uint128, WasmMsg,
+    Addr, Attribute, DepsMut, Env, MessageInfo, Order, Response, Uint256, WasmMsg, ensure,
 };
 use cw_storage_plus::Bound;
 use euclid::{
@@ -7,14 +7,22 @@ use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
+    events::register_token_metadata_event,
     msgs::{
         hook::VoucherReceive,
         virtual_balance::msg::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer},
     },
+    token::TokenMetadata,
     voucher::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ADMIN, ALLOWANCES, BALANCES, STATE};
+use crate::{
+    normalize::{normalize_token_to_voucher, normalize_voucher_to_token},
+    state::{
+        ADMIN, STATE, VOUCHER_ALLOWANCES, VOUCHER_BALANCES, VOUCHER_DECIMAL,
+        VoucherAllowance, get_escrow_balance_key, get_token_metadata_key,
+    },
+};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -27,19 +35,38 @@ pub fn execute_mint(
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
+    let metadata_key = get_token_metadata_key(
+        msg.balance_key.token_id.clone(),
+        msg.token_source_chain_uid.clone(),
+        msg.token_type.clone(),
+    );
+    let metadata = metadata_key.load(deps.storage)?;
+    let normalized_voucher_amount = normalize_token_to_voucher(msg.amount, metadata)?;
+
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
-    let old_balance = BALANCES
+    let old_balance = VOUCHER_BALANCES
         .may_load(deps.storage, key.clone())?
-        .unwrap_or(Uint128::zero());
+        .unwrap_or_default();
 
-    let new_balance = old_balance.checked_add(msg.amount)?;
+    let new_balance = old_balance.checked_add(normalized_voucher_amount)?;
 
-    BALANCES.save(deps.storage, key, &new_balance)?;
+    VOUCHER_BALANCES.save(deps.storage, key, &new_balance)?;
+
+    // Increment escrow balance (stores raw token amounts, not normalized)
+    let escrow_key = get_escrow_balance_key(
+        msg.balance_key.token_id.clone(),
+        msg.token_source_chain_uid,
+        msg.token_type,
+    );
+    let old_escrow = escrow_key.may_load(deps.storage)?.unwrap_or_default();
+    let new_escrow = old_escrow.checked_add(msg.amount)?;
+    escrow_key.save(deps.storage, &new_escrow)?;
 
     let response = Response::new()
         .add_attribute("action", "execute_mint")
         .add_attribute("mint_amount", msg.amount)
+        .add_attribute("normalized_amount", normalized_voucher_amount)
         .add_attribute(
             "mint_address",
             msg.balance_key.cross_chain_user.to_sender_string(),
@@ -67,25 +94,46 @@ pub fn execute_burn(
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
-    let old_balance =
-        BALANCES
-            .may_load(deps.storage, key.clone())?
-            .ok_or(ContractError::BalanceNotFound {
-                key: format!("{:?}", key),
-            })?;
+    let old_balance = VOUCHER_BALANCES
+        .may_load(deps.storage, key.clone())?
+        .ok_or(ContractError::BalanceNotFound {
+            key: format!("{:?}", key),
+        })?;
 
     let new_balance = old_balance.checked_sub(msg.amount)?;
 
     if new_balance.is_zero() {
-        // Lets clear some space from chain storage
-        BALANCES.remove(deps.storage, key);
+        VOUCHER_BALANCES.remove(deps.storage, key);
     } else {
-        BALANCES.save(deps.storage, key, &new_balance)?;
+        VOUCHER_BALANCES.save(deps.storage, key, &new_balance)?;
+    }
+
+    // Decrement escrow balance: denormalize voucher amount to raw token amount
+    let metadata_key = get_token_metadata_key(
+        msg.balance_key.token_id.clone(),
+        msg.token_source_chain_uid.clone(),
+        msg.token_type.clone(),
+    );
+    let metadata = metadata_key.load(deps.storage)?;
+    let raw_token_amount = normalize_voucher_to_token(msg.amount, metadata)?;
+
+    let escrow_key = get_escrow_balance_key(
+        msg.balance_key.token_id.clone(),
+        msg.token_source_chain_uid,
+        msg.token_type,
+    );
+    let old_escrow = escrow_key.load(deps.storage)?;
+    let new_escrow = old_escrow.checked_sub(raw_token_amount)?;
+    if new_escrow.is_zero() {
+        escrow_key.remove(deps.storage);
+    } else {
+        escrow_key.save(deps.storage, &new_escrow)?;
     }
 
     Ok(Response::new()
         .add_attribute("action", "execute_burn")
         .add_attribute("burn_amount", msg.amount)
+        .add_attribute("raw_token_amount", raw_token_amount)
         .add_attribute(
             "burn_address",
             msg.balance_key.cross_chain_user.to_sender_string(),
@@ -100,6 +148,7 @@ pub fn execute_burn(
 
 pub fn execute_transfer(
     deps: &mut DepsMut,
+    env: Env,
     info: MessageInfo,
     transfer_msg: ExecuteTransfer,
 ) -> Result<Response, ContractError> {
@@ -120,6 +169,7 @@ pub fn execute_transfer(
     let mut response = if let Some(from) = transfer_msg.from {
         let attributes = _deduct_allowance(
             deps,
+            &env,
             &sender,
             &from,
             transfer_msg.amount,
@@ -154,7 +204,7 @@ pub fn execute_transfer(
             token_id: transfer_msg.token_id.clone(),
             msg: forward_msg,
         };
-        // Send message to receiver. Caution should be take to not trigger a message with wrong chain uid as chain uid is not verified here.
+        // Send message to receiver. Caution should be taken to not trigger a message with wrong chain uid as chain uid is not verified here.
         let euclid_receive = WasmMsg::Execute {
             contract_addr: transfer_msg.to.address,
             msg: forward_msg.to_receiver_msg()?,
@@ -169,7 +219,7 @@ fn _transfer(
     deps: &mut DepsMut,
     from: CrossChainUser,
     to: CrossChainUser,
-    amount: Uint128,
+    amount: Uint256,
     token_id: String,
 ) -> Result<Response, ContractError> {
     ensure!(!amount.is_zero(), ContractError::ZeroAssetAmount {});
@@ -183,12 +233,10 @@ fn _transfer(
     let sender_key = sender_balance_key.clone().to_serialized_balance_key();
 
     // Decrease sender balance
-    let sender_old_balance = BALANCES
+    let sender_old_balance = VOUCHER_BALANCES
         .may_load(deps.storage, sender_key.clone())?
-        .unwrap_or(Uint128::zero());
+        .unwrap_or(Uint256::zero());
 
-    // This might not be needed because checked sub will do this check anyways.
-    // Added here just for additional safety
     ensure!(
         sender_old_balance.ge(&amount),
         ContractError::new(&format!(
@@ -199,9 +247,9 @@ fn _transfer(
 
     let sender_new_balance = sender_old_balance.checked_sub(amount)?;
     if sender_new_balance.is_zero() {
-        BALANCES.remove(deps.storage, sender_key);
+        VOUCHER_BALANCES.remove(deps.storage, sender_key);
     } else {
-        BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
+        VOUCHER_BALANCES.save(deps.storage, sender_key, &sender_new_balance)?;
     }
 
     let receiver_balance_key = BalanceKey {
@@ -211,11 +259,11 @@ fn _transfer(
     let receiver_key = receiver_balance_key.clone().to_serialized_balance_key();
 
     // Increase receiver balance
-    let receiver_old_balance = BALANCES
+    let receiver_old_balance = VOUCHER_BALANCES
         .may_load(deps.storage, receiver_key.clone())?
-        .unwrap_or(Uint128::zero());
+        .unwrap_or(Uint256::zero());
     let receiver_new_balance = receiver_old_balance.checked_add(amount)?;
-    BALANCES.save(deps.storage, receiver_key, &receiver_new_balance)?;
+    VOUCHER_BALANCES.save(deps.storage, receiver_key, &receiver_new_balance)?;
 
     let response = Response::new()
         .add_attribute("action", "execute_transfer")
@@ -229,9 +277,10 @@ fn _transfer(
 
 fn _deduct_allowance(
     deps: &mut DepsMut,
+    env: &Env,
     sender: &CrossChainUser,
     from: &CrossChainUser,
-    amount: Uint128,
+    amount: Uint256,
     token_id: &str,
 ) -> Result<Vec<Attribute>, ContractError> {
     let sender_balance_key = BalanceKey {
@@ -239,16 +288,26 @@ fn _deduct_allowance(
         cross_chain_user: from.clone(),
     };
     let serialized_balance_key = sender_balance_key.clone().to_serialized_balance_key();
-    let mut allowance = ALLOWANCES
+    let mut allowance = VOUCHER_ALLOWANCES
         .load(deps.storage, serialized_balance_key.clone())
-        .unwrap_or(Allowance {
-            amount: Uint128::zero(),
+        .unwrap_or(VoucherAllowance {
+            amount: Uint256::zero(),
             spender: from.clone(),
+            expires_at: None,
         });
+
     ensure!(
         allowance.spender == sender.clone(),
         ContractError::Unauthorized {}
     );
+
+    // Check expiry
+    if let Some(expires_at) = allowance.expires_at {
+        ensure!(
+            env.block.time < expires_at,
+            ContractError::new("Allowance has expired")
+        );
+    }
 
     ensure!(
         allowance.amount.ge(&amount),
@@ -260,9 +319,9 @@ fn _deduct_allowance(
 
     allowance.amount = allowance.amount.checked_sub(amount)?;
     if allowance.amount.is_zero() {
-        ALLOWANCES.remove(deps.storage, serialized_balance_key);
+        VOUCHER_ALLOWANCES.remove(deps.storage, serialized_balance_key);
     } else {
-        ALLOWANCES.save(deps.storage, serialized_balance_key, &allowance)?;
+        VOUCHER_ALLOWANCES.save(deps.storage, serialized_balance_key, &allowance)?;
     }
 
     Ok(vec![
@@ -351,12 +410,13 @@ pub fn execute_approve(
     };
 
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
-    ALLOWANCES.save(
+    VOUCHER_ALLOWANCES.save(
         deps.storage,
         key.to_serialized_balance_key(),
-        &Allowance {
+        &VoucherAllowance {
             amount: msg.amount,
             spender: spender.clone(),
+            expires_at: None,
         },
     )?;
 
@@ -383,7 +443,7 @@ pub fn execute_remove_zero_state_values(
     // Remove Allowances with a value of zero
     let limit = limit.unwrap_or(u32::MAX) as usize;
     let start = start_after.map(Bound::exclusive);
-    let allowance_keys_to_remove: Vec<_> = ALLOWANCES
+    let allowance_keys_to_remove: Vec<_> = VOUCHER_ALLOWANCES
         .range(deps.storage, start.clone(), None, Order::Ascending)
         .take(limit)
         .filter_map(|result| {
@@ -397,11 +457,11 @@ pub fn execute_remove_zero_state_values(
         .collect();
 
     for key in allowance_keys_to_remove {
-        ALLOWANCES.remove(deps.storage, key);
+        VOUCHER_ALLOWANCES.remove(deps.storage, key);
     }
 
     // Remove Balances with a value of zero
-    let balances_keys_to_remove: Vec<_> = BALANCES
+    let balances_keys_to_remove: Vec<_> = VOUCHER_BALANCES
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
         .filter_map(|result| {
@@ -415,8 +475,86 @@ pub fn execute_remove_zero_state_values(
         .collect();
 
     for key in balances_keys_to_remove {
-        BALANCES.remove(deps.storage, key);
+        VOUCHER_BALANCES.remove(deps.storage, key);
     }
 
     Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
+}
+
+pub fn execute_register_token_metadata(
+    deps: DepsMut,
+    info: MessageInfo,
+    token_metadata: TokenMetadata,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
+    let token = token_metadata.token.validate()?;
+    let chain_uid = token_metadata.chain_uid.validate()?;
+    ensure!(
+        token_metadata.decimals.le(&VOUCHER_DECIMAL),
+        ContractError::InvalidDecimals {
+            decimals: token_metadata.decimals
+        }
+    );
+
+    let token_metadata_storage = get_token_metadata_key(
+        token.to_string(),
+        chain_uid.clone(),
+        token_metadata.token_type.clone(),
+    );
+
+    ensure!(
+        !token_metadata_storage.has(deps.storage),
+        ContractError::new("Token already registered")
+    );
+    token_metadata_storage.save(deps.storage, &token_metadata)?;
+
+    Ok(Response::new().add_event(register_token_metadata_event(&token_metadata)))
+}
+
+pub fn execute_update_token_metadata(
+    deps: DepsMut,
+    info: MessageInfo,
+    token_metadata: TokenMetadata,
+) -> Result<Response, ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    ensure!(
+        admin.general_admin == info.sender,
+        ContractError::Unauthorized {}
+    );
+
+    let token = token_metadata.token.validate()?;
+    let chain_uid = token_metadata.chain_uid.validate()?;
+    ensure!(
+        token_metadata.decimals.le(&VOUCHER_DECIMAL),
+        ContractError::InvalidDecimals {
+            decimals: token_metadata.decimals
+        }
+    );
+
+    let token_metadata_storage = get_token_metadata_key(
+        token.to_string(),
+        chain_uid.clone(),
+        token_metadata.token_type.clone(),
+    );
+
+    let existing = token_metadata_storage.load(deps.storage)?;
+
+    // Prevent changing decimals or token_type as it would break normalization of existing balances
+    ensure!(
+        existing.decimals == token_metadata.decimals,
+        ContractError::new("Cannot change token decimals after registration")
+    );
+    ensure!(
+        existing.token_type == token_metadata.token_type,
+        ContractError::new("Cannot change token type after registration")
+    );
+
+    token_metadata_storage.save(deps.storage, &token_metadata)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "update_token_metadata")
+        .add_attribute("token", token.to_string())
+        .add_attribute("chain_uid", chain_uid.to_string()))
 }
