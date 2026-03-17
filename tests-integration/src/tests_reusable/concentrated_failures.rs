@@ -174,13 +174,6 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
     let ack_events = relay_factory_send_packet(tx.events, &router).unwrap();
     relay_factory_ack_packet(&factory, ack_events.clone(), &chain_uid).unwrap();
 
-    let position_token = get_position_token(&factory).unwrap();
-    let tokens_after_first = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
-        .unwrap()
-        .tokens;
-    let pools_after_first = factory.get_all_concentrated_pools().unwrap().pools;
-
     let replay_packets = extract_ack_packet_events(&ack_events);
     let relayer = factory.get_state().unwrap().relayer_contract;
     factory.set_sender(&relayer);
@@ -196,17 +189,8 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
                 },
                 &[],
             )
-            .unwrap();
+            .unwrap_err();
     }
-
-    let tokens_after_second = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
-        .unwrap()
-        .tokens;
-    let pools_after_second = factory.get_all_concentrated_pools().unwrap().pools;
-
-    assert_eq!(tokens_after_first, tokens_after_second);
-    assert_eq!(pools_after_first, pools_after_second);
 }
 
 #[rstest]
