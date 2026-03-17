@@ -23,6 +23,10 @@ pub enum ExecuteMsg {
         token_id: String,
         recipient: String,
     },
+    UpdateState {
+        admin: Option<String>,
+        minter: Option<String>,
+    },
 }
 
 #[cw_serde]
