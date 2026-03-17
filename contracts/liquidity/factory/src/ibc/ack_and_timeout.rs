@@ -892,16 +892,8 @@ fn ack_collect_concentrated_fees(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
-    let collect_info =
-        match PENDING_CONCENTRATED_COLLECT_FEES.may_load(deps.storage, req_key.clone())? {
-            Some(info) => info,
-            None => {
-                return Ok(Response::new()
-                    .add_attribute("method", "ack_collect_concentrated_fees_idempotent")
-                    .add_attribute("tx_id", tx_id)
-                    .add_attribute("sender", sender));
-            }
-        };
+    let collect_info = PENDING_CONCENTRATED_COLLECT_FEES.load(deps.storage, req_key.clone())?;
+
     PENDING_CONCENTRATED_COLLECT_FEES.remove(deps.storage, req_key);
 
     match res {

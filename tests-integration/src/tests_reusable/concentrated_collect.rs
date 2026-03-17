@@ -104,7 +104,7 @@ fn test_collect_protocol_fees_admin_native_and_ibc(
     let pair = pair_with_amounts(&token_a, &token_b, 70_000, 70_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
-    let mut vlp = get_concentrated_vlp(
+    let vlp = get_concentrated_vlp(
         router.environment(),
         &Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp),
     );
@@ -257,11 +257,7 @@ fn test_collect_duplicate_ack_idempotent_ibc() {
     let ack_events = relay_factory_send_packet(tx.events, &router).unwrap();
     relay_factory_ack_packet(&factory, ack_events.clone(), &chain_uid).unwrap();
 
-    let first_0 = voucher_balance(&factory, &router, &token_a.token.to_string());
-    let first_1 = voucher_balance(&factory, &router, &token_b.token.to_string());
-
     let replay_packets = extract_ack_packet_events(&ack_events);
-    let user_sender = factory.environment().sender.clone();
     let relayer = factory.get_state().unwrap().relayer_contract;
     factory.set_sender(&relayer);
     for packet in replay_packets {
@@ -276,14 +272,8 @@ fn test_collect_duplicate_ack_idempotent_ibc() {
                 },
                 &[],
             )
-            .unwrap();
+            .unwrap_err();
     }
-    factory.set_sender(&user_sender);
-
-    let second_0 = voucher_balance(&factory, &router, &token_a.token.to_string());
-    let second_1 = voucher_balance(&factory, &router, &token_b.token.to_string());
-    assert_eq!(second_0, first_0);
-    assert_eq!(second_1, first_1);
 }
 
 #[test]
