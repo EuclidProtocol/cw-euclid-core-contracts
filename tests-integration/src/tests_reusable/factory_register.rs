@@ -105,9 +105,11 @@ pub fn setup_factory_with_mode(
         None,
         &[],
     )?;
-    factory.manage_factory_state(euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
-        position_token_contract: position_token.address().unwrap().to_string(),
-    })?;
+    factory.manage_factory_state(
+        euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
+            position_token_contract: position_token.address().unwrap().to_string(),
+        },
+    )?;
 
     if !is_native {
         match mode {

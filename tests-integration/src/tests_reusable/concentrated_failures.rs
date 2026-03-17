@@ -8,10 +8,12 @@ use euclid::swap::NextSwapPair;
 use euclid::token::{Token, TokenType, TokenWithDenom};
 use rstest::rstest;
 
-use crate::helpers::factory::{add_concentrated_liquidity, create_concentrated_pool, faucet, get_position_token};
+use crate::helpers::factory::{
+    add_concentrated_liquidity, create_concentrated_pool, faucet, get_position_token,
+};
 use crate::helpers::relayer::{
-    extract_ack_packet_events, relay_factory_ack_packet, relay_factory_send_packet,
-    relay_factory_router_factory,
+    extract_ack_packet_events, relay_factory_ack_packet, relay_factory_router_factory,
+    relay_factory_send_packet,
 };
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
@@ -54,7 +56,10 @@ fn test_no_ack_does_not_finalize_position() {
     let _ack_events = relay_factory_send_packet(tx.events, &router).unwrap();
 
     let pools = factory.get_all_concentrated_pools().unwrap().pools;
-    assert!(pools.is_empty(), "pool should not finalize on factory without ack");
+    assert!(
+        pools.is_empty(),
+        "pool should not finalize on factory without ack"
+    );
 
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
@@ -233,11 +238,10 @@ fn test_add_liquidity_invalid_tick_range_rejected(
         "expected add liquidity to fail when lower_tick_index == upper_tick_index",
     );
 
-    let err_reversed = add_concentrated_liquidity(
-        &factory, &router, pair, pool_key, 120, -120, None, 100,
-    )
-    .unwrap_err()
-    .to_string();
+    let err_reversed =
+        add_concentrated_liquidity(&factory, &router, pair, pool_key, 120, -120, None, 100)
+            .unwrap_err()
+            .to_string();
     assert!(
         !err_reversed.is_empty(),
         "expected add liquidity to fail when lower_tick_index > upper_tick_index",

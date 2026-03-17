@@ -283,7 +283,9 @@ pub(crate) fn sync_state_with_concentrated(
     let position_nfts = if let Some(position_token) = position_token {
         if position_token.address().is_ok() {
             position_token
-                .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
+                .query::<position_token::msg::TokensResponse>(
+                    &position_token::msg::QueryMsg::AllTokens {},
+                )
                 .unwrap()
                 .tokens
                 .into_iter()

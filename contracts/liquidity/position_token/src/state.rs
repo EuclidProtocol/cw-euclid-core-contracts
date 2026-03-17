@@ -22,8 +22,7 @@ pub const TOKENS: Map<&str, TokenInfo> = Map::new("tokens");
 
 /// Per-owner token index. Each (owner, token_id) pair is a separate storage key,
 /// avoiding unbounded Vec deserialization on every operation.
-pub const OWNER_TOKEN_SET: Map<(&Addr, &str), cosmwasm_std::Empty> =
-    Map::new("owner_token_set");
+pub const OWNER_TOKEN_SET: Map<(&Addr, &str), cosmwasm_std::Empty> = Map::new("owner_token_set");
 
 /// Global token index. Each token_id is a separate storage key.
 pub const ALL_TOKEN_SET: Map<&str, cosmwasm_std::Empty> = Map::new("all_token_set");

@@ -34,7 +34,9 @@ pub fn get_amount0_delta(
         div_rounding_up(intermediate, sqrt_ratio_a_x96)
     } else {
         let intermediate = mul_div(numerator1, numerator2, sqrt_ratio_b_x96)?;
-        intermediate.checked_div(sqrt_ratio_a_x96).map_err(ContractError::from)
+        intermediate
+            .checked_div(sqrt_ratio_a_x96)
+            .map_err(ContractError::from)
     }
 }
 
@@ -74,7 +76,9 @@ pub fn get_next_sqrt_price_from_input(
         mul_div_rounding_up(liquidity_u256, sqrt_price_x96, denominator)
     } else {
         let delta = mul_div(amount_in, q96(), liquidity_u256)?;
-        sqrt_price_x96.checked_add(delta).map_err(ContractError::from)
+        sqrt_price_x96
+            .checked_add(delta)
+            .map_err(ContractError::from)
     }
 }
 
@@ -93,7 +97,9 @@ pub fn get_next_sqrt_price_from_output(
     }
     if zero_for_one {
         let delta = mul_div_rounding_up(amount_out, q96(), liquidity_u256)?;
-        sqrt_price_x96.checked_sub(delta).map_err(ContractError::from)
+        sqrt_price_x96
+            .checked_sub(delta)
+            .map_err(ContractError::from)
     } else {
         let product = mul_div_rounding_up(amount_out, sqrt_price_x96, q96())?;
         let denominator = liquidity_u256.checked_sub(product)?;

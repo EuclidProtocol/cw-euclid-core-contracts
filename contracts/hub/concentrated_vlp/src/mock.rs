@@ -8,7 +8,10 @@ use euclid::{
     token::Pair,
 };
 
-use crate::{contract::{execute, instantiate, query, reply}, migrate::migrate};
+use crate::{
+    contract::{execute, instantiate, query, reply},
+    migrate::migrate,
+};
 use mock::mock::MockApp;
 
 pub struct MockConcentratedVlp(Addr);

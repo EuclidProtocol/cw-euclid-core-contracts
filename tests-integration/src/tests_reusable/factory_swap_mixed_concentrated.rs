@@ -74,7 +74,9 @@ fn setup_mixed_env(
     register_denom(&factory, &router, token_c.clone()).unwrap();
     register_denom(&factory, &router, token_d.clone()).unwrap();
 
-    (interchain, factory, router, token_a, token_b, token_c, token_d)
+    (
+        interchain, factory, router, token_a, token_b, token_c, token_d,
+    )
 }
 
 #[allow(clippy::type_complexity)]
@@ -327,26 +329,14 @@ fn test_mixed_route_fee_tier_selection_is_explicit(
         token_a.token.clone(),
         token_d.token.clone(),
         amount_in,
-        mixed_route(
-            &token_a,
-            &token_b,
-            &token_c,
-            &token_d,
-            Some(pool_500),
-        ),
+        mixed_route(&token_a, &token_b, &token_c, &token_d, Some(pool_500)),
     );
     let sim_3000 = simulate_mixed_route(
         &router,
         token_a.token.clone(),
         token_d.token.clone(),
         amount_in,
-        mixed_route(
-            &token_a,
-            &token_b,
-            &token_c,
-            &token_d,
-            Some(pool_3000),
-        ),
+        mixed_route(&token_a, &token_b, &token_c, &token_d, Some(pool_3000)),
     );
 
     assert_ne!(sim_500, sim_3000);
@@ -434,10 +424,7 @@ fn test_invalid_pool_key_pair_mismatch_rejected(
     )
     .unwrap_err()
     .to_string();
-    assert!(
-        !err.is_empty(),
-        "expected pool-key pair mismatch failure",
-    );
+    assert!(!err.is_empty(), "expected pool-key pair mismatch failure",);
 }
 
 #[rstest]
@@ -476,8 +463,5 @@ fn test_invalid_pool_key_type_rejected(
     )
     .unwrap_err()
     .to_string();
-    assert!(
-        !err.is_empty(),
-        "expected invalid pool-key type failure",
-    );
+    assert!(!err.is_empty(), "expected invalid pool-key type failure",);
 }

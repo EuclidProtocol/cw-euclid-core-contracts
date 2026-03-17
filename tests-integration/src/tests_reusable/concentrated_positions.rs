@@ -2,9 +2,9 @@
 
 use cosmwasm_std::{Addr, Uint128};
 use cw_orch::prelude::*;
-use euclid::msgs::vlp::concentrated::msg::QueryMsg as ConcentratedQueryMsg;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
+use euclid::msgs::vlp::concentrated::msg::QueryMsg as ConcentratedQueryMsg;
 use rstest::rstest;
 use std::collections::HashSet;
 
@@ -30,14 +30,14 @@ fn pool_lp_shares(
     router: &router::RouterContract<cw_orch::mock::MockBase>,
     pool_key: euclid::msgs::vlp::base::PoolKey,
 ) -> Uint128 {
-    let vlp_address = router
-        .get_vlp_by_pool_key(pool_key.clone())
-        .unwrap()
-        .vlp;
+    let vlp_address = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
     let chain_uid = factory.get_state().unwrap().chain_uid;
     let pool: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse = vlp
-        .query(&ConcentratedQueryMsg::Pool { chain_uid, pool_key })
+        .query(&ConcentratedQueryMsg::Pool {
+            chain_uid,
+            pool_key,
+        })
         .unwrap();
     pool.lp_shares
 }
@@ -85,10 +85,7 @@ fn test_increase_liquidity_updates_same_position(
     let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
     let initial_position_id = first_position_id(&factory);
-    let vlp_address = router
-        .get_vlp_by_pool_key(pool_key.clone())
-        .unwrap()
-        .vlp;
+    let vlp_address = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
     let initial_position: euclid::msgs::vlp::concentrated::msg::PositionResponse = vlp
         .query(&ConcentratedQueryMsg::Position {
@@ -142,10 +139,7 @@ fn test_partial_decrease_keeps_position(
 #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
 #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
 #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
-fn test_full_remove_burns_position(
-    #[case] mode: FactorySetupMode,
-    #[case] factory_chain_id: &str,
-) {
+fn test_full_remove_burns_position(#[case] mode: FactorySetupMode, #[case] factory_chain_id: &str) {
     let (_interchain, factory, router, token_a, token_b) =
         setup_concentrated_env(mode, factory_chain_id);
     let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
@@ -235,7 +229,11 @@ fn test_multiple_positions_different_ranges_are_independent(
     );
 
     let second_ids = list_position_ids(&factory).unwrap();
-    assert_eq!(second_ids.len(), 2, "adding with None position_id should mint a new NFT");
+    assert_eq!(
+        second_ids.len(),
+        2,
+        "adding with None position_id should mint a new NFT"
+    );
 
     let first_id_set: HashSet<&str> = first_ids.iter().map(String::as_str).collect();
     let second_id = second_ids
@@ -254,6 +252,10 @@ fn test_multiple_positions_different_ranges_are_independent(
     .unwrap();
 
     let final_ids = list_position_ids(&factory).unwrap();
-    assert_eq!(final_ids.len(), 1, "removing second position should not remove first");
+    assert_eq!(
+        final_ids.len(),
+        1,
+        "removing second position should not remove first"
+    );
     assert_eq!(final_ids[0], first_id.to_string());
 }

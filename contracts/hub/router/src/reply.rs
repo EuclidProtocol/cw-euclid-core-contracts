@@ -13,10 +13,10 @@ use euclid::{
     msgs::{
         self,
         vlp::base::{
-            ConcentratedPoolCreationResponse, VlpConcentratedAddLiquidityResponse,
-            VlpConcentratedCollectFeesResponse, VlpConcentratedCollectProtocolFeesResponse,
-            VlpConcentratedRemoveLiquidityResponse, PoolCreationResponse, VlpRemoveLiquidityResponse,
-            VlpSwapResponse,
+            ConcentratedPoolCreationResponse, PoolCreationResponse,
+            VlpConcentratedAddLiquidityResponse, VlpConcentratedCollectFeesResponse,
+            VlpConcentratedCollectProtocolFeesResponse, VlpConcentratedRemoveLiquidityResponse,
+            VlpRemoveLiquidityResponse, VlpSwapResponse,
         },
     },
     swap::SwapResponse,
@@ -69,7 +69,9 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
             let vlp_address = instantiate_data.contract_address;
             let vlp_address = deps.api.addr_validate(&vlp_address)?;
             let data = instantiate_data.data.clone().unwrap_or_default();
-            if let Ok(pool_creation_response) = from_json::<ConcentratedPoolCreationResponse>(data.clone()) {
+            if let Ok(pool_creation_response) =
+                from_json::<ConcentratedPoolCreationResponse>(data.clone())
+            {
                 for token in &pool_creation_response.pool_key.pair.get_vec_token() {
                     let key = TOKEN_VLPS.key(token.clone());
                     let mut existing_vlps = key.may_load(deps.storage)?.unwrap_or_default();
@@ -157,7 +159,9 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                     err: res.to_string(),
                 })?;
             let data = execute_data.data.unwrap_or_default();
-            if let Ok(pool_creation_response) = from_json::<ConcentratedPoolCreationResponse>(data.clone()) {
+            if let Ok(pool_creation_response) =
+                from_json::<ConcentratedPoolCreationResponse>(data.clone())
+            {
                 let vlp_address = pool_creation_response.vlp_contract.clone();
                 let ack = AcknowledgementMsg::Ok(pool_creation_response.clone());
                 let mut response = Response::new();
@@ -227,7 +231,9 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                     err: res.to_string(),
                 })?;
             let data = execute_data.data.unwrap_or_default();
-            if let Ok(liquidity_response) = from_json::<VlpConcentratedAddLiquidityResponse>(data.clone()) {
+            if let Ok(liquidity_response) =
+                from_json::<VlpConcentratedAddLiquidityResponse>(data.clone())
+            {
                 let mut res = Response::new();
                 if CONCENTRATED_FUNDS_INFO.may_load(deps.storage)?.is_some() {
                     CONCENTRATED_FUNDS_INFO.remove(deps.storage);
@@ -377,8 +383,11 @@ pub fn on_collect_concentrated_reply(deps: DepsMut, msg: Reply) -> Result<Respon
                 })?;
             let data = execute_data.data.unwrap_or_default();
 
-            if let Ok(vlp_collect_response) = from_json::<VlpConcentratedCollectFeesResponse>(data.clone()) {
-                let req_key = PENDING_CONCENTRATED_COLLECT_FEES.key(vlp_collect_response.tx_id.clone());
+            if let Ok(vlp_collect_response) =
+                from_json::<VlpConcentratedCollectFeesResponse>(data.clone())
+            {
+                let req_key =
+                    PENDING_CONCENTRATED_COLLECT_FEES.key(vlp_collect_response.tx_id.clone());
                 let _req = req_key.load(deps.storage)?;
                 req_key.remove(deps.storage);
 
@@ -404,8 +413,8 @@ pub fn on_collect_concentrated_reply(deps: DepsMut, msg: Reply) -> Result<Respon
             if let Ok(vlp_collect_response) =
                 from_json::<VlpConcentratedCollectProtocolFeesResponse>(data.clone())
             {
-                let req_key =
-                    PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.key(vlp_collect_response.tx_id.clone());
+                let req_key = PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES
+                    .key(vlp_collect_response.tx_id.clone());
                 let _req = req_key.load(deps.storage)?;
                 req_key.remove(deps.storage);
 

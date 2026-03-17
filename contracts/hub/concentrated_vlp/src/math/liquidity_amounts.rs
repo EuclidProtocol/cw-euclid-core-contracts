@@ -95,7 +95,9 @@ pub fn get_amount0_for_liquidity(
         div_rounding_up(intermediate, sqrt_a_x96)
     } else {
         let intermediate = mul_div(liquidity_x96, numerator, sqrt_b_x96)?;
-        intermediate.checked_div(sqrt_a_x96).map_err(ContractError::from)
+        intermediate
+            .checked_div(sqrt_a_x96)
+            .map_err(ContractError::from)
     }
 }
 
@@ -172,14 +174,9 @@ mod tests {
         let sqrt_a = q96();
         let sqrt_b = q96_mul(2, 1);
         let sqrt_p = q96_mul(1, 2);
-        let liquidity = get_liquidity_for_amounts(
-            sqrt_p,
-            sqrt_a,
-            sqrt_b,
-            Uint128::new(100),
-            Uint128::new(100),
-        )
-        .unwrap();
+        let liquidity =
+            get_liquidity_for_amounts(sqrt_p, sqrt_a, sqrt_b, Uint128::new(100), Uint128::new(100))
+                .unwrap();
         assert_eq!(liquidity, Uint128::new(200));
 
         let amounts = get_amounts_for_liquidity(sqrt_p, sqrt_a, sqrt_b, liquidity, false).unwrap();
@@ -192,14 +189,9 @@ mod tests {
         let sqrt_a = q96();
         let sqrt_b = q96_mul(2, 1);
         let sqrt_p = q96_mul(3, 1);
-        let liquidity = get_liquidity_for_amounts(
-            sqrt_p,
-            sqrt_a,
-            sqrt_b,
-            Uint128::new(100),
-            Uint128::new(100),
-        )
-        .unwrap();
+        let liquidity =
+            get_liquidity_for_amounts(sqrt_p, sqrt_a, sqrt_b, Uint128::new(100), Uint128::new(100))
+                .unwrap();
         assert_eq!(liquidity, Uint128::new(100));
 
         let amounts = get_amounts_for_liquidity(sqrt_p, sqrt_a, sqrt_b, liquidity, false).unwrap();
@@ -212,14 +204,9 @@ mod tests {
         let sqrt_a = q96();
         let sqrt_b = q96_mul(2, 1);
         let sqrt_p = q96_mul(3, 2);
-        let liquidity = get_liquidity_for_amounts(
-            sqrt_p,
-            sqrt_a,
-            sqrt_b,
-            Uint128::new(100),
-            Uint128::new(100),
-        )
-        .unwrap();
+        let liquidity =
+            get_liquidity_for_amounts(sqrt_p, sqrt_a, sqrt_b, Uint128::new(100), Uint128::new(100))
+                .unwrap();
         assert_eq!(liquidity, Uint128::new(200));
 
         let (amount0_down, amount1_down) =
@@ -233,30 +220,16 @@ mod tests {
         let sqrt_a = q96();
         let sqrt_b = q96_mul(2, 1);
 
-        let liquidity0 =
-            get_liquidity_for_amount0(sqrt_a, sqrt_b, Uint128::new(100)).unwrap();
-        let amount0 = get_amounts_for_liquidity(
-            q96_mul(1, 2),
-            sqrt_a,
-            sqrt_b,
-            liquidity0,
-            false,
-        )
-        .unwrap()
-        .0;
+        let liquidity0 = get_liquidity_for_amount0(sqrt_a, sqrt_b, Uint128::new(100)).unwrap();
+        let amount0 = get_amounts_for_liquidity(q96_mul(1, 2), sqrt_a, sqrt_b, liquidity0, false)
+            .unwrap()
+            .0;
         assert_eq!(amount0, Uint256::from(100u128));
 
-        let liquidity1 =
-            get_liquidity_for_amount1(sqrt_a, sqrt_b, Uint128::new(100)).unwrap();
-        let amount1 = get_amounts_for_liquidity(
-            q96_mul(3, 1),
-            sqrt_a,
-            sqrt_b,
-            liquidity1,
-            false,
-        )
-        .unwrap()
-        .1;
+        let liquidity1 = get_liquidity_for_amount1(sqrt_a, sqrt_b, Uint128::new(100)).unwrap();
+        let amount1 = get_amounts_for_liquidity(q96_mul(3, 1), sqrt_a, sqrt_b, liquidity1, false)
+            .unwrap()
+            .1;
         assert_eq!(amount1, Uint256::from(100u128));
     }
 
