@@ -55,6 +55,7 @@ pub fn instantiate(
 
     STATE.save(deps.storage, &state)?;
     ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
     FEE_STATE.save(
         deps.storage,
         &FeeState {
@@ -107,6 +108,7 @@ pub fn execute(
                 ExecuteMsg::ManageRouterState(msg) => {
                     execute_manage_router_state(deps, env, info, msg)
                 }
+
                 ExecuteMsg::RegisterFactory {
                     chain_uid,
                     chain_info,

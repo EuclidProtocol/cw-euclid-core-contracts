@@ -90,7 +90,6 @@ pub(crate) fn remove_pending_packet_and_decrement_count(
     sequence: u128,
 ) -> Result<(PendingPacket, Addr), ContractError> {
     let existing_request = CROSS_CHAIN_PENDING_SEND_PACKETS.load(storage, sequence)?;
-
     let sender = CROSS_CHAIN_PENDING_PACKET_SENDER.load(storage, sequence)?;
 
     // Remove the existing request as its already relayed now

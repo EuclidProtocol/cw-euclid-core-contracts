@@ -1633,7 +1633,6 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
-            admin: Addr::unchecked("admin"),
         };
         STATE
             .save(deps.as_mut().storage, &state)
