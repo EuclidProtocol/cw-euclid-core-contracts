@@ -159,10 +159,15 @@ mod tests {
             fee_growth_outside_1_x128: Uint256::from(40u128),
         };
         let (inside_0, inside_1) = fee_growth_inside(
-            0, -10, 10,
-            Uint256::from(100u128), Uint256::from(200u128),
-            Some(lower), Some(upper),
-        ).unwrap();
+            0,
+            -10,
+            10,
+            Uint256::from(100u128),
+            Uint256::from(200u128),
+            Some(lower),
+            Some(upper),
+        )
+        .unwrap();
         assert_eq!(inside_0, Uint256::from(60u128));
         assert_eq!(inside_1, Uint256::from(140u128));
     }
@@ -173,10 +178,15 @@ mod tests {
         // below = 0 (current >= lower), above = 0 (current < upper)
         // inside = global - 0 - 0 = global
         let (inside_0, inside_1) = fee_growth_inside(
-            0, -10, 10,
-            Uint256::from(500u128), Uint256::from(700u128),
-            None, None,
-        ).unwrap();
+            0,
+            -10,
+            10,
+            Uint256::from(500u128),
+            Uint256::from(700u128),
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(inside_0, Uint256::from(500u128));
         assert_eq!(inside_1, Uint256::from(700u128));
     }
@@ -201,10 +211,15 @@ mod tests {
         let upper = TickInfo::default();
 
         let (inside_0, inside_1) = fee_growth_inside(
-            -20, -10, 10, // current below lower
-            global_0, global_1,
-            Some(lower), Some(upper),
-        ).expect("wrapping_sub should not revert");
+            -20,
+            -10,
+            10, // current below lower
+            global_0,
+            global_1,
+            Some(lower),
+            Some(upper),
+        )
+        .expect("wrapping_sub should not revert");
 
         // below_0 = 50 - (MAX-100) mod 2^256 = 151
         // above_0 = upper.outside = 0 (current < upper)
@@ -234,10 +249,15 @@ mod tests {
         };
 
         let (inside_0, inside_1) = fee_growth_inside(
-            20, -10, 10, // current above upper
-            global_0, global_1,
-            Some(lower), Some(upper),
-        ).expect("wrapping_sub should not revert");
+            20,
+            -10,
+            10, // current above upper
+            global_0,
+            global_1,
+            Some(lower),
+            Some(upper),
+        )
+        .expect("wrapping_sub should not revert");
 
         // below_0 = lower.outside = 0 (current >= lower)
         // above_0 = 50 - (MAX-100) mod 2^256 = 151
@@ -270,7 +290,12 @@ mod tests {
         let fee_growth_inside_last = Uint256::MAX - Uint256::from(10u128);
         let fee_growth_inside_now = fee_growth_inside_last.wrapping_add(Uint256::one() << 128u32);
 
-        let result = fees_owed(Uint128::zero(), fee_growth_inside_now, fee_growth_inside_last).unwrap();
+        let result = fees_owed(
+            Uint128::zero(),
+            fee_growth_inside_now,
+            fee_growth_inside_last,
+        )
+        .unwrap();
         assert_eq!(result, Uint128::zero());
     }
 
@@ -305,11 +330,8 @@ mod tests {
         // current_tick in range → below = lower.outside, above = upper.outside
         // inside_0 = 500*q128 - 100*q128 - 50*q128 = 350*q128
         // inside_1 = 300*q128 - 50*q128 - 30*q128 = 220*q128
-        let (inside_0, inside_1) = fee_growth_inside(
-            0, -10, 10,
-            global_0, global_1,
-            Some(lower), Some(upper),
-        ).unwrap();
+        let (inside_0, inside_1) =
+            fee_growth_inside(0, -10, 10, global_0, global_1, Some(lower), Some(upper)).unwrap();
 
         assert_eq!(inside_0, Uint256::from(350u128) * q128);
         assert_eq!(inside_1, Uint256::from(220u128) * q128);
@@ -484,6 +506,9 @@ mod tests {
         let outside = Uint256::MAX - Uint256::from(100u128);
         let flipped = flip_fee_growth_outside(global, outside);
         let double_flipped = flip_fee_growth_outside(global, flipped);
-        assert_eq!(double_flipped, outside, "double flip should restore original");
+        assert_eq!(
+            double_flipped, outside,
+            "double flip should restore original"
+        );
     }
 }

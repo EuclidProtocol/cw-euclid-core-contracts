@@ -72,14 +72,13 @@ pub fn write_observation(
     }
 
     let delta = block_timestamp.saturating_sub(last.block_timestamp);
-    let (tick_cumulative, seconds_per_liquidity_cumulative_x128) =
-        advance_observation_cumulatives(
-            last.tick_cumulative,
-            last.seconds_per_liquidity_cumulative_x128,
-            current_tick,
-            liquidity,
-            delta,
-        )?;
+    let (tick_cumulative, seconds_per_liquidity_cumulative_x128) = advance_observation_cumulatives(
+        last.tick_cumulative,
+        last.seconds_per_liquidity_cumulative_x128,
+        current_tick,
+        liquidity,
+        delta,
+    )?;
 
     let mut cardinality = slot0.observation_cardinality;
     if cardinality < slot0.observation_cardinality_next {
@@ -121,22 +120,20 @@ fn interpolate(left: &Observation, right: &Observation, target: u64) -> Observat
 
     // Wrapping arithmetic — cumulative values may have wrapped
     let tick_delta = right.tick_cumulative.wrapping_sub(left.tick_cumulative);
-    let tick_interp = left.tick_cumulative.wrapping_add(
-        tick_delta.wrapping_mul(elapsed as i128) / (total as i128),
-    );
+    let tick_interp = left
+        .tick_cumulative
+        .wrapping_add(tick_delta.wrapping_mul(elapsed as i128) / (total as i128));
 
     let spl_delta = right
         .seconds_per_liquidity_cumulative_x128
         .wrapping_sub(left.seconds_per_liquidity_cumulative_x128);
-    let spl_interp = left
-        .seconds_per_liquidity_cumulative_x128
-        .wrapping_add(
-            spl_delta
-                .checked_mul(Uint256::from(elapsed as u128))
-                .unwrap_or_default()
-                .checked_div(Uint256::from(total as u128))
-                .unwrap_or_default(),
-        );
+    let spl_interp = left.seconds_per_liquidity_cumulative_x128.wrapping_add(
+        spl_delta
+            .checked_mul(Uint256::from(elapsed as u128))
+            .unwrap_or_default()
+            .checked_div(Uint256::from(total as u128))
+            .unwrap_or_default(),
+    );
 
     Observation {
         block_timestamp: target,
@@ -460,16 +457,21 @@ mod tests {
 
         for case in cases {
             let result = interpolate(&case.left, &case.right, case.target);
-            assert_eq!(result.tick_cumulative, case.expected_tick, "FAILED tick: {}", case.name);
+            assert_eq!(
+                result.tick_cumulative, case.expected_tick,
+                "FAILED tick: {}",
+                case.name
+            );
             assert_eq!(
                 result.seconds_per_liquidity_cumulative_x128, case.expected_spl,
-                "FAILED spl: {}", case.name
+                "FAILED spl: {}",
+                case.name
             );
         }
     }
 
-    use cosmwasm_std::testing::MockStorage;
     use crate::state::Slot0;
+    use cosmwasm_std::testing::MockStorage;
 
     /// Helper: save a Slot0 with the given observation ring buffer metadata.
     fn setup_slot0(storage: &mut dyn Storage, index: u64, cardinality: u16) {
