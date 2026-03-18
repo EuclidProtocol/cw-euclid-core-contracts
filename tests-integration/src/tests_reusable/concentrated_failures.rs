@@ -8,10 +8,12 @@ use euclid::swap::NextSwapPair;
 use euclid::token::{Token, TokenType, TokenWithDenom};
 use rstest::rstest;
 
-use crate::helpers::factory::{add_concentrated_liquidity, create_concentrated_pool, faucet, get_position_token};
+use crate::helpers::factory::{
+    add_concentrated_liquidity, create_concentrated_pool, faucet, get_position_token,
+};
 use crate::helpers::relayer::{
-    extract_ack_packet_events, relay_factory_ack_packet, relay_factory_send_packet,
-    relay_factory_router_factory,
+    extract_ack_packet_events, relay_factory_ack_packet, relay_factory_router_factory,
+    relay_factory_send_packet,
 };
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
@@ -54,11 +56,16 @@ fn test_no_ack_does_not_finalize_position() {
     let _ack_events = relay_factory_send_packet(tx.events, &router).unwrap();
 
     let pools = factory.get_all_concentrated_pools().unwrap().pools;
-    assert!(pools.is_empty(), "pool should not finalize on factory without ack");
+    assert!(
+        pools.is_empty(),
+        "pool should not finalize on factory without ack"
+    );
 
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
+        .query::<euclid::msgs::position_token::TokensResponse>(
+            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+        )
         .unwrap()
         .tokens;
     assert!(
@@ -125,7 +132,9 @@ fn test_ack_error_rolls_back_pending() {
 
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
+        .query::<euclid::msgs::position_token::TokensResponse>(
+            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+        )
         .unwrap()
         .tokens;
     assert!(tokens.is_empty(), "error ack must not mint position NFT");
@@ -169,13 +178,6 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
     let ack_events = relay_factory_send_packet(tx.events, &router).unwrap();
     relay_factory_ack_packet(&factory, ack_events.clone(), &chain_uid).unwrap();
 
-    let position_token = get_position_token(&factory).unwrap();
-    let tokens_after_first = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
-        .unwrap()
-        .tokens;
-    let pools_after_first = factory.get_all_concentrated_pools().unwrap().pools;
-
     let replay_packets = extract_ack_packet_events(&ack_events);
     let relayer = factory.get_state().unwrap().relayer_contract;
     factory.set_sender(&relayer);
@@ -191,17 +193,8 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
                 },
                 &[],
             )
-            .unwrap();
+            .unwrap_err();
     }
-
-    let tokens_after_second = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
-        .unwrap()
-        .tokens;
-    let pools_after_second = factory.get_all_concentrated_pools().unwrap().pools;
-
-    assert_eq!(tokens_after_first, tokens_after_second);
-    assert_eq!(pools_after_first, pools_after_second);
 }
 
 #[rstest]
@@ -233,11 +226,10 @@ fn test_add_liquidity_invalid_tick_range_rejected(
         "expected add liquidity to fail when lower_tick_index == upper_tick_index",
     );
 
-    let err_reversed = add_concentrated_liquidity(
-        &factory, &router, pair, pool_key, 120, -120, None, 100,
-    )
-    .unwrap_err()
-    .to_string();
+    let err_reversed =
+        add_concentrated_liquidity(&factory, &router, pair, pool_key, 120, -120, None, 100)
+            .unwrap_err()
+            .to_string();
     assert!(
         !err_reversed.is_empty(),
         "expected add liquidity to fail when lower_tick_index > upper_tick_index",

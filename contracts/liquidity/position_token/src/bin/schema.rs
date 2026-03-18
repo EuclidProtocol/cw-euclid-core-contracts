@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use position_token::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::position_token::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     write_api! {

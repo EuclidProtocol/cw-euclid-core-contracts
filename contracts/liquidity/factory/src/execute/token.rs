@@ -17,7 +17,7 @@ use euclid_ibc::router_ibc::{
 use crate::{
     query::get_chain_type,
     state::{
-        DenomRegisterDeregisterRequest, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
+        DenomRegisterDeregisterRequest, ADMIN, PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS,
         PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
     },
 };
@@ -36,8 +36,9 @@ pub fn execute_request_register_denom(
     );
 
     let state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     ensure!(
-        state.admin == info.sender.to_string(),
+        admin.general_admin == info.sender,
         ContractError::Unauthorized {}
     );
 
@@ -122,8 +123,9 @@ pub fn execute_request_deregister_denom(
     );
 
     let state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     ensure!(
-        state.admin == info.sender.to_string(),
+        admin.general_admin == info.sender,
         ContractError::Unauthorized {}
     );
 

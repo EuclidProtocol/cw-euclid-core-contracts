@@ -1,6 +1,7 @@
 use cosmwasm_std::Order;
 use cosmwasm_std::{Uint128, Uint256};
 use cw_storage_plus::{Item, Map};
+use euclid::admin::EuclidAdmin;
 use euclid::{chain::ChainUid, error::ContractError};
 use euclid::{
     cross_chain_user::CrossChainUser,
@@ -12,6 +13,8 @@ use euclid::{
 };
 
 pub const STATE: Item<State> = Item::new("state");
+
+pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 pub const CHAIN_LP_TOKENS: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
 

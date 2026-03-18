@@ -57,7 +57,12 @@ fn test_cp_stable_regression_smoke(#[case] mode: FactorySetupMode, #[case] facto
         },
     };
 
-    for token in [token_a.clone(), token_b.clone(), token_c.clone(), token_d.clone()] {
+    for token in [
+        token_a.clone(),
+        token_b.clone(),
+        token_c.clone(),
+        token_d.clone(),
+    ] {
         register_denom(&factory, &router, token).unwrap();
     }
 

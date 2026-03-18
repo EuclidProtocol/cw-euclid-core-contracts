@@ -71,19 +71,9 @@ pub fn compute_swap_step_exact_input(
     let reached_target = sqrt_ratio_next_x96 == sqrt_ratio_target_x96;
 
     let amount_in = if zero_for_one {
-        get_amount0_delta(
-            sqrt_ratio_next_x96,
-            sqrt_ratio_current_x96,
-            liquidity,
-            true,
-        )?
+        get_amount0_delta(sqrt_ratio_next_x96, sqrt_ratio_current_x96, liquidity, true)?
     } else {
-        get_amount1_delta(
-            sqrt_ratio_current_x96,
-            sqrt_ratio_next_x96,
-            liquidity,
-            true,
-        )?
+        get_amount1_delta(sqrt_ratio_current_x96, sqrt_ratio_next_x96, liquidity, true)?
     };
 
     let amount_out = if zero_for_one {

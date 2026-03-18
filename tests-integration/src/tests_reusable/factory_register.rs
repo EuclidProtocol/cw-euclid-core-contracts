@@ -96,7 +96,7 @@ pub fn setup_factory_with_mode(
     }
 
     position_token.instantiate(
-        &position_token::msg::InstantiateMsg {
+        &euclid::msgs::position_token::InstantiateMsg {
             name: "Euclid Concentrated Positions".to_string(),
             symbol: "EUPOS".to_string(),
             minter: factory.address().unwrap(),
@@ -105,9 +105,11 @@ pub fn setup_factory_with_mode(
         None,
         &[],
     )?;
-    factory.manage_factory_state(euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
-        position_token_contract: position_token.address().unwrap().to_string(),
-    })?;
+    factory.manage_factory_state(
+        euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
+            position_token_contract: position_token.address().unwrap().to_string(),
+        },
+    )?;
 
     if !is_native {
         match mode {

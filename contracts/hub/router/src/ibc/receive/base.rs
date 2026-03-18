@@ -7,8 +7,7 @@ use crate::{
     ibc::receive::{
         pool::{
             ibc_execute_add_concentrated_liquidity, ibc_execute_add_liquidity,
-            ibc_execute_collect_concentrated_fees,
-            ibc_execute_collect_concentrated_protocol_fees,
+            ibc_execute_collect_concentrated_fees, ibc_execute_collect_concentrated_protocol_fees,
             ibc_execute_remove_concentrated_liquidity, ibc_execute_remove_liquidity,
             ibc_execute_request_concentrated_pool_creation, ibc_execute_request_pool_creation,
         },

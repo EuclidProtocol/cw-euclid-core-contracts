@@ -4,7 +4,7 @@ mod tests {
     use cosmwasm_std::{from_json, Addr};
 
     use crate::contract::{execute, instantiate, query};
-    use crate::msg::{
+    use euclid::msgs::position_token::{
         ExecuteMsg, InstantiateMsg, OwnerOfResponse, QueryMsg, StateResponse, TokensResponse,
     };
 
@@ -217,21 +217,17 @@ mod tests {
         assert_eq!(recipient_tokens.tokens, vec!["pos-2"]);
 
         // AllTokens should have pos-2 and pos-3
-        let all_tokens: TokensResponse =
-            from_json(
-                query(deps.as_ref(), mock_env(), QueryMsg::AllTokens {})
-                    .expect("query should succeed"),
-            )
-            .expect("deserialize should succeed");
+        let all_tokens: TokensResponse = from_json(
+            query(deps.as_ref(), mock_env(), QueryMsg::AllTokens {}).expect("query should succeed"),
+        )
+        .expect("deserialize should succeed");
         assert_eq!(all_tokens.tokens, vec!["pos-2", "pos-3"]);
 
         // Total should be 2
-        let state: StateResponse =
-            from_json(
-                query(deps.as_ref(), mock_env(), QueryMsg::State {})
-                    .expect("query should succeed"),
-            )
-            .expect("deserialize should succeed");
+        let state: StateResponse = from_json(
+            query(deps.as_ref(), mock_env(), QueryMsg::State {}).expect("query should succeed"),
+        )
+        .expect("deserialize should succeed");
         assert_eq!(state.total_tokens, 2);
     }
 }

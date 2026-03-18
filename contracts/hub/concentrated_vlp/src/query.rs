@@ -2,8 +2,7 @@ use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Env, Uint128};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::msgs::vlp::base::{
-    GetLiquidityQueryResponse, GetSwapQueryResponse, PoolConfig, PoolKey, State,
-    VlpSimulateSwapMsg,
+    GetLiquidityQueryResponse, GetSwapQueryResponse, PoolConfig, PoolKey, State, VlpSimulateSwapMsg,
 };
 use euclid::msgs::vlp::concentrated::msg::{
     AllConcentratedPoolsResponse, ConcentratedPoolInfo, ConcentratedPoolResponse, FeeResponse,
@@ -112,7 +111,6 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         total_fees_collected: state.total_fees_collected,
         last_updated: state.last_updated,
         total_lp_tokens: state.total_lp_tokens,
-        admin: state.admin,
         pool_config: PoolConfig::Concentrated {
             fee_tier_bps,
             tick_spacing,
@@ -120,7 +118,11 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     })?)
 }
 
-pub fn query_pool(deps: Deps, chain_uid: ChainUid, pool_key: PoolKey) -> Result<Binary, ContractError> {
+pub fn query_pool(
+    deps: Deps,
+    chain_uid: ChainUid,
+    pool_key: PoolKey,
+) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
 
     let chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, chain_uid)?;
@@ -146,13 +148,21 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .map(|item| {
             let (chain_uid, chain_lp_tokens) = item?;
-            let pool = get_pool(&state, pool_key.clone(), chain_lp_tokens, reserve_1, reserve_2)?;
+            let pool = get_pool(
+                &state,
+                pool_key.clone(),
+                chain_lp_tokens,
+                reserve_1,
+                reserve_2,
+            )?;
 
             Ok::<ConcentratedPoolInfo, ContractError>(ConcentratedPoolInfo { chain_uid, pool })
         })
         .collect();
 
-    Ok(to_json_binary(&AllConcentratedPoolsResponse { pools: pools? })?)
+    Ok(to_json_binary(&AllConcentratedPoolsResponse {
+        pools: pools?,
+    })?)
 }
 
 fn get_pool(

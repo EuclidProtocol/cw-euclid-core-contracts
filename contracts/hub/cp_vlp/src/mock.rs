@@ -3,6 +3,7 @@
 use crate::contract::{execute, instantiate, query, reply};
 use cosmwasm_std::{Addr, Empty};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
+use euclid::admin::EuclidAdmin;
 use euclid::fee::Fee;
 use euclid::msgs::vlp::cp::msg::{ExecuteMsg, GetStateResponse, InstantiateMsg, QueryMsg};
 use euclid::token::Pair;
@@ -24,7 +25,7 @@ impl MockCpVlp {
         pair: Pair,
         fee: Fee,
         execute: Option<ExecuteMsg>,
-        admin: Addr,
+        admin: EuclidAdmin,
     ) -> Self {
         let msg = mock_cp_vlp_instantiate_msg(router, virtual_balance, pair, fee, execute, admin);
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Euclid vlp", None);
@@ -46,6 +47,15 @@ impl MockCpVlp {
             )
             .unwrap()
     }
+
+    pub fn query_admin(&self, app: &MockApp) -> EuclidAdmin {
+        app.wrap()
+            .query_wasm_smart::<EuclidAdmin>(
+                self.addr().clone().into_string(),
+                &QueryMsg::GetAdmin {},
+            )
+            .unwrap()
+    }
 }
 
 pub fn mock_cp_vlp() -> Box<dyn Contract<Empty>> {
@@ -59,7 +69,7 @@ pub fn mock_cp_vlp_instantiate_msg(
     pair: Pair,
     fee: Fee,
     execute: Option<ExecuteMsg>,
-    admin: Addr,
+    admin: EuclidAdmin,
 ) -> InstantiateMsg {
     InstantiateMsg {
         router,

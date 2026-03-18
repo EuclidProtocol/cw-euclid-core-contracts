@@ -3,9 +3,10 @@
 mod tests {
     use crate::contract::{execute, instantiate};
     use crate::query::query_simulate_swap;
-    use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
+    use crate::state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{coins, from_json, Addr, Response, Uint128};
+    use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
@@ -22,7 +23,7 @@ mod tests {
             MockQuerier,
         >,
     ) -> Response {
-        let admin = deps.api.addr_make("admin");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
 
         let msg = InstantiateMsg {
             router: Addr::unchecked("router"),
@@ -53,7 +54,7 @@ mod tests {
         let router = deps.api.addr_make("router");
         let res = init(&mut deps);
         assert_eq!(0, res.messages.len());
-        let admin = deps.api.addr_make("admin");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
         let expected_state = State {
             pair: Pair {
                 token_1: Token::create("token1".to_string()).unwrap(),
@@ -79,10 +80,11 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
-            admin,
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
+        let saved_admin = ADMIN.load(&deps.storage).unwrap();
+        assert_eq!(saved_admin, admin);
 
         let balance_1 = BALANCES.load(&deps.storage, state.pair.token_1).unwrap();
         let expected_balance_1 = Uint128::zero();
@@ -232,10 +234,11 @@ mod tests {
             },
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
-            admin: Addr::unchecked("admin"),
         };
 
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
         STATE.save(deps.as_mut().storage, &state).unwrap();
+        ADMIN.save(deps.as_mut().storage, &admin).unwrap();
 
         // Setup reserves with imbalanced ratio to create spread
         let reserve_1 = Uint128::new(1000);
@@ -306,10 +309,11 @@ mod tests {
             },
             last_updated: env.block.time.seconds(),
             total_lp_tokens: Uint128::new(1000),
-            admin: Addr::unchecked("admin"),
         };
 
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
         STATE.save(deps.as_mut().storage, &state).unwrap();
+        ADMIN.save(deps.as_mut().storage, &admin).unwrap();
 
         // Setup reserves with imbalanced ratio to create spread
         let reserve_1 = Uint128::new(9971294131355738400);
