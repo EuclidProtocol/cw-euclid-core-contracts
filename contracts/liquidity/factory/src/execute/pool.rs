@@ -791,18 +791,16 @@ pub fn collect_concentrated_fees_request(
         ContractError::PoolDoesNotExist {}
     );
 
-    if let Some(position_meta) =
-        POSITION_ID_TO_METADATA.may_load(deps.storage, position_id.u128())?
-    {
-        ensure!(
-            position_meta.owner == info.sender,
-            ContractError::Unauthorized {}
-        );
-        ensure!(
-            position_meta.pool_key == pool_key,
-            ContractError::new("Pool key mismatch")
-        );
-    }
+    let position_meta = POSITION_ID_TO_METADATA.load(deps.storage, position_id.u128())?;
+
+    ensure!(
+        position_meta.owner == info.sender,
+        ContractError::Unauthorized {}
+    );
+    ensure!(
+        position_meta.pool_key == pool_key,
+        ContractError::new("Pool key mismatch")
+    );
 
     let req = ConcentratedCollectFeesRequest {
         tx_id: tx_id.clone(),

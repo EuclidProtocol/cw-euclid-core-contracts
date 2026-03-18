@@ -19,8 +19,7 @@ use crate::helpers::factory::{
     list_position_ids,
 };
 use crate::helpers::relayer::{
-    extract_ack_packet_events, relay_factory_ack_packet, relay_factory_router_factory,
-    relay_factory_send_packet,
+    extract_ack_packet_events, relay_factory_ack_packet, relay_factory_send_packet,
 };
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
@@ -277,18 +276,15 @@ fn test_collect_duplicate_ack_idempotent_ibc() {
 }
 
 #[test]
-fn test_collect_ack_error_rollback_ibc() {
+fn test_collect_missing_position_rejected() {
     let (_interchain, factory, router, token_a, token_b) =
         setup_concentrated_env(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC);
     let pair = pair_with_amounts(&token_a, &token_b, 40_000, 40_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
-    let chain_uid = factory.get_state().unwrap().chain_uid;
+
     let missing_position_id = Uint128::new(999_999_999_999u128);
 
-    let before_0 = voucher_balance(&factory, &router, &token_a.token.to_string());
-    let before_1 = voucher_balance(&factory, &router, &token_b.token.to_string());
-
-    let tx_first = factory
+    factory
         .execute(
             &euclid::msgs::factory::ExecuteMsg::CollectConcentratedFees {
                 pool_key: pool_key.clone(),
@@ -298,24 +294,5 @@ fn test_collect_ack_error_rollback_ibc() {
             },
             &[],
         )
-        .unwrap();
-    relay_factory_router_factory(tx_first.events, &factory, &router, &chain_uid).unwrap();
-
-    let tx_second = factory
-        .execute(
-            &euclid::msgs::factory::ExecuteMsg::CollectConcentratedFees {
-                pool_key,
-                position_id: missing_position_id,
-                recipient: sender(&factory),
-                cross_chain_config: CrossChainConfig::default(),
-            },
-            &[],
-        )
-        .unwrap();
-    relay_factory_router_factory(tx_second.events, &factory, &router, &chain_uid).unwrap();
-
-    let after_0 = voucher_balance(&factory, &router, &token_a.token.to_string());
-    let after_1 = voucher_balance(&factory, &router, &token_b.token.to_string());
-    assert_eq!(after_0, before_0, "error ack must not move balance");
-    assert_eq!(after_1, before_1, "error ack must not move balance");
+        .unwrap_err();
 }
