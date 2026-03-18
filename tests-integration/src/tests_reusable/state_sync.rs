@@ -283,16 +283,16 @@ pub(crate) fn sync_state_with_concentrated(
     let position_nfts = if let Some(position_token) = position_token {
         if position_token.address().is_ok() {
             position_token
-                .query::<position_token::msg::TokensResponse>(
-                    &position_token::msg::QueryMsg::AllTokens {},
+                .query::<euclid::msgs::position_token::TokensResponse>(
+                    &euclid::msgs::position_token::QueryMsg::AllTokens {},
                 )
                 .unwrap()
                 .tokens
                 .into_iter()
                 .map(|token_id| {
                     let owner = position_token
-                        .query::<position_token::msg::OwnerOfResponse>(
-                            &position_token::msg::QueryMsg::OwnerOf {
+                        .query::<euclid::msgs::position_token::OwnerOfResponse>(
+                            &euclid::msgs::position_token::QueryMsg::OwnerOf {
                                 token_id: token_id.clone(),
                             },
                         )

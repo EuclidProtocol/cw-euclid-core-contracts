@@ -1,9 +1,9 @@
-use crate::{
-    msg::{OwnerOfResponse, StateResponse, TokenInfoResponse, TokensResponse},
-    state::{ALL_TOKEN_SET, OWNER_TOKEN_SET, STATE, TOKENS},
-};
+use crate::state::{ALL_TOKEN_SET, OWNER_TOKEN_SET, STATE, TOKENS};
 use cosmwasm_std::{to_json_binary, Binary, Deps, Order};
 use euclid::error::ContractError;
+use euclid::msgs::position_token::{
+    OwnerOfResponse, StateResponse, TokenInfoResponse, TokensResponse,
+};
 
 pub(crate) fn query_owner_of(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
     let token = TOKENS

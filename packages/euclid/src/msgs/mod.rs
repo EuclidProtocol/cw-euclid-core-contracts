@@ -6,6 +6,7 @@ pub mod hook;
 pub mod lp_token;
 pub mod meta_transaction;
 pub mod orderbook_deposits;
+pub mod position_token;
 pub mod router;
 pub mod virtual_balance;
 pub mod vlp;

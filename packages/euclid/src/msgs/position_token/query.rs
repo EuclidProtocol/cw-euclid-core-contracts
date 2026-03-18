@@ -2,35 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 
 #[cw_serde]
-pub struct InstantiateMsg {
-    pub name: String,
-    pub symbol: String,
-    pub minter: Addr,
-    pub admin: Addr,
-}
-
-#[cw_serde]
-pub enum ExecuteMsg {
-    Mint {
-        token_id: String,
-        owner: String,
-        token_uri: Option<String>,
-    },
-    Burn {
-        token_id: String,
-    },
-    Transfer {
-        token_id: String,
-        recipient: String,
-    },
-    UpdateState {
-        admin: Option<String>,
-        minter: Option<String>,
-    },
-}
-
-#[cw_serde]
-#[derive(QueryResponses)]
+#[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     #[returns(OwnerOfResponse)]
     OwnerOf { token_id: String },
@@ -69,6 +41,3 @@ pub struct StateResponse {
     pub admin: Addr,
     pub total_tokens: u64,
 }
-
-#[cw_serde]
-pub struct MigrateMsg {}

@@ -1,4 +1,7 @@
-use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128};
+use cosmwasm_std::{
+    ensure, to_json_binary, DepsMut, Env, MessageInfo, QueryRequest, Response, SubMsg, Uint128,
+    WasmQuery,
+};
 use cw20::Logo;
 use euclid::{
     cross_chain_user::CrossChainUser,
@@ -9,6 +12,7 @@ use euclid::{
     msgs::{
         cross_chain_config::CrossChainConfig,
         escrow::AllowedTokenResponse,
+        position_token::TokenInfoResponse,
         vlp::base::{PoolConfig, PoolType},
     },
     token::{Pair, PairWithDenomAndAmount, TokenType},
@@ -33,7 +37,7 @@ use crate::{
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
         PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA,
-        STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+        POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -725,6 +729,15 @@ pub fn remove_concentrated_liquidity_request(
         position_id: position_id.u128(),
         lp_allocation,
     };
+
+    // let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+
+    // let query: TokenInfoResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+    //     contract_addr: position_token_contract.into_string(),
+    //     msg: to_json_binary(&euclid::msgs::position_token::QueryMsg::TokenInfo {
+    //         token_id: pool_key.pair.token_1.to_string(),
+    //     })?,
+    // }))?;
 
     PENDING_CONCENTRATED_REMOVE_LIQUIDITY.save(
         deps.storage,

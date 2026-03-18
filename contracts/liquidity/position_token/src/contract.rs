@@ -6,11 +6,11 @@ use cw2::set_contract_version;
 use euclid::error::ContractError;
 
 use crate::execute::{execute_burn, execute_mint, execute_transfer, execute_update_state};
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::{
     query_all_tokens, query_owner_of, query_state, query_token_info, query_tokens_by_owner,
 };
 use crate::state::{State, STATE};
+use euclid::msgs::position_token::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 const CONTRACT_NAME: &str = "crates.io:position_token";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");

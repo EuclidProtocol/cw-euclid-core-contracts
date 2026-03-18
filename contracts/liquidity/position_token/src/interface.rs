@@ -1,7 +1,7 @@
 use crate::contract::{execute, instantiate, query};
 use cw_orch::{interface, prelude::*};
 
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use euclid::msgs::position_token::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 pub const CONTRACT_ID: &str = "position_token_contract";
 

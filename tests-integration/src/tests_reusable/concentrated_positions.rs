@@ -57,15 +57,19 @@ fn test_add_liquidity_mints_position_nft(
 
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
+        .query::<euclid::msgs::position_token::TokensResponse>(
+            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+        )
         .unwrap()
         .tokens;
     assert_eq!(tokens.len(), 1, "initial add should mint exactly one NFT");
 
     let owner = position_token
-        .query::<position_token::msg::OwnerOfResponse>(&position_token::msg::QueryMsg::OwnerOf {
-            token_id: tokens[0].clone(),
-        })
+        .query::<euclid::msgs::position_token::OwnerOfResponse>(
+            &euclid::msgs::position_token::QueryMsg::OwnerOf {
+                token_id: tokens[0].clone(),
+            },
+        )
         .unwrap()
         .owner;
     assert_eq!(owner, factory.environment().sender.to_string());

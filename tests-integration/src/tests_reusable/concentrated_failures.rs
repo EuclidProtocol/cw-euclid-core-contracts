@@ -63,7 +63,9 @@ fn test_no_ack_does_not_finalize_position() {
 
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
+        .query::<euclid::msgs::position_token::TokensResponse>(
+            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+        )
         .unwrap()
         .tokens;
     assert!(
@@ -130,7 +132,9 @@ fn test_ack_error_rolls_back_pending() {
 
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
+        .query::<euclid::msgs::position_token::TokensResponse>(
+            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+        )
         .unwrap()
         .tokens;
     assert!(tokens.is_empty(), "error ack must not mint position NFT");

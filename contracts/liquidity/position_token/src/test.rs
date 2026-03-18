@@ -4,7 +4,7 @@ mod tests {
     use cosmwasm_std::{from_json, Addr};
 
     use crate::contract::{execute, instantiate, query};
-    use crate::msg::{
+    use euclid::msgs::position_token::{
         ExecuteMsg, InstantiateMsg, OwnerOfResponse, QueryMsg, StateResponse, TokensResponse,
     };
 

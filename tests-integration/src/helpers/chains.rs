@@ -135,7 +135,7 @@ fn setup_factory_inner(
     let position_token = PositionTokenContract::new(chain.clone());
     position_token.upload().unwrap();
     position_token.instantiate(
-        &position_token::msg::InstantiateMsg {
+        &euclid::msgs::position_token::InstantiateMsg {
             name: "Euclid Concentrated Positions".to_string(),
             symbol: "EUPOS".to_string(),
             minter: factory.address().unwrap(),

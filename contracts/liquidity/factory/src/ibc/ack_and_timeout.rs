@@ -357,7 +357,7 @@ fn ack_concentrated_pool_creation(
             if let Some(position_token_contract) = POSITION_TOKEN_CONTRACT.may_load(deps.storage)? {
                 let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: position_token_contract.to_string(),
-                    msg: to_json_binary(&position_token::msg::ExecuteMsg::Mint {
+                    msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Mint {
                         token_id: data.position_id.to_string(),
                         owner: sender.to_string(),
                         token_uri: None,
@@ -699,7 +699,7 @@ fn ack_add_concentrated_liquidity(
                     {
                         let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                             contract_addr: position_token_contract.to_string(),
-                            msg: to_json_binary(&position_token::msg::ExecuteMsg::Mint {
+                            msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Mint {
                                 token_id: data.position_id.to_string(),
                                 owner: sender.to_string(),
                                 token_uri: None,
@@ -848,7 +848,7 @@ fn ack_remove_concentrated_liquidity(
                     {
                         let burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
                             contract_addr: position_token_contract.to_string(),
-                            msg: to_json_binary(&position_token::msg::ExecuteMsg::Burn {
+                            msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Burn {
                                 token_id: data.position_id.to_string(),
                             })?,
                             funds: vec![],
