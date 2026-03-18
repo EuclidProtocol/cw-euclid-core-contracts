@@ -73,6 +73,18 @@ pub fn execute_manage_factory_state(
             POSITION_TOKEN_CONTRACT.save(deps.storage, &position_token_contract)?;
             Ok(Response::new().add_attribute("position_token_contract", position_token_contract))
         }
+        ManageFactoryState::UpdatePositionTokenCodeId {
+            position_token_code_id,
+        } => {
+            ensure!(
+                admins.migration_admin == info.sender,
+                ContractError::Unauthorized {}
+            );
+            state.position_token_code_id = position_token_code_id;
+            STATE.save(deps.storage, &state)?;
+            Ok(Response::new()
+                .add_attribute("position_token_code_id", position_token_code_id.to_string()))
+        }
     }
 }
 

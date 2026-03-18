@@ -17,6 +17,7 @@ mod tests {
             relayer_contract: Addr::unchecked("relayer_contract"),
             escrow_code_id: 1,
             lp_code_id: 2,
+            position_token_code_id: 3,
             is_native: true,
         };
         STATE.save(deps.storage, &state).unwrap();
@@ -41,6 +42,7 @@ mod tests {
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             escrow_code_id: 1,
             lp_code_id: 2,
+            position_token_code_id: 3,
             is_native: true,
             rate_limit_fee_recipient: Addr::unchecked("rate_limit_fee_recipient"),
             rate_limit_fee_denom: "rate_limit_fee_denom".to_string(),
@@ -55,7 +57,7 @@ mod tests {
     fn test_init() {
         let mut deps = mock_dependencies();
         let res = init(&mut deps);
-        assert_eq!(0, res.messages.len());
+        assert_eq!(1, res.messages.len());
         let owner = deps.api.addr_make("owner");
         let expected_state = State {
             router_contract: "router".to_string(),
@@ -63,6 +65,7 @@ mod tests {
             escrow_code_id: 1,
             chain_uid: ChainUid::create("1".to_string()).unwrap(),
             lp_code_id: 2,
+            position_token_code_id: 3,
             is_native: true,
         };
         let state = STATE.load(&deps.storage).unwrap();

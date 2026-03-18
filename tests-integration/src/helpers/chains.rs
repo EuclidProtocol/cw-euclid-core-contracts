@@ -110,6 +110,8 @@ fn setup_factory_inner(
     factory.upload().unwrap();
     escrow.upload().unwrap();
     lp_token.upload().unwrap();
+    let position_token = PositionTokenContract::new(chain.clone());
+    position_token.upload().unwrap();
 
     let is_native = router_chain_id == factory_chain_id;
 
@@ -121,6 +123,7 @@ fn setup_factory_inner(
                 chain_uid: chain_uid.clone(),
                 escrow_code_id: escrow.code_id().unwrap(),
                 lp_code_id: lp_token.code_id().unwrap(),
+                position_token_code_id: position_token.code_id().unwrap(),
                 relayer_contract: relayer.address().unwrap(),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),
@@ -131,24 +134,6 @@ fn setup_factory_inner(
             &[],
         )?;
     }
-
-    let position_token = PositionTokenContract::new(chain.clone());
-    position_token.upload().unwrap();
-    position_token.instantiate(
-        &euclid::msgs::position_token::InstantiateMsg {
-            name: "Euclid Concentrated Positions".to_string(),
-            symbol: "EUPOS".to_string(),
-            minter: factory.address().unwrap(),
-            admin: chain.addr_make("position_token_admin"),
-        },
-        None,
-        &[],
-    )?;
-    factory.manage_factory_state(
-        euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
-            position_token_contract: position_token.address().unwrap().to_string(),
-        },
-    )?;
 
     if !is_native {
         match chain_type {

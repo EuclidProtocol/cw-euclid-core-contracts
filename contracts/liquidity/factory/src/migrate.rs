@@ -41,6 +41,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
             relayer_contract: legacy_state.relayer_contract,
             escrow_code_id: legacy_state.escrow_code_id,
             lp_code_id: legacy_state.lp_code_id,
+            position_token_code_id: 0,
             chain_uid: legacy_state.chain_uid,
             is_native: legacy_state.is_native,
         };
@@ -55,6 +56,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
             relayer_contract: legacy_state.relayer_contract,
             escrow_code_id: legacy_state.escrow_code_id,
             lp_code_id: legacy_state.lp_code_id,
+            position_token_code_id: 0,
             chain_uid: legacy_state.chain_uid,
             is_native: legacy_state.is_native,
         };

@@ -25,6 +25,7 @@ pub struct InstantiateMsg {
     pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
     pub lp_code_id: u64,
+    pub position_token_code_id: u64,
     pub is_native: bool,
     pub relayer_contract: Addr,
     pub rate_limit_fee_recipient: Addr,
@@ -173,6 +174,9 @@ pub enum ManageFactoryState {
     },
     UpdatePositionTokenContract {
         position_token_contract: String,
+    },
+    UpdatePositionTokenCodeId {
+        position_token_code_id: u64,
     },
 }
 
