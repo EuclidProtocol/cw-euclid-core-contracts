@@ -36,8 +36,7 @@ use crate::{
     math::{
         liquidity_amounts::{get_amounts_for_liquidity, get_liquidity_for_amounts},
         oracle::{initialize_observation, observe, write_observation},
-        position_math::{fee_growth_inside, fees_owed},
-        sqrt_price_math::q128,
+        position_math::{accumulate_fee_growth, fee_growth_inside, fees_owed, flip_fee_growth_outside},
         swap_math::{compute_swap_step_exact_input, FEE_DENOMINATOR_PIPS},
         tick_math::{
             get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio, max_sqrt_ratio, min_sqrt_ratio,
@@ -1011,17 +1010,12 @@ fn run_swap_simulation(
         lp_fee_total = lp_fee_total.checked_add(lp_fee_step)?;
         protocol_fee_total = protocol_fee_total.checked_add(protocol_fee_step)?;
 
-        if !lp_fee_step.is_zero() {
-            let fee_growth_delta = lp_fee_step
-                .checked_mul(q128())?
-                .checked_div(Uint256::from(liquidity.u128()))?;
-            if zero_for_one {
-                fee_growth_global_0_x128 =
-                    fee_growth_global_0_x128.checked_add(fee_growth_delta)?;
-            } else {
-                fee_growth_global_1_x128 =
-                    fee_growth_global_1_x128.checked_add(fee_growth_delta)?;
-            }
+        if zero_for_one {
+            fee_growth_global_0_x128 =
+                accumulate_fee_growth(fee_growth_global_0_x128, lp_fee_step, liquidity)?;
+        } else {
+            fee_growth_global_1_x128 =
+                accumulate_fee_growth(fee_growth_global_1_x128, lp_fee_step, liquidity)?;
         }
 
         if !protocol_fee_step.is_zero() {
@@ -1043,9 +1037,9 @@ fn run_swap_simulation(
             if initialized {
                 if let Some(info) = TICKS.may_load(deps.storage, target_tick)? {
                     let new_fee_growth_outside_0_x128 =
-                        fee_growth_global_0_x128.checked_sub(info.fee_growth_outside_0_x128)?;
+                        flip_fee_growth_outside(fee_growth_global_0_x128, info.fee_growth_outside_0_x128);
                     let new_fee_growth_outside_1_x128 =
-                        fee_growth_global_1_x128.checked_sub(info.fee_growth_outside_1_x128)?;
+                        flip_fee_growth_outside(fee_growth_global_1_x128, info.fee_growth_outside_1_x128);
                     crossed_ticks.push(CrossedTickUpdate {
                         tick: target_tick,
                         fee_growth_outside_0_x128: new_fee_growth_outside_0_x128,
