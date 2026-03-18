@@ -172,9 +172,6 @@ pub enum ManageFactoryState {
     UpdateRelayerAddress {
         relayer_address: String,
     },
-    UpdatePositionTokenContract {
-        position_token_contract: String,
-    },
     UpdatePositionTokenCodeId {
         position_token_code_id: u64,
     },
