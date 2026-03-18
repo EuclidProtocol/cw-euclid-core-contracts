@@ -132,10 +132,8 @@ fn test_ack_error_rolls_back_pending() {
                 .add_attribute("destination_port", &packet.source_port),
         );
         // event[1]: the error ack
-        fake_ack_events.push(
-            Event::new(&ack_event_type)
-                .add_attribute("ack", error_ack.to_base64()),
-        );
+        fake_ack_events
+            .push(Event::new(&ack_event_type).add_attribute("ack", error_ack.to_base64()));
     }
 
     let chain_uid = factory.get_state().unwrap().chain_uid;
