@@ -92,6 +92,7 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     msg.pair.validate()?;
+    validate_concentrated_fee_and_spacing(msg.fee_tier_bps, msg.tick_spacing)?;
 
     let state = State {
         pair: msg.pair.clone(),
@@ -1447,6 +1448,31 @@ fn increase_observation_cardinality_next(
             "observation_cardinality_next",
             slot0.observation_cardinality_next.to_string(),
         ))
+}
+
+fn validate_concentrated_fee_and_spacing(
+    fee_tier_bps: u64,
+    tick_spacing: u64,
+) -> Result<(), ContractError> {
+    let expected_tick_spacing = match fee_tier_bps {
+        100 => 1,
+        500 => 10,
+        3_000 => 60,
+        10_000 => 200,
+        _ => return Err(ContractError::new("Invalid concentrated fee tier")),
+    };
+
+    ensure!(
+        tick_spacing == expected_tick_spacing,
+        ContractError::new(
+            format!(
+                "Invalid tick spacing {} for fee tier {}. Expected {}",
+                tick_spacing, fee_tier_bps, expected_tick_spacing
+            )
+            .as_str()
+        )
+    );
+    Ok(())
 }
 
 fn query_slot0(deps: Deps) -> Result<Slot0Response, ContractError> {

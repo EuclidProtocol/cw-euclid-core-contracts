@@ -41,31 +41,6 @@ use crate::{
     },
 };
 
-fn validate_concentrated_fee_and_spacing(
-    fee_tier_bps: u64,
-    tick_spacing: u64,
-) -> Result<(), ContractError> {
-    let expected_tick_spacing = match fee_tier_bps {
-        100 => 1,
-        500 => 10,
-        3_000 => 60,
-        10_000 => 200,
-        _ => return Err(ContractError::new("Invalid concentrated fee tier")),
-    };
-
-    ensure!(
-        tick_spacing == expected_tick_spacing,
-        ContractError::new(
-            format!(
-                "Invalid tick spacing {} for fee tier {}. Expected {}",
-                tick_spacing, fee_tier_bps, expected_tick_spacing
-            )
-            .as_str()
-        )
-    );
-    Ok(())
-}
-
 fn default_aligned_tick_bounds(tick_spacing: u64) -> (i64, i64) {
     const MIN_TICK: i64 = -887_272;
     const MAX_TICK: i64 = 887_272;
@@ -162,16 +137,13 @@ pub fn ibc_execute_request_pool_creation(
         PoolConfig::Concentrated {
             fee_tier_bps,
             tick_spacing,
-        } => {
-            validate_concentrated_fee_and_spacing(fee_tier_bps, tick_spacing)?;
-            Some(PoolKey {
-                pair: pair.clone(),
-                pool_type: PoolType::Concentrated {
-                    fee_tier_bps,
-                    tick_spacing,
-                },
-            })
-        }
+        } => Some(PoolKey {
+            pair: pair.clone(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps,
+                tick_spacing,
+            },
+        }),
         _ => None,
     };
 
@@ -434,7 +406,6 @@ pub fn ibc_execute_request_concentrated_pool_creation(
         } => (fee_tier_bps, tick_spacing),
         _ => return Err(ContractError::new("pool_key must be concentrated")),
     };
-    validate_concentrated_fee_and_spacing(fee_tier_bps, tick_spacing)?;
 
     ibc_execute_request_pool_creation(
         deps,
