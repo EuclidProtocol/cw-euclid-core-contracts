@@ -3,7 +3,7 @@ use std::collections::HashMap;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, ReplyOn, Reply, Response,
+    to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, ReplyOn, Response,
     StdError, SubMsg, Uint512, WasmMsg,
 };
 use cw2::set_contract_version;

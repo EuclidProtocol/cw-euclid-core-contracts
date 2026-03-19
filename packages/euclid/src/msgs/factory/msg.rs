@@ -175,6 +175,7 @@ pub enum ManageFactoryState {
     UpdatePositionTokenCodeId {
         position_token_code_id: u64,
     },
+    RegisterPositionToken {},
 }
 
 #[cw_serde]

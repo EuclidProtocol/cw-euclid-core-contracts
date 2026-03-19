@@ -42,8 +42,8 @@ use factory::{
     mock::{mock_factory, MockFactory},
     FactoryContract,
 };
-use position_token::mock::mock_position_token;
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
+use position_token::mock::mock_position_token;
 use router::RouterContract;
 
 use crate::helpers::{
