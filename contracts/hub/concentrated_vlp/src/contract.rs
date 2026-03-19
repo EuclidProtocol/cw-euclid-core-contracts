@@ -940,6 +940,7 @@ fn run_swap_simulation(
     let mut protocol_fee_total = Uint256::zero();
     let mut crossed_ticks: Vec<CrossedTickUpdate> = Vec::new();
     let protocol_cut_bps = state.fee.euclid_fee_bps.min(10_000);
+    let mut last_crossed_tick: Option<i64> = None;
 
     for _ in 0..MAX_SWAP_STEPS {
         if amount_remaining.is_zero() {
@@ -1054,13 +1055,25 @@ fn run_swap_simulation(
                     liquidity = add_signed_liquidity(liquidity, liq_net)?;
                 }
             }
+            last_crossed_tick = Some(target_tick);
             slot0.tick = if zero_for_one {
                 target_tick.saturating_sub(1)
             } else {
                 target_tick
             };
         } else {
-            slot0.tick = get_tick_at_sqrt_ratio(slot0.sqrt_price_x96)?;
+            let new_tick = get_tick_at_sqrt_ratio(slot0.sqrt_price_x96)?;
+            // After crossing tick T, slot0.tick is set to T-1 (zero_for_one) or T
+            // (!zero_for_one) and ACTIVE_LIQUIDITY is adjusted accordingly. If the
+            // next step barely moves the price, get_tick_at_sqrt_ratio can round
+            // back to T, creating a tick/liquidity desync where the position appears
+            // in-range but its liquidity isn't in ACTIVE_LIQUIDITY. Clamp against
+            // only the immediately preceding crossed tick to prevent this.
+            slot0.tick = match last_crossed_tick {
+                Some(crossed) if zero_for_one && new_tick == crossed => crossed - 1,
+                Some(crossed) if !zero_for_one && new_tick == crossed - 1 => crossed,
+                _ => new_tick,
+            };
         }
     }
 

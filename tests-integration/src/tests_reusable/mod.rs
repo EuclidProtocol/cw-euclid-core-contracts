@@ -22,3 +22,4 @@ pub mod concentrated_v3_swap;
 pub mod concentrated_v3_migration;
 pub mod factory_swap_mixed_concentrated;
 pub mod concentrated_fee_growth_regression;
+pub mod concentrated_tick_boundary_regression;
