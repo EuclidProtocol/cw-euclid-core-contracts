@@ -1,6 +1,10 @@
 use crate::{chain::ChainUid, cross_chain_user::CrossChainUser, error::ContractError};
 use cosmwasm_schema::cw_serde;
+
+// Voucher is stored at 24 decimal precision
+pub const VOUCHER_DECIMAL: u32 = 24;
 type AnyChainAddress = String;
+
 type TokenId = String;
 // Balance is stored again Chain Id, Address of the user on any chain, and for a specific Token Id
 // Why token denom is not included in the key?

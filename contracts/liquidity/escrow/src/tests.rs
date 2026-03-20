@@ -1,7 +1,7 @@
 use cosmwasm_std::{
     coin, from_json,
     testing::{message_info, mock_dependencies, mock_env},
-    to_json_binary, Addr, Coin, Uint128,
+    to_json_binary, Addr, Coin, Uint128, Uint256,
 };
 
 use crate::{
@@ -26,6 +26,7 @@ fn init_escrow() {
         token_id: Token::create("eucl".to_string()).unwrap(),
         allowed_denom: Some(TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: None,
         }),
     };
 
@@ -48,6 +49,7 @@ fn test_deposit_native() {
         token_id: Token::create("eucl".to_string()).unwrap(),
         allowed_denom: Some(TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: None,
         }),
     };
     let res = instantiate(deps.as_mut(), env.clone(), info.clone(), msg);
@@ -81,7 +83,7 @@ fn test_deposit_native() {
     let denom_to_amount = DENOM_TO_AMOUNT
         .load(&deps.storage, "native:eucl".to_string())
         .unwrap();
-    let expected_denom_to_amount = Uint128::new(10);
+    let expected_denom_to_amount = Uint256::from(10_u128);
     assert_eq!(denom_to_amount, expected_denom_to_amount);
     // Deposit more
     let info = message_info(&creator, &[coin(10_u128, "eucl")]);
@@ -89,7 +91,7 @@ fn test_deposit_native() {
     let denom_to_amount = DENOM_TO_AMOUNT
         .load(&deps.storage, "native:eucl".to_string())
         .unwrap();
-    let expected_denom_to_amount = Uint128::new(20);
+    let expected_denom_to_amount = Uint256::from(20_u128);
 
     assert_eq!(denom_to_amount, expected_denom_to_amount);
 }
@@ -120,6 +122,7 @@ fn test_instantiate() {
                 token_id: Token::create("token1".to_string()).unwrap(),
                 allowed_denom: Some(TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 }),
             },
             expected_error: None,
@@ -163,6 +166,7 @@ fn test_execute_add_allowed_denom() {
             msg: ExecuteMsg::AddAllowedDenom {
                 denom: TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 },
             },
             expected_error: None,
@@ -172,6 +176,7 @@ fn test_execute_add_allowed_denom() {
             msg: ExecuteMsg::AddAllowedDenom {
                 denom: TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 },
             },
             expected_error: Some(ContractError::DuplicateDenominations {}),
@@ -181,6 +186,7 @@ fn test_execute_add_allowed_denom() {
             msg: ExecuteMsg::AddAllowedDenom {
                 denom: TokenType::Native {
                     denom: "denom2".to_string(),
+                    decimals: None,
                 },
             },
             expected_error: Some(ContractError::Unauthorized {}),
@@ -206,7 +212,8 @@ fn test_execute_add_allowed_denom() {
                 // Verify the denom was added
                 let allowed_denoms = ALLOWED_DENOMS.load(&deps.storage).unwrap();
                 assert!(allowed_denoms.contains(&TokenType::Native {
-                    denom: "denom1".to_string()
+                    denom: "denom1".to_string(),
+                    decimals: None,
                 }));
             }
         }
@@ -225,6 +232,7 @@ fn test_execute_disallow_denom() {
         token_id: Token::create("token1".to_string()).unwrap(),
         allowed_denom: Some(TokenType::Native {
             denom: "denom1".to_string(),
+            decimals: None,
         }),
     };
     instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
@@ -235,6 +243,7 @@ fn test_execute_disallow_denom() {
             msg: ExecuteMsg::DisallowDenom {
                 denom: TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 },
             },
             expected_error: None,
@@ -244,6 +253,7 @@ fn test_execute_disallow_denom() {
             msg: ExecuteMsg::DisallowDenom {
                 denom: TokenType::Native {
                     denom: "denom2".to_string(),
+                    decimals: None,
                 },
             },
             expected_error: Some(ContractError::DenomDoesNotExist {}),
@@ -253,6 +263,7 @@ fn test_execute_disallow_denom() {
             msg: ExecuteMsg::DisallowDenom {
                 denom: TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 },
             },
             expected_error: Some(ContractError::Unauthorized {}),
@@ -279,6 +290,7 @@ fn test_execute_disallow_denom() {
                 let allowed_denoms = ALLOWED_DENOMS.load(&deps.storage).unwrap();
                 assert!(!allowed_denoms.contains(&TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 }));
             }
         }
@@ -304,6 +316,7 @@ fn test_execute_withdraw() {
         token_id: Token::create("token1".to_string()).unwrap(),
         allowed_denom: Some(TokenType::Native {
             denom: "denom1".to_string(),
+            decimals: None,
         }),
     };
     instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
@@ -322,9 +335,10 @@ fn test_execute_withdraw() {
             name: "Withdraw by factory",
             msg: ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recipient1".to_string()),
-                amount: Uint128::new(50),
+                amount: Uint256::from(50_u128),
                 denom: TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 },
                 forwarding_message: None,
             },
@@ -334,9 +348,10 @@ fn test_execute_withdraw() {
             name: "Withdraw with insufficient funds",
             msg: ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recipient1".to_string()),
-                amount: Uint128::new(2000),
+                amount: Uint256::from(2000_u128),
                 denom: TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 },
                 forwarding_message: None,
             }, // Use 2000 which exceeds the balance
@@ -346,9 +361,10 @@ fn test_execute_withdraw() {
             name: "Withdraw by non-factory",
             msg: ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recipient1".to_string()),
-                amount: Uint128::new(50),
+                amount: Uint256::from(50_u128),
                 denom: TokenType::Native {
                     denom: "denom1".to_string(),
+                    decimals: None,
                 },
                 forwarding_message: None,
             },
@@ -379,7 +395,7 @@ fn test_execute_withdraw() {
                     .load(&deps.storage, "native:denom1".to_string())
                     .unwrap();
                 dbg!(&denom_amount);
-                assert_eq!(denom_amount, Uint128::new(950));
+                assert_eq!(denom_amount, Uint256::from(950_u128));
             }
         }
     }
@@ -398,6 +414,7 @@ fn test_query_token_id() {
         token_id: Token::create("token1".to_string()).unwrap(),
         allowed_denom: Some(TokenType::Native {
             denom: "denom1".to_string(),
+            decimals: None,
         }),
     };
     instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
@@ -425,6 +442,7 @@ fn test_query_token_allowed() {
         token_id: Token::create("token1".to_string()).unwrap(),
         allowed_denom: Some(TokenType::Native {
             denom: "denom1".to_string(),
+            decimals: None,
         }),
     };
     instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
@@ -432,6 +450,7 @@ fn test_query_token_allowed() {
     let query_msg = QueryMsg::TokenAllowed {
         denom: TokenType::Native {
             denom: "denom1".to_string(),
+            decimals: None,
         },
     };
     let res: AllowedTokenResponse =
@@ -442,6 +461,7 @@ fn test_query_token_allowed() {
     let query_msg = QueryMsg::TokenAllowed {
         denom: TokenType::Native {
             denom: "unallowed_denom".to_string(),
+            decimals: None,
         },
     };
     let res: AllowedTokenResponse =

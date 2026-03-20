@@ -1,4 +1,4 @@
-use cosmwasm_std::{to_json_binary, Binary, Deps, Env, Uint128};
+use cosmwasm_std::{to_json_binary, Binary, Deps, Env, Uint256};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::msgs::vlp::stable::msg::{
@@ -17,7 +17,7 @@ use euclid::msgs::vlp::base::{
 pub fn query_simulate_swap(
     deps: Deps,
     asset_in: Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     next_swaps: Vec<NextSwapVlp>,
 ) -> Result<Binary, ContractError> {
     let swap_response = simulate_swap(
@@ -145,15 +145,15 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
 
 fn get_pool(
     state: &State,
-    chain_lp_tokens: Uint128,
-    reserve_1: Uint128,
-    reserve_2: Uint128,
+    chain_lp_tokens: Uint256,
+    reserve_1: Uint256,
+    reserve_2: Uint256,
 ) -> Result<StablePoolResponse, ContractError> {
     Ok(StablePoolResponse {
         reserve_1: calculate_amount_from_shares(reserve_1, chain_lp_tokens, state.total_lp_tokens)
-            .unwrap_or(Uint128::zero()),
+            .unwrap_or(Uint256::zero()),
         reserve_2: calculate_amount_from_shares(reserve_2, chain_lp_tokens, state.total_lp_tokens)
-            .unwrap_or(Uint128::zero()),
+            .unwrap_or(Uint256::zero()),
         lp_shares: chain_lp_tokens,
     })
 }

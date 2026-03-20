@@ -3,14 +3,13 @@
 mod tests {
 
     use crate::contract::{execute, instantiate, query};
-    use crate::normalize::{normalize, normalize_token_to_voucher, normalize_voucher_to_token};
     use crate::state::{
-        ADMIN, VOUCHER_ALLOWANCES, VOUCHER_BALANCES, VoucherAllowance,
-        get_escrow_balance_key,
+        get_escrow_balance_key, VoucherAllowance, ADMIN, VOUCHER_ALLOWANCES, VOUCHER_BALANCES,
     };
+    use euclid::normalize::{normalize, normalize_token_to_voucher, normalize_voucher_to_token};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
-    use cosmwasm_std::{Addr, Uint256, from_json};
+    use cosmwasm_std::{from_json, Addr, MessageInfo, Response, Uint256};
     use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
@@ -47,7 +46,6 @@ mod tests {
         token_id: &str,
         chain_uid: ChainUid,
         token_type: TokenType,
-        decimals: u8,
     ) {
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -56,7 +54,6 @@ mod tests {
                 token: Token::create(token_id.to_string()).unwrap(),
                 chain_uid,
                 token_type,
-                decimals,
                 allowed: true,
             },
         };
@@ -71,9 +68,10 @@ mod tests {
         CrossChainUser::new(make_chain_uid(chain), addr.to_string())
     }
 
-    fn native_token_type() -> TokenType {
+    fn native_token_type(decimals: Option<u32>) -> TokenType {
         TokenType::Native {
             denom: "uatom".to_string(),
+            decimals,
         }
     }
 
@@ -110,12 +108,15 @@ mod tests {
         let metadata = TokenMetadata {
             token: Token::create("token1".to_string()).unwrap(),
             chain_uid: make_chain_uid("chain1"),
-            token_type: native_token_type(),
-            decimals: 6,
+            token_type: native_token_type(Some(18)),
             allowed: true,
         };
-        let normalized = normalize_token_to_voucher(original, metadata.clone()).unwrap();
-        let denormalized = normalize_voucher_to_token(normalized, metadata).unwrap();
+        let normalized =
+            normalize_token_to_voucher(original, metadata.token_type.get_decimals().unwrap())
+                .unwrap();
+        let denormalized =
+            normalize_voucher_to_token(normalized, metadata.token_type.get_decimals().unwrap())
+                .unwrap();
         assert_eq!(denormalized, original);
     }
 
@@ -139,11 +140,12 @@ mod tests {
         let metadata = TokenMetadata {
             token: Token::create("token1".to_string()).unwrap(),
             chain_uid: make_chain_uid("chain1"),
-            token_type: native_token_type(),
-            decimals: 24,
+            token_type: native_token_type(Some(24)),
             allowed: true,
         };
-        let result = normalize_token_to_voucher(amount, metadata).unwrap();
+        let result =
+            normalize_token_to_voucher(amount, metadata.token_type.get_decimals().unwrap())
+                .unwrap();
         assert_eq!(result, amount);
     }
 
@@ -156,10 +158,10 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
         // Register token metadata with 6 decimals
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -183,16 +185,12 @@ mod tests {
         // Verify balance is normalized to 24 decimals
         let key = balance_key.clone().to_serialized_balance_key();
         let balance = VOUCHER_BALANCES.load(&deps.storage, key).unwrap();
-        let expected_normalized =
-            Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
+        let expected_normalized = Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
         assert_eq!(balance, expected_normalized);
 
         // Verify escrow balance stores raw amount
-        let escrow_key = get_escrow_balance_key(
-            "token1".to_string(),
-            chain.clone(),
-            token_type.clone(),
-        );
+        let escrow_key =
+            get_escrow_balance_key("token1".to_string(), chain.clone(), token_type.clone());
         let escrow = escrow_key.load(&deps.storage).unwrap();
         assert_eq!(escrow, Uint256::from(1_000_000u128));
     }
@@ -212,7 +210,7 @@ mod tests {
                 cross_chain_user: make_user("chain1", "user1"),
                 token_id: "token1".to_string(),
             },
-            token_type: native_token_type(),
+            token_type: native_token_type(Some(18)),
             token_source_chain_uid: make_chain_uid("chain1"),
         });
 
@@ -235,7 +233,7 @@ mod tests {
                 cross_chain_user: make_user("chain1", "user1"),
                 token_id: "token1".to_string(),
             },
-            token_type: native_token_type(),
+            token_type: native_token_type(Some(18)),
             token_source_chain_uid: make_chain_uid("chain1"),
         });
 
@@ -252,9 +250,9 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -275,13 +273,13 @@ mod tests {
         execute(deps.as_mut(), env.clone(), info.clone(), mint_msg).unwrap();
 
         // Burn half (normalized amount)
-        let normalized_half =
-            Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
+        let normalized_half = Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
         let burn_msg = ExecuteMsg::Burn(ExecuteBurn {
-            amount: normalized_half,
-            balance_key: balance_key.clone(),
-            token_type: token_type.clone(),
-            token_source_chain_uid: chain.clone(),
+            voucher_amount: normalized_half,
+            from_user: user.clone(),
+            token_id: "token1".to_string(),
+            release_denom: token_type.clone(),
+            release_chain_uid: chain.clone(),
         });
         execute(deps.as_mut(), env.clone(), info, burn_msg).unwrap();
 
@@ -291,11 +289,8 @@ mod tests {
         assert_eq!(balance, normalized_half);
 
         // Verify escrow is decremented
-        let escrow_key = get_escrow_balance_key(
-            "token1".to_string(),
-            chain.clone(),
-            token_type.clone(),
-        );
+        let escrow_key =
+            get_escrow_balance_key("token1".to_string(), chain.clone(), token_type.clone());
         let escrow = escrow_key.load(&deps.storage).unwrap();
         assert_eq!(escrow, Uint256::from(1_000_000u128));
     }
@@ -307,9 +302,9 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -333,15 +328,19 @@ mod tests {
         let full_balance = VOUCHER_BALANCES.load(&deps.storage, key.clone()).unwrap();
 
         let burn_msg = ExecuteMsg::Burn(ExecuteBurn {
-            amount: full_balance,
-            balance_key: balance_key.clone(),
-            token_type: token_type.clone(),
-            token_source_chain_uid: chain.clone(),
+            voucher_amount: full_balance,
+            from_user: make_user("chain1", "user1"),
+            token_id: "token1".to_string(),
+            release_denom: token_type.clone(),
+            release_chain_uid: chain.clone(),
         });
         execute(deps.as_mut(), env.clone(), info, burn_msg).unwrap();
 
         // Balance should be removed from storage
-        assert!(VOUCHER_BALANCES.may_load(&deps.storage, key).unwrap().is_none());
+        assert!(VOUCHER_BALANCES
+            .may_load(&deps.storage, key)
+            .unwrap()
+            .is_none());
 
         // Escrow should be removed
         let escrow_key =
@@ -359,13 +358,11 @@ mod tests {
         let info = message_info(&not_router, &[]);
 
         let msg = ExecuteMsg::Burn(ExecuteBurn {
-            amount: Uint256::from(10u128),
-            balance_key: BalanceKey {
-                cross_chain_user: make_user("chain1", "user1"),
-                token_id: "token1".to_string(),
-            },
-            token_type: native_token_type(),
-            token_source_chain_uid: make_chain_uid("chain1"),
+            voucher_amount: Uint256::from(10u128),
+            from_user: make_user("chain1", "user1"),
+            token_id: "token1".to_string(),
+            release_denom: native_token_type(Some(18)),
+            release_chain_uid: make_chain_uid("chain1"),
         });
 
         let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
@@ -381,9 +378,9 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -466,9 +463,9 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "eucl", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "eucl", chain.clone(), token_type.clone());
 
         let router = deps.api.addr_make("router");
         let router_info = message_info(&router, &[]);
@@ -506,9 +503,7 @@ mod tests {
         execute(deps.as_mut(), env.clone(), router_info.clone(), approve_msg).unwrap();
 
         // Verify allowance was set
-        let allowance = VOUCHER_ALLOWANCES
-            .load(&deps.storage, key.clone())
-            .unwrap();
+        let allowance = VOUCHER_ALLOWANCES.load(&deps.storage, key.clone()).unwrap();
         assert_eq!(allowance.amount, approve_amount);
         assert_eq!(allowance.spender, spender);
 
@@ -522,12 +517,16 @@ mod tests {
             sender: Some(spender.clone()),
             msg: None,
         });
-        execute(deps.as_mut(), env.clone(), router_info.clone(), transfer_msg).unwrap();
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            router_info.clone(),
+            transfer_msg,
+        )
+        .unwrap();
 
         // Verify allowance deducted
-        let allowance = VOUCHER_ALLOWANCES
-            .load(&deps.storage, key.clone())
-            .unwrap();
+        let allowance = VOUCHER_ALLOWANCES.load(&deps.storage, key.clone()).unwrap();
         assert_eq!(allowance.amount, approve_amount - transfer_amount);
 
         // Transfer remaining allowance
@@ -554,9 +553,9 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         // Attempt duplicate registration
         let router = deps.api.addr_make("router");
@@ -566,7 +565,6 @@ mod tests {
                 token: Token::create("token1".to_string()).unwrap(),
                 chain_uid: chain.clone(),
                 token_type: token_type.clone(),
-                decimals: 6,
                 allowed: true,
             },
         };
@@ -585,8 +583,7 @@ mod tests {
             token_metadata: TokenMetadata {
                 token: Token::create("token1".to_string()).unwrap(),
                 chain_uid: make_chain_uid("chain1"),
-                token_type: native_token_type(),
-                decimals: 25, // > VOUCHER_DECIMAL (24)
+                token_type: native_token_type(Some(18)),
                 allowed: true,
             },
         };
@@ -600,21 +597,20 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         // Update allowed field (admin only)
         let router = deps.api.addr_make("router");
         let admin = EuclidAdmin::default(router.clone());
         let admin_info = message_info(&admin.general_admin, &[]);
 
-        let msg = ExecuteMsg::UpdateTokenMetadata {
+        let msg = ExecuteMsg::RegisterTokenMetadata {
             token_metadata: TokenMetadata {
                 token: Token::create("token1".to_string()).unwrap(),
                 chain_uid: chain.clone(),
                 token_type: token_type.clone(),
-                decimals: 6,
                 allowed: false, // Changed
             },
         };
@@ -627,20 +623,19 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         let router = deps.api.addr_make("router");
         let admin = EuclidAdmin::default(router.clone());
         let admin_info = message_info(&admin.general_admin, &[]);
 
-        let msg = ExecuteMsg::UpdateTokenMetadata {
+        let msg = ExecuteMsg::RegisterTokenMetadata {
             token_metadata: TokenMetadata {
                 token: Token::create("token1".to_string()).unwrap(),
                 chain_uid: chain.clone(),
-                token_type: token_type.clone(),
-                decimals: 18, // Attempt to change from 6 to 18
+                token_type: native_token_type(Some(6)),
                 allowed: true,
             },
         };
@@ -657,9 +652,9 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -692,25 +687,19 @@ mod tests {
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         // Escrow should be 8M raw
-        let escrow_key = get_escrow_balance_key(
-            "token1".to_string(),
-            chain.clone(),
-            token_type.clone(),
-        );
+        let escrow_key =
+            get_escrow_balance_key("token1".to_string(), chain.clone(), token_type.clone());
         let escrow = escrow_key.load(&deps.storage).unwrap();
         assert_eq!(escrow, Uint256::from(8_000_000u128));
 
         // Burn 2M normalized from user1
-        let normalized_2m =
-            Uint256::from(2_000_000u128) * Uint256::from(10u128).pow(18);
+        let normalized_2m = Uint256::from(2_000_000u128) * Uint256::from(10u128).pow(18);
         let msg = ExecuteMsg::Burn(ExecuteBurn {
-            amount: normalized_2m,
-            balance_key: BalanceKey {
-                cross_chain_user: user1.clone(),
-                token_id: "token1".to_string(),
-            },
-            token_type: token_type.clone(),
-            token_source_chain_uid: chain.clone(),
+            voucher_amount: normalized_2m,
+            from_user: user1.clone(),
+            token_id: "token1".to_string(),
+            release_denom: token_type.clone(),
+            release_chain_uid: chain.clone(),
         });
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
@@ -809,12 +798,8 @@ mod tests {
             .is_ok());
 
         // Zero balance removed, non-zero remains
-        assert!(VOUCHER_BALANCES
-            .load(&deps.storage, key("owner"))
-            .is_err());
-        assert!(VOUCHER_BALANCES
-            .load(&deps.storage, key("owner2"))
-            .is_ok());
+        assert!(VOUCHER_BALANCES.load(&deps.storage, key("owner")).is_err());
+        assert!(VOUCHER_BALANCES.load(&deps.storage, key("owner2")).is_ok());
     }
 
     // ======== Query Tests ========
@@ -826,9 +811,9 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type();
+        let token_type = native_token_type(Some(18));
 
-        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone(), 6);
+        register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -849,13 +834,11 @@ mod tests {
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
         // Query balance
-        let query_msg =
-            euclid::msgs::virtual_balance::msg::QueryMsg::GetBalance { balance_key };
+        let query_msg = euclid::msgs::virtual_balance::msg::QueryMsg::GetBalance { balance_key };
         let res = query(deps.as_ref(), env, query_msg).unwrap();
         let balance_res: GetBalanceResponse = from_json(res).unwrap();
 
-        let expected =
-            Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
+        let expected = Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
         assert_eq!(balance_res.amount, expected);
     }
 

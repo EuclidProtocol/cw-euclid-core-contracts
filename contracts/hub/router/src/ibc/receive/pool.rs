@@ -1,29 +1,31 @@
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint256, WasmMsg};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    events::{register_denom_event, tx_event, TxType},
+    events::{simple_event, tx_event, TxType},
     fee::Fee,
     msgs::{
         self,
         router::TokenDenom,
-        virtual_balance::msg::{ExecuteApprove, ExecuteMint},
+        virtual_balance::msg::{ExecuteApprove, ExecuteMint, ExecuteMsg as VirtualBalanceMsg},
         vlp::base::{PoolConfig, VlpAddLiquidityMsg, VlpRegisterPoolMsg, VlpRemoveLiquidityMsg},
     },
-    token::PairWithDenomAndAmount,
+    normalize::normalize_token_to_voucher,
+    token::{PairWithDenomAndAmount, TokenMetadata, TokenType},
     voucher::BalanceKey,
 };
 use euclid_ibc::router_ibc::RouterCrossChainRemoveLiquidityExecuteMsg;
 
 use crate::{
+    query::{query_token_metadata_by_denom, query_token_registered},
     reply::{
         ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
         VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        ADMIN, FEE_STATE, FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS,
-        VIRTUAL_BALANCE_CONTRACT, VLPS,
+        ADMIN, FEE_STATE, FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, STATE, VIRTUAL_BALANCE_CONTRACT,
+        VLPS,
     },
 };
 
@@ -38,6 +40,7 @@ pub fn ibc_execute_request_pool_creation(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let admins = ADMIN.load(deps.storage)?;
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     let pair = pair_with_denom.get_pair()?;
     pair.validate()?;
@@ -54,48 +57,73 @@ pub fn ibc_execute_request_pool_creation(
     let mut one_token_already_exists = false;
 
     for token in pair_with_denom.get_vec_token_info() {
-        let mut registered_denoms = TOKEN_DENOMS
-            .may_load(deps.storage, token.token.clone())?
-            .unwrap_or_default();
+        let token_registered = query_token_registered(deps.as_ref(), &token.token)?;
 
-        one_token_already_exists = one_token_already_exists || !registered_denoms.is_empty();
+        one_token_already_exists = one_token_already_exists || token_registered;
 
         // If its a voucher, then we need to check if this token atleast exist on one of the chains
         if token.token_type.is_voucher() {
             ensure!(
-                !registered_denoms.is_empty(),
+                token_registered,
                 ContractError::new(
                     "Cannot create pool with voucher token that doesn't exist on any chain"
                 )
             );
         } else {
-            let token_registered_on_sender_chain = registered_denoms.iter().any(|denom| {
-                denom.chain_uid == sender.chain_uid && denom.token_type == token.token_type
-            });
-            // If its not a voucher, then this token must be present on sender chain with sent denom or its completely new token
-            ensure!(
-                registered_denoms.is_empty() || token_registered_on_sender_chain,
-                ContractError::new(
-                    format!(
-                        "Token: {}:: sCannot use already existing denom without register first",
-                        token.token
-                    )
-                    .as_str()
-                )
+            let token_registered_on_sender_chain = query_token_metadata_by_denom(
+                deps.as_ref(),
+                &virtual_balance_address,
+                &token.token,
+                &sender.chain_uid,
+                &token.token_type,
             );
-            // If its not a registered denom, lets register it now
-            if !token_registered_on_sender_chain {
-                registered_denoms.push(TokenDenom {
-                    chain_uid: sender.chain_uid.clone(),
-                    token_type: token.token_type.clone(),
-                });
-                TOKEN_DENOMS.save(deps.storage, token.token.clone(), &registered_denoms)?;
-                response = response.add_event(register_denom_event(
-                    &token.token,
-                    &sender.chain_uid.to_string(),
-                    &token.token_type,
-                ));
-            }
+            match token_registered_on_sender_chain {
+                Ok(token_metadata) => {
+                    ensure!(
+                        token_registered,
+                        ContractError::new(
+                            format!(
+                                "Token: {}:: Cannot use already existing token without register on sender chain first",
+                                token.token
+                            )
+                            .as_str()
+                        )
+                    );
+                    let token_decimals = token.token_type.get_decimals()?;
+                    let metadata_decimals = token_metadata.token_type.get_decimals()?;
+                    ensure!(
+                        metadata_decimals == token_decimals,
+                        ContractError::DecimalsMismatch {
+                            expected: metadata_decimals,
+                            received: token_decimals,
+                        }
+                    );
+                }
+                Err(_) => {
+                    // We don't have this token registered on sender chain, so we need to register it
+                    let register_metadata_msg = VirtualBalanceMsg::RegisterTokenMetadata {
+                        token_metadata: TokenMetadata::new(
+                            token.token.clone(),
+                            sender.chain_uid.clone(),
+                            token.token_type.clone(),
+                        ),
+                    };
+                    let register_metadata_wasm_msg = WasmMsg::Execute {
+                        contract_addr: virtual_balance_address.to_string(),
+                        msg: to_json_binary(&register_metadata_msg)?,
+                        funds: vec![],
+                    };
+                    response = response.add_message(register_metadata_wasm_msg);
+
+                    response = response.add_event(
+                        simple_event()
+                            .add_attribute("action", "register_denom")
+                            .add_attribute("token", token.token.to_string())
+                            .add_attribute("chain_uid", sender.chain_uid.to_string())
+                            .add_attribute("token_type", token.token_type.get_key()),
+                    );
+                }
+            };
         }
     }
 
@@ -198,7 +226,24 @@ pub fn ibc_execute_add_liquidity(
 
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
+    // Collect normalized amounts for each token
+    let mut normalized_amounts: Vec<Uint256> = Vec::new();
     for token in pair.get_vec_token_info() {
+        let normalized_amount = if token.token_type.is_voucher() {
+            // Voucher tokens are already normalized
+            token.amount
+        } else {
+            let metadata = query_token_metadata_by_denom(
+                deps.as_ref(),
+                &virtual_balance_address,
+                &token.token,
+                &sender.chain_uid,
+                &token.token_type,
+            )?;
+            normalize_token_to_voucher(token.amount, metadata.token_type.get_decimals()?)?
+        };
+        normalized_amounts.push(normalized_amount);
+
         // Mint if not voucher token (escrow managed by virtual_balance)
         if !token.token_type.is_voucher() {
             // Mint virtual balance for the token
@@ -226,7 +271,7 @@ pub fn ibc_execute_add_liquidity(
         // Transfer voucher token to the vlp contract
         let approve_voucher_msg =
             euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(ExecuteApprove {
-                amount: token.amount.into(),
+                amount: normalized_amount,
                 token_id: token.token.to_string(),
                 spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
                 owner: sender.clone(),
@@ -242,8 +287,12 @@ pub fn ibc_execute_add_liquidity(
         response = response.add_message(approve_voucher_msg);
     }
 
+    let normalized_liquidity = pair
+        .get_pair()?
+        .get_pair_with_amount(normalized_amounts[0], normalized_amounts[1])?;
+
     let add_liquidity_msg = msgs::vlp::base::ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
-        liquidity: pair.get_pair_with_amount()?,
+        liquidity: normalized_liquidity,
         sender,
         tx_id,
         slippage_tolerance_bps,

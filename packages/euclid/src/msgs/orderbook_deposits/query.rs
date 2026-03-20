@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Binary, Uint128};
+use cosmwasm_std::{Binary, Uint256};
 
 use crate::msgs::orderbook_deposits::AssetTotal;
 #[cw_serde]
@@ -32,14 +32,14 @@ pub struct StateResponse {
 #[cw_serde]
 pub struct AssetDepositResponse {
     pub token_id: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
 pub struct UserDepositResponse {
     pub user: String,
     pub token_id: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]

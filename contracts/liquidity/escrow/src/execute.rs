@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, Binary, DepsMut, Env, MessageInfo, Response, Uint128,
+    ensure, from_json, to_json_binary, Addr, Binary, DepsMut, Env, MessageInfo, Response, Uint256,
 };
 
 use cw20::Cw20ReceiveMsg;
@@ -45,7 +45,7 @@ pub fn execute_add_allowed_denom(
     let new_amount =
         DENOM_TO_AMOUNT.update(deps.storage, denom.get_key(), |existing| match existing {
             Some(existing) => Ok::<_, ContractError>(existing),
-            None => Ok(Uint128::zero()),
+            None => Ok(Uint256::zero()),
         })?;
 
     Ok(Response::new()
@@ -113,10 +113,14 @@ pub fn execute_deposit_native(
         );
         let token_type = TokenType::Native {
             denom: token.denom.clone(),
+            decimals: None,
         };
+        let token_type_string = token_type.get_key();
         // Make sure token is part of allowed denoms
         ensure!(
-            allowed_denoms.contains(&token_type),
+            allowed_denoms
+                .iter()
+                .any(|denom| denom.get_key() == token_type_string),
             ContractError::UnsupportedDenomination {}
         );
 
@@ -127,9 +131,11 @@ pub fn execute_deposit_native(
         DENOM_TO_AMOUNT.save(
             deps.storage,
             token_type.get_key(),
-            &current_balance.checked_add(token.amount)?,
+            &current_balance.checked_add(Uint256::from(token.amount))?,
         )?;
-        state.total_amount = state.total_amount.checked_add(token.amount)?;
+        state.total_amount = state
+            .total_amount
+            .checked_add(Uint256::from(token.amount))?;
     }
 
     STATE.save(deps.storage, &state)?;
@@ -165,9 +171,10 @@ pub fn receive_cw20(
             let asset_sent = info.sender.clone().into_string();
             let asset_sent = TokenType::Smart {
                 contract_address: asset_sent,
+                decimals: None,
             };
 
-            execute_deposit_cw20(deps, env, info, amount_sent, asset_sent)
+            execute_deposit_cw20(deps, env, info, Uint256::from(amount_sent), asset_sent)
         }
     }
 }
@@ -176,7 +183,7 @@ pub fn execute_deposit_cw20(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    amount: Uint128,
+    amount: Uint256,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
     ensure!(denom.is_smart(), ContractError::UnsupportedDenomination {});
@@ -184,10 +191,12 @@ pub fn execute_deposit_cw20(
     // Non-zero and unauthorized checks were made in receive_cw20
 
     let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
-
+    let denom_string = denom.get_key();
     // Make sure token is part of allowed denoms
     ensure!(
-        allowed_denoms.contains(&denom),
+        allowed_denoms
+            .iter()
+            .any(|denom| denom.get_key() == denom_string),
         ContractError::UnsupportedDenomination {}
     );
 
@@ -218,7 +227,7 @@ pub fn execute_withdraw(
     _env: Env,
     info: MessageInfo,
     recipient: Addr,
-    amount: Uint128,
+    amount: Uint256,
     denom: TokenType,
     forwarding_message: Option<String>,
 ) -> Result<Response, ContractError> {
@@ -233,9 +242,12 @@ pub fn execute_withdraw(
     // Ensure that the amount desired is above zero
     ensure!(!amount.is_zero(), ContractError::ZeroWithdrawalAmount {});
 
-    let mut allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?.into_iter().peekable();
+    let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
+    let denom_string = denom.get_key();
     ensure!(
-        allowed_denoms.any(|denom| denom.get_key() == denom.get_key()),
+        allowed_denoms
+            .iter()
+            .any(|denom| denom.get_key() == denom_string),
         ContractError::UnsupportedDenomination {}
     );
 

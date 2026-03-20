@@ -1,7 +1,7 @@
 use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, DepsMut, Env, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, DepsMut, Env, SubMsg, Uint256, WasmMsg};
 use euclid::{
     chain::{Chain, ChainUid},
     cross_chain_user::CrossChainUser,
@@ -33,7 +33,7 @@ pub enum FactoryCrossChainExecuteMsg {
         sender: CrossChainUser,
         token: Token,
         recipient: String,
-        amount: Uint128,
+        amount: Uint256,
         denom: TokenType,
         forwarding_message: Option<String>,
         // Unique per tx

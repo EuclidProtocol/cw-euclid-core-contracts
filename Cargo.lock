@@ -1571,6 +1571,7 @@ dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
  "quote",
+ "rstest",
  "schemars",
  "serde",
  "syn 1.0.109",
@@ -1600,6 +1601,7 @@ dependencies = [
  "cw-utils 2.0.0",
  "euclid",
  "itertools 0.10.5",
+ "rstest",
  "thiserror 1.0.69",
 ]
 
@@ -3544,6 +3546,7 @@ dependencies = [
  "escrow",
  "euclid",
  "euclid-ibc",
+ "euclid-pool",
  "euclid-relayer",
  "factory",
  "ibc-relayer-types 0.32.2",

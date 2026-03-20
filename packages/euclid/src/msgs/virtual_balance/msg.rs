@@ -1,8 +1,14 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint256};
+use cosmwasm_std::{to_json_binary, Addr, Binary, Coin, Uint256, WasmMsg};
 
 use crate::{
-    admin::{AdminType, EuclidAdmin}, chain::ChainUid, cross_chain_user::CrossChainUser, token::{TokenMetadata, TokenType}, utils::pagination::Pagination, voucher::{BalanceKey, SerializedBalanceKey}
+    admin::{AdminType, EuclidAdmin},
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
+    error::ContractError,
+    token::{TokenMetadata, TokenType},
+    utils::pagination::Pagination,
+    voucher::{BalanceKey, SerializedBalanceKey},
 };
 
 #[cw_serde]
@@ -38,9 +44,27 @@ pub enum ExecuteMsg {
     RegisterTokenMetadata {
         token_metadata: TokenMetadata,
     },
-    UpdateTokenMetadata {
-        token_metadata: TokenMetadata,
+    DeregisterTokenMetadata {
+        token_id: String,
+        chain_uid: ChainUid,
+        token_type: TokenType,
     },
+}
+
+impl ExecuteMsg {
+    pub fn to_wasm_msg(
+        self,
+        contract_addr: String,
+        funds: Vec<Coin>,
+    ) -> Result<WasmMsg, ContractError> {
+        let msg_binary = to_json_binary(&self)?;
+        let msg = WasmMsg::Execute {
+            contract_addr,
+            msg: msg_binary,
+            funds,
+        };
+        Ok(msg)
+    }
 }
 
 #[cw_serde]
@@ -68,10 +92,11 @@ pub struct ExecuteTransfer {
 
 #[cw_serde]
 pub struct ExecuteBurn {
-    pub amount: Uint256,
-    pub balance_key: BalanceKey,
-    pub token_type: TokenType,
-    pub token_source_chain_uid: ChainUid,
+    pub voucher_amount: Uint256,
+    pub from_user: CrossChainUser,
+    pub token_id: String,
+    pub release_denom: TokenType,
+    pub release_chain_uid: ChainUid,
 }
 
 #[cw_serde]
@@ -120,6 +145,72 @@ pub enum QueryMsg {
         chain_uid: ChainUid,
         token_type: TokenType,
     },
+    #[returns(GetTokenEscrowsResponse)]
+    GetTokenEscrows {
+        token_id: String,
+        pagination: Option<Pagination<(ChainUid, String)>>,
+    },
+    #[returns(GetAllEscrowBalancesResponse)]
+    GetAllEscrowBalances {
+        pagination: Option<Pagination<(String, ChainUid, String)>>,
+    },
+    #[returns(GetTokenMetadataByDenomResponse)]
+    GetTokenMetadataByDenom {
+        token_id: String,
+        chain_uid: ChainUid,
+        token_type: TokenType,
+    },
+    #[returns(GetTokenMetadataResponse)]
+    GetTokenMetadata {
+        token_id: String,
+        pagination: Option<Pagination<(ChainUid, TokenType)>>,
+    },
+    #[returns(GetAllTokenMetadataResponse)]
+    GetAllTokenMetadata {
+        pagination: Option<Pagination<(String, ChainUid, String)>>,
+    },
+    #[returns(GetTokenRegisteredResponse)]
+    GetTokenRegistered { token_id: String },
+}
+
+#[cw_serde]
+pub struct GetTokenEscrowsResponse {
+    pub escrows: Vec<GetTokenEscrowsResponseItem>,
+}
+
+#[cw_serde]
+pub struct GetTokenEscrowsResponseItem {
+    pub balance: Uint256,
+    pub chain_uid: ChainUid,
+    pub token_type: TokenType,
+}
+
+#[cw_serde]
+pub struct GetAllEscrowBalancesResponse {
+    pub escrows: Vec<GetAllEscrowBalancesResponseItem>,
+}
+
+#[cw_serde]
+pub struct GetAllEscrowBalancesResponseItem {
+    pub token_id: String,
+    pub chain_uid: ChainUid,
+    pub token_type: TokenType,
+    pub balance: Uint256,
+}
+
+#[cw_serde]
+pub struct GetTokenMetadataResponse {
+    pub metadata: Vec<TokenMetadata>,
+}
+
+#[cw_serde]
+pub struct GetTokenMetadataByDenomResponse {
+    pub metadata: TokenMetadata,
+}
+
+#[cw_serde]
+pub struct GetAllTokenMetadataResponse {
+    pub metadata: Vec<TokenMetadata>,
 }
 
 #[cw_serde]
@@ -165,4 +256,9 @@ pub struct GetTokenBalancesResponseItem {
 #[cw_serde]
 pub struct GetEscrowBalanceResponse {
     pub balance: Uint256,
+}
+
+#[cw_serde]
+pub struct GetTokenRegisteredResponse {
+    pub token_registered: bool,
 }

@@ -1,12 +1,12 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, Addr, DepsMut, Uint128};
+use cosmwasm_std::{ensure, Addr, DepsMut, Uint256};
 use cw_storage_plus::{Item, Map};
 use euclid::error::ContractError;
 
 #[cw_serde]
 pub struct FeeBracket {
     pub threshold: u128,
-    pub fee: Uint128,
+    pub fee: Uint256,
 }
 
 #[cw_serde]

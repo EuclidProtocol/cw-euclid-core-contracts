@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128,
+    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint256,
 };
 
 use cw2::set_contract_version;
@@ -33,7 +33,7 @@ pub fn instantiate(
         token_id: msg.token_id.clone(),
         // Set the sender as the factory address, since we want the factory to instantiate the escrow.
         factory_address: info.sender.clone(),
-        total_amount: Uint128::zero(),
+        total_amount: Uint256::zero(),
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;

@@ -1,4 +1,4 @@
-use cosmwasm_std::{Decimal256, StdError, StdResult, Uint128, Uint64};
+use cosmwasm_std::{Decimal256, StdError, StdResult, Uint256, Uint64};
 use euclid::error::ContractError;
 use euclid::utils::math::Decimal256Ext;
 
@@ -32,7 +32,7 @@ pub fn compute_stable_swap(
     let return_amount = ask_pool_amount
         .checked_sub(new_ask_pool_amount)
         .map_err(|_| ContractError::new("Negative return amount"))?
-        .checked_div(Uint128::new(10u128.pow(TOKEN_PRECISION as u32)))?;
+        .checked_div(Uint256::from(10u128.pow(TOKEN_PRECISION as u32)))?;
 
     // Calculate offer amount (what user provides)
     let offer_amount = offer_asset.to_uint128_with_precision(0_u32)?;
@@ -117,7 +117,7 @@ pub(crate) fn calc_y(
     new_amount: Decimal256,
     xp: &[Decimal256],
     target_precision: u8,
-) -> StdResult<Uint128> {
+) -> StdResult<Uint256> {
     let d = compute_d(amp, xp)?;
     let leverage = Decimal256::from_ratio(amp, 1u8) * N_COINS;
     let amp_prec = Decimal256::from_ratio(AMP_PRECISION, 1u8);

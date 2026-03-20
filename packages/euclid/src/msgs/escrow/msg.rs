@@ -1,6 +1,6 @@
 use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -29,7 +29,7 @@ pub enum ExecuteMsg {
     // Have a separate Msg for cw20 tokens? flow should be better if the message is unified
     Withdraw {
         recipient: Addr,
-        amount: Uint128,
+        amount: Uint256,
         denom: TokenType,
         forwarding_message: Option<String>,
     },
@@ -60,7 +60,7 @@ pub struct MigrateMsg {}
 pub struct StateResponse {
     pub token: Token,
     pub factory_address: Addr,
-    pub total_amount: Uint128,
+    pub total_amount: Uint256,
 }
 
 #[cw_serde]

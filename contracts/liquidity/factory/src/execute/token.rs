@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, Uint256};
 use euclid::{
     cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
@@ -67,6 +67,24 @@ pub fn execute_request_register_denom(
     }
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
+
+    let token_decimals = token.token_type.get_decimals()?;
+    match token.token_type {
+        TokenType::Smart { .. } => {
+            let validated_decimals = token.token_type.query_decimals(&deps.as_ref())?;
+            ensure!(
+                validated_decimals == token_decimals,
+                ContractError::DecimalsMismatch {
+                    expected: token_decimals as u32,
+                    received: validated_decimals as u32,
+                }
+            );
+        }
+        TokenType::Native { .. } => {
+            // We don't have a stable check yet for native tokens decimals as their metadata might not be stored on chain
+        }
+        TokenType::Voucher { .. } => {}
+    };
 
     let request_register_denom_msg = RouterCrossChainExecuteMsg::RegisterDenom {
         token: token.clone(),
@@ -197,7 +215,7 @@ pub fn execute_deposit_token(
     info: MessageInfo,
     sender: CrossChainUser,
     asset_in: TokenWithDenom,
-    amount_in: Uint128,
+    amount_in: Uint256,
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
@@ -239,10 +257,12 @@ pub fn execute_deposit_token(
     let mut msgs = Vec::new();
 
     match &asset_in.token_type {
-        TokenType::Native { denom } => {
+        TokenType::Native { denom, .. } => {
             fund_manager.use_fund(amount_in, denom)?;
         }
-        TokenType::Smart { contract_address } => {
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             ensure!(
                 info.sender.as_str() == contract_address,
                 ContractError::Unauthorized {}
@@ -308,7 +328,7 @@ pub fn execute_transfer_voucher(
     env: Env,
     info: MessageInfo,
     token_id: Token,
-    amount: Uint128,
+    amount: Uint256,
     from: Option<CrossChainUser>,
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,

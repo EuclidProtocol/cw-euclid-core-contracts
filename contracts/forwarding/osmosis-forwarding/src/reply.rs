@@ -1,5 +1,5 @@
 use crate::state::{ForwardingState, FORWARDING_STATE};
-use cosmwasm_std::{ensure, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult};
+use cosmwasm_std::{ensure, Coin, Decimal, DepsMut, Env, Reply, Response, SubMsgResult, Uint128};
 use forwarding::msgs::common_old::{EuclidReceive, TokenType};
 use forwarding::msgs::errors_old::ContractError;
 use swaprouter::msg::Slippage as OsmosisSlippage;
@@ -26,10 +26,11 @@ pub fn on_osmo_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Respons
             let swap_amount = new_balance.checked_sub(previous_balance)?;
             match swap_msg.slippage {
                 OsmosisSlippage::MinOutputAmount(min_output_amount) => {
+                    let min_output_256: cosmwasm_std::Uint256 = min_output_amount.into();
                     ensure!(
-                        swap_amount >= min_output_amount,
+                        swap_amount >= min_output_256,
                         ContractError::MinReceived {
-                            expected: min_output_amount,
+                            expected: min_output_256,
                             received: swap_amount,
                         }
                     );
@@ -38,22 +39,23 @@ pub fn on_osmo_swap_reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Respons
                     window_seconds: _,
                     slippage_percentage,
                 } => {
+                    let from_amount_u128 = Uint128::try_from(from_amount).unwrap();
                     let input_coin = match from_token {
                         TokenType::Native { ref denom } => Coin {
                             denom: denom.to_string(),
-                            amount: from_amount,
+                            amount: from_amount_u128,
                         },
                         TokenType::Smart {
                             ref contract_address,
                         } => Coin {
                             denom: contract_address.to_string(),
-                            amount: from_amount,
+                            amount: from_amount_u128,
                         },
                         _ => return Err(ContractError::new("unsupported token type")),
                     };
 
-                    let min_output_amount =
-                        input_coin.amount * (Decimal::one() - slippage_percentage);
+                    let min_output_amount: cosmwasm_std::Uint256 =
+                        (input_coin.amount * (Decimal::one() - slippage_percentage)).into();
                     ensure!(
                         swap_amount >= min_output_amount,
                         ContractError::MinReceived {

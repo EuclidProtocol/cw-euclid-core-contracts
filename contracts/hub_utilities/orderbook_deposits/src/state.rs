@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint256};
 use cw_storage_plus::{Item, Map};
 
 use euclid::msgs::orderbook_deposits::{AssetTotal, OrderbookDepositsStatus};
@@ -41,13 +41,13 @@ pub const PENDING_ROOT: Item<RootInfo> = Item::new("pending_root");
 pub const WHITELISTED_ASSETS: Map<AssetId, bool> = Map::new("whitelisted_assets");
 
 // Aggregate deposited amount per whitelisted asset.
-pub const ASSET_DEPOSITS: Map<AssetId, Uint128> = Map::new("asset_deposits");
+pub const ASSET_DEPOSITS: Map<AssetId, Uint256> = Map::new("asset_deposits");
 
 // Per-user deposits keyed by (user address, asset id).
-pub const USER_DEPOSITS: Map<(String, AssetId), Uint128> = Map::new("user_deposits");
+pub const USER_DEPOSITS: Map<(String, AssetId), Uint256> = Map::new("user_deposits");
 
 // Tracks withdrawn amounts by hashed (root_id, user, asset, nonce).
-pub const NULLIFIERS: Map<String, Uint128> = Map::new("nullifiers");
+pub const NULLIFIERS: Map<String, Uint256> = Map::new("nullifiers");
 
 // Prevents permit replay by storing a hash of the signed permit data.
 pub const USED_PERMITS: Map<String, bool> = Map::new("used_permits");

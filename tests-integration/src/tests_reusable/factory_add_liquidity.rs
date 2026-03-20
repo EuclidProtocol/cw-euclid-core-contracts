@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 use crate::helpers::chains::get_escrow;
 use crate::helpers::factory::faucet;
-use cosmwasm_std::{Event, Uint128};
+use cosmwasm_std::{Event, Uint128, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 use cw_orch_interchain::prelude::InterchainEnv;
@@ -12,7 +12,6 @@ use euclid::msgs::factory::ExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::recipient::Recipient;
 use euclid::token::{PairWithDenomAndAmount, TokenWithDenom};
-use euclid::utils::pagination::Pagination;
 use factory::FactoryContract;
 use router::RouterContract;
 
@@ -22,7 +21,7 @@ pub fn deposit_token(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     token: TokenWithDenom,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<Recipient>,
 ) -> Result<(), CwOrchError> {
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
@@ -30,7 +29,7 @@ pub fn deposit_token(
     faucet(
         factory.environment(),
         factory.environment().sender.as_str(),
-        amount.u128(),
+        Uint128::try_from(amount).unwrap().u128(),
         token.token_type.clone(),
         &mut funds,
     );
@@ -59,7 +58,7 @@ pub fn add_liquidity(
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -83,7 +82,7 @@ pub fn add_liquidity(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::{setup_interchain, setup_router};
+    use crate::helpers::chains::{get_virtual_balance, setup_interchain, setup_router};
     use crate::helpers::relayer::extract_ack_packet_events;
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
@@ -94,6 +93,7 @@ mod tests {
     use crate::tests_reusable::state_sync::sync_state;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
+    use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
     use euclid::msgs::vlp::base::PoolConfig;
     use euclid::token::{Token, TokenType, TokenWithDenomAndAmount};
     use rstest::rstest;
@@ -122,6 +122,7 @@ mod tests {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         };
         register_denom(&factory, &router, token.clone()).unwrap();
@@ -129,18 +130,20 @@ mod tests {
         let factory_chain_uid = factory.get_state().unwrap().chain_uid;
         let escrow_contract = get_escrow(&factory, token.token.as_str());
         let old_escrow_balance = escrow_contract.state().unwrap();
-        let old_router_escrow_balance = router
-            .query_token_escrows(
-                Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
-                token.token.clone(),
-            )
+        let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
+        let virtual_balance_contract =
+            get_virtual_balance(router.environment(), &virtual_balance_address);
+        let old_router_escrow_balance = virtual_balance_contract
+            .get_token_escrows(token.token.to_string(), None)
             .unwrap();
-        let old_balance = match old_router_escrow_balance.chains.first() {
-            Some(chain) => chain.balance,
-            None => Uint128::zero(),
-        };
+        let old_balance = old_router_escrow_balance
+            .escrows
+            .iter()
+            .find(|c| c.chain_uid == factory_chain_uid)
+            .map(|c| c.balance)
+            .unwrap_or(Uint256::zero());
 
-        let amount = Uint128::from(10_000u128);
+        let amount = Uint256::from(10_000u128);
         let recipient_one = CrossChainUser::new(
             factory_chain_uid.clone(),
             factory.environment().addr_make("recipient_one").to_string(),
@@ -154,7 +157,7 @@ mod tests {
             "single_voucher" => (
                 vec![Recipient::default_voucher_recipient(
                     recipient_one.clone(),
-                    Limit::Dynamic(Uint128::zero()),
+                    Limit::Dynamic(Uint256::zero()),
                 )],
                 vec![(recipient_one.clone(), amount)],
             ),
@@ -162,16 +165,16 @@ mod tests {
                 vec![
                     Recipient::default_voucher_recipient(
                         recipient_one.clone(),
-                        Limit::Dynamic(Uint128::zero()),
+                        Limit::Dynamic(Uint256::zero()),
                     ),
                     Recipient::default_voucher_recipient(
                         recipient_two.clone(),
-                        Limit::Dynamic(Uint128::zero()),
+                        Limit::Dynamic(Uint256::zero()),
                     ),
                 ],
                 vec![
                     (recipient_one.clone(), amount),
-                    (recipient_two.clone(), Uint128::zero()),
+                    (recipient_two.clone(), Uint256::zero()),
                 ],
             ),
             _ => unreachable!("unexpected recipient case"),
@@ -195,7 +198,7 @@ mod tests {
             .expect("Escrow state should exist for deposited token");
         assert_eq!(
             escrow_state.router_escrow_balance,
-            old_balance + amount,
+            old_balance + Uint256::from(amount),
             "Router escrow balance not updated properly"
         );
         assert_eq!(
@@ -208,7 +211,11 @@ mod tests {
             let balance = synced_state
                 .voucher_balance(&recipient, &token.token)
                 .expect("Expected voucher balance for recipient is missing");
-            assert_eq!(balance, expected_amount, "Recipient balance mismatch");
+            assert_eq!(
+                balance,
+                Uint256::from(expected_amount),
+                "Recipient balance mismatch"
+            );
         }
     }
 
@@ -225,12 +232,14 @@ mod tests {
             token: Token::create("tokena".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokena".to_string(),
+                decimals: Some(18),
             },
         };
         let token_b = TokenWithDenom {
             token: Token::create("tokenb".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokenb".to_string(),
+                decimals: Some(18),
             },
         };
 
@@ -241,12 +250,12 @@ mod tests {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
                 token_type: token_a.token_type.clone(),
-                amount: Uint128::from(10_000u128),
+                amount: Uint256::from(10_000u128),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token.clone(),
                 token_type: token_b.token_type.clone(),
-                amount: Uint128::from(10_000u128),
+                amount: Uint256::from(10_000u128),
             },
         };
         create_pool(
@@ -264,12 +273,12 @@ mod tests {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
                 token_type: token_a.token_type.clone(),
-                amount: Uint128::from(1_000u128),
+                amount: Uint256::from(1_000u128),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token.clone(),
                 token_type: token_b.token_type.clone(),
-                amount: Uint128::from(5_000u128),
+                amount: Uint256::from(5_000u128),
             },
         };
 

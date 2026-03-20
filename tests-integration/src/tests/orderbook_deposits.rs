@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{to_json_binary, to_json_string, Binary, Uint128};
+use cosmwasm_std::{to_json_binary, to_json_string, Binary, Uint256};
 use cw_orch::prelude::CallAs;
 use cw_orch::prelude::ContractInstance;
 use cw_orch::prelude::CwOrchExecute;
@@ -23,6 +23,7 @@ use euclid::{
         ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg, GetBalanceResponse,
         QueryMsg as VirtualBalanceQueryMsg,
     },
+    token::{Token, TokenMetadata, TokenType},
     voucher::BalanceKey,
 };
 use k256::ecdsa::SigningKey;
@@ -38,7 +39,7 @@ use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID};
 #[test]
 fn deposit_and_query_flow() {
     let token_id = "token1".to_string();
-    let deposit_amount = Uint128::new(500);
+    let deposit_amount = Uint256::from(500u128);
     let chain_uid = ChainUid::vsl_chain_uid().unwrap();
 
     let sender = "sender_for_all_chains";
@@ -81,14 +82,29 @@ fn deposit_and_query_flow() {
         .unwrap();
 
     virutal_balance_contract.set_sender(&router.address().unwrap());
+    // Register token metadata for the voucher token type before minting
+    virutal_balance_contract
+        .execute(
+            &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
+                token_metadata: TokenMetadata::new(
+                    Token::create(token_id.clone()).unwrap(),
+                    chain_uid.clone(),
+                    TokenType::Voucher {},
+                ),
+            },
+            &[],
+        )
+        .unwrap();
     virutal_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                amount: deposit_amount,
+                amount: deposit_amount.into(),
                 balance_key: BalanceKey {
                     cross_chain_user: CrossChainUser::new(chain_uid.clone(), depositor.to_string()),
                     token_id: token_id.clone(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: chain_uid.clone(),
             }),
             &[],
         )
@@ -101,7 +117,7 @@ fn deposit_and_query_flow() {
     virutal_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::Transfer(euclid::msgs::virtual_balance::ExecuteTransfer {
-                amount: deposit_amount,
+                amount: deposit_amount.into(),
                 token_id: token_id.clone(),
                 sender: None,
                 to: CrossChainUser::new(chain_uid.clone(), orderbook_addr.to_string()),
@@ -165,8 +181,8 @@ fn withdraw_with_merkle_and_permit() {
     let depositor = router_chain.addr_make("depositor");
     let destination = router_chain.addr_make("destination");
     let token_id = "token1".to_string();
-    let deposit_amount = Uint128::new(500);
-    let withdraw_amount = Uint128::new(300);
+    let deposit_amount = Uint256::from(500u128);
+    let withdraw_amount = Uint256::from(300u128);
     let chain_uid = ChainUid::vsl_chain_uid().unwrap();
     let root_id = "root-1".to_string();
 
@@ -210,14 +226,29 @@ fn withdraw_with_merkle_and_permit() {
         .unwrap();
 
     virutal_balance_contract.set_sender(&router_address);
+    // Register token metadata for the voucher token type before minting
+    virutal_balance_contract
+        .execute(
+            &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
+                token_metadata: TokenMetadata::new(
+                    Token::create(token_id.clone()).unwrap(),
+                    chain_uid.clone(),
+                    TokenType::Voucher {},
+                ),
+            },
+            &[],
+        )
+        .unwrap();
     virutal_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                amount: deposit_amount,
+                amount: deposit_amount.into(),
                 balance_key: BalanceKey {
                     cross_chain_user: CrossChainUser::new(chain_uid.clone(), depositor.to_string()),
                     token_id: token_id.clone(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: chain_uid.clone(),
             }),
             &[],
         )
@@ -228,7 +259,7 @@ fn withdraw_with_merkle_and_permit() {
     virutal_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::Transfer(euclid::msgs::virtual_balance::ExecuteTransfer {
-                amount: deposit_amount,
+                amount: deposit_amount.into(),
                 token_id: token_id.clone(),
                 sender: None,
                 to: CrossChainUser::new(chain_uid.clone(), orderbook_addr.to_string()),
@@ -248,7 +279,7 @@ fn withdraw_with_merkle_and_permit() {
     let sibling = WithdrawalLeaf {
         user: "other".to_string(),
         token_id: token_id.clone(),
-        balance: Uint128::zero(),
+        balance: Uint256::zero(),
     };
     let leaf_hash = hash_leaf(&leaf);
     let sibling_hash = hash_leaf(&sibling);
@@ -322,7 +353,7 @@ fn withdraw_with_merkle_and_permit() {
             },
         })
         .unwrap();
-    assert_eq!(destination_balance.amount, withdraw_amount);
+    assert_eq!(destination_balance.amount, Uint256::from(withdraw_amount));
 
     let replay = orderbook_deposits_contract.execute(
         &OrderbookExecuteMsg::Withdraw {
@@ -348,8 +379,8 @@ fn withdraw_rejects_invalid_merkle_proof() {
     let depositor = router_chain.addr_make("depositor");
     let destination = router_chain.addr_make("destination");
     let token_id = "token1".to_string();
-    let deposit_amount = Uint128::new(500);
-    let withdraw_amount = Uint128::new(200);
+    let deposit_amount = Uint256::from(500u128);
+    let withdraw_amount = Uint256::from(200u128);
     let chain_uid = ChainUid::vsl_chain_uid().unwrap();
     let root_id = "root-invalid".to_string();
 
@@ -393,14 +424,29 @@ fn withdraw_rejects_invalid_merkle_proof() {
         .unwrap();
 
     virutal_balance_contract.set_sender(&router_address);
+    // Register token metadata for the voucher token type before minting
+    virutal_balance_contract
+        .execute(
+            &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
+                token_metadata: TokenMetadata::new(
+                    Token::create(token_id.clone()).unwrap(),
+                    chain_uid.clone(),
+                    TokenType::Voucher {},
+                ),
+            },
+            &[],
+        )
+        .unwrap();
     virutal_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                amount: deposit_amount,
+                amount: deposit_amount.into(),
                 balance_key: BalanceKey {
                     cross_chain_user: CrossChainUser::new(chain_uid.clone(), depositor.to_string()),
                     token_id: token_id.clone(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: chain_uid.clone(),
             }),
             &[],
         )
@@ -411,7 +457,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
     virutal_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::Transfer(euclid::msgs::virtual_balance::ExecuteTransfer {
-                amount: deposit_amount,
+                amount: deposit_amount.into(),
                 token_id: token_id.clone(),
                 sender: None,
                 to: CrossChainUser::new(chain_uid.clone(), orderbook_addr.to_string()),
@@ -431,7 +477,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
     let sibling = WithdrawalLeaf {
         user: "other".to_string(),
         token_id: token_id.clone(),
-        balance: Uint128::zero(),
+        balance: Uint256::zero(),
     };
     let leaf_hash = hash_leaf(&leaf);
     let sibling_hash = hash_leaf(&sibling);

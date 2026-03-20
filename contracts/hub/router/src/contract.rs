@@ -19,9 +19,8 @@ use crate::execute::token::{execute_transfer_voucher, execute_withdraw_voucher};
 use crate::execute::{execute_manage_router_state, execute_meta_receive, execute_register_factory};
 
 use crate::query::{
-    self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_relayer_addresses, query_release_fees, query_state, query_token_denoms,
-    query_token_escrows, query_vlp,
+    self, query_all_chains, query_all_vlps, query_chain, query_relayer_addresses,
+    query_release_fees, query_state, query_vlp,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID,
@@ -211,12 +210,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetVlp { pair } => query_vlp(deps, pair),
         QueryMsg::GetAllVlps { pagination } => query_all_vlps(deps, pagination),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
-        QueryMsg::QueryTokenEscrows { token, pagination } => {
-            query_token_escrows(deps, token, pagination)
-        }
-        QueryMsg::QueryAllEscrows { pagination } => query_all_escrows(deps, pagination),
-        QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
-        QueryMsg::QueryTokenDenoms { token } => query_token_denoms(deps, token),
         QueryMsg::QueryRelayerAddresses {} => query_relayer_addresses(deps),
         QueryMsg::GetReleaseFees { pagination } => query_release_fees(deps, pagination),
     }

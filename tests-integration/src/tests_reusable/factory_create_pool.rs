@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 use crate::helpers::factory::faucet;
 use crate::helpers::relayer::relay_factory_router_factory;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::CwOrchError;
 use cw_orch::prelude::Environment;
@@ -30,7 +30,7 @@ pub fn create_pool(
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -83,12 +83,14 @@ mod tests {
             token: Token::create("tokena".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokena".to_string(),
+                decimals: Some(18),
             },
         };
         let token_b = TokenWithDenom {
             token: Token::create("tokenb".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokenb".to_string(),
+                decimals: Some(18),
             },
         };
 
@@ -99,12 +101,12 @@ mod tests {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token,
                 token_type: token_a.token_type.clone(),
-                amount: Uint128::from(10_000u128),
+                amount: Uint256::from(10_000u128),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token,
                 token_type: token_b.token_type.clone(),
-                amount: Uint128::from(10_000u128),
+                amount: Uint256::from(10_000u128),
             },
         };
 

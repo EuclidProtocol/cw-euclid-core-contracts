@@ -5,7 +5,7 @@ use crate::tests_reusable::factory_create_pool::create_pool;
 use crate::tests_reusable::factory_register::{setup_factory, setup_factory_evm, FactorySetupMode};
 use crate::tests_reusable::factory_register_denom::register_denom;
 use crate::tests_reusable::factory_swap::swap_request;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
@@ -24,8 +24,8 @@ pub(crate) fn setup_factory_full_flow(
     sender: &str,
     token_1: TokenWithDenom,
     token_2: TokenWithDenom,
-    amount_1: Uint128,
-    amount_2: Uint128,
+    amount_1: Uint256,
+    amount_2: Uint256,
     recipients: Vec<Recipient>,
     mode: FactorySetupMode,
     pool_type: PoolConfig,
@@ -94,66 +94,22 @@ mod tests {
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
+    use crate::tests_reusable::factory_register_denom::setup_smart_denom_token;
     use crate::tests_reusable::state_sync::sync_state;
     use crate::tests_reusable::state_sync::UserFundsQuery;
     use cosmwasm_std::Uint64;
-    use cw20::{Cw20Coin, MinterResponse};
+    use cw_orch::prelude::ContractInstance as _;
     use cw_orch::prelude::Environment;
-    use cw_orch::prelude::{ContractInstance as _, CwOrchInstantiate, CwOrchUpload};
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
     use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
     use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
-    use euclid::msgs::lp_token::msg::InstantiateMsg as LpTokenInstantiateMsg;
     use euclid::msgs::lp_token::msg::QueryMsgFns as LpTokenQueryMsgFns;
     use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
     use euclid::msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns;
     use euclid::utils::pagination::Pagination;
     use euclid::voucher::BalanceKey;
-    use lp_token::LpTokenContract;
-
-    fn setup_smart_denom_token(
-        factory: &FactoryContract<MockBase>,
-        token: Token,
-    ) -> TokenWithDenom {
-        let sender = factory.environment().sender.to_string();
-        let chain = factory.environment();
-        let cw20 = LpTokenContract::new(chain.clone());
-        cw20.upload().unwrap();
-
-        let aux_token = Token::create(format!("{}.aux", token)).unwrap();
-        let token_pair = Pair::new(token.clone(), aux_token).unwrap();
-        cw20.instantiate(
-            &LpTokenInstantiateMsg {
-                name: format!("{}_cw20", token),
-                symbol: "SWAPIN".to_string(),
-                decimals: 6,
-                initial_balances: vec![Cw20Coin {
-                    address: sender.clone(),
-                    amount: Uint128::new(1_000_000_000),
-                }],
-                mint: Some(MinterResponse {
-                    minter: sender,
-                    cap: None,
-                }),
-                marketing: None,
-                vlp: chain.addr_make("dummy_vlp").to_string(),
-                factory: chain.addr_make("dummy_factory"),
-                token_pair,
-            },
-            None,
-            &[],
-        )
-        .unwrap();
-
-        TokenWithDenom {
-            token,
-            token_type: TokenType::Smart {
-                contract_address: cw20.address().unwrap().to_string(),
-            },
-        }
-    }
 
     #[rstest]
     #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::ConstantProduct {}, false)]
@@ -181,31 +137,33 @@ mod tests {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         };
-        let amount_1 = Uint128::from(10_000u128);
+        let amount_1 = Uint256::from(10_000u128);
         let token_2 = TokenWithDenom {
             token: Token::create("andr".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "andr".to_string(),
+                decimals: Some(18),
             },
         };
-        let amount_2 = Uint128::from(10_000u128);
+        let amount_2 = Uint256::from(10_000u128);
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
         let recipients = match recipient_case {
             "empty" => vec![],
             "single_voucher" => vec![Recipient::default_voucher_recipient(
                 CrossChainUser::new(chain_uid.clone(), "recipient_one".to_string()),
-                Limit::Dynamic(Uint128::zero()),
+                Limit::Dynamic(Uint256::zero()),
             )],
             "two_voucher" => vec![
                 Recipient::default_voucher_recipient(
                     CrossChainUser::new(chain_uid.clone(), "recipient_one".to_string()),
-                    Limit::Dynamic(Uint128::zero()),
+                    Limit::Dynamic(Uint256::zero()),
                 ),
                 Recipient::default_voucher_recipient(
                     CrossChainUser::new(chain_uid.clone(), "recipient_two".to_string()),
-                    Limit::Dynamic(Uint128::zero()),
+                    Limit::Dynamic(Uint256::zero()),
                 ),
             ],
             _ => unreachable!("unexpected recipient case"),
@@ -227,7 +185,7 @@ mod tests {
         let tracked_recipients = if recipients_for_checks.is_empty() {
             vec![Recipient::default_voucher_recipient(
                 CrossChainUser::new(chain_uid.clone(), factory.environment().sender.to_string()),
-                Limit::Dynamic(Uint128::zero()),
+                Limit::Dynamic(Uint256::zero()),
             )]
         } else {
             recipients_for_checks.clone()
@@ -277,24 +235,29 @@ mod tests {
         // Assert router tracks correct escrow balance for this chain
         assert_eq!(
             escrow_state.router_escrow_balance,
-            amount_1 + amount_2,
+            Uint256::from(amount_1 + amount_2),
             "Router escrow balance should match deposited amount",
         );
 
+        let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
+        let virtual_balance_contract =
+            get_virtual_balance(router.environment(), &virtual_balance_address);
         // Assert token is registered on the router
-        let all_tokens = router
-            .query_all_tokens(Pagination::new(None, None, None, None))
+        let all_tokens = virtual_balance_contract
+            .get_all_token_metadata(Some(Pagination::new(None, None, None, None)))
             .unwrap();
         assert!(
-            all_tokens.tokens.iter().any(|t| t == &token_1.token),
+            all_tokens.metadata.iter().any(|t| t.token == token_1.token),
             "Token should be registered on router"
         );
 
         // Assert token denom is registered on router for this chain
-        let token_denoms = router.query_token_denoms(token_1.token.clone()).unwrap();
+        let token_denoms = virtual_balance_contract
+            .get_token_metadata(token_1.token.to_string(), None)
+            .unwrap();
         assert!(
             token_denoms
-                .denoms
+                .metadata
                 .iter()
                 .any(|d| d.chain_uid == chain_uid && d.token_type == token_1.token_type),
             "Token denom should be registered on router for factory chain"
@@ -316,7 +279,8 @@ mod tests {
                     .voucher_balance(&sender_user, &token_1.token)
                     .expect("Sender voucher balance should exist in synced state");
                 assert_eq!(
-                    sender_amount, amount_1,
+                    sender_amount,
+                    Uint256::from(amount_1),
                     "Sender should receive full virtual balance when no recipients specified"
                 );
             }
@@ -327,7 +291,8 @@ mod tests {
                     .voucher_balance(&recipient_one, &token_1.token)
                     .expect("Recipient voucher balance should exist in synced state");
                 assert_eq!(
-                    recipient_balance, amount_1,
+                    recipient_balance,
+                    Uint256::from(amount_1),
                     "Single recipient should receive entire virtual balance"
                 );
             }
@@ -351,7 +316,7 @@ mod tests {
                 // Total distributed across recipients should equal the deposited amount
                 assert_eq!(
                     balance_one + balance_two + balance_three + balance_four,
-                    amount_1 + amount_2,
+                    Uint256::from(amount_1 + amount_2),
                     "Total virtual balance across recipients should equal deposited amount"
                 );
             }
@@ -360,11 +325,16 @@ mod tests {
 
         // --- Swap with partner fee ---
 
-        let swap_amount = Uint128::new(1_000);
+        let swap_amount = Uint256::from(1_000u128);
         let partner_fee_bps: u64 = 30;
         let sender_addr = factory.environment().sender.to_string();
         let swap_asset_in = if use_smart_asset_in {
-            let smart_asset_in = setup_smart_denom_token(&factory, token_1.token.clone());
+            let token_1_decimals = token_1.token_type.get_decimals().unwrap();
+            let smart_asset_in = setup_smart_denom_token(
+                &factory.environment(),
+                token_1.token.clone(),
+                token_1_decimals,
+            );
             register_denom(&factory, &router, smart_asset_in.clone()).unwrap();
             smart_asset_in
         } else {
@@ -377,7 +347,9 @@ mod tests {
             .unwrap();
         let net_swap_amount = swap_amount - partner_fee_amount;
         let smart_cw20_contract = match &swap_asset_in.token_type {
-            TokenType::Smart { contract_address } => Some(get_lp_token(
+            TokenType::Smart {
+                contract_address, ..
+            } => Some(get_lp_token(
                 factory.environment(),
                 &cosmwasm_std::Addr::unchecked(contract_address.clone()),
             )),
@@ -398,25 +370,37 @@ mod tests {
             .unwrap()
             .total_amount;
 
-        let router_escrow_in_before = router
-            .query_token_escrows(
-                Pagination::new(Some(chain_uid.clone()), None, None, Some(1)),
-                token_1.token.clone(),
-            )
+        let router_escrow_in_before: Uint256 = virtual_balance_contract
+            .get_token_escrows(token_1.token.to_string(), None)
             .unwrap()
-            .chains
-            .first()
+            .escrows
+            .iter()
+            .filter(|c| c.chain_uid == chain_uid)
             .map(|c| c.balance)
-            .unwrap_or(Uint128::zero());
+            .fold(Uint256::zero(), |acc, b| acc + b);
 
         let sender_user = CrossChainUser::new(chain_uid.clone(), sender_addr.clone());
-        let vb_out_before = virtual_balance_contract
+        let vb_out_before_raw = virtual_balance_contract
             .get_balance(BalanceKey {
                 cross_chain_user: sender_user.clone(),
                 token_id: token_2.token.to_string(),
             })
             .unwrap()
             .amount;
+        // De-normalize to match sync_state's de-normalized voucher balances
+        let token_2_metadata = virtual_balance_contract
+            .get_token_metadata(token_2.token.to_string(), None)
+            .unwrap()
+            .metadata;
+        let vb_out_before = if let Some(metadata) = token_2_metadata.first() {
+            euclid::normalize::normalize_voucher_to_token(
+                vb_out_before_raw,
+                metadata.token_type.get_decimals().unwrap(),
+            )
+            .unwrap()
+        } else {
+            vb_out_before_raw
+        };
 
         let partner_native_balance_before = if swap_asset_in.token_type.is_native() {
             Some(
@@ -439,7 +423,7 @@ mod tests {
             swap_asset_in.clone(),
             token_2.clone().token,
             swap_amount,
-            Uint128::new(1),
+            Uint256::from(1u128),
             vec![NextSwapPair {
                 token_in: token_1.token.clone(),
                 token_out: token_2.token.clone(),
@@ -471,7 +455,7 @@ mod tests {
             &router,
             vec![Recipient::default_voucher_recipient(
                 sender_user.clone(),
-                Limit::Dynamic(Uint128::zero()),
+                Limit::Dynamic(Uint256::zero()),
             )],
             vec![token_2.token.clone()],
             user_funds_queries,
@@ -491,7 +475,7 @@ mod tests {
         );
         assert_eq!(
             post_swap_escrow.router_escrow_balance,
-            router_escrow_in_before + net_swap_amount,
+            router_escrow_in_before + Uint256::from(net_swap_amount),
             "Router escrow balance for input token should increase by net swap amount"
         );
 
@@ -499,15 +483,15 @@ mod tests {
         let vb_out_after = post_swap_state
             .voucher_balance(&sender_user, &token_2.token)
             .expect("Sender output token voucher balance should exist");
-        let amount_received = vb_out_after - vb_out_before;
+        let amount_received = vb_out_after.checked_sub(vb_out_before).unwrap();
         assert!(
-            amount_received > Uint128::zero(),
+            amount_received > Uint256::zero(),
             "Sender should have received output tokens as virtual balance, got 0"
         );
 
         // 4. Output amount should be less than net input (AMM pricing with equal reserves)
         assert!(
-            amount_received < net_swap_amount,
+            amount_received < net_swap_amount.into(),
             "Amount received ({}) should be less than net input ({}) for equal-reserve pools",
             amount_received,
             net_swap_amount
@@ -520,7 +504,7 @@ mod tests {
                 .expect("Partner fee recipient native balance should exist");
             assert_eq!(
                 partner_native_balance_after,
-                native_before + partner_fee_amount,
+                Uint256::from(native_before) + partner_fee_amount,
                 "Partner fee recipient should have received {} native input tokens as fee",
                 partner_fee_amount
             );
@@ -537,7 +521,7 @@ mod tests {
                 .balance;
             assert_eq!(
                 sender_after,
-                sender_before - net_swap_amount,
+                sender_before - Uint128::try_from(net_swap_amount).unwrap(),
                 "Sender CW20 balance should decrease by net swap amount when partner fee recipient is sender"
             );
             assert_eq!(

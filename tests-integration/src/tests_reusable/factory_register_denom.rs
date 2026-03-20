@@ -1,14 +1,59 @@
 #![cfg(not(target_arch = "wasm32"))]
+use crate::helpers::relayer::relay_factory_router_factory;
+use cosmwasm_std::Uint128;
+use cw20::{Cw20Coin, MinterResponse};
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::ExecuteMsgFns;
 use euclid::msgs::factory::QueryMsgFns;
+use euclid::msgs::lp_token::msg::InstantiateMsg as LpTokenInstantiateMsg;
+use euclid::token::Pair;
+use euclid::token::Token;
+use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
 use factory::FactoryContract;
+use lp_token::LpTokenContract;
 use router::RouterContract;
 
-use crate::helpers::relayer::relay_factory_router_factory;
+pub fn setup_smart_denom_token(chain: &MockBase, token: Token, decimals: u32) -> TokenWithDenom {
+    let sender = chain.sender.to_string();
+    let cw20 = LpTokenContract::new(chain.clone());
+    cw20.upload().unwrap();
+
+    let aux_token = Token::create(format!("{}.aux", token)).unwrap();
+    let token_pair = Pair::new(token.clone(), aux_token).unwrap();
+    cw20.instantiate(
+        &LpTokenInstantiateMsg {
+            name: format!("{}_cw20", token),
+            symbol: "SWAPIN".to_string(),
+            decimals: decimals.try_into().unwrap(),
+            initial_balances: vec![Cw20Coin {
+                address: sender.clone(),
+                amount: Uint128::from(1_000_000_000u128),
+            }],
+            mint: Some(MinterResponse {
+                minter: sender,
+                cap: None,
+            }),
+            marketing: None,
+            vlp: chain.addr_make("dummy_vlp").to_string(),
+            factory: chain.addr_make("dummy_factory"),
+            token_pair,
+        },
+        None,
+        &[],
+    )
+    .unwrap();
+
+    TokenWithDenom {
+        token,
+        token_type: TokenType::Smart {
+            contract_address: cw20.address().unwrap().to_string(),
+            decimals: Some(decimals),
+        },
+    }
+}
 
 pub fn register_denom(
     factory: &FactoryContract<MockBase>,
@@ -75,13 +120,16 @@ mod tests {
         let token_type = match token_type_case {
             "native" => TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
-            "smart" => TokenType::Smart {
-                contract_address: factory
-                    .environment()
-                    .addr_make("token_contract")
-                    .to_string(),
-            },
+            "smart" => {
+                let smart_denom = setup_smart_denom_token(
+                    &factory.environment(),
+                    Token::create("eucl".to_string()).unwrap(),
+                    6,
+                );
+                smart_denom.token_type
+            }
             _ => unreachable!("unexpected token type case"),
         };
         let token = TokenWithDenom {
@@ -119,6 +167,7 @@ mod tests {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         };
 

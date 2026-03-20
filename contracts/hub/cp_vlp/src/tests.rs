@@ -5,7 +5,7 @@ mod tests {
     use crate::query::query_simulate_swap;
     use crate::state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
-    use cosmwasm_std::{coins, from_json, Addr, Response, Uint128};
+    use cosmwasm_std::{coins, from_json, Addr, Response, Uint256};
     use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
@@ -79,7 +79,7 @@ mod tests {
                 },
             },
             last_updated: 0,
-            total_lp_tokens: Uint128::zero(),
+            total_lp_tokens: Uint256::zero(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -87,12 +87,12 @@ mod tests {
         assert_eq!(saved_admin, admin);
 
         let balance_1 = BALANCES.load(&deps.storage, state.pair.token_1).unwrap();
-        let expected_balance_1 = Uint128::zero();
+        let expected_balance_1 = Uint256::zero();
 
         assert_eq!(expected_balance_1, balance_1);
 
         let balance_2 = BALANCES.load(&deps.storage, state.pair.token_2).unwrap();
-        let expected_balance_2 = Uint128::zero();
+        let expected_balance_2 = Uint256::zero();
 
         assert_eq!(balance_2, expected_balance_2);
     }
@@ -129,7 +129,7 @@ mod tests {
         let state = CHAIN_LP_TOKENS
             .load(&deps.storage, ChainUid::create("1".to_string()).unwrap())
             .unwrap();
-        assert_eq!(state, Uint128::zero())
+        assert_eq!(state, Uint256::zero())
     }
 
     #[test]
@@ -233,7 +233,7 @@ mod tests {
                 },
             },
             last_updated: env.block.time.seconds(),
-            total_lp_tokens: Uint128::new(1000),
+            total_lp_tokens: Uint256::from(1000u128),
         };
 
         let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
@@ -241,8 +241,8 @@ mod tests {
         ADMIN.save(deps.as_mut().storage, &admin).unwrap();
 
         // Setup reserves with imbalanced ratio to create spread
-        let reserve_1 = Uint128::new(1000);
-        let reserve_2 = Uint128::new(500);
+        let reserve_1 = Uint256::from(1000u128);
+        let reserve_2 = Uint256::from(500u128);
 
         BALANCES
             .save(deps.as_mut().storage, pair.token_1.clone(), &reserve_1)
@@ -252,7 +252,7 @@ mod tests {
             .unwrap();
 
         // Simulate swap
-        let swap_amount = Uint128::new(100);
+        let swap_amount = Uint256::from(100u128);
         let response: GetSwapQueryResponse = from_json(
             query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
         )
@@ -266,12 +266,12 @@ mod tests {
         assert_eq!(response.asset_out, pair.token_2);
         assert_eq!(
             response.amount_out,
-            Uint128::new(46),
+            Uint256::from(46u128),
             "Amount out is not correct"
         );
         assert_eq!(
             response.spread_amount,
-            Uint128::new(4),
+            Uint256::from(4u128),
             "Spread amount is not correct"
         );
     }
@@ -308,7 +308,7 @@ mod tests {
                 },
             },
             last_updated: env.block.time.seconds(),
-            total_lp_tokens: Uint128::new(1000),
+            total_lp_tokens: Uint256::from(1000u128),
         };
 
         let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
@@ -316,8 +316,8 @@ mod tests {
         ADMIN.save(deps.as_mut().storage, &admin).unwrap();
 
         // Setup reserves with imbalanced ratio to create spread
-        let reserve_1 = Uint128::new(9971294131355738400);
-        let reserve_2 = Uint128::new(64769345018139098454);
+        let reserve_1 = Uint256::from(9971294131355738400u128);
+        let reserve_2 = Uint256::from(64769345018139098454u128);
 
         BALANCES
             .save(deps.as_mut().storage, pair.token_1.clone(), &reserve_1)
@@ -327,7 +327,7 @@ mod tests {
             .unwrap();
 
         // Simulate swap
-        let swap_amount = Uint128::new(10000000000000000);
+        let swap_amount = Uint256::from(10000000000000000u128);
         let response: GetSwapQueryResponse = from_json(
             query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
         )
@@ -341,12 +341,12 @@ mod tests {
         assert_eq!(response.asset_out, pair.token_2);
         assert_eq!(
             response.amount_out,
-            Uint128::new(64696251029190591),
+            Uint256::from(64696251029190591u128),
             "Amount out is not correct"
         );
         assert_eq!(
             response.spread_amount,
-            Uint128::new(64687854381176),
+            Uint256::from(64687854381176u128),
             "Spread amount is not correct"
         );
     }

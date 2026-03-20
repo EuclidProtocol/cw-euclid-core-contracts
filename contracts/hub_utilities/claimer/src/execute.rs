@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint256, WasmMsg,
 };
 use euclid::{
     cross_chain_user::CrossChainUser,
@@ -49,7 +49,7 @@ pub fn execute_virtual_balance_receive(
     let claim_msg: VoucherReceiveHookMsg = from_json(transfer_msg.msg.clone())?;
     match claim_msg {
         VoucherReceiveHookMsg::CreateVoucherClaim(msg) => {
-            let amount: Uint128 = transfer_msg
+            let amount: Uint256 = transfer_msg
                 .amount
                 .try_into()
                 .map_err(|_| ContractError::new("Amount overflow"))?;
@@ -67,7 +67,7 @@ pub fn execute_create_voucher_claim(
     deps: &mut DepsMut,
     sender: &CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     msg: CreateVoucherClaim,
 ) -> Result<Response, ContractError> {
     // Lets create a claim

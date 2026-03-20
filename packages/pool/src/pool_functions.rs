@@ -18,7 +18,7 @@ use euclid::{
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo, Response,
-    SubMsg, Uint128, Uint512, Uint64, WasmMsg,
+    SubMsg, Uint256, Uint512, Uint64, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use euclid::msgs::vlp::base::PoolCreationResponse;
@@ -29,15 +29,15 @@ pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
 #[cw_serde]
 pub struct SwapResult {
-    pub return_amount: Uint128,
-    pub spread_amount: Uint128,
+    pub return_amount: Uint256,
+    pub spread_amount: Uint256,
 }
 
 // Function to calculate the asset to be recieved after a swap
 pub fn calculate_cp_swap(
-    swap_amount: Uint128,
-    reserve_in: Uint128,
-    reserve_out: Uint128,
+    swap_amount: Uint256,
+    reserve_in: Uint256,
+    reserve_out: Uint256,
 ) -> Result<SwapResult, ContractError> {
     let reserve_in = Uint512::from(reserve_in);
     let reserve_out = Uint512::from(reserve_out);
@@ -51,13 +51,13 @@ pub fn calculate_cp_swap(
     // Calculate the amount of token 2 to be recieved
     let token_2_recieved = reserve_out.checked_sub(new_reserve_out)?;
     let mut token_2_recieved =
-        Uint128::try_from(token_2_recieved).map_err(|_| ContractError::new("Overflow"))?;
+        Uint256::try_from(token_2_recieved).map_err(|_| ContractError::new("Overflow"))?;
 
     let ideal_return_amount = reserve_out
         .checked_mul(swap_amount.into())?
         .checked_div(reserve_in)?;
     let ideal_return_amount =
-        Uint128::try_from(ideal_return_amount).map_err(|_| ContractError::new("Overflow"))?;
+        Uint256::try_from(ideal_return_amount).map_err(|_| ContractError::new("Overflow"))?;
 
     if ideal_return_amount < token_2_recieved {
         // If ideal return amount is less than actual return amount, then set the spread amount to 0 and return the ideal return amount as the return amount
@@ -73,12 +73,12 @@ pub fn calculate_cp_swap(
 }
 
 pub fn calculate_lp_allocation(
-    token_1_amount: Uint128,
-    token_2_amount: Uint128,
-    total_liquidity_1: Uint128,
-    total_liquidity_2: Uint128,
-    total_lp_supply: Uint128,
-) -> Result<Uint128, ContractError> {
+    token_1_amount: Uint256,
+    token_2_amount: Uint256,
+    total_liquidity_1: Uint256,
+    total_liquidity_2: Uint256,
+    total_lp_supply: Uint256,
+) -> Result<Uint256, ContractError> {
     let token_1_amount = Uint512::from(token_1_amount);
     let token_2_amount = Uint512::from(token_2_amount);
     let total_liquidity_1 = Uint512::from(total_liquidity_1);
@@ -87,21 +87,21 @@ pub fn calculate_lp_allocation(
 
     // IF LP supply is 0 use original function
     if total_lp_supply.is_zero() {
-        let sq_root = Uint128::try_from(Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?))
+        let sq_root = Uint256::try_from(Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?))
             .map_err(|_| ContractError::new("Overflow total supply"))?;
         return Ok(sq_root);
     }
+    let lp_alloc_1 = safe_lp_math(token_1_amount,total_liquidity_1, total_lp_supply)?;
+    let lp_alloc_2 = safe_lp_math(token_2_amount,total_liquidity_2, total_lp_supply)?;
 
-    let lp_allocation = token_1_amount
-        .checked_mul(total_lp_supply)?
-        .checked_div(total_liquidity_1)?
-        .min(
-            token_2_amount
-                .checked_mul(total_lp_supply)?
-                .checked_div(total_liquidity_2)?,
-        );
+    let lp_allocation = lp_alloc_1.min(lp_alloc_2);
 
-    Uint128::try_from(lp_allocation).map_err(|_| ContractError::new("Overflow lp allocation"))
+    Uint256::try_from(lp_allocation).map_err(|_| ContractError::new("Overflow lp allocation"))
+}
+
+fn safe_lp_math(amount: Uint512, liquidity: Uint512, total_lp_supply: Uint512) -> Result<Uint512, ContractError> {
+    let lp_allocation = amount.checked_mul(total_lp_supply)?.checked_div(liquidity)?;
+    Ok(lp_allocation)
 }
 
 // Function to assert slippage is tolerated during transaction
@@ -204,7 +204,7 @@ pub fn register_pool(
     env: Env,
     info: MessageInfo,
     state_storage: &Item<State>,
-    chain_lp_tokens: &Map<ChainUid, Uint128>,
+    chain_lp_tokens: &Map<ChainUid, Uint256>,
     amp_factor: Option<Uint64>,
     sender: CrossChainUser,
     pair: Pair,
@@ -227,12 +227,12 @@ pub fn register_pool(
     );
 
     // Store the pool in the map
-    chain_lp_tokens.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
+    chain_lp_tokens.save(deps.storage, sender.chain_uid.clone(), &Uint256::zero())?;
 
     let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
         tx_id: tx_id.clone(),
-        mint_lp_tokens: Uint128::zero(),
+        mint_lp_tokens: Uint256::zero(),
         sender: sender.clone(),
     };
     let pool_type = if amp_factor.is_some() {
@@ -265,10 +265,10 @@ pub fn remove_liquidity(
     env: Env,
     info: MessageInfo,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
-    chain_lp_tokens_storage: &Map<ChainUid, Uint128>,
+    balances_storage: &Map<Token, Uint256>,
+    chain_lp_tokens_storage: &Map<ChainUid, Uint256>,
     sender: CrossChainUser,
-    lp_allocation: Uint128,
+    lp_allocation: Uint256,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
@@ -287,7 +287,7 @@ pub fn remove_liquidity(
 
     // Fetch allocated liquidity to LP tokens
     let lp_tokens = state.total_lp_tokens;
-    let lp_share = Decimal::checked_from_ratio(lp_allocation, lp_tokens)
+    let lp_share = Decimal256::checked_from_ratio(lp_allocation, lp_tokens)
         .map_err(|err| ContractError::new(&err.to_string()))?;
 
     // Calculate tokens_1 to send
@@ -365,9 +365,9 @@ pub fn add_liquidity(
     env: Env,
     info: MessageInfo,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
-    chain_lp_tokens_storage: &Map<ChainUid, Uint128>,
-    collateral_lp_tokens_storage: &Item<Uint128>,
+    balances_storage: &Map<Token, Uint256>,
+    chain_lp_tokens_storage: &Map<ChainUid, Uint256>,
+    collateral_lp_tokens_storage: &Item<Uint256>,
     sender: CrossChainUser,
     liquidity: PairWithAmount,
     slippage_tolerance_bps: u64,
@@ -449,8 +449,8 @@ pub fn add_liquidity(
     state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
 
     let lp_allocation = if is_new_pool {
-        collateral_lp_tokens_storage.save(deps.storage, &Uint128::from(MINIMUM_LIQUIDITY))?;
-        lp_allocation.checked_sub(Uint128::from(MINIMUM_LIQUIDITY))?
+        collateral_lp_tokens_storage.save(deps.storage, &Uint256::from(MINIMUM_LIQUIDITY))?;
+        lp_allocation.checked_sub(Uint256::from(MINIMUM_LIQUIDITY))?
     } else {
         lp_allocation
     };
@@ -516,21 +516,21 @@ pub enum SwapCalculationMethod {
 
 #[cw_serde]
 pub struct PreSwapResponse {
-    pub lp_fee: Uint128,
-    pub euclid_fee: Uint128,
-    pub swap_amount: Uint128,
-    pub receive_amount: Uint128,
+    pub lp_fee: Uint256,
+    pub euclid_fee: Uint256,
+    pub swap_amount: Uint256,
+    pub receive_amount: Uint256,
     pub asset_out: Token,
-    pub spread_amount: Uint128,
+    pub spread_amount: Uint256,
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn pre_swap(
     deps: &Deps,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
+    balances_storage: &Map<Token, Uint256>,
     asset_in: &Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     calculation_method: SwapCalculationMethod,
     test_fail: Option<bool>,
 ) -> Result<PreSwapResponse, ContractError> {
@@ -561,13 +561,21 @@ pub fn pre_swap(
 
     let (receive_amount, spread_amount) = match calculation_method {
         SwapCalculationMethod::Stable(amp_factor) => {
+            // Descale from 24 decimals to 18 decimals to prevent Decimal256 overflow.
+            // Stable math uses Decimal256 (18 internal decimal places). Normalized
+            // voucher amounts at 24 decimals overflow during d.pow(3) and similar ops.
+            let descale_factor = Uint256::from(10u128.pow(6));
             let swap_result = compute_stable_swap(
-                &Decimal256::from_integer(amount_in),
-                &Decimal256::from_integer(token_in_reserve),
-                &Decimal256::from_integer(token_out_reserve),
+                &Decimal256::from_integer(amount_in / descale_factor),
+                &Decimal256::from_integer(token_in_reserve / descale_factor),
+                &Decimal256::from_integer(token_out_reserve / descale_factor),
                 amp_factor,
             )?;
-            (swap_result.return_amount, swap_result.spread_amount)
+            // Rescale results back to 24 decimals
+            (
+                swap_result.return_amount * descale_factor,
+                swap_result.spread_amount * descale_factor,
+            )
         }
         SwapCalculationMethod::Regular => {
             let swap_result = calculate_cp_swap(swap_amount, token_in_reserve, token_out_reserve)?;
@@ -591,11 +599,11 @@ pub fn execute_swap(
     env: Env,
     info: MessageInfo,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
+    balances_storage: &Map<Token, Uint256>,
     sender: CrossChainUser,
     asset_in: Token,
-    amount_in: Uint128,
-    min_token_out: Uint128,
+    amount_in: Uint256,
+    min_token_out: Uint256,
     tx_id: String,
     next_swaps: Vec<NextSwapVlp>,
     calculation_method: SwapCalculationMethod,
@@ -851,9 +859,9 @@ pub fn execute_swap(
 pub fn simulate_swap(
     deps: Deps,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
+    balances_storage: &Map<Token, Uint256>,
     asset_in: Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     calculation_method: SwapCalculationMethod,
 ) -> Result<GetSwapQueryResponse, ContractError> {
     let pre_swap_response = pre_swap(
@@ -876,10 +884,10 @@ pub fn simulate_swap(
 }
 
 pub fn calculate_amount_from_shares(
-    reserve: Uint128,
-    shares: Uint128,
-    total_shares: Uint128,
-) -> Result<Uint128, ContractError> {
+    reserve: Uint256,
+    shares: Uint256,
+    total_shares: Uint256,
+) -> Result<Uint256, ContractError> {
     let amount = reserve.checked_multiply_ratio(shares, total_shares)?;
     Ok(amount)
 }

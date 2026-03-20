@@ -59,7 +59,7 @@ pub fn execute(
             let from_token = TokenType::Native {
                 denom: info.funds[0].denom.to_string(),
             };
-            let from_amount = info.funds[0].amount;
+            let from_amount = info.funds[0].amount.into();
 
             swap(deps.borrow_mut(), &env, swap_msg, from_token, from_amount)
         }

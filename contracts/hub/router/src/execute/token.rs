@@ -1,12 +1,13 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, Response, SubMsg, Uint128,
+    ensure, to_json_binary, to_json_string, Addr, Binary, DepsMut, Env, Response, SubMsg, Uint256,
     WasmMsg,
 };
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     limit::Limit,
-    msgs::{cross_chain_config::CrossChainConfig, router::TokenDenom},
+    msgs::cross_chain_config::CrossChainConfig,
+    normalize::{normalize_token_to_voucher, normalize_voucher_to_token},
     recipient::Recipient,
     token::Token,
     utils::tx::generate_tx,
@@ -14,13 +15,16 @@ use euclid::{
 };
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 
-use euclid::msgs::virtual_balance::msg::{ExecuteBurn, ExecuteMint, GetEscrowBalanceResponse};
+use euclid::msgs::virtual_balance::msg::{
+    ExecuteBurn, GetEscrowBalanceResponse, QueryMsg as VirtualBalanceQueryMsg,
+};
 
 use crate::{
     helpers::release::get_release_fee_storage,
+    query::query_token_metadata_by_denom,
     state::{
         PendingReleaseVoucher, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, LOCKED_CHAINS,
-        PENDING_RELEASE_VOUCHER, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
+        PENDING_RELEASE_VOUCHER, VIRTUAL_BALANCE_CONTRACT,
     },
 };
 
@@ -29,20 +33,31 @@ pub fn execute_withdraw_voucher(
     env: Env,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     recipient: Recipient,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
-    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?.into_string();
-    let available_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
     let ack_response = cross_chain_config.ack_response;
     let timeout = cross_chain_config.timeout;
-    let tx_id = generate_tx(deps, &env, &sender)?;
+    let tx_id = generate_tx(deps, &env, &sender.clone())?;
+    let escrow_balance = deps
+        .querier
+        .query_wasm_smart::<GetEscrowBalanceResponse>(
+            virtual_balance_address.clone(),
+            &VirtualBalanceQueryMsg::GetEscrowBalance {
+                token_id: token.to_string(),
+                chain_uid: recipient.recipient.chain_uid.clone(),
+                token_type: recipient.denom.clone(),
+            },
+        )
+        .map(|r| r.balance)
+        .unwrap_or_default();
     let (msgs, released_amount) = _release_voucher(
         deps,
         &env,
-        virtual_balance_address,
-        available_denoms,
+        &virtual_balance_address,
+        escrow_balance,
         sender,
         token,
         amount,
@@ -62,20 +77,18 @@ pub fn execute_transfer_voucher(
     env: Env,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<Recipient>,
 ) -> Result<Response, ContractError> {
-    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?.into_string();
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     let mut response = Response::new().add_attribute("recipients", to_json_string(&recipients)?);
 
     let mut remaining_withdraw_amount = amount;
 
     let mut recipients_iterator = recipients.into_iter().peekable();
-    let available_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
-
-    let mut release_initiated_amount = Uint128::zero();
-    let mut transferred_amount = Uint128::zero();
+    let mut release_initiated_amount = Uint256::zero();
+    let mut transferred_amount = Uint256::zero();
 
     let mut index = 0;
 
@@ -91,7 +104,7 @@ pub fn execute_transfer_voucher(
         // We will transfer vouchers to the recipient
         if recipient.denom.is_voucher() {
             let (transfer_voucher_msgs, transfer_amount) = _transfer_voucher_as_voucher(
-                virtual_balance_address.clone(),
+                &virtual_balance_address,
                 sender.clone(),
                 token.clone(),
                 remaining_withdraw_amount,
@@ -111,11 +124,23 @@ pub fn execute_transfer_voucher(
             let tx_id = generate_tx(deps, &env, &sender.clone())?;
             let timeout = CHAIN_TIMEOUT_SECONDS
                 .may_load(deps.storage, recipient.recipient.chain_uid.clone())?;
+            let escrow_balance = deps
+                .querier
+                .query_wasm_smart::<GetEscrowBalanceResponse>(
+                    virtual_balance_address.clone(),
+                    &VirtualBalanceQueryMsg::GetEscrowBalance {
+                        token_id: token.to_string(),
+                        chain_uid: recipient.recipient.chain_uid.clone(),
+                        token_type: recipient.denom.clone(),
+                    },
+                )
+                .map(|r| r.balance)
+                .unwrap_or_default();
             let (release_msgs, release_amount) = _release_voucher(
                 deps,
                 &env,
-                virtual_balance_address.clone(),
-                available_denoms.clone(),
+                &virtual_balance_address,
+                escrow_balance,
                 sender.clone(),
                 token.clone(),
                 remaining_withdraw_amount,
@@ -153,12 +178,12 @@ pub fn execute_transfer_voucher(
 }
 
 pub fn _transfer_voucher_as_voucher(
-    virtual_balance_address: String,
+    virtual_balance_address: &Addr,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     recipient: Recipient,
-) -> Result<(Vec<SubMsg>, Uint128), ContractError> {
+) -> Result<(Vec<SubMsg>, Uint256), ContractError> {
     recipient.validate()?;
     ensure!(
         recipient.denom.is_voucher(),
@@ -181,7 +206,7 @@ pub fn _transfer_voucher_as_voucher(
         Limit::Dynamic(_) => amount,
     };
     if amount.is_zero() {
-        return Ok((vec![], Uint128::zero()));
+        return Ok((vec![], Uint256::zero()));
     }
     let forwarding_msg = match recipient.forwarding_message {
         Some(msg) => Some(Binary::from_base64(msg.as_str())?),
@@ -203,7 +228,7 @@ pub fn _transfer_voucher_as_voucher(
     );
 
     let transfer_voucher_msg = WasmMsg::Execute {
-        contract_addr: virtual_balance_address,
+        contract_addr: virtual_balance_address.to_string(),
         msg: to_json_binary(&transfer_voucher_msg)?,
         funds: vec![],
     };
@@ -214,16 +239,16 @@ pub fn _transfer_voucher_as_voucher(
 pub fn _release_voucher(
     deps: &mut DepsMut,
     env: &Env,
-    virtual_balance_address: String,
-    available_denoms: Vec<TokenDenom>,
+    virtual_balance_address: &Addr,
+    escrow_balance: Uint256,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    voucher_amount: Uint256,
     recipient: Recipient,
     ack_response: Option<Binary>,
     timeout: Option<u64>,
     tx_id: String,
-) -> Result<(Vec<SubMsg>, Uint128), ContractError> {
+) -> Result<(Vec<SubMsg>, Uint256), ContractError> {
     recipient.validate()?;
     ensure!(
         !recipient.denom.is_voucher(),
@@ -235,58 +260,52 @@ pub fn _release_voucher(
         !locked_chains.contains(&recipient.recipient.chain_uid),
         ContractError::new("Chain is locked")
     );
-    // Ensure that the preferred denom is valid
+
+    let token_metadata = query_token_metadata_by_denom(
+        deps.as_ref(),
+        virtual_balance_address,
+        &token,
+        &recipient.recipient.chain_uid,
+        &recipient.denom,
+    )?;
+    // Ensure that denom is valid
     ensure!(
-        available_denoms
-            .iter()
-            .any(|x| x.token_type == recipient.denom.clone()
-                && x.chain_uid == recipient.recipient.chain_uid),
-        ContractError::InvalidDenom {}
+        token_metadata.allowed,
+        ContractError::new("Denom not allowed")
     );
 
-    // Query escrow balance from virtual_balance contract
-    let escrow_balance_res: GetEscrowBalanceResponse = deps.querier.query_wasm_smart(
-        virtual_balance_address.clone(),
-        &euclid::msgs::virtual_balance::msg::QueryMsg::GetEscrowBalance {
-            token_id: token.to_string(),
-            chain_uid: recipient.recipient.chain_uid.clone(),
-            token_type: recipient.denom.clone(),
-        },
-    )?;
-    let escrow_balance: Uint128 = escrow_balance_res
-        .balance
-        .try_into()
-        .unwrap_or(Uint128::MAX);
+    let normalized_token_amount =
+        normalize_voucher_to_token(voucher_amount, token_metadata.token_type.get_decimals()?)?;
 
     // We cannot release more than escrow balance
-    let max_release_amount = amount.min(escrow_balance);
+    let max_release_amount = normalized_token_amount.min(escrow_balance);
 
     let release_amount = match recipient.amount {
-        Limit::LessThanOrEqual(limit) => max_release_amount.min(limit),
-        Limit::Equal(limit) => max_release_amount.min(limit),
+        Limit::LessThanOrEqual(limit) => max_release_amount.min(limit.into()),
+        Limit::Equal(limit) => max_release_amount.min(limit.into()),
         Limit::GreaterThanOrEqual(limit) => {
             ensure!(
-                max_release_amount.ge(&limit),
+                max_release_amount.ge(&limit.into()),
                 ContractError::InsufficientAmount {
                     min_amount: limit,
-                    amount
+                    amount: max_release_amount,
                 }
             );
             max_release_amount
         }
         Limit::Dynamic(_) => {
             ensure!(
-                max_release_amount.ge(&amount),
+                max_release_amount.ge(&normalized_token_amount),
                 ContractError::InsufficientAmount {
-                    min_amount: amount,
+                    min_amount: normalized_token_amount,
                     amount: max_release_amount
                 }
             );
-            amount
+            max_release_amount
         }
     };
     if release_amount.is_zero() {
-        return Ok((vec![], Uint128::zero()));
+        return Ok((vec![], Uint256::zero()));
     }
 
     let release_fee_amount = get_release_fee_storage(deps, &token, &recipient.recipient.chain_uid);
@@ -320,17 +339,19 @@ pub fn _release_voucher(
         ack_response,
     )?;
 
+    // Convert raw release_amount back to voucher units for burn and return
+    let voucher_release_amount =
+        normalize_token_to_voucher(release_amount, token_metadata.token_type.get_decimals()?)?;
+
     let burn_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Burn(ExecuteBurn {
-        amount: release_amount.into(),
-        balance_key: BalanceKey {
-            cross_chain_user: sender.clone(),
-            token_id: token.to_string(),
-        },
-        token_type: recipient.denom.clone(),
-        token_source_chain_uid: recipient.recipient.chain_uid.clone(),
+        voucher_amount: voucher_release_amount,
+        from_user: sender.clone(),
+        token_id: token.to_string(),
+        release_denom: recipient.denom.clone(),
+        release_chain_uid: recipient.recipient.chain_uid.clone(),
     });
     let burn_voucher_msg = WasmMsg::Execute {
-        contract_addr: virtual_balance_address.clone(),
+        contract_addr: virtual_balance_address.to_string(),
         msg: to_json_binary(&burn_voucher_msg)?,
         funds: vec![],
     };
@@ -340,6 +361,6 @@ pub fn _release_voucher(
     // Order matters here because we want to burn the vouchers before releasing to prevent any reentrancy attacks.
     Ok((
         vec![SubMsg::new(burn_voucher_msg), release_ibc_msg],
-        release_amount,
+        voucher_release_amount,
     ))
 }

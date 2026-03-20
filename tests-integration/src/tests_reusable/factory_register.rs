@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{from_json, Uint128};
+use cosmwasm_std::{from_json, Uint256};
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::IbcQueryHandler;
@@ -83,7 +83,7 @@ pub fn setup_factory_with_mode(
                 relayer_contract: relayer.address().unwrap(),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),
-                rate_limit_free_limit: Uint128::from(10u128),
+                rate_limit_free_limit: Uint256::from(10u128),
                 is_native,
             },
             None,

@@ -1,9 +1,11 @@
 use core::fmt;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Event;
+use cosmwasm_std::{Event, Uint256};
 
 use crate::{
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
     swap::SwapRequest,
     token::{Token, TokenMetadata, TokenType, TokenWithAmount},
@@ -121,20 +123,6 @@ pub fn simple_event() -> Event {
     Event::new("euclid").add_attribute("version", "1.0.0")
 }
 
-pub fn register_denom_event(token: &Token, chain_uid: &str, denom: &TokenType) -> Event {
-    Event::new("euclid-register-denom")
-        .add_attribute("token", token.to_string())
-        .add_attribute(format!("{}_chain_uid", token), chain_uid)
-        .add_attribute(format!("{}_denom", token), denom.get_key())
-}
-
-pub fn deregister_denom_event(token: &Token, chain_uid: &str, denom: &TokenType) -> Event {
-    Event::new("euclid-deregister-denom")
-        .add_attribute("token", token.to_string())
-        .add_attribute(format!("{}_chain_uid", token), chain_uid)
-        .add_attribute(format!("{}_denom", token), denom.get_key())
-}
-
 pub const EUCLID_SEND_PACKET_EVENT: &str = "euclid-send-packet";
 pub const EUCLID_RECEIVE_PACKET_EVENT: &str = "euclid-receive-packet";
 pub const EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT: &str = "euclid-write-acknowledgement";
@@ -191,11 +179,50 @@ pub fn receive_acknowledgement_event(
         .add_attribute("destination_port", destination_port)
 }
 
-pub const EUCLID_REGISTER_TOKEN_METADATA_EVENT: &str = "euclid-register-token-metadata";
-pub fn register_token_metadata_event(token_metadata: &TokenMetadata) -> Event {
-    Event::new(EUCLID_REGISTER_TOKEN_METADATA_EVENT)
+pub const EUCLID_TOKEN_METADATA_UPDATE_EVENT: &str = "euclid-token-metadata-update";
+pub fn token_metadata_update_event(token_metadata: &TokenMetadata, action: &str) -> Event {
+    Event::new(EUCLID_TOKEN_METADATA_UPDATE_EVENT)
+        .add_attribute("action", action)
         .add_attribute("token", token_metadata.token.to_string())
         .add_attribute("chain_uid", token_metadata.chain_uid.to_string())
         .add_attribute("token_type", token_metadata.token_type.get_key())
-        .add_attribute("decimals", token_metadata.decimals.to_string())
+        .add_attribute(
+            "decimals",
+            token_metadata
+                .token_type
+                .get_decimals()
+                .unwrap_or_default()
+                .to_string(),
+        )
+        .add_attribute("allowed", token_metadata.allowed.to_string())
+}
+
+pub const EUCLID_VIRTUAL_BALANCE_CHANGE_EVENT: &str = "euclid-virtual-balance-change";
+pub fn virtual_balance_change_event(
+    action: &str,
+    amount: &Uint256,
+    user: &CrossChainUser,
+    token_id: &str,
+) -> Event {
+    Event::new(EUCLID_VIRTUAL_BALANCE_CHANGE_EVENT)
+        .add_attribute("action", action)
+        .add_attribute("amount", amount.to_string())
+        .add_attribute("user", user.to_sender_string())
+        .add_attribute("token_id", token_id)
+}
+
+pub const EUCLID_ESCROW_BALANCE_CHANGE_EVENT: &str = "euclid-escrow-balance-change";
+pub fn escrow_balance_change_event(
+    action: &str,
+    amount: &Uint256,
+    token_id: &str,
+    chain_uid: &ChainUid,
+    token_type: &TokenType,
+) -> Event {
+    Event::new(EUCLID_ESCROW_BALANCE_CHANGE_EVENT)
+        .add_attribute("action", action)
+        .add_attribute("amount", amount.to_string())
+        .add_attribute("token_id", token_id)
+        .add_attribute("chain_uid", chain_uid.to_string())
+        .add_attribute("token_type", token_type.get_key())
 }

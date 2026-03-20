@@ -1,4 +1,4 @@
-use cosmwasm_std::Uint128;
+use cosmwasm_std::Uint256;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{ensure, to_json_binary, CosmosMsg, DepsMut, Env, Response, SubMsg, WasmMsg};
 use euclid::{
@@ -115,7 +115,7 @@ fn execute_release_escrow(
     _env: Env,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     denom: TokenType,
     forwarding_message: Option<String>,
     tx_id: String,

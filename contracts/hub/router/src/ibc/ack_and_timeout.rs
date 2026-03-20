@@ -1,5 +1,5 @@
 use cosmwasm_std::to_json_binary;
-use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, Uint128, WasmMsg};
+use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, Uint256, WasmMsg};
 use euclid::chain::{Chain, ChainType, ChainUid};
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
@@ -100,7 +100,7 @@ pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,
     sender: CrossChainUser,
-    amount: Uint128,
+    amount: Uint256,
     token: Token,
     token_type: TokenType,
     res: AcknowledgementMsg<ReleaseEscrowResponse>,

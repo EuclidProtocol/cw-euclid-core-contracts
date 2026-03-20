@@ -5,7 +5,7 @@ mod tests {
     use crate::state::{State, ADMIN, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
-    use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
+    use cosmwasm_std::{Addr, DepsMut, Response, Uint256};
     use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::msgs::factory::InstantiateMsg;
@@ -44,7 +44,7 @@ mod tests {
             is_native: true,
             rate_limit_fee_recipient: Addr::unchecked("rate_limit_fee_recipient"),
             rate_limit_fee_denom: "rate_limit_fee_denom".to_string(),
-            rate_limit_free_limit: Uint128::from(10u128),
+            rate_limit_free_limit: Uint256::from(10u128),
         };
         let owner = deps.api.addr_make("owner");
         let info = message_info(&owner, &[]);
@@ -147,8 +147,8 @@ mod tests {
     //         initialize_state(&mut deps.as_mut());
 
     //         let vlp_address = "vlp_address".to_string();
-    //         let token_1_liquidity = Uint128::new(500);
-    //         let token_2_liquidity = Uint128::new(500);
+    //         let token_1_liquidity = Uint256::new(500);
+    //         let token_2_liquidity = Uint256::new(500);
     //         let slippage_tolerance = 50;
 
     //         let pair_info = PairInfo {
@@ -413,8 +413,8 @@ mod tests {
     //         let swap_1 = SwapInfo {
     //             asset_in: token_info_1.clone(),
     //             asset_out: token_info_2.clone(),
-    //             amount_in: Uint128::new(100),
-    //             min_amount_out: Uint128::new(90),
+    //             amount_in: Uint256::new(100),
+    //             min_amount_out: Uint256::new(90),
     //             swaps: vec![], // Add appropriate NextSwap instances if needed
     //             timeout: IbcTimeout::with_block(IbcTimeoutBlock {
     //                 revision: 1,
@@ -426,8 +426,8 @@ mod tests {
     //         let swap_2 = SwapInfo {
     //             asset_in: token_info_2.clone(),
     //             asset_out: token_info_1.clone(),
-    //             amount_in: Uint128::new(200),
-    //             min_amount_out: Uint128::new(180),
+    //             amount_in: Uint256::new(200),
+    //             min_amount_out: Uint256::new(180),
     //             swaps: vec![], // Add appropriate NextSwap instances if needed
     //             timeout: IbcTimeout::with_block(IbcTimeoutBlock {
     //                 revision: 1,
@@ -500,8 +500,8 @@ mod tests {
     //         // Create example LiquidityTxInfo instances
     //         let liquidity_1 = LiquidityTxInfo {
     //             sender: user.clone(),
-    //             token_1_liquidity: Uint128::new(1000),
-    //             token_2_liquidity: Uint128::new(2000),
+    //             token_1_liquidity: Uint256::new(1000),
+    //             token_2_liquidity: Uint256::new(2000),
     //             liquidity_id: "liquidity_id_1".to_string(),
     //             vlp_address: "vlp_address_1".to_string(),
     //             pair_info: pair_info_1,
@@ -509,8 +509,8 @@ mod tests {
 
     //         let liquidity_2 = LiquidityTxInfo {
     //             sender: user.clone(),
-    //             token_1_liquidity: Uint128::new(3000),
-    //             token_2_liquidity: Uint128::new(4000),
+    //             token_1_liquidity: Uint256::new(3000),
+    //             token_2_liquidity: Uint256::new(4000),
     //             liquidity_id: "liquidity_id_2".to_string(),
     //             vlp_address: "vlp_address_2".to_string(),
     //             pair_info: pair_info_2,

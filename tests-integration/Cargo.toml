@@ -23,6 +23,7 @@ orderbook_deposits = { path = "../contracts/hub_utilities/orderbook_deposits" }
 
 #Other Crates
 euclid = { path = "../packages/euclid" }
+euclid-pool = { path = "../packages/pool" }
 euclid-ibc = { path = "../packages/euclid_ibc" }
 relayer = { path = "../packages/relayer" }
 

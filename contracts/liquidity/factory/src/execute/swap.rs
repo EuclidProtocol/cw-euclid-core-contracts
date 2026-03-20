@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, Decimal, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{ensure, Decimal, DepsMut, Env, MessageInfo, Response, Uint256};
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -23,9 +23,9 @@ pub fn execute_swap_request(
     info: MessageInfo,
     sender: CrossChainUser,
     asset_in: TokenWithDenom,
-    amount_in: Uint128,
+    amount_in: Uint256,
     asset_out: Token,
-    min_amount_out: Uint128,
+    min_amount_out: Uint256,
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
@@ -69,11 +69,13 @@ pub fn execute_swap_request(
 
     let mut fund_manager = FundManager::new(&info.funds);
     match &asset_in.token_type {
-        TokenType::Native { denom } => {
+        TokenType::Native { denom, .. } => {
             // Verify thatthe amount of funds passed is greater than the asset amount
             fund_manager.use_fund(amount_in, denom)?;
         }
-        TokenType::Smart { contract_address } => {
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             ensure!(
                 info.sender.to_string() == *contract_address,
                 ContractError::Unauthorized {}

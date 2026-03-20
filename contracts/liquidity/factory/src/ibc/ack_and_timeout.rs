@@ -187,7 +187,7 @@ fn ack_pool_creation(
                     symbol: lp_token_instantiate_data.symbol,
                     decimals: lp_token_instantiate_data.decimals,
                     initial_balances: vec![Cw20Coin {
-                        amount: data.mint_lp_tokens,
+                        amount: cosmwasm_std::Uint128::try_from(data.mint_lp_tokens).unwrap(),
                         address: data.sender.address,
                     }],
                     mint: lp_token_instantiate_data.mint,
@@ -200,7 +200,11 @@ fn ack_pool_creation(
                 label: "cw20".to_string(),
             });
             // Save lp shares against vlp address
-            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_contract, &data.mint_lp_tokens.into())?;
+            VLP_TO_LP_SHARES.save(
+                deps.storage,
+                data.vlp_contract,
+                &Int256::from(cosmwasm_std::Uint128::try_from(data.mint_lp_tokens).unwrap()),
+            )?;
 
             Ok(res.add_submessage(SubMsg {
                 id: LP_INSTANTIATE_REPLY_ID,
@@ -393,7 +397,9 @@ fn ack_add_liquidity(
             let shares = VLP_TO_LP_SHARES
                 .may_load(deps.storage, data.vlp_address.clone())?
                 .unwrap_or(Int256::zero());
-            let shares = shares.checked_add(data.mint_lp_tokens.into())?;
+            let shares = shares.checked_add(Int256::from(
+                cosmwasm_std::Uint128::try_from(data.mint_lp_tokens).unwrap(),
+            ))?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
@@ -485,7 +491,9 @@ fn ack_remove_liquidity(
             let shares = VLP_TO_LP_SHARES
                 .may_load(deps.storage, data.vlp_address.clone())?
                 .unwrap_or(Int256::zero());
-            let shares = shares.checked_sub(data.burn_lp_tokens.into())?;
+            let shares = shares.checked_sub(Int256::from(
+                cosmwasm_std::Uint128::try_from(data.burn_lp_tokens).unwrap(),
+            ))?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response

@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, Addr, Binary, Storage, Uint128};
+use cosmwasm_std::{ensure, Addr, Binary, Storage, Uint256};
 use cw_storage_plus::{Item, Map};
 use euclid::{chain::ChainUid, error::ContractError};
 use euclid_ibc::state::PendingPacket;
@@ -20,7 +20,7 @@ pub const CROSS_CHAIN_PENDING_PACKET_SENDER: Map<u128, Addr> =
     Map::new("cross_chain_pending_packet_sender");
 
 // Cross Chain processed sequence. Used to track the sequence of the processed packets
-pub const CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS: Map<u128, Uint128> =
+pub const CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS: Map<u128, Uint256> =
     Map::new("cross_chain_processed_received_packets");
 
 pub(crate) fn create_pending_packet_and_update_sequence(

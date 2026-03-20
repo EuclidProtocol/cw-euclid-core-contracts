@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, HexBinary, MessageInfo,
-    QueryRequest, Response, Timestamp, Uint128, WasmMsg, WasmQuery,
+    QueryRequest, Response, Timestamp, Uint256, WasmMsg, WasmQuery,
 };
 use euclid::admin;
 use euclid::chain::ChainType;
@@ -134,7 +134,7 @@ pub fn execute_meta_transaction(
     NONCES.save(
         deps.storage,
         (sender_key.clone(), meta_transaction.data.nonce.clone()),
-        &Uint128::from(env.block.height),
+        &Uint256::from(env.block.height),
     )?;
 
     let mut response = Response::new()

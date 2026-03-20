@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    Addr, Attribute, DepsMut, Env, MessageInfo, Order, Response, Uint256, WasmMsg, ensure,
+    ensure, Addr, Attribute, DepsMut, Env, MessageInfo, Order, Response, Uint256, WasmMsg,
 };
 use cw_storage_plus::Bound;
 use euclid::{
@@ -7,21 +7,21 @@ use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    events::register_token_metadata_event,
+    events::{
+        escrow_balance_change_event, token_metadata_update_event, virtual_balance_change_event,
+    },
     msgs::{
         hook::VoucherReceive,
         virtual_balance::msg::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer},
     },
-    token::TokenMetadata,
+    normalize::{normalize_token_to_voucher, normalize_voucher_to_token},
+    token::{TokenMetadata, TokenType},
     voucher::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::{
-    normalize::{normalize_token_to_voucher, normalize_voucher_to_token},
-    state::{
-        ADMIN, STATE, VOUCHER_ALLOWANCES, VOUCHER_BALANCES, VOUCHER_DECIMAL,
-        VoucherAllowance, get_escrow_balance_key, get_token_metadata_key,
-    },
+use crate::state::{
+    get_escrow_balance_key, get_token_metadata_key, VoucherAllowance, ADMIN, ESCROW_BALANCES,
+    STATE, VOUCHER_ALLOWANCES, VOUCHER_BALANCES, VOUCHER_DECIMAL,
 };
 
 pub fn execute_mint(
@@ -41,7 +41,8 @@ pub fn execute_mint(
         msg.token_type.clone(),
     );
     let metadata = metadata_key.load(deps.storage)?;
-    let normalized_voucher_amount = normalize_token_to_voucher(msg.amount, metadata)?;
+    let normalized_voucher_amount =
+        normalize_token_to_voucher(msg.amount, metadata.token_type.get_decimals()?)?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
@@ -91,16 +92,24 @@ pub fn execute_burn(
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
 
     // Zero amounts not allowed
-    ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+    ensure!(
+        !msg.voucher_amount.is_zero(),
+        ContractError::ZeroAssetAmount {}
+    );
 
-    let key = msg.balance_key.clone().to_serialized_balance_key();
+    let key = BalanceKey {
+        token_id: msg.token_id.clone(),
+        cross_chain_user: msg.from_user.clone(),
+    }
+    .to_serialized_balance_key();
+
     let old_balance = VOUCHER_BALANCES
         .may_load(deps.storage, key.clone())?
         .ok_or(ContractError::BalanceNotFound {
             key: format!("{:?}", key),
         })?;
 
-    let new_balance = old_balance.checked_sub(msg.amount)?;
+    let new_balance = old_balance.checked_sub(msg.voucher_amount)?;
 
     if new_balance.is_zero() {
         VOUCHER_BALANCES.remove(deps.storage, key);
@@ -110,39 +119,44 @@ pub fn execute_burn(
 
     // Decrement escrow balance: denormalize voucher amount to raw token amount
     let metadata_key = get_token_metadata_key(
-        msg.balance_key.token_id.clone(),
-        msg.token_source_chain_uid.clone(),
-        msg.token_type.clone(),
+        msg.token_id.clone(),
+        msg.release_chain_uid.clone(),
+        msg.release_denom.clone(),
     );
     let metadata = metadata_key.load(deps.storage)?;
-    let raw_token_amount = normalize_voucher_to_token(msg.amount, metadata)?;
+    let raw_token_amount =
+        normalize_voucher_to_token(msg.voucher_amount, metadata.token_type.get_decimals()?)?;
 
     let escrow_key = get_escrow_balance_key(
-        msg.balance_key.token_id.clone(),
-        msg.token_source_chain_uid,
-        msg.token_type,
+        msg.token_id.clone(),
+        msg.release_chain_uid.clone(),
+        msg.release_denom.clone(),
     );
-    let old_escrow = escrow_key.load(deps.storage)?;
-    let new_escrow = old_escrow.checked_sub(raw_token_amount)?;
-    if new_escrow.is_zero() {
-        escrow_key.remove(deps.storage);
-    } else {
-        escrow_key.save(deps.storage, &new_escrow)?;
-    }
+    let old_escrow_balance = escrow_key.load(deps.storage)?;
+    let new_escrow_balance = old_escrow_balance.checked_sub(raw_token_amount)?;
+
+    escrow_key.save(deps.storage, &new_escrow_balance)?;
 
     Ok(Response::new()
+        .add_event(virtual_balance_change_event(
+            "voucher_burn",
+            &msg.voucher_amount,
+            &msg.from_user,
+            &msg.token_id,
+        ))
+        .add_event(escrow_balance_change_event(
+            "voucher_burn",
+            &new_escrow_balance,
+            &msg.token_id,
+            &msg.release_chain_uid,
+            &msg.release_denom,
+        ))
         .add_attribute("action", "execute_burn")
-        .add_attribute("burn_amount", msg.amount)
+        .add_attribute("burn_amount", msg.voucher_amount)
         .add_attribute("raw_token_amount", raw_token_amount)
-        .add_attribute(
-            "burn_address",
-            msg.balance_key.cross_chain_user.to_sender_string(),
-        )
-        .add_attribute(
-            "burn_address_chain",
-            msg.balance_key.cross_chain_user.chain_uid.to_string(),
-        )
-        .add_attribute("burn_token_id", msg.balance_key.token_id)
+        .add_attribute("burn_address", msg.from_user.to_sender_string())
+        .add_attribute("burn_address_chain", msg.from_user.chain_uid.to_string())
+        .add_attribute("burn_token_id", msg.token_id)
         .add_attribute("new_balance", new_balance))
 }
 
@@ -491,11 +505,10 @@ pub fn execute_register_token_metadata(
 
     let token = token_metadata.token.validate()?;
     let chain_uid = token_metadata.chain_uid.validate()?;
+    let decimals = token_metadata.token_type.get_decimals()?;
     ensure!(
-        token_metadata.decimals.le(&VOUCHER_DECIMAL),
-        ContractError::InvalidDecimals {
-            decimals: token_metadata.decimals
-        }
+        decimals.le(&VOUCHER_DECIMAL),
+        ContractError::InvalidDecimals { decimals }
     );
 
     let token_metadata_storage = get_token_metadata_key(
@@ -504,57 +517,70 @@ pub fn execute_register_token_metadata(
         token_metadata.token_type.clone(),
     );
 
-    ensure!(
-        !token_metadata_storage.has(deps.storage),
-        ContractError::new("Token already registered")
-    );
+    // If token is already registered, check if decimals match
+    // If not, return an error
+    // If yes, update the token metadata
+    if token_metadata_storage.has(deps.storage) {
+        let existing = token_metadata_storage.load(deps.storage)?;
+        let existing_decimals = existing.token_type.get_decimals()?;
+        ensure!(
+            existing_decimals == decimals,
+            ContractError::DecimalsMismatch {
+                expected: existing_decimals,
+                received: decimals,
+            }
+        );
+    }
     token_metadata_storage.save(deps.storage, &token_metadata)?;
 
-    Ok(Response::new().add_event(register_token_metadata_event(&token_metadata)))
+    // Add escrow balance for the token if not already present
+    ESCROW_BALANCES.update(
+        deps.storage,
+        (
+            token.to_string(),
+            chain_uid.clone(),
+            token_metadata.token_type.get_key(),
+        ),
+        |maybe_escrow| {
+            if let Some(exiting_balance) = maybe_escrow {
+                Ok::<Uint256, ContractError>(exiting_balance)
+            } else {
+                Ok(Uint256::zero())
+            }
+        },
+    )?;
+
+    Ok(Response::new().add_event(token_metadata_update_event(
+        &token_metadata,
+        "register_denom",
+    )))
 }
 
-pub fn execute_update_token_metadata(
+pub fn execute_deregister_token_metadata(
     deps: DepsMut,
     info: MessageInfo,
-    token_metadata: TokenMetadata,
+    token_id: String,
+    chain_uid: ChainUid,
+    token_type: TokenType,
 ) -> Result<Response, ContractError> {
-    let admin = ADMIN.load(deps.storage)?;
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
+    let token_metadata_key =
+        get_token_metadata_key(token_id.clone(), chain_uid.clone(), token_type.clone());
+
+    let mut token_metadata = token_metadata_key
+        .load(deps.storage)
+        .map_err(|e| ContractError::new(&format!("Failed to load token metadata: {}", e)))?;
     ensure!(
-        admin.general_admin == info.sender,
-        ContractError::Unauthorized {}
+        token_metadata.allowed,
+        ContractError::new("Token already deregistered")
     );
+    token_metadata.allowed = false;
+    token_metadata_key.save(deps.storage, &token_metadata)?;
 
-    let token = token_metadata.token.validate()?;
-    let chain_uid = token_metadata.chain_uid.validate()?;
-    ensure!(
-        token_metadata.decimals.le(&VOUCHER_DECIMAL),
-        ContractError::InvalidDecimals {
-            decimals: token_metadata.decimals
-        }
-    );
-
-    let token_metadata_storage = get_token_metadata_key(
-        token.to_string(),
-        chain_uid.clone(),
-        token_metadata.token_type.clone(),
-    );
-
-    let existing = token_metadata_storage.load(deps.storage)?;
-
-    // Prevent changing decimals or token_type as it would break normalization of existing balances
-    ensure!(
-        existing.decimals == token_metadata.decimals,
-        ContractError::new("Cannot change token decimals after registration")
-    );
-    ensure!(
-        existing.token_type == token_metadata.token_type,
-        ContractError::new("Cannot change token type after registration")
-    );
-
-    token_metadata_storage.save(deps.storage, &token_metadata)?;
-
-    Ok(Response::new()
-        .add_attribute("action", "update_token_metadata")
-        .add_attribute("token", token.to_string())
-        .add_attribute("chain_uid", chain_uid.to_string()))
+    Ok(Response::new().add_event(token_metadata_update_event(
+        &token_metadata,
+        "deregister_denom",
+    )))
 }

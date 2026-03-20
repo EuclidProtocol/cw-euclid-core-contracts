@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Env, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Env, Uint256};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::msgs::vlp::base::{
@@ -18,7 +18,7 @@ use euclid::msgs::vlp::cp::msg::{
 pub fn query_simulate_swap(
     deps: Deps,
     asset_in: Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     next_swaps: Vec<NextSwapVlp>,
 ) -> Result<Binary, ContractError> {
     // Verify that the asset amount is non-zero
@@ -155,22 +155,22 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
 
 fn get_pool(
     state: &State,
-    chain_lp_tokens: Uint128,
-    reserve_1: Uint128,
-    reserve_2: Uint128,
+    chain_lp_tokens: Uint256,
+    reserve_1: Uint256,
+    reserve_2: Uint256,
 ) -> Result<PoolResponse, ContractError> {
     Ok(PoolResponse {
         reserve_1: calculate_amount_from_shares(reserve_1, chain_lp_tokens, state.total_lp_tokens)
-            .unwrap_or(Uint128::zero()),
+            .unwrap_or(Uint256::zero()),
         reserve_2: calculate_amount_from_shares(reserve_2, chain_lp_tokens, state.total_lp_tokens)
-            .unwrap_or(Uint128::zero()),
+            .unwrap_or(Uint256::zero()),
         lp_shares: chain_lp_tokens,
     })
 }
 
 /// Extracts the token amount for a given token from a pair with amounts
 /// by matching it against a reference token
-pub fn extract_token_amount(liquidity: &PairWithAmount, pair: &Pair) -> (Uint128, Uint128) {
+pub fn extract_token_amount(liquidity: &PairWithAmount, pair: &Pair) -> (Uint256, Uint256) {
     let token_1_liquidity = if liquidity.token_1.token == pair.token_1 {
         liquidity.token_1.amount
     } else {

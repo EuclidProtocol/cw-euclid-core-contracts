@@ -1,20 +1,25 @@
-use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, Response, SubMsg, Uint128, WasmMsg,
-};
+use cosmwasm_std::{to_json_binary, DepsMut, Env, Response};
 use euclid::{
     cross_chain_user::CrossChainUser,
     deposit::DepositTokenResponse,
     error::ContractError,
-    events::{deregister_denom_event, register_denom_event, tx_event, TxType},
+    events::{tx_event, TxType},
     msgs::{
         router::TokenDenom,
-        virtual_balance::msg::{ExecuteMint, ExecuteMsg as VirtualBalanceMsg},
+        virtual_balance::{
+            msg::{
+                ExecuteMint, ExecuteMsg as VirtualBalanceMsg, QueryMsg as VirtualBalanceQueryMsg,
+            },
+            GetTokenMetadataByDenomResponse,
+        },
         vlp::base::{DeregisterDenomResponse, RegisterDenomResponse},
     },
+    normalize::normalize_token_to_voucher,
     swap::TransferVoucherResponse,
-    token::TokenWithDenom,
+    token::{TokenMetadata, TokenWithDenom},
     voucher::BalanceKey,
 };
+
 use euclid_ibc::{
     ack::AcknowledgementMsg,
     router_ibc::{
@@ -22,10 +27,7 @@ use euclid_ibc::{
     },
 };
 
-use crate::{
-    execute::token::execute_transfer_voucher,
-    state::{TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT},
-};
+use crate::{execute::token::execute_transfer_voucher, state::VIRTUAL_BALANCE_CONTRACT};
 
 pub fn ibc_execute_register_denom(
     deps: DepsMut,
@@ -34,38 +36,27 @@ pub fn ibc_execute_register_denom(
     token: TokenWithDenom,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    token.token.validate()?;
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
-    let mut token_denoms = TOKEN_DENOMS
-        .load(deps.storage, token.token.clone())
-        .unwrap_or_default();
-
-    let token_exists = token_denoms
-        .iter()
-        .any(|denom| denom.chain_uid == sender.chain_uid && denom.token_type == token.token_type);
-
-    ensure!(!token_exists, ContractError::TokenAlreadyExist {});
-
-    token_denoms.push(TokenDenom {
+    let token_metadata = TokenMetadata {
+        token: token.token.clone(),
         chain_uid: sender.chain_uid.clone(),
         token_type: token.token_type.clone(),
-    });
-    println!("Register Denom Token Key: {:?}", token.token);
-    TOKEN_DENOMS.save(deps.storage, token.token.clone(), &token_denoms)?;
+        allowed: true,
+    };
+    let msg = VirtualBalanceMsg::RegisterTokenMetadata {
+        token_metadata: token_metadata.clone(),
+    };
 
     let ack: AcknowledgementMsg<RegisterDenomResponse> =
         AcknowledgementMsg::Ok(RegisterDenomResponse {});
 
     Ok(Response::new()
+        .add_message(msg.to_wasm_msg(virtual_balance_address.to_string(), vec![])?)
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
             TxType::RegisterDenom,
-        ))
-        .add_event(register_denom_event(
-            &token.token,
-            &sender.chain_uid.to_string(),
-            &token.token_type,
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_register_denom")
@@ -79,27 +70,19 @@ pub fn ibc_execute_deregister_denom(
     token: TokenWithDenom,
     tx_id: String,
 ) -> Result<Response, ContractError> {
-    let mut token_denoms = TOKEN_DENOMS
-        .load(deps.storage, token.token.clone())
-        .unwrap_or_default();
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
-    let token_exists = token_denoms
-        .iter()
-        .any(|denom| denom.chain_uid == sender.chain_uid && denom.token_type == token.token_type);
-
-    ensure!(token_exists, ContractError::AssetDoesNotExist {});
-
-    // Remove the denom from list
-    token_denoms.retain(|denom| {
-        denom.chain_uid != sender.chain_uid || denom.token_type != token.token_type
-    });
-
-    TOKEN_DENOMS.save(deps.storage, token.token.clone(), &token_denoms)?;
+    let msg = VirtualBalanceMsg::DeregisterTokenMetadata {
+        token_id: token.token.to_string(),
+        chain_uid: sender.chain_uid.clone(),
+        token_type: token.token_type.clone(),
+    };
 
     let ack: AcknowledgementMsg<DeregisterDenomResponse> =
         AcknowledgementMsg::Ok(DeregisterDenomResponse {});
 
     Ok(Response::new()
+        .add_message(msg.to_wasm_msg(virtual_balance_address.to_string(), vec![])?)
         .add_event(tx_event(
             &tx_id,
             &sender.to_sender_string(),
@@ -107,11 +90,6 @@ pub fn ibc_execute_deregister_denom(
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_deregister_denom")
-        .add_event(deregister_denom_event(
-            &token.token,
-            &sender.chain_uid.to_string(),
-            &token.token_type,
-        ))
         .set_data(to_json_binary(&ack)?))
 }
 
@@ -134,23 +112,31 @@ pub fn ibc_execute_deposit_token(
     // Load state to get virtual balance address
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
-    // Send mint msg to virtual balance
-    let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: virtual_balance_address.to_string(),
-        msg: to_json_binary(&VirtualBalanceMsg::Mint(ExecuteMint {
-            amount: msg.amount_in.into(),
-            balance_key: BalanceKey {
-                cross_chain_user: msg.sender.clone(),
+    let token_metadata = deps
+        .querier
+        .query_wasm_smart::<GetTokenMetadataByDenomResponse>(
+            virtual_balance_address.to_string(),
+            &VirtualBalanceQueryMsg::GetTokenMetadataByDenom {
                 token_id: msg.asset_in.token.to_string(),
+                chain_uid: msg.sender.chain_uid.clone(),
+                token_type: msg.asset_in.token_type.clone(),
             },
-            token_type: msg.asset_in.token_type.clone(),
-            token_source_chain_uid: msg.sender.chain_uid.clone(),
-        }))?,
-        funds: vec![],
-    });
+        )?;
+
+    // Send mint msg to virtual balance
+    let mint_msg = VirtualBalanceMsg::Mint(ExecuteMint {
+        amount: msg.amount_in.into(),
+        balance_key: BalanceKey {
+            cross_chain_user: msg.sender.clone(),
+            token_id: msg.asset_in.token.to_string(),
+        },
+        token_type: msg.asset_in.token_type.clone(),
+        token_source_chain_uid: msg.sender.chain_uid.clone(),
+    })
+    .to_wasm_msg(virtual_balance_address.to_string(), vec![])?;
 
     let response = Response::new()
-        .add_submessage(SubMsg::new(mint_msg))
+        .add_message(mint_msg)
         .add_attribute("action", "reply_deposit_token")
         .add_attribute(
             "deposit_token_response",
@@ -174,12 +160,17 @@ pub fn ibc_execute_deposit_token(
             msg.amount_in,
         );
 
+    let expected_voucher = normalize_token_to_voucher(
+        msg.amount_in.into(),
+        token_metadata.metadata.token_type.get_decimals()?,
+    )?;
+
     let transfer_response = execute_transfer_voucher(
         deps,
         env,
         sender,
         msg.asset_in.token,
-        msg.amount_in,
+        expected_voucher,
         msg.recipients,
     )?;
 

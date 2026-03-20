@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128, WasmMsg,
+    ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint256, WasmMsg,
 };
 use euclid::{admin, chain::ChainUid, error::ContractError};
 use relayer::{
@@ -98,7 +98,7 @@ pub fn execute_meta_transaction(
     NONCES.save(
         deps.storage,
         meta_transaction.nonce.clone(),
-        &Uint128::from(env.block.height),
+        &Uint256::from(env.block.height),
     )?;
 
     // Ensure the timestamp is not exceeded

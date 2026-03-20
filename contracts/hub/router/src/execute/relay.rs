@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response,
-    StdError, SubMsg, Uint128, WasmMsg,
+    StdError, SubMsg, Uint256, WasmMsg,
 };
 use euclid::{
     chain::{Chain, ChainUid},
@@ -117,7 +117,7 @@ pub fn execute_receive_packet(
             err: "Processed sequence already exists".to_string()
         }
     );
-    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+    processed_sequence_key.save(deps.storage, &Uint256::from(env.block.height))?;
     let receive_packet_event = receive_packet_event(sequence, &source_port, &destination_port);
 
     let write_acknowledge_event = write_acknowledgement_event(

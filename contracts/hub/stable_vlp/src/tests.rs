@@ -8,7 +8,7 @@ mod tests {
     use cosmwasm_std::{
         coins,
         testing::{message_info, mock_dependencies, mock_env, MockQuerier},
-        Addr, Decimal256, Response, Uint128, Uint64,
+        Addr, Decimal256, Response, Uint256, Uint64,
     };
     use euclid::{
         admin::EuclidAdmin,
@@ -89,7 +89,7 @@ mod tests {
                 },
             },
             last_updated: 0,
-            total_lp_tokens: Uint128::zero(),
+            total_lp_tokens: Uint256::zero(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -97,12 +97,12 @@ mod tests {
         assert_eq!(saved_admin, admin);
 
         let balance_1 = BALANCES.load(&deps.storage, state.pair.token_1).unwrap();
-        let expected_balance_1 = Uint128::zero();
+        let expected_balance_1 = Uint256::zero();
 
         assert_eq!(expected_balance_1, balance_1);
 
         let balance_2 = BALANCES.load(&deps.storage, state.pair.token_2).unwrap();
-        let expected_balance_2 = Uint128::zero();
+        let expected_balance_2 = Uint256::zero();
 
         assert_eq!(balance_2, expected_balance_2);
     }
@@ -139,7 +139,7 @@ mod tests {
         let state = CHAIN_LP_TOKENS
             .load(&deps.storage, ChainUid::create("1".to_string()).unwrap())
             .unwrap();
-        assert_eq!(state, Uint128::zero())
+        assert_eq!(state, Uint256::zero())
     }
 
     #[test]
@@ -224,8 +224,8 @@ mod tests {
 
         // For stable swap with equal pools, return amount should be very close to offer amount
         // with minimal spread
-        assert_eq!(result.return_amount, Uint128::new(99)); // Allow for small rounding
-        assert_eq!(result.spread_amount, Uint128::new(1));
+        assert_eq!(result.return_amount, Uint256::from(99u128)); // Allow for small rounding
+        assert_eq!(result.spread_amount, Uint256::from(1u128));
     }
 
     #[test]
@@ -239,8 +239,8 @@ mod tests {
             compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(100)).unwrap();
 
         // When pools are imbalanced, spread should be higher
-        assert_eq!(result.return_amount, Uint128::new(67));
-        assert_eq!(result.spread_amount, Uint128::new(33));
+        assert_eq!(result.return_amount, Uint256::from(67u128));
+        assert_eq!(result.spread_amount, Uint256::from(33u128));
     }
 
     #[test]
@@ -254,8 +254,8 @@ mod tests {
             compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
 
         // Small amounts should have minimal spread
-        assert_eq!(result.return_amount, Uint128::new(1));
-        assert_eq!(result.spread_amount, Uint128::new(0));
+        assert_eq!(result.return_amount, Uint256::from(1u128));
+        assert_eq!(result.spread_amount, Uint256::from(0u128));
     }
 
     #[test]
@@ -269,8 +269,8 @@ mod tests {
             compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
 
         // Large swaps should have higher spread due to impact on pool balance
-        assert_eq!(result.return_amount, Uint128::new(946u128));
-        assert_eq!(result.spread_amount, Uint128::new(54u128));
+        assert_eq!(result.return_amount, Uint256::from(946u128));
+        assert_eq!(result.spread_amount, Uint256::from(54u128));
     }
 
     #[test]
@@ -284,8 +284,8 @@ mod tests {
             compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
 
         // Highly imbalanced pools should result in higher spread
-        assert_eq!(result.return_amount, Uint128::new(47u128));
-        assert_eq!(result.spread_amount, Uint128::new(53u128));
+        assert_eq!(result.return_amount, Uint256::from(47u128));
+        assert_eq!(result.spread_amount, Uint256::from(53u128));
     }
 
     #[test]
@@ -299,7 +299,7 @@ mod tests {
             compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
 
         // Highly imbalanced pools should result in higher spread
-        assert_eq!(result.return_amount, Uint128::new(820871215252207999));
-        assert_eq!(result.spread_amount, Uint128::new(179128784747792001));
+        assert_eq!(result.return_amount, Uint256::from(820871215252207999u128));
+        assert_eq!(result.spread_amount, Uint256::from(179128784747792001u128));
     }
 }

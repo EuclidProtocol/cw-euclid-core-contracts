@@ -9,7 +9,7 @@ This migration introduces a normalized voucher system in `virtual_balance` where
 ### virtual_balance (breaking)
 
 **State changes:**
-- `BALANCES` (Map, Uint128) replaced by `VOUCHER_BALANCES` (Map, Uint256, normalized to 24 decimals)
+- `BALANCES` (Map, Uint256) replaced by `VOUCHER_BALANCES` (Map, Uint256, normalized to 24 decimals)
 - `ALLOWANCES` (Map, Allowance) replaced by `VOUCHER_ALLOWANCES` (Map, VoucherAllowance with optional expiry)
 - New: `ESCROW_BALANCES` (Map, Uint256) tracks raw token amounts held in escrow (previously in router)
 - New: `TOKEN_METADATA` (Map) stores per token per chain decimal info and token type
@@ -17,11 +17,11 @@ This migration introduces a normalized voucher system in `virtual_balance` where
 **Message changes:**
 - `ExecuteMint`: added `token_type: TokenType`, `token_source_chain_uid: ChainUid`
 - `ExecuteBurn`: added `token_type: TokenType`, `token_source_chain_uid: ChainUid`
-- All `amount` fields in execute messages: `Uint128` to `Uint256`
+- All `amount` fields in execute messages: `Uint256` to `Uint256`
 - New: `ExecuteMsg::RegisterTokenMetadata { token_metadata }`
 - New: `ExecuteMsg::UpdateTokenMetadata { token_metadata }`
 - New: `QueryMsg::GetEscrowBalance { token, chain_uid, token_type }` and `GetEscrowBalanceResponse`
-- `VoucherReceive.amount`: `Uint128` to `Uint256`
+- `VoucherReceive.amount`: `Uint256` to `Uint256`
 
 ### router (breaking)
 
@@ -35,18 +35,18 @@ This migration introduces a normalized voucher system in `virtual_balance` where
 
 ### euclid package (breaking)
 
-- `VoucherReceive.amount`: `Uint128` to `Uint256`
-- `create_voucher_transfer_msg`: amount parameter `Uint128` to `Uint256`
+- `VoucherReceive.amount`: `Uint256` to `Uint256`
+- `create_voucher_transfer_msg`: amount parameter `Uint256` to `Uint256`
 - `ExecuteMint`, `ExecuteBurn` message structs updated with new fields
 - New types: `GetEscrowBalanceResponse`
 
 ### pool package (non-breaking internal)
 
-- Added `.into()` conversions where `Uint128` values are passed to functions now expecting `Uint256`
+- Added `.into()` conversions where `Uint256` values are passed to functions now expecting `Uint256`
 
 ### claimer, orderbook_deposits (non-breaking internal)
 
-- Added `try_into()` conversions for `VoucherReceive.amount` (Uint256 to Uint128) at contract boundaries
+- Added `try_into()` conversions for `VoucherReceive.amount` (Uint256 to Uint256) at contract boundaries
 
 ## Migration Steps
 
@@ -74,7 +74,7 @@ Deploy the new virtual_balance contract. The new storage keys (`voucher_balances
 
 Run a migration entry point or admin script to:
 
-1. Read all entries from `BALANCES` (old, Uint128)
+1. Read all entries from `BALANCES` (old, Uint256)
 2. For each entry, look up the token's decimals from `TOKEN_METADATA`
 3. Normalize the balance: `amount * 10^(24 - token_decimals)`
 4. Write to `VOUCHER_BALANCES` (new, Uint256)

@@ -5,6 +5,7 @@ use cosmwasm_std::coin;
 use cosmwasm_std::to_json_binary;
 use cosmwasm_std::Addr;
 use cosmwasm_std::Uint128;
+use cosmwasm_std::Uint256;
 use cw20::{Cw20Coin, MinterResponse};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::ContractInstance as _;
@@ -36,15 +37,17 @@ pub fn swap_request(
     router: &RouterContract<MockBase>,
     asset_in: TokenWithDenom,
     asset_out: Token,
-    amount_in: Uint128,
-    min_amount_out: Uint128,
+    amount_in: Uint256,
+    min_amount_out: Uint256,
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,
     partner_fee: Option<PartnerFee>,
 ) -> Result<(), CwOrchError> {
     let tx_response = if asset_in.token_type.is_smart() {
         let smart_contract = match &asset_in.token_type {
-            TokenType::Smart { contract_address } => contract_address.clone(),
+            TokenType::Smart {
+                contract_address, ..
+            } => contract_address.clone(),
             _ => unreachable!("asset_in.token_type already checked as smart"),
         };
         let cw20 = LpTokenContract::new(factory.environment().clone());
@@ -69,7 +72,7 @@ pub fn swap_request(
         faucet(
             factory.environment(),
             factory.environment().sender.as_str(),
-            amount_in.u128(),
+            Uint128::try_from(amount_in).unwrap().u128(),
             asset_in.token_type.clone(),
             &mut vec![],
         );
@@ -85,7 +88,7 @@ pub fn swap_request(
                 cross_chain_config: CrossChainConfig::default(),
             },
             &vec![coin(
-                amount_in.u128(),
+                Uint128::try_from(amount_in).unwrap().u128(),
                 asset_in.token_type.get_denom().unwrap(),
             )],
         )?
@@ -117,7 +120,7 @@ mod tests {
     use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
     use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
     use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
-    use euclid::utils::pagination::Pagination;
+
     use euclid::voucher::BalanceKey;
 
     /// Helper to create a native TokenWithDenom from a name string.
@@ -126,6 +129,7 @@ mod tests {
             token: Token::create(name.to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: name.to_string(),
+                decimals: Some(18),
             },
         }
     }
@@ -133,6 +137,7 @@ mod tests {
     fn setup_smart_denom_token(
         factory: &FactoryContract<MockBase>,
         token: Token,
+        decimals: u32,
     ) -> TokenWithDenom {
         let sender = factory.environment().sender.to_string();
         let chain = factory.environment();
@@ -145,10 +150,10 @@ mod tests {
             &LpTokenInstantiateMsg {
                 name: format!("{}_cw20", token),
                 symbol: "SWAPIN".to_string(),
-                decimals: 6,
+                decimals: decimals.try_into().unwrap(),
                 initial_balances: vec![Cw20Coin {
                     address: sender.clone(),
-                    amount: Uint128::new(1_000_000_000),
+                    amount: Uint128::from(1_000_000_000u128),
                 }],
                 mint: Some(MinterResponse {
                     minter: sender,
@@ -168,6 +173,7 @@ mod tests {
             token,
             token_type: TokenType::Smart {
                 contract_address: cw20.address().unwrap().to_string(),
+                decimals: Some(18),
             },
         }
     }
@@ -210,13 +216,13 @@ mod tests {
         }
 
         // Faucet sender with enough funds for deposits and the swap itself
-        let deposit_amount = Uint128::from(100_000u128);
+        let deposit_amount = Uint256::from(100_000u128);
         let mut funds = vec![];
         for token in &tokens {
             faucet(
                 factory.environment(),
                 factory.environment().sender.as_str(),
-                deposit_amount.u128(),
+                Uint128::try_from(deposit_amount).unwrap().u128(),
                 token.token_type.clone(),
                 &mut funds,
             );
@@ -249,7 +255,11 @@ mod tests {
 
         let asset_in_native = tokens.first().unwrap().clone();
         let asset_in = if use_smart_asset_in {
-            let smart_asset_in = setup_smart_denom_token(&factory, asset_in_native.token.clone());
+            let smart_asset_in = setup_smart_denom_token(
+                &factory,
+                asset_in_native.token.clone(),
+                asset_in_native.token_type.get_decimals().unwrap(),
+            );
             register_denom(&factory, &router, smart_asset_in.clone()).unwrap();
             smart_asset_in
         } else {
@@ -259,7 +269,9 @@ mod tests {
         let swap_amount = 1_000u128;
         let sender_addr = factory.environment().sender.to_string();
         let smart_cw20_contract = match &asset_in.token_type {
-            TokenType::Smart { contract_address } => Some(get_lp_token(
+            TokenType::Smart {
+                contract_address, ..
+            } => Some(get_lp_token(
                 factory.environment(),
                 &Addr::unchecked(contract_address.clone()),
             )),
@@ -278,18 +290,19 @@ mod tests {
         let escrow_in = get_escrow(&factory, asset_in.token.as_str());
         let escrow_in_before = escrow_in.state().unwrap().total_amount;
 
+        let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
+        let virtual_balance_contract =
+            get_virtual_balance(router.environment(), &virtual_balance_address);
         // Record router escrow balance for input token before swap
-        let router_escrow_before = router
-            .query_token_escrows(
-                Pagination::new(Some(chain_uid.clone()), None, None, Some(1)),
-                asset_in.token.clone(),
-            )
+        let router_escrow_before = virtual_balance_contract
+            .get_token_escrows(asset_in.token.to_string(), None)
             .unwrap();
-        let router_escrow_in_before = router_escrow_before
-            .chains
-            .first()
+        let router_escrow_in_before: Uint256 = router_escrow_before
+            .escrows
+            .iter()
+            .filter(|c| c.chain_uid == chain_uid)
             .map(|c| c.balance)
-            .unwrap_or(Uint128::zero());
+            .fold(Uint256::zero(), |acc, b| acc + b);
 
         // Record sender's virtual balance for the output token before swap
         let virtual_balance_contract = get_virtual_balance(
@@ -298,21 +311,35 @@ mod tests {
         );
         let sender_user =
             CrossChainUser::new(chain_uid.clone(), factory.environment().sender.to_string());
-        let vb_out_before = virtual_balance_contract
+        let vb_out_before_raw = virtual_balance_contract
             .get_balance(BalanceKey {
                 cross_chain_user: sender_user.clone(),
                 token_id: asset_out.token.to_string(),
             })
             .unwrap()
             .amount;
+        // De-normalize to match sync_state's de-normalized voucher balances
+        let asset_out_metadata = virtual_balance_contract
+            .get_token_metadata(asset_out.token.to_string(), None)
+            .unwrap()
+            .metadata;
+        let vb_out_before = if let Some(metadata) = asset_out_metadata.first() {
+            euclid::normalize::normalize_voucher_to_token(
+                vb_out_before_raw,
+                metadata.token_type.get_decimals().unwrap(),
+            )
+            .unwrap()
+        } else {
+            vb_out_before_raw
+        };
 
         swap_request(
             &factory,
             &router,
             asset_in.clone(),
             asset_out.token.clone(),
-            Uint128::new(swap_amount),
-            Uint128::new(1),
+            Uint256::from(swap_amount),
+            Uint256::from(1u128),
             swaps.clone(),
             vec![],
             None,
@@ -322,7 +349,7 @@ mod tests {
         // --- Query post-swap state ---
         let recipients_for_sync = vec![Recipient::default_voucher_recipient(
             sender_user.clone(),
-            Limit::Dynamic(Uint128::zero()),
+            Limit::Dynamic(Uint256::zero()),
         )];
         let vlp_pairs = swaps
             .clone()
@@ -346,14 +373,14 @@ mod tests {
             .expect("Escrow state for input token should exist");
         assert_eq!(
             escrow_state.factory_escrow_balance,
-            escrow_in_before + Uint128::new(swap_amount),
+            escrow_in_before + Uint256::from(swap_amount),
             "Escrow balance for input token should increase by swap amount"
         );
 
         // 2. Router escrow balance for input token should have increased by swap_amount
         assert_eq!(
             escrow_state.router_escrow_balance,
-            router_escrow_in_before + Uint128::new(swap_amount),
+            router_escrow_in_before + Uint256::from(swap_amount),
             "Router escrow balance for input token should increase by swap amount"
         );
 
@@ -361,16 +388,16 @@ mod tests {
         let vb_out_after = state_sync
             .voucher_balance(&sender_user, &asset_out.token)
             .expect("Voucher balance for sender and output token should exist");
-        let amount_received = vb_out_after - vb_out_before;
+        let amount_received = vb_out_after.checked_sub(vb_out_before).unwrap();
         assert!(
-            amount_received > Uint128::zero(),
+            amount_received > Uint256::zero(),
             "Sender should have received output tokens, got 0"
         );
 
         // 4. Amount received should be less than swap amount
         //    (constant product pricing on equal-reserve pools always yields less than input)
         assert!(
-            amount_received < Uint128::new(swap_amount),
+            amount_received < Uint256::from(swap_amount),
             "Amount received ({}) should be less than amount in ({}) for equal-reserve pools",
             amount_received,
             swap_amount
@@ -389,7 +416,7 @@ mod tests {
                 .balance;
             assert_eq!(
                 sender_after,
-                sender_before - Uint128::new(swap_amount),
+                sender_before - Uint128::from(swap_amount),
                 "Sender CW20 balance should decrease by swap amount for smart-token swaps"
             );
             assert_eq!(

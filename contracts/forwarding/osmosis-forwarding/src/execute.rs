@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     coin, from_json, to_json_binary, Coin, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
-    WasmMsg,
+    Uint256, WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use forwarding::msgs::{
@@ -25,7 +25,7 @@ pub fn execute_cw20_receive(
     info: &MessageInfo,
     receive_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
-    let amount = receive_msg.amount;
+    let amount: Uint256 = receive_msg.amount.into();
     let from_token = TokenType::Smart {
         contract_address: info.sender.to_string(),
     };
@@ -69,7 +69,7 @@ pub fn receive_euclid_cw20(
     _info: &MessageInfo,
     sender: String,
     euclid_receive: EuclidReceive,
-    amount: Uint128,
+    amount: Uint256,
 ) -> Result<Response, ContractError> {
     match from_json::<OsmosisEuclidReceiveHook>(euclid_receive.data.clone())? {
         OsmosisEuclidReceiveHook::Swap(swap_msg) => {
@@ -87,20 +87,21 @@ pub fn swap(
     env: &Env,
     swap_msg: SwapMsg,
     from_token: TokenType,
-    from_amount: Uint128,
+    from_amount: Uint256,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
+    let from_amount_u128 = Uint128::try_from(from_amount).unwrap();
     let input_coin = match from_token {
         TokenType::Native { ref denom } => Coin {
             denom: denom.to_string(),
-            amount: from_amount,
+            amount: from_amount_u128,
         },
         TokenType::Smart {
             ref contract_address,
         } => Coin {
             denom: contract_address.to_string(),
-            amount: from_amount,
+            amount: from_amount_u128,
         },
         _ => return Err(ContractError::new("from token can't be a voucher")),
     };
@@ -138,12 +139,12 @@ pub fn swap(
         TokenType::Native { denom } => WasmMsg::Execute {
             contract_addr: state.osmo_router_address.to_string(),
             msg: to_json_binary(&osmo_execute_msg)?,
-            funds: vec![coin(from_amount.u128(), denom)],
+            funds: vec![coin(from_amount_u128.u128(), denom)],
         },
         TokenType::Smart { contract_address } => {
             let send_msg = Cw20ExecuteMsg::Send {
                 contract: state.osmo_router_address.to_string(),
-                amount: from_amount,
+                amount: from_amount_u128,
                 msg: to_json_binary(&osmo_execute_msg)?,
             };
             WasmMsg::Execute {

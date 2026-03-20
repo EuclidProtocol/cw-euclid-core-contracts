@@ -1,6 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{coin, to_json_binary, BankMsg, Binary, Event, WasmMsg};
-use cosmwasm_std::{ensure, Coin, CosmosMsg, Deps, Uint128};
+use cosmwasm_std::{ensure, Coin, CosmosMsg, Deps, Uint128, Uint256};
 
 use super::errors_old::ContractError;
 
@@ -87,11 +87,11 @@ impl TokenType {
         Ok(())
     }
 
-    pub fn get_balance(&self, deps: Deps, address: String) -> Result<Uint128, ContractError> {
+    pub fn get_balance(&self, deps: Deps, address: String) -> Result<Uint256, ContractError> {
         match self.clone() {
             TokenType::Native { denom } => {
                 let balance = deps.querier.query_balance(address, denom)?;
-                Ok(balance.amount)
+                Ok(Uint256::from(balance.amount))
             }
             TokenType::Smart { contract_address } => {
                 let balance_msg = cw20::Cw20QueryMsg::Balance {
@@ -100,7 +100,7 @@ impl TokenType {
                 let balance: cw20::BalanceResponse = deps
                     .querier
                     .query_wasm_smart(contract_address, &balance_msg)?;
-                Ok(balance.balance)
+                Ok(Uint256::from(balance.balance))
             }
             TokenType::Voucher { .. } => Err(ContractError::new(
                 "Cannot get balance of voucher using this function",
@@ -127,7 +127,7 @@ impl TokenType {
     // Create Cosmos Msg depending on type of token
     pub fn create_transfer_msg(
         &self,
-        amount: Uint128,
+        amount: Uint256,
         recipient: String,
         allowance: Option<String>,
         forwarding_message: Option<Binary>,
@@ -138,33 +138,38 @@ impl TokenType {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: recipient.to_string(),
                         msg: forwarding_message.clone(),
-                        funds: vec![coin(amount.u128(), denom.clone())],
+                        funds: vec![coin(
+                            Uint128::try_from(amount).unwrap().u128(),
+                            denom.clone(),
+                        )],
                     })
                 } else {
+                    let amount_u128 = Uint128::try_from(amount).unwrap();
                     CosmosMsg::Bank(BankMsg::Send {
                         to_address: recipient,
                         amount: vec![Coin {
                             denom: denom.to_string(),
-                            amount,
+                            amount: amount_u128,
                         }],
                     })
                 }
             }
             TokenType::Smart { contract_address } => {
+                let amount_u128 = Uint128::try_from(amount).unwrap();
                 if let Some(forwarding_message) = forwarding_message {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: contract_address.to_string(),
                         msg: match allowance {
                             Some(owner) => to_json_binary(&cw20::Cw20ExecuteMsg::SendFrom {
                                 owner,
-                                amount,
+                                amount: amount_u128,
                                 contract: recipient.to_string(),
                                 msg: forwarding_message.clone(),
                             })?,
                             None => to_json_binary(&cw20::Cw20ExecuteMsg::Send {
                                 contract: recipient.to_string(),
                                 msg: forwarding_message.clone(),
-                                amount,
+                                amount: amount_u128,
                             })?,
                         },
                         funds: vec![],
@@ -176,11 +181,11 @@ impl TokenType {
                             Some(owner) => to_json_binary(&cw20::Cw20ExecuteMsg::TransferFrom {
                                 owner,
                                 recipient,
-                                amount,
+                                amount: amount_u128,
                             })?,
                             None => to_json_binary(&cw20::Cw20ExecuteMsg::Transfer {
                                 recipient,
-                                amount,
+                                amount: amount_u128,
                             })?,
                         },
                         funds: vec![],

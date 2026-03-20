@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
-    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
+    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint256,
 };
 use cw2::set_contract_version;
 use euclid::{
@@ -54,14 +54,14 @@ pub fn instantiate(
             },
         },
         last_updated: 0,
-        total_lp_tokens: Uint128::zero(),
+        total_lp_tokens: Uint256::zero(),
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
     ADMIN.save(deps.storage, &msg.admin)?;
 
-    BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
-    BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_1, &Uint256::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_2, &Uint256::zero())?;
 
     let response =
         msg.execute

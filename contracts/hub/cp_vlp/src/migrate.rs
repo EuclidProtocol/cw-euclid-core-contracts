@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{entry_point, Addr, DepsMut, Env, Response, Uint128};
+use cosmwasm_std::{entry_point, Addr, DepsMut, Env, Response, Uint256};
 use cw2::set_contract_version;
 use cw_storage_plus::Item;
 use euclid::{
@@ -23,7 +23,7 @@ struct LegacyState {
     pub fee: Fee,
     pub total_fees_collected: TotalFees,
     pub last_updated: u64,
-    pub total_lp_tokens: Uint128,
+    pub total_lp_tokens: Uint256,
     pub admin: String,
 }
 
@@ -103,7 +103,7 @@ mod tests {
                 },
             },
             last_updated: 0,
-            total_lp_tokens: Uint128::zero(),
+            total_lp_tokens: Uint256::zero(),
             admin: admin.to_string(),
         };
         Item::<LegacyState>::new("state")
@@ -145,7 +145,7 @@ mod tests {
                 },
             },
             last_updated: 0,
-            total_lp_tokens: Uint128::zero(),
+            total_lp_tokens: Uint256::zero(),
         };
         STATE.save(deps.as_mut().storage, &current_state).unwrap();
         ADMIN

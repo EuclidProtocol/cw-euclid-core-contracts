@@ -1,4 +1,4 @@
-use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Env, Order, Uint128};
+use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Env, Order, Uint256};
 use cw_storage_plus::Bound;
 use euclid::{
     chain::{ChainType, CosmosChain},
@@ -107,7 +107,7 @@ pub fn query_all_tokens(deps: Deps) -> Result<Binary, ContractError> {
 pub fn pending_swaps(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);
@@ -128,7 +128,7 @@ pub fn pending_swaps(
 pub fn pending_liquidity(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);
@@ -150,7 +150,7 @@ pub fn pending_liquidity(
 pub fn pending_remove_liquidity(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);

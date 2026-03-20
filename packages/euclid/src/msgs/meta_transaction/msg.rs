@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 
 use crate::{
     admin::{AdminType, EuclidAdmin},
@@ -70,7 +70,7 @@ pub struct MetaTransactionCallData {
 
 #[cw_serde]
 pub struct NonceRelayedResponse {
-    pub height: Uint128,
+    pub height: Uint256,
 }
 #[cw_serde]
 pub struct MigrateMsg {}

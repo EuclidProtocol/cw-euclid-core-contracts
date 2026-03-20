@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 
 use crate::{
     admin::EuclidAdmin,
@@ -27,20 +27,6 @@ pub enum QueryMsg {
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
 
-    #[returns(TokenEscrowsResponse)]
-    QueryTokenEscrows {
-        token: Token,
-        pagination: Pagination<ChainUid>,
-    },
-    #[returns(AllEscrowsResponse)]
-    QueryAllEscrows { pagination: Pagination<String> },
-
-    #[returns(AllTokensResponse)]
-    QueryAllTokens { pagination: Pagination<Token> },
-
-    #[returns(QueryTokenDenomsResponse)]
-    QueryTokenDenoms { token: Token },
-
     #[returns(QueryRelayerAddressesResponse)]
     QueryRelayerAddresses {},
     #[returns(ReleaseFeesQueryResponse)]
@@ -52,9 +38,9 @@ pub enum QueryMsg {
 #[cw_serde]
 pub struct QuerySimulateSwap {
     pub asset_in: Token,
-    pub amount_in: Uint128,
+    pub amount_in: Uint256,
     pub asset_out: Token,
-    pub min_amount_out: Uint128,
+    pub min_amount_out: Uint256,
     pub swaps: Vec<NextSwapPair>,
 }
 
@@ -92,7 +78,7 @@ pub struct AllChainResponse {
 
 #[cw_serde]
 pub struct SimulateSwapResponse {
-    pub amount_out: Uint128,
+    pub amount_out: Uint256,
     pub asset_out: Token,
 }
 
@@ -104,14 +90,14 @@ pub struct TokenEscrowsResponse {
 #[cw_serde]
 pub struct TokenEscrowChainResponse {
     pub chain_uid: ChainUid,
-    pub balance: Uint128,
+    pub balance: Uint256,
 }
 
 #[cw_serde]
 pub struct EscrowResponse {
     pub token: Token,
     pub chain_uid: ChainUid,
-    pub balance: Uint128,
+    pub balance: Uint256,
 }
 
 #[cw_serde]
@@ -128,7 +114,7 @@ pub struct AllTokensResponse {
 pub struct ReleaseFee {
     pub token: Token,
     pub chain_uid: ChainUid,
-    pub fee: Uint128,
+    pub fee: Uint256,
 }
 
 #[cw_serde]

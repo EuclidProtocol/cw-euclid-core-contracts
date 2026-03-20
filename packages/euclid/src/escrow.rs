@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::Uint256;
 
 use crate::{cross_chain_user::CrossChainUser, token::Token};
 
@@ -8,7 +8,7 @@ pub struct EscrowReleaseRequest {
     pub sender: CrossChainUser,
     pub tx_id: String,
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub to_address: String,
 }
 
