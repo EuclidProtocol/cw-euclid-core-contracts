@@ -346,7 +346,7 @@ impl TokenType {
 
     pub fn query_decimals(&self, deps: &Deps) -> Result<u32, ContractError> {
         match self {
-            TokenType::Native {  .. } => {
+            TokenType::Native { .. } => {
                 // let denom_metadata = deps.querier.query_denom_metadata(denom.clone())?;
                 // let matched_unit = denom_metadata
                 //     .denom_units

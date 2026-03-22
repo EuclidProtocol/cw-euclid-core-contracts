@@ -91,16 +91,22 @@ pub fn calculate_lp_allocation(
             .map_err(|_| ContractError::new("Overflow total supply"))?;
         return Ok(sq_root);
     }
-    let lp_alloc_1 = safe_lp_math(token_1_amount,total_liquidity_1, total_lp_supply)?;
-    let lp_alloc_2 = safe_lp_math(token_2_amount,total_liquidity_2, total_lp_supply)?;
+    let lp_alloc_1 = safe_lp_math(token_1_amount, total_liquidity_1, total_lp_supply)?;
+    let lp_alloc_2 = safe_lp_math(token_2_amount, total_liquidity_2, total_lp_supply)?;
 
     let lp_allocation = lp_alloc_1.min(lp_alloc_2);
 
     Uint256::try_from(lp_allocation).map_err(|_| ContractError::new("Overflow lp allocation"))
 }
 
-fn safe_lp_math(amount: Uint512, liquidity: Uint512, total_lp_supply: Uint512) -> Result<Uint512, ContractError> {
-    let lp_allocation = amount.checked_mul(total_lp_supply)?.checked_div(liquidity)?;
+fn safe_lp_math(
+    amount: Uint512,
+    liquidity: Uint512,
+    total_lp_supply: Uint512,
+) -> Result<Uint512, ContractError> {
+    let lp_allocation = amount
+        .checked_mul(total_lp_supply)?
+        .checked_div(liquidity)?;
     Ok(lp_allocation)
 }
 

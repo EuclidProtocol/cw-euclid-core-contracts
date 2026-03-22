@@ -57,13 +57,7 @@ mod tests {
         u128::MAX-8712938791283123123,
         340_282_366_920_938_463_459_018_138_036_126_649_893u128
     )]
-    #[case(
-        u128::MAX,
-        u128::MAX,
-        u128::MAX,
-        u128::MAX,
-        u128::MAX,
-    )]
+    #[case(u128::MAX, u128::MAX, u128::MAX, u128::MAX, u128::MAX)]
     fn test_calculate_lp_allocation_on_add_liquidity(
         #[case] token_1_amount: u128,
         #[case] token_2_amount: u128,

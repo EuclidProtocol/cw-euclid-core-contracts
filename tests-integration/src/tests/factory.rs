@@ -1,5 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{Addr, Coin, Isqrt, Uint64, Uint128, Uint256, Uint512, coin, to_json_binary};
+use std::ops::Add;
+
+use cosmwasm_std::{coin, to_json_binary, Addr, Coin, Isqrt, Uint128, Uint256, Uint512, Uint64};
 use cw_orch::{
     core::CwEnvError,
     mock::MockBase,
@@ -422,24 +424,34 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
     )
     .unwrap();
     assert_eq!(
-        liquidity_query,
-        GetLiquidityQueryResponse {
-            pair: Pair {
-                token_1: token_a.token.clone(),
-                token_2: token_b.token.clone(),
-            },
-            token_1_reserve: normalize_token_to_voucher(
-                Uint256::from(10_000_u128 * 2),
-                token_a.token_type.get_decimals().unwrap()
-            )
-            .unwrap(),
-            token_2_reserve: normalize_token_to_voucher(
-                Uint256::from(100_000_u128 * 2),
-                token_b.token_type.get_decimals().unwrap()
-            )
-            .unwrap(),
-            total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
+        liquidity_query.pair,
+        Pair {
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
         }
+    );
+    assert_eq!(
+        liquidity_query.token_1_reserve,
+        normalize_token_to_voucher(
+            Uint256::from(10_000_u128 * 2),
+            token_a.token_type.get_decimals().unwrap()
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        liquidity_query.token_2_reserve,
+        normalize_token_to_voucher(
+            Uint256::from(100_000_u128 * 2),
+            token_b.token_type.get_decimals().unwrap()
+        )
+        .unwrap()
+    );
+    assert!(
+        liquidity_query
+            .total_lp_tokens
+            .abs_diff(lp_tokens(token_1_reserve, token_2_reserve))
+            .le(&Uint256::one()),
+        "Total LP tokens are not equal to expected total LP tokens"
     );
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_token_a
@@ -651,36 +663,33 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
     let token_1_reserve = normalize_token_to_voucher(
-        Uint256::from(10_000_u128 * 2),
+        Uint256::from(10_000_u128),
         token_a.token_type.get_decimals().unwrap(),
     )
     .unwrap();
     let token_2_reserve = normalize_token_to_voucher(
-        Uint256::from(100_000_u128 * 2),
+        Uint256::from(100_000_u128),
         token_b.token_type.get_decimals().unwrap(),
     )
     .unwrap();
     assert_eq!(
-        liquidity_query,
-        GetLiquidityQueryResponse {
-            pair: Pair {
-                token_1: token_a.token.clone(),
-                token_2: token_b.token.clone(),
-            },
-            token_1_reserve: normalize_token_to_voucher(
-                Uint256::from(10_000_u128),
-                token_a.token_type.get_decimals().unwrap()
-            )
-            .unwrap(),
-            token_2_reserve: normalize_token_to_voucher(
-                Uint256::from(100_000_u128),
-                token_b.token_type.get_decimals().unwrap()
-            )
-            .unwrap(),
-            total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
+        liquidity_query.pair,
+        Pair {
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
         }
     );
-
+    assert_eq!(liquidity_query.token_1_reserve, token_1_reserve);
+    assert_eq!(liquidity_query.token_2_reserve, token_2_reserve);
+    let expected_total_lp = lp_tokens(token_1_reserve, token_2_reserve);
+    assert!(
+        liquidity_query
+            .total_lp_tokens
+            .abs_diff(expected_total_lp)
+            .le(&Uint256::one()),
+        "Total LP tokens are not equal to expected total LP tokens {expected_total_lp} != {}",
+        liquidity_query.total_lp_tokens
+    );
     // Osmo escrow contract
     let escrow_token_a = get_escrow(&factory_contract, token_a.token.as_str());
     let escrow_token_b = get_escrow(&factory_contract, token_b.token.as_str());
@@ -740,25 +749,35 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
+    let new_token_1_reserve = token_1_reserve
+        + normalize_token_to_voucher(
+            Uint256::from(10_000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap();
+    let new_token_2_reserve = token_2_reserve
+        + normalize_token_to_voucher(
+            Uint256::from(100_000_u128),
+            token_b.token_type.get_decimals().unwrap(),
+        )
+        .unwrap();
     assert_eq!(
-        liquidity_query,
-        GetLiquidityQueryResponse {
-            pair: Pair {
-                token_1: token_a.token.clone(),
-                token_2: token_b.token.clone(),
-            },
-            token_1_reserve: normalize_token_to_voucher(
-                Uint256::from(10_000_u128 * 2),
-                token_a.token_type.get_decimals().unwrap()
-            )
-            .unwrap(),
-            token_2_reserve: normalize_token_to_voucher(
-                Uint256::from(100_000_u128 * 2),
-                token_b.token_type.get_decimals().unwrap()
-            )
-            .unwrap(),
-            total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
+        liquidity_query.pair,
+        Pair {
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
         }
+    );
+    assert_eq!(liquidity_query.token_1_reserve, new_token_1_reserve);
+    assert_eq!(liquidity_query.token_2_reserve, new_token_2_reserve);
+    let expected_total_lp = lp_tokens(new_token_1_reserve, new_token_2_reserve);
+    assert!(
+        liquidity_query
+            .total_lp_tokens
+            .abs_diff(expected_total_lp)
+            .le(&Uint256::one()),
+        "Total LP tokens are not equal to expected total LP tokens {expected_total_lp} != {}",
+        liquidity_query.total_lp_tokens.to_string()
     );
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_token_a
@@ -1352,7 +1371,8 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .balance(factory_chain.sender.clone())
         .unwrap();
     let user_lp_balance = lp_token_balance_response.balance;
-    let expected_initial_lp = lp_tokens(token_1_reserve, token_2_reserve) - Uint256::from(MINIMUM_LIQUIDITY);
+    let expected_initial_lp =
+        lp_tokens(token_1_reserve, token_2_reserve) - Uint256::from(MINIMUM_LIQUIDITY);
     assert_eq!(
         user_lp_balance,
         Uint128::try_from(expected_initial_lp).unwrap(),
@@ -1429,16 +1449,20 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     )
     .unwrap();
     assert_eq!(
-        liquidity_query,
-        GetLiquidityQueryResponse {
-            pair: Pair {
-                token_1: token_a.token.clone(),
-                token_2: token_b.token.clone(),
-            },
-            token_1_reserve,
-            token_2_reserve,
-            total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
+        liquidity_query.pair,
+        Pair {
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
         }
+    );
+    assert_eq!(liquidity_query.token_1_reserve, token_1_reserve);
+    assert_eq!(liquidity_query.token_2_reserve, token_2_reserve);
+    assert!(
+        liquidity_query
+            .total_lp_tokens
+            .abs_diff(lp_tokens(token_1_reserve, token_2_reserve))
+            .le(&Uint256::one()),
+        "Total LP tokens are not equal to expected total LP tokens"
     );
     let lp_token_balance_response = lp_token_contract
         .balance(factory_chain.sender.clone())

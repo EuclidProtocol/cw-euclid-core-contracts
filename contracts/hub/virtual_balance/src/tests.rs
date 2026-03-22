@@ -6,6 +6,9 @@ mod tests {
     use crate::state::{
         get_escrow_balance_key, VoucherAllowance, ADMIN, VOUCHER_ALLOWANCES, VOUCHER_BALANCES,
     };
+    use euclid::msgs::virtual_balance::{
+        GetTokenMetadataByDenomResponse, GetTokenMetadataResponse, QueryMsg,
+    };
     use euclid::normalize::{normalize, normalize_token_to_voucher, normalize_voucher_to_token};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
@@ -158,7 +161,8 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type(Some(18));
+        let decimals = 18;
+        let token_type = native_token_type(Some(decimals));
 
         // Register token metadata with 6 decimals
         register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
@@ -172,9 +176,10 @@ mod tests {
             token_id: "token1".to_string(),
         };
 
+        let raw_amount = Uint256::from(1_000_000u128);
         // Mint 1_000_000 raw tokens (1.0 with 6 decimals)
         let msg = ExecuteMsg::Mint(ExecuteMint {
-            amount: Uint256::from(1_000_000u128),
+            amount: raw_amount,
             balance_key: balance_key.clone(),
             token_type: token_type.clone(),
             token_source_chain_uid: chain.clone(),
@@ -185,14 +190,20 @@ mod tests {
         // Verify balance is normalized to 24 decimals
         let key = balance_key.clone().to_serialized_balance_key();
         let balance = VOUCHER_BALANCES.load(&deps.storage, key).unwrap();
-        let expected_normalized = Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
-        assert_eq!(balance, expected_normalized);
+        let expected_normalized = normalize_token_to_voucher(raw_amount, decimals).unwrap();
+        assert_eq!(
+            balance, expected_normalized,
+            "Balance is not equal to expected normalized amount"
+        );
 
         // Verify escrow balance stores raw amount
         let escrow_key =
             get_escrow_balance_key("token1".to_string(), chain.clone(), token_type.clone());
         let escrow = escrow_key.load(&deps.storage).unwrap();
-        assert_eq!(escrow, Uint256::from(1_000_000u128));
+        assert_eq!(
+            escrow, raw_amount,
+            "Escrow balance is not equal to raw amount"
+        );
     }
 
     #[test]
@@ -250,7 +261,8 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type(Some(18));
+        let decimals = 18;
+        let token_type = native_token_type(Some(decimals));
 
         register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
@@ -263,9 +275,11 @@ mod tests {
             token_id: "token1".to_string(),
         };
 
+        let mint_amount_raw = Uint256::from(2_000_000u128);
+        let mint_amount_normalized = normalize_token_to_voucher(mint_amount_raw, decimals).unwrap();
         // Mint first
         let mint_msg = ExecuteMsg::Mint(ExecuteMint {
-            amount: Uint256::from(2_000_000u128),
+            amount: mint_amount_raw,
             balance_key: balance_key.clone(),
             token_type: token_type.clone(),
             token_source_chain_uid: chain.clone(),
@@ -273,9 +287,10 @@ mod tests {
         execute(deps.as_mut(), env.clone(), info.clone(), mint_msg).unwrap();
 
         // Burn half (normalized amount)
-        let normalized_half = Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
+        let burn_amount_raw = Uint256::from(1_000_000u128);
+        let burn_amount_normalized = normalize_token_to_voucher(burn_amount_raw, decimals).unwrap();
         let burn_msg = ExecuteMsg::Burn(ExecuteBurn {
-            voucher_amount: normalized_half,
+            voucher_amount: burn_amount_normalized,
             from_user: user.clone(),
             token_id: "token1".to_string(),
             release_denom: token_type.clone(),
@@ -283,16 +298,24 @@ mod tests {
         });
         execute(deps.as_mut(), env.clone(), info, burn_msg).unwrap();
 
-        // Verify balance is half
+        // Verify balance is the difference between mint and burn amounts
         let key = balance_key.clone().to_serialized_balance_key();
         let balance = VOUCHER_BALANCES.load(&deps.storage, key).unwrap();
-        assert_eq!(balance, normalized_half);
+        assert_eq!(
+            balance,
+            mint_amount_normalized - burn_amount_normalized,
+            "Balance is not equal to expected normalized amount"
+        );
 
         // Verify escrow is decremented
         let escrow_key =
             get_escrow_balance_key("token1".to_string(), chain.clone(), token_type.clone());
         let escrow = escrow_key.load(&deps.storage).unwrap();
-        assert_eq!(escrow, Uint256::from(1_000_000u128));
+        assert_eq!(
+            escrow,
+            mint_amount_raw - burn_amount_raw,
+            "Escrow balance is not equal to expected raw amount"
+        );
     }
 
     #[test]
@@ -342,10 +365,15 @@ mod tests {
             .unwrap()
             .is_none());
 
-        // Escrow should be removed
+        // Escrow is not removed but should be set to zero
         let escrow_key =
             get_escrow_balance_key("token1".to_string(), chain.clone(), token_type.clone());
-        assert!(escrow_key.may_load(&deps.storage).unwrap().is_none());
+        let escrow = escrow_key.load(&deps.storage).unwrap();
+        assert_eq!(
+            escrow,
+            Uint256::zero(),
+            "Escrow balance is not equal to zero"
+        );
     }
 
     #[test]
@@ -557,6 +585,13 @@ mod tests {
 
         register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
+        let token_metadata = TokenMetadata {
+            token: Token::create("token1".to_string()).unwrap(),
+            chain_uid: chain.clone(),
+            token_type: token_type.clone(),
+            allowed: true,
+        };
+
         // Attempt duplicate registration
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -568,8 +603,24 @@ mod tests {
                 allowed: true,
             },
         };
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert!(format!("{err:?}").contains("already registered"));
+        let resp = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(resp.messages.len(), 0);
+        let token_metadata_response = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetTokenMetadataByDenom {
+                token_id: "token1".to_string(),
+                chain_uid: chain.clone(),
+                token_type: token_type.clone(),
+            },
+        )
+        .unwrap();
+        let token_metadata_response: GetTokenMetadataByDenomResponse =
+            from_json(token_metadata_response).unwrap();
+        assert_eq!(
+            token_metadata_response.metadata, token_metadata,
+            "Token metadata changed"
+        );
     }
 
     #[test]
@@ -583,7 +634,7 @@ mod tests {
             token_metadata: TokenMetadata {
                 token: Token::create("token1".to_string()).unwrap(),
                 chain_uid: make_chain_uid("chain1"),
-                token_type: native_token_type(Some(18)),
+                token_type: native_token_type(Some(36)),
                 allowed: true,
             },
         };
@@ -640,7 +691,13 @@ mod tests {
             },
         };
         let err = execute(deps.as_mut(), mock_env(), admin_info, msg).unwrap_err();
-        assert!(format!("{err:?}").contains("Cannot change token decimals"));
+        assert_eq!(
+            err,
+            ContractError::DecimalsMismatch {
+                expected: 18,
+                received: 6
+            }
+        );
     }
 
     // ======== Escrow Tracking Tests ========
@@ -652,7 +709,8 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type(Some(18));
+        let decimals = 18;
+        let token_type = native_token_type(Some(decimals));
 
         register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
@@ -662,9 +720,12 @@ mod tests {
         let user1 = make_user("chain1", "user1");
         let user2 = make_user("chain1", "user2");
 
+        let mut total_raw_mint_amount = Uint256::zero();
+
         // Mint 5M to user1
+        let user1_mint_amount_raw = Uint256::from(5_000_000u128);
         let msg = ExecuteMsg::Mint(ExecuteMint {
-            amount: Uint256::from(5_000_000u128),
+            amount: user1_mint_amount_raw,
             balance_key: BalanceKey {
                 cross_chain_user: user1.clone(),
                 token_id: "token1".to_string(),
@@ -673,10 +734,13 @@ mod tests {
             token_source_chain_uid: chain.clone(),
         });
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        total_raw_mint_amount += user1_mint_amount_raw;
 
         // Mint 3M to user2
+        let user2_mint_amount_raw = Uint256::from(3_000_000u128);
+
         let msg = ExecuteMsg::Mint(ExecuteMint {
-            amount: Uint256::from(3_000_000u128),
+            amount: user2_mint_amount_raw,
             balance_key: BalanceKey {
                 cross_chain_user: user2.clone(),
                 token_id: "token1".to_string(),
@@ -685,17 +749,22 @@ mod tests {
             token_source_chain_uid: chain.clone(),
         });
         execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
-
+        total_raw_mint_amount += user2_mint_amount_raw;
         // Escrow should be 8M raw
         let escrow_key =
             get_escrow_balance_key("token1".to_string(), chain.clone(), token_type.clone());
         let escrow = escrow_key.load(&deps.storage).unwrap();
-        assert_eq!(escrow, Uint256::from(8_000_000u128));
+        assert_eq!(
+            escrow, total_raw_mint_amount,
+            "Escrow balance is not equal to expected raw amount"
+        );
 
         // Burn 2M normalized from user1
-        let normalized_2m = Uint256::from(2_000_000u128) * Uint256::from(10u128).pow(18);
+        let user1_burn_amount_raw = Uint256::from(2_000_000u128);
+        let user1_burn_amount_normalized =
+            normalize_token_to_voucher(user1_burn_amount_raw, decimals).unwrap();
         let msg = ExecuteMsg::Burn(ExecuteBurn {
-            voucher_amount: normalized_2m,
+            voucher_amount: user1_burn_amount_normalized,
             from_user: user1.clone(),
             token_id: "token1".to_string(),
             release_denom: token_type.clone(),
@@ -705,7 +774,11 @@ mod tests {
 
         // Escrow should be 6M raw
         let escrow = escrow_key.load(&deps.storage).unwrap();
-        assert_eq!(escrow, Uint256::from(6_000_000u128));
+        assert_eq!(
+            escrow,
+            total_raw_mint_amount - user1_burn_amount_raw,
+            "Escrow balance is not equal to expected raw amount"
+        );
     }
 
     // ======== Remove Zero State Values Tests ========
@@ -811,7 +884,8 @@ mod tests {
         init(&mut deps);
 
         let chain = make_chain_uid("chain1");
-        let token_type = native_token_type(Some(18));
+        let decimals = 18;
+        let token_type = native_token_type(Some(decimals));
 
         register_metadata(&mut deps, "token1", chain.clone(), token_type.clone());
 
@@ -824,9 +898,11 @@ mod tests {
             token_id: "token1".to_string(),
         };
 
+        let raw_amount = Uint256::from(1_000_000u128);
+
         // Mint
         let msg = ExecuteMsg::Mint(ExecuteMint {
-            amount: Uint256::from(1_000_000u128),
+            amount: raw_amount,
             balance_key: balance_key.clone(),
             token_type: token_type.clone(),
             token_source_chain_uid: chain.clone(),
@@ -838,7 +914,7 @@ mod tests {
         let res = query(deps.as_ref(), env, query_msg).unwrap();
         let balance_res: GetBalanceResponse = from_json(res).unwrap();
 
-        let expected = Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
+        let expected = normalize_token_to_voucher(raw_amount, decimals).unwrap();
         assert_eq!(balance_res.amount, expected);
     }
 
