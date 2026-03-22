@@ -600,21 +600,6 @@ fn execute_remove_concentrated_liquidity(
         .liquidity
         .checked_sub(remove_liquidity_msg.liquidity_delta)?;
     let liquidity_after = position.liquidity;
-
-    // When fully removing liquidity, auto-collect any pending fees so the
-    // position can be deleted in a single transaction. Without this, users
-    // would need a separate collect_fees call to clear tokens_owed before
-    // the position is cleaned up from storage.
-    let (fee_0_collected, fee_1_collected) = if position.liquidity.is_zero() {
-        let f0 = position.tokens_owed_0;
-        let f1 = position.tokens_owed_1;
-        position.tokens_owed_0 = Uint128::zero();
-        position.tokens_owed_1 = Uint128::zero();
-        (f0, f1)
-    } else {
-        (Uint128::zero(), Uint128::zero())
-    };
-
     if position.liquidity.is_zero()
         && position.tokens_owed_0.is_zero()
         && position.tokens_owed_1.is_zero()
@@ -642,13 +627,10 @@ fn execute_remove_concentrated_liquidity(
         .checked_sub(remove_liquidity_msg.liquidity_delta)?;
     STATE.save(deps.storage, &state)?;
 
-    let total_0_out = amount_0_out.checked_add(fee_0_collected)?;
-    let total_1_out = amount_1_out.checked_add(fee_1_collected)?;
-
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
-    reserve_0 = reserve_0.checked_sub(total_0_out)?;
-    reserve_1 = reserve_1.checked_sub(total_1_out)?;
+    reserve_0 = reserve_0.checked_sub(amount_0_out)?;
+    reserve_1 = reserve_1.checked_sub(amount_1_out)?;
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
@@ -667,20 +649,20 @@ fn execute_remove_concentrated_liquidity(
     };
 
     let mut response = Response::new();
-    if !total_0_out.is_zero() {
+    if !amount_0_out.is_zero() {
         response = response.add_message(state.pair.token_1.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            total_0_out,
+            amount_0_out,
             None,
             remove_liquidity_msg.sender.clone(),
             None,
             None,
         )?);
     }
-    if !total_1_out.is_zero() {
+    if !amount_1_out.is_zero() {
         response = response.add_message(state.pair.token_2.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            total_1_out,
+            amount_1_out,
             None,
             remove_liquidity_msg.sender.clone(),
             None,
