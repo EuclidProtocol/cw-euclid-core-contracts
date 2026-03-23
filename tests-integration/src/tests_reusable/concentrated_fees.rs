@@ -1,5 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use concentrated_vlp::math::position_math::fee_growth_inside;
+use concentrated_vlp::state::TickInfo;
 use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
@@ -8,8 +10,6 @@ use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::vlp::concentrated::msg::{
     PositionResponse, QueryMsg as ConcentratedQueryMsg, Slot0Response, TickResponse,
 };
-use concentrated_vlp::math::position_math::fee_growth_inside;
-use concentrated_vlp::state::TickInfo;
 use rstest::rstest;
 
 use crate::helpers::chains::get_concentrated_vlp;
@@ -66,7 +66,8 @@ fn query_position(
     vlp: &concentrated_vlp::ConcentratedVlpContract<cw_orch::mock::MockBase>,
     position_id: Uint128,
 ) -> PositionResponse {
-    vlp.query(&ConcentratedQueryMsg::Position { position_id }).unwrap()
+    vlp.query(&ConcentratedQueryMsg::Position { position_id })
+        .unwrap()
 }
 
 #[rstest]
@@ -172,8 +173,12 @@ fn test_fee_growth_inside_consistent_after_add_to_new_ticks(
 
     // Step 1: Swap to accrue fees and move price.
     execute_concentrated_swap(
-        &factory, &router, pool_key.clone(),
-        token_b.clone(), token_a.token.clone(), Uint128::new(30_000),
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_b.clone(),
+        token_a.token.clone(),
+        Uint128::new(30_000),
     );
 
     // Step 2: Verify global fee growth is non-zero.
@@ -195,8 +200,14 @@ fn test_fee_growth_inside_consistent_after_add_to_new_ticks(
 
     let pair2 = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
     add_concentrated_liquidity(
-        &factory, &router, pair2, pool_key.clone(),
-        new_lower, new_upper, None, 10_000,
+        &factory,
+        &router,
+        pair2,
+        pool_key.clone(),
+        new_lower,
+        new_upper,
+        None,
+        10_000,
     )
     .expect("add liquidity at new ticks should succeed");
 
@@ -240,8 +251,12 @@ fn test_fee_growth_consistent_after_add_to_existing_position(
 
     // Step 1: Swap to accrue fees inside the position's range.
     execute_concentrated_swap(
-        &factory, &router, pool_key.clone(),
-        token_b.clone(), token_a.token.clone(), Uint128::new(20_000),
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_b.clone(),
+        token_a.token.clone(),
+        Uint128::new(20_000),
     );
 
     // Step 2: Query position — tokens_owed should be 0 (not yet settled).
@@ -254,8 +269,14 @@ fn test_fee_growth_consistent_after_add_to_existing_position(
     let pos_ticks = (pos_before.lower_tick_index, pos_before.upper_tick_index);
     let pair2 = pair_with_amounts(&token_a, &token_b, 5_000, 5_000);
     add_concentrated_liquidity(
-        &factory, &router, pair2, pool_key.clone(),
-        pos_ticks.0, pos_ticks.1, Some(position_id), 10_000,
+        &factory,
+        &router,
+        pair2,
+        pool_key.clone(),
+        pos_ticks.0,
+        pos_ticks.1,
+        Some(position_id),
+        10_000,
     )
     .expect("add to existing position should succeed");
 
@@ -264,7 +285,8 @@ fn test_fee_growth_consistent_after_add_to_existing_position(
     assert!(
         pos_after.tokens_owed_0 > Uint128::zero() || pos_after.tokens_owed_1 > Uint128::zero(),
         "fees should have been settled into tokens_owed after add: owed_0={}, owed_1={}",
-        pos_after.tokens_owed_0, pos_after.tokens_owed_1,
+        pos_after.tokens_owed_0,
+        pos_after.tokens_owed_1,
     );
 
     // Step 5: Verify fee_growth_inside_last is updated correctly.
@@ -290,8 +312,12 @@ fn test_remove_after_add_at_new_ticks(
 
     // Step 1: Swap to accrue fees.
     execute_concentrated_swap(
-        &factory, &router, pool_key.clone(),
-        token_b.clone(), token_a.token.clone(), Uint128::new(20_000),
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_b.clone(),
+        token_a.token.clone(),
+        Uint128::new(20_000),
     );
 
     // Step 2: Add liquidity at new ticks (the formerly buggy path).
@@ -301,8 +327,14 @@ fn test_remove_after_add_at_new_ticks(
 
     let pair2 = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
     add_concentrated_liquidity(
-        &factory, &router, pair2, pool_key.clone(),
-        new_lower, new_upper, None, 10_000,
+        &factory,
+        &router,
+        pair2,
+        pool_key.clone(),
+        new_lower,
+        new_upper,
+        None,
+        10_000,
     )
     .expect("add at new ticks should succeed");
 
@@ -313,28 +345,28 @@ fn test_remove_after_add_at_new_ticks(
 
     // Step 3: Swap again to accrue fees for the new position.
     execute_concentrated_swap(
-        &factory, &router, pool_key.clone(),
-        token_a.clone(), token_b.token.clone(), Uint128::new(5_000),
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_a.clone(),
+        token_b.token.clone(),
+        Uint128::new(5_000),
     );
 
     // Step 4: Collect fees — should not error.
     let chain_uid = factory.get_state().unwrap().chain_uid;
     let sender = CrossChainUser::new(chain_uid, factory.environment().sender.to_string());
-    collect_concentrated_fees(
-        &factory, &router, pool_key.clone(), position_id, sender,
-    )
-    .expect("collect fees should succeed");
+    collect_concentrated_fees(&factory, &router, pool_key.clone(), position_id, sender)
+        .expect("collect fees should succeed");
 
     // Step 5: Remove all liquidity — should not error (the original bug caused
     // "Cannot Sub with given operands" here).
-    remove_concentrated_liquidity(
-        &factory, &router, pool_key.clone(), position_id, liquidity,
-    )
-    .expect("remove liquidity should succeed after fix");
+    remove_concentrated_liquidity(&factory, &router, pool_key.clone(), position_id, liquidity)
+        .expect("remove liquidity should succeed after fix");
 
     // Step 6: Position should be fully drained.
-    let pos_final: Result<PositionResponse, _> = vlp
-        .query(&ConcentratedQueryMsg::Position { position_id });
+    let pos_final: Result<PositionResponse, _> =
+        vlp.query(&ConcentratedQueryMsg::Position { position_id });
     // Position may be deleted (not found) or have zero liquidity.
     if let Ok(p) = pos_final {
         assert!(p.liquidity.is_zero(), "position should be fully drained");

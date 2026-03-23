@@ -294,20 +294,34 @@ fn test_active_liquidity_consistent_after_boundary_crossings(
 
     let pair2 = pair_with_amounts(&token_a, &token_b, 500, 500);
     add_concentrated_liquidity(
-        &factory, &router, pair2, pool_key.clone(),
-        lower, upper, None, 10_000,
+        &factory,
+        &router,
+        pair2,
+        pool_key.clone(),
+        lower,
+        upper,
+        None,
+        10_000,
     )
     .expect("add narrow position should succeed");
 
     // Many small swaps back and forth to repeatedly cross the position boundary
     for _ in 0..10 {
         let _ = execute_concentrated_swap(
-            &factory, &router, pool_key.clone(),
-            token_b.clone(), token_a.token.clone(), Uint128::new(300),
+            &factory,
+            &router,
+            pool_key.clone(),
+            token_b.clone(),
+            token_a.token.clone(),
+            Uint128::new(300),
         );
         let _ = execute_concentrated_swap(
-            &factory, &router, pool_key.clone(),
-            token_a.clone(), token_b.token.clone(), Uint128::new(300),
+            &factory,
+            &router,
+            pool_key.clone(),
+            token_a.clone(),
+            token_b.token.clone(),
+            Uint128::new(300),
         );
     }
 
@@ -328,10 +342,8 @@ fn test_active_liquidity_consistent_after_boundary_crossings(
 
     // Allow 1-tick boundary tolerance (V3 sets tick = crossed_tick - 1
     // even if price hasn't moved below that tick's sqrt_ratio)
-    let price_tick = concentrated_vlp::math::tick_math::get_tick_at_sqrt_ratio(
-        slot0.sqrt_price_x96,
-    )
-    .unwrap();
+    let price_tick =
+        concentrated_vlp::math::tick_math::get_tick_at_sqrt_ratio(slot0.sqrt_price_x96).unwrap();
     let mut in_range_by_price: u128 = 0;
     for id_str in &position_ids {
         let id = Uint128::new(id_str.parse::<u128>().unwrap());
@@ -344,11 +356,13 @@ fn test_active_liquidity_consistent_after_boundary_crossings(
     }
 
     assert!(
-        slot0.liquidity.u128() == in_range_liquidity
-            || slot0.liquidity.u128() == in_range_by_price,
+        slot0.liquidity.u128() == in_range_liquidity || slot0.liquidity.u128() == in_range_by_price,
         "ACTIVE_LIQUIDITY ({}) should match in-range positions \
          by tick ({}, tick={}) or by price ({}, price_tick={})",
-        slot0.liquidity, in_range_liquidity, slot0.tick,
-        in_range_by_price, price_tick,
+        slot0.liquidity,
+        in_range_liquidity,
+        slot0.tick,
+        in_range_by_price,
+        price_tick,
     );
 }

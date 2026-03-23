@@ -323,8 +323,14 @@ fn test_full_removal_auto_collects_fees(
 
     let pair2 = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
     add_concentrated_liquidity(
-        &factory, &router, pair2, pool_key.clone(),
-        lower, upper, None, 10_000,
+        &factory,
+        &router,
+        pair2,
+        pool_key.clone(),
+        lower,
+        upper,
+        None,
+        10_000,
     )
     .expect("add should succeed");
 
@@ -340,12 +346,20 @@ fn test_full_removal_auto_collects_fees(
 
     // Swap to accrue fees
     execute_concentrated_swap(
-        &factory, &router, pool_key.clone(),
-        token_b.clone(), token_a.token.clone(), Uint128::new(10_000),
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_b.clone(),
+        token_a.token.clone(),
+        Uint128::new(10_000),
     );
     execute_concentrated_swap(
-        &factory, &router, pool_key.clone(),
-        token_a.clone(), token_b.token.clone(), Uint128::new(10_000),
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_a.clone(),
+        token_b.token.clone(),
+        Uint128::new(10_000),
     );
 
     // Verify fees have accrued (fee_growth > 0)
@@ -357,10 +371,8 @@ fn test_full_removal_auto_collects_fees(
     );
 
     // Full removal — should auto-collect fees and delete position
-    remove_concentrated_liquidity(
-        &factory, &router, pool_key.clone(), position_id, liquidity,
-    )
-    .expect("full removal should succeed");
+    remove_concentrated_liquidity(&factory, &router, pool_key.clone(), position_id, liquidity)
+        .expect("full removal should succeed");
 
     // Position should be fully deleted (not just zero liquidity)
     let pos_result: Result<PositionResponse, _> =
