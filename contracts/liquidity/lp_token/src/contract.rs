@@ -14,8 +14,8 @@ use cw20_base::contract::{
 };
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:lp_token";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const CONTRACT_NAME: &str = "crates.io:lp_token";
+pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(

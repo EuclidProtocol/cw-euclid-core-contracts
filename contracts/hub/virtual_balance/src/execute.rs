@@ -1,19 +1,20 @@
 use cosmwasm_std::{
-    ensure, Addr, Attribute, DepsMut, MessageInfo, Order, Response, Uint128, WasmMsg,
+    ensure, Addr, Attribute, DepsMut, Env, MessageInfo, Order, Response, Uint128, WasmMsg,
 };
 use cw_storage_plus::Bound;
 use euclid::{
+    admin::{self, AdminType},
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::{
         hook::VoucherReceive,
-        virtual_balance::msg::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, State},
+        virtual_balance::msg::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer},
     },
     voucher::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ALLOWANCES, BALANCES, STATE};
+use crate::state::{Allowance, ADMIN, ALLOWANCES, BALANCES, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -270,49 +271,48 @@ fn _deduct_allowance(
     ])
 }
 
-pub fn execute_update_state(
+pub fn execute_update_admin(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    new_admin: String,
+    admin_type: AdminType,
+) -> Result<Response, ContractError> {
+    let current_admin = ADMIN.load(deps.storage)?;
+    let (updated_admins, response) = admin::update_admin(
+        &current_admin,
+        &deps,
+        &env,
+        &info.sender,
+        new_admin.clone(),
+        admin_type,
+    )?;
+
+    ADMIN.save(deps.storage, &updated_admins)?;
+    Ok(response
+        .add_attribute("old_admin", current_admin.to_string())
+        .add_attribute("new_admin", new_admin.to_string()))
+}
+
+pub fn execute_update_router(
     deps: DepsMut,
     info: MessageInfo,
-    router: Option<Addr>,
-    admin: Option<Addr>,
+    router: Addr,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
+    let admin = ADMIN.load(deps.storage)?;
     ensure!(
-        info.sender.to_string() == state.admin.to_string(),
+        info.sender == admin.general_admin,
         ContractError::Unauthorized {}
     );
 
-    let verified_router = if let Some(ref router) = router {
-        deps.api.addr_validate(router.as_str())?;
-        router.clone()
-    } else {
-        state.router
-    };
-
-    let verified_admin = if let Some(ref admin) = admin {
-        deps.api.addr_validate(admin.as_str())?;
-        admin.clone()
-    } else {
-        state.admin
-    };
-
-    let new_state = State {
-        router: verified_router,
-        admin: verified_admin,
-    };
-
-    STATE.save(deps.storage, &new_state)?;
+    let verified_router = deps.api.addr_validate(router.as_str())?;
+    let mut state = STATE.load(deps.storage)?;
+    state.router = verified_router.clone();
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_attribute("action", "execute_update_state")
-        .add_attribute(
-            "router",
-            router.map_or_else(|| "unchanged".to_string(), |router| router.to_string()),
-        )
-        .add_attribute(
-            "admin",
-            admin.map_or_else(|| "unchanged".to_string(), |admin| admin.to_string()),
-        ))
+        .add_attribute("router", verified_router))
 }
 
 pub fn execute_approve(
@@ -374,8 +374,11 @@ pub fn execute_remove_zero_state_values(
     start_after: Option<SerializedBalanceKey>,
     limit: Option<u32>,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(state.admin == info.sender, ContractError::Unauthorized {});
+    let admin = ADMIN.load(deps.storage)?;
+    ensure!(
+        admin.general_admin == info.sender,
+        ContractError::Unauthorized {}
+    );
 
     // Remove Allowances with a value of zero
     let limit = limit.unwrap_or(u32::MAX) as usize;

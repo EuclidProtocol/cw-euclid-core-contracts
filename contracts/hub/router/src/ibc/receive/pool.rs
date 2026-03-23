@@ -9,13 +9,13 @@ use euclid::{
         self,
         router::TokenDenom,
         virtual_balance::msg::{ExecuteApprove, ExecuteMint},
-        vlp::concentrated::msg::ExecuteMsg as ConcentratedVlpExecuteMsg,
         vlp::base::{
             PoolConfig, PoolKey, PoolType, VlpAddLiquidityMsg, VlpConcentratedAddLiquidityMsg,
             VlpConcentratedCollectFeesMsg, VlpConcentratedCollectProtocolFeesMsg,
             VlpConcentratedRegisterPoolMsg, VlpConcentratedRemoveLiquidityMsg, VlpRegisterPoolMsg,
             VlpRemoveLiquidityMsg,
         },
+        vlp::concentrated::msg::ExecuteMsg as ConcentratedVlpExecuteMsg,
     },
     token::PairWithDenomAndAmount,
     voucher::BalanceKey,
@@ -30,48 +30,27 @@ use euclid_ibc::router_ibc::{
 
 use crate::{
     reply::{
-        ADD_LIQUIDITY_REPLY_ID, COLLECT_CONCENTRATED_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
-        VLP_POOL_REGISTER_REPLY_ID,
+        ADD_LIQUIDITY_REPLY_ID, COLLECT_CONCENTRATED_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID,
+        VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        pool_key_to_map_key, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, ESCROW_BALANCES, FEE_STATE,
-        FUNDS_INFO, PENDING_CONCENTRATED_COLLECT_FEES,
+        pool_key_to_map_key, ADMIN, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, ESCROW_BALANCES,
+        FEE_STATE, FUNDS_INFO, PENDING_CONCENTRATED_COLLECT_FEES,
         PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
         PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
-
-fn validate_concentrated_fee_and_spacing(
-    fee_tier_bps: u64,
-    tick_spacing: u64,
-) -> Result<(), ContractError> {
-    let expected_tick_spacing = match fee_tier_bps {
-        100 => 1,
-        500 => 10,
-        3_000 => 60,
-        10_000 => 200,
-        _ => return Err(ContractError::new("Invalid concentrated fee tier")),
-    };
-
-    ensure!(
-        tick_spacing == expected_tick_spacing,
-        ContractError::new(
-            format!(
-                "Invalid tick spacing {} for fee tier {}. Expected {}",
-                tick_spacing, fee_tier_bps, expected_tick_spacing
-            )
-            .as_str()
-        )
-    );
-    Ok(())
-}
 
 fn default_aligned_tick_bounds(tick_spacing: u64) -> (i64, i64) {
     const MIN_TICK: i64 = -887_272;
     const MAX_TICK: i64 = 887_272;
     let spacing = tick_spacing as i64;
     let lower = (MIN_TICK / spacing) * spacing;
-    let lower = if lower < MIN_TICK { lower + spacing } else { lower };
+    let lower = if lower < MIN_TICK {
+        lower + spacing
+    } else {
+        lower
+    };
     let upper = (MAX_TICK / spacing) * spacing;
     (lower, upper)
 }
@@ -86,6 +65,7 @@ pub fn ibc_execute_request_pool_creation(
     slippage_tolerance_bps: u64,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let admins = ADMIN.load(deps.storage)?;
 
     let pair = pair_with_denom.get_pair()?;
     pair.validate()?;
@@ -157,16 +137,13 @@ pub fn ibc_execute_request_pool_creation(
         PoolConfig::Concentrated {
             fee_tier_bps,
             tick_spacing,
-        } => {
-            validate_concentrated_fee_and_spacing(fee_tier_bps, tick_spacing)?;
-            Some(PoolKey {
-                pair: pair.clone(),
-                pool_type: PoolType::Concentrated {
-                    fee_tier_bps,
-                    tick_spacing,
-                },
-            })
-        }
+        } => Some(PoolKey {
+            pair: pair.clone(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps,
+                tick_spacing,
+            },
+        }),
         _ => None,
     };
 
@@ -190,19 +167,23 @@ pub fn ibc_execute_request_pool_creation(
             },
         )?;
 
-        let existing_vlp = CONCENTRATED_VLPS.may_load(deps.storage, pool_key_to_map_key(&pool_key))?;
-        let register_msg = ConcentratedVlpExecuteMsg::RegisterPool(VlpConcentratedRegisterPoolMsg {
-            sender: sender.clone(),
-            pool_key: pool_key.clone(),
-            tx_id: tx_id.clone(),
-        });
+        let existing_vlp =
+            CONCENTRATED_VLPS.may_load(deps.storage, pool_key_to_map_key(&pool_key))?;
+        let register_msg =
+            ConcentratedVlpExecuteMsg::RegisterPool(VlpConcentratedRegisterPoolMsg {
+                sender: sender.clone(),
+                pool_key: pool_key.clone(),
+                tx_id: tx_id.clone(),
+            });
         if let Some(vlp_addr) = existing_vlp {
             let msg = WasmMsg::Execute {
                 contract_addr: vlp_addr.to_string(),
                 msg: to_json_binary(&register_msg)?,
                 funds: vec![],
             };
-            return Ok(response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID)));
+            return Ok(
+                response.add_submessage(SubMsg::reply_always(msg, VLP_POOL_REGISTER_REPLY_ID))
+            );
         }
 
         let default_fee_recipient = FEE_STATE.load(deps.storage)?.default_fee_recipient;
@@ -218,7 +199,7 @@ pub fn ibc_execute_request_pool_creation(
             _ => (500, 10),
         };
         let msg = WasmMsg::Instantiate {
-            admin: Some(state.admin.to_string()),
+            admin: Some(admins.general_admin.to_string()),
             code_id: state.concentrated_vlp_code_id,
             msg: to_json_binary(&msgs::vlp::concentrated::msg::InstantiateMsg {
                 router: env.contract.address,
@@ -232,7 +213,7 @@ pub fn ibc_execute_request_pool_creation(
                         tx_id: tx_id.clone(),
                     },
                 )),
-                admin: state.admin,
+                admin: admins.general_admin,
                 fee_tier_bps,
                 tick_spacing,
             })?,
@@ -272,7 +253,7 @@ pub fn ibc_execute_request_pool_creation(
     );
     let msg = match pool_config {
         PoolConfig::Stable { amp_factor } => WasmMsg::Instantiate {
-            admin: Some(state.admin.to_string()),
+            admin: Some(admins.general_admin.to_string()),
             code_id: state.stable_vlp_code_id,
             msg: to_json_binary(&msgs::vlp::stable::msg::InstantiateMsg {
                 router: env.contract.address,
@@ -286,14 +267,14 @@ pub fn ibc_execute_request_pool_creation(
                         tx_id: tx_id.clone(),
                     },
                 )),
-                admin: state.admin,
+                admin: admins,
                 amp_factor,
             })?,
             funds: vec![],
             label: "Stable VLP".to_string(),
         },
         PoolConfig::ConstantProduct {} => WasmMsg::Instantiate {
-            admin: Some(state.admin.to_string()),
+            admin: Some(admins.general_admin.to_string()),
             code_id: state.constant_product_vlp_code_id,
             msg: to_json_binary(&msgs::vlp::cp::msg::InstantiateMsg {
                 router: env.contract.address,
@@ -307,7 +288,7 @@ pub fn ibc_execute_request_pool_creation(
                         tx_id: tx_id.clone(),
                     },
                 )),
-                admin: state.admin,
+                admin: admins,
             })?,
             funds: vec![],
             label: "Constant Product VLP".to_string(),
@@ -425,7 +406,6 @@ pub fn ibc_execute_request_concentrated_pool_creation(
         } => (fee_tier_bps, tick_spacing),
         _ => return Err(ContractError::new("pool_key must be concentrated")),
     };
-    validate_concentrated_fee_and_spacing(fee_tier_bps, tick_spacing)?;
 
     ibc_execute_request_pool_creation(
         deps,
@@ -448,8 +428,12 @@ pub fn ibc_execute_add_concentrated_liquidity(
     let vlp_address = CONCENTRATED_VLPS.load(deps.storage, pool_key_to_map_key(&msg.pool_key))?;
 
     let mut response = Response::new().add_event(
-        tx_event(&msg.tx_id, &msg.sender.to_sender_string(), TxType::AddLiquidity)
-            .add_attribute("tx_id", msg.tx_id.clone()),
+        tx_event(
+            &msg.tx_id,
+            &msg.sender.to_sender_string(),
+            TxType::AddLiquidity,
+        )
+        .add_attribute("tx_id", msg.tx_id.clone()),
     );
 
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
@@ -498,16 +482,17 @@ pub fn ibc_execute_add_concentrated_liquidity(
         });
     }
 
-    let add_liquidity_msg = ConcentratedVlpExecuteMsg::AddLiquidity(VlpConcentratedAddLiquidityMsg {
-        liquidity: msg.pair.get_pair_with_amount()?,
-        sender: msg.sender,
-        tx_id: msg.tx_id,
-        pool_key: msg.pool_key,
-        lower_tick_index: msg.lower_tick_index,
-        upper_tick_index: msg.upper_tick_index,
-        position_id: msg.position_id,
-        slippage_tolerance_bps: msg.slippage_tolerance_bps,
-    });
+    let add_liquidity_msg =
+        ConcentratedVlpExecuteMsg::AddLiquidity(VlpConcentratedAddLiquidityMsg {
+            liquidity: msg.pair.get_pair_with_amount()?,
+            sender: msg.sender,
+            tx_id: msg.tx_id,
+            pool_key: msg.pool_key,
+            lower_tick_index: msg.lower_tick_index,
+            upper_tick_index: msg.upper_tick_index,
+            position_id: msg.position_id,
+            slippage_tolerance_bps: msg.slippage_tolerance_bps,
+        });
 
     let exec_msg = WasmMsg::Execute {
         contract_addr: vlp_address.to_string(),
@@ -654,16 +639,15 @@ pub fn ibc_execute_collect_concentrated_protocol_fees(
     );
     req_key.save(deps.storage, &msg.clone())?;
 
-    let collect_msg = ConcentratedVlpExecuteMsg::CollectProtocolFees(
-        VlpConcentratedCollectProtocolFeesMsg {
+    let collect_msg =
+        ConcentratedVlpExecuteMsg::CollectProtocolFees(VlpConcentratedCollectProtocolFeesMsg {
             sender: msg.sender,
             tx_id: msg.tx_id,
             pool_key: msg.pool_key,
             recipient: msg.recipient,
             amount_0_requested: msg.amount_0_requested,
             amount_1_requested: msg.amount_1_requested,
-        },
-    );
+        });
     let exec_msg = WasmMsg::Execute {
         contract_addr: vlp_address.to_string(),
         msg: to_json_binary(&collect_msg)?,

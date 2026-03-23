@@ -21,8 +21,8 @@ use sha2::{Digest, Sha256};
 use crate::{
     error::ContractError,
     state::{
-        RootConfig, RootInfo, ASSET_DEPOSITS, CURRENT_ROOT, NULLIFIERS, PENDING_ROOT, ROOT_CONFIG,
-        STATE, USED_PERMITS, USER_DEPOSITS, WHITELISTED_ASSETS,
+        RootConfig, RootInfo, ADMIN, ASSET_DEPOSITS, CURRENT_ROOT, NULLIFIERS, PENDING_ROOT,
+        ROOT_CONFIG, STATE, USED_PERMITS, USER_DEPOSITS, WHITELISTED_ASSETS,
     },
 };
 
@@ -168,8 +168,8 @@ fn execute_set_whitelist(
     token_id: String,
     whitelisted: bool,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let admin = ADMIN.load(deps.storage)?;
+    ensure!(info.sender == admin, ContractError::Unauthorized {});
 
     let token = Token::create(token_id.clone())?;
     WHITELISTED_ASSETS.save(deps.storage, token.to_string(), &whitelisted)?;
@@ -193,10 +193,11 @@ fn execute_update_config(
     authorized_posters: Option<Vec<String>>,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let current_admin = ADMIN.load(deps.storage)?;
+    ensure!(info.sender == current_admin, ContractError::Unauthorized {});
 
     if let Some(admin) = admin {
-        state.admin = deps.api.addr_validate(&admin)?;
+        ADMIN.save(deps.storage, &deps.api.addr_validate(&admin)?)?;
     }
     if let Some(status) = status {
         state.status = status;
@@ -218,7 +219,7 @@ fn execute_update_config(
             .map(|poster| deps.api.addr_validate(&poster))
             .collect::<Result<Vec<_>, _>>()?;
         config.authorized_posters = if posters.is_empty() {
-            vec![state.admin.clone()]
+            vec![ADMIN.load(deps.storage)?]
         } else {
             posters
         };
@@ -248,7 +249,7 @@ fn execute_propose_root(
     );
     let config = ROOT_CONFIG.load(deps.storage)?;
     ensure!(
-        is_authorized_poster(&state, &config, &info.sender),
+        is_authorized_poster(&ADMIN.load(deps.storage)?, &config, &info.sender),
         ContractError::Unauthorized {}
     );
     ensure!(root_hash.len() == 32, ContractError::InvalidRootHash {});
@@ -293,7 +294,7 @@ fn execute_activate_root(
     );
     let config = ROOT_CONFIG.load(deps.storage)?;
     ensure!(
-        is_authorized_poster(&state, &config, &info.sender),
+        is_authorized_poster(&ADMIN.load(deps.storage)?, &config, &info.sender),
         ContractError::Unauthorized {}
     );
 
@@ -473,11 +474,11 @@ fn execute_withdraw(
 }
 
 fn is_authorized_poster(
-    state: &crate::state::State,
+    admin: &cosmwasm_std::Addr,
     config: &RootConfig,
     sender: &cosmwasm_std::Addr,
 ) -> bool {
-    sender == state.admin || config.authorized_posters.contains(sender)
+    sender == admin || config.authorized_posters.contains(sender)
 }
 
 fn validate_asset_totals(deps: Deps, per_asset_totals: &[AssetTotal]) -> Result<(), ContractError> {

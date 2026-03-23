@@ -436,7 +436,7 @@ pub fn get_position_token(
     let response = factory.get_position_token_contract()?;
     let contract = PositionTokenContract::new(factory.environment().clone());
     if let Some(address) = response.position_token_contract {
-        let mut contract = contract;
+        let contract = contract;
         contract.set_address(&address);
         return Ok(contract);
     }
@@ -448,8 +448,8 @@ pub fn list_position_ids(factory: &FactoryContract<MockBase>) -> Result<Vec<Stri
     if contract.address().is_err() {
         return Ok(vec![]);
     }
-    let tokens: position_token::msg::TokensResponse =
-        contract.query(&position_token::msg::QueryMsg::AllTokens {})?;
+    let tokens: euclid::msgs::position_token::TokensResponse =
+        contract.query(&euclid::msgs::position_token::QueryMsg::AllTokens {})?;
     Ok(tokens.tokens)
 }
 

@@ -8,6 +8,7 @@ use cosmwasm_std::{
 };
 use cw2::set_contract_version;
 use euclid::{
+    admin::EuclidAdmin,
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -29,14 +30,15 @@ use euclid::{
     swap::NextSwapVlp,
     token::Token,
 };
-use euclid_pool::{register_pool, update_fee, update_state};
+use euclid_pool::{register_pool, update_admin, update_fee};
 
 use crate::{
     math::{
         liquidity_amounts::{get_amounts_for_liquidity, get_liquidity_for_amounts},
         oracle::{initialize_observation, observe, write_observation},
-        position_math::{fee_growth_inside, fees_owed},
-        sqrt_price_math::q128,
+        position_math::{
+            accumulate_fee_growth, fee_growth_inside, fees_owed, flip_fee_growth_outside,
+        },
         swap_math::{compute_swap_step_exact_input, FEE_DENOMINATOR_PIPS},
         tick_math::{
             get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio, max_sqrt_ratio, min_sqrt_ratio,
@@ -49,7 +51,7 @@ use crate::{
     reply,
     state::{
         initialize_position_nonce, next_position_id, ConcentratedPosition, MigrationMetadata,
-        Slot0, TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
+        Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
         FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIGRATION_METADATA,
         MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0,
         STATE, TICKS,
@@ -92,6 +94,7 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     msg.pair.validate()?;
+    validate_concentrated_fee_and_spacing(msg.fee_tier_bps, msg.tick_spacing)?;
 
     let state = State {
         pair: msg.pair.clone(),
@@ -108,11 +111,11 @@ pub fn instantiate(
         },
         last_updated: 0,
         total_lp_tokens: Uint128::zero(),
-        admin: msg.admin,
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(msg.admin))?;
 
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &Uint128::zero())?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &Uint128::zero())?;
@@ -234,8 +237,18 @@ pub fn execute(
             lp_fee_bps,
             euclid_fee_bps,
             recipient,
-        } => update_fee(deps, info, &STATE, lp_fee_bps, euclid_fee_bps, recipient),
-        ExecuteMsg::UpdateState { admin } => update_state(deps, info, &STATE, admin),
+        } => update_fee(
+            deps,
+            info,
+            &STATE,
+            &ADMIN,
+            lp_fee_bps,
+            euclid_fee_bps,
+            recipient,
+        ),
+        ExecuteMsg::UpdateAdmin { admin, admin_type } => {
+            update_admin(deps, env, info, &ADMIN, admin, admin_type)
+        }
     }
 }
 
@@ -1025,17 +1038,12 @@ fn run_swap_simulation(
         lp_fee_total = lp_fee_total.checked_add(lp_fee_step)?;
         protocol_fee_total = protocol_fee_total.checked_add(protocol_fee_step)?;
 
-        if !lp_fee_step.is_zero() {
-            let fee_growth_delta = lp_fee_step
-                .checked_mul(q128())?
-                .checked_div(Uint256::from(liquidity.u128()))?;
-            if zero_for_one {
-                fee_growth_global_0_x128 =
-                    fee_growth_global_0_x128.checked_add(fee_growth_delta)?;
-            } else {
-                fee_growth_global_1_x128 =
-                    fee_growth_global_1_x128.checked_add(fee_growth_delta)?;
-            }
+        if zero_for_one {
+            fee_growth_global_0_x128 =
+                accumulate_fee_growth(fee_growth_global_0_x128, lp_fee_step, liquidity)?;
+        } else {
+            fee_growth_global_1_x128 =
+                accumulate_fee_growth(fee_growth_global_1_x128, lp_fee_step, liquidity)?;
         }
 
         if !protocol_fee_step.is_zero() {
@@ -1056,10 +1064,14 @@ fn run_swap_simulation(
         if reached_target && !clamped_to_limit {
             if initialized {
                 if let Some(info) = TICKS.may_load(deps.storage, target_tick)? {
-                    let new_fee_growth_outside_0_x128 =
-                        fee_growth_global_0_x128.checked_sub(info.fee_growth_outside_0_x128)?;
-                    let new_fee_growth_outside_1_x128 =
-                        fee_growth_global_1_x128.checked_sub(info.fee_growth_outside_1_x128)?;
+                    let new_fee_growth_outside_0_x128 = flip_fee_growth_outside(
+                        fee_growth_global_0_x128,
+                        info.fee_growth_outside_0_x128,
+                    );
+                    let new_fee_growth_outside_1_x128 = flip_fee_growth_outside(
+                        fee_growth_global_1_x128,
+                        info.fee_growth_outside_1_x128,
+                    );
                     crossed_ticks.push(CrossedTickUpdate {
                         tick: target_tick,
                         fee_growth_outside_0_x128: new_fee_growth_outside_0_x128,
@@ -1400,8 +1412,10 @@ fn execute_collect_protocol_fees(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
+    let admins = ADMIN.load(deps.storage)?;
     ensure!(
-        msg.sender.address == state.admin.to_string(),
+        msg.sender.address == admins.fee_admin.to_string(),
         ContractError::Unauthorized {}
     );
 
@@ -1461,8 +1475,9 @@ fn increase_observation_cardinality_next(
     observation_cardinality_next: u16,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let admins = ADMIN.load(deps.storage)?;
     ensure!(
-        info.sender == state.router || info.sender == state.admin,
+        info.sender == state.router || info.sender == admins.general_admin,
         ContractError::Unauthorized {}
     );
     let mut slot0 = SLOT0.load(deps.storage)?;
@@ -1476,6 +1491,31 @@ fn increase_observation_cardinality_next(
             "observation_cardinality_next",
             slot0.observation_cardinality_next.to_string(),
         ))
+}
+
+fn validate_concentrated_fee_and_spacing(
+    fee_tier_bps: u64,
+    tick_spacing: u64,
+) -> Result<(), ContractError> {
+    let expected_tick_spacing = match fee_tier_bps {
+        100 => 1,
+        500 => 10,
+        3_000 => 60,
+        10_000 => 200,
+        _ => return Err(ContractError::new("Invalid concentrated fee tier")),
+    };
+
+    ensure!(
+        tick_spacing == expected_tick_spacing,
+        ContractError::new(
+            format!(
+                "Invalid tick spacing {} for fee tier {}. Expected {}",
+                tick_spacing, fee_tier_bps, expected_tick_spacing
+            )
+            .as_str()
+        )
+    );
+    Ok(())
 }
 
 fn query_slot0(deps: Deps) -> Result<Slot0Response, ContractError> {
@@ -1656,7 +1696,6 @@ mod tests {
             },
             last_updated: 0,
             total_lp_tokens: Uint128::zero(),
-            admin: Addr::unchecked("admin"),
         };
         STATE
             .save(deps.as_mut().storage, &state)

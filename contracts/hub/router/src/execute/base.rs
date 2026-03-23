@@ -7,8 +7,11 @@ use euclid_ibc::{
     },
 };
 
-use crate::state::{LOCKED_CHAINS, RELAYER_CONTRACT};
+use crate::state::{
+    CHAIN_TIMEOUT_SECONDS, DEFAULT_RELEASE_FEE, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT,
+};
 use euclid::{
+    admin,
     chain::{Chain, ChainUid, CosmosChain, EvmChain},
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -22,27 +25,34 @@ use euclid::{
 
 use crate::{
     ibc::receive::reusable_internal_call,
-    state::{CHAIN_UID_TO_CHAIN, META_TRANSACTION_CONTRACT, RELEASE_FEES, STATE},
+    state::{ADMIN, CHAIN_UID_TO_CHAIN, META_TRANSACTION_CONTRACT, RELEASE_FEES, STATE},
 };
 
 pub fn execute_manage_router_state(
     deps: DepsMut,
+    env: Env,
     info: MessageInfo,
     msg: ManageRouterState,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
+    let mut admins = ADMIN.load(deps.storage)?;
     match msg {
-        ManageRouterState::Admin { admin } => {
-            state.admin = admin;
-            STATE.save(deps.storage, &state)?;
-            Ok(Response::new().add_attribute("method", "update_admin"))
+        ManageRouterState::Admins { admin_type, admin } => {
+            let (updated_admins, response) =
+                admin::update_admin(&admins, &deps, &env, &info.sender, admin, admin_type)?;
+            admins = updated_admins;
+            ADMIN.save(deps.storage, &admins)?;
+            Ok(response)
         }
         ManageRouterState::Vlp {
             vlp_code_id,
             stable_vlp_code_id,
             concentrated_vlp_code_id,
         } => {
+            ensure!(
+                info.sender == admins.migration_admin,
+                ContractError::Unauthorized {}
+            );
             state.constant_product_vlp_code_id =
                 vlp_code_id.unwrap_or(state.constant_product_vlp_code_id);
             state.stable_vlp_code_id = stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id);
@@ -52,11 +62,21 @@ pub fn execute_manage_router_state(
             Ok(Response::new().add_attribute("method", "update_vlp_code_id"))
         }
         ManageRouterState::LockState { locked } => {
+            ensure!(
+                info.sender == admins.general_admin,
+                ContractError::Unauthorized {}
+            );
             state.locked = locked;
             STATE.save(deps.storage, &state)?;
-            Ok(Response::new().add_attribute("method", "update_lock_state"))
+            Ok(Response::new()
+                .add_attribute("method", "update_lock_state")
+                .add_attribute("locked", locked.to_string()))
         }
         ManageRouterState::RelayerContract { relayer_contract } => {
+            ensure!(
+                info.sender == admins.general_admin,
+                ContractError::Unauthorized {}
+            );
             let relayer_contract = deps.api.addr_validate(relayer_contract.as_str())?;
             RELAYER_CONTRACT.save(deps.storage, &relayer_contract)?;
             Ok(Response::new().add_attribute("method", "update_relayer_contract"))
@@ -64,30 +84,97 @@ pub fn execute_manage_router_state(
         ManageRouterState::MetaTransactionContract {
             meta_transaction_contract,
         } => {
+            ensure!(
+                info.sender == admins.general_admin,
+                ContractError::Unauthorized {}
+            );
             let meta_transaction_contract =
                 deps.api.addr_validate(meta_transaction_contract.as_str())?;
             META_TRANSACTION_CONTRACT.save(deps.storage, &meta_transaction_contract)?;
-            Ok(Response::new().add_attribute("method", "update_meta_transaction_contract"))
+            Ok(Response::new()
+                .add_attribute("method", "update_meta_transaction_contract")
+                .add_attribute(
+                    "meta_transaction_contract",
+                    meta_transaction_contract.to_string(),
+                ))
+        }
+        ManageRouterState::UpdateFeeState {
+            release_fee_recipient,
+            default_fee_recipient,
+        } => {
+            ensure!(
+                info.sender == admins.fee_admin,
+                ContractError::Unauthorized {}
+            );
+            let mut fee_state = FEE_STATE.load(deps.storage)?;
+            if let Some(release_fee_recipient) = release_fee_recipient {
+                fee_state.release_fee_recipient = release_fee_recipient;
+            }
+            if let Some(default_fee_recipient) = default_fee_recipient {
+                fee_state.default_fee_recipient = default_fee_recipient;
+            }
+            FEE_STATE.save(deps.storage, &fee_state)?;
+            Ok(Response::new()
+                .add_attribute("method", "update_fee_state")
+                .add_attribute(
+                    "release_fee_recipient",
+                    fee_state.release_fee_recipient.to_string(),
+                )
+                .add_attribute(
+                    "default_fee_recipient",
+                    fee_state.default_fee_recipient.to_string(),
+                ))
         }
         ManageRouterState::UpdateReleaseFee {
             token,
             chain_uid,
             release_fee,
         } => {
-            RELEASE_FEES.save(deps.storage, (token, chain_uid), &release_fee)?;
-            Ok(Response::new().add_attribute("method", "update_release_fee"))
+            ensure!(
+                info.sender == admins.fee_admin,
+                ContractError::Unauthorized {}
+            );
+            RELEASE_FEES.save(
+                deps.storage,
+                (token.clone(), chain_uid.clone()),
+                &release_fee,
+            )?;
+            Ok(Response::new()
+                .add_attribute("method", "update_release_fee")
+                .add_attribute("token", token.to_string())
+                .add_attribute("chain_uid", chain_uid.to_string())
+                .add_attribute("release_fee", release_fee.to_string()))
+        }
+        ManageRouterState::UpdateDefaultReleaseFee {
+            default_release_fee,
+        } => {
+            DEFAULT_RELEASE_FEE.save(deps.storage, &default_release_fee)?;
+            Ok(Response::new()
+                .add_attribute("method", "update_default_release_fee")
+                .add_attribute("default_release_fee", default_release_fee.to_string()))
         }
         ManageRouterState::LockChain { chain } => {
+            ensure!(
+                info.sender == admins.general_admin,
+                ContractError::Unauthorized {}
+            );
             let mut locked_chains = LOCKED_CHAINS.load(deps.storage)?;
             ensure!(
                 !locked_chains.contains(&chain),
                 ContractError::new("Chain already locked")
             );
-            locked_chains.push(chain);
+            locked_chains.push(chain.clone());
             LOCKED_CHAINS.save(deps.storage, &locked_chains)?;
-            Ok(Response::new().add_attribute("method", "lock_chain"))
+            Ok(Response::new()
+                .add_attribute("method", "lock_chain")
+                .add_attribute("chain", chain.to_string())
+                .add_attribute("locked", "true"))
         }
         ManageRouterState::UnlockChain { chain } => {
+            ensure!(
+                info.sender == admins.general_admin,
+                ContractError::Unauthorized {}
+            );
             let mut locked_chains = LOCKED_CHAINS.load(deps.storage)?;
             ensure!(
                 locked_chains.contains(&chain),
@@ -95,7 +182,17 @@ pub fn execute_manage_router_state(
             );
             locked_chains.retain(|x| x != &chain);
             LOCKED_CHAINS.save(deps.storage, &locked_chains)?;
-            Ok(Response::new().add_attribute("method", "unlock_chain"))
+            Ok(Response::new()
+                .add_attribute("method", "unlock_chain")
+                .add_attribute("chain", chain.to_string())
+                .add_attribute("locked", "false"))
+        }
+        ManageRouterState::UpdateChainTimeout { chain_uid, timeout } => {
+            CHAIN_TIMEOUT_SECONDS.save(deps.storage, chain_uid.clone(), &timeout)?;
+            Ok(Response::new()
+                .add_attribute("method", "update_chain_timeout")
+                .add_attribute("chain_uid", chain_uid.to_string())
+                .add_attribute("timeout", timeout.to_string()))
         }
     }
 }
@@ -107,6 +204,12 @@ pub fn execute_register_factory(
     chain_uid: ChainUid,
     chain_info: RegisterFactoryChainType,
 ) -> Result<Response, ContractError> {
+    let admins = ADMIN.load(deps.storage)?;
+    ensure!(
+        info.sender == admins.general_admin,
+        ContractError::Unauthorized {}
+    );
+
     let chain_uid = chain_uid.validate()?.to_owned();
     ensure!(
         !CHAIN_UID_TO_CHAIN.has(deps.storage, chain_uid.clone()),
@@ -122,9 +225,6 @@ pub fn execute_register_factory(
         chain_uid != vsl_chain_uid,
         ContractError::new("Cannot use VSL chain uid")
     );
-
-    let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.admin, ContractError::Unauthorized {});
 
     let response = Response::new()
         .add_event(tx_event(

@@ -6,8 +6,8 @@ use euclid::{
     error::ContractError,
     msgs::{
         router::{
-            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse, EscrowResponse,
-            PoolKeyVlpResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
+            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
+            EscrowResponse, PoolKeyVlpResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
             QueryTokenDenomsResponse, ReleaseFee, ReleaseFeesQueryResponse, SimulateSwapResponse,
             StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
         },
@@ -19,15 +19,16 @@ use euclid::{
 };
 
 use crate::state::{
-    map_key_to_pool_parts, pool_key_to_map_key, CHAIN_UID_TO_CHAIN, CONCENTRATED_VLPS,
-    ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS,
-    VIRTUAL_BALANCE_CONTRACT, VLPS,
+    map_key_to_pool_parts, pool_key_to_map_key, ADMIN, CHAIN_UID_TO_CHAIN, CONCENTRATED_VLPS,
+    ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
+    VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let admins = ADMIN.load(deps.storage)?;
     Ok(to_json_binary(&StateResponse {
-        admin: state.admin,
+        admins,
         constant_product_vlp_code_id: state.constant_product_vlp_code_id,
         stable_vlp_code_id: state.stable_vlp_code_id,
         concentrated_vlp_code_id: state.concentrated_vlp_code_id,
@@ -68,9 +69,8 @@ pub fn query_all_vlps(
         .range(deps.storage, None, None, Order::Ascending)
         .map(|v| {
             let v = v?;
-            let (token_1, token_2, _, _) = map_key_to_pool_parts(&v.0).ok_or(
-                ContractError::new("invalid concentrated pool key in state"),
-            )?;
+            let (token_1, token_2, _, _) = map_key_to_pool_parts(&v.0)
+                .ok_or(ContractError::new("invalid concentrated pool key in state"))?;
             Ok(VlpResponse {
                 vlp: v.1.to_string(),
                 token_1: Token::create(token_1)?,
@@ -195,9 +195,9 @@ pub fn validate_swap_pairs(
                 );
 
                 let key = pool_key_to_map_key(pool_key);
-                CONCENTRATED_VLPS
-                    .load(deps.storage, key)
-                    .map_err(|_| ContractError::new("concentrated pool for provided pool_key is not registered"))?
+                CONCENTRATED_VLPS.load(deps.storage, key).map_err(|_| {
+                    ContractError::new("concentrated pool for provided pool_key is not registered")
+                })?
             } else {
                 VLPS.load(deps.storage, pair.get_tupple())?
             };

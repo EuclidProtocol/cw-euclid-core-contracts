@@ -1,15 +1,20 @@
 use cosmwasm_std::{Deps, Order};
-use euclid::error::ContractError;
+use euclid::{admin::EuclidAdmin, error::ContractError};
 use relayer::{msgs::State, ValidatorsResponse, ValidatorsResponseItem};
 
-use crate::state::{NONCES, STATE, VALIDATORS};
+use crate::state::{ADMIN, NONCES, STATE, VALIDATORS};
 
 pub fn get_state(deps: &Deps) -> Result<State, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(state)
 }
 
-pub fn nonce_relayed(deps: &Deps, nonce: String) -> Result<bool, ContractError> {
+pub fn get_admin(deps: &Deps) -> Result<EuclidAdmin, ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    Ok(admin)
+}
+
+pub fn get_nonce_relayed(deps: &Deps, nonce: String) -> Result<bool, ContractError> {
     Ok(NONCES.has(deps.storage, nonce))
 }
 

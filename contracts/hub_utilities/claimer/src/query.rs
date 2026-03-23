@@ -1,15 +1,20 @@
-use cosmwasm_std::{Binary, Deps, Order};
+use cosmwasm_std::{Addr, Binary, Deps, Order};
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::claimer::msg::{Claim, State},
 };
 
-use crate::state::{CLAIMS, STATE};
+use crate::state::{ADMIN, CLAIMS, STATE};
 
 pub fn get_state(deps: &Deps) -> Result<State, ContractError> {
     let state = STATE.load(deps.storage)?;
     Ok(state)
+}
+
+pub fn get_admin(deps: &Deps) -> Result<Addr, ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    Ok(admin)
 }
 
 pub fn get_claims_by_sender(

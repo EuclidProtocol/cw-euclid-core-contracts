@@ -1,4 +1,7 @@
-use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128};
+use cosmwasm_std::{
+    ensure, to_json_binary, DepsMut, Env, MessageInfo, QueryRequest, Response, SubMsg, Uint128,
+    WasmQuery,
+};
 use cw20::Logo;
 use euclid::{
     cross_chain_user::CrossChainUser,
@@ -9,6 +12,7 @@ use euclid::{
     msgs::{
         cross_chain_config::CrossChainConfig,
         escrow::AllowedTokenResponse,
+        position_token::TokenInfoResponse,
         vlp::base::{PoolConfig, PoolType},
     },
     token::{Pair, PairWithDenomAndAmount, TokenType},
@@ -19,8 +23,8 @@ use euclid_ibc::router_ibc::{
     RouterCrossChainConcentratedCollectFeesExecuteMsg,
     RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
     RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
-    RouterCrossChainConcentratedRequestPoolCreationExecuteMsg,
-    RouterCrossChainExecuteMsg, RouterCrossChainRemoveLiquidityExecuteMsg,
+    RouterCrossChainConcentratedRequestPoolCreationExecuteMsg, RouterCrossChainExecuteMsg,
+    RouterCrossChainRemoveLiquidityExecuteMsg,
 };
 
 use crate::{
@@ -28,13 +32,76 @@ use crate::{
     state::{
         pool_key_to_map_key, ConcentratedAddLiquidityRequest, ConcentratedCollectFeesRequest,
         ConcentratedCollectProtocolFeesRequest, ConcentratedPoolCreateRequest,
-        ConcentratedRemoveLiquidityRequest, PAIR_TO_VLP, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA,
-        PoolCreateRequest, PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
+        ConcentratedRemoveLiquidityRequest, PoolCreateRequest, ADMIN, PAIR_TO_VLP,
+        PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
-        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA,
+        POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
+
+/// Validates tokens for pool creation: checks escrow registration, collects fund
+/// transfers, and ensures at least one token is already registered.
+fn validate_pool_creation_tokens(
+    deps: &DepsMut,
+    env: &Env,
+    pair_with_denom_and_amount: &PairWithDenomAndAmount,
+    sender_address: &str,
+    fund_manager: &mut FundManager,
+) -> Result<Vec<SubMsg>, ContractError> {
+    let mut msgs: Vec<SubMsg> = Vec::new();
+    let mut one_token_already_exists = false;
+
+    let tokens = pair_with_denom_and_amount.get_vec_token_info();
+    for token in tokens {
+        token.token.validate()?;
+
+        if !token.token_type.is_voucher() {
+            match token.token_type.clone() {
+                TokenType::Native { denom } => {
+                    fund_manager.use_fund(token.amount, &denom)?;
+                }
+                TokenType::Smart { .. } => {
+                    let msg = token.token_type.create_transfer_msg(
+                        token.amount,
+                        env.contract.address.clone().to_string(),
+                        Some(sender_address.to_string()),
+                        None,
+                    )?;
+                    msgs.push(SubMsg::new(msg));
+                }
+                TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
+            }
+            let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
+            if let Some(escrow_address) = escrow_address {
+                let token_allowed_query_msg = euclid::msgs::escrow::QueryMsg::TokenAllowed {
+                    denom: token.clone().token_type,
+                };
+                let token_allowed: AllowedTokenResponse = deps
+                    .querier
+                    .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+
+                ensure!(
+                    token_allowed.allowed,
+                    ContractError::UnsupportedDenomination {}
+                );
+                one_token_already_exists = true;
+            }
+        } else {
+            one_token_already_exists = true;
+        }
+    }
+
+    ensure!(
+        one_token_already_exists,
+        ContractError::new(
+            "Cannot create pool two new tokens. Atleast one token must already be registered."
+        )
+    );
+
+    Ok(msgs)
+}
 
 fn validate_concentrated_fee_and_spacing(
     fee_tier_bps: u64,
@@ -88,71 +155,15 @@ pub fn execute_request_pool_creation(
     let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps, &env, &sender)?;
 
-    let mut res = Response::new();
-
-    // Changes factory state without sending liquidity request to router. That will be handled in Pool creation request's reply in router
-    // Add liquidity Section //
-    // Prepare msg vector
-    let mut msgs: Vec<SubMsg> = Vec::new();
-
     let mut fund_manager = FundManager::new(&info.funds);
-    let mut one_token_already_exists = false;
-    // Do an early check for tokens escrow so that if it exists, it should allow the denom that we are sending
-    let tokens = pair_with_denom_and_amount.get_vec_token_info();
-
-    for token in tokens {
-        // Validate token id
-        token.token.validate()?;
-
-        // Vouchers are not escrowed
-        if !token.token_type.is_voucher() {
-            match token.token_type.clone() {
-                TokenType::Native { denom } => {
-                    // Use funds, if its not present this will throw error.
-                    // This will make sure enough funds are provided with the message
-                    fund_manager.use_fund(token.amount, &denom)?;
-                }
-                TokenType::Smart { .. } => {
-                    let msg = token.token_type.create_transfer_msg(
-                        token.amount,
-                        env.contract.address.clone().to_string(),
-                        Some(sender.address.clone()),
-                        None,
-                    )?;
-                    msgs.push(SubMsg::new(msg));
-                }
-                TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
-            }
-            // Ensure valid denom if token already exists
-            let escrow_address = TOKEN_TO_ESCROW.may_load(deps.storage, token.clone().token)?;
-            if let Some(escrow_address) = escrow_address {
-                let token_allowed_query_msg = euclid::msgs::escrow::QueryMsg::TokenAllowed {
-                    denom: token.clone().token_type,
-                };
-                let token_allowed: AllowedTokenResponse = deps
-                    .querier
-                    .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
-
-                ensure!(
-                    token_allowed.allowed,
-                    ContractError::UnsupportedDenomination {}
-                );
-                one_token_already_exists = true;
-            }
-        } else {
-            // If its a voucher token, then we can assume that one token already exists
-            one_token_already_exists = true;
-        }
-    }
-
-    ensure!(
-        one_token_already_exists,
-        ContractError::new(
-            "Cannot create pool two new tokens. Atleast one token must already be registered."
-        )
-    );
-
-    res = res.add_submessages(msgs);
+    let msgs = validate_pool_creation_tokens(
+        deps,
+        &env,
+        &pair_with_denom_and_amount,
+        &sender.address,
+        &mut fund_manager,
+    )?;
+    let res = Response::new().add_submessages(msgs);
 
     let pair = pair_with_denom_and_amount.get_pair()?;
     // Ensure tokens in pair are different
@@ -473,6 +484,16 @@ pub fn execute_request_concentrated_pool_creation(
     let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps, &env, &sender)?;
 
+    let mut fund_manager = FundManager::new(&info.funds);
+    let msgs = validate_pool_creation_tokens(
+        deps,
+        &env,
+        &pair_with_denom_and_amount,
+        &sender.address,
+        &mut fund_manager,
+    )?;
+    let res = Response::new().add_submessages(msgs);
+
     let pool_key = euclid::msgs::vlp::base::PoolKey {
         pair: pair.clone(),
         pool_type: euclid::msgs::vlp::base::PoolType::Concentrated {
@@ -497,8 +518,11 @@ pub fn execute_request_concentrated_pool_creation(
         pool_key: pool_key.clone(),
     };
 
-    PENDING_CONCENTRATED_POOL_REQUESTS
-        .save(deps.storage, (info.sender.clone(), tx_id.clone()), &req)?;
+    PENDING_CONCENTRATED_POOL_REQUESTS.save(
+        deps.storage,
+        (info.sender.clone(), tx_id.clone()),
+        &req,
+    )?;
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
 
@@ -522,7 +546,7 @@ pub fn execute_request_concentrated_pool_creation(
         cross_chain_config.ack_response,
     )?;
 
-    Ok(Response::new()
+    Ok(res
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
@@ -696,19 +720,23 @@ pub fn remove_concentrated_liquidity_request(
     let tx_id = generate_tx(deps, &env, &sender)?;
 
     ensure!(
-        !PENDING_CONCENTRATED_REMOVE_LIQUIDITY.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
+        !PENDING_CONCENTRATED_REMOVE_LIQUIDITY
+            .has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-    ensure!(
-        !lp_allocation.is_zero(),
-        ContractError::ZeroAssetAmount {}
-    );
+    ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
 
     let position_meta = POSITION_ID_TO_METADATA
         .may_load(deps.storage, position_id.u128())?
         .ok_or(ContractError::new("Position not found"))?;
-    ensure!(position_meta.owner == info.sender, ContractError::Unauthorized {});
-    ensure!(position_meta.pool_key == pool_key, ContractError::Unauthorized {});
+    ensure!(
+        position_meta.owner == info.sender,
+        ContractError::Unauthorized {}
+    );
+    ensure!(
+        position_meta.pool_key == pool_key,
+        ContractError::Unauthorized {}
+    );
 
     let req = ConcentratedRemoveLiquidityRequest {
         tx_id: tx_id.clone(),
@@ -718,8 +746,20 @@ pub fn remove_concentrated_liquidity_request(
         lp_allocation,
     };
 
-    PENDING_CONCENTRATED_REMOVE_LIQUIDITY
-        .save(deps.storage, (sender_addr.clone(), tx_id.clone()), &req)?;
+    // let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+
+    // let query: TokenInfoResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+    //     contract_addr: position_token_contract.into_string(),
+    //     msg: to_json_binary(&euclid::msgs::position_token::QueryMsg::TokenInfo {
+    //         token_id: pool_key.pair.token_1.to_string(),
+    //     })?,
+    // }))?;
+
+    PENDING_CONCENTRATED_REMOVE_LIQUIDITY.save(
+        deps.storage,
+        (sender_addr.clone(), tx_id.clone()),
+        &req,
+    )?;
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
     let remove_msg = RouterCrossChainExecuteMsg::RemoveConcentratedLiquidity(
@@ -780,13 +820,16 @@ pub fn collect_concentrated_fees_request(
         ContractError::PoolDoesNotExist {}
     );
 
-    if let Some(position_meta) = POSITION_ID_TO_METADATA.may_load(deps.storage, position_id.u128())? {
-        ensure!(position_meta.owner == info.sender, ContractError::Unauthorized {});
-        ensure!(
-            position_meta.pool_key == pool_key,
-            ContractError::new("Pool key mismatch")
-        );
-    }
+    let position_meta = POSITION_ID_TO_METADATA.load(deps.storage, position_id.u128())?;
+
+    ensure!(
+        position_meta.owner == info.sender,
+        ContractError::Unauthorized {}
+    );
+    ensure!(
+        position_meta.pool_key == pool_key,
+        ContractError::new("Pool key mismatch")
+    );
 
     let req = ConcentratedCollectFeesRequest {
         tx_id: tx_id.clone(),
@@ -795,7 +838,11 @@ pub fn collect_concentrated_fees_request(
         position_id: position_id.u128(),
         recipient: recipient.clone(),
     };
-    PENDING_CONCENTRATED_COLLECT_FEES.save(deps.storage, (sender_addr.clone(), tx_id.clone()), &req)?;
+    PENDING_CONCENTRATED_COLLECT_FEES.save(
+        deps.storage,
+        (sender_addr.clone(), tx_id.clone()),
+        &req,
+    )?;
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
     let collect_msg = RouterCrossChainExecuteMsg::CollectConcentratedFees(
@@ -842,8 +889,11 @@ pub fn collect_concentrated_protocol_fees_request(
     );
 
     let state = STATE.load(deps.storage)?;
-    let admin = deps.api.addr_validate(&state.admin)?;
-    ensure!(info.sender == admin, ContractError::Unauthorized {});
+    let admins = ADMIN.load(deps.storage)?;
+    ensure!(
+        info.sender == admins.fee_admin,
+        ContractError::Unauthorized {}
+    );
 
     let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let sender_addr = deps.api.addr_validate(&sender.address)?;

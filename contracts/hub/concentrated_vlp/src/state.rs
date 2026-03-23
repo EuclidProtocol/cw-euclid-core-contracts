@@ -1,5 +1,8 @@
+use cosmwasm_std::Order;
 use cosmwasm_std::{Uint128, Uint256};
 use cw_storage_plus::{Item, Map};
+use euclid::admin::EuclidAdmin;
+use euclid::{chain::ChainUid, error::ContractError};
 use euclid::{
     cross_chain_user::CrossChainUser,
     msgs::vlp::{
@@ -8,10 +11,10 @@ use euclid::{
     },
     token::Token,
 };
-use euclid::{chain::ChainUid, error::ContractError};
-use cosmwasm_std::Order;
 
 pub const STATE: Item<State> = Item::new("state");
+
+pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 pub const CHAIN_LP_TOKENS: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
 
@@ -139,9 +142,7 @@ pub fn initialize_position_namespace_if_missing(
     Ok(())
 }
 
-pub fn next_position_id(
-    storage: &mut dyn cosmwasm_std::Storage,
-) -> Result<Uint128, ContractError> {
+pub fn next_position_id(storage: &mut dyn cosmwasm_std::Storage) -> Result<Uint128, ContractError> {
     let prefix = POSITION_ID_PREFIX
         .may_load(storage)?
         .ok_or_else(|| ContractError::new("position id prefix not initialized"))?;

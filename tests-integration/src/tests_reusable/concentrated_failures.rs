@@ -1,17 +1,21 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Event, Uint128};
 use cw_orch::prelude::*;
+use euclid::events::EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::swap::NextSwapPair;
 use euclid::token::{Token, TokenType, TokenWithDenom};
+use euclid_ibc::ack::make_ack_fail;
 use rstest::rstest;
 
-use crate::helpers::factory::{add_concentrated_liquidity, create_concentrated_pool, faucet, get_position_token};
+use crate::helpers::factory::{
+    add_concentrated_liquidity, create_concentrated_pool, faucet, get_position_token,
+};
 use crate::helpers::relayer::{
-    extract_ack_packet_events, relay_factory_ack_packet, relay_factory_send_packet,
-    relay_factory_router_factory,
+    extract_ack_packet_events, extract_send_packet_events, relay_factory_ack_packet,
+    relay_factory_router_factory, relay_factory_send_packet,
 };
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
@@ -54,11 +58,16 @@ fn test_no_ack_does_not_finalize_position() {
     let _ack_events = relay_factory_send_packet(tx.events, &router).unwrap();
 
     let pools = factory.get_all_concentrated_pools().unwrap().pools;
-    assert!(pools.is_empty(), "pool should not finalize on factory without ack");
+    assert!(
+        pools.is_empty(),
+        "pool should not finalize on factory without ack"
+    );
 
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
+        .query::<euclid::msgs::position_token::TokensResponse>(
+            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+        )
         .unwrap()
         .tokens;
     assert!(
@@ -69,22 +78,10 @@ fn test_no_ack_does_not_finalize_position() {
 
 #[test]
 fn test_ack_error_rolls_back_pending() {
-    let (_interchain, factory, router, _token_a, _token_b) =
+    let (_interchain, factory, _router, token_a, token_b) =
         setup_concentrated_env(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC);
 
-    let token_x = TokenWithDenom {
-        token: Token::create("conc.unregistered.x".to_string()).unwrap(),
-        token_type: TokenType::Native {
-            denom: "conc.unregistered.x".to_string(),
-        },
-    };
-    let token_y = TokenWithDenom {
-        token: Token::create("conc.unregistered.y".to_string()).unwrap(),
-        token_type: TokenType::Native {
-            denom: "conc.unregistered.y".to_string(),
-        },
-    };
-    let pair = pair_with_amounts(&token_x, &token_y, 10_000, 10_000);
+    let pair = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
 
     let mut funds = vec![];
     for token in pair.get_vec_token_info() {
@@ -114,8 +111,33 @@ fn test_ack_error_rolls_back_pending() {
         )
         .unwrap();
 
+    // Construct synthetic error ack events instead of relaying to the router,
+    // so we can test the factory's error-ack rollback path directly.
+    let send_packets = extract_send_packet_events(&tx.events);
+    assert!(
+        !send_packets.is_empty(),
+        "expected at least one send packet"
+    );
+
+    let error_ack = make_ack_fail("simulated router error".to_string()).unwrap();
+    let ack_event_type = format!("wasm-{}", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT);
+    let mut fake_ack_events = vec![];
+    for packet in &send_packets {
+        // event[0]: original msg + routing info (ports swapped for response direction)
+        fake_ack_events.push(
+            Event::new(&ack_event_type)
+                .add_attribute("msg", packet.msg.to_base64())
+                .add_attribute("sequence", packet.sequence.to_string())
+                .add_attribute("source_port", &packet.destination_port)
+                .add_attribute("destination_port", &packet.source_port),
+        );
+        // event[1]: the error ack
+        fake_ack_events
+            .push(Event::new(&ack_event_type).add_attribute("ack", error_ack.to_base64()));
+    }
+
     let chain_uid = factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx.events, &factory, &router, &chain_uid).unwrap();
+    relay_factory_ack_packet(&factory, fake_ack_events, &chain_uid).unwrap();
 
     let pools = factory.get_all_concentrated_pools().unwrap().pools;
     assert!(
@@ -125,10 +147,66 @@ fn test_ack_error_rolls_back_pending() {
 
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
+        .query::<euclid::msgs::position_token::TokensResponse>(
+            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+        )
         .unwrap()
         .tokens;
     assert!(tokens.is_empty(), "error ack must not mint position NFT");
+}
+
+#[test]
+fn test_two_unregistered_tokens_rejected() {
+    let (_interchain, factory, _router, _token_a, _token_b) =
+        setup_concentrated_env(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC);
+
+    let token_x = TokenWithDenom {
+        token: Token::create("conc.unregistered.x".to_string()).unwrap(),
+        token_type: TokenType::Native {
+            denom: "conc.unregistered.x".to_string(),
+        },
+    };
+    let token_y = TokenWithDenom {
+        token: Token::create("conc.unregistered.y".to_string()).unwrap(),
+        token_type: TokenType::Native {
+            denom: "conc.unregistered.y".to_string(),
+        },
+    };
+    let pair = pair_with_amounts(&token_x, &token_y, 10_000, 10_000);
+
+    let mut funds = vec![];
+    for token in pair.get_vec_token_info() {
+        faucet(
+            factory.environment(),
+            factory.environment().sender.as_str(),
+            token.amount.u128(),
+            token.token_type,
+            &mut funds,
+        );
+    }
+
+    let err = factory
+        .execute(
+            &euclid::msgs::factory::ExecuteMsg::RequestConcentratedPoolCreation {
+                pair_with_denom_and_amount: pair,
+                fee_tier_bps: 500,
+                tick_spacing: 10,
+                lp_token_name: "LPNAME".to_string(),
+                lp_token_symbol: "LPSYMBOL".to_string(),
+                lp_token_decimal: 6,
+                slippage_tolerance_bps: 100,
+                lp_token_marketing: None,
+                cross_chain_config: CrossChainConfig::default(),
+            },
+            &funds,
+        )
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        !err.is_empty(),
+        "expected concentrated pool creation with two unregistered tokens to fail",
+    );
 }
 
 #[rstest]
@@ -169,13 +247,6 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
     let ack_events = relay_factory_send_packet(tx.events, &router).unwrap();
     relay_factory_ack_packet(&factory, ack_events.clone(), &chain_uid).unwrap();
 
-    let position_token = get_position_token(&factory).unwrap();
-    let tokens_after_first = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
-        .unwrap()
-        .tokens;
-    let pools_after_first = factory.get_all_concentrated_pools().unwrap().pools;
-
     let replay_packets = extract_ack_packet_events(&ack_events);
     let relayer = factory.get_state().unwrap().relayer_contract;
     factory.set_sender(&relayer);
@@ -191,17 +262,8 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
                 },
                 &[],
             )
-            .unwrap();
+            .unwrap_err();
     }
-
-    let tokens_after_second = position_token
-        .query::<position_token::msg::TokensResponse>(&position_token::msg::QueryMsg::AllTokens {})
-        .unwrap()
-        .tokens;
-    let pools_after_second = factory.get_all_concentrated_pools().unwrap().pools;
-
-    assert_eq!(tokens_after_first, tokens_after_second);
-    assert_eq!(pools_after_first, pools_after_second);
 }
 
 #[rstest]
@@ -233,11 +295,10 @@ fn test_add_liquidity_invalid_tick_range_rejected(
         "expected add liquidity to fail when lower_tick_index == upper_tick_index",
     );
 
-    let err_reversed = add_concentrated_liquidity(
-        &factory, &router, pair, pool_key, 120, -120, None, 100,
-    )
-    .unwrap_err()
-    .to_string();
+    let err_reversed =
+        add_concentrated_liquidity(&factory, &router, pair, pool_key, 120, -120, None, 100)
+            .unwrap_err()
+            .to_string();
     assert!(
         !err_reversed.is_empty(),
         "expected add liquidity to fail when lower_tick_index > upper_tick_index",

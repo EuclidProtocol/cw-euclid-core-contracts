@@ -1,4 +1,5 @@
 use crate::{
+    admin::{AdminType, EuclidAdmin},
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     fee::{Fee, TotalFees},
@@ -18,13 +19,14 @@ pub struct InstantiateMsg {
     pub pair: Pair,
     pub fee: Fee,
     pub execute: Option<ExecuteMsg>,
-    pub admin: Addr,
+    pub admin: EuclidAdmin,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    UpdateState {
-        admin: Option<Addr>,
+    UpdateAdmin {
+        admin: String,
+        admin_type: AdminType,
     },
     UpdateFee {
         lp_fee_bps: Option<u64>,
@@ -43,6 +45,10 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(GetStateResponse)]
     State {},
+
+    #[returns(EuclidAdmin)]
+    GetAdmin {},
+
     // Query to simulate a swap for the asset
     #[returns(GetSwapQueryResponse)]
     SimulateSwap(VlpSimulateSwapMsg),
@@ -78,7 +84,6 @@ pub struct GetStateResponse {
     pub total_fees_collected: TotalFees,
     pub last_updated: u64,
     pub total_lp_tokens: Uint128,
-    pub admin: Addr,
     pub pool_config: PoolConfig,
 }
 

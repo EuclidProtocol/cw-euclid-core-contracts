@@ -32,7 +32,9 @@ const SUPPORTED_SOURCE_VERSIONS: [&str; 2] = ["0.0.1", "0.1.0"];
 pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
     let prev = get_contract_version(deps.storage)?;
     if prev.contract != CONTRACT_NAME {
-        return Err(ContractError::InvalidMigration { prev: prev.contract });
+        return Err(ContractError::InvalidMigration {
+            prev: prev.contract,
+        });
     }
 
     if let Some(expected_prev) = msg.expected_prev_version.as_ref() {
@@ -42,7 +44,9 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
     }
 
     let force_rebuild = msg.force_rebuild.unwrap_or(false);
-    let current_revision = MIGRATION_REVISION.may_load(deps.storage)?.unwrap_or_default();
+    let current_revision = MIGRATION_REVISION
+        .may_load(deps.storage)?
+        .unwrap_or_default();
     if current_revision >= TARGET_MIGRATION_REVISION && !force_rebuild {
         set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
         return Ok(Response::new()
@@ -77,7 +81,12 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
         .may_load(deps.storage, state.pair.token_2.clone())?
         .unwrap_or_default();
 
-    let mut slot0 = resolve_slot0(deps.storage, &msg.legacy_liquidity_mode, reserve_0, reserve_1)?;
+    let mut slot0 = resolve_slot0(
+        deps.storage,
+        &msg.legacy_liquidity_mode,
+        reserve_0,
+        reserve_1,
+    )?;
     slot0.tick = get_tick_at_sqrt_ratio(slot0.sqrt_price_x96).unwrap_or(0);
     slot0.observation_index = 0;
     slot0.observation_cardinality = 1;
@@ -91,7 +100,8 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
     let total_legacy_liquidity = positions.iter().try_fold(
         Uint128::zero(),
         |acc, (_, position)| -> Result<Uint128, ContractError> {
-            acc.checked_add(position.liquidity).map_err(ContractError::from)
+            acc.checked_add(position.liquidity)
+                .map_err(ContractError::from)
         },
     )?;
 
@@ -209,10 +219,10 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
         POSITIONS.save(deps.storage, position_id, &position)?;
     }
 
-    let principal_0_u128 =
-        Uint128::try_from(principal_0).map_err(|_| ContractError::new("principal token0 overflow"))?;
-    let principal_1_u128 =
-        Uint128::try_from(principal_1).map_err(|_| ContractError::new("principal token1 overflow"))?;
+    let principal_0_u128 = Uint128::try_from(principal_0)
+        .map_err(|_| ContractError::new("principal token0 overflow"))?;
+    let principal_1_u128 = Uint128::try_from(principal_1)
+        .map_err(|_| ContractError::new("principal token1 overflow"))?;
 
     if principal_0_u128 > reserve_0 || principal_1_u128 > reserve_1 {
         return Err(ContractError::new("implied principal exceeds reserves"));
@@ -338,7 +348,8 @@ fn validate_position(
     {
         return Err(ContractError::new("tick out of bounds"));
     }
-    if position.lower_tick_index % tick_spacing != 0 || position.upper_tick_index % tick_spacing != 0
+    if position.lower_tick_index % tick_spacing != 0
+        || position.upper_tick_index % tick_spacing != 0
     {
         return Err(ContractError::new("tick not aligned with spacing"));
     }
@@ -392,7 +403,11 @@ fn add_signed_liquidity(value: Uint128, delta: i128) -> Result<Uint128, Contract
     }
 }
 
-fn apply_tick_delta(tick_info: &mut TickInfo, liquidity_delta: i128, upper: bool) -> Result<(), ContractError> {
+fn apply_tick_delta(
+    tick_info: &mut TickInfo,
+    liquidity_delta: i128,
+    upper: bool,
+) -> Result<(), ContractError> {
     tick_info.liquidity_gross = add_signed_liquidity(tick_info.liquidity_gross, liquidity_delta)?;
     if upper {
         tick_info.liquidity_net = tick_info
