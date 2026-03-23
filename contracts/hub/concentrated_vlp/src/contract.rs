@@ -469,7 +469,12 @@ fn execute_add_concentrated_liquidity(
         return Err(ContractError::new("position tick range mismatch"));
     }
 
-    settle_position_fees(deps.storage, &mut position)?;
+    // Update ticks BEFORE settling fees — tick initialization sets
+    // fee_growth_outside, which affects the fee_growth_inside calculation.
+    // Settling first on a new position computes inside using non-existent
+    // ticks (default zeros), recording last=global. Then tick init sets
+    // lower.outside=global, making actual inside=0 while last=global.
+    // This matches Uniswap V3 ordering: Tick.update then Position.update.
     apply_liquidity_delta(
         deps.storage,
         lower_tick_index,
@@ -477,6 +482,7 @@ fn execute_add_concentrated_liquidity(
         i128::try_from(liquidity_delta.u128())
             .map_err(|_| ContractError::new("liquidity delta overflow"))?,
     )?;
+    settle_position_fees(deps.storage, &mut position)?;
 
     position.liquidity = position.liquidity.checked_add(liquidity_delta)?;
     POSITIONS.save(deps.storage, position_id.u128(), &position)?;
