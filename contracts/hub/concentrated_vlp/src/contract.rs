@@ -613,6 +613,21 @@ fn execute_remove_concentrated_liquidity(
         .liquidity
         .checked_sub(remove_liquidity_msg.liquidity_delta)?;
     let liquidity_after = position.liquidity;
+
+    // When fully removing liquidity, auto-collect any pending fees so the
+    // position can be deleted in a single transaction. Without this, users
+    // would need a separate collect_fees call to clear tokens_owed before
+    // the position is cleaned up from storage.
+    let (fee_0_collected, fee_1_collected) = if position.liquidity.is_zero() {
+        let f0 = position.tokens_owed_0;
+        let f1 = position.tokens_owed_1;
+        position.tokens_owed_0 = Uint128::zero();
+        position.tokens_owed_1 = Uint128::zero();
+        (f0, f1)
+    } else {
+        (Uint128::zero(), Uint128::zero())
+    };
+
     if position.liquidity.is_zero()
         && position.tokens_owed_0.is_zero()
         && position.tokens_owed_1.is_zero()
@@ -640,10 +655,13 @@ fn execute_remove_concentrated_liquidity(
         .checked_sub(remove_liquidity_msg.liquidity_delta)?;
     STATE.save(deps.storage, &state)?;
 
+    let total_0_out = amount_0_out.checked_add(fee_0_collected)?;
+    let total_1_out = amount_1_out.checked_add(fee_1_collected)?;
+
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
-    reserve_0 = reserve_0.checked_sub(amount_0_out)?;
-    reserve_1 = reserve_1.checked_sub(amount_1_out)?;
+    reserve_0 = reserve_0.checked_sub(total_0_out)?;
+    reserve_1 = reserve_1.checked_sub(total_1_out)?;
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
@@ -662,20 +680,20 @@ fn execute_remove_concentrated_liquidity(
     };
 
     let mut response = Response::new();
-    if !amount_0_out.is_zero() {
+    if !total_0_out.is_zero() {
         response = response.add_message(state.pair.token_1.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            amount_0_out,
+            total_0_out,
             None,
             remove_liquidity_msg.sender.clone(),
             None,
             None,
         )?);
     }
-    if !amount_1_out.is_zero() {
+    if !total_1_out.is_zero() {
         response = response.add_message(state.pair.token_2.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            amount_1_out,
+            total_1_out,
             None,
             remove_liquidity_msg.sender.clone(),
             None,
@@ -953,6 +971,7 @@ fn run_swap_simulation(
     let mut protocol_fee_total = Uint256::zero();
     let mut crossed_ticks: Vec<CrossedTickUpdate> = Vec::new();
     let protocol_cut_bps = state.fee.euclid_fee_bps.min(10_000);
+    let mut last_crossed_tick: Option<i64> = None;
 
     for _ in 0..MAX_SWAP_STEPS {
         if amount_remaining.is_zero() {
@@ -1066,13 +1085,25 @@ fn run_swap_simulation(
                     liquidity = add_signed_liquidity(liquidity, liq_net)?;
                 }
             }
+            last_crossed_tick = Some(target_tick);
             slot0.tick = if zero_for_one {
                 target_tick.saturating_sub(1)
             } else {
                 target_tick
             };
         } else {
-            slot0.tick = get_tick_at_sqrt_ratio(slot0.sqrt_price_x96)?;
+            let new_tick = get_tick_at_sqrt_ratio(slot0.sqrt_price_x96)?;
+            // After crossing tick T, slot0.tick is set to T-1 (zero_for_one) or T
+            // (!zero_for_one) and ACTIVE_LIQUIDITY is adjusted accordingly. If the
+            // next step barely moves the price, get_tick_at_sqrt_ratio can round
+            // back to T, creating a tick/liquidity desync where the position appears
+            // in-range but its liquidity isn't in ACTIVE_LIQUIDITY. Clamp against
+            // only the immediately preceding crossed tick to prevent this.
+            slot0.tick = match last_crossed_tick {
+                Some(crossed) if zero_for_one && new_tick == crossed => crossed - 1,
+                Some(crossed) if !zero_for_one && new_tick == crossed - 1 => crossed,
+                _ => new_tick,
+            };
         }
     }
 

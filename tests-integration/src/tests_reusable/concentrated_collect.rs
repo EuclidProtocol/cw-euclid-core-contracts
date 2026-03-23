@@ -8,15 +8,16 @@ use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::concentrated::msg::{
-    ExecuteMsg as ConcentratedExecuteMsg, ProtocolFeesResponse, QueryMsg as ConcentratedQueryMsg,
+    ExecuteMsg as ConcentratedExecuteMsg, PositionResponse, ProtocolFeesResponse,
+    QueryMsg as ConcentratedQueryMsg, Slot0Response,
 };
 use euclid::voucher::BalanceKey;
 use rstest::rstest;
 
 use crate::helpers::chains::{get_concentrated_vlp, get_virtual_balance};
 use crate::helpers::factory::{
-    collect_concentrated_fees, collect_concentrated_protocol_fees, create_concentrated_pool,
-    list_position_ids,
+    add_concentrated_liquidity, collect_concentrated_fees, collect_concentrated_protocol_fees,
+    create_concentrated_pool, list_position_ids, remove_concentrated_liquidity,
 };
 use crate::helpers::relayer::{
     extract_ack_packet_events, relay_factory_ack_packet, relay_factory_send_packet,
@@ -295,4 +296,79 @@ fn test_collect_missing_position_rejected() {
             &[],
         )
         .unwrap_err();
+}
+
+/// Regression: full removal should auto-collect pending fees and delete
+/// the position in a single transaction. Before the fix, users needed a
+/// separate collect_fees call to clear tokens_owed.
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+fn test_full_removal_auto_collects_fees(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+
+    let pair = pair_with_amounts(&token_a, &token_b, 50_000, 50_000);
+    let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
+
+    let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
+    let vlp = get_concentrated_vlp(router.environment(), &vlp_addr);
+
+    // Add a position
+    let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
+    let lower = ((slot0.tick - 100) / 10) * 10;
+    let upper = ((slot0.tick + 100) / 10) * 10;
+
+    let pair2 = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+    add_concentrated_liquidity(
+        &factory, &router, pair2, pool_key.clone(),
+        lower, upper, None, 10_000,
+    )
+    .expect("add should succeed");
+
+    let position_id = {
+        let ids = list_position_ids(&factory).unwrap();
+        Uint128::new(ids.last().unwrap().parse::<u128>().unwrap())
+    };
+    let pos = vlp
+        .query::<PositionResponse>(&ConcentratedQueryMsg::Position { position_id })
+        .unwrap();
+    let liquidity = pos.liquidity;
+    assert!(!liquidity.is_zero(), "position should have liquidity");
+
+    // Swap to accrue fees
+    execute_concentrated_swap(
+        &factory, &router, pool_key.clone(),
+        token_b.clone(), token_a.token.clone(), Uint128::new(10_000),
+    );
+    execute_concentrated_swap(
+        &factory, &router, pool_key.clone(),
+        token_a.clone(), token_b.token.clone(), Uint128::new(10_000),
+    );
+
+    // Verify fees have accrued (fee_growth > 0)
+    let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
+    assert!(
+        slot0.fee_growth_global_0_x128 > cosmwasm_std::Uint256::zero()
+            || slot0.fee_growth_global_1_x128 > cosmwasm_std::Uint256::zero(),
+        "fees should have accrued from swaps"
+    );
+
+    // Full removal — should auto-collect fees and delete position
+    remove_concentrated_liquidity(
+        &factory, &router, pool_key.clone(), position_id, liquidity,
+    )
+    .expect("full removal should succeed");
+
+    // Position should be fully deleted (not just zero liquidity)
+    let pos_result: Result<PositionResponse, _> =
+        vlp.query(&ConcentratedQueryMsg::Position { position_id });
+    assert!(
+        pos_result.is_err(),
+        "position should be deleted after full removal with auto-collect, \
+         but query succeeded with: {:?}",
+        pos_result.ok()
+    );
 }
