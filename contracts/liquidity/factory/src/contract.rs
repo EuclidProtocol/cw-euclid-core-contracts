@@ -89,10 +89,11 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
-    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
+    let admin = EuclidAdmin::default(info.sender.clone());
+    ADMIN.save(deps.storage, &admin)?;
 
     let init_position_token_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-        admin: Some(info.sender.into_string()),
+        admin: Some(admin.general_admin.to_string()),
         code_id: msg.position_token_code_id,
         msg: to_json_binary(&euclid::msgs::position_token::InstantiateMsg {
             name: "Euclid Concentrated Positions".to_string(),

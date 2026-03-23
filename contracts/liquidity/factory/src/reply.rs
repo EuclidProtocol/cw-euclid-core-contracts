@@ -93,9 +93,13 @@ pub fn on_position_token_instantiate_reply(
     }
 }
 
+#[named]
 pub fn on_lp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
