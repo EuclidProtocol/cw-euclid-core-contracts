@@ -547,13 +547,10 @@ mod tests {
         use super::*;
         use crate::stable_math::compute_d;
 
-        // CRITICAL-1: Overflow in d^3 computation for 24-decimal tokens
-        // With 24-decimal tokens, 1 token = 1e24 raw. Even 1 token per pool overflows.
-        // d ≈ 2e24, d_atomics = 2e42, d^3_atomics = 8e90 >> Uint256 max (1.158e77)
+        // CRITICAL-1 FIX VERIFICATION: 24-decimal pools now work with iterative d_product
+        // Previously panicked due to d.pow(3) overflow. Now uses D*D/pool_a * D/pool_b.
         #[test]
-        #[should_panic]
-        fn test_overflow_24_decimal_balanced_pools() {
-            // 1 token each at 24 decimals = 1e24 raw per pool
+        fn test_24_decimal_balanced_pools_now_works() {
             let one_token_24dec = Decimal256::from_ratio(
                 1_000_000_000_000_000_000_000_000u128, // 1e24
                 1u128,
@@ -562,69 +559,91 @@ mod tests {
                 100_000_000_000_000_000_000_000u128, // 0.1 token = 1e23
                 1u128,
             );
-            // This panics due to unchecked d.pow(3) overflow in compute_d
-            let _ = compute_stable_swap(&offer, &one_token_24dec, &one_token_24dec, Uint64::new(1000));
+            let result =
+                compute_stable_swap(&offer, &one_token_24dec, &one_token_24dec, Uint64::new(1000));
+            assert!(
+                result.is_ok(),
+                "24-decimal pools should now work after iterative d_product fix. Error: {:?}",
+                result.err()
+            );
+            let swap = result.unwrap();
+            // Return should be close to offer for balanced pools with high amp
+            assert!(
+                swap.return_amount > Uint128::zero(),
+                "Should return non-zero amount"
+            );
+            assert!(
+                swap.return_amount <= Uint128::new(100_000_000_000_000_000_000_000u128),
+                "Return should not exceed offer"
+            );
         }
 
-        // CRITICAL-1: Even 1e20 integer values overflow d^3
-        // d ≈ 2e20, d_atomics = 2e38, d^3_atomics = 8e78 > Uint256 max
+        // CRITICAL-1 FIX VERIFICATION: 1e20 pools now work
         #[test]
-        #[should_panic]
-        fn test_overflow_1e20_pools() {
+        fn test_1e20_pools_now_works() {
             let pool = Decimal256::from_ratio(100_000_000_000_000_000_000u128, 1u128); // 1e20
             let offer = Decimal256::from_ratio(1_000_000_000_000_000_000u128, 1u128); // 1e18
-            // Panics in compute_d line 93: d.pow(3)
-            let _ = compute_stable_swap(&offer, &pool, &pool, Uint64::new(1000));
+            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(1000));
+            assert!(
+                result.is_ok(),
+                "1e20 pools should now work. Error: {:?}",
+                result.err()
+            );
         }
 
-        // CRITICAL-1: Even the intermediate d*d overflows for 24-decimal values
-        // d_atomics = 2e42, d*d raw = 4e84 >> Uint256 max
+        // CRITICAL-1 FIX VERIFICATION: compute_d works for 24-decimal pools
         #[test]
-        #[should_panic]
-        fn test_overflow_intermediate_d_squared() {
-            // compute_d with 24-decimal pools
+        fn test_compute_d_24_decimal_pools() {
             let pool_a = Decimal256::from_ratio(
                 1_000_000_000_000_000_000_000_000u128, // 1e24
                 1u128,
             );
             let pool_b = pool_a;
-            // This panics inside compute_d because d.pow(3) uses d*d as intermediate
-            let _ = compute_d(Uint64::new(1000), &[pool_a, pool_b]);
-        }
-
-        // CRITICAL-2: compute_d uses unchecked arithmetic that panics instead of returning error
-        // Line 93: d.pow(3) / (amount_a_times_coins * amount_b_times_coins) — all unchecked
-        #[test]
-        #[should_panic]
-        fn test_compute_d_unchecked_panics() {
-            // Values large enough to trigger overflow, proving panic vs error
-            let pool = Decimal256::from_ratio(
-                100_000_000_000_000_000_000u128, // 1e20
-                1u128,
+            let result = compute_d(Uint64::new(1000), &[pool_a, pool_b]);
+            assert!(
+                result.is_ok(),
+                "compute_d should work for 24-decimal pools. Error: {:?}",
+                result.err()
             );
-            // Should return Err, but panics instead due to unchecked ops
-            let _ = compute_d(Uint64::new(1000), &[pool, pool]);
+            let d = result.unwrap();
+            // D should be approximately 2e24 for balanced pools
+            assert!(d > Decimal256::zero(), "D should be positive");
         }
 
-        // CRITICAL-2: calc_y uses checked_pow(3) which returns Err (not panic)
-        // This proves the inconsistency: compute_d panics, calc_y returns error
+        // CRITICAL-2 FIX VERIFICATION: compute_d now returns error instead of panicking
+        // for values that overflow even the iterative approach
         #[test]
-        fn test_calc_y_checked_overflow_returns_error() {
+        fn test_compute_d_returns_error_not_panic_on_extreme_values() {
+            // Use an extremely large value that might still overflow the iterative path
+            // Uint128::MAX ≈ 3.4e38
+            let pool = Decimal256::from_ratio(Uint128::MAX, 1u128);
+            let result = compute_d(Uint64::new(1000), &[pool, pool]);
+            // Should return Err (checked arithmetic), not panic
+            assert!(
+                result.is_err(),
+                "Extreme values should return error, not panic"
+            );
+        }
+
+        // Verify calc_y succeeds for large pool values after fix
+        #[test]
+        fn test_calc_y_large_pools_succeeds() {
             use crate::stable_math::calc_y;
 
             let pool = Decimal256::from_ratio(
-                1_000_000_000_000_000u128, // 1e15 — small enough for compute_d to succeed
+                1_000_000_000_000_000_000_000_000u128, // 1e24
                 1u128,
             );
-            // For calc_y, new_amount after swap
-            let new_amount = pool + Decimal256::from_ratio(1000u128, 1u128);
+            let new_amount = pool + Decimal256::from_ratio(
+                100_000_000_000_000_000_000_000u128, // 1e23
+                1u128,
+            );
             let xp = [pool, pool];
 
-            // This should succeed at 1e15 because d^3 atomics ≈ 8e63 < Uint256 max
             let result = calc_y(Uint64::new(1000), new_amount, &xp, 1);
             assert!(
                 result.is_ok(),
-                "calc_y should succeed for pools at 1e15: {:?}",
+                "calc_y should succeed for 24-decimal pools after fix: {:?}",
                 result.err()
             );
         }
@@ -773,17 +792,9 @@ mod tests {
             );
         }
 
-        // Additional: The maximum safe pool size is ~1e18 as integer value.
-        // 1e19 already overflows due to intermediate multiplications in compute_d
-        // (pools[0] * N_COINS = 1e19 * 2, then d^3 / (2e19 * 2e19) requires d^3
-        // which at d ≈ 2e19 produces atomics ≈ 8e75, but the unchecked multiply
-        // (amount_a_times_coins * amount_b_times_coins) = 4e38 as Decimal256,
-        // with atomics = 4e56, and d.pow(3) atomics = 8e75 — the division
-        // d.pow(3) / product overflows during the pow step itself for 1e19).
-        // 1e19 pools overflow in the multiply step, returning an error (not panic)
-        // because the overflow occurs in a checked_mul path rather than unchecked pow
+        // After fix: 1e19 pools now work (previously returned overflow error)
         #[test]
-        fn test_1e19_pools_overflow_with_error() {
+        fn test_1e19_pools_now_works() {
             let pool = Decimal256::from_ratio(
                 10_000_000_000_000_000_000u128, // 1e19
                 1u128,
@@ -794,15 +805,15 @@ mod tests {
             );
             let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(1000));
             assert!(
-                result.is_err(),
-                "1e19 pools should fail with overflow. Got: {:?}",
-                result.unwrap()
+                result.is_ok(),
+                "1e19 pools should now work after fix. Error: {:?}",
+                result.err()
             );
         }
 
-        // The actual maximum safe pool size is ~1e18 (same as current test max)
+        // 1e18 pools still work (regression check)
         #[test]
-        fn test_maximum_safe_pool_size_is_1e18() {
+        fn test_1e18_pools_still_works() {
             let pool = Decimal256::from_ratio(
                 1_000_000_000_000_000_000u128, // 1e18
                 1u128,
@@ -817,20 +828,22 @@ mod tests {
             );
         }
 
-        // MEDIUM-2: Zero pool reserve causes panic (division by zero in d_product)
-        // compute_d line 93: d^3 / (amount_a_times_coins * amount_b_times_coins)
-        // If one pool is zero but the other isn't, sum_x != 0 so the early return
-        // is skipped, then the division by zero hits the unchecked / operator.
+        // MEDIUM-2: Zero pool reserve now returns error instead of panicking
+        // (fixed by CRITICAL-2: all arithmetic is now checked)
         #[test]
-        #[should_panic]
-        fn test_zero_pool_reserve_panics() {
+        fn test_zero_pool_reserve_returns_error() {
             let zero_pool = Decimal256::zero();
             let pool = Decimal256::from_ratio(1000u128, 1u128);
             let offer = Decimal256::from_ratio(100u128, 1u128);
 
             // One pool is zero, the other is not. sum_x != 0, so Newton's method runs.
-            // amount_b_times_coins = 0, causing division by zero in d_product.
-            let _ = compute_stable_swap(&offer, &pool, &zero_pool, Uint64::new(1000));
+            // amount_b_times_coins = 0, causing checked_div to return error.
+            let result = compute_stable_swap(&offer, &pool, &zero_pool, Uint64::new(1000));
+            assert!(
+                result.is_err(),
+                "Zero pool reserve should return error. Got: {:?}",
+                result.unwrap()
+            );
         }
 
         // LOW-1: Demonstrate actual truncation loss with imbalanced pools

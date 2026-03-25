@@ -77,9 +77,9 @@ fn calculate_step(
 }
 
 pub fn compute_d(amp: Uint64, pools: &[Decimal256]) -> StdResult<Decimal256> {
-    let leverage = Decimal256::from_ratio(amp, AMP_PRECISION) * N_COINS;
-    let amount_a_times_coins = pools[0] * N_COINS;
-    let amount_b_times_coins = pools[1] * N_COINS;
+    let leverage = Decimal256::from_ratio(amp, AMP_PRECISION).checked_mul(N_COINS)?;
+    let amount_a_times_coins = pools[0].checked_mul(N_COINS)?;
+    let amount_b_times_coins = pools[1].checked_mul(N_COINS)?;
 
     let sum_x = pools[0].checked_add(pools[1])?; // sum(x_i), a.k.a S
     if sum_x.is_zero() {
@@ -90,7 +90,16 @@ pub fn compute_d(amp: Uint64, pools: &[Decimal256]) -> StdResult<Decimal256> {
 
         // Newton's method to approximate D
         for _ in 0..ITERATIONS {
-            let d_product = d.pow(3) / (amount_a_times_coins * amount_b_times_coins);
+            // d_product = D^3 / (pool_a * n * pool_b * n)
+            // Computed iteratively to avoid D^3 intermediate overflow:
+            // (D * D / amount_a_times_coins) * D / amount_b_times_coins
+            let d_product = d
+                .checked_mul(d)?
+                .checked_div(amount_a_times_coins)
+                .map_err(|e| StdError::generic_err(e.to_string()))?
+                .checked_mul(d)?
+                .checked_div(amount_b_times_coins)
+                .map_err(|e| StdError::generic_err(e.to_string()))?;
             d_previous = d;
             d = calculate_step(d, leverage, sum_x, d_product)?;
             // Equality with the precision of 1e-6
@@ -119,13 +128,20 @@ pub(crate) fn calc_y(
     target_precision: u8,
 ) -> StdResult<Uint128> {
     let d = compute_d(amp, xp)?;
-    let leverage = Decimal256::from_ratio(amp, 1u8) * N_COINS;
+    let leverage = Decimal256::from_ratio(amp, 1u8).checked_mul(N_COINS)?;
     let amp_prec = Decimal256::from_ratio(AMP_PRECISION, 1u8);
 
-    let c = d.checked_pow(3)?.checked_mul(amp_prec)?
-        / new_amount
-            .checked_mul(N_COINS * N_COINS)?
-            .checked_mul(leverage)?;
+    // c = D^3 * amp_prec / (new_amount * N_COINS^2 * leverage)
+    // Computed iteratively to avoid D^3 intermediate overflow:
+    // (D * D / (new_amount * N)) * D * amp_prec / (N * leverage)
+    let c = d
+        .checked_mul(d)?
+        .checked_div(new_amount.checked_mul(N_COINS)?)
+        .map_err(|e| StdError::generic_err(e.to_string()))?
+        .checked_mul(d)?
+        .checked_mul(amp_prec)?
+        .checked_div(N_COINS.checked_mul(leverage)?)
+        .map_err(|e| StdError::generic_err(e.to_string()))?;
 
     let b = new_amount.checked_add(d.checked_mul(amp_prec)? / leverage)?;
 
