@@ -17,14 +17,28 @@ pub fn compute_stable_swap(
     ask_pool: &Decimal256,
     amp_factor: Uint64,
 ) -> Result<SwapResult, ContractError> {
-    // Use a constant for amplification factor instead of hardcoding
+    // Validate inputs
+    if amp_factor.is_zero() {
+        return Err(ContractError::new("Amp factor must be greater than zero"));
+    }
+    if offer_pool.is_zero() || ask_pool.is_zero() {
+        return Err(ContractError::new("Pool reserves must be non-zero"));
+    }
+    if offer_asset.is_zero() {
+        return Err(ContractError::new("Offer amount must be non-zero"));
+    }
+
+    // Extra decimal digit used during subtraction to reduce rounding error
     const TOKEN_PRECISION: u8 = 1;
 
     // Create array of pool amounts
     let xp = [*offer_pool, *ask_pool];
 
     // Calculate new pool amount after swap
-    let new_ask_pool = calc_y(amp_factor, offer_pool + offer_asset, &xp, TOKEN_PRECISION)?;
+    let new_offer_pool = offer_pool
+        .checked_add(*offer_asset)
+        .map_err(|e| ContractError::new(&e.to_string()))?;
+    let new_ask_pool = calc_y(amp_factor, new_offer_pool, &xp, TOKEN_PRECISION)?;
 
     // Calculate return amount (what user receives)
     let ask_pool_amount = ask_pool.to_uint128_with_precision(TOKEN_PRECISION)?;
@@ -38,7 +52,9 @@ pub fn compute_stable_swap(
     let offer_amount = offer_asset.to_uint128_with_precision(0_u32)?;
 
     // Calculate spread (difference between what user provides and receives)
-    let spread_amount = offer_amount.saturating_sub(return_amount);
+    let spread_amount = offer_amount.checked_sub(return_amount).map_err(|_| {
+        ContractError::new("Invariant violation: return_amount exceeds offer_amount")
+    })?;
 
     Ok(SwapResult {
         return_amount,
@@ -66,7 +82,11 @@ fn calculate_step(
     let d_p_mul = d_product.checked_mul(N_COINS)?;
 
     let l_val = leverage_mul.checked_add(d_p_mul)?.checked_mul(initial_d)?;
-    let leverage_sub = initial_d.checked_mul(leverage - Decimal256::one())?;
+    let leverage_sub = initial_d.checked_mul(
+        leverage
+            .checked_sub(Decimal256::one())
+            .map_err(|e| StdError::generic_err(e.to_string()))?,
+    )?;
     let n_coins_sum = d_product.checked_mul(N_COINS.checked_add(Decimal256::one())?)?;
 
     let r_val = leverage_sub.checked_add(n_coins_sum)?;
@@ -128,22 +148,24 @@ pub(crate) fn calc_y(
     target_precision: u8,
 ) -> StdResult<Uint128> {
     let d = compute_d(amp, xp)?;
-    let leverage = Decimal256::from_ratio(amp, 1u8).checked_mul(N_COINS)?;
-    let amp_prec = Decimal256::from_ratio(AMP_PRECISION, 1u8);
+    // Use same amp scaling as compute_d: leverage = (amp / AMP_PRECISION) * N_COINS
+    let leverage = Decimal256::from_ratio(amp, AMP_PRECISION).checked_mul(N_COINS)?;
 
-    // c = D^3 * amp_prec / (new_amount * N_COINS^2 * leverage)
+    // c = D^3 / (new_amount * N_COINS^2 * leverage)
     // Computed iteratively to avoid D^3 intermediate overflow:
-    // (D * D / (new_amount * N)) * D * amp_prec / (N * leverage)
+    // (D * D / (new_amount * N)) * D / (N * leverage)
     let c = d
         .checked_mul(d)?
         .checked_div(new_amount.checked_mul(N_COINS)?)
         .map_err(|e| StdError::generic_err(e.to_string()))?
         .checked_mul(d)?
-        .checked_mul(amp_prec)?
         .checked_div(N_COINS.checked_mul(leverage)?)
         .map_err(|e| StdError::generic_err(e.to_string()))?;
 
-    let b = new_amount.checked_add(d.checked_mul(amp_prec)? / leverage)?;
+    let b = new_amount.checked_add(
+        d.checked_div(leverage)
+            .map_err(|e| StdError::generic_err(e.to_string()))?,
+    )?;
 
     // Solve for y by approximating: y**2 + b*y = c
     let mut y_prev;

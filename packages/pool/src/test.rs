@@ -708,41 +708,38 @@ mod tests {
             );
         }
 
-        // HIGH-2: saturating_sub silently masks bugs in spread calculation
-        // This test demonstrates that if a math bug caused return > offer,
-        // the spread would silently be 0 instead of an error
+        // HIGH-2 FIX VERIFICATION: spread now uses checked_sub instead of saturating_sub.
+        // For valid swaps, spread should be non-negative. If return > offer due to a bug,
+        // checked_sub would return an error instead of silently returning 0.
         #[test]
-        fn test_spread_uses_saturating_sub() {
+        fn test_spread_uses_checked_sub() {
             // For stable swap with balanced pools and small offer, return ≈ offer
-            // and spread ≈ 0. The saturating_sub makes this safe for valid cases.
+            // and spread ≈ 0. checked_sub handles this correctly.
             let pool = Decimal256::from_ratio(1_000_000u128, 1u128);
             let offer = Decimal256::from_ratio(1u128, 1u128);
 
             let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(10000)).unwrap();
 
-            // For a 1-unit swap in a 1M pool with high amp, return should equal offer
-            // spread is 0 via saturating_sub — correct here, but the same mechanism
-            // would hide a bug where return_amount > offer_amount
             assert_eq!(
                 result.spread_amount,
                 Uint128::zero(),
-                "Spread is zero via saturating_sub"
+                "Spread should be zero for tiny swap in large balanced pool"
             );
         }
 
-        // MEDIUM-2: Zero amp factor causes panic (not a clean error)
-        // This proves the lack of input validation: amp=0 causes leverage=0,
-        // then (leverage - 1) underflows Decimal256 (unsigned), causing a panic
-        // instead of a descriptive error.
+        // MEDIUM-2 FIX VERIFICATION: Zero amp factor now returns a clean error
+        // (input validation catches it before reaching calculate_step)
         #[test]
-        #[should_panic]
-        fn test_zero_amp_factor_panics() {
+        fn test_zero_amp_factor_returns_error() {
             let pool = Decimal256::from_ratio(1000u128, 1u128);
             let offer = Decimal256::from_ratio(100u128, 1u128);
 
-            // This panics due to unsigned subtraction underflow in calculate_step
-            // (leverage - Decimal256::one()) where leverage = 0
-            let _ = compute_stable_swap(&offer, &pool, &pool, Uint64::new(0));
+            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(0));
+            assert!(
+                result.is_err(),
+                "Zero amp factor should return error. Got: {:?}",
+                result.unwrap()
+            );
         }
 
         // MEDIUM-2: Extremely large amp factor
