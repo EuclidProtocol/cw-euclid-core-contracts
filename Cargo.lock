@@ -1600,6 +1600,7 @@ dependencies = [
  "cw-utils 2.0.0",
  "euclid",
  "itertools 0.10.5",
+ "rstest",
  "thiserror 1.0.69",
 ]
 
@@ -3332,6 +3333,7 @@ dependencies = [
  "euclid-pool",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",

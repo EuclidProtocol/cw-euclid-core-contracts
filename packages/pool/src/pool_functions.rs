@@ -562,7 +562,7 @@ pub fn pre_swap(
     let (receive_amount, spread_amount) = match calculation_method {
         SwapCalculationMethod::Stable(amp_factor) => {
             let swap_result = compute_stable_swap(
-                &Decimal256::from_integer(amount_in),
+                &Decimal256::from_integer(swap_amount),
                 &Decimal256::from_integer(token_in_reserve),
                 &Decimal256::from_integer(token_out_reserve),
                 amp_factor,
