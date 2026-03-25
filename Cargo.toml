@@ -9,6 +9,7 @@ members = [
     "contracts/common/*",
     "packages/*",
     "tests-integration",
+    "tests-fuzz",
 ]
 
 [profile.release]
