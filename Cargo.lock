@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "cp_vlp"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -1592,7 +1592,7 @@ dependencies = [
 
 [[package]]
 name = "euclid-pool"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -1600,6 +1600,7 @@ dependencies = [
  "cw-utils 2.0.0",
  "euclid",
  "itertools 0.10.5",
+ "rstest",
  "thiserror 1.0.69",
 ]
 
@@ -3319,7 +3320,7 @@ dependencies = [
 
 [[package]]
 name = "stable_vlp"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -3332,6 +3333,7 @@ dependencies = [
  "euclid-pool",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
