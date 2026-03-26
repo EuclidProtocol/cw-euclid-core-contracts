@@ -187,8 +187,7 @@ mod tests {
         #[case] expected_return_amount: Uint128,
         #[case] expected_spread_amount: Uint128,
     ) {
-        let result =
-            compute_stable_swap(offer_asset, offer_pool, ask_pool, swap_amount).unwrap();
+        let result = compute_stable_swap(offer_asset, offer_pool, ask_pool, swap_amount).unwrap();
 
         assert_eq!(
             result.return_amount, expected_return_amount,
@@ -637,15 +636,17 @@ mod tests {
         #[test]
         fn test_uint128_max_div_10_pools_succeeds() {
             let max_pool = Uint128::MAX.checked_div(Uint128::new(10)).unwrap();
-            let result = compute_stable_swap(
-                Uint128::new(1000),
-                max_pool,
-                max_pool,
-                Uint64::new(1000),
-            );
+            let result =
+                compute_stable_swap(Uint128::new(1000), max_pool, max_pool, Uint64::new(1000));
             let swap = result.expect("Uint128::MAX/10 pools should succeed");
-            assert!(swap.return_amount <= Uint128::new(1000), "Return should not exceed offer");
-            assert!(swap.return_amount > Uint128::zero(), "Should return non-zero for balanced pools");
+            assert!(
+                swap.return_amount <= Uint128::new(1000),
+                "Return should not exceed offer"
+            );
+            assert!(
+                swap.return_amount > Uint128::zero(),
+                "Should return non-zero for balanced pools"
+            );
             assert_eq!(
                 swap.return_amount.u128() + swap.spread_amount.u128(),
                 1000,
@@ -657,12 +658,7 @@ mod tests {
         #[test]
         fn test_uint128_max_offer_no_panic() {
             let pool = Uint128::new(1_000_000_000_000_000_000); // 1e18
-            let result = compute_stable_swap(
-                Uint128::MAX,
-                pool,
-                pool,
-                Uint64::new(1000),
-            );
+            let result = compute_stable_swap(Uint128::MAX, pool, pool, Uint64::new(1000));
             // Must not panic
             match result {
                 Ok(_) | Err(_) => {} // Either is fine, no panic
@@ -692,10 +688,11 @@ mod tests {
                 1_000_000_000_000_000_000_000_000u128, // 1e24
                 1u128,
             );
-            let new_amount = pool + Decimal256::from_ratio(
-                100_000_000_000_000_000_000_000u128, // 1e23
-                1u128,
-            );
+            let new_amount = pool
+                + Decimal256::from_ratio(
+                    100_000_000_000_000_000_000_000u128, // 1e23
+                    1u128,
+                );
             let xp = [pool, pool];
 
             let result = calc_y(Uint64::new(1000), new_amount, &xp, 1);
@@ -735,8 +732,7 @@ mod tests {
             let pool = Uint128::new(10000);
             let offer = Uint128::new(100);
 
-            let result_low_amp =
-                compute_stable_swap(offer, pool, pool, Uint64::new(100)).unwrap();
+            let result_low_amp = compute_stable_swap(offer, pool, pool, Uint64::new(100)).unwrap();
             let result_high_amp =
                 compute_stable_swap(offer, pool, pool, Uint64::new(10000)).unwrap();
 
@@ -929,8 +925,7 @@ mod tests {
 
             // New pool state after swap
             let new_pool_a = pool_a + offer;
-            let new_pool_b =
-                pool_b - Decimal256::from_ratio(result.return_amount, 1u128);
+            let new_pool_b = pool_b - Decimal256::from_ratio(result.return_amount, 1u128);
 
             // Compute D after swap
             let d_after = compute_d(amp, &[new_pool_a, new_pool_b]).unwrap();
@@ -950,19 +945,34 @@ mod tests {
         fn test_uint128_min_boundaries() {
             // Zero offer
             assert!(compute_stable_swap(
-                Uint128::zero(), Uint128::new(1000), Uint128::new(1000), Uint64::new(1000)
-            ).is_err());
+                Uint128::zero(),
+                Uint128::new(1000),
+                Uint128::new(1000),
+                Uint64::new(1000)
+            )
+            .is_err());
             // Zero pool
             assert!(compute_stable_swap(
-                Uint128::new(100), Uint128::zero(), Uint128::new(1000), Uint64::new(1000)
-            ).is_err());
+                Uint128::new(100),
+                Uint128::zero(),
+                Uint128::new(1000),
+                Uint64::new(1000)
+            )
+            .is_err());
             // Zero ask pool
             assert!(compute_stable_swap(
-                Uint128::new(100), Uint128::new(1000), Uint128::zero(), Uint64::new(1000)
-            ).is_err());
+                Uint128::new(100),
+                Uint128::new(1000),
+                Uint128::zero(),
+                Uint64::new(1000)
+            )
+            .is_err());
             // Minimum valid: all 1
             let result = compute_stable_swap(
-                Uint128::new(1), Uint128::new(1), Uint128::new(1), Uint64::new(100)
+                Uint128::new(1),
+                Uint128::new(1),
+                Uint128::new(1),
+                Uint64::new(100),
             );
             // Should either succeed or return a clean error, never panic
             match result {
