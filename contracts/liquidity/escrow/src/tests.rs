@@ -660,6 +660,65 @@ fn test_disallow_multiple_denoms() {
 }
 
 #[test]
+fn test_re_allow_denom_removes_from_disallowed() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
+
+    let instantiate_msg = InstantiateMsg {
+        token_id: Token::create("token1".to_string()).unwrap(),
+        allowed_denom: Some(TokenType::Native {
+            denom: "denom1".to_string(),
+        }),
+    };
+    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+
+    // Disallow denom1
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::DisallowDenom {
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Verify it's in disallowed
+    let disallowed = DISALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(disallowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+
+    // Re-allow denom1
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::AddAllowedDenom {
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Verify it's back in allowed and removed from disallowed
+    let allowed = ALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(allowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+
+    let disallowed = DISALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(!disallowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+}
+
+#[test]
 fn test_disallow_denom_already_disallowed_fails() {
     let mut deps = mock_dependencies();
     let env = mock_env();

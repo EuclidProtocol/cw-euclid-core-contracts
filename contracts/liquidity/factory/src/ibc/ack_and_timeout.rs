@@ -21,9 +21,10 @@ use euclid_ibc::{ack::AcknowledgementMsg, router_ibc::RouterCrossChainExecuteMsg
 use crate::{
     reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
-        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_DENOM_REQUESTS,
-        PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
+        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -247,12 +248,12 @@ fn ack_register_denom(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
-    let existing_req = PENDING_DENOM_REQUESTS
+    let existing_req = PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
         .may_load(deps.storage, req_key.clone())?
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
 
     // Remove pool request from MAP
-    PENDING_DENOM_REQUESTS.remove(deps.storage, req_key);
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.remove(deps.storage, req_key);
 
     // Check whether res is an error or not
     match res {
@@ -329,12 +330,12 @@ fn ack_deregister_denom(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender, tx_id.clone());
-    let existing_req = PENDING_DENOM_REQUESTS
+    let existing_req = PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
         .may_load(deps.storage, req_key.clone())?
         .ok_or(ContractError::PoolRequestDoesNotExists { req: tx_id.clone() })?;
 
     // Remove pool request from MAP
-    PENDING_DENOM_REQUESTS.remove(deps.storage, req_key);
+    PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS.remove(deps.storage, req_key);
 
     // Check whether res is an error or not
     match res {

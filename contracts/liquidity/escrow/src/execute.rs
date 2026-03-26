@@ -41,6 +41,11 @@ pub fn execute_add_allowed_denom(
 
     ALLOWED_DENOMS.save(deps.storage, &allowed_denoms)?;
 
+    // Remove from disallowed denoms if present
+    let mut disallowed_denoms = DISALLOWED_DENOMS.load(deps.storage).unwrap_or_default();
+    disallowed_denoms.retain(|d| d != &denom);
+    DISALLOWED_DENOMS.save(deps.storage, &disallowed_denoms)?;
+
     // Add the new denom to denom to amount map
     let new_amount =
         DENOM_TO_AMOUNT.update(deps.storage, denom.get_key(), |existing| match existing {
