@@ -59,3 +59,4 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::NonceRelayed { nonce } => Ok(to_json_binary(&get_nonce(&deps, nonce)?)?),
     }
 }
+

@@ -10,50 +10,90 @@ You are a unit test writer for the Euclid CosmWasm smart contracts. Your job is 
 - Tests live in `src/tests.rs` within each contract, imported via `mod tests;` in `src/lib.rs`.
 - Always wrap in `#[allow(clippy::module_inception)] #[cfg(test)] mod tests { ... }`.
 - Import from `cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier}`.
+- Always add `use rstest::{fixture, rstest};` at the top of the test module.
 - Generate addresses with `deps.api.addr_make("name")` — never use `Addr::unchecked` for actor addresses in tests.
 - Use `Addr::unchecked` only for contract addresses stored in state (router, relayer, etc.).
 
-## Standard `init` Helper Pattern
+## rstest: Fixtures
 
-Every test file has a local `init` function that instantiates the contract:
+**Always** use `#[fixture]` instead of plain `init` helper functions. Fixtures return owned `MockDeps` and can be injected directly into test function parameters.
+
+Define a type alias at the top of the test module:
 
 ```rust
-fn init(
-    deps: &mut cosmwasm_std::OwnedDeps<
-        cosmwasm_std::MemoryStorage,
-        cosmwasm_std::testing::MockApi,
-        MockQuerier,
-    >,
-) -> Response {
-    let msg = InstantiateMsg { /* ... */ };
+type MockDeps = cosmwasm_std::OwnedDeps<
+    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockApi,
+    MockQuerier,
+>;
+```
+
+Basic fixture that instantiates the contract:
+
+```rust
+#[fixture]
+fn initialized() -> MockDeps {
+    let mut deps = mock_dependencies();
     let sender = deps.api.addr_make("sender");
     let info = message_info(&sender, &[]);
-    instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
+    instantiate(deps.as_mut(), mock_env(), info, InstantiateMsg { /* ... */ }).unwrap();
+    deps
 }
 ```
 
-## Test Case Struct Pattern
-
-For execute tests with multiple scenarios, use a struct instead of copy-pasting:
+For tests that need extra pre-seeded state (e.g., token balances, chain registrations), create a dedicated fixture that builds on top of `initialized()`:
 
 ```rust
-struct TestCase {
-    name: &'static str,
-    msg: ExecuteMsg,
-    sender: &'static str,        // wallet name, resolved via deps.api.addr_make
-    expected_error: Option<ContractError>,
+#[fixture]
+fn with_chain(mut initialized: MockDeps) -> MockDeps {
+    CHAIN_UID_TO_CHAIN
+        .save(initialized.as_mut().storage, ChainUid::create("chain1".to_string()).unwrap(), &chain)
+        .unwrap();
+    initialized
 }
+```
 
-for tc in test_cases {
-    let sender = deps.api.addr_make(tc.sender);
+Inject fixtures into tests by matching the parameter name to the fixture function name:
+
+```rust
+#[rstest]
+fn test_foo(mut initialized: MockDeps) { ... }
+
+#[rstest]
+fn test_bar(mut with_chain: MockDeps) { ... }
+```
+
+## rstest: Table-Driven (Parametrized) Tests
+
+**Always prefer `#[rstest]` + `#[case]` over copy-pasting test functions.** Any time two or more tests share the same logic with different inputs or expected outcomes, collapse them into one parametrized test.
+
+```rust
+#[rstest]
+#[case("unauthorized_caller", ExecuteMsg::Foo { .. }, "attacker", Some(ContractError::Unauthorized {}))]
+#[case("valid_caller",        ExecuteMsg::Foo { .. }, "admin",    None)]
+fn test_foo_access_control(
+    mut initialized: MockDeps,
+    #[case] name: &str,
+    #[case] msg: ExecuteMsg,
+    #[case] sender: &str,
+    #[case] expected_error: Option<ContractError>,
+) {
+    let sender = initialized.api.addr_make(sender);
     let info = message_info(&sender, &[]);
-    let res = execute(deps.as_mut(), env.clone(), info, tc.msg.clone());
-    match tc.expected_error {
-        Some(err) => assert_eq!(res.unwrap_err(), err, "{}", tc.name),
-        None => assert!(res.is_ok(), "{}", tc.name),
+    let res = execute(initialized.as_mut(), mock_env(), info, msg);
+    match expected_error {
+        Some(err) => assert_eq!(res.unwrap_err(), err, "{name}"),
+        None => assert!(res.is_ok(), "{name}"),
     }
 }
 ```
+
+Rules:
+- Each `#[case]` becomes a separate named test (`::case_1`, `::case_2`, …) in the output.
+- Use descriptive first-argument strings (`name: &str`) so failures are self-documenting.
+- `#[case]` parameters are positional — order must match function parameter order after `#[case]`.
+- All types used as `#[case]` values must implement `Debug`. `ContractError`, `ExecuteMsg`, `QueryMsg`, and most domain types already do.
+- Use `Binary::default()` for cases where a binary payload is irrelevant to the scenario under test.
 
 ## What to Test
 
@@ -112,6 +152,8 @@ When asked to write tests for a contract:
 1. Read the contract's `src/contract.rs`, `src/state.rs`, and existing `src/tests.rs` (if any).
 2. Read the relevant message types from `packages/euclid/src/msgs/`.
 3. Identify all `ExecuteMsg` variants, `QueryMsg` variants, and `InstantiateMsg` fields.
-4. Write tests covering instantiation, each execute variant (happy + error paths), and key queries.
-5. Write the tests to `src/tests.rs`. If the file already exists, add to it without removing existing tests.
-6. Run `cargo test -p <package-name>` to verify all tests pass before finishing.
+4. Plan your fixtures first: one base fixture that instantiates the contract, plus one fixture per distinct pre-seeded state configuration needed across multiple tests.
+5. For each group of related scenarios (access control, input validation, error paths, query errors), write a single `#[rstest]` + `#[case]` parametrized function rather than separate test functions.
+6. Write standalone `#[rstest]` functions (no `#[case]`) only for tests that are truly unique (e.g., happy-path state mutation with specific assertions, state invariant sequences).
+7. Write the tests to `src/tests.rs`. If the file already exists, add to it without removing existing tests.
+8. Run `cargo test -p <package-name>` to verify all tests pass before finishing.
