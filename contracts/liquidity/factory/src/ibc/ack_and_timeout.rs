@@ -354,18 +354,17 @@ fn ack_concentrated_pool_creation(
                 &cosmwasm_std::Empty {},
             )?;
 
-            if let Some(position_token_contract) = POSITION_TOKEN_CONTRACT.may_load(deps.storage)? {
-                let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: position_token_contract.to_string(),
-                    msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Mint {
-                        token_id: data.position_id.to_string(),
-                        owner: sender.to_string(),
-                        token_uri: None,
-                    })?,
-                    funds: vec![],
-                });
-                res = res.add_message(mint_msg);
-            }
+            let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+            let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: position_token_contract.to_string(),
+                msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Mint {
+                    token_id: data.position_id.to_string(),
+                    owner: sender.to_string(),
+                    token_uri: None,
+                })?,
+                funds: vec![],
+            });
+            res = res.add_message(mint_msg);
 
             Ok(res
                 .add_attribute("tx_id", msg.tx_id)
@@ -694,20 +693,18 @@ fn ack_add_concentrated_liquidity(
                         &cosmwasm_std::Empty {},
                     )?;
 
-                    if let Some(position_token_contract) =
-                        POSITION_TOKEN_CONTRACT.may_load(deps.storage)?
-                    {
-                        let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: position_token_contract.to_string(),
-                            msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Mint {
-                                token_id: data.position_id.to_string(),
-                                owner: sender.to_string(),
-                                token_uri: None,
-                            })?,
-                            funds: vec![],
-                        });
-                        res = res.add_message(mint_msg);
-                    }
+                    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+
+                    let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: position_token_contract.to_string(),
+                        msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Mint {
+                            token_id: data.position_id.to_string(),
+                            owner: sender.to_string(),
+                            token_uri: None,
+                        })?,
+                        funds: vec![],
+                    });
+                    res = res.add_message(mint_msg);
                 }
             }
 
@@ -843,22 +840,19 @@ fn ack_remove_concentrated_liquidity(
                     POSITION_ID_TO_METADATA.remove(deps.storage, data.position_id.u128());
                     OWNER_POSITION_SET
                         .remove(deps.storage, (sender.clone(), data.position_id.u128()));
-                    if let Some(position_token_contract) =
-                        POSITION_TOKEN_CONTRACT.may_load(deps.storage)?
-                    {
-                        let burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: position_token_contract.to_string(),
-                            msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Burn {
-                                token_id: data.position_id.to_string(),
-                            })?,
-                            funds: vec![],
-                        });
-                        return Ok(Response::new()
-                            .add_message(burn_msg)
-                            .add_attribute("method", "ack_remove_concentrated_liquidity")
-                            .add_attribute("tx_id", tx_id)
-                            .add_attribute("position_id", data.position_id));
-                    }
+                    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+                    let burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: position_token_contract.to_string(),
+                        msg: to_json_binary(&euclid::msgs::position_token::ExecuteMsg::Burn {
+                            token_id: data.position_id.to_string(),
+                        })?,
+                        funds: vec![],
+                    });
+                    return Ok(Response::new()
+                        .add_message(burn_msg)
+                        .add_attribute("method", "ack_remove_concentrated_liquidity")
+                        .add_attribute("tx_id", tx_id)
+                        .add_attribute("position_id", data.position_id));
                 } else {
                     POSITION_ID_TO_METADATA.save(deps.storage, data.position_id.u128(), &meta)?;
                 }
