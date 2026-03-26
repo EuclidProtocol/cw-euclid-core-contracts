@@ -110,7 +110,7 @@ pub fn instantiate(
             id: POSITION_TOKEN_INSTANTIATE_REPLY_ID,
             msg: init_position_token_msg,
             gas_limit: None,
-            reply_on: ReplyOn::Always,
+            reply_on: ReplyOn::Success,
             payload: Binary::default(),
         })
         .add_attribute("method", "instantiate")
