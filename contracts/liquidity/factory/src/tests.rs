@@ -2,25 +2,97 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::instantiate;
-    use crate::state::{State, ADMIN, STATE};
+    use crate::execute::pool::{
+        collect_concentrated_fees_request, remove_concentrated_liquidity_request,
+    };
+    use crate::state::{
+        pool_key_to_map_key, ConcentratedPositionMetadata, State, ADMIN, POOL_KEY_TO_VLP,
+        POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT, STATE,
+    };
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
-    use cosmwasm_std::{Addr, DepsMut, Response, Uint128};
+    use cosmwasm_std::{
+        to_json_binary, Addr, ContractResult, DepsMut, Response, SystemResult, Uint128,
+    };
     use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
+    use euclid::cross_chain_user::CrossChainUser;
+    use euclid::error::ContractError;
+    use euclid::msgs::cross_chain_config::CrossChainConfig;
     use euclid::msgs::factory::InstantiateMsg;
+    use euclid::msgs::position_token::OwnerOfResponse;
+    use euclid::msgs::vlp::base::{PoolKey, PoolType};
+    use euclid::token::{Pair, Token};
+
+    // ── shared helpers ────────────────────────────────────────────────────────
+
+    fn mock_pool_key() -> PoolKey {
+        PoolKey {
+            pair: Pair {
+                token_1: Token::create("tokena".to_string()).unwrap(),
+                token_2: Token::create("tokenb".to_string()).unwrap(),
+            },
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 500,
+                tick_spacing: 10,
+            },
+        }
+    }
+
+    /// Saves STATE, ADMIN, POSITION_TOKEN_CONTRACT, and one position metadata entry.
+    fn setup_concentrated_state(deps: &mut DepsMut, owner: &Addr, pool_key: &PoolKey) {
+        STATE
+            .save(
+                deps.storage,
+                &State {
+                    chain_uid: ChainUid::create("1".to_string()).unwrap(),
+                    router_contract: "router_contract".to_string(),
+                    relayer_contract: Addr::unchecked("relayer_contract"),
+                    escrow_code_id: 1,
+                    lp_code_id: 2,
+                    position_token_code_id: 3,
+                    is_native: true,
+                },
+            )
+            .unwrap();
+        ADMIN
+            .save(
+                deps.storage,
+                &EuclidAdmin::default(Addr::unchecked("admin")),
+            )
+            .unwrap();
+        POSITION_TOKEN_CONTRACT
+            .save(deps.storage, &Addr::unchecked("position_nft"))
+            .unwrap();
+        POSITION_ID_TO_METADATA
+            .save(
+                deps.storage,
+                1u128,
+                &ConcentratedPositionMetadata {
+                    owner: owner.clone(),
+                    pool_key: pool_key.clone(),
+                    liquidity: Uint128::from(100u128),
+                    vlp_address: "vlp".to_string(),
+                },
+            )
+            .unwrap();
+    }
 
     fn _initialize_state(deps: &mut DepsMut) {
-        let state = State {
-            chain_uid: ChainUid::create("1".to_string()).unwrap(),
-            router_contract: "router_contract".to_string(),
-            relayer_contract: Addr::unchecked("relayer_contract"),
-            escrow_code_id: 1,
-            lp_code_id: 2,
-            position_token_code_id: 3,
-            is_native: true,
-        };
-        STATE.save(deps.storage, &state).unwrap();
+        STATE
+            .save(
+                deps.storage,
+                &State {
+                    chain_uid: ChainUid::create("1".to_string()).unwrap(),
+                    router_contract: "router_contract".to_string(),
+                    relayer_contract: Addr::unchecked("relayer_contract"),
+                    escrow_code_id: 1,
+                    lp_code_id: 2,
+                    position_token_code_id: 3,
+                    is_native: true,
+                },
+            )
+            .unwrap();
         ADMIN
             .save(
                 deps.storage,
@@ -53,6 +125,8 @@ mod tests {
         instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
     }
 
+    // ── existing test ─────────────────────────────────────────────────────────
+
     #[test]
     fn test_init() {
         let mut deps = mock_dependencies();
@@ -74,463 +148,212 @@ mod tests {
         assert_eq!(admin, EuclidAdmin::default(owner));
     }
 
-    //     #[test]
-    //     fn test_execute_request_pool_creation() {
-    //         let mut deps = mock_dependencies();
-    //         let env = mock_env();
-    //         let info = mock_info("creator", &[]);
-    //         initialize_state(&mut deps.as_mut());
+    // ── table-driven authorization tests ──────────────────────────────────────
 
-    //         let pair_info = PairInfo {
-    //             token_1: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_1".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_1".to_string(),
-    //                 },
-    //             },
-    //             token_2: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_2".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_2".to_string(),
-    //                 },
-    //             },
-    //         };
+    /// Identifies which address plays each role in a test case.
+    /// `Alice` = position metadata owner; `Bob` = a different address.
+    #[derive(Clone, Copy)]
+    enum Who {
+        Alice,
+        Bob,
+    }
 
-    //         let res = execute_request_pool_creation(
-    //             deps.as_mut(),
-    //             env.clone(),
-    //             info,
-    //             pair_info.clone(),
-    //             Some(30),
-    //         )
-    //         .unwrap();
-    //         assert_eq!(
-    //             res.attributes,
-    //             vec![attr("method", "request_pool_creation"),]
-    //         );
+    struct AuthCase {
+        name: &'static str,
+        /// When false the position metadata is not saved, exercising the
+        /// "position not found" path before the ownership check is reached.
+        setup_position: bool,
+        /// Who the NFT contract reports as current owner (ignored when
+        /// `setup_position` is false because the querier is never called).
+        nft_owner: Who,
+        /// Who sends the transaction.
+        caller: Who,
+        check_err: fn(&ContractError) -> bool,
+    }
 
-    //         let ibc_msg = res
-    //             .messages
-    //             .iter()
-    //             .find_map(|msg| {
-    //                 if let CosmosMsg::Ibc(IbcMsg::SendPacket {
-    //                     channel_id, data, ..
-    //                 }) = &msg.msg
-    //                 {
-    //                     Some((channel_id, data))
-    //                 } else {
-    //                     None
-    //                 }
-    //             })
-    //             .expect("IBC message should be present");
+    /// Shared cases for both `remove_concentrated_liquidity_request` and
+    /// `collect_concentrated_fees_request`.
+    fn auth_cases() -> Vec<AuthCase> {
+        vec![
+            AuthCase {
+                name: "caller does not own NFT",
+                setup_position: true,
+                nft_owner: Who::Alice,
+                caller: Who::Bob,
+                check_err: |e| matches!(e, ContractError::Unauthorized {}),
+            },
+            // Critical regression guard: position_meta.owner (alice) differs from
+            // owner_resp.owner (bob) because alice transferred the NFT to bob.
+            // Alice must be rejected even though factory state still names her.
+            // This case fails if the auth check is changed to use position_meta.owner.
+            AuthCase {
+                name: "nft transferred — original metadata owner rejected",
+                setup_position: true,
+                nft_owner: Who::Bob,
+                caller: Who::Alice,
+                check_err: |e| matches!(e, ContractError::Unauthorized {}),
+            },
+            AuthCase {
+                name: "position metadata not found",
+                setup_position: false,
+                nft_owner: Who::Alice, // irrelevant — querier is never reached
+                caller: Who::Alice,
+                check_err: |e| e.to_string().contains("Position not found"),
+            },
+        ]
+    }
 
-    //         assert_eq!(ibc_msg.0, "hub_channel");
+    #[test]
+    fn test_remove_concentrated_liquidity_authorization() {
+        let pool_key = mock_pool_key();
+        let chain_uid = ChainUid::create("1".to_string()).unwrap();
 
-    //         let expected_msg = to_json_binary(&ChainIbcExecuteMsg::RequestPoolCreation {
-    //             pool_rq_id: "creator-0".to_string(),
-    //             pair_info,
-    //         })
-    //         .unwrap();
+        for case in auth_cases() {
+            let mut deps = mock_dependencies();
+            let alice = deps.api.addr_make("alice");
+            let bob = deps.api.addr_make("bob");
 
-    //         assert_eq!(ibc_msg.1, &expected_msg);
-    //     }
+            if case.setup_position {
+                setup_concentrated_state(&mut deps.as_mut(), &alice, &pool_key);
+                let nft_owner_str = match case.nft_owner {
+                    Who::Alice => alice.to_string(),
+                    Who::Bob => bob.to_string(),
+                };
+                deps.querier.update_wasm(move |_| {
+                    SystemResult::Ok(ContractResult::Ok(
+                        to_json_binary(&OwnerOfResponse {
+                            owner: nft_owner_str.clone(),
+                        })
+                        .unwrap(),
+                    ))
+                });
+            } else {
+                STATE
+                    .save(
+                        deps.as_mut().storage,
+                        &State {
+                            chain_uid: chain_uid.clone(),
+                            router_contract: "router_contract".to_string(),
+                            relayer_contract: Addr::unchecked("relayer_contract"),
+                            escrow_code_id: 1,
+                            lp_code_id: 2,
+                            position_token_code_id: 3,
+                            is_native: true,
+                        },
+                    )
+                    .unwrap();
+                POSITION_TOKEN_CONTRACT
+                    .save(deps.as_mut().storage, &Addr::unchecked("position_nft"))
+                    .unwrap();
+            }
 
-    //     #[test]
-    //     fn test_add_liquidity_request() {
-    //         let mut deps = mock_dependencies();
-    //         let env = mock_env();
-    //         let info = mock_info(
-    //             "sender",
-    //             &[Coin::new(1000, "token_1"), Coin::new(1000, "token_2")],
-    //         );
-    //         initialize_state(&mut deps.as_mut());
+            let caller = match case.caller {
+                Who::Alice => &alice,
+                Who::Bob => &bob,
+            };
+            let info = message_info(caller, &[]);
+            let sender = CrossChainUser::new(chain_uid.clone(), caller.to_string());
+            let recipient = CrossChainUser::new(chain_uid.clone(), caller.to_string());
 
-    //         let vlp_address = "vlp_address".to_string();
-    //         let token_1_liquidity = Uint128::new(500);
-    //         let token_2_liquidity = Uint128::new(500);
-    //         let slippage_tolerance = 50;
+            let err = remove_concentrated_liquidity_request(
+                &mut deps.as_mut(),
+                info,
+                mock_env(),
+                sender,
+                pool_key.clone(),
+                Uint128::one(),
+                Uint128::one(),
+                recipient,
+                CrossChainConfig::default(),
+            )
+            .unwrap_err();
 
-    //         let pair_info = PairInfo {
-    //             token_1: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_1".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_1".to_string(),
-    //                 },
-    //             },
-    //             token_2: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_2".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_2".to_string(),
-    //                 },
-    //             },
-    //         };
+            assert!(
+                (case.check_err)(&err),
+                "case '{}' failed: unexpected error {:?}",
+                case.name,
+                err
+            );
+        }
+    }
 
-    //         VLP_TO_POOL
-    //             .save(deps.as_mut().storage, vlp_address.clone(), &pair_info)
-    //             .unwrap();
+    #[test]
+    fn test_collect_concentrated_fees_authorization() {
+        let pool_key = mock_pool_key();
+        let chain_uid = ChainUid::create("1".to_string()).unwrap();
 
-    //         let res = add_liquidity_request(
-    //             deps.as_mut(),
-    //             info,
-    //             env.clone(),
-    //             vlp_address.clone(),
-    //             token_1_liquidity,
-    //             token_2_liquidity,
-    //             slippage_tolerance,
-    //             None,
-    //             Some(230), // Adjusted timeout value (example: 86400 seconds = 1 day)
-    //         )
-    //         .unwrap();
+        for case in auth_cases() {
+            let mut deps = mock_dependencies();
+            let alice = deps.api.addr_make("alice");
+            let bob = deps.api.addr_make("bob");
 
-    //         assert_eq!(
-    //             res.attributes,
-    //             vec![attr("method", "add_liquidity_request"),]
-    //         );
+            if case.setup_position {
+                setup_concentrated_state(&mut deps.as_mut(), &alice, &pool_key);
+            } else {
+                STATE
+                    .save(
+                        deps.as_mut().storage,
+                        &State {
+                            chain_uid: chain_uid.clone(),
+                            router_contract: "router_contract".to_string(),
+                            relayer_contract: Addr::unchecked("relayer_contract"),
+                            escrow_code_id: 1,
+                            lp_code_id: 2,
+                            position_token_code_id: 3,
+                            is_native: true,
+                        },
+                    )
+                    .unwrap();
+            }
 
-    //         let ibc_msg = res
-    //             .messages
-    //             .iter()
-    //             .find_map(|msg| {
-    //                 if let CosmosMsg::Ibc(IbcMsg::SendPacket {
-    //                     channel_id, data, ..
-    //                 }) = &msg.msg
-    //                 {
-    //                     Some((channel_id, data))
-    //                 } else {
-    //                     None
-    //                 }
-    //             })
-    //             .expect("IBC message should be present");
+            // collect_fees always checks POOL_KEY_TO_VLP before the ownership check.
+            POOL_KEY_TO_VLP
+                .save(
+                    deps.as_mut().storage,
+                    pool_key_to_map_key(&pool_key),
+                    &"vlp_address".to_string(),
+                )
+                .unwrap();
 
-    //         assert_eq!(ibc_msg.0, "hub_channel");
+            if case.setup_position {
+                let nft_owner_str = match case.nft_owner {
+                    Who::Alice => alice.to_string(),
+                    Who::Bob => bob.to_string(),
+                };
+                deps.querier.update_wasm(move |_| {
+                    SystemResult::Ok(ContractResult::Ok(
+                        to_json_binary(&OwnerOfResponse {
+                            owner: nft_owner_str.clone(),
+                        })
+                        .unwrap(),
+                    ))
+                });
+            }
 
-    //         let expected_msg = to_json_binary(&ChainIbcExecuteMsg::AddLiquidity {
-    //             token_1_liquidity,
-    //             token_2_liquidity,
-    //             slippage_tolerance,
-    //             liquidity_id: "sender-0".to_string(),
-    //             pool_address: "sender".to_string(),
-    //             vlp_address,
-    //         })
-    //         .unwrap();
+            let caller = match case.caller {
+                Who::Alice => &alice,
+                Who::Bob => &bob,
+            };
+            let info = message_info(caller, &[]);
+            let recipient = CrossChainUser::new(chain_uid.clone(), caller.to_string());
 
-    //         assert_eq!(ibc_msg.1, &expected_msg);
-    //     }
+            let err = collect_concentrated_fees_request(
+                &mut deps.as_mut(),
+                info,
+                mock_env(),
+                pool_key.clone(),
+                Uint128::one(),
+                recipient,
+                CrossChainConfig::default(),
+            )
+            .unwrap_err();
 
-    //     #[test]
-    //     fn test_execute_request_deregister_denom() {
-    //         let mut deps = mock_dependencies();
-    //         let env = mock_env();
-    //         let info = mock_info("sender", &[]);
-    //         initialize_state(&mut deps.as_mut());
-
-    //         let token = Token {
-    //             id: "token_id".to_string(),
-    //         };
-    //         let denom = "denom1".to_string();
-
-    //         TOKEN_TO_ESCROW
-    //             .save(
-    //                 deps.as_mut().storage,
-    //                 token.clone().into(), // Ensure token is converted appropriately
-    //                 &Addr::unchecked("escrow_address".to_string()), // Use Addr::unchecked for testing
-    //             )
-    //             .unwrap();
-    //         let res = execute_request_deregister_denom(
-    //             deps.as_mut(),
-    //             env,
-    //             info,
-    //             token.clone(),
-    //             denom.clone(),
-    //         )
-    //         .unwrap();
-
-    //         assert_eq!(
-    //             res.attributes,
-    //             vec![
-    //                 attr("method", "request_disallow_denom"),
-    //                 attr("token", token.id),
-    //                 attr("denom", denom.clone()),
-    //             ]
-    //         );
-
-    //         let wasm_msg = res
-    //             .messages
-    //             .iter()
-    //             .find_map(|msg| {
-    //                 if let SubMsg {
-    //                     msg:
-    //                         CosmosMsg::Wasm(WasmMsg::Execute {
-    //                             contract_addr, msg, ..
-    //                         }),
-    //                     ..
-    //                 } = &msg
-    //                 {
-    //                     Some((contract_addr, msg))
-    //                 } else {
-    //                     None
-    //                 }
-    //             })
-    //             .expect("Submessage with WASM message should be present");
-
-    //         assert_eq!(wasm_msg.0, "escrow_address");
-
-    //         let expected_msg = to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom {
-    //             denom: denom.clone(),
-    //         })
-    //         .unwrap();
-
-    //         assert_eq!(wasm_msg.1, &expected_msg);
-    //     }
-
-    //     #[test]
-    //     fn test_get_pool() {
-    //         let mut deps = mock_dependencies();
-    //         initialize_state(&mut deps.as_mut());
-
-    //         let vlp_address = "vlp_address".to_string();
-    //         let pair_info = PairInfo {
-    //             token_1: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_1".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_1".to_string(),
-    //                 },
-    //             },
-    //             token_2: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_2".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_2".to_string(),
-    //                 },
-    //             },
-    //         };
-    //         VLP_TO_POOL
-    //             .save(deps.as_mut().storage, vlp_address.clone(), &pair_info)
-    //             .unwrap();
-
-    //         let res = get_pool(deps.as_ref(), vlp_address).unwrap();
-    //         let value: GetPoolResponse = from_json(&res).unwrap();
-
-    //         assert_eq!(value.pair_info, pair_info);
-    //     }
-
-    //     #[test]
-    //     fn test_query_all_pools() {
-    //         let mut deps = mock_dependencies();
-    //         initialize_state(&mut deps.as_mut());
-
-    //         let vlp_address_1 = "vlp_address_1".to_string();
-    //         let pair_info_1 = PairInfo {
-    //             token_1: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_1".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_1".to_string(),
-    //                 },
-    //             },
-    //             token_2: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_2".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_2".to_string(),
-    //                 },
-    //             },
-    //         };
-
-    //         let vlp_address_2 = "vlp_address_2".to_string();
-    //         let pair_info_2 = PairInfo {
-    //             token_1: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_3".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_3".to_string(),
-    //                 },
-    //             },
-    //             token_2: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_4".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_4".to_string(),
-    //                 },
-    //             },
-    //         };
-
-    //         VLP_TO_POOL
-    //             .save(deps.as_mut().storage, vlp_address_1.clone(), &pair_info_1)
-    //             .unwrap();
-    //         VLP_TO_POOL
-    //             .save(deps.as_mut().storage, vlp_address_2.clone(), &pair_info_2)
-    //             .unwrap();
-
-    //         let res = query_all_pools(deps.as_ref()).unwrap();
-    //         let value: AllPoolsResponse = from_json(&res).unwrap();
-
-    //         assert_eq!(value.pools.len(), 2);
-    //         assert_eq!(value.pools[0].pair_info, pair_info_1);
-    //         assert_eq!(value.pools[0].vlp, vlp_address_1);
-    //         assert_eq!(value.pools[1].pair_info, pair_info_2);
-    //         assert_eq!(value.pools[1].vlp, vlp_address_2);
-    //     }
-    //     #[test]
-    //     fn test_pending_swaps() {
-    //         let mut deps = mock_dependencies();
-    //         initialize_state(&mut deps.as_mut());
-
-    //         let user = "user".to_string();
-
-    //         // Create example TokenInfo instances for the swaps
-    //         let token_info_1 = TokenInfo {
-    //             token: Token {
-    //                 id: "token_1".to_string(),
-    //             },
-    //             token_type: TokenType::Native {
-    //                 denom: "token_1".to_string(),
-    //             },
-    //         };
-
-    //         let token_info_2 = TokenInfo {
-    //             token: Token {
-    //                 id: "token_2".to_string(),
-    //             },
-    //             token_type: TokenType::Native {
-    //                 denom: "token_2".to_string(),
-    //             },
-    //         };
-
-    //         // Create example SwapInfo instances
-    //         let swap_1 = SwapInfo {
-    //             asset_in: token_info_1.clone(),
-    //             asset_out: token_info_2.clone(),
-    //             amount_in: Uint128::new(100),
-    //             min_amount_out: Uint128::new(90),
-    //             swaps: vec![], // Add appropriate NextSwap instances if needed
-    //             timeout: IbcTimeout::with_block(IbcTimeoutBlock {
-    //                 revision: 1,
-    //                 height: 123456,
-    //             }),
-    //             swap_id: "swap_id_1".to_string(),
-    //         };
-
-    //         let swap_2 = SwapInfo {
-    //             asset_in: token_info_2.clone(),
-    //             asset_out: token_info_1.clone(),
-    //             amount_in: Uint128::new(200),
-    //             min_amount_out: Uint128::new(180),
-    //             swaps: vec![], // Add appropriate NextSwap instances if needed
-    //             timeout: IbcTimeout::with_block(IbcTimeoutBlock {
-    //                 revision: 1,
-    //                 height: 123457,
-    //             }),
-    //             swap_id: "swap_id_2".to_string(),
-    //         };
-
-    //         PENDING_SWAPS
-    //             .save(deps.as_mut().storage, (user.clone(), 0u128), &swap_1)
-    //             .unwrap();
-    //         PENDING_SWAPS
-    //             .save(deps.as_mut().storage, (user.clone(), 1u128), &swap_2)
-    //             .unwrap();
-
-    //         let res = pending_swaps(deps.as_ref(), user.clone(), None, None).unwrap();
-    //         let value: GetPendingSwapsResponse = from_json(&res).unwrap();
-
-    //         assert_eq!(value.pending_swaps.len(), 2);
-    //         assert_eq!(value.pending_swaps[0], swap_1);
-    //         assert_eq!(value.pending_swaps[1], swap_2);
-    //     }
-
-    //     #[test]
-    //     fn test_pending_liquidity() {
-    //         let mut deps = mock_dependencies();
-    //         initialize_state(&mut deps.as_mut());
-
-    //         let user = "user".to_string();
-
-    //         // Create example PairInfo instances for the liquidity transactions
-    //         let pair_info_1 = PairInfo {
-    //             token_1: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_1".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_1".to_string(),
-    //                 },
-    //             },
-    //             token_2: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_2".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_2".to_string(),
-    //                 },
-    //             },
-    //         };
-
-    //         let pair_info_2 = PairInfo {
-    //             token_1: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_3".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_3".to_string(),
-    //                 },
-    //             },
-    //             token_2: TokenInfo {
-    //                 token: Token {
-    //                     id: "token_4".to_string(),
-    //                 },
-    //                 token_type: TokenType::Native {
-    //                     denom: "token_4".to_string(),
-    //                 },
-    //             },
-    //         };
-
-    //         // Create example LiquidityTxInfo instances
-    //         let liquidity_1 = LiquidityTxInfo {
-    //             sender: user.clone(),
-    //             token_1_liquidity: Uint128::new(1000),
-    //             token_2_liquidity: Uint128::new(2000),
-    //             liquidity_id: "liquidity_id_1".to_string(),
-    //             vlp_address: "vlp_address_1".to_string(),
-    //             pair_info: pair_info_1,
-    //         };
-
-    //         let liquidity_2 = LiquidityTxInfo {
-    //             sender: user.clone(),
-    //             token_1_liquidity: Uint128::new(3000),
-    //             token_2_liquidity: Uint128::new(4000),
-    //             liquidity_id: "liquidity_id_2".to_string(),
-    //             vlp_address: "vlp_address_2".to_string(),
-    //             pair_info: pair_info_2,
-    //         };
-
-    //         PENDING_LIQUIDITY
-    //             .save(deps.as_mut().storage, (user.clone(), 0u128), &liquidity_1)
-    //             .unwrap();
-    //         PENDING_LIQUIDITY
-    //             .save(deps.as_mut().storage, (user.clone(), 1u128), &liquidity_2)
-    //             .unwrap();
-
-    //         let res = pending_liquidity(deps.as_ref(), user.clone(), None, None).unwrap();
-    //         let value: GetPendingLiquidityResponse = from_json(&res).unwrap();
-
-    //         assert_eq!(value.pending_liquidity.len(), 2);
-    //         assert_eq!(value.pending_liquidity[0], liquidity_1);
-    //         assert_eq!(value.pending_liquidity[1], liquidity_2);
-    //     }
+            assert!(
+                (case.check_err)(&err),
+                "case '{}' failed: unexpected error {:?}",
+                case.name,
+                err
+            );
+        }
+    }
 }

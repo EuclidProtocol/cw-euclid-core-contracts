@@ -1,6 +1,4 @@
-use cosmwasm_std::{
-    ensure, to_json_binary, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
-};
+use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128};
 use cw20::Logo;
 use euclid::{
     cross_chain_user::CrossChainUser,
