@@ -92,6 +92,12 @@ pub fn on_position_token_instantiate_reply(
 
             let position_token_address =
                 deps.api.addr_validate(&instantiate_data.contract_address)?;
+
+            if POSITION_TOKEN_CONTRACT.may_load(deps.storage)?.is_some() {
+                return Err(ContractError::Generic {
+                    err: "position token contract already registered".to_string(),
+                });
+            }
             POSITION_TOKEN_CONTRACT.save(deps.storage, &position_token_address)?;
 
             Ok(Response::new()
