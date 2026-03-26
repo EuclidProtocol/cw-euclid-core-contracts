@@ -68,10 +68,6 @@ pub fn execute_manage_factory_state(
         ManageFactoryState::UpdatePositionTokenContract {
             position_token_contract,
         } => {
-            ensure!(
-                admins.migration_admin == info.sender,
-                ContractError::Unauthorized {}
-            );
             let position_token_contract =
                 deps.api.addr_validate(position_token_contract.as_str())?;
             POSITION_TOKEN_CONTRACT.save(deps.storage, &position_token_contract)?;
