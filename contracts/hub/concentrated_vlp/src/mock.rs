@@ -26,7 +26,6 @@ impl MockConcentratedVlp {
         app: &mut MockApp,
         code_id: u64,
         sender: Addr,
-        router: Addr,
         virtual_balance: Addr,
         pair: Pair,
         fee: Fee,
@@ -34,7 +33,6 @@ impl MockConcentratedVlp {
         admin: Addr,
     ) -> Self {
         let msg = mock_concentrated_vlp_instantiate_msg(
-            router,
             virtual_balance,
             pair,
             fee,
@@ -64,7 +62,6 @@ pub fn mock_concentrated_vlp() -> Box<dyn Contract<Empty>> {
 }
 
 pub fn mock_concentrated_vlp_instantiate_msg(
-    router: Addr,
     virtual_balance: Addr,
     pair: Pair,
     fee: Fee,
@@ -72,7 +69,6 @@ pub fn mock_concentrated_vlp_instantiate_msg(
     admin: Addr,
 ) -> InstantiateMsg {
     InstantiateMsg {
-        router,
         virtual_balance_contract: virtual_balance,
         pair,
         fee,

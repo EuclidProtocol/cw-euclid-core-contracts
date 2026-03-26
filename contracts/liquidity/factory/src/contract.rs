@@ -414,4 +414,88 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, message_info};
+    use cosmwasm_std::Addr;
+    use euclid::admin::EuclidAdmin;
+    use euclid::chain::ChainUid;
+    use euclid::error::ContractError;
+    use euclid::msgs::factory::ManageFactoryState;
+
+    use crate::execute::base::execute_manage_factory_state;
+    use crate::state::{State, ADMIN, STATE};
+
+    fn setup_factory_state(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
+        let state = State {
+            router_contract: "router".to_string(),
+            relayer_contract: Addr::unchecked("relayer"),
+            escrow_code_id: 1,
+            lp_code_id: 2,
+            chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+            is_native: false,
+        };
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+        ADMIN
+            .save(
+                deps.as_mut().storage,
+                &EuclidAdmin::default(Addr::unchecked("admin")),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn update_position_token_contract_rejects_non_admin() {
+        let mut deps = mock_dependencies();
+        setup_factory_state(&mut deps);
+
+        let non_admin_info = message_info(&Addr::unchecked("random_user"), &[]);
+
+        let msg = ManageFactoryState::UpdatePositionTokenContract {
+            position_token_contract: "cosmwasm1positiontoken".to_string(),
+        };
+
+        let err = execute_manage_factory_state(
+            deps.as_mut(),
+            mock_env(),
+            non_admin_info,
+            msg,
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(err, ContractError::Unauthorized {}),
+            "expected Unauthorized error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn update_position_token_contract_accepts_migration_admin() {
+        let mut deps = mock_dependencies();
+        setup_factory_state(&mut deps);
+
+        let admin = ADMIN.load(deps.as_ref().storage).unwrap();
+        let admin_info = message_info(&admin.migration_admin, &[]);
+
+        // Use addr_make to get a mock-API-valid bech32 address
+        let valid_addr = deps.api.addr_make("position_token");
+        let msg = ManageFactoryState::UpdatePositionTokenContract {
+            position_token_contract: valid_addr.to_string(),
+        };
+
+        let res = execute_manage_factory_state(
+            deps.as_mut(),
+            mock_env(),
+            admin_info,
+            msg,
+        );
+
+        assert!(res.is_ok(), "expected success, got: {:?}", res.err());
+    }
+}

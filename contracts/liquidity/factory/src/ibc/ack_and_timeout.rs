@@ -651,16 +651,47 @@ fn ack_add_concentrated_liquidity(
     match res {
         AcknowledgementMsg::Ok(data) => {
             let mut res = Response::new().add_attribute("method", "ack_add_concentrated_liquidity");
+            let state = STATE.load(deps.storage)?;
+            let admins = ADMIN.load(deps.storage)?;
+            let escrow_code_id = state.escrow_code_id;
             for token_info in liquidity_info.pair_info.get_vec_token_info() {
                 if token_info.token_type.is_voucher() {
                     continue;
                 }
                 let escrow_contract =
-                    TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
-                let send_msg = token_info
-                    .token_type
-                    .create_escrow_msg(token_info.amount, escrow_contract)?;
-                res = res.add_message(send_msg);
+                    TOKEN_TO_ESCROW.may_load(deps.storage, token_info.token.clone())?;
+                match escrow_contract {
+                    Some(address) => {
+                        let send_msg = token_info
+                            .token_type
+                            .create_escrow_msg(token_info.amount, address)?;
+                        res = res.add_message(send_msg);
+                    }
+                    None => {
+                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                            admin: Some(admins.migration_admin.clone().into_string()),
+                            code_id: escrow_code_id,
+                            msg: to_json_binary(&EscrowInstantiateMsg {
+                                token_id: token_info.clone().token,
+                                allowed_denom: Some(token_info.clone().token_type),
+                            })?,
+                            funds: vec![],
+                            label: "escrow".to_string(),
+                        });
+                        PENDING_DEPOSIT_TOKEN.save(
+                            deps.storage,
+                            token_info.clone().token,
+                            &token_info,
+                        )?;
+                        res = res.add_submessage(SubMsg {
+                            id: ESCROW_INSTANTIATE_REPLY_ID,
+                            msg: init_msg,
+                            gas_limit: None,
+                            reply_on: ReplyOn::Always,
+                            payload: Binary::default(),
+                        });
+                    }
+                }
             }
 
             let position_id = data.position_id.u128();

@@ -746,14 +746,22 @@ pub fn remove_concentrated_liquidity_request(
         lp_allocation,
     };
 
-    // let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
-
-    // let query: TokenInfoResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-    //     contract_addr: position_token_contract.into_string(),
-    //     msg: to_json_binary(&euclid::msgs::position_token::QueryMsg::TokenInfo {
-    //         token_id: pool_key.pair.token_1.to_string(),
-    //     })?,
-    // }))?;
+    let position_token_contract = POSITION_TOKEN_CONTRACT.may_load(deps.storage)?;
+    if let Some(position_token_contract) = position_token_contract {
+        let query: TokenInfoResponse =
+            deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+                contract_addr: position_token_contract.into_string(),
+                msg: to_json_binary(
+                    &euclid::msgs::position_token::QueryMsg::TokenInfo {
+                        token_id: position_id.to_string(),
+                    },
+                )?,
+            }))?;
+        ensure!(
+            query.owner == info.sender.to_string(),
+            ContractError::new("position token owner mismatch")
+        );
+    }
 
     PENDING_CONCENTRATED_REMOVE_LIQUIDITY.save(
         deps.storage,

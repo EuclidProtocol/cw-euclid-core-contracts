@@ -376,6 +376,11 @@ fn execute_add_concentrated_liquidity(
     );
 
     let pool_key = add_liquidity_msg.pool_key.clone();
+    let stored_pool_key = POOL_KEY.load(deps.storage)?;
+    ensure!(
+        pool_key == stored_pool_key,
+        ContractError::new("pool key mismatch")
+    );
     let sender = add_liquidity_msg.sender.clone();
     let tx_id = add_liquidity_msg.tx_id.clone();
     let lower_tick_index = add_liquidity_msg.lower_tick_index;
@@ -385,6 +390,10 @@ fn execute_add_concentrated_liquidity(
         .unwrap_or(next_position_id(deps.storage)?);
     validate_tick_range(&pool_key, lower_tick_index, upper_tick_index)?;
 
+    ensure!(
+        add_liquidity_msg.liquidity.get_pair()? == state.pair,
+        ContractError::new("liquidity tokens do not match pool pair")
+    );
     let (provided_0, provided_1) = extract_token_amount(&add_liquidity_msg.liquidity, &state.pair);
     ensure!(
         !provided_0.is_zero() && !provided_1.is_zero(),
@@ -2145,5 +2154,171 @@ mod tests {
             assert_eq!(tick, case.expected_tick, "{}: wrong tick", case.name);
             assert_eq!(init, case.expected_init, "{}: wrong init flag", case.name);
         }
+    }
+
+    #[test]
+    fn add_liquidity_rejects_mismatched_pool_key() {
+        use cosmwasm_std::testing::mock_env;
+        use euclid::msgs::vlp::base::VlpConcentratedAddLiquidityMsg;
+
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+
+        let state = STATE.load(deps.as_ref().storage).expect("load state");
+        let stored_pool_key = POOL_KEY.load(deps.as_ref().storage).expect("load pool_key");
+
+        // Build a pool_key that differs from the stored one (different fee tier)
+        let wrong_pool_key = PoolKey {
+            pair: stored_pool_key.pair.clone(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 500, // stored is 3000
+                tick_spacing: 10,
+            },
+        };
+
+        let info = cosmwasm_std::testing::message_info(
+            &Addr::unchecked("router"),
+            &[],
+        );
+
+        let msg = VlpConcentratedAddLiquidityMsg {
+            sender: CrossChainUser {
+                chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
+                address: "alice".to_string(),
+            },
+            tx_id: "tx_bad_key".to_string(),
+            pool_key: wrong_pool_key,
+            liquidity: state
+                .pair
+                .get_pair_with_amount(Uint128::new(1000), Uint128::new(1000))
+                .unwrap(),
+            lower_tick_index: -600,
+            upper_tick_index: 600,
+            position_id: Some(Uint128::new(1)),
+            slippage_tolerance_bps: 100,
+        };
+
+        let err = execute_add_concentrated_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            msg,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("pool key mismatch"),
+            "expected pool key mismatch error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn add_liquidity_rejects_wrong_token_pair() {
+        use crate::state::initialize_position_nonce;
+        use cosmwasm_std::testing::mock_env;
+        use euclid::msgs::vlp::base::VlpConcentratedAddLiquidityMsg;
+        use euclid::token::TokenWithAmount;
+
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+        initialize_position_nonce(deps.as_mut().storage, "contract_addr").unwrap();
+
+        let stored_pool_key = POOL_KEY.load(deps.as_ref().storage).expect("load pool_key");
+
+        // Build liquidity with wrong tokens
+        let wrong_token_a = Token::create("wrong1".to_string()).expect("token");
+        let wrong_token_b = Token::create("wrong2".to_string()).expect("token");
+        let wrong_pair = euclid::token::PairWithAmount::new(
+            TokenWithAmount {
+                token: wrong_token_a,
+                amount: Uint128::new(1000),
+            },
+            TokenWithAmount {
+                token: wrong_token_b,
+                amount: Uint128::new(1000),
+            },
+        )
+        .unwrap();
+
+        let info = cosmwasm_std::testing::message_info(
+            &Addr::unchecked("router"),
+            &[],
+        );
+
+        let msg = VlpConcentratedAddLiquidityMsg {
+            sender: CrossChainUser {
+                chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
+                address: "alice".to_string(),
+            },
+            tx_id: "tx_bad_tokens".to_string(),
+            pool_key: stored_pool_key,
+            liquidity: wrong_pair,
+            lower_tick_index: -600,
+            upper_tick_index: 600,
+            position_id: Some(Uint128::new(1)),
+            slippage_tolerance_bps: 100,
+        };
+
+        let err = execute_add_concentrated_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            msg,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("liquidity tokens do not match pool pair"),
+            "expected liquidity tokens mismatch error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn query_pool_rejects_mismatched_pool_key() {
+        use crate::query::query_pool;
+        use euclid::token::Token;
+
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+
+        let state = STATE.load(deps.as_ref().storage).unwrap();
+        let chain_uid = ChainUid::create("vsl".to_string()).unwrap();
+        CHAIN_LP_TOKENS
+            .save(deps.as_mut().storage, chain_uid.clone(), &Uint128::new(100))
+            .unwrap();
+        BALANCES
+            .save(deps.as_mut().storage, state.pair.token_1.clone(), &Uint128::new(5000))
+            .unwrap();
+        BALANCES
+            .save(deps.as_mut().storage, state.pair.token_2.clone(), &Uint128::new(5000))
+            .unwrap();
+
+        let stored_pool_key = POOL_KEY.load(deps.as_ref().storage).unwrap();
+
+        // Query with the correct pool_key should succeed
+        let result = query_pool(deps.as_ref(), chain_uid.clone(), stored_pool_key);
+        assert!(result.is_ok(), "correct pool_key should work: {:?}", result.err());
+
+        // Query with a wrong pool_key should fail
+        let wrong_pool_key = PoolKey {
+            pair: Pair::new(
+                Token::create("alpha".to_string()).unwrap(),
+                Token::create("beta".to_string()).unwrap(),
+            )
+            .unwrap(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 500,
+                tick_spacing: 10,
+            },
+        };
+
+        let err = query_pool(deps.as_ref(), chain_uid, wrong_pool_key).unwrap_err();
+        assert!(
+            err.to_string().contains("pool key mismatch"),
+            "expected pool key mismatch error, got: {}",
+            err
+        );
     }
 }
