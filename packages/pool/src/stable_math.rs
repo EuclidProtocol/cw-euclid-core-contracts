@@ -101,13 +101,10 @@ fn calculate_step(
     let d_p_mul = d_product.checked_mul(N_COINS)?;
 
     let numerator = leverage_mul.checked_add(d_p_mul)?;
-    let leverage_sub = initial_d.checked_mul(
-        leverage
-            .checked_sub(Decimal256::one())
-            .map_err(|e| StdError::generic_err(e.to_string()))?,
-    )?;
+    let leverage_sub_dec = leverage.checked_sub(Decimal256::one())?;
+    let leverage_sub = initial_d.checked_mul(leverage_sub_dec)?;
     let n_coins_sum = d_product.checked_mul(N_COINS.checked_add(Decimal256::one())?)?;
-
+    // (leverage - 1) * initial_d + (n_coins + 1) * d_product
     let r_val = leverage_sub.checked_add(n_coins_sum)?;
 
     numerator.checked_multiply_ratio(initial_d, r_val)
