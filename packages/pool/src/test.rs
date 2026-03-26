@@ -117,78 +117,78 @@ mod tests {
     #[rstest]
     #[case(
         "equal_pools",
-        Decimal256::from_ratio(100u128, 1u128),
-        Decimal256::from_ratio(1000u128, 1u128),
-        Decimal256::from_ratio(1000u128, 1u128),
+        Uint128::new(100),
+        Uint128::new(1000),
+        Uint128::new(1000),
         Uint64::new(1000),
         Uint128::new(99),
         Uint128::new(1)
     )]
     #[case(
         "imbalanced_pools",
-        Decimal256::from_ratio(100u128, 1u128),
-        Decimal256::from_ratio(2000u128, 1u128),
-        Decimal256::from_ratio(1000u128, 1u128),
+        Uint128::new(100),
+        Uint128::new(2000),
+        Uint128::new(1000),
         Uint64::new(100),
         Uint128::new(67),
         Uint128::new(33)
     )]
     #[case(
         "small_amount",
-        Decimal256::from_ratio(1u128, 1u128),
-        Decimal256::from_ratio(1000000u128, 1u128),
-        Decimal256::from_ratio(1000000u128, 1u128),
+        Uint128::new(1),
+        Uint128::new(1000000),
+        Uint128::new(1000000),
         Uint64::new(1000),
         Uint128::new(1),
         Uint128::new(0)
     )]
     #[case(
         "large_amount",
-        Decimal256::from_ratio(1000u128, 1u128),
-        Decimal256::from_ratio(2000u128, 1u128),
-        Decimal256::from_ratio(2000u128, 1u128),
+        Uint128::new(1000),
+        Uint128::new(2000),
+        Uint128::new(2000),
         Uint64::new(1000),
-        Uint128::new(946u128),
-        Uint128::new(54u128)
+        Uint128::new(946),
+        Uint128::new(54)
     )]
     #[case(
         "extreme_imbalance",
-        Decimal256::from_ratio(100u128, 1u128),
-        Decimal256::from_ratio(10000u128, 1u128),
-        Decimal256::from_ratio(1000u128, 1u128),
+        Uint128::new(100),
+        Uint128::new(10000),
+        Uint128::new(1000),
         Uint64::new(1000),
-        Uint128::new(47u128),
-        Uint128::new(53u128)
+        Uint128::new(47),
+        Uint128::new(53)
     )]
     #[case(
         "large_values large spread",
-        Decimal256::from_ratio(1000000000000000000u128, 1u128),
-        Decimal256::from_ratio(1000000000000000000u128, 1u128),
-        Decimal256::from_ratio(1000000000000000000u128, 1u128),
+        Uint128::new(1000000000000000000),
+        Uint128::new(1000000000000000000),
+        Uint128::new(1000000000000000000),
         Uint64::new(1000),
         Uint128::new(820871215252207999),
         Uint128::new(179128784747792001)
     )]
     #[case(
         "large_values small spread",
-        Decimal256::from_ratio(1000u128, 1u128),
-        Decimal256::from_ratio(1000000000000000000u128, 1u128),
-        Decimal256::from_ratio(1000000000000000000u128, 1u128),
+        Uint128::new(1000),
+        Uint128::new(1000000000000000000),
+        Uint128::new(1000000000000000000),
         Uint64::new(1000),
         Uint128::new(1000),
         Uint128::new(0)
     )]
     fn test_compute_stable_swap(
         #[case] case_name: &str,
-        #[case] offer_asset: Decimal256,
-        #[case] offer_pool: Decimal256,
-        #[case] ask_pool: Decimal256,
+        #[case] offer_asset: Uint128,
+        #[case] offer_pool: Uint128,
+        #[case] ask_pool: Uint128,
         #[case] swap_amount: Uint64,
         #[case] expected_return_amount: Uint128,
         #[case] expected_spread_amount: Uint128,
     ) {
         let result =
-            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, swap_amount).unwrap();
+            compute_stable_swap(offer_asset, offer_pool, ask_pool, swap_amount).unwrap();
 
         assert_eq!(
             result.return_amount, expected_return_amount,
@@ -485,11 +485,9 @@ mod tests {
         };
 
         let expected_swap = compute_stable_swap(
-            // `pre_swap` stable branch uses the original `amount_in` (pre-fee),
-            // while `swap_amount` returned in the response is fee-adjusted.
-            &Decimal256::from_integer(expected_swap_amount),
-            &Decimal256::from_integer(reserve_in),
-            &Decimal256::from_integer(reserve_out),
+            expected_swap_amount,
+            reserve_in,
+            reserve_out,
             Uint64::from(amp_factor),
         )
         .unwrap();
@@ -531,11 +529,11 @@ mod tests {
     }
 
     fn percentage_deviation(actual: Uint128, expected: Uint128) -> Decimal256 {
-        let actual = Decimal256::from_integer(actual);
-        let expected = Decimal256::from_integer(expected);
+        let actual = Decimal256::checked_from_integer(actual).unwrap();
+        let expected = Decimal256::checked_from_integer(expected).unwrap();
         let deviation = actual.abs_diff(expected) / expected;
         deviation
-            .checked_mul(Decimal256::from_integer(100u64))
+            .checked_mul(Decimal256::checked_from_integer(100u64).unwrap())
             .unwrap()
     }
 
@@ -547,33 +545,27 @@ mod tests {
         use super::*;
         use crate::stable_math::compute_d;
 
-        // CRITICAL-1 FIX VERIFICATION: 24-decimal pools now work with iterative d_product
-        // Previously panicked due to d.pow(3) overflow. Now uses D*D/pool_a * D/pool_b.
+        // CRITICAL-1 FIX VERIFICATION: 24-decimal pools now work with checked_multiply_ratio
+        // Previously panicked due to d.pow(3) overflow. Now uses Uint512 intermediate.
         #[test]
         fn test_24_decimal_balanced_pools_now_works() {
-            let one_token_24dec = Decimal256::from_ratio(
-                1_000_000_000_000_000_000_000_000u128, // 1e24
-                1u128,
-            );
-            let offer = Decimal256::from_ratio(
-                100_000_000_000_000_000_000_000u128, // 0.1 token = 1e23
-                1u128,
-            );
+            let one_token_24dec = Uint128::new(1_000_000_000_000_000_000_000_000); // 1e24
+            let offer = Uint128::new(100_000_000_000_000_000_000_000); // 1e23
+
             let result =
-                compute_stable_swap(&offer, &one_token_24dec, &one_token_24dec, Uint64::new(1000));
+                compute_stable_swap(offer, one_token_24dec, one_token_24dec, Uint64::new(1000));
             assert!(
                 result.is_ok(),
-                "24-decimal pools should now work after iterative d_product fix. Error: {:?}",
+                "24-decimal pools should now work after checked_multiply_ratio fix. Error: {:?}",
                 result.err()
             );
             let swap = result.unwrap();
-            // Return should be close to offer for balanced pools with high amp
             assert!(
                 swap.return_amount > Uint128::zero(),
                 "Should return non-zero amount"
             );
             assert!(
-                swap.return_amount <= Uint128::new(100_000_000_000_000_000_000_000u128),
+                swap.return_amount <= offer,
                 "Return should not exceed offer"
             );
         }
@@ -581,9 +573,9 @@ mod tests {
         // CRITICAL-1 FIX VERIFICATION: 1e20 pools now work
         #[test]
         fn test_1e20_pools_now_works() {
-            let pool = Decimal256::from_ratio(100_000_000_000_000_000_000u128, 1u128); // 1e20
-            let offer = Decimal256::from_ratio(1_000_000_000_000_000_000u128, 1u128); // 1e18
-            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(1000));
+            let pool = Uint128::new(100_000_000_000_000_000_000); // 1e20
+            let offer = Uint128::new(1_000_000_000_000_000_000); // 1e18
+            let result = compute_stable_swap(offer, pool, pool, Uint64::new(1000));
             assert!(
                 result.is_ok(),
                 "1e20 pools should now work. Error: {:?}",
@@ -606,23 +598,89 @@ mod tests {
                 result.err()
             );
             let d = result.unwrap();
-            // D should be approximately 2e24 for balanced pools
             assert!(d > Decimal256::zero(), "D should be positive");
         }
 
-        // CRITICAL-2 FIX VERIFICATION: compute_d now returns error instead of panicking
-        // for values that overflow even the iterative approach
+        // CRITICAL-2 FIX VERIFICATION: compute_d handles Uint128::MAX without panic.
+        // With checked_multiply_ratio (Uint512 intermediate), this may succeed or
+        // return a clean error, but must never panic.
         #[test]
-        fn test_compute_d_returns_error_not_panic_on_extreme_values() {
-            // Use an extremely large value that might still overflow the iterative path
-            // Uint128::MAX ≈ 3.4e38
+        fn test_compute_d_handles_extreme_values_without_panic() {
             let pool = Decimal256::from_ratio(Uint128::MAX, 1u128);
             let result = compute_d(Uint64::new(1000), &[pool, pool]);
-            // Should return Err (checked arithmetic), not panic
+            // Either Ok or Err is acceptable; the key is no panic
+            match result {
+                Ok(d) => assert!(d > Decimal256::zero(), "D should be positive if Ok"),
+                Err(_) => {} // Clean error is fine
+            }
+        }
+
+        // CRITICAL-2 FIX VERIFICATION: Uint128::MAX pools return a clean error
+        // (not a panic). TOKEN_PRECISION=1 scales values by 10, so max supported
+        // pool value is Uint128::MAX / 10.
+        #[test]
+        fn test_uint128_max_pools_returns_error() {
+            let result = compute_stable_swap(
+                Uint128::new(1000),
+                Uint128::MAX,
+                Uint128::MAX,
+                Uint64::new(1000),
+            );
             assert!(
                 result.is_err(),
-                "Extreme values should return error, not panic"
+                "Uint128::MAX pools should return error (TOKEN_PRECISION overflow), not panic"
             );
+        }
+
+        // CRITICAL-2 FIX VERIFICATION: Uint128::MAX / 10 pools succeed.
+        // This is the maximum supported pool value given TOKEN_PRECISION=1.
+        #[test]
+        fn test_uint128_max_div_10_pools_succeeds() {
+            let max_pool = Uint128::MAX.checked_div(Uint128::new(10)).unwrap();
+            let result = compute_stable_swap(
+                Uint128::new(1000),
+                max_pool,
+                max_pool,
+                Uint64::new(1000),
+            );
+            let swap = result.expect("Uint128::MAX/10 pools should succeed");
+            assert!(swap.return_amount <= Uint128::new(1000), "Return should not exceed offer");
+            assert!(swap.return_amount > Uint128::zero(), "Should return non-zero for balanced pools");
+            assert_eq!(
+                swap.return_amount.u128() + swap.spread_amount.u128(),
+                1000,
+                "return + spread should equal offer"
+            );
+        }
+
+        // CRITICAL-2 FIX VERIFICATION: Uint128::MAX as offer must not panic
+        #[test]
+        fn test_uint128_max_offer_no_panic() {
+            let pool = Uint128::new(1_000_000_000_000_000_000); // 1e18
+            let result = compute_stable_swap(
+                Uint128::MAX,
+                pool,
+                pool,
+                Uint64::new(1000),
+            );
+            // Must not panic
+            match result {
+                Ok(_) | Err(_) => {} // Either is fine, no panic
+            }
+        }
+
+        // CRITICAL-2 FIX VERIFICATION: All Uint128::MAX inputs must not panic
+        #[test]
+        fn test_all_uint128_max_no_panic() {
+            let result = compute_stable_swap(
+                Uint128::MAX,
+                Uint128::MAX,
+                Uint128::MAX,
+                Uint64::new(u64::MAX),
+            );
+            match result {
+                Ok(_) | Err(_) => {} // Either is fine, no panic
+            }
         }
 
         // Verify calc_y succeeds for large pool values after fix
@@ -648,29 +706,20 @@ mod tests {
             );
         }
 
-        // CRITICAL-3: TOKEN_PRECISION=1 is arbitrary — demonstrate it works only because
-        // the to_uint128_with_precision(1) and /10 cancel out for integer inputs
+        // CRITICAL-3 FIX VERIFICATION: inputs are now explicit Uint128 integer types.
+        // TOKEN_PRECISION=1 correctly adds/removes one decimal digit for integer inputs.
         #[test]
-        fn test_precision_with_24_decimal_inputs() {
-            // With 24-decimal tokens, we'd pass raw values like 1e24.
-            // But first, the overflow issue (CRITICAL-1) blocks this entirely.
-            // To isolate the precision concern, use smaller 6-decimal tokens.
-            // 1000 tokens at 6 decimals = 1_000_000_000 raw
-            let pool = Decimal256::from_ratio(1_000_000_000u128, 1u128);
-            let offer = Decimal256::from_ratio(1_000_000u128, 1u128); // 1 token
+        fn test_precision_with_integer_inputs() {
+            let pool = Uint128::new(1_000_000_000);
+            let offer = Uint128::new(1_000_000); // 1 token at 6 decimals
 
-            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(1000)).unwrap();
+            let result = compute_stable_swap(offer, pool, pool, Uint64::new(1000)).unwrap();
 
-            // The return_amount is in the same raw units as input (integer scale)
-            // TOKEN_PRECISION=1 adds/removes one digit — this doesn't relate to
-            // the 6-decimal structure of the token at all.
-            // The result treats 1_000_000 as "one million integer units", not "1 token with 6 decimals"
             assert!(
-                result.return_amount <= Uint128::new(1_000_000),
+                result.return_amount <= offer,
                 "Return should not exceed offer for stable swap. Got: {}",
                 result.return_amount
             );
-            // Spread should be very small for equal balanced pools with high amp
             assert!(
                 result.spread_amount < Uint128::new(10_000),
                 "Spread too high for balanced stable pool. Got: {}",
@@ -678,28 +727,25 @@ mod tests {
             );
         }
 
-        // HIGH-1: Verify amp factor consistency between compute_d and calc_y
+        // HIGH-1 FIX VERIFICATION: amp factor consistency between compute_d and calc_y
+        // Both now use Decimal256::from_ratio(amp, AMP_PRECISION).checked_mul(N_COINS)
         #[test]
         fn test_amp_factor_consistency() {
-            // Test that different amp factors produce monotonically decreasing spread
-            // (higher amp = more stable = less slippage)
-            let pool = Decimal256::from_ratio(10000u128, 1u128);
-            let offer = Decimal256::from_ratio(100u128, 1u128);
+            // Higher amp = more stable = less slippage
+            let pool = Uint128::new(10000);
+            let offer = Uint128::new(100);
 
             let result_low_amp =
-                compute_stable_swap(&offer, &pool, &pool, Uint64::new(100)).unwrap();
+                compute_stable_swap(offer, pool, pool, Uint64::new(100)).unwrap();
             let result_high_amp =
-                compute_stable_swap(&offer, &pool, &pool, Uint64::new(10000)).unwrap();
+                compute_stable_swap(offer, pool, pool, Uint64::new(10000)).unwrap();
 
-            // Higher amp should give higher return (less slippage)
             assert!(
                 result_high_amp.return_amount >= result_low_amp.return_amount,
                 "Higher amp should give better rate. Low amp return: {}, High amp return: {}",
                 result_low_amp.return_amount,
                 result_high_amp.return_amount
             );
-
-            // Higher amp should give lower spread
             assert!(
                 result_high_amp.spread_amount <= result_low_amp.spread_amount,
                 "Higher amp should give lower spread. Low amp spread: {}, High amp spread: {}",
@@ -708,17 +754,13 @@ mod tests {
             );
         }
 
-        // HIGH-2 FIX VERIFICATION: spread now uses checked_sub instead of saturating_sub.
-        // For valid swaps, spread should be non-negative. If return > offer due to a bug,
-        // checked_sub would return an error instead of silently returning 0.
+        // HIGH-2 FIX VERIFICATION: spread uses checked_sub (not saturating_sub)
         #[test]
         fn test_spread_uses_checked_sub() {
-            // For stable swap with balanced pools and small offer, return ≈ offer
-            // and spread ≈ 0. checked_sub handles this correctly.
-            let pool = Decimal256::from_ratio(1_000_000u128, 1u128);
-            let offer = Decimal256::from_ratio(1u128, 1u128);
+            let pool = Uint128::new(1_000_000);
+            let offer = Uint128::new(1);
 
-            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(10000)).unwrap();
+            let result = compute_stable_swap(offer, pool, pool, Uint64::new(10000)).unwrap();
 
             assert_eq!(
                 result.spread_amount,
@@ -727,14 +769,15 @@ mod tests {
             );
         }
 
-        // MEDIUM-2 FIX VERIFICATION: Zero amp factor now returns a clean error
-        // (input validation catches it before reaching calculate_step)
+        // MEDIUM-2 FIX VERIFICATION: Zero amp factor returns clean error
         #[test]
         fn test_zero_amp_factor_returns_error() {
-            let pool = Decimal256::from_ratio(1000u128, 1u128);
-            let offer = Decimal256::from_ratio(100u128, 1u128);
-
-            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(0));
+            let result = compute_stable_swap(
+                Uint128::new(100),
+                Uint128::new(1000),
+                Uint128::new(1000),
+                Uint64::new(0),
+            );
             assert!(
                 result.is_err(),
                 "Zero amp factor should return error. Got: {:?}",
@@ -742,46 +785,70 @@ mod tests {
             );
         }
 
-        // MEDIUM-2: Extremely large amp factor
+        // MEDIUM-2 FIX VERIFICATION: Extremely large amp factor
         #[test]
         fn test_extreme_amp_factor() {
-            let pool = Decimal256::from_ratio(1000u128, 1u128);
-            let offer = Decimal256::from_ratio(100u128, 1u128);
-
-            // Very large amp — at the extreme, stable swap approaches constant-sum
-            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(u64::MAX));
-
-            // Should either succeed (with return ≈ offer) or return a clean error
+            let result = compute_stable_swap(
+                Uint128::new(100),
+                Uint128::new(1000),
+                Uint128::new(1000),
+                Uint64::new(u64::MAX),
+            );
+            // Should either succeed or return a clean error
             match result {
                 Ok(swap) => {
-                    // With extreme amp, return should be very close to offer
                     assert!(
                         swap.return_amount <= Uint128::new(100),
                         "Return should not exceed offer"
                     );
                 }
-                Err(_) => {
-                    // An error is acceptable — overflow in leverage is expected
-                }
+                Err(_) => {} // Overflow in leverage is acceptable
             }
+        }
+
+        // MEDIUM-2 FIX VERIFICATION: Zero pool reserve returns error
+        #[test]
+        fn test_zero_pool_reserve_returns_error() {
+            let result = compute_stable_swap(
+                Uint128::new(100),
+                Uint128::new(1000),
+                Uint128::zero(),
+                Uint64::new(1000),
+            );
+            assert!(
+                result.is_err(),
+                "Zero pool reserve should return error. Got: {:?}",
+                result.unwrap()
+            );
+        }
+
+        // MEDIUM-2 FIX VERIFICATION: Zero offer returns error
+        #[test]
+        fn test_zero_offer_returns_error() {
+            let result = compute_stable_swap(
+                Uint128::zero(),
+                Uint128::new(1000),
+                Uint128::new(1000),
+                Uint64::new(1000),
+            );
+            assert!(
+                result.is_err(),
+                "Zero offer should return error. Got: {:?}",
+                result.unwrap()
+            );
         }
 
         // LOW-1: Integer truncation creates systematic loss for users
         #[test]
         fn test_truncation_loss_small_swaps() {
-            // Swap 1 unit at a time in a balanced pool. Each swap loses up to 0.9
-            // units due to floor division by 10 (TOKEN_PRECISION).
-            let pool = Decimal256::from_ratio(1_000_000u128, 1u128);
-            let one_unit = Decimal256::from_ratio(1u128, 1u128);
+            let result = compute_stable_swap(
+                Uint128::new(1),
+                Uint128::new(1_000_000),
+                Uint128::new(1_000_000),
+                Uint64::new(10000),
+            )
+            .unwrap();
 
-            let result = compute_stable_swap(&one_unit, &pool, &pool, Uint64::new(10000)).unwrap();
-
-            // With TOKEN_PRECISION=1: the subtraction happens at 10x scale,
-            // then divides by 10. For a 1-unit swap in a huge pool:
-            // ask_pool_at_precision_1 - new_ask_pool_at_precision_1 ≈ 10
-            // return_amount = 10 / 10 = 1 (no loss in this case)
-            // But with offer=3 in certain pool ratios, the result could be
-            // (31 - 1) / 10 = 3 instead of 3.1 -> truncation loss
             assert_eq!(
                 result.return_amount,
                 Uint128::new(1),
@@ -789,18 +856,12 @@ mod tests {
             );
         }
 
-        // After fix: 1e19 pools now work (previously returned overflow error)
+        // After fix: 1e19 pools now work
         #[test]
         fn test_1e19_pools_now_works() {
-            let pool = Decimal256::from_ratio(
-                10_000_000_000_000_000_000u128, // 1e19
-                1u128,
-            );
-            let offer = Decimal256::from_ratio(
-                1_000_000_000_000_000_000u128, // 1e18
-                1u128,
-            );
-            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(1000));
+            let pool = Uint128::new(10_000_000_000_000_000_000); // 1e19
+            let offer = Uint128::new(1_000_000_000_000_000_000); // 1e18
+            let result = compute_stable_swap(offer, pool, pool, Uint64::new(1000));
             assert!(
                 result.is_ok(),
                 "1e19 pools should now work after fix. Error: {:?}",
@@ -811,13 +872,9 @@ mod tests {
         // 1e18 pools still work (regression check)
         #[test]
         fn test_1e18_pools_still_works() {
-            let pool = Decimal256::from_ratio(
-                1_000_000_000_000_000_000u128, // 1e18
-                1u128,
-            );
-            let offer = Decimal256::from_ratio(1000u128, 1u128);
-
-            let result = compute_stable_swap(&offer, &pool, &pool, Uint64::new(1000));
+            let pool = Uint128::new(1_000_000_000_000_000_000); // 1e18
+            let offer = Uint128::new(1000);
+            let result = compute_stable_swap(offer, pool, pool, Uint64::new(1000));
             assert!(
                 result.is_ok(),
                 "1e18 pools should work. Error: {:?}",
@@ -825,82 +882,50 @@ mod tests {
             );
         }
 
-        // MEDIUM-2: Zero pool reserve now returns error instead of panicking
-        // (fixed by CRITICAL-2: all arithmetic is now checked)
-        #[test]
-        fn test_zero_pool_reserve_returns_error() {
-            let zero_pool = Decimal256::zero();
-            let pool = Decimal256::from_ratio(1000u128, 1u128);
-            let offer = Decimal256::from_ratio(100u128, 1u128);
-
-            // One pool is zero, the other is not. sum_x != 0, so Newton's method runs.
-            // amount_b_times_coins = 0, causing checked_div to return error.
-            let result = compute_stable_swap(&offer, &pool, &zero_pool, Uint64::new(1000));
-            assert!(
-                result.is_err(),
-                "Zero pool reserve should return error. Got: {:?}",
-                result.unwrap()
-            );
-        }
-
         // LOW-1: Demonstrate actual truncation loss with imbalanced pools
-        // The floor division by 10 (TOKEN_PRECISION=1) loses fractional units
         #[test]
         fn test_truncation_loss_imbalanced_pools() {
-            // With imbalanced pools, the scaled difference may not be divisible by 10,
-            // causing truncation loss.
-            let offer_pool = Decimal256::from_ratio(2000u128, 1u128);
-            let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
-            let offer = Decimal256::from_ratio(100u128, 1u128);
+            let result = compute_stable_swap(
+                Uint128::new(100),
+                Uint128::new(2000),
+                Uint128::new(1000),
+                Uint64::new(100),
+            )
+            .unwrap();
 
-            let result =
-                compute_stable_swap(&offer, &offer_pool, &ask_pool, Uint64::new(100)).unwrap();
-
-            // Compute what the "true" return would be without truncation:
-            // The spread + return should equal the offer amount.
-            // But due to truncation: return_amount + spread_amount may not equal offer_amount.
             let reconstructed = result
                 .return_amount
                 .checked_add(result.spread_amount)
                 .unwrap();
-            let offer_uint = Uint128::new(100);
 
-            // If there's no truncation loss, return + spread == offer.
-            // With truncation, return is rounded down, so spread is inflated,
-            // meaning return + spread could differ from offer.
-            // The key insight: spread = offer - return (via saturating_sub),
-            // so return + spread always == offer by construction.
-            // The REAL loss is that return_amount is lower than the true mathematical value.
-            // We can detect this by checking: for a balanced stable pool with high amp,
-            // the return should be very close to the offer. Any shortfall beyond the
-            // mathematical spread is truncation loss.
             assert_eq!(
-                reconstructed, offer_uint,
+                reconstructed,
+                Uint128::new(100),
                 "return + spread should always equal offer by construction"
             );
-
-            // The actual truncation shows up as reduced return_amount.
-            // With amp=100 and 2:1 pool ratio, 100 offer should return ~67
             assert!(
                 result.return_amount > Uint128::zero(),
                 "Should get a non-zero return"
             );
         }
 
-        // Verify the StableSwap invariant holds before and after a swap:
-        // A * n^n * S + D = A * n^n * D + D^(n+1) / (n^n * prod(x_i))
+        // Verify the StableSwap invariant holds before and after a swap
         #[test]
         fn test_stableswap_invariant_preserved() {
-            let pool_a = Decimal256::from_ratio(10000u128, 1u128);
-            let pool_b = Decimal256::from_ratio(10000u128, 1u128);
-            let offer = Decimal256::from_ratio(500u128, 1u128);
+            let pool_a_uint = Uint128::new(10000);
+            let pool_b_uint = Uint128::new(10000);
+            let offer_uint = Uint128::new(500);
             let amp = Uint64::new(1000);
+
+            let pool_a = Decimal256::from_ratio(pool_a_uint, 1u128);
+            let pool_b = Decimal256::from_ratio(pool_b_uint, 1u128);
+            let offer = Decimal256::from_ratio(offer_uint, 1u128);
 
             // Compute D before swap
             let d_before = compute_d(amp, &[pool_a, pool_b]).unwrap();
 
             // Perform swap
-            let result = compute_stable_swap(&offer, &pool_a, &pool_b, amp).unwrap();
+            let result = compute_stable_swap(offer_uint, pool_a_uint, pool_b_uint, amp).unwrap();
 
             // New pool state after swap
             let new_pool_a = pool_a + offer;
@@ -910,10 +935,6 @@ mod tests {
             // Compute D after swap
             let d_after = compute_d(amp, &[new_pool_a, new_pool_b]).unwrap();
 
-            // D should be approximately preserved (within tolerance)
-            // Note: due to integer truncation in return_amount, the actual output is
-            // slightly less than the mathematical output, which means more value stays
-            // in the pool, so D_after >= D_before (approximately).
             let diff = d_after.abs_diff(d_before);
             let relative_diff = diff / d_before;
 
@@ -922,6 +943,31 @@ mod tests {
                 "Invariant D should be approximately preserved. D_before: {}, D_after: {}, relative_diff: {}",
                 d_before, d_after, relative_diff
             );
+        }
+
+        // Uint128::MIN (zero) boundary: all zero inputs should return clean errors
+        #[test]
+        fn test_uint128_min_boundaries() {
+            // Zero offer
+            assert!(compute_stable_swap(
+                Uint128::zero(), Uint128::new(1000), Uint128::new(1000), Uint64::new(1000)
+            ).is_err());
+            // Zero pool
+            assert!(compute_stable_swap(
+                Uint128::new(100), Uint128::zero(), Uint128::new(1000), Uint64::new(1000)
+            ).is_err());
+            // Zero ask pool
+            assert!(compute_stable_swap(
+                Uint128::new(100), Uint128::new(1000), Uint128::zero(), Uint64::new(1000)
+            ).is_err());
+            // Minimum valid: all 1
+            let result = compute_stable_swap(
+                Uint128::new(1), Uint128::new(1), Uint128::new(1), Uint64::new(100)
+            );
+            // Should either succeed or return a clean error, never panic
+            match result {
+                Ok(_) | Err(_) => {}
+            }
         }
     }
 }

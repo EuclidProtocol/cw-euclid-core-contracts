@@ -12,7 +12,7 @@ use euclid::{
     },
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
-    utils::math::Decimal256Ext,
+
 };
 
 use cosmwasm_schema::cw_serde;
@@ -562,9 +562,9 @@ pub fn pre_swap(
     let (receive_amount, spread_amount) = match calculation_method {
         SwapCalculationMethod::Stable(amp_factor) => {
             let swap_result = compute_stable_swap(
-                &Decimal256::from_integer(swap_amount),
-                &Decimal256::from_integer(token_in_reserve),
-                &Decimal256::from_integer(token_out_reserve),
+                swap_amount,
+                token_in_reserve,
+                token_out_reserve,
                 amp_factor,
             )?;
             (swap_result.return_amount, swap_result.spread_amount)

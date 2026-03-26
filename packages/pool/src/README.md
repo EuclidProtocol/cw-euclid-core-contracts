@@ -39,10 +39,12 @@ Where:
 4. Computes `spread_amount = offer_amount - return_amount` (the slippage/price impact)
 5. Returns `SwapResult { return_amount, spread_amount }`
 
+**Maximum supported pool value:** `Uint128::MAX / 10` (~3.4e37). The TOKEN_PRECISION=1 scaling multiplies pool values by 10 during the return amount computation, so pools at `Uint128::MAX` would overflow.
+
 **Parameters:**
-- `offer_asset: &Decimal256` — amount the user is swapping in (post-fee)
-- `offer_pool: &Decimal256` — current reserve of the offer token
-- `ask_pool: &Decimal256` — current reserve of the ask token
+- `offer_asset: Uint128` — amount the user is swapping in (post-fee)
+- `offer_pool: Uint128` — current reserve of the offer token
+- `ask_pool: Uint128` — current reserve of the ask token
 - `amp_factor: Uint64` — raw amplification parameter (divided by AMP_PRECISION internally)
 
 ### `compute_d(amp, pools) -> Decimal256`
@@ -66,12 +68,14 @@ Solves for the new balance of the ask token after a swap, given the new offer to
 **Algorithm:**
 1. Computes `D` via `compute_d`
 2. Sets up the quadratic: `y^2 + b*y = c`
-   - `c = D^3 * AMP_PRECISION / (new_amount * N_COINS^2 * leverage)` where `leverage = amp * N_COINS`
-   - `b = new_amount + D * AMP_PRECISION / leverage`
+   - `c = D^3 / (new_amount * N_COINS^2 * leverage)` where `leverage = (amp / AMP_PRECISION) * N_COINS`
+   - `b = new_amount + D / leverage`
 3. Iterates: `y_new = (y^2 + c) / (2y + b - D)`
 4. Returns `y` converted to `Uint128` with target precision
 
-**Note on amp factor parameterization:** `calc_y` uses `leverage = amp * N_COINS` (without dividing by AMP_PRECISION), then compensates by multiplying `c` by `amp_prec = 100`. This is mathematically equivalent to `compute_d`'s approach but uses a different factoring.
+**Overflow protection:** For large pool values, `c` itself can exceed Decimal256 range. Instead of computing `c` upfront, `c/denom` is computed directly in the Newton loop using iterative `checked_multiply_ratio` calls (Uint512 intermediate), keeping each step within Decimal256 range.
+
+**Amp factor parameterization:** Both `compute_d` and `calc_y` use identical leverage computation: `leverage = (amp / AMP_PRECISION) * N_COINS`.
 
 ### `calculate_step(initial_d, leverage, sum_x, d_product) -> Decimal256`
 
@@ -90,16 +94,17 @@ d_new = (leverage * sum_x + d_product * n_coins) * initial_d
 - `Uint256` max ~ `1.158 * 10^77`
 
 ### Decimal256Ext Methods (from `euclid::utils::math`)
-- `from_integer(x)`: Creates `Decimal256` with integer value `x` (atomics = x * 10^18)
+- `checked_from_integer(x)`: Creates `Decimal256` with integer value `x` (atomics = x * 10^18). Returns `StdResult`.
 - `to_uint128_with_precision(p)`: Returns `atomics / 10^(18 - p)`
+- `checked_multiply_ratio(num, den)`: Performs `(self * num) / den` using Uint512 intermediate to avoid overflow
 - `with_precision(value, p)`: Creates `Decimal256` from atomics at given precision
 
 ### How Precision Is Used in compute_stable_swap
-1. `ask_pool.to_uint128_with_precision(1)` gives `value * 10` (one extra digit)
-2. `calc_y` returns with the same precision(1) scaling
-3. The subtraction `ask_pool_scaled - new_ask_pool` preserves that extra digit
-4. Division by `10^TOKEN_PRECISION = 10` removes the extra digit, truncating
-5. `offer_asset.to_uint128_with_precision(0)` gives the raw integer value
+1. `ask_pool_dec.to_uint128_with_precision(1)` gives `value * 10` as Uint128 (one extra digit)
+2. `calc_y` returns a `Uint128` already scaled by `10^target_precision`
+3. The subtraction `ask_pool_scaled - new_ask_pool_scaled` preserves that extra digit
+4. Division by `10^TOKEN_PRECISION = 10` removes the extra digit, truncating to integer
+5. This limits maximum pool value to `Uint128::MAX / 10` (~3.4e37), since the x10 scaling must fit in Uint128
 
 ## Call Flow in the Swap Pipeline
 
@@ -110,13 +115,14 @@ User submits swap(amount_in, asset_in)
 pre_swap (pool_functions.rs:528)
     |-- Calculate fees: lp_fee + euclid_fee
     |-- swap_amount = amount_in - fees
-    |-- Convert to Decimal256: Decimal256::from_integer(swap_amount)
-    |-- Convert reserves: Decimal256::from_integer(token_in_reserve)
+    |-- Pass Uint128 directly to compute_stable_swap
     |
     v
-compute_stable_swap (stable_math.rs:14)
+compute_stable_swap (stable_math.rs:19)
+    |-- Convert Uint128 inputs to Decimal256 internally
     |-- calc_y -> compute_d -> calculate_step (Newton's method)
-    |-- return SwapResult { return_amount, spread_amount }
+    |-- Subtraction in Uint128 with TOKEN_PRECISION scaling
+    |-- return SwapResult { return_amount, spread_amount } as Uint128
     |
     v
 execute_swap (pool_functions.rs:589)
@@ -127,4 +133,5 @@ execute_swap (pool_functions.rs:589)
 
 ## Known Limitations
 
-See [AUDIT.md](./AUDIT.md) for a comprehensive security audit including critical overflow issues with large token decimal configurations and precision handling concerns.
+- **Maximum pool value:** `Uint128::MAX / 10` (~3.4e37) due to TOKEN_PRECISION x10 scaling. Pools exceeding this return a clean error.
+- See [AUDIT.md](./AUDIT.md) for the full security audit report.
