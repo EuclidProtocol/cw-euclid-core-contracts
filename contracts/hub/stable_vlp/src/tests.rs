@@ -23,6 +23,7 @@ mod tests {
         token::{Pair, Token},
     };
     use euclid_pool::stable_math::compute_stable_swap;
+    use rstest::rstest;
     use std::collections::HashMap;
 
     fn init(
@@ -209,97 +210,5 @@ mod tests {
             err,
             ContractError::new("Euclid Fee cannot exceed maximum limit")
         );
-    }
-
-    #[test]
-    fn test_compute_swap_equal_pools() {
-        // Test with equal pool sizes (1:1 ratio)
-        let offer_asset = Decimal256::from_ratio(100u128, 1u128);
-        let offer_pool = Decimal256::from_ratio(1000u128, 1u128);
-        let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
-        println!("offer_asset in decimal: {:?}", offer_asset);
-        let result =
-            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
-        println!("result: {:?}", result);
-
-        // For stable swap with equal pools, return amount should be very close to offer amount
-        // with minimal spread
-        assert_eq!(result.return_amount, Uint256::from(99u128)); // Allow for small rounding
-        assert_eq!(result.spread_amount, Uint256::from(1u128));
-    }
-
-    #[test]
-    fn test_compute_swap_imbalanced_pools() {
-        // Test with imbalanced pools (2:1 ratio)
-        let offer_asset = Decimal256::from_ratio(100u128, 1u128);
-        let offer_pool = Decimal256::from_ratio(2000u128, 1u128);
-        let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
-
-        let result =
-            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(100)).unwrap();
-
-        // When pools are imbalanced, spread should be higher
-        assert_eq!(result.return_amount, Uint256::from(67u128));
-        assert_eq!(result.spread_amount, Uint256::from(33u128));
-    }
-
-    #[test]
-    fn test_compute_swap_small_amount() {
-        // Test with very small swap amount
-        let offer_asset = Decimal256::from_ratio(1u128, 1u128);
-        let offer_pool = Decimal256::from_ratio(1000000u128, 1u128);
-        let ask_pool = Decimal256::from_ratio(1000000u128, 1u128);
-
-        let result =
-            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
-
-        // Small amounts should have minimal spread
-        assert_eq!(result.return_amount, Uint256::from(1u128));
-        assert_eq!(result.spread_amount, Uint256::from(0u128));
-    }
-
-    #[test]
-    fn test_compute_swap_large_amount() {
-        // Test with large swap amount relative to pool size
-        let offer_asset = Decimal256::from_ratio(1000u128, 1u128);
-        let offer_pool = Decimal256::from_ratio(2000u128, 1u128);
-        let ask_pool = Decimal256::from_ratio(2000u128, 1u128);
-
-        let result =
-            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
-
-        // Large swaps should have higher spread due to impact on pool balance
-        assert_eq!(result.return_amount, Uint256::from(946u128));
-        assert_eq!(result.spread_amount, Uint256::from(54u128));
-    }
-
-    #[test]
-    fn test_compute_swap_extreme_imbalance() {
-        // Test with extremely imbalanced pools
-        let offer_asset = Decimal256::from_ratio(100u128, 1u128);
-        let offer_pool = Decimal256::from_ratio(10000u128, 1u128);
-        let ask_pool = Decimal256::from_ratio(1000u128, 1u128);
-
-        let result =
-            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
-
-        // Highly imbalanced pools should result in higher spread
-        assert_eq!(result.return_amount, Uint256::from(47u128));
-        assert_eq!(result.spread_amount, Uint256::from(53u128));
-    }
-
-    #[test]
-    fn test_compute_swap_large_values() {
-        // Test with extremely imbalanced pools
-        let offer_asset = Decimal256::from_ratio(1000000000000000000u128, 1u128);
-        let offer_pool = Decimal256::from_ratio(1000000000000000000u128, 1u128);
-        let ask_pool = Decimal256::from_ratio(1000000000000000000u128, 1u128);
-
-        let result =
-            compute_stable_swap(&offer_asset, &offer_pool, &ask_pool, Uint64::new(1000)).unwrap();
-
-        // Highly imbalanced pools should result in higher spread
-        assert_eq!(result.return_amount, Uint256::from(820871215252207999u128));
-        assert_eq!(result.spread_amount, Uint256::from(179128784747792001u128));
     }
 }

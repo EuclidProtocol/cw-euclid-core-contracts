@@ -12,7 +12,6 @@ use euclid::{
     },
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
-    utils::math::Decimal256Ext,
 };
 
 use cosmwasm_schema::cw_serde;
@@ -567,21 +566,9 @@ pub fn pre_swap(
 
     let (receive_amount, spread_amount) = match calculation_method {
         SwapCalculationMethod::Stable(amp_factor) => {
-            // Descale from 24 decimals to 18 decimals to prevent Decimal256 overflow.
-            // Stable math uses Decimal256 (18 internal decimal places). Normalized
-            // voucher amounts at 24 decimals overflow during d.pow(3) and similar ops.
-            let descale_factor = Uint256::from(10u128.pow(6));
-            let swap_result = compute_stable_swap(
-                &Decimal256::from_integer(amount_in / descale_factor),
-                &Decimal256::from_integer(token_in_reserve / descale_factor),
-                &Decimal256::from_integer(token_out_reserve / descale_factor),
-                amp_factor,
-            )?;
-            // Rescale results back to 24 decimals
-            (
-                swap_result.return_amount * descale_factor,
-                swap_result.spread_amount * descale_factor,
-            )
+            let swap_result =
+                compute_stable_swap(swap_amount, token_in_reserve, token_out_reserve, amp_factor)?;
+            (swap_result.return_amount, swap_result.spread_amount)
         }
         SwapCalculationMethod::Regular => {
             let swap_result = calculate_cp_swap(swap_amount, token_in_reserve, token_out_reserve)?;

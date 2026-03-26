@@ -8,7 +8,7 @@ pub trait Decimal256Ext {
 
     fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256>;
 
-    fn from_integer(i: impl Into<Uint256>) -> Self;
+    fn checked_from_integer(i: impl Into<Uint256>) -> StdResult<Decimal256>;
 
     fn checked_multiply_ratio(
         &self,
@@ -42,8 +42,9 @@ impl Decimal256Ext for Decimal256 {
             .map_err(|_| StdError::generic_err("DivideByZeroError"))
     }
 
-    fn from_integer(i: impl Into<Uint256>) -> Self {
-        Decimal256::from_ratio(i.into(), 1u8)
+    fn checked_from_integer(i: impl Into<Uint256>) -> StdResult<Decimal256> {
+        Decimal256::checked_from_ratio(i.into(), 1u8)
+            .map_err(|e| StdError::generic_err(e.to_string()))
     }
 
     fn checked_multiply_ratio(
