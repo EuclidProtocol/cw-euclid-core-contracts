@@ -666,6 +666,11 @@ fn ack_add_concentrated_liquidity(
             let existing_meta = POSITION_ID_TO_METADATA.may_load(deps.storage, position_id)?;
             match existing_meta {
                 Some(mut meta) => {
+                    // IBC acks carry no info.sender, so we cannot do a live NFT
+                    // ownership query here. meta.owner is the address that was
+                    // recorded when the metadata was first written on mint, and
+                    // sender is recovered from the pending request — together they
+                    // confirm this ack belongs to the original requester.
                     ensure!(meta.owner == sender, ContractError::Unauthorized {});
                     ensure!(
                         meta.pool_key == data.pool_key,

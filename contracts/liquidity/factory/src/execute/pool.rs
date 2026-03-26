@@ -1,6 +1,5 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, DepsMut, Env, MessageInfo, QueryRequest, Response, SubMsg, Uint128,
-    WasmQuery,
+    ensure, to_json_binary, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
 };
 use cw20::Logo;
 use euclid::{
@@ -12,7 +11,7 @@ use euclid::{
     msgs::{
         cross_chain_config::CrossChainConfig,
         escrow::AllowedTokenResponse,
-        position_token::TokenInfoResponse,
+        position_token::{OwnerOfResponse, QueryMsg as PositionTokenQueryMsg},
         vlp::base::{PoolConfig, PoolType},
     },
     token::{Pair, PairWithDenomAndAmount, TokenType},
@@ -726,11 +725,25 @@ pub fn remove_concentrated_liquidity_request(
     );
     ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
 
+    // position_meta is loaded for the pool_key structural check below.
+    // position_meta.owner is NOT used for authorization here — the NFT contract
+    // is the source of truth for ownership and must be queried live (see below).
     let position_meta = POSITION_ID_TO_METADATA
         .may_load(deps.storage, position_id.u128())?
         .ok_or(ContractError::new("Position not found"))?;
+    // Query the NFT contract directly for the current owner rather than relying on
+    // position_meta.owner, because CW721 NFTs are transferable. If the token has
+    // been transferred since it was minted, position_meta.owner would be stale and
+    // the wrong address would pass the check.
+    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+    let owner_resp: OwnerOfResponse = deps.querier.query_wasm_smart(
+        position_token_contract,
+        &PositionTokenQueryMsg::OwnerOf {
+            token_id: position_id.to_string(),
+        },
+    )?;
     ensure!(
-        position_meta.owner == info.sender,
+        owner_resp.owner == info.sender.to_string(),
         ContractError::Unauthorized {}
     );
     ensure!(
@@ -745,15 +758,6 @@ pub fn remove_concentrated_liquidity_request(
         position_id: position_id.u128(),
         lp_allocation,
     };
-
-    // let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
-
-    // let query: TokenInfoResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-    //     contract_addr: position_token_contract.into_string(),
-    //     msg: to_json_binary(&euclid::msgs::position_token::QueryMsg::TokenInfo {
-    //         token_id: pool_key.pair.token_1.to_string(),
-    //     })?,
-    // }))?;
 
     PENDING_CONCENTRATED_REMOVE_LIQUIDITY.save(
         deps.storage,
@@ -820,10 +824,25 @@ pub fn collect_concentrated_fees_request(
         ContractError::PoolDoesNotExist {}
     );
 
-    let position_meta = POSITION_ID_TO_METADATA.load(deps.storage, position_id.u128())?;
-
+    // position_meta is loaded for the pool_key structural check below.
+    // position_meta.owner is NOT used for authorization here — the NFT contract
+    // is the source of truth for ownership and must be queried live (see below).
+    let position_meta = POSITION_ID_TO_METADATA
+        .may_load(deps.storage, position_id.u128())?
+        .ok_or(ContractError::new("Position not found"))?;
+    // Query the NFT contract directly for the current owner rather than relying on
+    // position_meta.owner, because CW721 NFTs are transferable. If the token has
+    // been transferred since it was minted, position_meta.owner would be stale and
+    // the wrong address would pass the check.
+    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+    let owner_resp: OwnerOfResponse = deps.querier.query_wasm_smart(
+        position_token_contract,
+        &PositionTokenQueryMsg::OwnerOf {
+            token_id: position_id.to_string(),
+        },
+    )?;
     ensure!(
-        position_meta.owner == info.sender,
+        owner_resp.owner == info.sender.to_string(),
         ContractError::Unauthorized {}
     );
     ensure!(
