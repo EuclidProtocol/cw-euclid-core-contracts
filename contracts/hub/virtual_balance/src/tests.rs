@@ -3,7 +3,7 @@
 mod tests {
 
     use crate::contract::{execute, instantiate};
-    use crate::state::{Allowance, ADMIN, ALLOWANCES, BALANCES, STATE};
+    use crate::state::{ADMIN, ALLOWANCES, BALANCES, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, MessageInfo, Response, Uint128};
@@ -12,8 +12,8 @@ mod tests {
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
     use euclid::msgs::virtual_balance::msg::{
-        ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer, InstantiateMsg,
-        State,
+        Allowance, ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer,
+        InstantiateMsg, State,
     };
     use euclid::voucher::BalanceKey;
 

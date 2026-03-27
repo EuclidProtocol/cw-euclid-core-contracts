@@ -7,7 +7,7 @@ use cosmwasm_std::{
 use crate::{
     contract::{execute, instantiate, query},
     query::query_token_id,
-    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT},
+    state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, DISALLOWED_DENOMS},
 };
 
 use euclid::{
@@ -447,4 +447,316 @@ fn test_query_token_allowed() {
     let res: AllowedTokenResponse =
         from_json(query(deps.as_ref(), env, query_msg).unwrap()).unwrap();
     assert!(!res.allowed);
+}
+
+#[test]
+fn test_disallow_denom_updates_disallowed_denoms_state() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
+
+    let instantiate_msg = InstantiateMsg {
+        token_id: Token::create("token1".to_string()).unwrap(),
+        allowed_denom: Some(TokenType::Native {
+            denom: "denom1".to_string(),
+        }),
+    };
+    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+
+    // Disallow the denom
+    let msg = ExecuteMsg::DisallowDenom {
+        denom: TokenType::Native {
+            denom: "denom1".to_string(),
+        },
+    };
+    execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+    // Verify denom was removed from ALLOWED_DENOMS
+    let allowed = ALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(!allowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+
+    // Verify denom was added to DISALLOWED_DENOMS
+    let disallowed = DISALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(disallowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+}
+
+#[test]
+fn test_deposit_disallowed_denom_fails() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
+
+    let instantiate_msg = InstantiateMsg {
+        token_id: Token::create("token1".to_string()).unwrap(),
+        allowed_denom: Some(TokenType::Native {
+            denom: "denom1".to_string(),
+        }),
+    };
+    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+
+    // Disallow the denom
+    let msg = ExecuteMsg::DisallowDenom {
+        denom: TokenType::Native {
+            denom: "denom1".to_string(),
+        },
+    };
+    execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+    // Attempt to deposit the now-disallowed denom should fail
+    let deposit_info = message_info(&creator, &[coin(100_u128, "denom1")]);
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        deposit_info,
+        ExecuteMsg::DepositNative {},
+    )
+    .unwrap_err();
+    assert_eq!(err, ContractError::UnsupportedDenomination {});
+}
+
+#[test]
+fn test_withdraw_disallowed_denom_succeeds() {
+    let mut deps = mock_dependencies();
+    let mut env = mock_env();
+    env.block.chain_id = "chain-1".to_string();
+    let factory = deps.api.addr_make("factory");
+
+    // Instantiate with denom1 allowed
+    let info = message_info(
+        &factory,
+        &[Coin {
+            denom: "denom1".to_string(),
+            amount: Uint128::new(1000),
+        }],
+    );
+    let instantiate_msg = InstantiateMsg {
+        token_id: Token::create("token1".to_string()).unwrap(),
+        allowed_denom: Some(TokenType::Native {
+            denom: "denom1".to_string(),
+        }),
+    };
+    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+
+    // Deposit funds while denom is still allowed
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::DepositNative {},
+    )
+    .unwrap();
+
+    // Disallow the denom
+    let factory_info = message_info(&factory, &[]);
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        factory_info.clone(),
+        ExecuteMsg::DisallowDenom {
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Withdraw should still succeed for the disallowed denom
+    let res = execute(
+        deps.as_mut(),
+        env.clone(),
+        factory_info,
+        ExecuteMsg::Withdraw {
+            recipient: Addr::unchecked("recipient1"),
+            amount: Uint128::new(500),
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+            forwarding_message: None,
+        },
+    );
+    assert!(res.is_ok());
+
+    // Verify balance was updated
+    let balance = DENOM_TO_AMOUNT
+        .load(&deps.storage, "native:denom1".to_string())
+        .unwrap();
+    assert_eq!(balance, Uint128::new(500));
+}
+
+#[test]
+fn test_disallow_multiple_denoms() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
+
+    // Instantiate with denom1
+    let instantiate_msg = InstantiateMsg {
+        token_id: Token::create("token1".to_string()).unwrap(),
+        allowed_denom: Some(TokenType::Native {
+            denom: "denom1".to_string(),
+        }),
+    };
+    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+
+    // Add denom2
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::AddAllowedDenom {
+            denom: TokenType::Native {
+                denom: "denom2".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Disallow denom1
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::DisallowDenom {
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Disallow denom2
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::DisallowDenom {
+            denom: TokenType::Native {
+                denom: "denom2".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Both should be in disallowed list
+    let disallowed = DISALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert_eq!(disallowed.len(), 2);
+    assert!(disallowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+    assert!(disallowed.contains(&TokenType::Native {
+        denom: "denom2".to_string(),
+    }));
+
+    // Allowed list should be empty
+    let allowed = ALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(allowed.is_empty());
+}
+
+#[test]
+fn test_re_allow_denom_removes_from_disallowed() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
+
+    let instantiate_msg = InstantiateMsg {
+        token_id: Token::create("token1".to_string()).unwrap(),
+        allowed_denom: Some(TokenType::Native {
+            denom: "denom1".to_string(),
+        }),
+    };
+    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+
+    // Disallow denom1
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::DisallowDenom {
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Verify it's in disallowed
+    let disallowed = DISALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(disallowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+
+    // Re-allow denom1
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::AddAllowedDenom {
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Verify it's back in allowed and removed from disallowed
+    let allowed = ALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(allowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+
+    let disallowed = DISALLOWED_DENOMS.load(&deps.storage).unwrap();
+    assert!(!disallowed.contains(&TokenType::Native {
+        denom: "denom1".to_string(),
+    }));
+}
+
+#[test]
+fn test_disallow_denom_already_disallowed_fails() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let creator = deps.api.addr_make("creator");
+    let info = message_info(&creator, &[]);
+
+    let instantiate_msg = InstantiateMsg {
+        token_id: Token::create("token1".to_string()).unwrap(),
+        allowed_denom: Some(TokenType::Native {
+            denom: "denom1".to_string(),
+        }),
+    };
+    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+
+    // Disallow denom1
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::DisallowDenom {
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+        },
+    )
+    .unwrap();
+
+    // Disallowing it again should fail (it's no longer in allowed_denoms)
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        info.clone(),
+        ExecuteMsg::DisallowDenom {
+            denom: TokenType::Native {
+                denom: "denom1".to_string(),
+            },
+        },
+    )
+    .unwrap_err();
+    assert_eq!(err, ContractError::DenomDoesNotExist {});
 }

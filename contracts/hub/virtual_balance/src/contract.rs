@@ -9,8 +9,8 @@ use crate::execute::{
     execute_transfer, execute_update_admin, execute_update_router,
 };
 use crate::query::{
-    query_admin, query_all_balances, query_balance, query_state, query_token_balances,
-    query_user_balances,
+    query_admin, query_all_balances, query_allowance, query_balance, query_state,
+    query_token_balances, query_user_balances,
 };
 use crate::state::{ADMIN, STATE};
 use euclid::error::ContractError;
@@ -74,6 +74,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAdmin {} => query_admin(deps),
         QueryMsg::GetBalance { balance_key } => query_balance(deps, balance_key),
+        QueryMsg::GetAllowance { balance_key } => query_allowance(deps, balance_key),
         QueryMsg::GetUserBalances { user, pagination } => {
             query_user_balances(deps, user.chain_uid, user.address, pagination)
         }
