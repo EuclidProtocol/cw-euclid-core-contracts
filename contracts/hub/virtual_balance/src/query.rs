@@ -149,32 +149,36 @@ pub fn query_token_balances(
 
     let mut token_balances = BTreeMap::<String, Uint256>::new();
 
-    VOUCHER_BALANCES
+    for res in VOUCHER_BALANCES
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .filter(|res| res.is_ok() && res.as_ref().unwrap().0 .2 == token_id)
         .skip(skip.unwrap_or(0) as usize)
         .take(limit.unwrap_or(10) as usize)
-        .for_each(|res| {
-            let ((chain_uid, _, _), balance) = res.unwrap();
+    {
+        let ((chain_uid, _, token), balance) = res?;
+        if token != token_id {
+            continue;
+        }
 
-            let existing_balance = token_balances.get(&chain_uid.to_string());
-            if let Some(existing_balance) = existing_balance {
-                token_balances.insert(
-                    chain_uid.to_string(),
-                    existing_balance.checked_add(balance).unwrap(),
-                );
-            } else {
-                token_balances.insert(chain_uid.to_string(), balance);
-            }
-        });
+        let existing_balance = token_balances.get(&chain_uid.to_string());
+        if let Some(existing_balance) = existing_balance {
+            token_balances.insert(
+                chain_uid.to_string(),
+                existing_balance.checked_add(balance)?,
+            );
+        } else {
+            token_balances.insert(chain_uid.to_string(), balance);
+        }
+    }
 
     let balances: Vec<GetTokenBalancesResponseItem> = token_balances
         .iter()
-        .map(|(chain_uid, balance)| GetTokenBalancesResponseItem {
-            balance: *balance,
-            chain_uid: ChainUid::create(chain_uid.clone()).unwrap(),
+        .map(|(chain_uid, balance)| {
+            Ok(GetTokenBalancesResponseItem {
+                balance: *balance,
+                chain_uid: ChainUid::create(chain_uid.clone())?,
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, ContractError>>()?;
 
     Ok(to_json_binary(&GetTokenBalancesResponse { balances })?)
 }

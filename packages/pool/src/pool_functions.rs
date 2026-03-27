@@ -24,7 +24,7 @@ use euclid::msgs::vlp::base::PoolCreationResponse;
 
 use crate::stable_math::compute_stable_swap;
 
-pub const MINIMUM_LIQUIDITY: u128 = 1000;
+pub const MINIMUM_LIQUIDITY: u128 = 1_000_000_000;
 
 #[cw_serde]
 pub struct SwapResult {
@@ -296,9 +296,9 @@ pub fn remove_liquidity(
         .map_err(|err| ContractError::new(&err.to_string()))?;
 
     // Calculate tokens_1 to send
-    let token_1_liquidity = total_reserve_1.checked_mul_ceil(lp_share)?;
+    let token_1_liquidity = total_reserve_1.checked_mul_floor(lp_share)?;
     // Calculate tokens_2 to send
-    let token_2_liquidity = total_reserve_2.checked_mul_ceil(lp_share)?;
+    let token_2_liquidity = total_reserve_2.checked_mul_floor(lp_share)?;
 
     let liquidity_released = pair.get_pair_with_amount(token_1_liquidity, token_2_liquidity)?;
 

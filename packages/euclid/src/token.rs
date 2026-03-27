@@ -479,7 +479,8 @@ impl TokenType {
     ) -> Result<CosmosMsg, ContractError> {
         let msg = match self.clone() {
             TokenType::Native { denom, .. } => {
-                let amount_u128 = Uint128::try_from(amount).unwrap();
+                let amount_u128 = Uint128::try_from(amount)
+                    .map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))?;
                 if let Some(forwarding_message) = forwarding_message {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: recipient.to_string(),
@@ -499,7 +500,8 @@ impl TokenType {
             TokenType::Smart {
                 contract_address, ..
             } => {
-                let amount_u128 = Uint128::try_from(amount).unwrap();
+                let amount_u128 = Uint128::try_from(amount)
+                    .map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))?;
                 if let Some(forwarding_message) = forwarding_message {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: contract_address.to_string(),
@@ -550,7 +552,8 @@ impl TokenType {
         amount: Uint256,
         escrow_contract: Addr,
     ) -> Result<CosmosMsg, ContractError> {
-        let amount_u128 = Uint128::try_from(amount).unwrap();
+        let amount_u128 = Uint128::try_from(amount)
+            .map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))?;
         let msg: CosmosMsg = match self {
             Self::Native { denom, .. } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_contract.into_string(),

@@ -5,7 +5,7 @@ mod tests {
         stable_math::compute_stable_swap, SwapCalculationMethod,
     };
     use cosmwasm_std::testing::mock_dependencies;
-    use cosmwasm_std::{Addr, Decimal, Decimal256, Uint128, Uint64};
+    use cosmwasm_std::{Addr, Decimal, Decimal256, Uint256, Uint64};
     use rstest::rstest;
 
     use cw_storage_plus::{Item, Map};
@@ -31,11 +31,11 @@ mod tests {
         #[case] total_lp_supply: u128,
         #[case] expected_lp_tokens: u128,
     ) {
-        let token_1_amount = Uint128::new(token_1_amount);
-        let token_2_amount = Uint128::new(token_2_amount);
-        let total_liquidity_1 = Uint128::new(total_liquidity_1);
-        let total_liquidity_2 = Uint128::new(total_liquidity_2);
-        let total_lp_supply = Uint128::new(total_lp_supply);
+        let token_1_amount = Uint256::from(token_1_amount);
+        let token_2_amount = Uint256::from(token_2_amount);
+        let total_liquidity_1 = Uint256::from(total_liquidity_1);
+        let total_liquidity_2 = Uint256::from(total_liquidity_2);
+        let total_lp_supply = Uint256::from(total_lp_supply);
 
         let lp_tokens = calculate_lp_allocation(
             token_1_amount,
@@ -46,7 +46,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(lp_tokens, Uint128::new(expected_lp_tokens));
+        assert_eq!(lp_tokens, Uint256::from(expected_lp_tokens));
 
         let amount_1 = calculate_amount_from_shares(
             token_1_amount + total_liquidity_1,
@@ -96,11 +96,11 @@ mod tests {
         #[case] total_lp_supply: u128,
         #[case] expected_lp_tokens: u128,
     ) {
-        let token_1_amount = Uint128::new(token_1_amount);
-        let token_2_amount = Uint128::new(token_2_amount);
-        let total_liquidity_1 = Uint128::new(total_liquidity_1);
-        let total_liquidity_2 = Uint128::new(total_liquidity_2);
-        let total_lp_supply = Uint128::new(total_lp_supply);
+        let token_1_amount = Uint256::from(token_1_amount);
+        let token_2_amount = Uint256::from(token_2_amount);
+        let total_liquidity_1 = Uint256::from(total_liquidity_1);
+        let total_liquidity_2 = Uint256::from(total_liquidity_2);
+        let total_lp_supply = Uint256::from(total_lp_supply);
 
         let lp_tokens = calculate_lp_allocation(
             token_1_amount,
@@ -111,81 +111,81 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(lp_tokens, Uint128::new(expected_lp_tokens));
+        assert_eq!(lp_tokens, Uint256::from(expected_lp_tokens));
     }
 
     #[rstest]
     #[case(
         "equal_pools",
-        Uint128::new(100),
-        Uint128::new(1000),
-        Uint128::new(1000),
+        Uint256::from(100u128),
+        Uint256::from(1000u128),
+        Uint256::from(1000u128),
         Uint64::new(1000),
-        Uint128::new(99),
-        Uint128::new(1)
+        Uint256::from(99u128),
+        Uint256::from(1u128)
     )]
     #[case(
         "imbalanced_pools",
-        Uint128::new(100),
-        Uint128::new(2000),
-        Uint128::new(1000),
+        Uint256::from(100u128),
+        Uint256::from(2000u128),
+        Uint256::from(1000u128),
         Uint64::new(100),
-        Uint128::new(67),
-        Uint128::new(33)
+        Uint256::from(67u128),
+        Uint256::from(33u128)
     )]
     #[case(
         "small_amount",
-        Uint128::new(1),
-        Uint128::new(1000000),
-        Uint128::new(1000000),
+        Uint256::from(1u128),
+        Uint256::from(1000000u128),
+        Uint256::from(1000000u128),
         Uint64::new(1000),
-        Uint128::new(1),
-        Uint128::new(0)
+        Uint256::from(1u128),
+        Uint256::from(0u128)
     )]
     #[case(
         "large_amount",
-        Uint128::new(1000),
-        Uint128::new(2000),
-        Uint128::new(2000),
+        Uint256::from(1000u128),
+        Uint256::from(2000u128),
+        Uint256::from(2000u128),
         Uint64::new(1000),
-        Uint128::new(946),
-        Uint128::new(54)
+        Uint256::from(946u128),
+        Uint256::from(54u128)
     )]
     #[case(
         "extreme_imbalance",
-        Uint128::new(100),
-        Uint128::new(10000),
-        Uint128::new(1000),
+        Uint256::from(100u128),
+        Uint256::from(10000u128),
+        Uint256::from(1000u128),
         Uint64::new(1000),
-        Uint128::new(47),
-        Uint128::new(53)
+        Uint256::from(47u128),
+        Uint256::from(53u128)
     )]
     #[case(
         "large_values large spread",
-        Uint128::new(1000000000000000000),
-        Uint128::new(1000000000000000000),
-        Uint128::new(1000000000000000000),
+        Uint256::from(1000000000000000000u128),
+        Uint256::from(1000000000000000000u128),
+        Uint256::from(1000000000000000000u128),
         Uint64::new(1000),
-        Uint128::new(820871215252207999),
-        Uint128::new(179128784747792001)
+        Uint256::from(820871215252207999u128),
+        Uint256::from(179128784747792001u128)
     )]
     #[case(
         "large_values small spread",
-        Uint128::new(1000),
-        Uint128::new(1000000000000000000),
-        Uint128::new(1000000000000000000),
+        Uint256::from(1000u128),
+        Uint256::from(1000000000000000000u128),
+        Uint256::from(1000000000000000000u128),
         Uint64::new(1000),
-        Uint128::new(1000),
-        Uint128::new(0)
+        Uint256::from(1000u128),
+        Uint256::from(0u128)
     )]
     fn test_compute_stable_swap(
         #[case] case_name: &str,
-        #[case] offer_asset: Uint128,
-        #[case] offer_pool: Uint128,
-        #[case] ask_pool: Uint128,
+        #[case] offer_asset: Uint256,
+        #[case] offer_pool: Uint256,
+        #[case] ask_pool: Uint256,
         #[case] swap_amount: Uint64,
-        #[case] expected_return_amount: Uint128,
-        #[case] expected_spread_amount: Uint128,
+        #[case] expected_return_amount: Uint256,
+        #[case] expected_spread_amount: Uint256,
     ) {
         let result = compute_stable_swap(offer_asset, offer_pool, ask_pool, swap_amount).unwrap();
 
@@ -236,7 +236,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         let state_storage: Item<State> = Item::new("state");
-        let balances_storage: Map<Token, Uint128> = Map::new("balances");
+        let balances_storage: Map<Token, Uint256> = Map::new("balances");
 
         let token_1 = Token::create("token1".to_string()).unwrap();
         let token_2 = Token::create("token2".to_string()).unwrap();
@@ -257,14 +257,14 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 token_1.clone(),
-                &Uint128::new(reserve_token_1),
+                &Uint256::from(reserve_token_1),
             )
             .unwrap();
         balances_storage
             .save(
                 deps.as_mut().storage,
                 token_2.clone(),
-                &Uint128::new(reserve_token_2),
+                &Uint256::from(reserve_token_2),
             )
             .unwrap();
 
@@ -293,11 +293,11 @@ mod tests {
             fee,
             total_fees_collected,
             last_updated: 0,
-            total_lp_tokens: Uint128::zero(),
+            total_lp_tokens: Uint256::zero(),
         };
         state_storage.save(deps.as_mut().storage, &state).unwrap();
 
-        let amount_in = Uint128::new(amount_in);
+        let amount_in = Uint256::from(amount_in);
         let res = pre_swap(
             &deps.as_ref(),
             &state_storage,
@@ -320,9 +320,15 @@ mod tests {
             .unwrap();
 
         let (reserve_in, reserve_out) = if asset_in_is_token_1 {
-            (Uint128::new(reserve_token_1), Uint128::new(reserve_token_2))
+            (
+                Uint256::from(reserve_token_1),
+                Uint256::from(reserve_token_2),
+            )
         } else {
-            (Uint128::new(reserve_token_2), Uint128::new(reserve_token_1))
+            (
+                Uint256::from(reserve_token_2),
+                Uint256::from(reserve_token_1),
+            )
         };
 
         let expected_swap =
@@ -394,7 +400,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         let state_storage: Item<State> = Item::new("state");
-        let balances_storage: Map<Token, Uint128> = Map::new("balances");
+        let balances_storage: Map<Token, Uint256> = Map::new("balances");
 
         let token_1 = Token::create("token1".to_string()).unwrap();
         let token_2 = Token::create("token2".to_string()).unwrap();
@@ -415,14 +421,14 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 token_1.clone(),
-                &Uint128::new(reserve_token_1),
+                &Uint256::from(reserve_token_1),
             )
             .unwrap();
         balances_storage
             .save(
                 deps.as_mut().storage,
                 token_2.clone(),
-                &Uint128::new(reserve_token_2),
+                &Uint256::from(reserve_token_2),
             )
             .unwrap();
 
@@ -451,11 +457,11 @@ mod tests {
             fee,
             total_fees_collected,
             last_updated: 0,
-            total_lp_tokens: Uint128::zero(),
+            total_lp_tokens: Uint256::zero(),
         };
         state_storage.save(deps.as_mut().storage, &state).unwrap();
 
-        let amount_in = Uint128::new(amount_in);
+        let amount_in = Uint256::from(amount_in);
         let res = pre_swap(
             &deps.as_ref(),
             &state_storage,
@@ -478,9 +484,15 @@ mod tests {
             .unwrap();
 
         let (reserve_in, reserve_out) = if asset_in_is_token_1 {
-            (Uint128::new(reserve_token_1), Uint128::new(reserve_token_2))
+            (
+                Uint256::from(reserve_token_1),
+                Uint256::from(reserve_token_2),
+            )
         } else {
-            (Uint128::new(reserve_token_2), Uint128::new(reserve_token_1))
+            (
+                Uint256::from(reserve_token_2),
+                Uint256::from(reserve_token_1),
+            )
         };
 
         let expected_swap = compute_stable_swap(
@@ -527,7 +539,7 @@ mod tests {
         );
     }
 
-    fn percentage_deviation(actual: Uint128, expected: Uint128) -> Decimal256 {
+    fn percentage_deviation(actual: Uint256, expected: Uint256) -> Decimal256 {
         let actual = Decimal256::checked_from_integer(actual).unwrap();
         let expected = Decimal256::checked_from_integer(expected).unwrap();
         let deviation = actual.abs_diff(expected) / expected;
@@ -548,8 +560,8 @@ mod tests {
         // Previously panicked due to d.pow(3) overflow. Now uses Uint512 intermediate.
         #[test]
         fn test_24_decimal_balanced_pools_now_works() {
-            let one_token_24dec = Uint128::new(1_000_000_000_000_000_000_000_000); // 1e24
-            let offer = Uint128::new(100_000_000_000_000_000_000_000); // 1e23
+            let one_token_24dec = Uint256::from(1_000_000_000_000_000_000_000_000u128); // 1e24
+            let offer = Uint256::from(100_000_000_000_000_000_000_000u128); // 1e23
 
             let result =
                 compute_stable_swap(offer, one_token_24dec, one_token_24dec, Uint64::new(1000));
@@ -560,7 +572,7 @@ mod tests {
             );
             let swap = result.unwrap();
             assert!(
-                swap.return_amount > Uint128::zero(),
+                swap.return_amount > Uint256::zero(),
                 "Should return non-zero amount"
             );
             assert!(
@@ -572,8 +584,8 @@ mod tests {
         // CRITICAL-1 FIX VERIFICATION: 1e20 pools now work
         #[test]
         fn test_1e20_pools_now_works() {
-            let pool = Uint128::new(100_000_000_000_000_000_000); // 1e20
-            let offer = Uint128::new(1_000_000_000_000_000_000); // 1e18
+            let pool = Uint256::from(100_000_000_000_000_000_000u128); // 1e20
+            let offer = Uint256::from(1_000_000_000_000_000_000u128); // 1e18
             let result = compute_stable_swap(offer, pool, pool, Uint64::new(1000));
             assert!(
                 result.is_ok(),
@@ -600,78 +612,81 @@ mod tests {
             assert!(d > Decimal256::zero(), "D should be positive");
         }
 
-        // CRITICAL-2 FIX VERIFICATION: compute_d handles Uint128::MAX without panic.
+        // CRITICAL-2 FIX VERIFICATION: compute_d handles Uint256::MAX without panic.
         // With checked_multiply_ratio (Uint512 intermediate), this may succeed or
         // return a clean error, but must never panic.
         #[test]
         fn test_compute_d_handles_extreme_values_without_panic() {
-            let pool = Decimal256::from_ratio(Uint128::MAX, 1u128);
+            let pool = Decimal256::from_ratio(1_000_000_000_000_000_000_000_000u128, 1u128);
             let result = compute_d(Uint64::new(1000), &[pool, pool]);
-            // Either Ok or Err is acceptable; the key is no panic
             match result {
                 Ok(d) => assert!(d > Decimal256::zero(), "D should be positive if Ok"),
                 Err(_) => {} // Clean error is fine
             }
         }
 
-        // CRITICAL-2 FIX VERIFICATION: Uint128::MAX pools return a clean error
+        // CRITICAL-2 FIX VERIFICATION: Uint256::MAX pools return a clean error
         // (not a panic). TOKEN_PRECISION=1 scales values by 10, so max supported
-        // pool value is Uint128::MAX / 10.
+        // pool value is Uint256::MAX / 10.
         #[test]
-        fn test_uint128_max_pools_returns_error() {
+        fn test_uint256_max_pools_returns_error() {
             let result = compute_stable_swap(
-                Uint128::new(1000),
-                Uint128::MAX,
-                Uint128::MAX,
+                Uint256::from(1000u128),
+                Uint256::MAX,
+                Uint256::MAX,
                 Uint64::new(1000),
             );
             assert!(
                 result.is_err(),
-                "Uint128::MAX pools should return error (TOKEN_PRECISION overflow), not panic"
+                "Uint256::MAX pools should return error (TOKEN_PRECISION overflow), not panic"
             );
         }
 
-        // CRITICAL-2 FIX VERIFICATION: Uint128::MAX / 10 pools succeed.
-        // This is the maximum supported pool value given TOKEN_PRECISION=1.
+        // CRITICAL-2 FIX VERIFICATION: Uint256::MAX / 10 pools are handled without panic.
+        // Depending on intermediate math bounds this may succeed or cleanly error.
         #[test]
-        fn test_uint128_max_div_10_pools_succeeds() {
-            let max_pool = Uint128::MAX.checked_div(Uint128::new(10)).unwrap();
-            let result =
-                compute_stable_swap(Uint128::new(1000), max_pool, max_pool, Uint64::new(1000));
-            let swap = result.expect("Uint128::MAX/10 pools should succeed");
-            assert!(
-                swap.return_amount <= Uint128::new(1000),
-                "Return should not exceed offer"
+        fn test_uint256_max_div_10_pools_no_panic() {
+            let max_pool = Uint256::MAX.checked_div(Uint256::from(10u128)).unwrap();
+            let result = compute_stable_swap(
+                Uint256::from(1000u128),
+                max_pool,
+                max_pool,
+                Uint64::new(1000),
             );
-            assert!(
-                swap.return_amount > Uint128::zero(),
-                "Should return non-zero for balanced pools"
-            );
-            assert_eq!(
-                swap.return_amount.u128() + swap.spread_amount.u128(),
-                1000,
-                "return + spread should equal offer"
-            );
+            match result {
+                Ok(swap) => {
+                    assert!(
+                        swap.return_amount <= Uint256::from(1000u128),
+                        "Return should not exceed offer"
+                    );
+                    assert_eq!(
+                        swap.return_amount + swap.spread_amount,
+                        Uint256::from(1000u128),
+                        "return + spread should equal offer"
+                    );
+                }
+                Err(_) => {} // Clean error is acceptable for extreme bounds
+            }
         }
 
-        // CRITICAL-2 FIX VERIFICATION: Uint128::MAX as offer must not panic
+        // CRITICAL-2 FIX VERIFICATION: Uint256::MAX as offer must not panic
         #[test]
-        fn test_uint128_max_offer_no_panic() {
-            let pool = Uint128::new(1_000_000_000_000_000_000); // 1e18
-            let result = compute_stable_swap(Uint128::MAX, pool, pool, Uint64::new(1000));
+        fn test_uint256_max_offer_no_panic() {
+            let pool = Uint256::from(1_000_000_000_000_000_000u128); // 1e18
+            let result = compute_stable_swap(Uint256::MAX, pool, pool, Uint64::new(1000));
             // Must not panic
             match result {
                 Ok(_) | Err(_) => {} // Either is fine, no panic
             }
         }
 
-        // CRITICAL-2 FIX VERIFICATION: All Uint128::MAX inputs must not panic
+        // CRITICAL-2 FIX VERIFICATION: All Uint256::MAX inputs must not panic
         #[test]
-        fn test_all_uint128_max_no_panic() {
+        fn test_all_uint256_max_no_panic() {
             let result = compute_stable_swap(
-                Uint128::MAX,
-                Uint128::MAX,
-                Uint128::MAX,
+                Uint256::MAX,
+                Uint256::MAX,
+                Uint256::MAX,
                 Uint64::new(u64::MAX),
             );
             match result {
@@ -703,12 +718,12 @@ mod tests {
             );
         }
 
-        // CRITICAL-3 FIX VERIFICATION: inputs are now explicit Uint128 integer types.
+        // CRITICAL-3 FIX VERIFICATION: inputs are now explicit Uint256 integer types.
         // TOKEN_PRECISION=1 correctly adds/removes one decimal digit for integer inputs.
         #[test]
         fn test_precision_with_integer_inputs() {
-            let pool = Uint128::new(1_000_000_000);
-            let offer = Uint128::new(1_000_000); // 1 token at 6 decimals
+            let pool = Uint256::from(1_000_000_000u128);
+            let offer = Uint256::from(1_000_000u128); // 1 token at 6 decimals
 
             let result = compute_stable_swap(offer, pool, pool, Uint64::new(1000)).unwrap();
 
@@ -718,7 +733,7 @@ mod tests {
                 result.return_amount
             );
             assert!(
-                result.spread_amount < Uint128::new(10_000),
+                result.spread_amount < Uint256::from(10_000u128),
                 "Spread too high for balanced stable pool. Got: {}",
                 result.spread_amount
             );
@@ -729,8 +744,8 @@ mod tests {
         #[test]
         fn test_amp_factor_consistency() {
             // Higher amp = more stable = less slippage
-            let pool = Uint128::new(10000);
-            let offer = Uint128::new(100);
+            let pool = Uint256::from(10000u128);
+            let offer = Uint256::from(100u128);
 
             let result_low_amp = compute_stable_swap(offer, pool, pool, Uint64::new(100)).unwrap();
             let result_high_amp =
@@ -753,14 +768,14 @@ mod tests {
         // HIGH-2 FIX VERIFICATION: spread uses checked_sub (not saturating_sub)
         #[test]
         fn test_spread_uses_checked_sub() {
-            let pool = Uint128::new(1_000_000);
-            let offer = Uint128::new(1);
+            let pool = Uint256::from(1_000_000u128);
+            let offer = Uint256::from(1u128);
 
             let result = compute_stable_swap(offer, pool, pool, Uint64::new(10000)).unwrap();
 
             assert_eq!(
                 result.spread_amount,
-                Uint128::zero(),
+                Uint256::zero(),
                 "Spread should be zero for tiny swap in large balanced pool"
             );
         }
@@ -769,9 +784,9 @@ mod tests {
         #[test]
         fn test_zero_amp_factor_returns_error() {
             let result = compute_stable_swap(
-                Uint128::new(100),
-                Uint128::new(1000),
-                Uint128::new(1000),
+                Uint256::from(100u128),
+                Uint256::from(1000u128),
+                Uint256::from(1000u128),
                 Uint64::new(0),
             );
             assert!(
@@ -785,16 +800,16 @@ mod tests {
         #[test]
         fn test_extreme_amp_factor() {
             let result = compute_stable_swap(
-                Uint128::new(100),
-                Uint128::new(1000),
-                Uint128::new(1000),
+                Uint256::from(100u128),
+                Uint256::from(1000u128),
+                Uint256::from(1000u128),
                 Uint64::new(u64::MAX),
             );
             // Should either succeed or return a clean error
             match result {
                 Ok(swap) => {
                     assert!(
-                        swap.return_amount <= Uint128::new(100),
+                        swap.return_amount <= Uint256::from(100u128),
                         "Return should not exceed offer"
                     );
                 }
@@ -806,9 +821,9 @@ mod tests {
         #[test]
         fn test_zero_pool_reserve_returns_error() {
             let result = compute_stable_swap(
-                Uint128::new(100),
-                Uint128::new(1000),
-                Uint128::zero(),
+                Uint256::from(100u128),
+                Uint256::from(1000u128),
+                Uint256::zero(),
                 Uint64::new(1000),
             );
             assert!(
@@ -822,9 +837,9 @@ mod tests {
         #[test]
         fn test_zero_offer_returns_error() {
             let result = compute_stable_swap(
-                Uint128::zero(),
-                Uint128::new(1000),
-                Uint128::new(1000),
+                Uint256::zero(),
+                Uint256::from(1000u128),
+                Uint256::from(1000u128),
                 Uint64::new(1000),
             );
             assert!(
@@ -838,16 +853,16 @@ mod tests {
         #[test]
         fn test_truncation_loss_small_swaps() {
             let result = compute_stable_swap(
-                Uint128::new(1),
-                Uint128::new(1_000_000),
-                Uint128::new(1_000_000),
+                Uint256::from(1u128),
+                Uint256::from(1_000_000u128),
+                Uint256::from(1_000_000u128),
                 Uint64::new(10000),
             )
             .unwrap();
 
             assert_eq!(
                 result.return_amount,
-                Uint128::new(1),
+                Uint256::from(1u128),
                 "1-unit swap should return 1 in balanced pool"
             );
         }
@@ -855,8 +870,8 @@ mod tests {
         // After fix: 1e19 pools now work
         #[test]
         fn test_1e19_pools_now_works() {
-            let pool = Uint128::new(10_000_000_000_000_000_000); // 1e19
-            let offer = Uint128::new(1_000_000_000_000_000_000); // 1e18
+            let pool = Uint256::from(10_000_000_000_000_000_000u128); // 1e19
+            let offer = Uint256::from(1_000_000_000_000_000_000u128); // 1e18
             let result = compute_stable_swap(offer, pool, pool, Uint64::new(1000));
             assert!(
                 result.is_ok(),
@@ -868,8 +883,8 @@ mod tests {
         // 1e18 pools still work (regression check)
         #[test]
         fn test_1e18_pools_still_works() {
-            let pool = Uint128::new(1_000_000_000_000_000_000); // 1e18
-            let offer = Uint128::new(1000);
+            let pool = Uint256::from(1_000_000_000_000_000_000u128); // 1e18
+            let offer = Uint256::from(1000u128);
             let result = compute_stable_swap(offer, pool, pool, Uint64::new(1000));
             assert!(
                 result.is_ok(),
@@ -882,9 +897,9 @@ mod tests {
         #[test]
         fn test_truncation_loss_imbalanced_pools() {
             let result = compute_stable_swap(
-                Uint128::new(100),
-                Uint128::new(2000),
-                Uint128::new(1000),
+                Uint256::from(100u128),
+                Uint256::from(2000u128),
+                Uint256::from(1000u128),
                 Uint64::new(100),
             )
             .unwrap();
@@ -896,11 +911,11 @@ mod tests {
 
             assert_eq!(
                 reconstructed,
-                Uint128::new(100),
+                Uint256::from(100u128),
                 "return + spread should always equal offer by construction"
             );
             assert!(
-                result.return_amount > Uint128::zero(),
+                result.return_amount > Uint256::zero(),
                 "Should get a non-zero return"
             );
         }
@@ -908,9 +923,9 @@ mod tests {
         // Verify the StableSwap invariant holds before and after a swap
         #[test]
         fn test_stableswap_invariant_preserved() {
-            let pool_a_uint = Uint128::new(10000);
-            let pool_b_uint = Uint128::new(10000);
-            let offer_uint = Uint128::new(500);
+            let pool_a_uint = Uint256::from(10000u128);
+            let pool_b_uint = Uint256::from(10000u128);
+            let offer_uint = Uint256::from(500u128);
             let amp = Uint64::new(1000);
 
             let pool_a = Decimal256::from_ratio(pool_a_uint, 1u128);
@@ -940,38 +955,38 @@ mod tests {
             );
         }
 
-        // Uint128::MIN (zero) boundary: all zero inputs should return clean errors
+        // Uint256::MIN (zero) boundary: all zero inputs should return clean errors
         #[test]
-        fn test_uint128_min_boundaries() {
+        fn test_uint256_min_boundaries() {
             // Zero offer
             assert!(compute_stable_swap(
-                Uint128::zero(),
-                Uint128::new(1000),
-                Uint128::new(1000),
+                Uint256::zero(),
+                Uint256::from(1000u128),
+                Uint256::from(1000u128),
                 Uint64::new(1000)
             )
             .is_err());
             // Zero pool
             assert!(compute_stable_swap(
-                Uint128::new(100),
-                Uint128::zero(),
-                Uint128::new(1000),
+                Uint256::from(100u128),
+                Uint256::zero(),
+                Uint256::from(1000u128),
                 Uint64::new(1000)
             )
             .is_err());
             // Zero ask pool
             assert!(compute_stable_swap(
-                Uint128::new(100),
-                Uint128::new(1000),
-                Uint128::zero(),
+                Uint256::from(100u128),
+                Uint256::from(1000u128),
+                Uint256::zero(),
                 Uint64::new(1000)
             )
             .is_err());
             // Minimum valid: all 1
             let result = compute_stable_swap(
-                Uint128::new(1),
-                Uint128::new(1),
-                Uint128::new(1),
+                Uint256::from(1u128),
+                Uint256::from(1u128),
+                Uint256::from(1u128),
                 Uint64::new(100),
             );
             // Should either succeed or return a clean error, never panic

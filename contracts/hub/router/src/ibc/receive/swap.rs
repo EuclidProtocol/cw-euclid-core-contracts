@@ -88,24 +88,8 @@ pub fn ibc_execute_swap(
         normalize_token_to_voucher(msg.amount_in, metadata_in.token_type.get_decimals()?)?
     };
 
-    // Normalize min_amount_out using asset_out token metadata
-    let asset_out_metadata_res: euclid::msgs::virtual_balance::msg::GetTokenMetadataResponse =
-        deps.querier.query_wasm_smart(
-            virtual_balance_address.to_string(),
-            &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenMetadata {
-                token_id: msg.asset_out.to_string(),
-                pagination: None,
-            },
-        )?;
-    let asset_out_metadata = asset_out_metadata_res
-        .metadata
-        .first()
-        .ok_or(ContractError::new("No metadata found for asset_out token"))?
-        .clone();
-    let normalized_min_amount_out = normalize_token_to_voucher(
-        msg.min_amount_out,
-        asset_out_metadata.token_type.get_decimals()?,
-    )?;
+    // min_amount_out is already in voucher units (24 decimals)
+    let normalized_min_amount_out = msg.min_amount_out;
 
     // Simulation increases gas, ideally this can be resolved but we are still getting codespace wasm errors so this is added as a temporary fix for better error messages
     let simulate_swap_msg = euclid::msgs::vlp::base::QueryMsg::SimulateSwap(VlpSimulateSwapMsg {

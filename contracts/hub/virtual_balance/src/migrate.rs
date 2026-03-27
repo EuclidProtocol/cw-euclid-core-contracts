@@ -23,6 +23,11 @@ struct LegacyState {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
+// TODO: If upgrading from a pre-voucher contract version, add migration for:
+// - BALANCES (key "balances") -> VOUCHER_BALANCES (key "voucher_balances")
+// - ALLOWANCES -> VOUCHER_ALLOWANCES
+// - Seed TOKEN_METADATA for all existing tokens
+// Without this, existing user balances will read as zero after upgrade.
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     let migrated = if ADMIN.load(deps.storage).is_ok() {
         false

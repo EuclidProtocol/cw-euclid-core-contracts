@@ -1469,8 +1469,8 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .unwrap();
     let user_lp_balance = lp_token_balance_response.balance;
     // LP tokens are normalized to 24 decimals: lp_tokens(10_000, 100_000) * 2 - MINIMUM_LIQUIDITY
-    // = isqrt(10_000 * 10^18 * 100_000 * 10^18) * 2 - 1000
-    assert_eq!(user_lp_balance, Uint128::from(63245553203367586638976u128));
+    // = isqrt(10_000 * 10^6 * 100_000 * 10^6) * 2 - 1_000_000_000
+    assert_eq!(user_lp_balance, Uint128::from(63245553203366586639976u128));
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_token_a
         .query(&euclid::msgs::escrow::QueryMsg::State {})
@@ -1527,7 +1527,10 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
-    assert_eq!(liquidity_query.total_lp_tokens, Uint256::from(1000u128));
+    assert_eq!(
+        liquidity_query.total_lp_tokens,
+        Uint256::from(1_000_000_000u128)
+    );
 }
 
 #[test]

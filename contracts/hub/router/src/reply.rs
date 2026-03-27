@@ -10,7 +10,6 @@ use euclid::{
         self,
         vlp::base::{PoolCreationResponse, VlpRemoveLiquidityResponse, VlpSwapResponse},
     },
-    normalize::normalize_token_to_voucher,
     swap::SwapResponse,
 };
 use euclid_ibc::{
@@ -258,25 +257,8 @@ pub fn on_swap_reply(deps: &mut DepsMut, env: Env, msg: Reply) -> Result<Respons
                 ContractError::new("Asset Out Mismatch")
             );
 
-            // Normalize min_amount_out for comparison with VLP's normalized amount_out
-            let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
-            let asset_out_metadata_res: euclid::msgs::virtual_balance::msg::GetTokenMetadataResponse =
-                deps.querier.query_wasm_smart(
-                    virtual_balance_address.to_string(),
-                    &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenMetadata {
-                        token_id: swap_msg.asset_out.to_string(),
-                        pagination: None,
-                    },
-                )?;
-            let asset_out_metadata = asset_out_metadata_res
-                .metadata
-                .first()
-                .ok_or(ContractError::new("No metadata found for asset_out token"))?
-                .clone();
-            let normalized_min_amount_out = normalize_token_to_voucher(
-                swap_msg.min_amount_out,
-                asset_out_metadata.token_type.get_decimals()?,
-            )?;
+            // min_amount_out is already in voucher units (24 decimals)
+            let normalized_min_amount_out = swap_msg.min_amount_out;
 
             ensure!(
                 vlp_swap_response.amount_out >= normalized_min_amount_out,

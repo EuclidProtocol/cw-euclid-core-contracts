@@ -41,6 +41,10 @@ pub fn execute_mint(
         msg.token_type.clone(),
     );
     let metadata = metadata_key.load(deps.storage)?;
+    ensure!(
+        metadata.allowed,
+        ContractError::new("Token is deregistered and cannot be minted")
+    );
     let normalized_voucher_amount =
         normalize_token_to_voucher(msg.amount, metadata.token_type.get_decimals()?)?;
 
@@ -304,11 +308,7 @@ fn _deduct_allowance(
     let serialized_balance_key = sender_balance_key.clone().to_serialized_balance_key();
     let mut allowance = VOUCHER_ALLOWANCES
         .load(deps.storage, serialized_balance_key.clone())
-        .unwrap_or(VoucherAllowance {
-            amount: Uint256::zero(),
-            spender: from.clone(),
-            expires_at: None,
-        });
+        .map_err(|_| ContractError::new("No allowance set for this spender"))?;
 
     ensure!(
         allowance.spender == sender.clone(),
@@ -507,7 +507,7 @@ pub fn execute_register_token_metadata(
     let chain_uid = token_metadata.chain_uid.validate()?;
     let decimals = token_metadata.token_type.get_decimals()?;
     ensure!(
-        decimals.le(&VOUCHER_DECIMAL),
+        decimals >= 6 && decimals <= VOUCHER_DECIMAL,
         ContractError::InvalidDecimals { decimals }
     );
 

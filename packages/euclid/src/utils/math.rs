@@ -4,8 +4,6 @@ use cosmwasm_std::{Decimal256, Fraction, StdError, StdResult, Uint256};
 pub trait Decimal256Ext {
     fn to_uint256(&self) -> Uint256;
 
-    fn to_uint128_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256>;
-
     fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256>;
 
     fn checked_from_integer(i: impl Into<Uint256>) -> StdResult<Decimal256>;
@@ -24,13 +22,6 @@ pub trait Decimal256Ext {
 impl Decimal256Ext for Decimal256 {
     fn to_uint256(&self) -> Uint256 {
         self.numerator() / self.denominator()
-    }
-
-    fn to_uint128_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256> {
-        let value = self.atomics();
-        let precision = precision.into();
-
-        Ok(value.checked_div(10u128.pow(self.decimal_places() - precision).into())?)
     }
 
     fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256> {
