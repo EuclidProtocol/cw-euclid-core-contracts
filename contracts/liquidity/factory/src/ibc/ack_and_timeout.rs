@@ -1190,7 +1190,7 @@ fn ack_transfer_request(
 mod tests {
     use super::*;
     use cosmwasm_std::testing::mock_dependencies;
-    use cosmwasm_std::{Addr, OwnedDeps, Uint128};
+    use cosmwasm_std::{Addr, Uint128};
     use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
@@ -1205,120 +1205,120 @@ mod tests {
         PENDING_DEPOSIT_TOKEN, STATE, TOKEN_TO_ESCROW,
     };
 
-    struct AckTestFixture {
-        deps: OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>,
-        sender: Addr,
-        tx_id: String,
-        token_a: Token,
-        token_b: Token,
+    struct EscrowAckCase {
+        name: &'static str,
+        escrows_exist: bool,
+        expected_instantiations: usize,
+        expected_sends: usize,
+        expected_pending_deposits: bool,
     }
 
-    fn setup_ack_add_liquidity_fixture() -> AckTestFixture {
-        let mut deps = mock_dependencies();
-        let sender = deps.api.addr_make("sender");
-        let tx_id = "tx_1".to_string();
-
-        let token_a = Token::create("tokena".to_string()).unwrap();
-        let token_b = Token::create("tokenb".to_string()).unwrap();
-        let pair = euclid::token::Pair::new(token_a.clone(), token_b.clone()).unwrap();
-
-        STATE.save(deps.as_mut().storage, &crate::state::State {
-            router_contract: "router".to_string(),
-            relayer_contract: Addr::unchecked("relayer"),
-            escrow_code_id: 42,
-            lp_code_id: 2,
-            chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
-            is_native: false,
-        }).unwrap();
-        ADMIN.save(
-            deps.as_mut().storage,
-            &EuclidAdmin::default(Addr::unchecked("admin")),
-        ).unwrap();
-
-        let pool_key = PoolKey {
-            pair,
-            pool_type: PoolType::Concentrated { fee_tier_bps: 3000, tick_spacing: 60 },
-        };
-
-        PENDING_CONCENTRATED_ADD_LIQUIDITY.save(
-            deps.as_mut().storage,
-            (sender.clone(), tx_id.clone()),
-            &ConcentratedAddLiquidityRequest {
-                tx_id: tx_id.clone(),
-                sender: sender.clone(),
-                pair_info: PairWithDenomAndAmount {
-                    token_1: TokenWithDenomAndAmount {
-                        token: token_a.clone(),
-                        amount: Uint128::new(1000),
-                        token_type: TokenType::Native { denom: "utokena".to_string() },
-                    },
-                    token_2: TokenWithDenomAndAmount {
-                        token: token_b.clone(),
-                        amount: Uint128::new(2000),
-                        token_type: TokenType::Native { denom: "utokenb".to_string() },
-                    },
-                },
-                pool_key: pool_key.clone(),
-                lower_tick_index: -600,
-                upper_tick_index: 600,
-                position_id: None,
+    #[test]
+    fn ack_add_concentrated_liquidity_escrow_handling() {
+        let cases = [
+            EscrowAckCase {
+                name: "no escrows — instantiates new ones",
+                escrows_exist: false,
+                expected_instantiations: 2,
+                expected_sends: 0,
+                expected_pending_deposits: true,
             },
-        ).unwrap();
+            EscrowAckCase {
+                name: "escrows exist — sends to them directly",
+                escrows_exist: true,
+                expected_instantiations: 0,
+                expected_sends: 2,
+                expected_pending_deposits: false,
+            },
+        ];
 
-        AckTestFixture { deps, sender, tx_id, token_a, token_b }
-    }
+        for case in &cases {
+            let mut deps = mock_dependencies();
+            let sender = deps.api.addr_make("sender");
+            let tx_id = "tx_1".to_string();
+            let token_a = Token::create("tokena".to_string()).unwrap();
+            let token_b = Token::create("tokenb".to_string()).unwrap();
+            let pair = euclid::token::Pair::new(token_a.clone(), token_b.clone()).unwrap();
 
-    fn call_ack(fixture: &mut AckTestFixture) -> Response {
-        let pool_key = PoolKey {
-            pair: euclid::token::Pair::new(fixture.token_a.clone(), fixture.token_b.clone()).unwrap(),
-            pool_type: PoolType::Concentrated { fee_tier_bps: 3000, tick_spacing: 60 },
-        };
-        let ack_data = ConcentratedAddLiquidityResponse {
-            pool_key,
-            position_id: Uint128::new(1),
-            liquidity_delta: Uint128::new(500),
-            mint_lp_tokens: Uint128::zero(),
-            vlp_address: "vlp_contract".to_string(),
-            tx_id: fixture.tx_id.clone(),
-            sender: CrossChainUser::new(
-                ChainUid::create("testchain".to_string()).unwrap(),
-                fixture.sender.to_string(),
-            ),
-        };
-        ack_add_concentrated_liquidity(
-            fixture.deps.as_mut(),
-            AcknowledgementMsg::Ok(ack_data),
-            fixture.sender.to_string(),
-            fixture.tx_id.clone(),
-            false,
-        )
-        .unwrap()
-    }
+            STATE.save(deps.as_mut().storage, &crate::state::State {
+                router_contract: "router".to_string(),
+                relayer_contract: Addr::unchecked("relayer"),
+                escrow_code_id: 42,
+                lp_code_id: 2,
+                chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+                is_native: false,
+            }).unwrap();
+            ADMIN.save(
+                deps.as_mut().storage,
+                &EuclidAdmin::default(Addr::unchecked("admin")),
+            ).unwrap();
 
-    fn count_submsgs_with_id(response: &Response, id: u64) -> usize {
-        response.messages.iter().filter(|m| m.id == id).count()
-    }
+            let pool_key = PoolKey {
+                pair,
+                pool_type: PoolType::Concentrated { fee_tier_bps: 3000, tick_spacing: 60 },
+            };
+            PENDING_CONCENTRATED_ADD_LIQUIDITY.save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.clone()),
+                &ConcentratedAddLiquidityRequest {
+                    tx_id: tx_id.clone(),
+                    sender: sender.clone(),
+                    pair_info: PairWithDenomAndAmount {
+                        token_1: TokenWithDenomAndAmount {
+                            token: token_a.clone(),
+                            amount: Uint128::new(1000),
+                            token_type: TokenType::Native { denom: "utokena".to_string() },
+                        },
+                        token_2: TokenWithDenomAndAmount {
+                            token: token_b.clone(),
+                            amount: Uint128::new(2000),
+                            token_type: TokenType::Native { denom: "utokenb".to_string() },
+                        },
+                    },
+                    pool_key: pool_key.clone(),
+                    lower_tick_index: -600,
+                    upper_tick_index: 600,
+                    position_id: None,
+                },
+            ).unwrap();
 
-    #[test]
-    fn ack_add_concentrated_liquidity_instantiates_escrow_when_missing() {
-        let mut f = setup_ack_add_liquidity_fixture();
-        // No TOKEN_TO_ESCROW entries — triggers the None branch
-        let response = call_ack(&mut f);
+            if case.escrows_exist {
+                TOKEN_TO_ESCROW.save(deps.as_mut().storage, token_a.clone(), &Addr::unchecked("escrow_a")).unwrap();
+                TOKEN_TO_ESCROW.save(deps.as_mut().storage, token_b.clone(), &Addr::unchecked("escrow_b")).unwrap();
+            }
 
-        assert_eq!(count_submsgs_with_id(&response, ESCROW_INSTANTIATE_REPLY_ID), 2);
-        assert!(PENDING_DEPOSIT_TOKEN.may_load(f.deps.as_ref().storage, f.token_a).unwrap().is_some());
-        assert!(PENDING_DEPOSIT_TOKEN.may_load(f.deps.as_ref().storage, f.token_b).unwrap().is_some());
-    }
+            let ack_data = ConcentratedAddLiquidityResponse {
+                pool_key,
+                position_id: Uint128::new(1),
+                liquidity_delta: Uint128::new(500),
+                mint_lp_tokens: Uint128::zero(),
+                vlp_address: "vlp_contract".to_string(),
+                tx_id: tx_id.clone(),
+                sender: CrossChainUser::new(
+                    ChainUid::create("testchain".to_string()).unwrap(),
+                    sender.to_string(),
+                ),
+            };
 
-    #[test]
-    fn ack_add_concentrated_liquidity_sends_to_existing_escrow() {
-        let mut f = setup_ack_add_liquidity_fixture();
-        TOKEN_TO_ESCROW.save(f.deps.as_mut().storage, f.token_a.clone(), &Addr::unchecked("escrow_a")).unwrap();
-        TOKEN_TO_ESCROW.save(f.deps.as_mut().storage, f.token_b.clone(), &Addr::unchecked("escrow_b")).unwrap();
+            let response = ack_add_concentrated_liquidity(
+                deps.as_mut(),
+                AcknowledgementMsg::Ok(ack_data),
+                sender.to_string(),
+                tx_id,
+                false,
+            )
+            .unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
 
-        let response = call_ack(&mut f);
+            let instantiations = response.messages.iter().filter(|m| m.id == ESCROW_INSTANTIATE_REPLY_ID).count();
+            let sends = response.messages.iter().filter(|m| m.id == 0).count();
 
-        assert_eq!(count_submsgs_with_id(&response, ESCROW_INSTANTIATE_REPLY_ID), 0);
-        assert_eq!(count_submsgs_with_id(&response, 0), 2); // send-to-escrow messages
+            assert_eq!(instantiations, case.expected_instantiations, "{}: escrow instantiations", case.name);
+            assert_eq!(sends, case.expected_sends, "{}: escrow sends", case.name);
+            assert_eq!(
+                PENDING_DEPOSIT_TOKEN.may_load(deps.as_ref().storage, token_a).unwrap().is_some(),
+                case.expected_pending_deposits,
+                "{}: pending deposit token_a", case.name,
+            );
+        }
     }
 }
