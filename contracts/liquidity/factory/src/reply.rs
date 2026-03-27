@@ -1,6 +1,6 @@
 use crate::{
     ibc,
-    state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN},
+    state::{PENDING_DEPOSIT_TOKEN, POSITION_TOKEN_CONTRACT, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN},
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Event, Reply, Response, SubMsgResult};
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
@@ -22,10 +22,15 @@ pub const LP_INSTANTIATE_REPLY_ID: u64 = 4;
 pub const RELEASE_ESCROW_REPLY_ID: u64 = 5;
 
 pub const CROSS_CHAIN_RECEIVE_REPLY_ID: u64 = 6;
+pub const POSITION_TOKEN_INSTANTIATE_REPLY_ID: u64 = 7;
 
+#[named]
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();
@@ -64,9 +69,51 @@ pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response
     }
 }
 
+#[named]
+pub fn on_position_token_instantiate_reply(
+    deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
+        SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
+            let instantiate_data: cw_utils::MsgInstantiateContractResponse =
+                parse_instantiate_response_data(&data).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+
+            let position_token_address =
+                deps.api.addr_validate(&instantiate_data.contract_address)?;
+
+            if POSITION_TOKEN_CONTRACT.may_load(deps.storage)?.is_some() {
+                return Err(ContractError::Generic {
+                    err: "position token contract already registered".to_string(),
+                });
+            }
+            POSITION_TOKEN_CONTRACT.save(deps.storage, &position_token_address)?;
+
+            Ok(Response::new()
+                .add_attribute("action", "reply_position_token_instantiate")
+                .add_attribute("position_token_contract", position_token_address))
+        }
+    }
+}
+
+#[named]
 pub fn on_lp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::PoolInstantiateFailed { err }),
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
         SubMsgResult::Ok(..) => {
             let msg_clone = msg.clone();
             let result = msg_clone.result.unwrap();

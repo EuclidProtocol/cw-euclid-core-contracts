@@ -43,6 +43,7 @@ use factory::{
     FactoryContract,
 };
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
+use position_token::mock::mock_position_token;
 use router::RouterContract;
 
 use crate::helpers::{
@@ -62,13 +63,18 @@ fn test_proper_instantiation() {
             ("recipient1", vec![]),
             ("recipient2", vec![]),
         ])
-        .with_contracts(vec![("escrow", mock_escrow()), ("factory", mock_factory())])
+        .with_contracts(vec![
+            ("escrow", mock_escrow()),
+            ("factory", mock_factory()),
+            ("position_token", mock_position_token()),
+        ])
         .build(&mut factory);
     let owner = andr.get_wallet("owner");
 
     let escrow_code_id = 1;
     let factory_code_id = 2;
-    let cw20_code_id = 3;
+    let position_token_code_id = 3;
+    let cw20_code_id = 4;
     let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
     let router_contract = "router_contract".to_string();
     let relayer_contract = Addr::unchecked("relayer_contract");
@@ -84,6 +90,7 @@ fn test_proper_instantiation() {
         chain_uid.clone(),
         escrow_code_id,
         cw20_code_id,
+        position_token_code_id,
         true,
         relayer_contract.clone(),
         rate_limit_fee_recipient,

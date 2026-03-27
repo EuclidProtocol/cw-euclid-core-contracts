@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint512};
+use cosmwasm_std::{
+    to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, ReplyOn, Response,
+    StdError, SubMsg, Uint512, WasmMsg,
+};
 use cw2::set_contract_version;
 use euclid::admin::EuclidAdmin;
 use euclid::cross_chain_user::CrossChainUser;
@@ -33,7 +36,8 @@ use crate::query::{
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
-    self, on_lp_instantiate_reply, CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID,
+    self, on_lp_instantiate_reply, on_position_token_instantiate_reply,
+    CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
 };
 use crate::reply::{
     on_escrow_instantiate_reply, on_release_escrow_reply, ESCROW_INSTANTIATE_REPLY_ID,
@@ -50,7 +54,7 @@ pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -60,6 +64,7 @@ pub fn instantiate(
         relayer_contract: msg.relayer_contract.clone(),
         escrow_code_id: msg.escrow_code_id,
         lp_code_id: msg.lp_code_id,
+        position_token_code_id: msg.position_token_code_id,
         chain_uid,
         is_native: msg.is_native,
     };
@@ -84,9 +89,30 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
-    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
+    let admin = EuclidAdmin::default(info.sender.clone());
+    ADMIN.save(deps.storage, &admin)?;
+
+    let init_position_token_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+        admin: Some(admin.migration_admin.to_string()),
+        code_id: msg.position_token_code_id,
+        msg: to_json_binary(&euclid::msgs::position_token::InstantiateMsg {
+            name: "Euclid Concentrated Positions".to_string(),
+            symbol: "EUPOS".to_string(),
+            minter: env.contract.address.clone(),
+            admin: env.contract.address,
+        })?,
+        funds: vec![],
+        label: "position_token".to_string(),
+    });
 
     Ok(Response::new()
+        .add_submessage(SubMsg {
+            id: POSITION_TOKEN_INSTANTIATE_REPLY_ID,
+            msg: init_position_token_msg,
+            gas_limit: None,
+            reply_on: ReplyOn::Success,
+            payload: Binary::default(),
+        })
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
         .add_attribute("escrow_code_id", state.escrow_code_id.to_string())
@@ -405,6 +431,9 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         LP_INSTANTIATE_REPLY_ID => on_lp_instantiate_reply(deps.branch(), msg),
         RELEASE_ESCROW_REPLY_ID => on_release_escrow_reply(deps.branch(), msg),
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps.branch(), msg),
+        POSITION_TOKEN_INSTANTIATE_REPLY_ID => {
+            on_position_token_instantiate_reply(deps.branch(), msg)
+        }
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",

@@ -22,6 +22,8 @@ pub struct State {
     pub escrow_code_id: u64,
     // LP Token Code ID
     pub lp_code_id: u64,
+    // Position Token Code ID
+    pub position_token_code_id: u64,
     // The Unique Chain Identifier
     // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
     // IN THE EUCLID ECOSYSTEM

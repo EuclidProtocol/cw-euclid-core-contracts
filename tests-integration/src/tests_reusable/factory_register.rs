@@ -84,6 +84,7 @@ pub fn setup_factory_with_mode(
                 chain_uid: chain_uid.clone(),
                 escrow_code_id: escrow.code_id().unwrap(),
                 lp_code_id: lp_token.code_id().unwrap(),
+                position_token_code_id: position_token.code_id().unwrap(),
                 relayer_contract: relayer.address().unwrap(),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),
@@ -94,22 +95,6 @@ pub fn setup_factory_with_mode(
             &[],
         )?;
     }
-
-    position_token.instantiate(
-        &euclid::msgs::position_token::InstantiateMsg {
-            name: "Euclid Concentrated Positions".to_string(),
-            symbol: "EUPOS".to_string(),
-            minter: factory.address().unwrap(),
-            admin: chain.addr_make("position_token_admin"),
-        },
-        None,
-        &[],
-    )?;
-    factory.manage_factory_state(
-        euclid::msgs::factory::ManageFactoryState::UpdatePositionTokenContract {
-            position_token_contract: position_token.address().unwrap().to_string(),
-        },
-    )?;
 
     if !is_native {
         match mode {
