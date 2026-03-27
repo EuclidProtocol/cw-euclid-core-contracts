@@ -158,6 +158,15 @@ mod tests {
         Bob,
     }
 
+    impl Who {
+        fn to_address(&self, api: &cosmwasm_std::testing::MockApi) -> Addr {
+            match self {
+                Who::Alice => api.addr_make("alice"),
+                Who::Bob => api.addr_make("bob"),
+            }
+        }
+    }
+
     struct AuthCase {
         name: &'static str,
         /// When false the position metadata is not saved, exercising the
@@ -210,15 +219,11 @@ mod tests {
 
         for case in auth_cases() {
             let mut deps = mock_dependencies();
-            let alice = deps.api.addr_make("alice");
-            let bob = deps.api.addr_make("bob");
+            let alice = Who::Alice.to_address(&deps.api);
 
             if case.setup_position {
                 setup_concentrated_state(&mut deps.as_mut(), &alice, &pool_key);
-                let nft_owner_str = match case.nft_owner {
-                    Who::Alice => alice.to_string(),
-                    Who::Bob => bob.to_string(),
-                };
+                let nft_owner_str = case.nft_owner.to_address(&deps.api).to_string();
                 deps.querier.update_wasm(move |_| {
                     SystemResult::Ok(ContractResult::Ok(
                         to_json_binary(&OwnerOfResponse {
@@ -247,11 +252,8 @@ mod tests {
                     .unwrap();
             }
 
-            let caller = match case.caller {
-                Who::Alice => &alice,
-                Who::Bob => &bob,
-            };
-            let info = message_info(caller, &[]);
+            let caller = case.caller.to_address(&deps.api);
+            let info = message_info(&caller, &[]);
             let sender = CrossChainUser::new(chain_uid.clone(), caller.to_string());
             let recipient = CrossChainUser::new(chain_uid.clone(), caller.to_string());
 
@@ -284,8 +286,7 @@ mod tests {
 
         for case in auth_cases() {
             let mut deps = mock_dependencies();
-            let alice = deps.api.addr_make("alice");
-            let bob = deps.api.addr_make("bob");
+            let alice = Who::Alice.to_address(&deps.api);
 
             if case.setup_position {
                 setup_concentrated_state(&mut deps.as_mut(), &alice, &pool_key);
@@ -316,10 +317,7 @@ mod tests {
                 .unwrap();
 
             if case.setup_position {
-                let nft_owner_str = match case.nft_owner {
-                    Who::Alice => alice.to_string(),
-                    Who::Bob => bob.to_string(),
-                };
+                let nft_owner_str = case.nft_owner.to_address(&deps.api).to_string();
                 deps.querier.update_wasm(move |_| {
                     SystemResult::Ok(ContractResult::Ok(
                         to_json_binary(&OwnerOfResponse {
@@ -330,11 +328,8 @@ mod tests {
                 });
             }
 
-            let caller = match case.caller {
-                Who::Alice => &alice,
-                Who::Bob => &bob,
-            };
-            let info = message_info(caller, &[]);
+            let caller = case.caller.to_address(&deps.api);
+            let info = message_info(&caller, &[]);
             let recipient = CrossChainUser::new(chain_uid.clone(), caller.to_string());
 
             let err = collect_concentrated_fees_request(
