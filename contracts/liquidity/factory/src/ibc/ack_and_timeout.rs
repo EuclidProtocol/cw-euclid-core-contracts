@@ -1219,19 +1219,19 @@ mod tests {
                 name: "no escrows — instantiates both",
                 existing_escrows: &[],
                 expected_instantiations: 2,
-                expected_sends: 0,
+                expected_sends: 1, // position token mint
             },
             EscrowAckCase {
                 name: "both escrows exist — sends directly",
                 existing_escrows: &[("tokena", "escrow_a"), ("tokenb", "escrow_b")],
                 expected_instantiations: 0,
-                expected_sends: 2,
+                expected_sends: 3, // 2 escrow sends + position token mint
             },
             EscrowAckCase {
                 name: "one escrow exists — mixed",
                 existing_escrows: &[("tokena", "escrow_a")],
                 expected_instantiations: 1,
-                expected_sends: 1,
+                expected_sends: 2, // 1 escrow send + position token mint
             },
         ];
 
@@ -1262,6 +1262,9 @@ mod tests {
                     deps.as_mut().storage,
                     &EuclidAdmin::default(Addr::unchecked("admin")),
                 )
+                .unwrap();
+            POSITION_TOKEN_CONTRACT
+                .save(deps.as_mut().storage, &Addr::unchecked("position_token"))
                 .unwrap();
 
             let pool_key = PoolKey {
