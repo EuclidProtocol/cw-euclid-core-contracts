@@ -1185,3 +1185,280 @@ fn ack_transfer_request(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::testing::mock_dependencies;
+    use cosmwasm_std::{Addr, Uint128};
+    use euclid::admin::EuclidAdmin;
+    use euclid::chain::ChainUid;
+    use euclid::cross_chain_user::CrossChainUser;
+    use euclid::liquidity::ConcentratedAddLiquidityResponse;
+    use euclid::msgs::vlp::base::{PoolKey, PoolType};
+    use euclid::token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount};
+    use euclid_ibc::ack::AcknowledgementMsg;
+
+    use crate::reply::ESCROW_INSTANTIATE_REPLY_ID;
+    use crate::state::{
+        ConcentratedAddLiquidityRequest, ADMIN, PENDING_CONCENTRATED_ADD_LIQUIDITY,
+        PENDING_DEPOSIT_TOKEN, STATE, TOKEN_TO_ESCROW,
+    };
+
+    #[test]
+    fn ack_add_concentrated_liquidity_instantiates_escrow_when_missing() {
+        let mut deps = mock_dependencies();
+
+        let sender = deps.api.addr_make("sender");
+        let tx_id = "tx_1".to_string();
+
+        let token_a = Token::create("tokena".to_string()).unwrap();
+        let token_b = Token::create("tokenb".to_string()).unwrap();
+        let pair = Pair::new(token_a.clone(), token_b.clone()).unwrap();
+
+        // Set up factory state
+        let state = crate::state::State {
+            router_contract: "router".to_string(),
+            relayer_contract: Addr::unchecked("relayer"),
+            escrow_code_id: 42,
+            lp_code_id: 2,
+            chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+            is_native: false,
+        };
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+        ADMIN
+            .save(
+                deps.as_mut().storage,
+                &EuclidAdmin::default(Addr::unchecked("admin")),
+            )
+            .unwrap();
+
+        // Set up pending request with native tokens (not vouchers)
+        let pair_info = PairWithDenomAndAmount {
+            token_1: TokenWithDenomAndAmount {
+                token: token_a.clone(),
+                amount: Uint128::new(1000),
+                token_type: TokenType::Native {
+                    denom: "utokena".to_string(),
+                },
+            },
+            token_2: TokenWithDenomAndAmount {
+                token: token_b.clone(),
+                amount: Uint128::new(2000),
+                token_type: TokenType::Native {
+                    denom: "utokenb".to_string(),
+                },
+            },
+        };
+
+        let pool_key = PoolKey {
+            pair: pair.clone(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 3000,
+                tick_spacing: 60,
+            },
+        };
+
+        PENDING_CONCENTRATED_ADD_LIQUIDITY
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.clone()),
+                &ConcentratedAddLiquidityRequest {
+                    tx_id: tx_id.clone(),
+                    sender: sender.clone(),
+                    pair_info,
+                    pool_key: pool_key.clone(),
+                    lower_tick_index: -600,
+                    upper_tick_index: 600,
+                    position_id: None,
+                },
+            )
+            .unwrap();
+
+        // Intentionally do NOT set up TOKEN_TO_ESCROW — this is the None case
+
+        let ack_data = ConcentratedAddLiquidityResponse {
+            pool_key,
+            position_id: Uint128::new(1),
+            liquidity_delta: Uint128::new(500),
+            mint_lp_tokens: Uint128::zero(),
+            vlp_address: "vlp_contract".to_string(),
+            tx_id: tx_id.clone(),
+            sender: CrossChainUser::new(
+                ChainUid::create("testchain".to_string()).unwrap(),
+                sender.to_string(),
+            ),
+        };
+
+        let response = ack_add_concentrated_liquidity(
+            deps.as_mut(),
+            AcknowledgementMsg::Ok(ack_data),
+            sender.to_string(),
+            tx_id,
+            false,
+        )
+        .unwrap();
+
+        // Should have 2 submessages (one per token) to instantiate escrows
+        let escrow_submsgs: Vec<_> = response
+            .messages
+            .iter()
+            .filter(|m| m.id == ESCROW_INSTANTIATE_REPLY_ID)
+            .collect();
+        assert_eq!(
+            escrow_submsgs.len(),
+            2,
+            "expected 2 escrow instantiation submessages, got {}",
+            escrow_submsgs.len()
+        );
+
+        // Verify PENDING_DEPOSIT_TOKEN was saved for both tokens
+        assert!(
+            PENDING_DEPOSIT_TOKEN
+                .may_load(deps.as_ref().storage, token_a)
+                .unwrap()
+                .is_some(),
+            "expected pending deposit for token_a"
+        );
+        assert!(
+            PENDING_DEPOSIT_TOKEN
+                .may_load(deps.as_ref().storage, token_b)
+                .unwrap()
+                .is_some(),
+            "expected pending deposit for token_b"
+        );
+    }
+
+    #[test]
+    fn ack_add_concentrated_liquidity_sends_to_existing_escrow() {
+        let mut deps = mock_dependencies();
+
+        let sender = deps.api.addr_make("sender");
+        let tx_id = "tx_2".to_string();
+
+        let token_a = Token::create("tokena".to_string()).unwrap();
+        let token_b = Token::create("tokenb".to_string()).unwrap();
+        let pair = Pair::new(token_a.clone(), token_b.clone()).unwrap();
+
+        let state = crate::state::State {
+            router_contract: "router".to_string(),
+            relayer_contract: Addr::unchecked("relayer"),
+            escrow_code_id: 42,
+            lp_code_id: 2,
+            chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+            is_native: false,
+        };
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+        ADMIN
+            .save(
+                deps.as_mut().storage,
+                &EuclidAdmin::default(Addr::unchecked("admin")),
+            )
+            .unwrap();
+
+        let pair_info = PairWithDenomAndAmount {
+            token_1: TokenWithDenomAndAmount {
+                token: token_a.clone(),
+                amount: Uint128::new(1000),
+                token_type: TokenType::Native {
+                    denom: "utokena".to_string(),
+                },
+            },
+            token_2: TokenWithDenomAndAmount {
+                token: token_b.clone(),
+                amount: Uint128::new(2000),
+                token_type: TokenType::Native {
+                    denom: "utokenb".to_string(),
+                },
+            },
+        };
+
+        let pool_key = PoolKey {
+            pair: pair.clone(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 3000,
+                tick_spacing: 60,
+            },
+        };
+
+        PENDING_CONCENTRATED_ADD_LIQUIDITY
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.clone()),
+                &ConcentratedAddLiquidityRequest {
+                    tx_id: tx_id.clone(),
+                    sender: sender.clone(),
+                    pair_info,
+                    pool_key: pool_key.clone(),
+                    lower_tick_index: -600,
+                    upper_tick_index: 600,
+                    position_id: None,
+                },
+            )
+            .unwrap();
+
+        // Set up existing escrows for both tokens
+        TOKEN_TO_ESCROW
+            .save(
+                deps.as_mut().storage,
+                token_a.clone(),
+                &Addr::unchecked("escrow_a"),
+            )
+            .unwrap();
+        TOKEN_TO_ESCROW
+            .save(
+                deps.as_mut().storage,
+                token_b.clone(),
+                &Addr::unchecked("escrow_b"),
+            )
+            .unwrap();
+
+        let ack_data = ConcentratedAddLiquidityResponse {
+            pool_key,
+            position_id: Uint128::new(1),
+            liquidity_delta: Uint128::new(500),
+            mint_lp_tokens: Uint128::zero(),
+            vlp_address: "vlp_contract".to_string(),
+            tx_id: tx_id.clone(),
+            sender: CrossChainUser::new(
+                ChainUid::create("testchain".to_string()).unwrap(),
+                sender.to_string(),
+            ),
+        };
+
+        let response = ack_add_concentrated_liquidity(
+            deps.as_mut(),
+            AcknowledgementMsg::Ok(ack_data),
+            sender.to_string(),
+            tx_id,
+            false,
+        )
+        .unwrap();
+
+        // Should have 0 escrow instantiation submessages (escrows already exist)
+        let escrow_submsgs: Vec<_> = response
+            .messages
+            .iter()
+            .filter(|m| m.id == ESCROW_INSTANTIATE_REPLY_ID)
+            .collect();
+        assert_eq!(
+            escrow_submsgs.len(),
+            0,
+            "expected 0 escrow instantiation submessages when escrows exist, got {}",
+            escrow_submsgs.len()
+        );
+
+        // Should have 2 regular messages (send to existing escrows)
+        let regular_msgs: Vec<_> = response
+            .messages
+            .iter()
+            .filter(|m| m.id == 0)
+            .collect();
+        assert_eq!(
+            regular_msgs.len(),
+            2,
+            "expected 2 send-to-escrow messages, got {}",
+            regular_msgs.len()
+        );
+    }
+}
