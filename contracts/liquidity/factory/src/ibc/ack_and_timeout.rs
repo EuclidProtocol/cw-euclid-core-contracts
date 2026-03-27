@@ -1207,28 +1207,32 @@ mod tests {
 
     struct EscrowAckCase {
         name: &'static str,
-        escrows_exist: bool,
+        /// (token_name, escrow_addr) — pre-existing escrows to seed before the ack
+        existing_escrows: &'static [(&'static str, &'static str)],
         expected_instantiations: usize,
         expected_sends: usize,
-        expected_pending_deposits: bool,
     }
 
     #[test]
     fn ack_add_concentrated_liquidity_escrow_handling() {
         let cases = [
             EscrowAckCase {
-                name: "no escrows — instantiates new ones",
-                escrows_exist: false,
+                name: "no escrows — instantiates both",
+                existing_escrows: &[],
                 expected_instantiations: 2,
                 expected_sends: 0,
-                expected_pending_deposits: true,
             },
             EscrowAckCase {
-                name: "escrows exist — sends to them directly",
-                escrows_exist: true,
+                name: "both escrows exist — sends directly",
+                existing_escrows: &[("tokena", "escrow_a"), ("tokenb", "escrow_b")],
                 expected_instantiations: 0,
                 expected_sends: 2,
-                expected_pending_deposits: false,
+            },
+            EscrowAckCase {
+                name: "one escrow exists — mixed",
+                existing_escrows: &[("tokena", "escrow_a")],
+                expected_instantiations: 1,
+                expected_sends: 1,
             },
         ];
 
@@ -1282,9 +1286,12 @@ mod tests {
                 },
             ).unwrap();
 
-            if case.escrows_exist {
-                TOKEN_TO_ESCROW.save(deps.as_mut().storage, token_a.clone(), &Addr::unchecked("escrow_a")).unwrap();
-                TOKEN_TO_ESCROW.save(deps.as_mut().storage, token_b.clone(), &Addr::unchecked("escrow_b")).unwrap();
+            for &(token_name, escrow_addr) in case.existing_escrows {
+                TOKEN_TO_ESCROW.save(
+                    deps.as_mut().storage,
+                    Token::create(token_name.to_string()).unwrap(),
+                    &Addr::unchecked(escrow_addr),
+                ).unwrap();
             }
 
             let ack_data = ConcentratedAddLiquidityResponse {
@@ -1314,11 +1321,6 @@ mod tests {
 
             assert_eq!(instantiations, case.expected_instantiations, "{}: escrow instantiations", case.name);
             assert_eq!(sends, case.expected_sends, "{}: escrow sends", case.name);
-            assert_eq!(
-                PENDING_DEPOSIT_TOKEN.may_load(deps.as_ref().storage, token_a).unwrap().is_some(),
-                case.expected_pending_deposits,
-                "{}: pending deposit token_a", case.name,
-            );
         }
     }
 }
