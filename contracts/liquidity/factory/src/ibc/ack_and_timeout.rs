@@ -650,16 +650,47 @@ fn ack_add_concentrated_liquidity(
     match res {
         AcknowledgementMsg::Ok(data) => {
             let mut res = Response::new().add_attribute("method", "ack_add_concentrated_liquidity");
+            let state = STATE.load(deps.storage)?;
+            let admins = ADMIN.load(deps.storage)?;
+            let escrow_code_id = state.escrow_code_id;
             for token_info in liquidity_info.pair_info.get_vec_token_info() {
                 if token_info.token_type.is_voucher() {
                     continue;
                 }
                 let escrow_contract =
-                    TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
-                let send_msg = token_info
-                    .token_type
-                    .create_escrow_msg(token_info.amount, escrow_contract)?;
-                res = res.add_message(send_msg);
+                    TOKEN_TO_ESCROW.may_load(deps.storage, token_info.token.clone())?;
+                match escrow_contract {
+                    Some(address) => {
+                        let send_msg = token_info
+                            .token_type
+                            .create_escrow_msg(token_info.amount, address)?;
+                        res = res.add_message(send_msg);
+                    }
+                    None => {
+                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                            admin: Some(admins.migration_admin.clone().into_string()),
+                            code_id: escrow_code_id,
+                            msg: to_json_binary(&EscrowInstantiateMsg {
+                                token_id: token_info.clone().token,
+                                allowed_denom: Some(token_info.clone().token_type),
+                            })?,
+                            funds: vec![],
+                            label: "escrow".to_string(),
+                        });
+                        PENDING_DEPOSIT_TOKEN.save(
+                            deps.storage,
+                            token_info.clone().token,
+                            &token_info,
+                        )?;
+                        res = res.add_submessage(SubMsg {
+                            id: ESCROW_INSTANTIATE_REPLY_ID,
+                            msg: init_msg,
+                            gas_limit: None,
+                            reply_on: ReplyOn::Always,
+                            payload: Binary::default(),
+                        });
+                    }
+                }
             }
 
             let position_id = data.position_id.u128();
@@ -1150,6 +1181,145 @@ fn ack_transfer_request(
             Ok(Response::new()
                 .add_attribute("method", "transfer_error")
                 .add_attribute("error", err.clone()))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::testing::mock_dependencies;
+    use cosmwasm_std::{Addr, Uint128};
+    use euclid::admin::EuclidAdmin;
+    use euclid::chain::ChainUid;
+    use euclid::cross_chain_user::CrossChainUser;
+    use euclid::liquidity::ConcentratedAddLiquidityResponse;
+    use euclid::msgs::vlp::base::{PoolKey, PoolType};
+    use euclid::token::{PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount};
+    use euclid_ibc::ack::AcknowledgementMsg;
+
+    use crate::reply::ESCROW_INSTANTIATE_REPLY_ID;
+    use crate::state::{
+        ConcentratedAddLiquidityRequest, ADMIN, PENDING_CONCENTRATED_ADD_LIQUIDITY,
+        PENDING_DEPOSIT_TOKEN, STATE, TOKEN_TO_ESCROW,
+    };
+
+    struct EscrowAckCase {
+        name: &'static str,
+        /// (token_name, escrow_addr) — pre-existing escrows to seed before the ack
+        existing_escrows: &'static [(&'static str, &'static str)],
+        expected_instantiations: usize,
+        expected_sends: usize,
+    }
+
+    #[test]
+    fn ack_add_concentrated_liquidity_escrow_handling() {
+        let cases = [
+            EscrowAckCase {
+                name: "no escrows — instantiates both",
+                existing_escrows: &[],
+                expected_instantiations: 2,
+                expected_sends: 0,
+            },
+            EscrowAckCase {
+                name: "both escrows exist — sends directly",
+                existing_escrows: &[("tokena", "escrow_a"), ("tokenb", "escrow_b")],
+                expected_instantiations: 0,
+                expected_sends: 2,
+            },
+            EscrowAckCase {
+                name: "one escrow exists — mixed",
+                existing_escrows: &[("tokena", "escrow_a")],
+                expected_instantiations: 1,
+                expected_sends: 1,
+            },
+        ];
+
+        for case in &cases {
+            let mut deps = mock_dependencies();
+            let sender = deps.api.addr_make("sender");
+            let tx_id = "tx_1".to_string();
+            let token_a = Token::create("tokena".to_string()).unwrap();
+            let token_b = Token::create("tokenb".to_string()).unwrap();
+            let pair = euclid::token::Pair::new(token_a.clone(), token_b.clone()).unwrap();
+
+            STATE.save(deps.as_mut().storage, &crate::state::State {
+                router_contract: "router".to_string(),
+                relayer_contract: Addr::unchecked("relayer"),
+                escrow_code_id: 42,
+                lp_code_id: 2,
+                chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+                is_native: false,
+            }).unwrap();
+            ADMIN.save(
+                deps.as_mut().storage,
+                &EuclidAdmin::default(Addr::unchecked("admin")),
+            ).unwrap();
+
+            let pool_key = PoolKey {
+                pair,
+                pool_type: PoolType::Concentrated { fee_tier_bps: 3000, tick_spacing: 60 },
+            };
+            PENDING_CONCENTRATED_ADD_LIQUIDITY.save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.clone()),
+                &ConcentratedAddLiquidityRequest {
+                    tx_id: tx_id.clone(),
+                    sender: sender.clone(),
+                    pair_info: PairWithDenomAndAmount {
+                        token_1: TokenWithDenomAndAmount {
+                            token: token_a.clone(),
+                            amount: Uint128::new(1000),
+                            token_type: TokenType::Native { denom: "utokena".to_string() },
+                        },
+                        token_2: TokenWithDenomAndAmount {
+                            token: token_b.clone(),
+                            amount: Uint128::new(2000),
+                            token_type: TokenType::Native { denom: "utokenb".to_string() },
+                        },
+                    },
+                    pool_key: pool_key.clone(),
+                    lower_tick_index: -600,
+                    upper_tick_index: 600,
+                    position_id: None,
+                },
+            ).unwrap();
+
+            for &(token_name, escrow_addr) in case.existing_escrows {
+                TOKEN_TO_ESCROW.save(
+                    deps.as_mut().storage,
+                    Token::create(token_name.to_string()).unwrap(),
+                    &Addr::unchecked(escrow_addr),
+                ).unwrap();
+            }
+
+            let ack_data = ConcentratedAddLiquidityResponse {
+                pool_key,
+                position_id: Uint128::new(1),
+                liquidity_delta: Uint128::new(500),
+                mint_lp_tokens: Uint128::zero(),
+                vlp_address: "vlp_contract".to_string(),
+                tx_id: tx_id.clone(),
+                sender: CrossChainUser::new(
+                    ChainUid::create("testchain".to_string()).unwrap(),
+                    sender.to_string(),
+                ),
+            };
+
+            let response = ack_add_concentrated_liquidity(
+                deps.as_mut(),
+                AcknowledgementMsg::Ok(ack_data),
+                sender.to_string(),
+                tx_id,
+                false,
+            )
+            .unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
+
+            let instantiations = response.messages.iter().filter(|m| m.id == ESCROW_INSTANTIATE_REPLY_ID).count();
+            let sends = response.messages.iter().filter(|m| m.id == 0).count();
+
+            assert_eq!(instantiations, case.expected_instantiations, "{}: escrow instantiations", case.name);
+            assert_eq!(sends, case.expected_sends, "{}: escrow sends", case.name);
         }
     }
 }

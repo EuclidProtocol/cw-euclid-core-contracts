@@ -58,7 +58,6 @@ fn test_proper_instantiation() {
             1,
             owner.clone(),
             &InstantiateMsg {
-                router: owner.clone(),
                 virtual_balance_contract: owner.clone(),
                 pair: pair.clone(),
                 fee: fee.clone(),

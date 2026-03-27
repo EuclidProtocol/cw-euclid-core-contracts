@@ -124,6 +124,11 @@ pub fn query_pool(
     pool_key: PoolKey,
 ) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let stored_pool_key = POOL_KEY.load(deps.storage)?;
+    ensure!(
+        pool_key == stored_pool_key,
+        ContractError::new("pool key mismatch")
+    );
 
     let chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, chain_uid)?;
 

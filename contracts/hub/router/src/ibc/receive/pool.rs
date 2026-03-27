@@ -202,7 +202,6 @@ pub fn ibc_execute_request_pool_creation(
             admin: Some(admins.general_admin.to_string()),
             code_id: state.concentrated_vlp_code_id,
             msg: to_json_binary(&msgs::vlp::concentrated::msg::InstantiateMsg {
-                router: env.contract.address,
                 virtual_balance_contract: virtual_balance_address.clone(),
                 pair: pair.clone(),
                 fee: Fee::new(fee_tier_bps, 0, default_fee_recipient),

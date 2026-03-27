@@ -16,7 +16,6 @@ use cosmwasm_std::{Addr, Uint128, Uint256};
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    pub router: Addr,
     pub virtual_balance_contract: Addr,
     pub pair: Pair,
     pub fee: Fee,
