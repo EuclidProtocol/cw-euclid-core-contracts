@@ -32,13 +32,7 @@ impl MockConcentratedVlp {
         execute: Option<ExecuteMsg>,
         admin: Addr,
     ) -> Self {
-        let msg = mock_concentrated_vlp_instantiate_msg(
-            virtual_balance,
-            pair,
-            fee,
-            execute,
-            admin,
-        );
+        let msg = mock_concentrated_vlp_instantiate_msg(virtual_balance, pair, fee, execute, admin);
         let res = app.instantiate_contract(code_id, sender, &msg, &[], "Concentrated VLP", None);
 
         Self(res.unwrap())

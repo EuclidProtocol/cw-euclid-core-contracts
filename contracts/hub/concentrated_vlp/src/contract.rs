@@ -2176,10 +2176,7 @@ mod tests {
             },
         };
 
-        let info = cosmwasm_std::testing::message_info(
-            &Addr::unchecked("router"),
-            &[],
-        );
+        let info = cosmwasm_std::testing::message_info(&Addr::unchecked("router"), &[]);
 
         let msg = VlpConcentratedAddLiquidityMsg {
             sender: CrossChainUser {
@@ -2198,13 +2195,8 @@ mod tests {
             slippage_tolerance_bps: 100,
         };
 
-        let err = execute_add_concentrated_liquidity(
-            deps.as_mut(),
-            mock_env(),
-            info,
-            msg,
-        )
-        .unwrap_err();
+        let err =
+            execute_add_concentrated_liquidity(deps.as_mut(), mock_env(), info, msg).unwrap_err();
 
         assert!(
             err.to_string().contains("pool key mismatch"),
@@ -2241,10 +2233,7 @@ mod tests {
         )
         .unwrap();
 
-        let info = cosmwasm_std::testing::message_info(
-            &Addr::unchecked("router"),
-            &[],
-        );
+        let info = cosmwasm_std::testing::message_info(&Addr::unchecked("router"), &[]);
 
         let msg = VlpConcentratedAddLiquidityMsg {
             sender: CrossChainUser {
@@ -2260,16 +2249,12 @@ mod tests {
             slippage_tolerance_bps: 100,
         };
 
-        let err = execute_add_concentrated_liquidity(
-            deps.as_mut(),
-            mock_env(),
-            info,
-            msg,
-        )
-        .unwrap_err();
+        let err =
+            execute_add_concentrated_liquidity(deps.as_mut(), mock_env(), info, msg).unwrap_err();
 
         assert!(
-            err.to_string().contains("liquidity tokens do not match pool pair"),
+            err.to_string()
+                .contains("liquidity tokens do not match pool pair"),
             "expected liquidity tokens mismatch error, got: {}",
             err
         );
@@ -2289,17 +2274,29 @@ mod tests {
             .save(deps.as_mut().storage, chain_uid.clone(), &Uint128::new(100))
             .unwrap();
         BALANCES
-            .save(deps.as_mut().storage, state.pair.token_1.clone(), &Uint128::new(5000))
+            .save(
+                deps.as_mut().storage,
+                state.pair.token_1.clone(),
+                &Uint128::new(5000),
+            )
             .unwrap();
         BALANCES
-            .save(deps.as_mut().storage, state.pair.token_2.clone(), &Uint128::new(5000))
+            .save(
+                deps.as_mut().storage,
+                state.pair.token_2.clone(),
+                &Uint128::new(5000),
+            )
             .unwrap();
 
         let stored_pool_key = POOL_KEY.load(deps.as_ref().storage).unwrap();
 
         // Query with the correct pool_key should succeed
         let result = query_pool(deps.as_ref(), chain_uid.clone(), stored_pool_key);
-        assert!(result.is_ok(), "correct pool_key should work: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "correct pool_key should work: {:?}",
+            result.err()
+        );
 
         // Query with a wrong pool_key should fail
         let wrong_pool_key = PoolKey {

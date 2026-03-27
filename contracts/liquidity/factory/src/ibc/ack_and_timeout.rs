@@ -1243,54 +1243,73 @@ mod tests {
             let token_b = Token::create("tokenb".to_string()).unwrap();
             let pair = euclid::token::Pair::new(token_a.clone(), token_b.clone()).unwrap();
 
-            STATE.save(deps.as_mut().storage, &crate::state::State {
-                router_contract: "router".to_string(),
-                relayer_contract: Addr::unchecked("relayer"),
-                escrow_code_id: 42,
-                lp_code_id: 2,
-                chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
-                is_native: false,
-            }).unwrap();
-            ADMIN.save(
-                deps.as_mut().storage,
-                &EuclidAdmin::default(Addr::unchecked("admin")),
-            ).unwrap();
+            STATE
+                .save(
+                    deps.as_mut().storage,
+                    &crate::state::State {
+                        router_contract: "router".to_string(),
+                        relayer_contract: Addr::unchecked("relayer"),
+                        escrow_code_id: 42,
+                        lp_code_id: 2,
+                        position_token_code_id: 3,
+                        chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+                        is_native: false,
+                    },
+                )
+                .unwrap();
+            ADMIN
+                .save(
+                    deps.as_mut().storage,
+                    &EuclidAdmin::default(Addr::unchecked("admin")),
+                )
+                .unwrap();
 
             let pool_key = PoolKey {
                 pair,
-                pool_type: PoolType::Concentrated { fee_tier_bps: 3000, tick_spacing: 60 },
-            };
-            PENDING_CONCENTRATED_ADD_LIQUIDITY.save(
-                deps.as_mut().storage,
-                (sender.clone(), tx_id.clone()),
-                &ConcentratedAddLiquidityRequest {
-                    tx_id: tx_id.clone(),
-                    sender: sender.clone(),
-                    pair_info: PairWithDenomAndAmount {
-                        token_1: TokenWithDenomAndAmount {
-                            token: token_a.clone(),
-                            amount: Uint128::new(1000),
-                            token_type: TokenType::Native { denom: "utokena".to_string() },
-                        },
-                        token_2: TokenWithDenomAndAmount {
-                            token: token_b.clone(),
-                            amount: Uint128::new(2000),
-                            token_type: TokenType::Native { denom: "utokenb".to_string() },
-                        },
-                    },
-                    pool_key: pool_key.clone(),
-                    lower_tick_index: -600,
-                    upper_tick_index: 600,
-                    position_id: None,
+                pool_type: PoolType::Concentrated {
+                    fee_tier_bps: 3000,
+                    tick_spacing: 60,
                 },
-            ).unwrap();
+            };
+            PENDING_CONCENTRATED_ADD_LIQUIDITY
+                .save(
+                    deps.as_mut().storage,
+                    (sender.clone(), tx_id.clone()),
+                    &ConcentratedAddLiquidityRequest {
+                        tx_id: tx_id.clone(),
+                        sender: sender.clone(),
+                        pair_info: PairWithDenomAndAmount {
+                            token_1: TokenWithDenomAndAmount {
+                                token: token_a.clone(),
+                                amount: Uint128::new(1000),
+                                token_type: TokenType::Native {
+                                    denom: "utokena".to_string(),
+                                },
+                            },
+                            token_2: TokenWithDenomAndAmount {
+                                token: token_b.clone(),
+                                amount: Uint128::new(2000),
+                                token_type: TokenType::Native {
+                                    denom: "utokenb".to_string(),
+                                },
+                            },
+                        },
+                        pool_key: pool_key.clone(),
+                        lower_tick_index: -600,
+                        upper_tick_index: 600,
+                        position_id: None,
+                    },
+                )
+                .unwrap();
 
             for &(token_name, escrow_addr) in case.existing_escrows {
-                TOKEN_TO_ESCROW.save(
-                    deps.as_mut().storage,
-                    Token::create(token_name.to_string()).unwrap(),
-                    &Addr::unchecked(escrow_addr),
-                ).unwrap();
+                TOKEN_TO_ESCROW
+                    .save(
+                        deps.as_mut().storage,
+                        Token::create(token_name.to_string()).unwrap(),
+                        &Addr::unchecked(escrow_addr),
+                    )
+                    .unwrap();
             }
 
             let ack_data = ConcentratedAddLiquidityResponse {
@@ -1315,10 +1334,18 @@ mod tests {
             )
             .unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
 
-            let instantiations = response.messages.iter().filter(|m| m.id == ESCROW_INSTANTIATE_REPLY_ID).count();
+            let instantiations = response
+                .messages
+                .iter()
+                .filter(|m| m.id == ESCROW_INSTANTIATE_REPLY_ID)
+                .count();
             let sends = response.messages.iter().filter(|m| m.id == 0).count();
 
-            assert_eq!(instantiations, case.expected_instantiations, "{}: escrow instantiations", case.name);
+            assert_eq!(
+                instantiations, case.expected_instantiations,
+                "{}: escrow instantiations",
+                case.name
+            );
             assert_eq!(sends, case.expected_sends, "{}: escrow sends", case.name);
         }
     }
