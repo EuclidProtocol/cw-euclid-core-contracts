@@ -75,7 +75,7 @@ pub struct DenomRegisterDeregisterRequest {
 pub const PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS: Map<
     (Addr, String),
     DenomRegisterDeregisterRequest,
-> = Map::new("pending_denom_requests");
+> = Map::new("request_denom_register_deregister");
 
 // Map for pending swaps for user
 pub const PENDING_SWAPS: Map<(Addr, String), SwapRequest> = Map::new("pending_swaps");
