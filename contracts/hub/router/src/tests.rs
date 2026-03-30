@@ -365,23 +365,38 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // ManageRouterState
+    // ManageRouterState: auth guard (covers all variants uniformly)
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::lock_state(ManageRouterState::LockState { locked: true })]
+    #[case::vlp_code_id(ManageRouterState::Vlp { vlp_code_id: Some(99), stable_vlp_code_id: None })]
+    #[case::relayer_contract(ManageRouterState::RelayerContract { relayer_contract: Addr::unchecked("x") })]
+    #[case::meta_transaction_contract(ManageRouterState::MetaTransactionContract { meta_transaction_contract: Addr::unchecked("x") })]
+    #[case::update_fee_state(ManageRouterState::UpdateFeeState { release_fee_recipient: None, default_fee_recipient: None })]
+    fn test_manage_router_state_rejects_non_admin(
+        mut initialized: MockDeps,
+        #[case] variant: ManageRouterState,
+    ) {
+        let non_admin = initialized.api.addr_make("non_admin");
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&non_admin, &[]),
+            ExecuteMsg::ManageRouterState(variant),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    // -----------------------------------------------------------------------
+    // ManageRouterState: happy paths
     // -----------------------------------------------------------------------
 
     #[rstest]
     fn test_manage_router_state_lock_state(mut initialized: MockDeps) {
         let env = mock_env();
         let creator = initialized.api.addr_make("creator");
-        let non_admin = initialized.api.addr_make("non_admin");
         let info = message_info(&creator, &[]);
-
-        let res = execute(
-            initialized.as_mut(),
-            env.clone(),
-            message_info(&non_admin, &[]),
-            ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: true }),
-        );
-        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
             initialized.as_mut(),
@@ -444,19 +459,7 @@ mod tests {
     fn test_manage_router_state_vlp_code_id(mut initialized: MockDeps) {
         let env = mock_env();
         let creator = initialized.api.addr_make("creator");
-        let non_admin = initialized.api.addr_make("non_admin");
         let info = message_info(&creator, &[]);
-
-        let res = execute(
-            initialized.as_mut(),
-            env.clone(),
-            message_info(&non_admin, &[]),
-            ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
-                vlp_code_id: Some(99),
-                stable_vlp_code_id: None,
-            }),
-        );
-        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
             initialized.as_mut(),
@@ -491,19 +494,8 @@ mod tests {
     fn test_manage_router_state_relayer_contract(mut initialized: MockDeps) {
         let env = mock_env();
         let creator = initialized.api.addr_make("creator");
-        let non_admin = initialized.api.addr_make("non_admin");
         let new_relayer = initialized.api.addr_make("new_relayer");
         let info = message_info(&creator, &[]);
-
-        let res = execute(
-            initialized.as_mut(),
-            env.clone(),
-            message_info(&non_admin, &[]),
-            ExecuteMsg::ManageRouterState(ManageRouterState::RelayerContract {
-                relayer_contract: new_relayer.clone(),
-            }),
-        );
-        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
             initialized.as_mut(),
@@ -524,19 +516,8 @@ mod tests {
     fn test_manage_router_state_meta_transaction_contract(mut initialized: MockDeps) {
         let env = mock_env();
         let creator = initialized.api.addr_make("creator");
-        let non_admin = initialized.api.addr_make("non_admin");
         let meta_tx = initialized.api.addr_make("meta_tx_contract");
         let info = message_info(&creator, &[]);
-
-        let res = execute(
-            initialized.as_mut(),
-            env.clone(),
-            message_info(&non_admin, &[]),
-            ExecuteMsg::ManageRouterState(ManageRouterState::MetaTransactionContract {
-                meta_transaction_contract: meta_tx.clone(),
-            }),
-        );
-        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         let res = execute(
             initialized.as_mut(),
@@ -561,20 +542,8 @@ mod tests {
     fn test_manage_router_state_update_fee_state(mut initialized: MockDeps) {
         let env = mock_env();
         let creator = initialized.api.addr_make("creator");
-        let non_admin = initialized.api.addr_make("non_admin");
         let new_recipient = initialized.api.addr_make("new_recipient");
         let info = message_info(&creator, &[]);
-
-        let res = execute(
-            initialized.as_mut(),
-            env.clone(),
-            message_info(&non_admin, &[]),
-            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateFeeState {
-                release_fee_recipient: Some(new_recipient.clone()),
-                default_fee_recipient: None,
-            }),
-        );
-        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
             initialized.as_mut(),
@@ -752,6 +721,7 @@ mod tests {
         let non_admin = initialized.api.addr_make("non_admin");
         let info = message_info(&creator, &[]);
 
+        // Admins returns UnauthorizedWithMsg (not Unauthorized) — tested here separately
         let res = execute(
             initialized.as_mut(),
             env.clone(),
