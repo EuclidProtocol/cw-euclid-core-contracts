@@ -161,9 +161,9 @@ mod tests {
         let random = deps.api.addr_make("random");
         let creator = deps.api.addr_make("creator");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info);
+        init(deps.as_mut(), info.clone());
 
-        // UpdateDefaultReleaseFee: no require guard in the contract.
+        // UpdateDefaultReleaseFee: unauthorized caller is rejected.
         let err = execute(
             deps.as_mut(),
             mock_env(),
@@ -175,7 +175,18 @@ mod tests {
         .unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
-        // UpdateChainTimeout: no auth guard either.
+        // UpdateDefaultReleaseFee: fee_admin (creator) succeeds.
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info.clone(),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateDefaultReleaseFee {
+                default_release_fee: Uint128::new(42),
+            }),
+        )
+        .unwrap();
+
+        // UpdateChainTimeout: unauthorized caller is rejected.
         let err = execute(
             deps.as_mut(),
             mock_env(),
@@ -187,5 +198,17 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
+
+        // UpdateChainTimeout: general_admin (creator) succeeds.
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateChainTimeout {
+                chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+                timeout: 600,
+            }),
+        )
+        .unwrap();
     }
 }
