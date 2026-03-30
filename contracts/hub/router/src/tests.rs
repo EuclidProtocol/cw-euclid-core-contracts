@@ -3,17 +3,25 @@
 pub(crate) mod tests {
     #[cfg(test)]
     use crate::contract::{execute, instantiate};
+    use crate::ibc::receive::reusable_internal_call;
+    use crate::reply::{
+        ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
+        VLP_POOL_REGISTER_REPLY_ID,
+    };
     use crate::state::{
         FeeState, State, ADMIN, CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, FEE_STATE, LOCKED_CHAINS,
-        META_TRANSACTION_CONTRACT, PENDING_RELEASE_VOUCHER, RELAYER_CONTRACT, RELEASE_FEES, STATE,
-        TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
+        META_TRANSACTION_CONTRACT, PENDING_RELEASE_VOUCHER, PENDING_REMOVE_LIQUIDITY,
+        PENDING_SWAPS, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS,
+        VIRTUAL_BALANCE_CONTRACT, VLPS,
     };
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{
-        from_json, Addr, Binary, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Order, Response, Uint128,
+        from_json, to_json_binary, Addr, Binary, ContractResult, CosmosMsg, DepsMut, IbcMsg,
+        MessageInfo, Order, Response, SystemResult, Uint128, WasmQuery,
     };
     use euclid::admin::{AdminType, EuclidAdmin};
     use euclid::chain::{Chain, ChainType, ChainUid, CosmosChain};
+    use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
     use euclid::limit::Limit;
     use euclid::msgs::cross_chain_config::CrossChainConfig;
@@ -22,8 +30,17 @@ pub(crate) mod tests {
         ExecuteMsg, InstantiateMsg, ManageRouterState, RegisterFactoryChainCosmos,
         RegisterFactoryChainEvm, RegisterFactoryChainNative, RegisterFactoryChainType, TokenDenom,
     };
+    use euclid::msgs::vlp::base::{GetSwapQueryResponse, PoolConfig};
+    use euclid::recipient::Recipient;
+    use euclid::swap::NextSwapPair;
+    use euclid::token::{Pair, PairWithDenomAndAmount, TokenWithDenom, TokenWithDenomAndAmount};
     use euclid::token::{Token, TokenType};
     use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
+    use euclid_ibc::router_ibc::{
+        RouterCrossChainDepositTokenExecuteMsg, RouterCrossChainExecuteMsg,
+        RouterCrossChainRemoveLiquidityExecuteMsg, RouterCrossChainSwapExecuteMsg,
+        RouterCrossChainTransferVoucherExecuteMsg,
+    };
     use rstest::{fixture, rstest};
 
     // -----------------------------------------------------------------------
@@ -1342,6 +1359,661 @@ pub(crate) mod tests {
                 .unwrap()
                 .value,
             "100"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // reusable_internal_call: gate checks
+    // -----------------------------------------------------------------------
+
+    fn call_reusable(
+        deps: &mut MockDeps,
+        msg: RouterCrossChainExecuteMsg,
+        chain_uid: ChainUid,
+    ) -> Result<Response, ContractError> {
+        let mut deps_mut = deps.as_mut();
+        reusable_internal_call(
+            &mut deps_mut,
+            mock_env(),
+            message_info(&Addr::unchecked("anyone"), &[]),
+            msg,
+            chain_uid,
+        )
+    }
+
+    fn register_denom_msg(chain_uid: ChainUid) -> RouterCrossChainExecuteMsg {
+        RouterCrossChainExecuteMsg::RegisterDenom {
+            sender: CrossChainUser::new(chain_uid, "user".to_string()),
+            token: TokenWithDenom {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+            },
+            tx_id: "tx1".to_string(),
+        }
+    }
+
+    #[rstest]
+    fn test_receive_dispatch_contract_locked(mut initialized: MockDeps) {
+        let mut state = STATE.load(initialized.as_ref().storage).unwrap();
+        state.locked = true;
+        STATE.save(initialized.as_mut().storage, &state).unwrap();
+
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let result = call_reusable(
+            &mut initialized,
+            register_denom_msg(chain_uid.clone()),
+            chain_uid,
+        );
+        assert_eq!(result.unwrap_err(), ContractError::ContractLocked {});
+    }
+
+    #[rstest]
+    fn test_receive_dispatch_chain_locked(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        LOCKED_CHAINS
+            .save(initialized.as_mut().storage, &vec![chain_uid.clone()])
+            .unwrap();
+
+        let result = call_reusable(
+            &mut initialized,
+            register_denom_msg(chain_uid.clone()),
+            chain_uid,
+        );
+        assert_eq!(result.unwrap_err(), ContractError::DeregisteredChain {});
+    }
+
+    #[rstest]
+    fn test_receive_dispatch_chain_uid_mismatch(mut initialized: MockDeps) {
+        let chain1 = ChainUid::create("chain1".to_string()).unwrap();
+        let chain2 = ChainUid::create("chain2".to_string()).unwrap();
+        // sender is from chain2 but chain_uid param is chain1
+        let msg = RouterCrossChainExecuteMsg::RegisterDenom {
+            sender: CrossChainUser::new(chain2, "user".to_string()),
+            token: TokenWithDenom {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+            },
+            tx_id: "tx1".to_string(),
+        };
+        let result = call_reusable(&mut initialized, msg, chain1);
+        assert_eq!(
+            result.unwrap_err(),
+            ContractError::new("Chain UID mismatch")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // RegisterDenom / DeregisterDenom dispatch
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_ibc_register_denom_saves_token_denoms(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        call_reusable(
+            &mut initialized,
+            register_denom_msg(chain_uid.clone()),
+            chain_uid.clone(),
+        )
+        .unwrap();
+
+        let denoms = TOKEN_DENOMS
+            .load(initialized.as_ref().storage, token)
+            .unwrap();
+        assert_eq!(denoms.len(), 1);
+        assert_eq!(denoms[0].chain_uid, chain_uid);
+        assert_eq!(
+            denoms[0].token_type,
+            TokenType::Native {
+                denom: "uusdc".to_string()
+            }
+        );
+    }
+
+    #[rstest]
+    fn test_ibc_register_denom_duplicate_fails(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        TOKEN_DENOMS
+            .save(
+                initialized.as_mut().storage,
+                token,
+                &vec![TokenDenom {
+                    chain_uid: chain_uid.clone(),
+                    token_type: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                    },
+                }],
+            )
+            .unwrap();
+
+        let result = call_reusable(
+            &mut initialized,
+            register_denom_msg(chain_uid.clone()),
+            chain_uid,
+        );
+        assert_eq!(result.unwrap_err(), ContractError::TokenAlreadyExist {});
+    }
+
+    #[rstest]
+    fn test_ibc_deregister_denom_removes_entry(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        TOKEN_DENOMS
+            .save(
+                initialized.as_mut().storage,
+                token.clone(),
+                &vec![TokenDenom {
+                    chain_uid: chain_uid.clone(),
+                    token_type: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                    },
+                }],
+            )
+            .unwrap();
+
+        let msg = RouterCrossChainExecuteMsg::DeregisterDenom {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            token: TokenWithDenom {
+                token: token.clone(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+            },
+            tx_id: "tx1".to_string(),
+        };
+        call_reusable(&mut initialized, msg, chain_uid).unwrap();
+
+        let denoms = TOKEN_DENOMS
+            .load(initialized.as_ref().storage, token)
+            .unwrap();
+        assert!(
+            denoms.is_empty(),
+            "entry should be removed after deregister"
+        );
+    }
+
+    #[rstest]
+    fn test_ibc_deregister_denom_not_found_fails(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        // No entry for this chain
+        TOKEN_DENOMS
+            .save(initialized.as_mut().storage, token.clone(), &vec![])
+            .unwrap();
+
+        let msg = RouterCrossChainExecuteMsg::DeregisterDenom {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            token: TokenWithDenom {
+                token,
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+            },
+            tx_id: "tx1".to_string(),
+        };
+        let result = call_reusable(&mut initialized, msg, chain_uid);
+        assert_eq!(result.unwrap_err(), ContractError::AssetDoesNotExist {});
+    }
+
+    // -----------------------------------------------------------------------
+    // DepositToken dispatch
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_ibc_deposit_token_updates_escrow_and_emits_mint(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        seed_virtual_balance(&mut initialized);
+        // execute_transfer_voucher unconditionally loads TOKEN_DENOMS for the token
+        TOKEN_DENOMS
+            .save(initialized.as_mut().storage, token.clone(), &vec![])
+            .unwrap();
+
+        let msg =
+            RouterCrossChainExecuteMsg::DepositToken(RouterCrossChainDepositTokenExecuteMsg {
+                sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+                asset_in: TokenWithDenom {
+                    token: token.clone(),
+                    token_type: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                    },
+                },
+                amount_in: Uint128::new(100),
+                recipients: vec![],
+                tx_id: "tx1".to_string(),
+            });
+        let res = call_reusable(&mut initialized, msg, chain_uid.clone()).unwrap();
+
+        let balance = ESCROW_BALANCES
+            .load(initialized.as_ref().storage, (token.to_string(), chain_uid))
+            .unwrap();
+        assert_eq!(balance, Uint128::new(100));
+        assert!(
+            !res.messages.is_empty(),
+            "expected virtual balance mint submessage"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // TransferVoucher dispatch
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_ibc_transfer_voucher_returns_action_attribute(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        seed_virtual_balance(&mut initialized);
+        TOKEN_DENOMS
+            .save(initialized.as_mut().storage, token.clone(), &vec![])
+            .unwrap();
+
+        let vsl_chain = ChainUid::vsl_chain_uid().unwrap();
+        let msg = RouterCrossChainExecuteMsg::TransferVoucher(
+            RouterCrossChainTransferVoucherExecuteMsg {
+                sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+                token,
+                amount: Uint128::new(100),
+                from: None,
+                recipients: vec![Recipient {
+                    recipient: CrossChainUser::new(vsl_chain, "recipient".to_string()),
+                    amount: Limit::LessThanOrEqual(Uint128::new(100)),
+                    denom: TokenType::Voucher {},
+                    forwarding_message: None,
+                    unsafe_refund_as_voucher: None,
+                }],
+                tx_id: "tx1".to_string(),
+            },
+        );
+        let res = call_reusable(&mut initialized, msg, chain_uid).unwrap();
+
+        assert!(
+            res.attributes
+                .iter()
+                .any(|a| a.key == "action" && a.value == "transfer_virtual_balance"),
+            "expected action=transfer_virtual_balance attribute"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // RequestPoolCreation dispatch
+    // -----------------------------------------------------------------------
+
+    fn make_pool_pair(amount_a: u128, amount_b: u128) -> PairWithDenomAndAmount {
+        PairWithDenomAndAmount {
+            token_1: TokenWithDenomAndAmount {
+                token: Token::create("aaa".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uaaa".to_string(),
+                },
+                amount: Uint128::new(amount_a),
+            },
+            token_2: TokenWithDenomAndAmount {
+                token: Token::create("bbb".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "ubbb".to_string(),
+                },
+                amount: Uint128::new(amount_b),
+            },
+        }
+    }
+
+    #[rstest]
+    fn test_ibc_request_pool_creation_both_tokens_new_fails(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        seed_virtual_balance(&mut initialized);
+        // Neither token in TOKEN_DENOMS
+
+        let msg = RouterCrossChainExecuteMsg::RequestPoolCreation {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            tx_id: "tx1".to_string(),
+            pair: make_pool_pair(100, 100),
+            pool_config: PoolConfig::ConstantProduct {},
+            slippage_tolerance_bps: 100,
+        };
+        let result = call_reusable(&mut initialized, msg, chain_uid);
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot create pool with two new tokens"),
+            "expected two-new-tokens error"
+        );
+    }
+
+    #[rstest]
+    fn test_ibc_request_pool_creation_vlp_absent_instantiates(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token_a = Token::create("aaa".to_string()).unwrap();
+
+        seed_virtual_balance(&mut initialized);
+        TOKEN_DENOMS
+            .save(
+                initialized.as_mut().storage,
+                token_a,
+                &vec![TokenDenom {
+                    chain_uid: chain_uid.clone(),
+                    token_type: TokenType::Native {
+                        denom: "uaaa".to_string(),
+                    },
+                }],
+            )
+            .unwrap();
+
+        let msg = RouterCrossChainExecuteMsg::RequestPoolCreation {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            tx_id: "tx1".to_string(),
+            pair: make_pool_pair(100, 100),
+            pool_config: PoolConfig::ConstantProduct {},
+            slippage_tolerance_bps: 100,
+        };
+        let res = call_reusable(&mut initialized, msg, chain_uid).unwrap();
+
+        assert_eq!(res.messages.len(), 1);
+        assert_eq!(
+            res.messages[0].id, VLP_INSTANTIATE_REPLY_ID,
+            "expected VLP instantiate submsg"
+        );
+    }
+
+    #[rstest]
+    fn test_ibc_request_pool_creation_vlp_present_registers_pool(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token_a = Token::create("aaa".to_string()).unwrap();
+        let token_b = Token::create("bbb".to_string()).unwrap();
+
+        seed_virtual_balance(&mut initialized);
+        for (tok, denom) in [(&token_a, "uaaa"), (&token_b, "ubbb")] {
+            TOKEN_DENOMS
+                .save(
+                    initialized.as_mut().storage,
+                    tok.clone(),
+                    &vec![TokenDenom {
+                        chain_uid: chain_uid.clone(),
+                        token_type: TokenType::Native {
+                            denom: denom.to_string(),
+                        },
+                    }],
+                )
+                .unwrap();
+        }
+        let pair = Pair::new(token_a, token_b).unwrap();
+        VLPS.save(
+            initialized.as_mut().storage,
+            pair.get_tupple(),
+            &Addr::unchecked("vlp_contract"),
+        )
+        .unwrap();
+
+        let msg = RouterCrossChainExecuteMsg::RequestPoolCreation {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            tx_id: "tx1".to_string(),
+            pair: make_pool_pair(100, 100),
+            pool_config: PoolConfig::ConstantProduct {},
+            slippage_tolerance_bps: 100,
+        };
+        let res = call_reusable(&mut initialized, msg, chain_uid).unwrap();
+
+        assert_eq!(res.messages.len(), 1);
+        assert_eq!(
+            res.messages[0].id, VLP_POOL_REGISTER_REPLY_ID,
+            "expected pool register submsg"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // AddLiquidity dispatch
+    // -----------------------------------------------------------------------
+
+    fn seed_vlp_aaa_bbb(deps: &mut MockDeps) {
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+        VLPS.save(
+            deps.as_mut().storage,
+            pair.get_tupple(),
+            &Addr::unchecked("vlp_contract"),
+        )
+        .unwrap();
+    }
+
+    #[rstest]
+    fn test_ibc_add_liquidity_updates_escrow_and_emits_submsg(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token_a = Token::create("aaa".to_string()).unwrap();
+        let token_b = Token::create("bbb".to_string()).unwrap();
+
+        seed_virtual_balance(&mut initialized);
+        seed_vlp_aaa_bbb(&mut initialized);
+
+        let msg = RouterCrossChainExecuteMsg::AddLiquidity {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            slippage_tolerance_bps: 100,
+            pair: make_pool_pair(50, 50),
+            tx_id: "tx1".to_string(),
+        };
+        let res = call_reusable(&mut initialized, msg, chain_uid.clone()).unwrap();
+
+        assert_eq!(
+            res.messages.last().unwrap().id,
+            ADD_LIQUIDITY_REPLY_ID,
+            "expected add-liquidity submsg"
+        );
+        let bal_a = ESCROW_BALANCES
+            .load(
+                initialized.as_ref().storage,
+                (token_a.to_string(), chain_uid.clone()),
+            )
+            .unwrap();
+        assert_eq!(bal_a, Uint128::new(50));
+        let bal_b = ESCROW_BALANCES
+            .load(
+                initialized.as_ref().storage,
+                (token_b.to_string(), chain_uid),
+            )
+            .unwrap();
+        assert_eq!(bal_b, Uint128::new(50));
+    }
+
+    #[rstest]
+    fn test_ibc_add_liquidity_missing_vlp_fails(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        seed_virtual_balance(&mut initialized);
+        // No VLPS entry
+
+        let msg = RouterCrossChainExecuteMsg::AddLiquidity {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            slippage_tolerance_bps: 100,
+            pair: make_pool_pair(50, 50),
+            tx_id: "tx1".to_string(),
+        };
+        assert!(call_reusable(&mut initialized, msg, chain_uid).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // RemoveLiquidity dispatch
+    // -----------------------------------------------------------------------
+
+    fn make_remove_liquidity_msg(chain_uid: &ChainUid, tx_id: &str) -> RouterCrossChainExecuteMsg {
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+        RouterCrossChainExecuteMsg::RemoveLiquidity(RouterCrossChainRemoveLiquidityExecuteMsg {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            lp_allocation: Uint128::new(100),
+            pair,
+            recipient: CrossChainUser::new(chain_uid.clone(), "recipient".to_string()),
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    #[rstest]
+    fn test_ibc_remove_liquidity_saves_pending_and_emits_submsg(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        seed_vlp_aaa_bbb(&mut initialized);
+
+        let res = call_reusable(
+            &mut initialized,
+            make_remove_liquidity_msg(&chain_uid, "tx_rem"),
+            chain_uid,
+        )
+        .unwrap();
+
+        assert_eq!(
+            res.messages.last().unwrap().id,
+            REMOVE_LIQUIDITY_REPLY_ID,
+            "expected remove-liquidity submsg"
+        );
+        assert!(
+            PENDING_REMOVE_LIQUIDITY.has(initialized.as_ref().storage, "tx_rem".to_string()),
+            "expected PENDING_REMOVE_LIQUIDITY entry"
+        );
+    }
+
+    #[rstest]
+    fn test_ibc_remove_liquidity_duplicate_tx_fails(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        seed_vlp_aaa_bbb(&mut initialized);
+
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+        let pending = RouterCrossChainRemoveLiquidityExecuteMsg {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            lp_allocation: Uint128::new(100),
+            pair,
+            recipient: CrossChainUser::new(chain_uid.clone(), "recipient".to_string()),
+            tx_id: "tx_dup".to_string(),
+        };
+        PENDING_REMOVE_LIQUIDITY
+            .save(initialized.as_mut().storage, "tx_dup".to_string(), &pending)
+            .unwrap();
+
+        let result = call_reusable(
+            &mut initialized,
+            make_remove_liquidity_msg(&chain_uid, "tx_dup"),
+            chain_uid,
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            ContractError::new("tx already present")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Swap dispatch
+    // -----------------------------------------------------------------------
+
+    fn make_swap_deps_with_mock_querier(amount_out: u128) -> MockDeps {
+        let mut deps = mock_dependencies();
+        let creator = deps.api.addr_make("creator");
+        init(deps.as_mut(), message_info(&creator, &[]));
+
+        seed_virtual_balance(&mut deps);
+        seed_vlp_aaa_bbb(&mut deps);
+
+        let token_b = Token::create("bbb".to_string()).unwrap();
+        deps.querier.update_wasm(move |q| match q {
+            WasmQuery::Smart { .. } => {
+                let resp = GetSwapQueryResponse {
+                    amount_out: Uint128::new(amount_out),
+                    asset_out: token_b.clone(),
+                    spread_amount: Uint128::zero(),
+                    lp_fee: Uint128::zero(),
+                    euclid_fee: Uint128::zero(),
+                };
+                SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
+            }
+            _ => panic!("unexpected wasm query in swap test"),
+        });
+        deps
+    }
+
+    fn make_swap_msg(chain_uid: &ChainUid, tx_id: &str) -> RouterCrossChainExecuteMsg {
+        let sender = CrossChainUser::new(chain_uid.clone(), "user".to_string());
+        let token_a = Token::create("aaa".to_string()).unwrap();
+        let token_b = Token::create("bbb".to_string()).unwrap();
+        RouterCrossChainExecuteMsg::Swap(RouterCrossChainSwapExecuteMsg {
+            sender: sender.clone(),
+            asset_in: TokenWithDenom {
+                token: token_a.clone(),
+                token_type: TokenType::Native {
+                    denom: "uaaa".to_string(),
+                },
+            },
+            amount_in: Uint128::new(100),
+            asset_out: token_b.clone(),
+            min_amount_out: Uint128::new(80),
+            swaps: vec![NextSwapPair {
+                token_in: token_a,
+                token_out: token_b,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee_amount: Uint128::zero(),
+            partner_fee_recipient: sender,
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    #[test]
+    fn test_ibc_swap_saves_pending_and_emits_submsg() {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let mut deps = make_swap_deps_with_mock_querier(90);
+        let token_a = Token::create("aaa".to_string()).unwrap();
+
+        let res = call_reusable(
+            &mut deps,
+            make_swap_msg(&chain_uid, "tx_swap"),
+            chain_uid.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            res.messages.last().unwrap().id,
+            SWAP_REPLY_ID,
+            "expected swap submsg"
+        );
+        assert!(
+            PENDING_SWAPS.has(deps.as_ref().storage, "tx_swap".to_string()),
+            "expected PENDING_SWAPS entry"
+        );
+        let escrow = ESCROW_BALANCES
+            .load(deps.as_ref().storage, (token_a.to_string(), chain_uid))
+            .unwrap();
+        assert_eq!(
+            escrow,
+            Uint128::new(100),
+            "escrow balance should equal amount_in"
+        );
+    }
+
+    #[test]
+    fn test_ibc_swap_slippage_exceeded() {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        // amount_out=10 < min_amount_out=80
+        let mut deps = make_swap_deps_with_mock_querier(10);
+
+        let result = call_reusable(&mut deps, make_swap_msg(&chain_uid, "tx_slip"), chain_uid);
+        assert!(
+            matches!(result.unwrap_err(), ContractError::SlippageExceeded { .. }),
+            "expected SlippageExceeded"
         );
     }
 
