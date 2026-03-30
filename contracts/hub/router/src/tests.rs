@@ -1138,14 +1138,15 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[rstest]
-    fn test_withdraw_voucher_happy_path(mut voucher_deps: MockDeps) {
-        let creator = voucher_deps.api.addr_make("creator");
+    #[test]
+    fn test_withdraw_voucher_happy_path() {
+        let mut deps = voucher_deps();
+        let creator = deps.api.addr_make("creator");
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let token = Token::create("usdc".to_string()).unwrap();
 
         let res = execute(
-            voucher_deps.as_mut(),
+            deps.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
@@ -1170,14 +1171,14 @@ mod tests {
 
         let escrow = ESCROW_BALANCES
             .load(
-                voucher_deps.as_ref().storage,
+                deps.as_ref().storage,
                 (token.to_string(), chain_uid.clone()),
             )
             .unwrap();
         assert_eq!(escrow, Uint128::new(300));
 
         let pending: Vec<_> = PENDING_RELEASE_VOUCHER
-            .range(voucher_deps.as_ref().storage, None, None, Order::Ascending)
+            .range(deps.as_ref().storage, None, None, Order::Ascending)
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(pending.len(), 1);
@@ -1192,22 +1193,23 @@ mod tests {
         assert_eq!(released_attr.value, "200");
     }
 
-    #[rstest]
-    fn test_withdraw_voucher_with_release_fee(mut voucher_deps: MockDeps) {
-        let creator = voucher_deps.api.addr_make("creator");
+    #[test]
+    fn test_withdraw_voucher_with_release_fee() {
+        let mut deps = voucher_deps();
+        let creator = deps.api.addr_make("creator");
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let token = Token::create("usdc".to_string()).unwrap();
 
         RELEASE_FEES
             .save(
-                voucher_deps.as_mut().storage,
+                deps.as_mut().storage,
                 (token.clone(), chain_uid.clone()),
                 &Uint128::new(10),
             )
             .unwrap();
 
         execute(
-            voucher_deps.as_mut(),
+            deps.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
@@ -1227,14 +1229,14 @@ mod tests {
         // escrow reduced by release_amount_after_fee = 200 - 10 = 190
         let escrow = ESCROW_BALANCES
             .load(
-                voucher_deps.as_ref().storage,
+                deps.as_ref().storage,
                 (token.to_string(), chain_uid.clone()),
             )
             .unwrap();
         assert_eq!(escrow, Uint128::new(310));
 
         let pending: Vec<_> = PENDING_RELEASE_VOUCHER
-            .range(voucher_deps.as_ref().storage, None, None, Order::Ascending)
+            .range(deps.as_ref().storage, None, None, Order::Ascending)
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(pending[0].1.total_amount, Uint128::new(200));
@@ -1273,13 +1275,14 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[rstest]
-    fn test_transfer_voucher_to_voucher_recipient_happy_path(mut transfer_deps: MockDeps) {
+    #[test]
+    fn test_transfer_voucher_to_voucher_recipient_happy_path() {
+        let mut deps = transfer_deps();
         let sender = Addr::unchecked("sender_address");
         let token = Token::create("usdc".to_string()).unwrap();
 
         let res = execute(
-            transfer_deps.as_mut(),
+            deps.as_mut(),
             mock_env(),
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
@@ -1322,13 +1325,14 @@ mod tests {
         );
     }
 
-    #[rstest]
-    fn test_transfer_voucher_self_transfer_no_submsg(mut transfer_deps: MockDeps) {
+    #[test]
+    fn test_transfer_voucher_self_transfer_no_submsg() {
+        let mut deps = transfer_deps();
         let sender = Addr::unchecked("senderaddr");
         let token = Token::create("usdc".to_string()).unwrap();
 
         let res = execute(
-            transfer_deps.as_mut(),
+            deps.as_mut(),
             mock_env(),
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
