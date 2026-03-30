@@ -107,3 +107,5 @@ pub struct EuclidAdmin {
 - Fuzz tests: `tests-fuzz/`
 
 The `tests-integration` package includes all contracts as dev-dependencies and sets up multi-contract and multi-chain scenarios.
+
+When writing unit tests for a contract, use the `unit-test-writer` agent. It understands the project's test conventions (rstest parameterization, `MockDeps` fixtures, `init` helpers, state assertions). Invoke it via the `/write-tests <contract-path>` skill.
