@@ -40,12 +40,6 @@ mod tests {
         MockQuerier,
     >;
 
-    struct TestExecuteMsg {
-        name: &'static str,
-        msg: ExecuteMsg,
-        expected_error: Option<ContractError>,
-    }
-
     fn init(deps: DepsMut, info: MessageInfo) -> Response {
         let msg = InstantiateMsg {
             relayer_contract: Addr::unchecked("relayer"),
@@ -230,80 +224,53 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[rstest]
-    fn test_execute_register_factory(mut initialized: MockDeps) {
+    #[case::by_admin("creator", None)]
+    #[case::by_non_admin("non-admin", Some(ContractError::Unauthorized {}))]
+    fn test_execute_register_factory(
+        mut initialized: MockDeps,
+        #[case] sender_name: &str,
+        #[case] expected_error: Option<ContractError>,
+    ) {
         let env = mock_env();
-        let creator = initialized.api.addr_make("creator");
-        let non_admin = initialized.api.addr_make("non-admin");
-        let info = message_info(&creator, &[]);
-
-        let test_cases = vec![
-            TestExecuteMsg {
-                name: "Register factory by admin",
-                msg: ExecuteMsg::RegisterFactory {
-                    chain_uid: ChainUid::create("1".to_string()).unwrap(),
-                    chain_info: RegisterFactoryChainType::Native(RegisterFactoryChainNative {
-                        factory_address: "factory".to_string(),
-                        factory_chain_id: "1".to_string(),
-                    }),
-                },
-                expected_error: None,
-            },
-            TestExecuteMsg {
-                name: "Register factory by non-admin",
-                msg: ExecuteMsg::RegisterFactory {
-                    chain_info: RegisterFactoryChainType::Native(RegisterFactoryChainNative {
-                        factory_address: "factory".to_string(),
-                        factory_chain_id: "1".to_string(),
-                    }),
-                    chain_uid: ChainUid::create("1".to_string()).unwrap(),
-                },
-                expected_error: Some(ContractError::Unauthorized {}),
-            },
-        ];
-
-        for test in test_cases {
-            let res = execute(
-                initialized.as_mut(),
-                env.clone(),
-                if test.name.contains("non-admin") {
-                    message_info(&non_admin, &[])
-                } else {
-                    info.clone()
-                },
-                test.msg.clone(),
-            );
-            match test.expected_error {
-                Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-                None => {
-                    assert!(res.is_ok(), "{}", test.name);
-                    let res = res.unwrap();
-                    assert_eq!(res.attributes[0].key, "method");
-                    assert_eq!(res.attributes[0].value, "register_factory");
-                    let messages = res.messages;
-                    assert_eq!(messages.len(), 1);
-                    if let CosmosMsg::Ibc(IbcMsg::SendPacket {
-                        channel_id,
-                        timeout,
-                        data,
-                    }) = &messages[0].msg
-                    {
-                        assert_eq!(channel_id, "channel-1");
-                        assert!(timeout.timestamp().is_some());
-                        let msg: FactoryCrossChainExecuteMsg = from_json(data).unwrap();
-                        assert_eq!(
-                            msg,
-                            FactoryCrossChainExecuteMsg::RegisterFactory {
-                                chain_uid: ChainUid::create("1".to_string()).unwrap(),
-                                chain_type: RegisterFactoryChainType::Native(
-                                    RegisterFactoryChainNative {
-                                        factory_address: "factory".to_string(),
-                                        factory_chain_id: "1".to_string(),
-                                    },
-                                ),
-                                tx_id: "vsl:creator:cosmos-testnet-14002:12345:3:1".to_string(),
-                            }
-                        );
-                    }
+        let sender = initialized.api.addr_make(sender_name);
+        let msg = ExecuteMsg::RegisterFactory {
+            chain_uid: ChainUid::create("1".to_string()).unwrap(),
+            chain_info: RegisterFactoryChainType::Native(RegisterFactoryChainNative {
+                factory_address: "factory".to_string(),
+                factory_chain_id: "1".to_string(),
+            }),
+        };
+        let res = execute(initialized.as_mut(), env, message_info(&sender, &[]), msg);
+        match expected_error {
+            Some(err) => assert_eq!(res.unwrap_err(), err),
+            None => {
+                let res = res.unwrap();
+                assert_eq!(res.attributes[0].key, "method");
+                assert_eq!(res.attributes[0].value, "register_factory");
+                let messages = res.messages;
+                assert_eq!(messages.len(), 1);
+                if let CosmosMsg::Ibc(IbcMsg::SendPacket {
+                    channel_id,
+                    timeout,
+                    data,
+                }) = &messages[0].msg
+                {
+                    assert_eq!(channel_id, "channel-1");
+                    assert!(timeout.timestamp().is_some());
+                    let msg: FactoryCrossChainExecuteMsg = from_json(data).unwrap();
+                    assert_eq!(
+                        msg,
+                        FactoryCrossChainExecuteMsg::RegisterFactory {
+                            chain_uid: ChainUid::create("1".to_string()).unwrap(),
+                            chain_type: RegisterFactoryChainType::Native(
+                                RegisterFactoryChainNative {
+                                    factory_address: "factory".to_string(),
+                                    factory_chain_id: "1".to_string(),
+                                },
+                            ),
+                            tx_id: "vsl:creator:cosmos-testnet-14002:12345:3:1".to_string(),
+                        }
+                    );
                 }
             }
         }
