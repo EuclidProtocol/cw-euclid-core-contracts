@@ -28,16 +28,16 @@ use euclid_ibc::{
 };
 
 use crate::{
-    reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
+    reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID, NFT_MINT_REPLY_ID},
     state::{
         pool_key_to_map_key, ADMIN, FEE_STATE, OWNER_POSITION_SET, PAIR_TO_VLP,
         PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
-        PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, POOL_KEY_TO_VLP,
-        POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES,
-        VLP_TO_LP_TOKEN,
+        PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_DEPOSIT_TOKEN,
+        PENDING_NFT_MINT_POSITION, PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
+        PENDING_TOKEN_DEPOSIT, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT,
+        STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -635,16 +635,11 @@ fn ack_add_concentrated_liquidity(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
-    let liquidity_info =
-        match PENDING_CONCENTRATED_ADD_LIQUIDITY.may_load(deps.storage, req_key.clone())? {
-            Some(info) => info,
-            None => {
-                return Ok(Response::new()
-                    .add_attribute("method", "ack_add_concentrated_liquidity_idempotent")
-                    .add_attribute("tx_id", tx_id)
-                    .add_attribute("sender", sender));
-            }
-        };
+    let liquidity_info = PENDING_CONCENTRATED_ADD_LIQUIDITY
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated liquidity request not found".to_string(),
+        })?;
     PENDING_CONCENTRATED_ADD_LIQUIDITY.remove(deps.storage, req_key);
 
     match res {
@@ -740,7 +735,12 @@ fn ack_add_concentrated_liquidity(
                         })?,
                         funds: vec![],
                     });
-                    res = res.add_message(mint_msg);
+                    PENDING_NFT_MINT_POSITION
+                        .save(deps.storage, &(sender.clone(), position_id))?;
+                    res = res.add_submessage(SubMsg::reply_always(
+                        mint_msg,
+                        NFT_MINT_REPLY_ID,
+                    ));
                 }
             }
 
@@ -922,7 +922,14 @@ fn ack_collect_concentrated_fees(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
-    let collect_info = PENDING_CONCENTRATED_COLLECT_FEES.load(deps.storage, req_key.clone())?;
+    let collect_info = PENDING_CONCENTRATED_COLLECT_FEES
+        .may_load(deps.storage, req_key.clone())?
+        .ok_or(ContractError::Generic {
+            err: format!(
+                "no pending collect fees request found for sender={}, tx_id={}",
+                sender, tx_id
+            ),
+        })?;
 
     PENDING_CONCENTRATED_COLLECT_FEES.remove(deps.storage, req_key);
 
@@ -1198,7 +1205,7 @@ mod tests {
     use euclid::token::{PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount};
     use euclid_ibc::ack::AcknowledgementMsg;
 
-    use crate::reply::ESCROW_INSTANTIATE_REPLY_ID;
+    use crate::reply::{ESCROW_INSTANTIATE_REPLY_ID, NFT_MINT_REPLY_ID};
     use crate::state::{
         ConcentratedAddLiquidityRequest, ADMIN, PENDING_CONCENTRATED_ADD_LIQUIDITY,
         PENDING_DEPOSIT_TOKEN, STATE, TOKEN_TO_ESCROW,
@@ -1210,6 +1217,7 @@ mod tests {
         existing_escrows: &'static [(&'static str, &'static str)],
         expected_instantiations: usize,
         expected_sends: usize,
+        expected_nft_mints: usize,
     }
 
     #[test]
@@ -1219,19 +1227,22 @@ mod tests {
                 name: "no escrows — instantiates both",
                 existing_escrows: &[],
                 expected_instantiations: 2,
-                expected_sends: 1, // position token mint
+                expected_sends: 0,
+                expected_nft_mints: 1,
             },
             EscrowAckCase {
                 name: "both escrows exist — sends directly",
                 existing_escrows: &[("tokena", "escrow_a"), ("tokenb", "escrow_b")],
                 expected_instantiations: 0,
-                expected_sends: 3, // 2 escrow sends + position token mint
+                expected_sends: 2, // 2 escrow sends
+                expected_nft_mints: 1,
             },
             EscrowAckCase {
                 name: "one escrow exists — mixed",
                 existing_escrows: &[("tokena", "escrow_a")],
                 expected_instantiations: 1,
-                expected_sends: 2, // 1 escrow send + position token mint
+                expected_sends: 1, // 1 escrow send
+                expected_nft_mints: 1,
             },
         ];
 
@@ -1343,6 +1354,11 @@ mod tests {
                 .filter(|m| m.id == ESCROW_INSTANTIATE_REPLY_ID)
                 .count();
             let sends = response.messages.iter().filter(|m| m.id == 0).count();
+            let nft_mints = response
+                .messages
+                .iter()
+                .filter(|m| m.id == NFT_MINT_REPLY_ID)
+                .count();
 
             assert_eq!(
                 instantiations, case.expected_instantiations,
@@ -1350,6 +1366,11 @@ mod tests {
                 case.name
             );
             assert_eq!(sends, case.expected_sends, "{}: escrow sends", case.name);
+            assert_eq!(
+                nft_mints, case.expected_nft_mints,
+                "{}: nft mints",
+                case.name
+            );
         }
     }
 }

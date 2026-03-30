@@ -1,6 +1,9 @@
 use crate::{
     ibc,
-    state::{PENDING_DEPOSIT_TOKEN, POSITION_TOKEN_CONTRACT, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN},
+    state::{
+        OWNER_POSITION_SET, PENDING_DEPOSIT_TOKEN, PENDING_NFT_MINT_POSITION,
+        POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+    },
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Event, Reply, Response, SubMsgResult};
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
@@ -23,6 +26,7 @@ pub const RELEASE_ESCROW_REPLY_ID: u64 = 5;
 
 pub const CROSS_CHAIN_RECEIVE_REPLY_ID: u64 = 6;
 pub const POSITION_TOKEN_INSTANTIATE_REPLY_ID: u64 = 7;
+pub const NFT_MINT_REPLY_ID: u64 = 8;
 
 #[named]
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
@@ -204,6 +208,29 @@ pub fn on_reply_native_ibc_wrapper_call(
                 true,
             )?;
             Ok(response.add_attribute("reply_on_native_ibc_wrapper_call_processing", "success"))
+        }
+    }
+}
+
+#[named]
+pub fn on_nft_mint_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result {
+        SubMsgResult::Ok(_) => {
+            PENDING_NFT_MINT_POSITION.remove(deps.storage);
+            Ok(Response::new().add_attribute("action", "reply_nft_mint_success"))
+        }
+        SubMsgResult::Err(err) => {
+            if let Some((owner, position_id)) =
+                PENDING_NFT_MINT_POSITION.may_load(deps.storage)?
+            {
+                POSITION_ID_TO_METADATA.remove(deps.storage, position_id);
+                OWNER_POSITION_SET.remove(deps.storage, (owner, position_id));
+                PENDING_NFT_MINT_POSITION.remove(deps.storage);
+            }
+            Err(ContractError::Reply {
+                action: function_name!().to_string(),
+                err,
+            })
         }
     }
 }

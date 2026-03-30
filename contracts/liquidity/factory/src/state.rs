@@ -75,6 +75,10 @@ pub const POSITION_ID_TO_METADATA: Map<u128, ConcentratedPositionMetadata> =
 pub const OWNER_POSITION_SET: Map<(Addr, u128), cosmwasm_std::Empty> =
     Map::new("owner_position_set");
 
+/// Temporarily stores (owner, position_id) while an NFT mint SubMsg is in flight.
+/// Used by the reply handler to rollback metadata if the mint fails.
+pub const PENDING_NFT_MINT_POSITION: Item<(Addr, u128)> = Item::new("pending_nft_mint_pos");
+
 #[cw_serde]
 pub struct PoolCreateRequest {
     pub tx_id: String,

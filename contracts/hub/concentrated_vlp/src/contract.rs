@@ -51,7 +51,7 @@ use crate::{
     reply,
     state::{
         initialize_position_nonce, next_position_id, ConcentratedPosition, MigrationMetadata,
-        Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
+        Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS,
         FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIGRATION_METADATA,
         MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0,
         STATE, TICKS,
@@ -119,8 +119,6 @@ pub fn instantiate(
 
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &Uint128::zero())?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &Uint128::zero())?;
-    COLLATERAL_LP_TOKENS.save(deps.storage, &Uint128::zero())?;
-
     POOL_KEY.save(
         deps.storage,
         &euclid::msgs::vlp::base::PoolKey {
@@ -140,7 +138,6 @@ pub fn instantiate(
             observation_index: 0,
             observation_cardinality: 1,
             observation_cardinality_next: 1,
-            unlocked: true,
         },
     )?;
     ACTIVE_LIQUIDITY.save(deps.storage, &Uint128::zero())?;
@@ -385,6 +382,16 @@ fn execute_add_concentrated_liquidity(
     let tx_id = add_liquidity_msg.tx_id.clone();
     let lower_tick_index = add_liquidity_msg.lower_tick_index;
     let upper_tick_index = add_liquidity_msg.upper_tick_index;
+    if let Some(explicit_id) = add_liquidity_msg.position_id {
+        ensure!(
+            POSITIONS
+                .may_load(deps.storage, explicit_id.u128())?
+                .is_some(),
+            ContractError::new(
+                "explicit position_id does not exist; new positions must omit position_id"
+            )
+        );
+    }
     let position_id = add_liquidity_msg
         .position_id
         .unwrap_or(next_position_id(deps.storage)?);
@@ -396,7 +403,7 @@ fn execute_add_concentrated_liquidity(
     );
     let (provided_0, provided_1) = extract_token_amount(&add_liquidity_msg.liquidity, &state.pair);
     ensure!(
-        !provided_0.is_zero() && !provided_1.is_zero(),
+        !provided_0.is_zero() || !provided_1.is_zero(),
         ContractError::ZeroAssetAmount {}
     );
 
@@ -496,7 +503,14 @@ fn execute_add_concentrated_liquidity(
     position.liquidity = position.liquidity.checked_add(liquidity_delta)?;
     POSITIONS.save(deps.storage, position_id.u128(), &position)?;
 
-    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
+    let mut chain_lp_tokens = CHAIN_LP_TOKENS
+        .may_load(deps.storage, sender.chain_uid.clone())?
+        .ok_or(ContractError::Generic {
+            err: format!(
+                "chain {:?} is not registered for this pool",
+                sender.chain_uid
+            ),
+        })?;
     chain_lp_tokens = chain_lp_tokens.checked_add(liquidity_delta)?;
     CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
 
@@ -650,8 +664,14 @@ fn execute_remove_concentrated_liquidity(
         )?;
     }
 
-    let mut chain_lp_tokens =
-        CHAIN_LP_TOKENS.load(deps.storage, remove_liquidity_msg.sender.chain_uid.clone())?;
+    let mut chain_lp_tokens = CHAIN_LP_TOKENS
+        .may_load(deps.storage, remove_liquidity_msg.sender.chain_uid.clone())?
+        .ok_or(ContractError::Generic {
+            err: format!(
+                "chain {:?} is not registered for this pool",
+                remove_liquidity_msg.sender.chain_uid
+            ),
+        })?;
     chain_lp_tokens = chain_lp_tokens.checked_sub(remove_liquidity_msg.liquidity_delta)?;
     CHAIN_LP_TOKENS.save(
         deps.storage,
@@ -1535,7 +1555,6 @@ fn query_slot0(deps: Deps) -> Result<Slot0Response, ContractError> {
         observation_index: slot0.observation_index,
         observation_cardinality: slot0.observation_cardinality,
         observation_cardinality_next: slot0.observation_cardinality_next,
-        unlocked: slot0.unlocked,
         liquidity: ACTIVE_LIQUIDITY.load(deps.storage)?,
         fee_growth_global_0_x128: FEE_GROWTH_GLOBAL_0_X128.load(deps.storage)?,
         fee_growth_global_1_x128: FEE_GROWTH_GLOBAL_1_X128.load(deps.storage)?,
@@ -1729,7 +1748,6 @@ mod tests {
             observation_index: 0,
             observation_cardinality: 1,
             observation_cardinality_next: 1,
-            unlocked: true,
         };
         SLOT0
             .save(deps.as_mut().storage, &slot0)
@@ -2245,7 +2263,7 @@ mod tests {
             liquidity: wrong_pair,
             lower_tick_index: -600,
             upper_tick_index: 600,
-            position_id: Some(Uint128::new(1)),
+            position_id: None,
             slippage_tolerance_bps: 100,
         };
 

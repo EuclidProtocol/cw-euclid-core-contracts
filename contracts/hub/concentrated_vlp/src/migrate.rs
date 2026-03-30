@@ -91,7 +91,6 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
     slot0.observation_index = 0;
     slot0.observation_cardinality = 1;
     slot0.observation_cardinality_next = 1;
-    slot0.unlocked = true;
 
     let positions: Vec<(u128, ConcentratedPosition)> = POSITIONS
         .range(deps.storage, None, None, Order::Ascending)
@@ -315,7 +314,6 @@ fn resolve_slot0(
             observation_index: 0,
             observation_cardinality: 1,
             observation_cardinality_next: 1,
-            unlocked: true,
         })
     };
 

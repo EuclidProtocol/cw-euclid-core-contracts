@@ -484,7 +484,6 @@ mod tests {
                     observation_index: index,
                     observation_cardinality: cardinality,
                     observation_cardinality_next: cardinality,
-                    unlocked: true,
                 },
             )
             .expect("save slot0");
@@ -643,7 +642,6 @@ mod tests {
                     observation_index: 0,
                     observation_cardinality: 1,
                     observation_cardinality_next: cardinality,
-                    unlocked: true,
                 },
             )
             .expect("save slot0");

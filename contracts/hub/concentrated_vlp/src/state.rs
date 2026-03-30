@@ -20,8 +20,6 @@ pub const CHAIN_LP_TOKENS: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
 
 pub const BALANCES: Map<Token, Uint128> = Map::new("balances");
 
-pub const COLLATERAL_LP_TOKENS: Item<Uint128> = Item::new("collateral_lp_tokens");
-
 pub const POOL_KEY: Item<PoolKey> = Item::new("pool_key");
 
 pub const MIN_TICK: i64 = -887272;
@@ -34,7 +32,6 @@ pub struct Slot0 {
     pub observation_index: u64,
     pub observation_cardinality: u16,
     pub observation_cardinality_next: u16,
-    pub unlocked: bool,
 }
 
 pub const SLOT0: Item<Slot0> = Item::new("slot0");

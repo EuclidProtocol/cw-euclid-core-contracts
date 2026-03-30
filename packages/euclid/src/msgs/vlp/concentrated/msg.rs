@@ -137,7 +137,6 @@ pub struct Slot0Response {
     pub observation_index: u64,
     pub observation_cardinality: u16,
     pub observation_cardinality_next: u16,
-    pub unlocked: bool,
     pub liquidity: Uint128,
     pub fee_growth_global_0_x128: Uint256,
     pub fee_growth_global_1_x128: Uint256,
