@@ -5,10 +5,14 @@ use euclid::{
     error::ContractError,
     events::{register_denom_event, tx_event, TxType},
     fee::Fee,
+    interface::ContractInterface,
     msgs::{
         self,
         router::TokenDenom,
-        virtual_balance::msg::{ExecuteApprove, ExecuteMint},
+        virtual_balance::{
+            interface as vb_interface,
+            msg::{ExecuteApprove, ExecuteMint},
+        },
         vlp::base::{PoolConfig, VlpAddLiquidityMsg, VlpRegisterPoolMsg, VlpRemoveLiquidityMsg},
     },
     token::PairWithDenomAndAmount,
@@ -214,39 +218,27 @@ pub fn ibc_execute_add_liquidity(
             )?;
 
             // Mint virtual balance for the token
-            let mint_virtual_balance_msg =
-                euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(ExecuteMint {
-                    amount: token.amount,
-                    balance_key: BalanceKey {
-                        cross_chain_user: sender.clone(),
-                        token_id: token.token.to_string(),
-                    },
-                });
-
-            let mint_virtual_balance_msg = WasmMsg::Execute {
-                contract_addr: virtual_balance_address.to_string(),
-                msg: to_json_binary(&mint_virtual_balance_msg)?,
-                funds: vec![],
-            };
+            let mint_virtual_balance_msg = vb_interface::MintMsg::Mint(ExecuteMint {
+                amount: token.amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: sender.clone(),
+                    token_id: token.token.to_string(),
+                },
+            })
+            .into_cosmos_msg(virtual_balance_address.to_string())?;
 
             // Should reject full execution if failed
             response = response.add_message(mint_virtual_balance_msg);
         }
 
         // Transfer voucher token to the vlp contract
-        let approve_voucher_msg =
-            euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(ExecuteApprove {
-                amount: token.amount,
-                token_id: token.token.to_string(),
-                spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
-                owner: sender.clone(),
-            });
-
-        let approve_voucher_msg = WasmMsg::Execute {
-            contract_addr: virtual_balance_address.to_string(),
-            msg: to_json_binary(&approve_voucher_msg)?,
-            funds: vec![],
-        };
+        let approve_voucher_msg = vb_interface::ApproveMsg::Approve(ExecuteApprove {
+            amount: token.amount,
+            token_id: token.token.to_string(),
+            spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
+            owner: sender.clone(),
+        })
+        .into_cosmos_msg(virtual_balance_address.to_string())?;
 
         // Should reject full execution if failed
         response = response.add_message(approve_voucher_msg);

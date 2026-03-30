@@ -1,15 +1,13 @@
 use cosmwasm_std::Uint128;
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::{ensure, to_json_binary, CosmosMsg, DepsMut, Env, Response, SubMsg, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
     events::{tx_event, TxType},
-    msgs::{
-        escrow::ExecuteMsg as EscrowExecuteMsg, factory::RegisterFactoryResponse,
-        router::RegisterFactoryChainType,
-    },
+    interface::ContractInterface,
+    msgs::{escrow::interface as escrow_interface, factory::RegisterFactoryResponse, router::RegisterFactoryChainType},
     token::{Token, TokenType},
 };
 use euclid_ibc::{ack::AcknowledgementMsg, factory_ibc::FactoryCrossChainExecuteMsg};
@@ -129,21 +127,15 @@ fn execute_release_escrow(
     let response = Response::new();
     let recipient = deps.api.addr_validate(&recipient)?;
 
-    let user_withdraw_msg = EscrowExecuteMsg::Withdraw {
+    let user_withdraw_msg = escrow_interface::WithdrawMsg::Withdraw {
         recipient: recipient.clone(),
         amount,
         denom,
         forwarding_message,
-    };
+    }
+    .into_cosmos_msg(escrow_address.clone())?;
 
-    let user_withdraw_msg = SubMsg::reply_always(
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: escrow_address.clone(),
-            msg: to_json_binary(&user_withdraw_msg)?,
-            funds: vec![],
-        }),
-        RELEASE_ESCROW_REPLY_ID,
-    );
+    let user_withdraw_msg = SubMsg::reply_always(user_withdraw_msg, RELEASE_ESCROW_REPLY_ID);
 
     Ok(response
         .add_submessage(user_withdraw_msg)

@@ -1,15 +1,15 @@
-use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint128, WasmMsg,
-};
+use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, Uint128};
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
+    interface::ContractInterface,
     msgs::{
         claimer::{
             msg::{Claim, ClaimVoucherData, SignedTransaction, UpdateAdminMsg},
             voucher_receive::{CreateVoucherClaim, VoucherReceiveHookMsg},
         },
         hook::VoucherReceive,
+        router::interface as router_interface,
     },
     token::Token,
 };
@@ -140,16 +140,12 @@ pub fn execute_claim_voucher(
         );
     }
 
-    let transfer_voucher_msg = euclid::msgs::router::ExecuteMsg::TransferVoucher {
+    let transfer_voucher_msg = router_interface::TransferVoucherMsg::TransferVoucher {
         token: claim.token.clone(),
         amount: claim.amount,
         recipient: claim_msg.recipients.clone(),
-    };
-    let transfer_voucher_msg = WasmMsg::Execute {
-        contract_addr: state.router_contract.to_string(),
-        msg: to_json_binary(&transfer_voucher_msg)?,
-        funds: vec![],
-    };
+    }
+    .into_cosmos_msg(state.router_contract.to_string())?;
     response = response.add_message(transfer_voucher_msg);
 
     // Remove claim from claims

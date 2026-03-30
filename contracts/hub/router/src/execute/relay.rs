@@ -1,6 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response,
-    StdError, SubMsg, Uint128, WasmMsg,
+    ensure, from_json, Binary, DepsMut, Env, MessageInfo, Response, StdError, SubMsg, Uint128,
 };
 use euclid::{
     chain::{Chain, ChainUid},
@@ -10,7 +9,8 @@ use euclid::{
         write_acknowledgement_event, EUCLID_RECEIVE_PACKET_EVENT,
         EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT,
     },
-    msgs::router::ExecuteMsg,
+    interface::ContractInterface,
+    msgs::router::interface as router_interface,
     timeout::get_timeout,
 };
 use euclid_ibc::{
@@ -128,16 +128,13 @@ pub fn execute_receive_packet(
         &msg.to_string(),
     );
 
-    let internal_msg = ExecuteMsg::ReceivePacketInternalCallback {
-        msg: msg.clone(),
-        chain_uid: chain_uid.clone(),
-        timeout,
-    };
-    let internal_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: env.contract.address.to_string(),
-        msg: to_json_binary(&internal_msg)?,
-        funds: vec![],
-    });
+    let internal_msg =
+        router_interface::ReceivePacketInternalCallbackMsg::ReceivePacketInternalCallback {
+            msg: msg.clone(),
+            chain_uid: chain_uid.clone(),
+            timeout,
+        }
+        .into_cosmos_msg(env.contract.address.to_string())?;
 
     let sub_msg = SubMsg::reply_always(internal_msg, CROSS_CHAIN_RECEIVE_REPLY_ID);
     let msg: Result<RouterCrossChainExecuteMsg, StdError> = from_json(&msg);

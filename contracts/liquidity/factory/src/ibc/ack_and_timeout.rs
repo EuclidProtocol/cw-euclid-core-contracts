@@ -8,9 +8,11 @@ use euclid::{
     deposit::DepositTokenResponse,
     error::ContractError,
     events::{deposit_token_event, swap_event},
+    interface::ContractInterface,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
-        escrow::InstantiateMsg as EscrowInstantiateMsg,
+        escrow::{interface as escrow_interface, InstantiateMsg as EscrowInstantiateMsg},
+        lp_token::interface as lp_token_interface,
         vlp::base::{DeregisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
     },
     swap::{SwapResponse, TransferVoucherResponse},
@@ -272,13 +274,10 @@ fn ack_register_denom(
                 .add_attribute("token_type", token.token_type.get_key());
 
             if let Some(escrow_address) = existing_escrow {
-                let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: escrow_address.into_string(),
-                    msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::AddAllowedDenom {
-                        denom: token.token_type.clone(),
-                    })?,
-                    funds: vec![],
-                });
+                let msg = escrow_interface::AddAllowedDenomMsg::AddAllowedDenom {
+                    denom: token.token_type.clone(),
+                }
+                .into_cosmos_msg(escrow_address)?;
                 response = response
                     .add_attribute("create_escrow", "false")
                     .add_message(msg);
@@ -344,13 +343,10 @@ fn ack_deregister_denom(
 
             let escrow_address = TOKEN_TO_ESCROW.load(deps.storage, token.token.clone())?;
 
-            let msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: escrow_address.into_string(),
-                msg: to_json_binary(&euclid::msgs::escrow::ExecuteMsg::DisallowDenom {
-                    denom: token.token_type.clone(),
-                })?,
-                funds: vec![],
-            });
+            let msg = escrow_interface::DisallowDenomMsg::DisallowDenom {
+                denom: token.token_type.clone(),
+            }
+            .into_cosmos_msg(escrow_address)?;
 
             Ok(Response::new()
                 .add_message(msg)
@@ -420,14 +416,11 @@ fn ack_add_liquidity(
             let lp_token_address = VLP_TO_LP_TOKEN.load(deps.storage, data.vlp_address)?;
 
             // Send mint msg
-            let lp_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: lp_token_address.into_string(),
-                msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Mint {
-                    recipient: liquidity_info.sender,
-                    amount: data.mint_lp_tokens,
-                })?,
-                funds: vec![],
-            });
+            let lp_mint_msg = lp_token_interface::MintMsg::Mint {
+                recipient: liquidity_info.sender,
+                amount: data.mint_lp_tokens,
+            }
+            .into_cosmos_msg(lp_token_address)?;
 
             Ok(res
                 .add_message(lp_mint_msg)
@@ -496,13 +489,10 @@ fn ack_remove_liquidity(
             let lp_token_address = VLP_TO_LP_TOKEN.load(deps.storage, data.vlp_address)?;
 
             // Send burn msg
-            let lp_burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: lp_token_address.into_string(),
-                msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Burn {
-                    amount: liquidity_info.lp_allocation,
-                })?,
-                funds: vec![],
-            });
+            let lp_burn_msg = lp_token_interface::BurnMsg::Burn {
+                amount: liquidity_info.lp_allocation,
+            }
+            .into_cosmos_msg(lp_token_address)?;
 
             Ok(res
                 .add_message(lp_burn_msg)
@@ -516,14 +506,11 @@ fn ack_remove_liquidity(
                 return Err(ContractError::new(&err));
             }
             // Send back cw20 to original sender
-            let lp_send_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: liquidity_info.lp_token.to_string(),
-                msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Transfer {
-                    recipient: sender.clone().into_string(),
-                    amount: liquidity_info.lp_allocation,
-                })?,
-                funds: vec![],
-            });
+            let lp_send_msg = lp_token_interface::TransferMsg::Transfer {
+                recipient: sender.clone().into_string(),
+                amount: liquidity_info.lp_allocation,
+            }
+            .into_cosmos_msg(liquidity_info.lp_token)?;
             Ok(Response::new()
                 .add_message(lp_send_msg)
                 .add_attribute("method", "liquidity_tx_err_refund")

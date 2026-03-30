@@ -4,9 +4,13 @@ use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     events::{tx_event, TxType},
+    interface::ContractInterface,
     msgs::{
         self,
-        virtual_balance::msg::{ExecuteApprove, ExecuteMint, ExecuteTransfer},
+        virtual_balance::{
+            interface as vb_interface,
+            msg::{ExecuteApprove, ExecuteMint, ExecuteTransfer},
+        },
         vlp::base::{VlpSimulateSwapMsg, VlpSwapMsg},
     },
     voucher::BalanceKey,
@@ -106,20 +110,14 @@ pub fn ibc_execute_swap(
         )?;
 
         // Mint virtual balance for the first swap vlp so it can start processing tx
-        let mint_virtual_balance_msg =
-            euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(ExecuteMint {
-                amount: msg.amount_in,
-                balance_key: BalanceKey {
-                    cross_chain_user: sender.clone(),
-                    token_id: msg.asset_in.token.to_string(),
-                },
-            });
-
-        let mint_virtual_balance_msg = WasmMsg::Execute {
-            contract_addr: virtual_balance_address.to_string(),
-            msg: to_json_binary(&mint_virtual_balance_msg)?,
-            funds: vec![],
-        };
+        let mint_virtual_balance_msg = vb_interface::MintMsg::Mint(ExecuteMint {
+            amount: msg.amount_in,
+            balance_key: BalanceKey {
+                cross_chain_user: sender.clone(),
+                token_id: msg.asset_in.token.to_string(),
+            },
+        })
+        .into_cosmos_msg(virtual_balance_address.to_string())?;
 
         // Should reject full execution if failed
         response = response.add_message(mint_virtual_balance_msg);
@@ -148,22 +146,16 @@ pub fn ibc_execute_swap(
         );
     }
 
-    let approve_voucher_msg =
-        euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(ExecuteApprove {
-            amount: msg.amount_in,
-            token_id: msg.asset_in.token.to_string(),
-            spender: CrossChainUser::new(
-                ChainUid::vsl_chain_uid()?,
-                first_swap.vlp_address.clone(),
-            ),
-            owner: sender.clone(),
-        });
-
-    let approve_voucher_msg = WasmMsg::Execute {
-        contract_addr: virtual_balance_address.to_string(),
-        msg: to_json_binary(&approve_voucher_msg)?,
-        funds: vec![],
-    };
+    let approve_voucher_msg = vb_interface::ApproveMsg::Approve(ExecuteApprove {
+        amount: msg.amount_in,
+        token_id: msg.asset_in.token.to_string(),
+        spender: CrossChainUser::new(
+            ChainUid::vsl_chain_uid()?,
+            first_swap.vlp_address.clone(),
+        ),
+        owner: sender.clone(),
+    })
+    .into_cosmos_msg(virtual_balance_address.to_string())?;
 
     // Should reject full execution if failed
     response = response.add_message(approve_voucher_msg);
@@ -172,21 +164,15 @@ pub fn ibc_execute_swap(
         && !msg.partner_fee_amount.is_zero()
         && msg.partner_fee_recipient != sender
     {
-        let transfer_voucher_msg =
-            euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(ExecuteTransfer {
-                amount: msg.partner_fee_amount,
-                token_id: msg.asset_in.token.to_string(),
-                sender: Some(sender.clone()),
-                to: msg.partner_fee_recipient.clone(),
-                from: None,
-                msg: None,
-            });
-
-        let transfer_voucher_msg = WasmMsg::Execute {
-            contract_addr: virtual_balance_address.to_string(),
-            msg: to_json_binary(&transfer_voucher_msg)?,
-            funds: vec![],
-        };
+        let transfer_voucher_msg = vb_interface::TransferMsg::Transfer(ExecuteTransfer {
+            amount: msg.partner_fee_amount,
+            token_id: msg.asset_in.token.to_string(),
+            sender: Some(sender.clone()),
+            to: msg.partner_fee_recipient.clone(),
+            from: None,
+            msg: None,
+        })
+        .into_cosmos_msg(virtual_balance_address.to_string())?;
 
         // Should reject full execution if failed
         response = response

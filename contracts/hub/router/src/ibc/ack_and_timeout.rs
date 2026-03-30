@@ -1,11 +1,11 @@
-use cosmwasm_std::to_json_binary;
-use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, Uint128, WasmMsg};
+use cosmwasm_std::{from_json, Binary, DepsMut, Env, Response, Uint128};
 use euclid::chain::{Chain, ChainType, ChainUid};
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
 use euclid::events::{tx_event, TxType};
 use euclid::msgs::factory::{RegisterFactoryResponse, ReleaseEscrowResponse};
-use euclid::msgs::virtual_balance::msg::{ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg};
+use euclid::interface::ContractInterface;
+use euclid::msgs::virtual_balance::{interface as vb_interface, msg::ExecuteMint};
 use euclid::token::Token;
 use euclid::voucher::BalanceKey;
 use euclid_ibc::ack::AcknowledgementMsg;
@@ -130,15 +130,11 @@ pub fn ibc_ack_release_escrow(
                 };
 
                 // Escrow release failed, mint tokens again for the original cross chain sender
-                let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
+                let msg = vb_interface::MintMsg::Mint(ExecuteMint {
                     amount: pending_release_voucher.release_fee_amount,
                     balance_key: balance_key.clone(),
-                });
-                let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: virtual_balance_address.to_string(),
-                    msg: to_json_binary(&mint_msg)?,
-                    funds: vec![],
-                });
+                })
+                .into_cosmos_msg(virtual_balance_address.to_string())?;
                 response = response.add_message(msg)
             };
 
@@ -163,15 +159,11 @@ pub fn ibc_ack_release_escrow(
             };
             let mint_amount = amount.checked_add(pending_release_voucher.release_fee_amount)?;
             // Escrow release failed, mint tokens again for the original cross chain sender
-            let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
+            let msg = vb_interface::MintMsg::Mint(ExecuteMint {
                 amount: mint_amount,
                 balance_key: balance_key.clone(),
-            });
-            let msg: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: virtual_balance_address.to_string(),
-                msg: to_json_binary(&mint_msg)?,
-                funds: vec![],
-            });
+            })
+            .into_cosmos_msg(virtual_balance_address.to_string())?;
 
             // Even if its a native chain, we can't reject via Err because other escrow release will also be rejected
             Ok(response

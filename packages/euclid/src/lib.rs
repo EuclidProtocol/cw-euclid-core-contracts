@@ -6,6 +6,7 @@ pub mod error;
 pub mod escrow;
 pub mod events;
 pub mod fee;
+pub mod interface;
 pub mod limit;
 pub mod liquidity;
 pub mod msgs;

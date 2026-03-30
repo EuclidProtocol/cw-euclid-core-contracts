@@ -1,12 +1,14 @@
-use cosmwasm_std::{
-    ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, Response, SubMsg, Uint128,
-    WasmMsg,
-};
+use cosmwasm_std::{ensure, to_json_string, Binary, DepsMut, Env, Response, SubMsg, Uint128};
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
+    interface::ContractInterface,
     limit::Limit,
-    msgs::{cross_chain_config::CrossChainConfig, router::TokenDenom},
+    msgs::{
+        cross_chain_config::CrossChainConfig,
+        router::TokenDenom,
+        virtual_balance::{interface as vb_interface, msg::ExecuteBurn, msg::ExecuteTransfer},
+    },
     recipient::Recipient,
     token::Token,
     utils::tx::generate_tx,
@@ -189,22 +191,15 @@ pub fn _transfer_voucher_as_voucher(
     if sender == recipient.recipient {
         return Ok((vec![], amount));
     }
-    let transfer_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
-        euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-            amount,
-            token_id: token.to_string(),
-            sender: Some(sender.clone()),
-            to: recipient.recipient.clone(),
-            from: None,
-            msg: forwarding_msg,
-        },
-    );
-
-    let transfer_voucher_msg = WasmMsg::Execute {
-        contract_addr: virtual_balance_address,
-        msg: to_json_binary(&transfer_voucher_msg)?,
-        funds: vec![],
-    };
+    let transfer_voucher_msg = vb_interface::TransferMsg::Transfer(ExecuteTransfer {
+        amount,
+        token_id: token.to_string(),
+        sender: Some(sender.clone()),
+        to: recipient.recipient.clone(),
+        from: None,
+        msg: forwarding_msg,
+    })
+    .into_cosmos_msg(virtual_balance_address)?;
     Ok((vec![SubMsg::new(transfer_voucher_msg)], amount))
 }
 
@@ -310,20 +305,14 @@ pub fn _release_voucher(
         ack_response,
     )?;
 
-    let burn_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Burn(
-        euclid::msgs::virtual_balance::msg::ExecuteBurn {
-            amount: release_amount,
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
-            },
+    let burn_voucher_msg = vb_interface::BurnMsg::Burn(ExecuteBurn {
+        amount: release_amount,
+        balance_key: BalanceKey {
+            cross_chain_user: sender.clone(),
+            token_id: token.to_string(),
         },
-    );
-    let burn_voucher_msg = WasmMsg::Execute {
-        contract_addr: virtual_balance_address.clone(),
-        msg: to_json_binary(&burn_voucher_msg)?,
-        funds: vec![],
-    };
+    })
+    .into_cosmos_msg(virtual_balance_address.clone())?;
 
     // Update escrow balance state
     escrow_key.save(

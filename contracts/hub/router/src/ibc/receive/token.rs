@@ -1,14 +1,13 @@
-use cosmwasm_std::{
-    ensure, to_json_binary, CosmosMsg, DepsMut, Env, Response, SubMsg, Uint128, WasmMsg,
-};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint128};
 use euclid::{
     cross_chain_user::CrossChainUser,
     deposit::DepositTokenResponse,
     error::ContractError,
     events::{deregister_denom_event, register_denom_event, tx_event, TxType},
+    interface::ContractInterface,
     msgs::{
         router::TokenDenom,
-        virtual_balance::msg::{ExecuteMint, ExecuteMsg as VirtualBalanceMsg},
+        virtual_balance::{interface as vb_interface, msg::ExecuteMint},
         vlp::base::{DeregisterDenomResponse, RegisterDenomResponse},
     },
     swap::TransferVoucherResponse,
@@ -143,17 +142,14 @@ pub fn ibc_execute_deposit_token(
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     // Send mint msg to virtual balance
-    let mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: virtual_balance_address.to_string(),
-        msg: to_json_binary(&VirtualBalanceMsg::Mint(ExecuteMint {
-            amount: msg.amount_in,
-            balance_key: BalanceKey {
-                cross_chain_user: msg.sender.clone(),
-                token_id: msg.asset_in.token.to_string(),
-            },
-        }))?,
-        funds: vec![],
-    });
+    let mint_msg = vb_interface::MintMsg::Mint(ExecuteMint {
+        amount: msg.amount_in,
+        balance_key: BalanceKey {
+            cross_chain_user: msg.sender.clone(),
+            token_id: msg.asset_in.token.to_string(),
+        },
+    })
+    .into_cosmos_msg(virtual_balance_address.to_string())?;
 
     let response = Response::new()
         .add_submessage(SubMsg::new(mint_msg))
