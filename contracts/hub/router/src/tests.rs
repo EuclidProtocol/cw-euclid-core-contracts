@@ -744,7 +744,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            ADMIN.load(initialized.as_ref().storage).unwrap().general_admin,
+            ADMIN
+                .load(initialized.as_ref().storage)
+                .unwrap()
+                .general_admin,
             new_general_admin
         );
     }
@@ -1363,10 +1366,7 @@ mod tests {
     #[case::token_denoms_empty(QueryMsg::QueryTokenDenoms {
         token: Token::create("usdc".to_string()).unwrap(),
     })]
-    fn test_query_returns_error_when_not_found(
-        initialized: MockDeps,
-        #[case] msg: QueryMsg,
-    ) {
+    fn test_query_returns_error_when_not_found(initialized: MockDeps, #[case] msg: QueryMsg) {
         let res = query(initialized.as_ref(), mock_env(), msg);
         assert!(res.is_err());
     }
@@ -1455,7 +1455,8 @@ mod tests {
         seed_virtual_balance(&mut initialized);
 
         let parsed: StateResponse =
-            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetState {}).unwrap()).unwrap();
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetState {}).unwrap())
+                .unwrap();
         let creator = initialized.api.addr_make("creator");
 
         assert_eq!(parsed.constant_product_vlp_code_id, 1);
@@ -1720,7 +1721,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             RELEASE_FEES
-                .load(initialized.as_ref().storage, (token.clone(), chain_uid.clone()))
+                .load(
+                    initialized.as_ref().storage,
+                    (token.clone(), chain_uid.clone())
+                )
                 .unwrap(),
             Uint128::new(250)
         );
