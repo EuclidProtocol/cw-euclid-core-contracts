@@ -161,8 +161,8 @@ pub fn pending_swaps(
         .range(deps.storage, min, max, Order::Ascending)
         .skip(pagination.skip.unwrap_or(0) as usize)
         .take(pagination.limit.unwrap_or(10) as usize)
-        .map(|k| k.unwrap().1)
-        .collect();
+        .map(|k| -> Result<_, ContractError> { Ok(k?.1) })
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(to_json_binary(&GetPendingSwapsResponse { pending_swaps })?)
 }

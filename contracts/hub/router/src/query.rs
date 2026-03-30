@@ -67,6 +67,8 @@ pub fn query_all_vlps(
 
     let concentrated_vlps: Result<Vec<_>, ContractError> = CONCENTRATED_VLPS
         .range(deps.storage, None, None, Order::Ascending)
+        .skip(skip.unwrap_or(0) as usize)
+        .take(limit.unwrap_or(10) as usize)
         .map(|v| {
             let v = v?;
             let (token_1, token_2, _, _) = map_key_to_pool_parts(&v.0)

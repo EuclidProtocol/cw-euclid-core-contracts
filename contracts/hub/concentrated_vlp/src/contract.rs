@@ -61,7 +61,6 @@ use crate::{
 const CONTRACT_NAME: &str = "crates.io:concentrated_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MAX_SWAP_STEPS: u32 = 4096;
-const MAX_LIQUIDITY_ADJUSTMENT_STEPS: u32 = 1024;
 
 #[derive(Clone)]
 struct CrossedTickUpdate {
@@ -312,31 +311,46 @@ fn amounts_for_position_liquidity_with_bound(
     sqrt_price_x96: Uint256,
     sqrt_lower_x96: Uint256,
     sqrt_upper_x96: Uint256,
-    mut liquidity_delta: Uint128,
+    liquidity_delta: Uint128,
     max_amount_0: Uint128,
     max_amount_1: Uint128,
 ) -> Result<(Uint128, Uint128, Uint128), ContractError> {
-    for _ in 0..MAX_LIQUIDITY_ADJUSTMENT_STEPS {
-        let (amount_0_u256, amount_1_u256) = get_amounts_for_liquidity(
-            sqrt_price_x96,
-            sqrt_lower_x96,
-            sqrt_upper_x96,
-            liquidity_delta,
-            true,
-        )?;
-        let amount_0 = uint256_to_uint128(amount_0_u256)?;
-        let amount_1 = uint256_to_uint128(amount_1_u256)?;
-        if amount_0 <= max_amount_0 && amount_1 <= max_amount_1 {
-            return Ok((liquidity_delta, amount_0, amount_1));
+    let fits = |liq: Uint128| -> Result<Option<(Uint128, Uint128)>, ContractError> {
+        let (a0_u256, a1_u256) =
+            get_amounts_for_liquidity(sqrt_price_x96, sqrt_lower_x96, sqrt_upper_x96, liq, true)?;
+        let a0 = uint256_to_uint128(a0_u256)?;
+        let a1 = uint256_to_uint128(a1_u256)?;
+        if a0 <= max_amount_0 && a1 <= max_amount_1 {
+            Ok(Some((a0, a1)))
+        } else {
+            Ok(None)
         }
-        liquidity_delta = liquidity_delta
-            .checked_sub(Uint128::new(1))
-            .map_err(|_| ContractError::new("insufficient liquidity amount after rounding"))?;
+    };
+
+    if let Some((a0, a1)) = fits(liquidity_delta)? {
+        return Ok((liquidity_delta, a0, a1));
     }
 
-    Err(ContractError::new(
-        "failed to fit liquidity amounts within provided amounts",
-    ))
+    let mut lo = Uint128::zero();
+    let mut hi = liquidity_delta;
+    let mut best: Option<(Uint128, Uint128, Uint128)> = None;
+
+    for _ in 0..128u32 {
+        if lo >= hi {
+            break;
+        }
+        let mid = lo.checked_add(hi.checked_sub(lo)? / Uint128::new(2))?;
+        if let Some((a0, a1)) = fits(mid)? {
+            best = Some((mid, a0, a1));
+            lo = mid.checked_add(Uint128::new(1))?;
+        } else {
+            hi = mid;
+        }
+    }
+
+    best.ok_or_else(|| {
+        ContractError::new("failed to fit liquidity amounts within provided amounts")
+    })
 }
 
 fn assert_unused_within_slippage(

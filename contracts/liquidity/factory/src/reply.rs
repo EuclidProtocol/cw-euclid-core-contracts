@@ -30,14 +30,12 @@ pub const NFT_MINT_REPLY_ID: u64 = 8;
 
 #[named]
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -78,14 +76,12 @@ pub fn on_position_token_instantiate_reply(
     deps: DepsMut,
     msg: Reply,
 ) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -113,14 +109,12 @@ pub fn on_position_token_instantiate_reply(
 
 #[named]
 pub fn on_lp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 

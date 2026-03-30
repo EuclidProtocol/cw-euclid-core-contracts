@@ -55,7 +55,7 @@ pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 pub const CROSS_CHAIN_RECEIVE_REPLY_ID: u64 = 8;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::InstantiateError { err }),
         SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
@@ -143,14 +143,12 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
 
 #[named]
 pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -215,14 +213,12 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
 
 #[named]
 pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -292,16 +288,14 @@ pub fn on_remove_liquidity_reply(
     _env: Env,
     msg: Reply,
 ) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
+        SubMsgResult::Ok(result) => {
             let response = Response::new().add_attribute("action", "reply_remove_liquidity");
 
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -364,16 +358,14 @@ pub fn on_remove_liquidity_reply(
 
 #[named]
 pub fn on_collect_concentrated_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
+        SubMsgResult::Ok(result) => {
             let response = Response::new().add_attribute("action", "reply_collect_concentrated");
 
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -445,14 +437,12 @@ pub fn on_collect_concentrated_reply(deps: DepsMut, msg: Reply) -> Result<Respon
 
 #[named]
 pub fn on_swap_reply(deps: &mut DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -514,14 +504,12 @@ pub fn on_virtual_balance_instantiate_reply(
     deps: DepsMut,
     msg: Reply,
 ) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
