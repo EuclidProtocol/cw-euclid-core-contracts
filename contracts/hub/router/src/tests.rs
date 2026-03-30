@@ -780,28 +780,38 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // MetaReceive: access control (table-driven)
+    // MetaReceive: access control
     // -----------------------------------------------------------------------
 
     #[rstest]
-    #[case::unauthorized_caller(true, Addr::unchecked("attacker"))]
-    #[case::contract_not_set(false, Addr::unchecked("anyone"))]
-    fn test_meta_receive_access_control(
-        mut initialized: MockDeps,
-        #[case] seed_contract: bool,
-        #[case] caller: Addr,
-    ) {
+    fn test_meta_receive_rejects_unauthorized_caller(mut initialized: MockDeps) {
         let meta_tx = initialized.api.addr_make("meta_tx_contract");
-        if seed_contract {
-            META_TRANSACTION_CONTRACT
-                .save(initialized.as_mut().storage, &meta_tx)
-                .unwrap();
-        }
+        META_TRANSACTION_CONTRACT
+            .save(initialized.as_mut().storage, &meta_tx)
+            .unwrap();
+        let attacker = Addr::unchecked("attacker");
 
         let res = execute(
             initialized.as_mut(),
             mock_env(),
-            message_info(&caller, &[]),
+            message_info(&attacker, &[]),
+            ExecuteMsg::MetaReceive(MetaReceive {
+                verified_sender: euclid::cross_chain_user::CrossChainUser::new(
+                    ChainUid::vsl_chain_uid().unwrap(),
+                    "user".to_string(),
+                ),
+                call_data: "{}".to_string(),
+            }),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[rstest]
+    fn test_meta_receive_fails_when_contract_not_set(mut initialized: MockDeps) {
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&Addr::unchecked("anyone"), &[]),
             ExecuteMsg::MetaReceive(MetaReceive {
                 verified_sender: euclid::cross_chain_user::CrossChainUser::new(
                     ChainUid::vsl_chain_uid().unwrap(),
