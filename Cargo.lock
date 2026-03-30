@@ -2908,7 +2908,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
