@@ -34,26 +34,33 @@ fn init(
 
 ## Test Case Struct Pattern
 
-For execute tests with multiple scenarios, use a struct instead of copy-pasting:
+For execute tests with multiple scenarios, use `rstest` parameterized tests instead of copy-pasting. Add `rstest` to `[dev-dependencies]` in the contract's `Cargo.toml` if not already present.
 
 ```rust
-struct TestCase {
-    name: &'static str,
-    msg: ExecuteMsg,
-    sender: &'static str,        // wallet name, resolved via deps.api.addr_make
-    expected_error: Option<ContractError>,
-}
+use rstest::rstest;
 
-for tc in test_cases {
-    let sender = deps.api.addr_make(tc.sender);
-    let info = message_info(&sender, &[]);
-    let res = execute(deps.as_mut(), env.clone(), info, tc.msg.clone());
-    match tc.expected_error {
-        Some(err) => assert_eq!(res.unwrap_err(), err, "{}", tc.name),
-        None => assert!(res.is_ok(), "{}", tc.name),
+#[rstest]
+#[case::happy_path(ExecuteMsg::SomeVariant { .. }, "sender", None)]
+#[case::unauthorized(ExecuteMsg::SomeVariant { .. }, "other", Some(ContractError::Unauthorized {}))]
+fn test_execute_some_variant(
+    #[case] msg: ExecuteMsg,
+    #[case] sender: &str,
+    #[case] expected_error: Option<ContractError>,
+) {
+    let mut deps = mock_dependencies();
+    init(&mut deps);
+    let env = mock_env();
+    let sender_addr = deps.api.addr_make(sender);
+    let info = message_info(&sender_addr, &[]);
+    let res = execute(deps.as_mut(), env, info, msg);
+    match expected_error {
+        Some(err) => assert_eq!(res.unwrap_err(), err),
+        None => assert!(res.is_ok()),
     }
 }
 ```
+
+Use `#[case::descriptive_name(...)]` labels so test output identifies each scenario by name. Group cases that share the same execute handler into one `#[rstest]` function.
 
 ## What to Test
 
