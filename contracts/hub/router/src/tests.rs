@@ -190,23 +190,12 @@ mod tests {
     // RegisterFactory: happy path
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_execute_register_factory() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_execute_register_factory(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
-        let non_admin = deps.api.addr_make("non-admin");
+        let creator = initialized.api.addr_make("creator");
+        let non_admin = initialized.api.addr_make("non-admin");
         let info = message_info(&creator, &[]);
-
-        let msg = InstantiateMsg {
-            constant_product_vlp_code_id: 1,
-            stable_vlp_code_id: 3,
-            virtual_balance_code_id: 2,
-            relayer_contract: Addr::unchecked("relayer"),
-            release_fee_recipient: Addr::unchecked("release_fee_recipient"),
-            default_fee_recipient: Addr::unchecked("default_fee_recipient"),
-        };
-        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         let test_cases = vec![
             TestExecuteMsg {
@@ -235,7 +224,7 @@ mod tests {
 
         for test in test_cases {
             let res = execute(
-                deps.as_mut(),
+                initialized.as_mut(),
                 env.clone(),
                 if test.name.contains("non-admin") {
                     message_info(&non_admin, &[])
@@ -329,16 +318,14 @@ mod tests {
         assert_eq!(res.unwrap_err(), expected_error);
     }
 
-    #[test]
-    fn test_register_factory_duplicate_chain_rejected() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_register_factory_duplicate_chain_rejected(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
+        let creator = initialized.api.addr_make("creator");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::RegisterFactory {
@@ -353,7 +340,7 @@ mod tests {
 
         CHAIN_UID_TO_CHAIN
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 ChainUid::create("chain1".to_string()).unwrap(),
                 &Chain {
                     chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
@@ -364,7 +351,7 @@ mod tests {
             .unwrap();
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::RegisterFactory {
@@ -385,17 +372,15 @@ mod tests {
     // ManageRouterState
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_manage_router_state_lock_state() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_lock_state(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
-        let non_admin = deps.api.addr_make("non_admin");
+        let creator = initialized.api.addr_make("creator");
+        let non_admin = initialized.api.addr_make("non_admin");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&non_admin, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: true }),
@@ -403,34 +388,32 @@ mod tests {
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: true }),
         )
         .unwrap();
-        assert!(STATE.load(deps.as_ref().storage).unwrap().locked);
+        assert!(STATE.load(initialized.as_ref().storage).unwrap().locked);
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: false }),
         )
         .unwrap();
-        assert!(!STATE.load(deps.as_ref().storage).unwrap().locked);
+        assert!(!STATE.load(initialized.as_ref().storage).unwrap().locked);
     }
 
-    #[test]
-    fn test_contract_locked_blocks_execute() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_contract_locked_blocks_execute(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
+        let creator = initialized.api.addr_make("creator");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: true }),
@@ -438,7 +421,7 @@ mod tests {
         .unwrap();
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::RegisterFactory {
@@ -453,7 +436,7 @@ mod tests {
 
         // ManageRouterState still works while locked
         assert!(execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: false }),
@@ -461,17 +444,15 @@ mod tests {
         .is_ok());
     }
 
-    #[test]
-    fn test_manage_router_state_vlp_code_id() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_vlp_code_id(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
-        let non_admin = deps.api.addr_make("non_admin");
+        let creator = initialized.api.addr_make("creator");
+        let non_admin = initialized.api.addr_make("non_admin");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&non_admin, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
@@ -482,7 +463,7 @@ mod tests {
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
@@ -491,12 +472,12 @@ mod tests {
             }),
         )
         .unwrap();
-        let state = STATE.load(deps.as_ref().storage).unwrap();
+        let state = STATE.load(initialized.as_ref().storage).unwrap();
         assert_eq!(state.constant_product_vlp_code_id, 99);
         assert_eq!(state.stable_vlp_code_id, 3); // unchanged
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
@@ -505,23 +486,21 @@ mod tests {
             }),
         )
         .unwrap();
-        let state = STATE.load(deps.as_ref().storage).unwrap();
+        let state = STATE.load(initialized.as_ref().storage).unwrap();
         assert_eq!(state.constant_product_vlp_code_id, 99); // unchanged
         assert_eq!(state.stable_vlp_code_id, 77);
     }
 
-    #[test]
-    fn test_manage_router_state_relayer_contract() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_relayer_contract(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
-        let non_admin = deps.api.addr_make("non_admin");
-        let new_relayer = deps.api.addr_make("new_relayer");
+        let creator = initialized.api.addr_make("creator");
+        let non_admin = initialized.api.addr_make("non_admin");
+        let new_relayer = initialized.api.addr_make("new_relayer");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&non_admin, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::RelayerContract {
@@ -531,7 +510,7 @@ mod tests {
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::RelayerContract {
@@ -540,23 +519,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            RELAYER_CONTRACT.load(deps.as_ref().storage).unwrap(),
+            RELAYER_CONTRACT.load(initialized.as_ref().storage).unwrap(),
             new_relayer
         );
     }
 
-    #[test]
-    fn test_manage_router_state_meta_transaction_contract() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_meta_transaction_contract(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
-        let non_admin = deps.api.addr_make("non_admin");
-        let meta_tx = deps.api.addr_make("meta_tx_contract");
+        let creator = initialized.api.addr_make("creator");
+        let non_admin = initialized.api.addr_make("non_admin");
+        let meta_tx = initialized.api.addr_make("meta_tx_contract");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&non_admin, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::MetaTransactionContract {
@@ -566,7 +543,7 @@ mod tests {
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::MetaTransactionContract {
@@ -578,24 +555,22 @@ mod tests {
         assert_eq!(res.attributes[1].value, meta_tx.to_string());
         assert_eq!(
             META_TRANSACTION_CONTRACT
-                .load(deps.as_ref().storage)
+                .load(initialized.as_ref().storage)
                 .unwrap(),
             meta_tx
         );
     }
 
-    #[test]
-    fn test_manage_router_state_update_fee_state() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_update_fee_state(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
-        let non_admin = deps.api.addr_make("non_admin");
-        let new_recipient = deps.api.addr_make("new_recipient");
+        let creator = initialized.api.addr_make("creator");
+        let non_admin = initialized.api.addr_make("non_admin");
+        let new_recipient = initialized.api.addr_make("new_recipient");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&non_admin, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateFeeState {
@@ -606,7 +581,7 @@ mod tests {
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateFeeState {
@@ -617,26 +592,24 @@ mod tests {
         .unwrap();
         assert_eq!(
             FEE_STATE
-                .load(deps.as_ref().storage)
+                .load(initialized.as_ref().storage)
                 .unwrap()
                 .release_fee_recipient,
             new_recipient
         );
     }
 
-    #[test]
-    fn test_manage_router_state_update_release_fee() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_update_release_fee(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
+        let creator = initialized.api.addr_make("creator");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let token = Token::create("usdc".to_string()).unwrap();
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateReleaseFee {
@@ -648,22 +621,20 @@ mod tests {
         .unwrap();
         assert_eq!(
             RELEASE_FEES
-                .load(deps.as_ref().storage, (token, chain_uid))
+                .load(initialized.as_ref().storage, (token, chain_uid))
                 .unwrap(),
             Uint128::new(50)
         );
     }
 
-    #[test]
-    fn test_manage_router_state_update_default_release_fee() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_update_default_release_fee(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
+        let creator = initialized.api.addr_make("creator");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateDefaultReleaseFee {
@@ -675,19 +646,17 @@ mod tests {
         assert_eq!(res.attributes[1].value, "100");
     }
 
-    #[test]
-    fn test_manage_router_state_lock_unlock_chain() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_lock_unlock_chain(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
-        let non_admin = deps.api.addr_make("non_admin");
+        let creator = initialized.api.addr_make("creator");
+        let non_admin = initialized.api.addr_make("non_admin");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&non_admin, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockChain {
@@ -697,7 +666,7 @@ mod tests {
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockChain {
@@ -706,12 +675,12 @@ mod tests {
         )
         .unwrap();
         assert!(LOCKED_CHAINS
-            .load(deps.as_ref().storage)
+            .load(initialized.as_ref().storage)
             .unwrap()
             .contains(&chain_uid));
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockChain {
@@ -721,7 +690,7 @@ mod tests {
         assert_eq!(res.unwrap_err(), ContractError::new("Chain already locked"));
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&non_admin, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::UnlockChain {
@@ -731,7 +700,7 @@ mod tests {
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::UnlockChain {
@@ -740,12 +709,12 @@ mod tests {
         )
         .unwrap();
         assert!(!LOCKED_CHAINS
-            .load(deps.as_ref().storage)
+            .load(initialized.as_ref().storage)
             .unwrap()
             .contains(&chain_uid));
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::UnlockChain {
@@ -758,17 +727,15 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_manage_router_state_update_chain_timeout() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_update_chain_timeout(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
+        let creator = initialized.api.addr_make("creator");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateChainTimeout {
@@ -781,18 +748,16 @@ mod tests {
         assert_eq!(res.attributes[2].value, "300");
     }
 
-    #[test]
-    fn test_manage_router_state_update_admins() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_manage_router_state_update_admins(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
-        let new_general_admin = deps.api.addr_make("new_general_admin");
-        let non_admin = deps.api.addr_make("non_admin");
+        let creator = initialized.api.addr_make("creator");
+        let new_general_admin = initialized.api.addr_make("new_general_admin");
+        let non_admin = initialized.api.addr_make("non_admin");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&non_admin, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::Admins {
@@ -803,7 +768,7 @@ mod tests {
         assert!(res.is_err());
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::Admins {
@@ -813,7 +778,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            ADMIN.load(deps.as_ref().storage).unwrap().general_admin,
+            ADMIN.load(initialized.as_ref().storage).unwrap().general_admin,
             new_general_admin
         );
     }
@@ -856,13 +821,12 @@ mod tests {
     // NativeReceiveCallback: access control (table-driven)
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_native_receive_callback_unregistered_chain() {
-        let mut deps = initialized();
-        let creator = deps.api.addr_make("creator");
+    #[rstest]
+    fn test_native_receive_callback_unregistered_chain(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::NativeReceiveCallback {
@@ -1038,12 +1002,11 @@ mod tests {
         assert_eq!(res.unwrap_err(), expected_error);
     }
 
-    #[test]
-    fn test_receive_packet_unregistered_chain_fails() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_receive_packet_unregistered_chain_fails(mut initialized: MockDeps) {
         let env = mock_env();
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&Addr::unchecked("relayer"), &[]),
             ExecuteMsg::ReceivePacket {
@@ -1061,11 +1024,10 @@ mod tests {
     // AcknowledgePacket: port validation
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_acknowledge_packet_invalid_destination_port() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_acknowledge_packet_invalid_destination_port(mut initialized: MockDeps) {
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             mock_env(),
             message_info(&Addr::unchecked("relayer"), &[]),
             ExecuteMsg::AcknowledgePacket {
@@ -1086,13 +1048,12 @@ mod tests {
     // ReceivePacketInternalCallback: timeout
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_receive_packet_internal_callback_timed_out() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_receive_packet_internal_callback_timed_out(mut initialized: MockDeps) {
         let env = mock_env();
         // timeout=0 is below mock_env block time (1571797419)
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             message_info(&env.contract.address, &[]),
             ExecuteMsg::ReceivePacketInternalCallback {
@@ -1181,17 +1142,16 @@ mod tests {
         assert_eq!(res.unwrap_err(), expected_error);
     }
 
-    #[test]
-    fn test_withdraw_voucher_unregistered_token_fails() {
-        let mut deps = initialized();
-        let creator = deps.api.addr_make("creator");
+    #[rstest]
+    fn test_withdraw_voucher_unregistered_token_fails(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
 
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
             .unwrap();
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
@@ -1316,17 +1276,16 @@ mod tests {
     // TransferVoucher
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_transfer_voucher_unregistered_token_fails() {
-        let mut deps = initialized();
-        let creator = deps.api.addr_make("creator");
+    #[rstest]
+    fn test_transfer_voucher_unregistered_token_fails(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
 
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
             .unwrap();
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::TransferVoucher {
@@ -1347,24 +1306,20 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[test]
-    fn test_transfer_voucher_to_voucher_recipient_happy_path() {
-        let mut deps = mock_dependencies();
-        let creator = deps.api.addr_make("creator");
-        init(deps.as_mut(), message_info(&creator, &[]));
-
+    #[rstest]
+    fn test_transfer_voucher_to_voucher_recipient_happy_path(mut initialized: MockDeps) {
         let sender = Addr::unchecked("sender_address");
         let token = Token::create("usdc".to_string()).unwrap();
 
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
             .unwrap();
         TOKEN_DENOMS
-            .save(deps.as_mut().storage, token.clone(), &vec![])
+            .save(initialized.as_mut().storage, token.clone(), &vec![])
             .unwrap();
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             mock_env(),
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
@@ -1407,24 +1362,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_transfer_voucher_self_transfer_no_submsg() {
-        let mut deps = mock_dependencies();
-        let creator = deps.api.addr_make("creator");
-        init(deps.as_mut(), message_info(&creator, &[]));
-
+    #[rstest]
+    fn test_transfer_voucher_self_transfer_no_submsg(mut initialized: MockDeps) {
         let sender = Addr::unchecked("senderaddr");
         let token = Token::create("usdc".to_string()).unwrap();
 
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
             .unwrap();
         TOKEN_DENOMS
-            .save(deps.as_mut().storage, token.clone(), &vec![])
+            .save(initialized.as_mut().storage, token.clone(), &vec![])
             .unwrap();
 
         let res = execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             mock_env(),
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
@@ -1487,21 +1438,19 @@ mod tests {
     // Queries: empty collections
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_query_get_all_chains_empty() {
-        let deps = initialized();
+    #[rstest]
+    fn test_query_get_all_chains_empty(initialized: MockDeps) {
         let parsed: AllChainResponse =
-            from_json(query(deps.as_ref(), mock_env(), QueryMsg::GetAllChains {}).unwrap())
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetAllChains {}).unwrap())
                 .unwrap();
         assert!(parsed.chains.is_empty());
     }
 
-    #[test]
-    fn test_query_get_all_vlps_empty() {
-        let deps = initialized();
+    #[rstest]
+    fn test_query_get_all_vlps_empty(initialized: MockDeps) {
         let parsed: AllVlpResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::GetAllVlps {
                     pagination: Pagination {
@@ -1518,12 +1467,11 @@ mod tests {
         assert!(parsed.vlps.is_empty());
     }
 
-    #[test]
-    fn test_query_all_tokens_empty() {
-        let deps = initialized();
+    #[rstest]
+    fn test_query_all_tokens_empty(initialized: MockDeps) {
         let parsed: AllTokensResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::QueryAllTokens {
                     pagination: Pagination {
@@ -1540,12 +1488,11 @@ mod tests {
         assert!(parsed.tokens.is_empty());
     }
 
-    #[test]
-    fn test_query_all_escrows_empty() {
-        let deps = initialized();
+    #[rstest]
+    fn test_query_all_escrows_empty(initialized: MockDeps) {
         let parsed: AllEscrowsResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::QueryAllEscrows {
                     pagination: Pagination {
@@ -1566,16 +1513,15 @@ mod tests {
     // Queries: with data
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_query_get_state() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_query_get_state(mut initialized: MockDeps) {
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
             .unwrap();
 
         let parsed: StateResponse =
-            from_json(query(deps.as_ref(), mock_env(), QueryMsg::GetState {}).unwrap()).unwrap();
-        let creator = deps.api.addr_make("creator");
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetState {}).unwrap()).unwrap();
+        let creator = initialized.api.addr_make("creator");
 
         assert_eq!(parsed.constant_product_vlp_code_id, 1);
         assert_eq!(parsed.stable_vlp_code_id, 3);
@@ -1587,13 +1533,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_query_get_all_chains_with_data() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_query_get_all_chains_with_data(mut initialized: MockDeps) {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         CHAIN_UID_TO_CHAIN
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 chain_uid.clone(),
                 &Chain {
                     chain_uid: chain_uid.clone(),
@@ -1604,19 +1549,18 @@ mod tests {
             .unwrap();
 
         let parsed: AllChainResponse =
-            from_json(query(deps.as_ref(), mock_env(), QueryMsg::GetAllChains {}).unwrap())
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetAllChains {}).unwrap())
                 .unwrap();
         assert_eq!(parsed.chains.len(), 1);
         assert_eq!(parsed.chains[0].chain_uid, chain_uid);
     }
 
-    #[test]
-    fn test_query_get_chain_success() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_query_get_chain_success(mut initialized: MockDeps) {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         CHAIN_UID_TO_CHAIN
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 chain_uid.clone(),
                 &Chain {
                     chain_uid: chain_uid.clone(),
@@ -1628,7 +1572,7 @@ mod tests {
 
         let parsed: ChainResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::GetChain {
                     chain_uid: chain_uid.clone(),
@@ -1641,14 +1585,13 @@ mod tests {
         assert_eq!(parsed.chain.factory_address, "factory1");
     }
 
-    #[test]
-    fn test_query_get_vlp_success() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_query_get_vlp_success(mut initialized: MockDeps) {
         let token1 = Token::create("token1".to_string()).unwrap();
         let token2 = Token::create("token2".to_string()).unwrap();
 
         VLPS.save(
-            deps.as_mut().storage,
+            initialized.as_mut().storage,
             (token1.to_string(), token2.to_string()),
             &Addr::unchecked("vlp_addr"),
         )
@@ -1656,7 +1599,7 @@ mod tests {
 
         let parsed: VlpResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::GetVlp {
                     pair: Pair::new(token1.clone(), token2.clone()).unwrap(),
@@ -1670,19 +1613,18 @@ mod tests {
         assert_eq!(parsed.token_2, token2);
     }
 
-    #[test]
-    fn test_query_all_tokens_with_data() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_query_all_tokens_with_data(mut initialized: MockDeps) {
         TOKEN_DENOMS
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 Token::create("usdc".to_string()).unwrap(),
                 &vec![],
             )
             .unwrap();
         TOKEN_DENOMS
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 Token::create("atom".to_string()).unwrap(),
                 &vec![],
             )
@@ -1690,7 +1632,7 @@ mod tests {
 
         let parsed: AllTokensResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::QueryAllTokens {
                     pagination: Pagination {
@@ -1707,15 +1649,14 @@ mod tests {
         assert_eq!(parsed.tokens.len(), 2);
     }
 
-    #[test]
-    fn test_query_token_escrows_with_data() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_query_token_escrows_with_data(mut initialized: MockDeps) {
         let token = Token::create("usdc".to_string()).unwrap();
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
 
         ESCROW_BALANCES
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 (token.to_string(), chain_uid.clone()),
                 &Uint128::new(1000),
             )
@@ -1723,7 +1664,7 @@ mod tests {
 
         let parsed: TokenEscrowsResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::QueryTokenEscrows {
                     token: token.clone(),
@@ -1743,15 +1684,14 @@ mod tests {
         assert_eq!(parsed.chains[0].balance, Uint128::new(1000));
     }
 
-    #[test]
-    fn test_query_token_denoms_success() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_query_token_denoms_success(mut initialized: MockDeps) {
         let token = Token::create("usdc".to_string()).unwrap();
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
 
         TOKEN_DENOMS
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 token.clone(),
                 &vec![TokenDenom {
                     chain_uid: chain_uid.clone(),
@@ -1764,7 +1704,7 @@ mod tests {
 
         let parsed: QueryTokenDenomsResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::QueryTokenDenoms { token },
             )
@@ -1781,15 +1721,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_query_all_escrows_with_data() {
-        let mut deps = initialized();
+    #[rstest]
+    fn test_query_all_escrows_with_data(mut initialized: MockDeps) {
         let token = Token::create("atom".to_string()).unwrap();
         let chain_uid = ChainUid::create("cosmos1".to_string()).unwrap();
 
         ESCROW_BALANCES
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 (token.to_string(), chain_uid.clone()),
                 &Uint128::new(5000),
             )
@@ -1797,7 +1736,7 @@ mod tests {
 
         let parsed: AllEscrowsResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::QueryAllEscrows {
                     pagination: Pagination {
@@ -1816,12 +1755,11 @@ mod tests {
         assert_eq!(parsed.escrows[0].chain_uid, chain_uid);
     }
 
-    #[test]
-    fn test_query_relayer_addresses() {
-        let deps = initialized();
+    #[rstest]
+    fn test_query_relayer_addresses(initialized: MockDeps) {
         let parsed: QueryRelayerAddressesResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::QueryRelayerAddresses {},
             )
@@ -1831,12 +1769,11 @@ mod tests {
         assert_eq!(parsed.relayer_contract, Addr::unchecked("relayer"));
     }
 
-    #[test]
-    fn test_query_get_release_fees_empty() {
-        let deps = initialized();
+    #[rstest]
+    fn test_query_get_release_fees_empty(initialized: MockDeps) {
         let parsed: ReleaseFeesQueryResponse = from_json(
             query(
-                deps.as_ref(),
+                initialized.as_ref(),
                 mock_env(),
                 QueryMsg::GetReleaseFees {
                     pagination: Pagination {
@@ -1853,29 +1790,28 @@ mod tests {
         assert!(parsed.fees.is_empty());
     }
 
-    #[test]
-    fn test_query_get_release_fees_with_data() {
-        let mut deps = initialized();
-        let creator = deps.api.addr_make("creator");
+    #[rstest]
+    fn test_query_get_release_fees_with_data(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
         let token = Token::create("usdc".to_string()).unwrap();
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
 
         RELEASE_FEES
             .save(
-                deps.as_mut().storage,
+                initialized.as_mut().storage,
                 (token.clone(), chain_uid.clone()),
                 &Uint128::new(250),
             )
             .unwrap();
         assert_eq!(
             RELEASE_FEES
-                .load(deps.as_ref().storage, (token.clone(), chain_uid.clone()))
+                .load(initialized.as_ref().storage, (token.clone(), chain_uid.clone()))
                 .unwrap(),
             Uint128::new(250)
         );
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateReleaseFee {
@@ -1887,7 +1823,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             RELEASE_FEES
-                .load(deps.as_ref().storage, (token, chain_uid))
+                .load(initialized.as_ref().storage, (token, chain_uid))
                 .unwrap(),
             Uint128::new(999)
         );
@@ -1897,16 +1833,14 @@ mod tests {
     // State invariant
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_state_invariant_after_manage_sequence() {
-        let mut deps = mock_dependencies();
+    #[rstest]
+    fn test_state_invariant_after_manage_sequence(mut initialized: MockDeps) {
         let env = mock_env();
-        let creator = deps.api.addr_make("creator");
+        let creator = initialized.api.addr_make("creator");
         let info = message_info(&creator, &[]);
-        init(deps.as_mut(), info.clone());
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
@@ -1916,25 +1850,25 @@ mod tests {
         )
         .unwrap();
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: true }),
         )
         .unwrap();
 
-        let state = STATE.load(deps.as_ref().storage).unwrap();
+        let state = STATE.load(initialized.as_ref().storage).unwrap();
         assert_eq!(state.constant_product_vlp_code_id, 99);
         assert_eq!(state.stable_vlp_code_id, 88);
         assert!(state.locked);
 
         execute(
-            deps.as_mut(),
+            initialized.as_mut(),
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: false }),
         )
         .unwrap();
-        assert!(!STATE.load(deps.as_ref().storage).unwrap().locked);
+        assert!(!STATE.load(initialized.as_ref().storage).unwrap().locked);
     }
 }
