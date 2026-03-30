@@ -286,8 +286,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[rstest]
-    #[case(
-        "vsl_uid_rejected",
+    #[case::vsl_uid_rejected(
         ChainUid::vsl_chain_uid().unwrap(),
         RegisterFactoryChainType::Native(RegisterFactoryChainNative {
             factory_address: "factory".to_string(),
@@ -295,8 +294,7 @@ mod tests {
         }),
         ContractError::new("Cannot use VSL chain uid"),
     )]
-    #[case(
-        "cosmos_uppercase_address",
+    #[case::cosmos_uppercase_address(
         ChainUid::create("cosmos1".to_string()).unwrap(),
         RegisterFactoryChainType::Cosmos(RegisterFactoryChainCosmos {
             factory_address: "UPPERCASE_FACTORY".to_string(),
@@ -304,8 +302,7 @@ mod tests {
         }),
         ContractError::new("Factory address must be lowercase"),
     )]
-    #[case(
-        "evm_uppercase_address",
+    #[case::evm_uppercase_address(
         ChainUid::create("evm1".to_string()).unwrap(),
         RegisterFactoryChainType::Evm(RegisterFactoryChainEvm {
             factory_address: "0xUpperCase".to_string(),
@@ -315,7 +312,6 @@ mod tests {
     )]
     fn test_register_factory_rejects_invalid_input(
         mut initialized: MockDeps,
-        #[case] name: &str,
         #[case] chain_uid: ChainUid,
         #[case] chain_info: RegisterFactoryChainType,
         #[case] expected_error: ContractError,
@@ -330,7 +326,7 @@ mod tests {
                 chain_info,
             },
         );
-        assert_eq!(res.unwrap_err(), expected_error, "case: {name}");
+        assert_eq!(res.unwrap_err(), expected_error);
     }
 
     #[test]
@@ -827,11 +823,10 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[rstest]
-    #[case("unauthorized_caller", true, Addr::unchecked("attacker"))]
-    #[case("contract_not_set", false, Addr::unchecked("anyone"))]
+    #[case::unauthorized_caller(true, Addr::unchecked("attacker"))]
+    #[case::contract_not_set(false, Addr::unchecked("anyone"))]
     fn test_meta_receive_access_control(
         mut initialized: MockDeps,
-        #[case] name: &str,
         #[case] seed_contract: bool,
         #[case] caller: Addr,
     ) {
@@ -854,7 +849,7 @@ mod tests {
                 call_data: "{}".to_string(),
             }),
         );
-        assert!(res.is_err(), "expected error for case: {name}");
+        assert!(res.is_err());
     }
 
     // -----------------------------------------------------------------------
@@ -879,21 +874,18 @@ mod tests {
     }
 
     #[rstest]
-    #[case(
-        "non_native_chain",
+    #[case::non_native_chain(
         ChainType::Cosmos(CosmosChain { chain_id: "cosmos-1".to_string() }),
         "factory1",
         "factory1",
     )]
-    #[case(
-        "wrong_factory_caller",
+    #[case::wrong_factory_caller(
         ChainType::Native {},
         "real_factory",
         "attacker",
     )]
     fn test_native_receive_callback_unauthorized(
         mut initialized: MockDeps,
-        #[case] name: &str,
         #[case] chain_type: ChainType,
         #[case] factory_address: &str,
         #[case] caller_name: &str,
@@ -921,11 +913,7 @@ mod tests {
                 msg: Binary::default(),
             },
         );
-        assert_eq!(
-            res.unwrap_err(),
-            ContractError::Unauthorized {},
-            "case: {name}"
-        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
     }
 
     // -----------------------------------------------------------------------
@@ -933,8 +921,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[rstest]
-    #[case(
-        "send_packet",
+    #[case::send_packet(
         Addr::unchecked("external_caller"),
         ExecuteMsg::SendPacket {
             chain: Chain {
@@ -948,8 +935,7 @@ mod tests {
             ack_response: None,
         },
     )]
-    #[case(
-        "receive_packet",
+    #[case::receive_packet(
         Addr::unchecked("attacker"),
         ExecuteMsg::ReceivePacket {
             source_port: "chain1.factory1".to_string(),
@@ -959,8 +945,7 @@ mod tests {
             timeout: u64::MAX,
         },
     )]
-    #[case(
-        "acknowledge_packet",
+    #[case::acknowledge_packet(
         Addr::unchecked("attacker"),
         ExecuteMsg::AcknowledgePacket {
             source_port: "chain1.factory1".to_string(),
@@ -970,8 +955,7 @@ mod tests {
             ack: Binary::default(),
         },
     )]
-    #[case(
-        "receive_packet_internal_callback",
+    #[case::receive_packet_internal_callback(
         Addr::unchecked("external"),
         ExecuteMsg::ReceivePacketInternalCallback {
             msg: Binary::default(),
@@ -981,7 +965,6 @@ mod tests {
     )]
     fn test_relay_handler_rejects_unauthorized_caller(
         mut initialized: MockDeps,
-        #[case] name: &str,
         #[case] sender: Addr,
         #[case] msg: ExecuteMsg,
     ) {
@@ -991,11 +974,7 @@ mod tests {
             message_info(&sender, &[]),
             msg,
         );
-        assert_eq!(
-            res.unwrap_err(),
-            ContractError::Unauthorized {},
-            "case: {name}"
-        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
     }
 
     // -----------------------------------------------------------------------
@@ -1003,20 +982,20 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[rstest]
-    #[case(
-        "invalid_source_port",
+    #[case::invalid_source_port(
         "chain1.wrongfactory",
+        false,
         ContractError::new("Invalid source port")
     )]
-    #[case(
-        "duplicate_sequence",
+    #[case::duplicate_sequence(
         "chain1.factory1",
+        true,
         ContractError::Generic { err: "Processed sequence already exists".to_string() },
     )]
     fn test_receive_packet_validation_errors(
         mut initialized: MockDeps,
-        #[case] name: &str,
         #[case] source_port: &str,
+        #[case] setup_duplicate: bool,
         #[case] expected_error: ContractError,
     ) {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
@@ -1032,7 +1011,7 @@ mod tests {
             )
             .unwrap();
 
-        if name == "duplicate_sequence" {
+        if setup_duplicate {
             use crate::relay_state::CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS;
             CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS
                 .save(
@@ -1056,7 +1035,7 @@ mod tests {
                 timeout: u64::MAX,
             },
         );
-        assert_eq!(res.unwrap_err(), expected_error, "case: {name}");
+        assert_eq!(res.unwrap_err(), expected_error);
     }
 
     #[test]
@@ -1133,11 +1112,10 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[rstest]
-    #[case("invalid_denom", "uatom", false, ContractError::InvalidDenom {})]
-    #[case("locked_chain", "uusdc", true, ContractError::new("Chain is locked"))]
+    #[case::invalid_denom("uatom", false, ContractError::InvalidDenom {})]
+    #[case::locked_chain("uusdc", true, ContractError::new("Chain is locked"))]
     fn test_withdraw_voucher_error_cases(
         mut initialized: MockDeps,
-        #[case] name: &str,
         #[case] registered_denom: &str,
         #[case] lock_chain: bool,
         #[case] expected_error: ContractError,
@@ -1200,7 +1178,7 @@ mod tests {
                 cross_chain_config: CrossChainConfig::default(),
             },
         );
-        assert_eq!(res.unwrap_err(), expected_error, "case: {name}");
+        assert_eq!(res.unwrap_err(), expected_error);
     }
 
     #[test]
@@ -1485,25 +1463,24 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[rstest]
-    #[case("chain_not_found", QueryMsg::GetChain {
+    #[case::chain_not_found(QueryMsg::GetChain {
         chain_uid: ChainUid::create("nonexistent".to_string()).unwrap(),
     })]
-    #[case("vlp_not_found", QueryMsg::GetVlp {
+    #[case::vlp_not_found(QueryMsg::GetVlp {
         pair: Pair::new(
             Token::create("token1".to_string()).unwrap(),
             Token::create("token2".to_string()).unwrap(),
         ).unwrap(),
     })]
-    #[case("token_denoms_empty", QueryMsg::QueryTokenDenoms {
+    #[case::token_denoms_empty(QueryMsg::QueryTokenDenoms {
         token: Token::create("usdc".to_string()).unwrap(),
     })]
     fn test_query_returns_error_when_not_found(
         initialized: MockDeps,
-        #[case] name: &str,
         #[case] msg: QueryMsg,
     ) {
         let res = query(initialized.as_ref(), mock_env(), msg);
-        assert!(res.is_err(), "expected error for case: {name}");
+        assert!(res.is_err());
     }
 
     // -----------------------------------------------------------------------
