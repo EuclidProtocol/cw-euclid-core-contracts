@@ -449,7 +449,7 @@ pub fn list_position_ids(factory: &FactoryContract<MockBase>) -> Result<Vec<Stri
         return Ok(vec![]);
     }
     let tokens: euclid::msgs::position_token::TokensResponse =
-        contract.query(&euclid::msgs::position_token::QueryMsg::AllTokens {})?;
+        contract.query(&euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None })?;
     Ok(tokens.tokens)
 }
 

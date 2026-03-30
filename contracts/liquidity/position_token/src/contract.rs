@@ -76,8 +76,15 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     match msg {
         QueryMsg::OwnerOf { token_id } => query_owner_of(deps, token_id),
         QueryMsg::TokenInfo { token_id } => query_token_info(deps, token_id),
-        QueryMsg::TokensByOwner { owner } => query_tokens_by_owner(deps, owner),
-        QueryMsg::AllTokens {} => query_all_tokens(deps),
+        QueryMsg::TokensByOwner {
+            owner,
+            start_after,
+            limit,
+        } => query_tokens_by_owner(deps, owner, start_after, limit),
+        QueryMsg::AllTokens {
+            start_after,
+            limit,
+        } => query_all_tokens(deps, start_after, limit),
         QueryMsg::State {} => query_state(deps),
     }
 }

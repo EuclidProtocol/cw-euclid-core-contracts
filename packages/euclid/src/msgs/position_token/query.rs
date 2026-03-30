@@ -9,9 +9,16 @@ pub enum QueryMsg {
     #[returns(TokenInfoResponse)]
     TokenInfo { token_id: String },
     #[returns(TokensResponse)]
-    TokensByOwner { owner: String },
+    TokensByOwner {
+        owner: String,
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
     #[returns(TokensResponse)]
-    AllTokens {},
+    AllTokens {
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
     #[returns(StateResponse)]
     State {},
 }

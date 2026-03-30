@@ -688,6 +688,11 @@ fn ack_add_concentrated_liquidity(
                 }
             }
 
+            // NOTE (M-04): POSITION_ID_TO_METADATA is updated here in the IBC ack handler,
+            // while the CLP-side position was already updated synchronously during execute.
+            // Between execute and this ack, the two views are temporarily inconsistent.
+            // This is expected IBC behavior — metadata is a best-effort cache, not a
+            // source of truth. Authorization uses live NFT ownership queries, not metadata.
             let position_id = data.position_id.u128();
             let existing_meta = POSITION_ID_TO_METADATA.may_load(deps.storage, position_id)?;
             match existing_meta {

@@ -531,6 +531,12 @@ fn execute_add_concentrated_liquidity(
     state.total_lp_tokens = state.total_lp_tokens.checked_add(liquidity_delta)?;
     STATE.save(deps.storage, &state)?;
 
+    // Update oracle so seconds_per_liquidity_cumulative stays accurate
+    // across periods with only liquidity changes and no swaps (I-06).
+    let slot0 = SLOT0.load(deps.storage)?;
+    let active_liq = ACTIVE_LIQUIDITY.load(deps.storage)?;
+    write_observation(deps.storage, env.block.time.seconds(), slot0.tick, active_liq)?;
+
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
     reserve_0 = reserve_0.checked_add(amount_0_used)?;
@@ -697,6 +703,11 @@ fn execute_remove_concentrated_liquidity(
         .total_lp_tokens
         .checked_sub(remove_liquidity_msg.liquidity_delta)?;
     STATE.save(deps.storage, &state)?;
+
+    // Update oracle so seconds_per_liquidity_cumulative stays accurate (I-06).
+    let slot0 = SLOT0.load(deps.storage)?;
+    let active_liq = ACTIVE_LIQUIDITY.load(deps.storage)?;
+    write_observation(deps.storage, env.block.time.seconds(), slot0.tick, active_liq)?;
 
     let total_0_out = amount_0_out.checked_add(fee_0_collected)?;
     let total_1_out = amount_1_out.checked_add(fee_1_collected)?;
@@ -942,11 +953,12 @@ fn run_swap_simulation(
     deps: Deps,
     asset_in: Token,
     amount_in: Uint128,
-    test_fail: Option<bool>,
+    _test_fail: Option<bool>,
     sqrt_price_limit_x96: Option<Uint256>,
 ) -> Result<SwapSimulation, ContractError> {
+    #[cfg(test)]
     ensure!(
-        !test_fail.unwrap_or(false),
+        !_test_fail.unwrap_or(false),
         ContractError::new("Force fail flag")
     );
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
@@ -1073,6 +1085,10 @@ fn run_swap_simulation(
         amount_remaining = amount_remaining.checked_sub(consumed)?;
         amount_out_total = amount_out_total.checked_add(step.amount_out)?;
 
+        // Protocol fee truncates down; the remainder accrues to LPs.
+        // A second truncation in fee_growth accumulation (fee * 2^128 / liquidity)
+        // means a small amount of dust per swap step is unclaimable by either party
+        // and remains locked in reserves. This matches Uniswap V3 behavior.
         let protocol_fee_step = step
             .fee_amount
             .checked_mul(Uint256::from(protocol_cut_bps as u128))?
