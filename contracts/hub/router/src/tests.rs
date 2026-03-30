@@ -117,6 +117,45 @@ mod tests {
         deps
     }
 
+    /// Fixture: deps for TransferVoucher tests.
+    /// Pre-seeds VIRTUAL_BALANCE_CONTRACT and TOKEN_DENOMS (usdc → empty denoms list).
+    #[fixture]
+    fn transfer_deps() -> MockDeps {
+        let mut deps = initialized();
+        seed_virtual_balance(&mut deps);
+        TOKEN_DENOMS
+            .save(
+                deps.as_mut().storage,
+                Token::create("usdc".to_string()).unwrap(),
+                &vec![],
+            )
+            .unwrap();
+        deps
+    }
+
+    /// Helper: seed VIRTUAL_BALANCE_CONTRACT with address "virtual_balance".
+    fn seed_virtual_balance(deps: &mut MockDeps) {
+        VIRTUAL_BALANCE_CONTRACT
+            .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+            .unwrap();
+    }
+
+    /// Helper: seed CHAIN_UID_TO_CHAIN with chain_uid="chain1", factory="factory1", Native.
+    fn seed_chain1_native(deps: &mut MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        CHAIN_UID_TO_CHAIN
+            .save(
+                deps.as_mut().storage,
+                chain_uid.clone(),
+                &Chain {
+                    chain_uid: chain_uid.clone(),
+                    factory_address: "factory1".to_string(),
+                    chain_type: ChainType::Native {},
+                },
+            )
+            .unwrap();
+    }
+
     fn make_native_recipient(
         chain_uid: ChainUid,
         address: &str,
@@ -338,17 +377,7 @@ mod tests {
         )
         .unwrap();
 
-        CHAIN_UID_TO_CHAIN
-            .save(
-                initialized.as_mut().storage,
-                ChainUid::create("chain1".to_string()).unwrap(),
-                &Chain {
-                    chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
-                    factory_address: "factory1".to_string(),
-                    chain_type: ChainType::Native {},
-                },
-            )
-            .unwrap();
+        seed_chain1_native(&mut initialized);
 
         let res = execute(
             initialized.as_mut(),
@@ -963,17 +992,7 @@ mod tests {
         #[case] expected_error: ContractError,
     ) {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
-        CHAIN_UID_TO_CHAIN
-            .save(
-                initialized.as_mut().storage,
-                chain_uid.clone(),
-                &Chain {
-                    chain_uid: chain_uid.clone(),
-                    factory_address: "factory1".to_string(),
-                    chain_type: ChainType::Native {},
-                },
-            )
-            .unwrap();
+        seed_chain1_native(&mut initialized);
 
         if setup_duplicate {
             use crate::relay_state::CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS;
@@ -1085,23 +1104,8 @@ mod tests {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let token = Token::create("usdc".to_string()).unwrap();
 
-        VIRTUAL_BALANCE_CONTRACT
-            .save(
-                initialized.as_mut().storage,
-                &Addr::unchecked("virtual_balance"),
-            )
-            .unwrap();
-        CHAIN_UID_TO_CHAIN
-            .save(
-                initialized.as_mut().storage,
-                chain_uid.clone(),
-                &Chain {
-                    chain_uid: chain_uid.clone(),
-                    factory_address: "factory1".to_string(),
-                    chain_type: ChainType::Native {},
-                },
-            )
-            .unwrap();
+        seed_virtual_balance(&mut initialized);
+        seed_chain1_native(&mut initialized);
         let locked = if lock_chain {
             vec![chain_uid.clone()]
         } else {
@@ -1146,9 +1150,7 @@ mod tests {
     fn test_withdraw_voucher_unregistered_token_fails(mut initialized: MockDeps) {
         let creator = initialized.api.addr_make("creator");
 
-        VIRTUAL_BALANCE_CONTRACT
-            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
-            .unwrap();
+        seed_virtual_balance(&mut initialized);
 
         let res = execute(
             initialized.as_mut(),
@@ -1280,9 +1282,7 @@ mod tests {
     fn test_transfer_voucher_unregistered_token_fails(mut initialized: MockDeps) {
         let creator = initialized.api.addr_make("creator");
 
-        VIRTUAL_BALANCE_CONTRACT
-            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
-            .unwrap();
+        seed_virtual_balance(&mut initialized);
 
         let res = execute(
             initialized.as_mut(),
@@ -1307,19 +1307,12 @@ mod tests {
     }
 
     #[rstest]
-    fn test_transfer_voucher_to_voucher_recipient_happy_path(mut initialized: MockDeps) {
+    fn test_transfer_voucher_to_voucher_recipient_happy_path(mut transfer_deps: MockDeps) {
         let sender = Addr::unchecked("sender_address");
         let token = Token::create("usdc".to_string()).unwrap();
 
-        VIRTUAL_BALANCE_CONTRACT
-            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
-            .unwrap();
-        TOKEN_DENOMS
-            .save(initialized.as_mut().storage, token.clone(), &vec![])
-            .unwrap();
-
         let res = execute(
-            initialized.as_mut(),
+            transfer_deps.as_mut(),
             mock_env(),
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
@@ -1363,19 +1356,12 @@ mod tests {
     }
 
     #[rstest]
-    fn test_transfer_voucher_self_transfer_no_submsg(mut initialized: MockDeps) {
+    fn test_transfer_voucher_self_transfer_no_submsg(mut transfer_deps: MockDeps) {
         let sender = Addr::unchecked("senderaddr");
         let token = Token::create("usdc".to_string()).unwrap();
 
-        VIRTUAL_BALANCE_CONTRACT
-            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
-            .unwrap();
-        TOKEN_DENOMS
-            .save(initialized.as_mut().storage, token.clone(), &vec![])
-            .unwrap();
-
         let res = execute(
-            initialized.as_mut(),
+            transfer_deps.as_mut(),
             mock_env(),
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
@@ -1515,9 +1501,7 @@ mod tests {
 
     #[rstest]
     fn test_query_get_state(mut initialized: MockDeps) {
-        VIRTUAL_BALANCE_CONTRACT
-            .save(initialized.as_mut().storage, &Addr::unchecked("virtual_balance"))
-            .unwrap();
+        seed_virtual_balance(&mut initialized);
 
         let parsed: StateResponse =
             from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetState {}).unwrap()).unwrap();
@@ -1536,17 +1520,7 @@ mod tests {
     #[rstest]
     fn test_query_get_all_chains_with_data(mut initialized: MockDeps) {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
-        CHAIN_UID_TO_CHAIN
-            .save(
-                initialized.as_mut().storage,
-                chain_uid.clone(),
-                &Chain {
-                    chain_uid: chain_uid.clone(),
-                    factory_address: "factory1".to_string(),
-                    chain_type: ChainType::Native {},
-                },
-            )
-            .unwrap();
+        seed_chain1_native(&mut initialized);
 
         let parsed: AllChainResponse =
             from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetAllChains {}).unwrap())
@@ -1558,17 +1532,7 @@ mod tests {
     #[rstest]
     fn test_query_get_chain_success(mut initialized: MockDeps) {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
-        CHAIN_UID_TO_CHAIN
-            .save(
-                initialized.as_mut().storage,
-                chain_uid.clone(),
-                &Chain {
-                    chain_uid: chain_uid.clone(),
-                    factory_address: "factory1".to_string(),
-                    chain_type: ChainType::Native {},
-                },
-            )
-            .unwrap();
+        seed_chain1_native(&mut initialized);
 
         let parsed: ChainResponse = from_json(
             query(
