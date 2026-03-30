@@ -5,12 +5,15 @@ mod tests {
     use crate::contract::{execute, instantiate};
     use crate::state::{State, ADMIN, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{from_json, Addr, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Response};
+    use cosmwasm_std::{
+        from_json, Addr, CosmosMsg, DepsMut, IbcMsg, MessageInfo, Response, Uint128,
+    };
     use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::error::ContractError;
     use euclid::msgs::router::{
-        ExecuteMsg, InstantiateMsg, RegisterFactoryChainNative, RegisterFactoryChainType,
+        ExecuteMsg, InstantiateMsg, ManageRouterState, RegisterFactoryChainNative,
+        RegisterFactoryChainType,
     };
     use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 
@@ -150,5 +153,39 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_unguarded_manage_variants_accept_any_caller() {
+        let mut deps = mock_dependencies();
+        let random = deps.api.addr_make("random");
+        let creator = deps.api.addr_make("creator");
+        let info = message_info(&creator, &[]);
+        init(deps.as_mut(), info);
+
+        // UpdateDefaultReleaseFee: no require guard in the contract.
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&random, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateDefaultReleaseFee {
+                default_release_fee: Uint128::new(42),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+
+        // UpdateChainTimeout: no auth guard either.
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&random, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateChainTimeout {
+                chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+                timeout: 600,
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
     }
 }

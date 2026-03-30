@@ -145,6 +145,10 @@ pub fn execute_manage_router_state(
         ManageRouterState::UpdateDefaultReleaseFee {
             default_release_fee,
         } => {
+            ensure!(
+                info.sender == admins.fee_admin,
+                ContractError::Unauthorized {}
+            );
             DEFAULT_RELEASE_FEE.save(deps.storage, &default_release_fee)?;
             Ok(Response::new()
                 .add_attribute("method", "update_default_release_fee")
@@ -185,6 +189,10 @@ pub fn execute_manage_router_state(
                 .add_attribute("locked", "false"))
         }
         ManageRouterState::UpdateChainTimeout { chain_uid, timeout } => {
+            ensure!(
+                info.sender == admins.general_admin,
+                ContractError::Unauthorized {}
+            );
             CHAIN_TIMEOUT_SECONDS.save(deps.storage, chain_uid.clone(), &timeout)?;
             Ok(Response::new()
                 .add_attribute("method", "update_chain_timeout")
