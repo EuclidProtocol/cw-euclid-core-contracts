@@ -30,7 +30,7 @@ use euclid_ibc::{
 use crate::{
     reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID, NFT_MINT_REPLY_ID},
     state::{
-        pool_key_to_map_key, ADMIN, FEE_STATE, OWNER_POSITION_SET, PAIR_TO_VLP,
+        ADMIN, FEE_STATE, OWNER_POSITION_SET, PAIR_TO_VLP,
         PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
@@ -319,7 +319,7 @@ fn ack_concentrated_pool_creation(
         AcknowledgementMsg::Ok(data) => {
             POOL_KEY_TO_VLP.save(
                 deps.storage,
-                pool_key_to_map_key(&existing_req.pool_key),
+                existing_req.pool_key.to_map_key(),
                 &data.vlp_address,
             )?;
 

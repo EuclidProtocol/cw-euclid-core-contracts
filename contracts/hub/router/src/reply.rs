@@ -35,7 +35,7 @@ use crate::{
         receive::pool::{ibc_execute_add_concentrated_liquidity, ibc_execute_add_liquidity},
     },
     state::{
-        pool_key_to_map_key, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, FUNDS_INFO,
+        CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, FUNDS_INFO,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS,
         VIRTUAL_BALANCE_CONTRACT, VLPS,
@@ -80,7 +80,7 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
                 }
                 CONCENTRATED_VLPS.save(
                     deps.storage,
-                    pool_key_to_map_key(&pool_creation_response.pool_key),
+                    pool_creation_response.pool_key.to_map_key(),
                     &vlp_address,
                 )?;
 

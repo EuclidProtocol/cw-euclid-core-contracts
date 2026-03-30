@@ -6,7 +6,7 @@ mod tests {
         collect_concentrated_fees_request, remove_concentrated_liquidity_request,
     };
     use crate::state::{
-        pool_key_to_map_key, ConcentratedPositionMetadata, State, ADMIN, POOL_KEY_TO_VLP,
+        ConcentratedPositionMetadata, State, ADMIN, POOL_KEY_TO_VLP,
         POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT, STATE,
     };
 
@@ -311,7 +311,7 @@ mod tests {
             POOL_KEY_TO_VLP
                 .save(
                     deps.as_mut().storage,
-                    pool_key_to_map_key(&pool_key),
+                    pool_key.to_map_key(),
                     &"vlp_address".to_string(),
                 )
                 .unwrap();

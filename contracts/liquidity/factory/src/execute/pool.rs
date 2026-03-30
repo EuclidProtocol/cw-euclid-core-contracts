@@ -27,7 +27,7 @@ use euclid_ibc::router_ibc::{
 use crate::{
     query::get_chain_type,
     state::{
-        pool_key_to_map_key, ConcentratedAddLiquidityRequest, ConcentratedCollectFeesRequest,
+        ConcentratedAddLiquidityRequest, ConcentratedCollectFeesRequest,
         ConcentratedCollectProtocolFeesRequest, ConcentratedPoolCreateRequest,
         ConcentratedRemoveLiquidityRequest, PoolCreateRequest, ADMIN, PAIR_TO_VLP,
         PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
@@ -504,7 +504,7 @@ pub fn execute_request_concentrated_pool_creation(
         ContractError::TxAlreadyExist {}
     );
     ensure!(
-        !POOL_KEY_TO_VLP.has(deps.storage, pool_key_to_map_key(&pool_key)),
+        !POOL_KEY_TO_VLP.has(deps.storage, pool_key.to_map_key()),
         ContractError::PoolAlreadyExists {}
     );
 
@@ -601,7 +601,7 @@ pub fn add_concentrated_liquidity_request(
         ContractError::TxAlreadyExist {}
     );
     ensure!(
-        POOL_KEY_TO_VLP.has(deps.storage, pool_key_to_map_key(&pool_key)),
+        POOL_KEY_TO_VLP.has(deps.storage, pool_key.to_map_key()),
         ContractError::PoolDoesNotExist {}
     );
 
@@ -818,7 +818,7 @@ pub fn collect_concentrated_fees_request(
         ContractError::TxAlreadyExist {}
     );
     ensure!(
-        POOL_KEY_TO_VLP.has(deps.storage, pool_key_to_map_key(&pool_key)),
+        POOL_KEY_TO_VLP.has(deps.storage, pool_key.to_map_key()),
         ContractError::PoolDoesNotExist {}
     );
 
@@ -922,7 +922,7 @@ pub fn collect_concentrated_protocol_fees_request(
         ContractError::TxAlreadyExist {}
     );
     ensure!(
-        POOL_KEY_TO_VLP.has(deps.storage, pool_key_to_map_key(&pool_key)),
+        POOL_KEY_TO_VLP.has(deps.storage, pool_key.to_map_key()),
         ContractError::PoolDoesNotExist {}
     );
 

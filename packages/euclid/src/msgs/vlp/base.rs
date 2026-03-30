@@ -242,6 +242,36 @@ pub struct PoolKey {
     pub pool_type: PoolType,
 }
 
+impl PoolKey {
+    /// Encode this pool key as a null-byte-delimited string suitable for use as a storage map key.
+    pub fn to_map_key(&self) -> String {
+        let (fee_tier_bps, tick_spacing) = match self.pool_type {
+            PoolType::Concentrated {
+                fee_tier_bps,
+                tick_spacing,
+            } => (fee_tier_bps, tick_spacing),
+            _ => (0, 0),
+        };
+        format!(
+            "{}\0{}\0{}\0{}",
+            self.pair.token_1, self.pair.token_2, fee_tier_bps, tick_spacing
+        )
+    }
+
+    /// Decode a null-byte-delimited map key into its component parts.
+    pub fn parse_map_key(key: &str) -> Option<(String, String, u64, u64)> {
+        let mut parts = key.split('\0');
+        let token_1 = parts.next()?.to_string();
+        let token_2 = parts.next()?.to_string();
+        let fee_tier_bps = parts.next()?.parse::<u64>().ok()?;
+        let tick_spacing = parts.next()?.parse::<u64>().ok()?;
+        if parts.next().is_some() {
+            return None;
+        }
+        Some((token_1, token_2, fee_tier_bps, tick_spacing))
+    }
+}
+
 #[cw_serde]
 pub enum PoolConfig {
     Stable {

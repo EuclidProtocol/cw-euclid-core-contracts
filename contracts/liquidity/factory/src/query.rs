@@ -16,10 +16,10 @@ use euclid::{
 };
 
 use crate::state::{
-    map_key_to_pool_parts, pool_key_to_map_key, ADMIN, FEE_STATE, PAIR_TO_VLP,
-    PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, POOL_KEY_TO_VLP,
-    POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+    ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
+    POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
 };
+use euclid::msgs::vlp::base::PoolKey;
 
 // Returns the VLP address
 pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
@@ -107,7 +107,7 @@ pub fn get_concentrated_vlp(
     deps: Deps,
     pool_key: euclid::msgs::vlp::base::PoolKey,
 ) -> Result<Binary, ContractError> {
-    let vlp_address = POOL_KEY_TO_VLP.load(deps.storage, pool_key_to_map_key(&pool_key))?;
+    let vlp_address = POOL_KEY_TO_VLP.load(deps.storage, pool_key.to_map_key())?;
     Ok(to_json_binary(&GetConcentratedVlpResponse {
         vlp_address,
         pool_key,
@@ -119,7 +119,7 @@ pub fn query_all_concentrated_pools(deps: Deps) -> Result<Binary, ContractError>
         .range(deps.storage, None, None, Order::Ascending)
         .map(|item| {
             let (key, vlp) = item?;
-            let (token_1, token_2, fee_tier_bps, tick_spacing) = map_key_to_pool_parts(&key)
+            let (token_1, token_2, fee_tier_bps, tick_spacing) = PoolKey::parse_map_key(&key)
                 .ok_or(ContractError::new("invalid concentrated pool key in state"))?;
             Ok(ConcentratedPoolVlpResponse {
                 pool_key: euclid::msgs::vlp::base::PoolKey {
