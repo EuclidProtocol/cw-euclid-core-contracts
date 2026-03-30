@@ -16,8 +16,8 @@ pub(crate) mod tests {
     };
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{
-        from_json, to_json_binary, Addr, Binary, ContractResult, CosmosMsg, DepsMut, IbcMsg,
-        MessageInfo, Order, Response, SystemResult, Uint128, WasmQuery,
+        from_json, to_json_binary, Addr, Binary, ContractResult, CosmosMsg, DepsMut, MessageInfo,
+        Order, Response, SystemResult, Uint128, WasmQuery,
     };
     use euclid::admin::{AdminType, EuclidAdmin};
     use euclid::chain::{Chain, ChainType, ChainUid, CosmosChain};
@@ -272,12 +272,13 @@ pub(crate) mod tests {
                 // For a Native chain the SubMsg is a WasmMsg::Execute targeting the
                 // factory contract (not an IBC packet — that only appears after ack).
                 match &res.messages[0].msg {
-                    CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, msg, .. }) => {
+                    CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr, msg, ..
+                    }) => {
                         assert_eq!(contract_addr, "factory");
                         // Inner payload is NativeReceiveCallback wrapping
                         // FactoryCrossChainExecuteMsg::RegisterFactory.
-                        let cb: euclid::msgs::factory::msg::ExecuteMsg =
-                            from_json(msg).unwrap();
+                        let cb: euclid::msgs::factory::msg::ExecuteMsg = from_json(msg).unwrap();
                         if let euclid::msgs::factory::msg::ExecuteMsg::NativeReceiveCallback {
                             msg: inner,
                         } = cb
@@ -292,7 +293,10 @@ pub(crate) mod tests {
                                 tx_id,
                             } = factory_msg
                             {
-                                assert_eq!(msg_chain_uid, ChainUid::create("1".to_string()).unwrap());
+                                assert_eq!(
+                                    msg_chain_uid,
+                                    ChainUid::create("1".to_string()).unwrap()
+                                );
                                 assert_eq!(
                                     chain_type,
                                     RegisterFactoryChainType::Native(RegisterFactoryChainNative {
@@ -330,8 +334,10 @@ pub(crate) mod tests {
                     "native queue count should be incremented by 1"
                 );
                 assert!(
-                    NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE
-                        .has(initialized.as_ref().storage, NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0),
+                    NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.has(
+                        initialized.as_ref().storage,
+                        NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0
+                    ),
                     "pending packet should be enqueued at range start"
                 );
             }
@@ -2050,6 +2056,662 @@ pub(crate) mod tests {
             matches!(result.unwrap_err(), ContractError::SlippageExceeded { .. }),
             "expected SlippageExceeded"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Role separation: migration_admin / fee_admin / general_admin
+    // -----------------------------------------------------------------------
+
+    /// After changing general_admin, the new address can lock state but the old
+    /// one is rejected; the old address still controls migration_admin operations.
+    #[rstest]
+    fn test_general_admin_change_locks_out_old_admin(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let new_general = initialized.api.addr_make("new_general");
+
+        // creator delegates general_admin role.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::Admins {
+                admin_type: AdminType::GeneralAdmin,
+                admin: new_general.to_string(),
+            }),
+        )
+        .unwrap();
+
+        // Old general_admin (creator) can no longer lock state.
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: true }),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+
+        // New general_admin can lock state.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&new_general, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::LockState { locked: true }),
+        )
+        .unwrap();
+        assert!(STATE.load(initialized.as_ref().storage).unwrap().locked);
+    }
+
+    /// VLP code-id updates require migration_admin — general_admin alone is not enough.
+    #[rstest]
+    fn test_vlp_update_requires_migration_admin(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let new_general = initialized.api.addr_make("new_general");
+
+        // Give general_admin role to a different address; creator keeps migration_admin.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::Admins {
+                admin_type: AdminType::GeneralAdmin,
+                admin: new_general.to_string(),
+            }),
+        )
+        .unwrap();
+
+        // new_general cannot update VLP code IDs.
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&new_general, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
+                vlp_code_id: Some(99),
+                stable_vlp_code_id: None,
+            }),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+
+        // creator (still migration_admin) succeeds.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
+                vlp_code_id: Some(99),
+                stable_vlp_code_id: None,
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            STATE
+                .load(initialized.as_ref().storage)
+                .unwrap()
+                .constant_product_vlp_code_id,
+            99
+        );
+    }
+
+    /// Fee operations require fee_admin; general_admin (when distinct) is rejected.
+    #[rstest]
+    fn test_fee_update_requires_fee_admin(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let dedicated_fee_admin = initialized.api.addr_make("dedicated_fee_admin");
+        let new_general = initialized.api.addr_make("new_general");
+
+        // Separate fee_admin (creator is currently fee_admin so can transfer it).
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::Admins {
+                admin_type: AdminType::FeeAdmin,
+                admin: dedicated_fee_admin.to_string(),
+            }),
+        )
+        .unwrap();
+        // Also change general_admin so creator is no longer general_admin.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::Admins {
+                admin_type: AdminType::GeneralAdmin,
+                admin: new_general.to_string(),
+            }),
+        )
+        .unwrap();
+
+        let dummy_addr = initialized.api.addr_make("r");
+
+        // general_admin (new_general) cannot update fee state.
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&new_general, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateFeeState {
+                release_fee_recipient: Some(dummy_addr),
+                default_fee_recipient: None,
+            }),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+
+        // dedicated_fee_admin succeeds.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&dedicated_fee_admin, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateReleaseFee {
+                token: Token::create("usdc".to_string()).unwrap(),
+                chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+                release_fee: Uint128::new(20),
+            }),
+        )
+        .unwrap();
+    }
+
+    /// UpdateDefaultReleaseFee and UpdateChainTimeout carry no auth guard —
+    /// any caller can invoke them.
+    #[rstest]
+    fn test_unguarded_manage_variants_accept_any_caller(mut initialized: MockDeps) {
+        let random = Addr::unchecked("random_caller");
+
+        // UpdateDefaultReleaseFee: no require guard in the contract.
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&random, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateDefaultReleaseFee {
+                default_release_fee: Uint128::new(42),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+
+        // UpdateChainTimeout: no auth guard either.
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&random, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateChainTimeout {
+                chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+                timeout: 600,
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+    }
+
+    // -----------------------------------------------------------------------
+    // WithdrawVoucher: escrow-cap and Limit variants
+    // -----------------------------------------------------------------------
+
+    /// When the requested amount exceeds the escrow balance the release is
+    /// silently capped at the available escrow.
+    #[test]
+    fn test_withdraw_voucher_capped_at_escrow_balance() {
+        let mut deps = voucher_deps(); // escrow = 500
+        let creator = deps.api.addr_make("creator");
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        let res = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::WithdrawVoucher {
+                token: token.clone(),
+                amount: Uint128::new(1_000),
+                recipient: make_native_recipient(
+                    chain_uid.clone(),
+                    "recipientaddr",
+                    "uusdc",
+                    Uint128::new(1_000),
+                ),
+                cross_chain_config: CrossChainConfig::default(),
+            },
+        )
+        .unwrap();
+
+        // Escrow fully drained (not negative).
+        let escrow = ESCROW_BALANCES
+            .load(deps.as_ref().storage, (token.to_string(), chain_uid))
+            .unwrap();
+        assert_eq!(escrow, Uint128::zero());
+
+        // PENDING_RELEASE records the actual released amount (500), not the requested 1000.
+        let pending: Vec<_> = PENDING_RELEASE_VOUCHER
+            .range(deps.as_ref().storage, None, None, Order::Ascending)
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(pending[0].1.total_amount, Uint128::new(500));
+
+        // released_amount attribute also reflects the cap.
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "released_amount")
+                .unwrap()
+                .value,
+            "500"
+        );
+    }
+
+    /// GreaterThanOrEqual limit fails when the escrow can't satisfy the minimum.
+    #[test]
+    fn test_withdraw_voucher_gte_limit_fails_when_escrow_too_low() {
+        let mut deps = voucher_deps(); // escrow = 500
+        let creator = deps.api.addr_make("creator");
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        // Request 200 but require at least 600 (escrow=500 < 600).
+        let res = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::WithdrawVoucher {
+                token,
+                amount: Uint128::new(200),
+                recipient: Recipient {
+                    recipient: CrossChainUser::new(chain_uid, "recipientaddr".to_string()),
+                    amount: Limit::GreaterThanOrEqual(Uint128::new(600)),
+                    denom: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                    },
+                    forwarding_message: None,
+                    unsafe_refund_as_voucher: None,
+                },
+                cross_chain_config: CrossChainConfig::default(),
+            },
+        );
+        assert!(matches!(
+            res.unwrap_err(),
+            ContractError::InsufficientAmount { .. }
+        ));
+    }
+
+    // -----------------------------------------------------------------------
+    // Multi-chain token registration
+    // -----------------------------------------------------------------------
+
+    /// The same token may be registered on two different chains simultaneously.
+    #[rstest]
+    fn test_register_denom_same_token_two_chains(mut initialized: MockDeps) {
+        let chain1 = ChainUid::create("chain1".to_string()).unwrap();
+        let chain2 = ChainUid::create("chain2".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        for (chain_uid, denom) in [(&chain1, "uusdc"), (&chain2, "usdc.ibc")] {
+            call_reusable(
+                &mut initialized,
+                RouterCrossChainExecuteMsg::RegisterDenom {
+                    sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+                    token: TokenWithDenom {
+                        token: token.clone(),
+                        token_type: TokenType::Native {
+                            denom: denom.to_string(),
+                        },
+                    },
+                    tx_id: format!("tx_{denom}"),
+                },
+                chain_uid.clone(),
+            )
+            .unwrap();
+        }
+
+        let entries = TOKEN_DENOMS
+            .load(initialized.as_ref().storage, token)
+            .unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().any(|e| e.chain_uid == chain1));
+        assert!(entries.iter().any(|e| e.chain_uid == chain2));
+    }
+
+    /// Deregistering a token on chain1 must not affect chain2's registration.
+    #[rstest]
+    fn test_deregister_denom_preserves_other_chain_entries(mut initialized: MockDeps) {
+        let chain1 = ChainUid::create("chain1".to_string()).unwrap();
+        let chain2 = ChainUid::create("chain2".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        // Pre-seed both chains.
+        TOKEN_DENOMS
+            .save(
+                initialized.as_mut().storage,
+                token.clone(),
+                &vec![
+                    TokenDenom {
+                        chain_uid: chain1.clone(),
+                        token_type: TokenType::Native {
+                            denom: "uusdc".to_string(),
+                        },
+                    },
+                    TokenDenom {
+                        chain_uid: chain2.clone(),
+                        token_type: TokenType::Native {
+                            denom: "usdc.ibc".to_string(),
+                        },
+                    },
+                ],
+            )
+            .unwrap();
+
+        // Deregister only chain1.
+        call_reusable(
+            &mut initialized,
+            RouterCrossChainExecuteMsg::DeregisterDenom {
+                sender: CrossChainUser::new(chain1.clone(), "user".to_string()),
+                token: TokenWithDenom {
+                    token: token.clone(),
+                    token_type: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                    },
+                },
+                tx_id: "tx1".to_string(),
+            },
+            chain1.clone(),
+        )
+        .unwrap();
+
+        let entries = TOKEN_DENOMS
+            .load(initialized.as_ref().storage, token)
+            .unwrap();
+        assert_eq!(entries.len(), 1, "chain1 entry should be removed");
+        assert_eq!(entries[0].chain_uid, chain2, "chain2 entry must survive");
+    }
+
+    // -----------------------------------------------------------------------
+    // DepositToken: escrow accumulation
+    // -----------------------------------------------------------------------
+
+    /// Successive deposits for the same token+chain accumulate in ESCROW_BALANCES.
+    #[rstest]
+    fn test_ibc_deposit_token_accumulates_balance(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        seed_virtual_balance(&mut initialized);
+        TOKEN_DENOMS
+            .save(initialized.as_mut().storage, token.clone(), &vec![])
+            .unwrap();
+
+        let deposit = |deps: &mut MockDeps, amount: u128| {
+            call_reusable(
+                deps,
+                RouterCrossChainExecuteMsg::DepositToken(RouterCrossChainDepositTokenExecuteMsg {
+                    sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+                    asset_in: TokenWithDenom {
+                        token: token.clone(),
+                        token_type: TokenType::Native {
+                            denom: "uusdc".to_string(),
+                        },
+                    },
+                    amount_in: Uint128::new(amount),
+                    recipients: vec![],
+                    tx_id: format!("tx_{amount}"),
+                }),
+                chain_uid.clone(),
+            )
+            .unwrap()
+        };
+
+        deposit(&mut initialized, 100);
+        deposit(&mut initialized, 250);
+
+        let balance = ESCROW_BALANCES
+            .load(initialized.as_ref().storage, (token.to_string(), chain_uid))
+            .unwrap();
+        assert_eq!(balance, Uint128::new(350), "deposits should accumulate");
+    }
+
+    // -----------------------------------------------------------------------
+    // RequestPoolCreation: new denom auto-registered in TOKEN_DENOMS
+    // -----------------------------------------------------------------------
+
+    /// When a pool is created with a brand-new token (token_b is new), the handler
+    /// must add token_b's denom entry to TOKEN_DENOMS before dispatching to the VLP.
+    #[rstest]
+    fn test_ibc_request_pool_creation_auto_registers_new_denom(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token_a = Token::create("aaa".to_string()).unwrap();
+        let token_b = Token::create("bbb".to_string()).unwrap();
+
+        seed_virtual_balance(&mut initialized);
+        // token_a is known; token_b is brand-new.
+        TOKEN_DENOMS
+            .save(
+                initialized.as_mut().storage,
+                token_a.clone(),
+                &vec![TokenDenom {
+                    chain_uid: chain_uid.clone(),
+                    token_type: TokenType::Native {
+                        denom: "uaaa".to_string(),
+                    },
+                }],
+            )
+            .unwrap();
+
+        call_reusable(
+            &mut initialized,
+            RouterCrossChainExecuteMsg::RequestPoolCreation {
+                sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+                tx_id: "tx1".to_string(),
+                pair: make_pool_pair(100, 100),
+                pool_config: PoolConfig::ConstantProduct {},
+                slippage_tolerance_bps: 100,
+            },
+            chain_uid.clone(),
+        )
+        .unwrap();
+
+        // token_b must now be registered in TOKEN_DENOMS for chain1.
+        let denoms = TOKEN_DENOMS
+            .load(initialized.as_ref().storage, token_b)
+            .unwrap();
+        assert_eq!(denoms.len(), 1);
+        assert_eq!(denoms[0].chain_uid, chain_uid);
+        assert_eq!(
+            denoms[0].token_type,
+            TokenType::Native {
+                denom: "ubbb".to_string()
+            }
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // MetaReceive: dispatch business logic
+    // -----------------------------------------------------------------------
+
+    fn meta_receive_msg(
+        verified_sender: CrossChainUser,
+        inner: &RouterCrossChainExecuteMsg,
+    ) -> ExecuteMsg {
+        let call_data = String::from_utf8(to_json_binary(inner).unwrap().to_vec()).unwrap();
+        ExecuteMsg::MetaReceive(MetaReceive {
+            verified_sender,
+            call_data,
+        })
+    }
+
+    fn seed_meta_tx_contract(deps: &mut MockDeps) -> Addr {
+        let meta_tx = deps.api.addr_make("meta_tx");
+        META_TRANSACTION_CONTRACT
+            .save(deps.as_mut().storage, &meta_tx)
+            .unwrap();
+        meta_tx
+    }
+
+    /// MetaReceive rejects message types other than Swap and TransferVoucher.
+    #[rstest]
+    fn test_meta_receive_unsupported_msg_type_fails(mut initialized: MockDeps) {
+        let meta_tx = seed_meta_tx_contract(&mut initialized);
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let sender = CrossChainUser::new(chain_uid.clone(), "user".to_string());
+
+        let inner = RouterCrossChainExecuteMsg::RegisterDenom {
+            sender: sender.clone(),
+            token: TokenWithDenom {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+            },
+            tx_id: "tx1".to_string(),
+        };
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&meta_tx, &[]),
+            meta_receive_msg(sender, &inner),
+        );
+        assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
+
+    /// MetaReceive for Swap requires the inner asset_in to be a voucher token.
+    #[rstest]
+    fn test_meta_receive_swap_requires_voucher_asset_in(mut initialized: MockDeps) {
+        let meta_tx = seed_meta_tx_contract(&mut initialized);
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let sender = CrossChainUser::new(chain_uid.clone(), "user".to_string());
+        let token_a = Token::create("aaa".to_string()).unwrap();
+        let token_b = Token::create("bbb".to_string()).unwrap();
+
+        let swap = RouterCrossChainSwapExecuteMsg {
+            sender: sender.clone(),
+            // Native denom — not a voucher.
+            asset_in: TokenWithDenom {
+                token: token_a.clone(),
+                token_type: TokenType::Native {
+                    denom: "uaaa".to_string(),
+                },
+            },
+            amount_in: Uint128::new(100),
+            asset_out: token_b,
+            min_amount_out: Uint128::new(80),
+            swaps: vec![NextSwapPair {
+                token_in: token_a,
+                token_out: Token::create("bbb".to_string()).unwrap(),
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee_amount: Uint128::zero(),
+            partner_fee_recipient: sender.clone(),
+            tx_id: "tx_meta_swap".to_string(),
+        };
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&meta_tx, &[]),
+            meta_receive_msg(sender, &RouterCrossChainExecuteMsg::Swap(swap)),
+        );
+        assert_eq!(
+            res.unwrap_err(),
+            ContractError::new("Asset IN does not match asset OUT")
+        );
+    }
+
+    /// MetaReceive for Swap rejects when verified_sender address differs from swap.sender.
+    #[rstest]
+    fn test_meta_receive_swap_sender_address_mismatch_fails(mut initialized: MockDeps) {
+        let meta_tx = seed_meta_tx_contract(&mut initialized);
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let real_sender = CrossChainUser::new(chain_uid.clone(), "real_user".to_string());
+        let impersonated = CrossChainUser::new(chain_uid.clone(), "victim".to_string());
+        let token_a = Token::create("aaa".to_string()).unwrap();
+        let token_b = Token::create("bbb".to_string()).unwrap();
+
+        let swap = RouterCrossChainSwapExecuteMsg {
+            // Swap claims to come from "victim".
+            sender: impersonated,
+            asset_in: TokenWithDenom {
+                token: token_a.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint128::new(100),
+            asset_out: token_b,
+            min_amount_out: Uint128::new(80),
+            swaps: vec![NextSwapPair {
+                token_in: token_a,
+                token_out: Token::create("bbb".to_string()).unwrap(),
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee_amount: Uint128::zero(),
+            partner_fee_recipient: real_sender.clone(),
+            tx_id: "tx_mismatch".to_string(),
+        };
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&meta_tx, &[]),
+            // verified_sender is "real_user" but swap.sender is "victim".
+            meta_receive_msg(real_sender, &RouterCrossChainExecuteMsg::Swap(swap)),
+        );
+        assert_eq!(
+            res.unwrap_err(),
+            ContractError::new("Sender address mismatch")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // TransferVoucher: multi-recipient sequential allocation
+    // -----------------------------------------------------------------------
+
+    /// When multiple recipients are listed, amount flows through them in order;
+    /// each recipient absorbs up to its limit and the remainder goes to the next.
+    #[test]
+    fn test_transfer_voucher_splits_amount_across_recipients() {
+        let mut deps = transfer_deps();
+        let sender = Addr::unchecked("sender_address");
+        let token = Token::create("usdc".to_string()).unwrap();
+        let vsl_chain = ChainUid::vsl_chain_uid().unwrap();
+
+        // recipient1 takes up to 60, recipient2 takes the remainder (40).
+        let res = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[]),
+            ExecuteMsg::TransferVoucher {
+                token,
+                amount: Uint128::new(100),
+                recipient: vec![
+                    Recipient {
+                        recipient: CrossChainUser::new(vsl_chain.clone(), "addr_one".to_string()),
+                        amount: Limit::LessThanOrEqual(Uint128::new(60)),
+                        denom: TokenType::Voucher {},
+                        forwarding_message: None,
+                        unsafe_refund_as_voucher: None,
+                    },
+                    Recipient {
+                        recipient: CrossChainUser::new(vsl_chain, "addr_two".to_string()),
+                        amount: Limit::LessThanOrEqual(Uint128::new(100)),
+                        denom: TokenType::Voucher {},
+                        forwarding_message: None,
+                        unsafe_refund_as_voucher: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+
+        // Two separate virtual-balance transfer submessages.
+        assert_eq!(
+            res.messages.len(),
+            2,
+            "expected one submsg per non-self recipient"
+        );
+        // Amounts reflected in attributes.
+        let attrs: std::collections::HashMap<_, _> = res
+            .attributes
+            .iter()
+            .map(|a| (a.key.as_str(), a.value.as_str()))
+            .collect();
+        assert_eq!(attrs["transfer_id_0_amount"], "60");
+        assert_eq!(attrs["transfer_id_1_amount"], "40");
+        assert_eq!(attrs["transferred_amount"], "100");
     }
 
     // -----------------------------------------------------------------------
