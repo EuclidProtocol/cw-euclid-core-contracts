@@ -367,10 +367,8 @@ pub(crate) fn fit_liquidity_with_bound(
     let fits = |liq: Uint128| -> Result<Option<(Uint128, Uint128)>, ContractError> {
         let (a0_u256, a1_u256) =
             get_amounts_for_liquidity(sqrt_price_x96, sqrt_lower_x96, sqrt_upper_x96, liq, true)?;
-        let a0 =
-            Uint128::try_from(a0_u256).map_err(|_| ContractError::new("amount0 overflow"))?;
-        let a1 =
-            Uint128::try_from(a1_u256).map_err(|_| ContractError::new("amount1 overflow"))?;
+        let a0 = Uint128::try_from(a0_u256).map_err(|_| ContractError::new("amount0 overflow"))?;
+        let a1 = Uint128::try_from(a1_u256).map_err(|_| ContractError::new("amount1 overflow"))?;
         if a0 <= max_amount_0 && a1 <= max_amount_1 {
             Ok(Some((a0, a1)))
         } else {

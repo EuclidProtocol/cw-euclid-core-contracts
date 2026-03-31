@@ -34,10 +34,10 @@ use crate::{
         VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        ADMIN, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, ESCROW_BALANCES,
-        FEE_STATE, FUNDS_INFO, PENDING_CONCENTRATED_COLLECT_FEES,
-        PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
-        PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+        ADMIN, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, ESCROW_BALANCES, FEE_STATE, FUNDS_INFO,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
+        PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS,
+        VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
 
@@ -167,8 +167,7 @@ pub fn ibc_execute_request_pool_creation(
             },
         )?;
 
-        let existing_vlp =
-            CONCENTRATED_VLPS.may_load(deps.storage, pool_key.to_map_key())?;
+        let existing_vlp = CONCENTRATED_VLPS.may_load(deps.storage, pool_key.to_map_key())?;
         let register_msg =
             ConcentratedVlpExecuteMsg::RegisterPool(VlpConcentratedRegisterPoolMsg {
                 sender: sender.clone(),

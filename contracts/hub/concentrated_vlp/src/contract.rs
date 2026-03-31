@@ -535,7 +535,12 @@ fn execute_add_concentrated_liquidity(
     // across periods with only liquidity changes and no swaps (I-06).
     let slot0 = SLOT0.load(deps.storage)?;
     let active_liq = ACTIVE_LIQUIDITY.load(deps.storage)?;
-    write_observation(deps.storage, env.block.time.seconds(), slot0.tick, active_liq)?;
+    write_observation(
+        deps.storage,
+        env.block.time.seconds(),
+        slot0.tick,
+        active_liq,
+    )?;
 
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
@@ -707,7 +712,12 @@ fn execute_remove_concentrated_liquidity(
     // Update oracle so seconds_per_liquidity_cumulative stays accurate (I-06).
     let slot0 = SLOT0.load(deps.storage)?;
     let active_liq = ACTIVE_LIQUIDITY.load(deps.storage)?;
-    write_observation(deps.storage, env.block.time.seconds(), slot0.tick, active_liq)?;
+    write_observation(
+        deps.storage,
+        env.block.time.seconds(),
+        slot0.tick,
+        active_liq,
+    )?;
 
     let total_0_out = amount_0_out.checked_add(fee_0_collected)?;
     let total_1_out = amount_1_out.checked_add(fee_1_collected)?;

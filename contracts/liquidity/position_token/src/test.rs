@@ -122,8 +122,17 @@ mod tests {
         )
         .unwrap();
 
-        let all_tokens: TokensResponse =
-            from_json(query(deps.as_ref(), mock_env(), QueryMsg::AllTokens { pagination: Pagination::default() }).unwrap()).unwrap();
+        let all_tokens: TokensResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::AllTokens {
+                    pagination: Pagination::default(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
         assert!(all_tokens.tokens.is_empty());
 
         let state: StateResponse =
@@ -223,7 +232,14 @@ mod tests {
 
         // AllTokens should have pos-2 and pos-3
         let all_tokens: TokensResponse = from_json(
-            query(deps.as_ref(), mock_env(), QueryMsg::AllTokens { pagination: Pagination::default() }).expect("query should succeed"),
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::AllTokens {
+                    pagination: Pagination::default(),
+                },
+            )
+            .expect("query should succeed"),
         )
         .expect("deserialize should succeed");
         assert_eq!(all_tokens.tokens, vec!["pos-2", "pos-3"]);

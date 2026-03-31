@@ -284,7 +284,9 @@ pub(crate) fn sync_state_with_concentrated(
         if position_token.address().is_ok() {
             position_token
                 .query::<euclid::msgs::position_token::TokensResponse>(
-                    &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
+                    &euclid::msgs::position_token::QueryMsg::AllTokens {
+                        pagination: Pagination::default(),
+                    },
                 )
                 .unwrap()
                 .tokens

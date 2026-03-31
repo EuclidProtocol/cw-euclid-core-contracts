@@ -214,9 +214,7 @@ pub fn on_nft_mint_reply(deps: DepsMut, msg: Reply) -> Result<Response, Contract
             Ok(Response::new().add_attribute("action", "reply_nft_mint_success"))
         }
         SubMsgResult::Err(err) => {
-            if let Some((owner, position_id)) =
-                PENDING_NFT_MINT_POSITION.may_load(deps.storage)?
-            {
+            if let Some((owner, position_id)) = PENDING_NFT_MINT_POSITION.may_load(deps.storage)? {
                 POSITION_ID_TO_METADATA.remove(deps.storage, position_id);
                 OWNER_POSITION_SET.remove(deps.storage, (owner, position_id));
                 PENDING_NFT_MINT_POSITION.remove(deps.storage);

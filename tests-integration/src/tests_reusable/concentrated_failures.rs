@@ -7,6 +7,7 @@ use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::swap::NextSwapPair;
 use euclid::token::{Token, TokenType, TokenWithDenom};
+use euclid::utils::pagination::Pagination;
 use euclid_ibc::ack::make_ack_fail;
 use rstest::rstest;
 
@@ -15,7 +16,7 @@ use crate::helpers::factory::{
 };
 use crate::helpers::relayer::{
     extract_ack_packet_events, extract_send_packet_events, relay_factory_ack_packet,
-    relay_factory_router_factory, relay_factory_send_packet,
+    relay_factory_send_packet,
 };
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
@@ -66,7 +67,9 @@ fn test_no_ack_does_not_finalize_position() {
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
         .query::<euclid::msgs::position_token::TokensResponse>(
-            &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
+            &euclid::msgs::position_token::QueryMsg::AllTokens {
+                pagination: Pagination::default(),
+            },
         )
         .unwrap()
         .tokens;
@@ -148,7 +151,9 @@ fn test_ack_error_rolls_back_pending() {
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
         .query::<euclid::msgs::position_token::TokensResponse>(
-            &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
+            &euclid::msgs::position_token::QueryMsg::AllTokens {
+                pagination: Pagination::default(),
+            },
         )
         .unwrap()
         .tokens;

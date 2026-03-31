@@ -6,8 +6,8 @@ mod tests {
         collect_concentrated_fees_request, remove_concentrated_liquidity_request,
     };
     use crate::state::{
-        ConcentratedPositionMetadata, State, ADMIN, POOL_KEY_TO_VLP,
-        POSITION_ID_TO_METADATA, POSITION_TOKEN_CONTRACT, STATE,
+        ConcentratedPositionMetadata, State, ADMIN, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA,
+        POSITION_TOKEN_CONTRACT, STATE,
     };
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};

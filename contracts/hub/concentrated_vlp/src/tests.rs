@@ -27,9 +27,9 @@ use crate::{
     state::{
         initialize_position_namespace_if_missing, next_position_id, ConcentratedPosition,
         MigrationMetadata, TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS,
-        FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA,
-        MIGRATION_REVISION, OBSERVATIONS, POOL_KEY, POSITIONS, POSITION_ID_PREFIX, POSITION_NONCE,
-        PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
+        FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA, MIGRATION_REVISION,
+        OBSERVATIONS, POOL_KEY, POSITIONS, POSITION_ID_PREFIX, POSITION_NONCE, PROTOCOL_FEES_0,
+        PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
     },
 };
 
@@ -866,9 +866,7 @@ fn initialize_position_namespace_table() {
     for case in cases {
         let mut deps = mock_dependencies();
         if let Some(nonce) = case.pre_nonce {
-            POSITION_NONCE
-                .save(deps.as_mut().storage, &nonce)
-                .unwrap();
+            POSITION_NONCE.save(deps.as_mut().storage, &nonce).unwrap();
         }
         let pool_key = sample_pool_key(sample_pair());
         for id in &case.existing_ids {

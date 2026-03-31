@@ -16,9 +16,7 @@ pub enum QueryMsg {
         pagination: Pagination<String>,
     },
     #[returns(TokensResponse)]
-    AllTokens {
-        pagination: Pagination<String>,
-    },
+    AllTokens { pagination: Pagination<String> },
     #[returns(StateResponse)]
     State {},
 }
