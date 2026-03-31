@@ -1,0 +1,39 @@
+[package]
+name = "test-helpers"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.75.0"
+publish = false
+
+[dependencies]
+# Contract crates
+router = { path = "../../contracts/hub/router" }
+virtual_balance = { path = "../../contracts/hub/virtual_balance" }
+cp_vlp = { path = "../../contracts/hub/cp_vlp" }
+stable_vlp = { path = "../../contracts/hub/stable_vlp" }
+concentrated_vlp = { path = "../../contracts/hub/concentrated_vlp" }
+escrow = { path = "../../contracts/liquidity/escrow" }
+factory = { path = "../../contracts/liquidity/factory" }
+lp_token = { path = "../../contracts/liquidity/lp_token" }
+position_token = { path = "../../contracts/liquidity/position_token" }
+euclid-relayer = { path = "../../contracts/common/euclid-relayer" }
+meta-transaction = { path = "../../contracts/hub/meta_transaction" }
+
+# Packages
+euclid = { path = "../euclid" }
+euclid-ibc = { path = "../euclid_ibc" }
+relayer = { path = "../relayer" }
+
+# CosmWasm
+cosmwasm-std = { workspace = true }
+cw-storage-plus = { workspace = true }
+cw-orch = { workspace = true }
+cw-orch-interchain = "0.9.0"
+
+# Crypto (for relay signing)
+sha2 = "0.10.8"
+k256 = "0.13.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cw-multi-test = { workspace = true }
+mock = { workspace = true }
