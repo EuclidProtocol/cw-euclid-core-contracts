@@ -1,0 +1,70 @@
+name: Generate and Push Protos
+
+on:
+  push:
+    branches: [development, main]
+    paths:
+      - "contracts/**"
+      - "packages/**"
+      - "scripts/schema_to_proto.py"
+
+concurrency:
+  group: proto-gen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proto-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: true
+
+      - name: Generate JSON schemas
+        run: |
+          for d in contracts/*/*/; do
+            if [ -f "$d/src/bin/schema.rs" ]; then
+              (cd "$d" && cargo run --bin schema)
+            fi
+          done
+
+      - name: Convert schemas to proto
+        run: python3 scripts/schema_to_proto.py
+
+      - uses: bufbuild/buf-setup-action@v1
+
+      - name: Lint protos
+        run: cd proto && buf lint
+
+      - name: Push to BSR
+        uses: bufbuild/buf-push-action@v1
+        with:
+          input: proto
+          buf_token: ${{ secrets.BUF_TOKEN }}
+
+      - name: Tag BSR commit with branch label
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          COMMIT=$(buf registry commit list buf.build/euclid/core-contracts --format json --page-size 1 | python3 -c "import sys,json; print(json.load(sys.stdin)['commits'][0]['id'])")
+          buf registry label create "buf.build/euclid/core-contracts:${BRANCH}" --commit "${COMMIT}"
+        env:
+          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
+
+      # Notify consumer repos with branch info
+      - name: Trigger frontend codegen
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: EuclidProtocol/euclid-frontend-monorepo
+          event-type: contract-types-updated
+          client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}", "message": "${{ github.event.head_commit.message }}"}'
+
+      - name: Trigger backend codegen
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: EuclidProtocol/euclid_api
+          event-type: contract-types-updated
+          client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}", "message": "${{ github.event.head_commit.message }}"}'
