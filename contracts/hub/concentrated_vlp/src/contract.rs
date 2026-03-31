@@ -303,11 +303,11 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
     }
 }
 
-fn uint256_to_uint128(value: Uint256) -> Result<Uint128, ContractError> {
+pub(crate) fn uint256_to_uint128(value: Uint256) -> Result<Uint128, ContractError> {
     Uint128::try_from(value).map_err(|_| ContractError::new("uint128 overflow"))
 }
 
-fn amounts_for_position_liquidity_with_bound(
+pub(crate) fn amounts_for_position_liquidity_with_bound(
     sqrt_price_x96: Uint256,
     sqrt_lower_x96: Uint256,
     sqrt_upper_x96: Uint256,

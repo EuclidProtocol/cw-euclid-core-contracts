@@ -353,7 +353,7 @@ fn validate_position(
     Ok(())
 }
 
-fn fit_liquidity_with_bound(
+pub(crate) fn fit_liquidity_with_bound(
     sqrt_price_x96: Uint256,
     sqrt_lower_x96: Uint256,
     sqrt_upper_x96: Uint256,
