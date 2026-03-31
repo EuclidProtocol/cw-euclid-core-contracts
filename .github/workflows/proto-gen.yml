@@ -9,6 +9,9 @@ on:
       - "scripts/schema_to_proto.py"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: proto-gen-${{ github.ref }}
   cancel-in-progress: true
@@ -49,7 +52,7 @@ jobs:
         run: |
           BRANCH="${GITHUB_REF_NAME}"
           COMMIT=$(buf registry commit list buf.build/euclid/core-contracts --format json --page-size 1 | python3 -c "import sys,json; print(json.load(sys.stdin)['commits'][0]['id'])")
-          buf registry label create "buf.build/euclid/core-contracts:${BRANCH}" --commit "${COMMIT}"
+          buf registry label create "buf.build/euclid/core-contracts:${BRANCH}" --commit "${COMMIT}" --force
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
@@ -60,7 +63,7 @@ jobs:
           token: ${{ secrets.CROSS_REPO_PAT }}
           repository: EuclidProtocol/euclid-frontend-monorepo
           event-type: contract-types-updated
-          client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}", "message": "${{ github.event.head_commit.message }}"}'
+          client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}"}'
 
       - name: Trigger backend codegen
         uses: peter-evans/repository-dispatch@v3
@@ -68,4 +71,4 @@ jobs:
           token: ${{ secrets.CROSS_REPO_PAT }}
           repository: EuclidProtocol/euclid_api
           event-type: contract-types-updated
-          client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}", "message": "${{ github.event.head_commit.message }}"}'
+          client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}"}'

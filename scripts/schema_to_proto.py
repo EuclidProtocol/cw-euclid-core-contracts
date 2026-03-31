@@ -441,12 +441,17 @@ def generate_contract(path, schema, shared):
     for rname, rschema in schema.get("responses", {}).items():
         if not isinstance(rschema, dict):
             continue
-        title = rschema.get("title", snake_to_pascal(rname))
+        title = sanitize_type_name(rschema.get("title", snake_to_pascal(rname)))
         rdefs = {**defs, **rschema.get("definitions", {})}
         if is_struct(rschema):
             pf.add(title, gen_struct(title, rschema, rdefs, shared, pf))
         elif is_rust_enum(rschema):
             pf.add(title, gen_oneof(title, rschema, rdefs, shared, pf))
+        else:
+            # Primitive or array response — wrap in a message
+            pt, mod = resolve_type(rschema, rdefs, shared, pf.imports)
+            prefix = f"{mod} " if mod else ""
+            pf.add(title, f"message {title} {{\n  {prefix}{pt} value = 1;\n}}")
 
     # Local definitions (not shared, not string newtypes)
     all_needed = set()
@@ -513,15 +518,6 @@ breaking:
   use:
     - FILE
 """
-    buf_gen_yaml = """\
-version: v2
-plugins:
-  - remote: buf.build/protocolbuffers/python
-    out: gen/python
-  - remote: buf.build/community/timostamm-protobuf-ts
-    out: gen/typescript
-"""
-
     if dry_run:
         for path, content in outputs:
             print(f"\n{'=' * 60}\n{path}\n{'=' * 60}")
@@ -533,9 +529,7 @@ plugins:
             out.write_text(content)
             print(f"  {path}")
         (PROTO_DIR / "buf.yaml").write_text(buf_yaml)
-        (PROTO_DIR / "buf.gen.yaml").write_text(buf_gen_yaml)
         print("  buf.yaml")
-        print("  buf.gen.yaml")
 
     print(f"\nGenerated {len(outputs)} proto files in proto/")
 
