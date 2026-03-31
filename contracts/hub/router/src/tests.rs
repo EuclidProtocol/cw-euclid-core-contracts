@@ -2213,7 +2213,8 @@ pub(crate) mod tests {
     /// any caller can invoke them.
     #[rstest]
     fn test_unguarded_manage_variants_accept_any_caller(mut initialized: MockDeps) {
-        let random = Addr::unchecked("random_caller");
+        let random = initialized.api.addr_make("random_caller");
+        let creator = initialized.api.addr_make("creator");
 
         // UpdateDefaultReleaseFee: no require guard in the contract.
         let err = execute(
@@ -2227,6 +2228,16 @@ pub(crate) mod tests {
         .unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateDefaultReleaseFee {
+                default_release_fee: Uint128::new(42),
+            }),
+        )
+        .unwrap();
+
         // UpdateChainTimeout: no auth guard either.
         let err = execute(
             initialized.as_mut(),
@@ -2239,6 +2250,17 @@ pub(crate) mod tests {
         )
         .unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateChainTimeout {
+                chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+                timeout: 600,
+            }),
+        )
+        .unwrap();
     }
 
     // -----------------------------------------------------------------------
