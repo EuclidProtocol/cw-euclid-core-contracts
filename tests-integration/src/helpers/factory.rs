@@ -313,7 +313,7 @@ pub fn add_concentrated_liquidity(
     upper_tick_index: i64,
     position_id: Option<Uint128>,
     slippage_tolerance_bps: u64,
-) -> Result<(), CwOrchError> {
+) -> Result<Uint128, CwOrchError> {
     let chain = factory.environment();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
@@ -340,8 +340,19 @@ pub fn add_concentrated_liquidity(
     )?;
 
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-    Ok(())
+    let ack_events =
+        relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+
+    // Extract position_id from the ack events' "position_id" attribute
+    let pos_id = ack_events
+        .iter()
+        .flat_map(|e| &e.attributes)
+        .find(|a| a.key == "position_id")
+        .and_then(|a| a.value.parse::<u128>().ok())
+        .map(Uint128::new)
+        .unwrap_or_default();
+
+    Ok(pos_id)
 }
 
 pub fn remove_concentrated_liquidity(
