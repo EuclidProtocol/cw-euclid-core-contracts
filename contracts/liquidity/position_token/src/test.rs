@@ -7,6 +7,7 @@ mod tests {
     use euclid::msgs::position_token::{
         ExecuteMsg, InstantiateMsg, OwnerOfResponse, QueryMsg, StateResponse, TokensResponse,
     };
+    use euclid::utils::pagination::Pagination;
 
     fn setup() -> (
         cosmwasm_std::OwnedDeps<
@@ -103,8 +104,7 @@ mod tests {
                 mock_env(),
                 QueryMsg::TokensByOwner {
                     owner: recipient.to_string(),
-                    start_after: None,
-                    limit: None,
+                    pagination: Pagination::default(),
                 },
             )
             .unwrap(),
@@ -123,7 +123,7 @@ mod tests {
         .unwrap();
 
         let all_tokens: TokensResponse =
-            from_json(query(deps.as_ref(), mock_env(), QueryMsg::AllTokens { start_after: None, limit: None }).unwrap()).unwrap();
+            from_json(query(deps.as_ref(), mock_env(), QueryMsg::AllTokens { pagination: Pagination::default() }).unwrap()).unwrap();
         assert!(all_tokens.tokens.is_empty());
 
         let state: StateResponse =
@@ -160,8 +160,7 @@ mod tests {
                 mock_env(),
                 QueryMsg::TokensByOwner {
                     owner: owner.to_string(),
-                    start_after: None,
-                    limit: None,
+                    pagination: Pagination::default(),
                 },
             )
             .expect("query should succeed"),
@@ -199,8 +198,7 @@ mod tests {
                 mock_env(),
                 QueryMsg::TokensByOwner {
                     owner: owner.to_string(),
-                    start_after: None,
-                    limit: None,
+                    pagination: Pagination::default(),
                 },
             )
             .expect("query should succeed"),
@@ -215,8 +213,7 @@ mod tests {
                 mock_env(),
                 QueryMsg::TokensByOwner {
                     owner: recipient.to_string(),
-                    start_after: None,
-                    limit: None,
+                    pagination: Pagination::default(),
                 },
             )
             .expect("query should succeed"),
@@ -226,7 +223,7 @@ mod tests {
 
         // AllTokens should have pos-2 and pos-3
         let all_tokens: TokensResponse = from_json(
-            query(deps.as_ref(), mock_env(), QueryMsg::AllTokens { start_after: None, limit: None }).expect("query should succeed"),
+            query(deps.as_ref(), mock_env(), QueryMsg::AllTokens { pagination: Pagination::default() }).expect("query should succeed"),
         )
         .expect("deserialize should succeed");
         assert_eq!(all_tokens.tokens, vec!["pos-2", "pos-3"]);

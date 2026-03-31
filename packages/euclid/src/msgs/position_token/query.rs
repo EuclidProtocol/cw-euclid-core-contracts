@@ -1,6 +1,8 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 
+use crate::utils::pagination::Pagination;
+
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
@@ -11,13 +13,11 @@ pub enum QueryMsg {
     #[returns(TokensResponse)]
     TokensByOwner {
         owner: String,
-        start_after: Option<String>,
-        limit: Option<u32>,
+        pagination: Pagination<String>,
     },
     #[returns(TokensResponse)]
     AllTokens {
-        start_after: Option<String>,
-        limit: Option<u32>,
+        pagination: Pagination<String>,
     },
     #[returns(StateResponse)]
     State {},

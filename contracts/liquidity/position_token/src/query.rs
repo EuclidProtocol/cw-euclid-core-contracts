@@ -5,9 +5,7 @@ use euclid::error::ContractError;
 use euclid::msgs::position_token::{
     OwnerOfResponse, StateResponse, TokenInfoResponse, TokensResponse,
 };
-
-const DEFAULT_LIMIT: u32 = 30;
-const MAX_LIMIT: u32 = 100;
+use euclid::utils::pagination::Pagination;
 
 pub(crate) fn query_owner_of(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
     let token = TOKENS
@@ -38,17 +36,17 @@ pub(crate) fn query_token_info(deps: Deps, token_id: String) -> Result<Binary, C
 pub(crate) fn query_tokens_by_owner(
     deps: Deps,
     owner: String,
-    start_after: Option<String>,
-    limit: Option<u32>,
+    pagination: Pagination<String>,
 ) -> Result<Binary, ContractError> {
     let owner_addr = deps.api.addr_validate(owner.as_str())?;
-    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.as_deref().map(Bound::exclusive);
+    let min = pagination.min.as_deref().map(Bound::inclusive);
+    let max = pagination.max.as_deref().map(Bound::inclusive);
 
     let tokens: Vec<String> = OWNER_TOKEN_SET
         .prefix(&owner_addr)
-        .keys(deps.storage, start, None, Order::Ascending)
-        .take(limit)
+        .keys(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(to_json_binary(&TokensResponse { tokens })?)
@@ -56,15 +54,15 @@ pub(crate) fn query_tokens_by_owner(
 
 pub(crate) fn query_all_tokens(
     deps: Deps,
-    start_after: Option<String>,
-    limit: Option<u32>,
+    pagination: Pagination<String>,
 ) -> Result<Binary, ContractError> {
-    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.as_deref().map(Bound::exclusive);
+    let min = pagination.min.as_deref().map(Bound::inclusive);
+    let max = pagination.max.as_deref().map(Bound::inclusive);
 
     let tokens: Vec<String> = ALL_TOKEN_SET
-        .keys(deps.storage, start, None, Order::Ascending)
-        .take(limit)
+        .keys(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .collect::<Result<Vec<_>, _>>()?;
     Ok(to_json_binary(&TokensResponse { tokens })?)
 }

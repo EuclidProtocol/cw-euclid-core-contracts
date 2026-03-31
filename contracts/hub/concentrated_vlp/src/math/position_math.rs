@@ -107,6 +107,8 @@ pub fn accumulate_fee_growth(
         return Ok(fee_growth_global_x128);
     }
     // Step 1: fee_growth_delta = lp_fee * 2^128 / active_liquidity
+    // (L-10) Integer division truncates; the remainder (<1 unit per swap step)
+    // is unclaimable by either LPs or the protocol and stays locked in reserves.
     let fee_growth_delta = lp_fee
         .checked_mul(q128())?
         .checked_div(Uint256::from(active_liquidity.u128()))?;
