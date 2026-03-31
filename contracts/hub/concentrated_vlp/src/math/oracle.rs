@@ -108,12 +108,16 @@ pub fn write_observation(
     Ok(())
 }
 
-fn interpolate(left: &Observation, right: &Observation, target: u64) -> Observation {
+fn interpolate(
+    left: &Observation,
+    right: &Observation,
+    target: u64,
+) -> Result<Observation, ContractError> {
     if left.block_timestamp == right.block_timestamp || target <= left.block_timestamp {
-        return left.clone();
+        return Ok(left.clone());
     }
     if target >= right.block_timestamp {
-        return right.clone();
+        return Ok(right.clone());
     }
     let total = right.block_timestamp - left.block_timestamp;
     let elapsed = target - left.block_timestamp;
@@ -127,20 +131,21 @@ fn interpolate(left: &Observation, right: &Observation, target: u64) -> Observat
     let spl_delta = right
         .seconds_per_liquidity_cumulative_x128
         .wrapping_sub(left.seconds_per_liquidity_cumulative_x128);
+    let spl_product = spl_delta
+        .checked_mul(Uint256::from(elapsed as u128))
+        .map_err(|_| ContractError::new("oracle interpolation overflow in spl_delta * elapsed"))?;
     let spl_interp = left.seconds_per_liquidity_cumulative_x128.wrapping_add(
-        spl_delta
-            .checked_mul(Uint256::from(elapsed as u128))
-            .unwrap_or_default()
+        spl_product
             .checked_div(Uint256::from(total as u128))
-            .unwrap_or_default(),
+            .map_err(|_| ContractError::new("oracle interpolation division by zero"))?,
     );
 
-    Observation {
+    Ok(Observation {
         block_timestamp: target,
         tick_cumulative: tick_interp,
         seconds_per_liquidity_cumulative_x128: spl_interp,
         initialized: true,
-    }
+    })
 }
 
 pub fn observe(
@@ -208,7 +213,7 @@ pub fn observe(
                 let left = &window[0];
                 let right = &window[1];
                 if left.block_timestamp <= target && target <= right.block_timestamp {
-                    resolved = interpolate(left, right, target);
+                    resolved = interpolate(left, right, target)?;
                     break;
                 }
             }
@@ -456,7 +461,7 @@ mod tests {
         ];
 
         for case in cases {
-            let result = interpolate(&case.left, &case.right, case.target);
+            let result = interpolate(&case.left, &case.right, case.target).unwrap();
             assert_eq!(
                 result.tick_cumulative, case.expected_tick,
                 "FAILED tick: {}",
@@ -484,7 +489,6 @@ mod tests {
                     observation_index: index,
                     observation_cardinality: cardinality,
                     observation_cardinality_next: cardinality,
-                    unlocked: true,
                 },
             )
             .expect("save slot0");
@@ -643,7 +647,6 @@ mod tests {
                     observation_index: 0,
                     observation_cardinality: 1,
                     observation_cardinality_next: cardinality,
-                    unlocked: true,
                 },
             )
             .expect("save slot0");

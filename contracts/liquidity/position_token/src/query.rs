@@ -1,9 +1,11 @@
 use crate::state::{ALL_TOKEN_SET, OWNER_TOKEN_SET, STATE, TOKENS};
 use cosmwasm_std::{to_json_binary, Binary, Deps, Order};
+use cw_storage_plus::Bound;
 use euclid::error::ContractError;
 use euclid::msgs::position_token::{
     OwnerOfResponse, StateResponse, TokenInfoResponse, TokensResponse,
 };
+use euclid::utils::pagination::Pagination;
 
 pub(crate) fn query_owner_of(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
     let token = TOKENS
@@ -31,19 +33,36 @@ pub(crate) fn query_token_info(deps: Deps, token_id: String) -> Result<Binary, C
     })?)
 }
 
-pub(crate) fn query_tokens_by_owner(deps: Deps, owner: String) -> Result<Binary, ContractError> {
+pub(crate) fn query_tokens_by_owner(
+    deps: Deps,
+    owner: String,
+    pagination: Pagination<String>,
+) -> Result<Binary, ContractError> {
     let owner_addr = deps.api.addr_validate(owner.as_str())?;
+    let min = pagination.min.as_deref().map(Bound::inclusive);
+    let max = pagination.max.as_deref().map(Bound::inclusive);
+
     let tokens: Vec<String> = OWNER_TOKEN_SET
         .prefix(&owner_addr)
-        .keys(deps.storage, None, None, Order::Ascending)
+        .keys(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(to_json_binary(&TokensResponse { tokens })?)
 }
 
-pub(crate) fn query_all_tokens(deps: Deps) -> Result<Binary, ContractError> {
+pub(crate) fn query_all_tokens(
+    deps: Deps,
+    pagination: Pagination<String>,
+) -> Result<Binary, ContractError> {
+    let min = pagination.min.as_deref().map(Bound::inclusive);
+    let max = pagination.max.as_deref().map(Bound::inclusive);
+
     let tokens: Vec<String> = ALL_TOKEN_SET
-        .keys(deps.storage, None, None, Order::Ascending)
+        .keys(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
         .collect::<Result<Vec<_>, _>>()?;
     Ok(to_json_binary(&TokensResponse { tokens })?)
 }

@@ -242,6 +242,36 @@ pub struct PoolKey {
     pub pool_type: PoolType,
 }
 
+impl PoolKey {
+    /// Encode this pool key as a null-byte-delimited string suitable for use as a storage map key.
+    pub fn to_map_key(&self) -> String {
+        let (fee_tier_bps, tick_spacing) = match self.pool_type {
+            PoolType::Concentrated {
+                fee_tier_bps,
+                tick_spacing,
+            } => (fee_tier_bps, tick_spacing),
+            _ => (0, 0),
+        };
+        format!(
+            "{}\0{}\0{}\0{}",
+            self.pair.token_1, self.pair.token_2, fee_tier_bps, tick_spacing
+        )
+    }
+
+    /// Decode a null-byte-delimited map key into its component parts.
+    pub fn parse_map_key(key: &str) -> Option<(String, String, u64, u64)> {
+        let mut parts = key.split('\0');
+        let token_1 = parts.next()?.to_string();
+        let token_2 = parts.next()?.to_string();
+        let fee_tier_bps = parts.next()?.parse::<u64>().ok()?;
+        let tick_spacing = parts.next()?.parse::<u64>().ok()?;
+        if parts.next().is_some() {
+            return None;
+        }
+        Some((token_1, token_2, fee_tier_bps, tick_spacing))
+    }
+}
+
 #[cw_serde]
 pub enum PoolConfig {
     Stable {
@@ -271,4 +301,81 @@ pub enum ExecuteMsg {
     CollectConcentratedFees(VlpConcentratedCollectFeesMsg),
     CollectConcentratedProtocolFees(VlpConcentratedCollectProtocolFeesMsg),
     Swap(VlpSwapMsg),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::token::{Pair, Token};
+
+    fn concentrated_pool_key(t1: &str, t2: &str, fee: u64, spacing: u64) -> PoolKey {
+        PoolKey {
+            pair: Pair::new(
+                Token::create(t1.to_string()).unwrap(),
+                Token::create(t2.to_string()).unwrap(),
+            )
+            .unwrap(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: fee,
+                tick_spacing: spacing,
+            },
+        }
+    }
+
+    #[test]
+    fn pool_key_to_map_key_roundtrip_table() {
+        // Tokens must be in canonical (lexicographic) order since Pair::new sorts them.
+        let cases = vec![
+            ("tokena", "tokenb", 500, 10),
+            ("abc", "xyz", 3000, 60),
+            ("a", "b", 0, 0),
+            ("aaa", "zzz", 10000, 200),
+        ];
+
+        for (t1, t2, fee, spacing) in cases {
+            let key = concentrated_pool_key(t1, t2, fee, spacing);
+            let encoded = key.to_map_key();
+            let (rt1, rt2, rfee, rspacing) =
+                PoolKey::parse_map_key(&encoded).expect("roundtrip should succeed");
+            assert_eq!(rt1, t1, "token_1 mismatch for ({t1}, {t2})");
+            assert_eq!(rt2, t2, "token_2 mismatch for ({t1}, {t2})");
+            assert_eq!(rfee, fee, "fee mismatch for ({t1}, {t2})");
+            assert_eq!(rspacing, spacing, "spacing mismatch for ({t1}, {t2})");
+        }
+    }
+
+    #[test]
+    fn pool_key_parse_rejects_malformed_keys() {
+        let cases: Vec<(&str, &str)> = vec![
+            ("", "empty string"),
+            ("a\0b", "only two parts"),
+            ("a\0b\0500", "only three parts"),
+            ("a\0b\0500\010\0extra", "five parts"),
+            ("a\0b\0notnum\010", "non-numeric fee"),
+            ("a\0b\0500\0notnum", "non-numeric spacing"),
+        ];
+
+        for (input, label) in cases {
+            assert!(
+                PoolKey::parse_map_key(input).is_none(),
+                "should reject: {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn pool_key_non_concentrated_uses_zero_fee_and_spacing() {
+        let key = PoolKey {
+            pair: Pair::new(
+                Token::create("tokena".to_string()).unwrap(),
+                Token::create("tokenb".to_string()).unwrap(),
+            )
+            .unwrap(),
+            pool_type: PoolType::ConstantProduct {},
+        };
+        let encoded = key.to_map_key();
+        let (_, _, fee, spacing) = PoolKey::parse_map_key(&encoded).unwrap();
+        assert_eq!(fee, 0);
+        assert_eq!(spacing, 0);
+    }
 }

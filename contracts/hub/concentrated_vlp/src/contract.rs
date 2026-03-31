@@ -51,7 +51,7 @@ use crate::{
     reply,
     state::{
         initialize_position_nonce, next_position_id, ConcentratedPosition, MigrationMetadata,
-        Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS,
+        Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS,
         FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIGRATION_METADATA,
         MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0,
         STATE, TICKS,
@@ -61,7 +61,6 @@ use crate::{
 const CONTRACT_NAME: &str = "crates.io:concentrated_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MAX_SWAP_STEPS: u32 = 4096;
-const MAX_LIQUIDITY_ADJUSTMENT_STEPS: u32 = 1024;
 
 #[derive(Clone)]
 struct CrossedTickUpdate {
@@ -119,8 +118,6 @@ pub fn instantiate(
 
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &Uint128::zero())?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &Uint128::zero())?;
-    COLLATERAL_LP_TOKENS.save(deps.storage, &Uint128::zero())?;
-
     POOL_KEY.save(
         deps.storage,
         &euclid::msgs::vlp::base::PoolKey {
@@ -140,7 +137,6 @@ pub fn instantiate(
             observation_index: 0,
             observation_cardinality: 1,
             observation_cardinality_next: 1,
-            unlocked: true,
         },
     )?;
     ACTIVE_LIQUIDITY.save(deps.storage, &Uint128::zero())?;
@@ -307,39 +303,54 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
     }
 }
 
-fn uint256_to_uint128(value: Uint256) -> Result<Uint128, ContractError> {
+pub(crate) fn uint256_to_uint128(value: Uint256) -> Result<Uint128, ContractError> {
     Uint128::try_from(value).map_err(|_| ContractError::new("uint128 overflow"))
 }
 
-fn amounts_for_position_liquidity_with_bound(
+pub(crate) fn amounts_for_position_liquidity_with_bound(
     sqrt_price_x96: Uint256,
     sqrt_lower_x96: Uint256,
     sqrt_upper_x96: Uint256,
-    mut liquidity_delta: Uint128,
+    liquidity_delta: Uint128,
     max_amount_0: Uint128,
     max_amount_1: Uint128,
 ) -> Result<(Uint128, Uint128, Uint128), ContractError> {
-    for _ in 0..MAX_LIQUIDITY_ADJUSTMENT_STEPS {
-        let (amount_0_u256, amount_1_u256) = get_amounts_for_liquidity(
-            sqrt_price_x96,
-            sqrt_lower_x96,
-            sqrt_upper_x96,
-            liquidity_delta,
-            true,
-        )?;
-        let amount_0 = uint256_to_uint128(amount_0_u256)?;
-        let amount_1 = uint256_to_uint128(amount_1_u256)?;
-        if amount_0 <= max_amount_0 && amount_1 <= max_amount_1 {
-            return Ok((liquidity_delta, amount_0, amount_1));
+    let fits = |liq: Uint128| -> Result<Option<(Uint128, Uint128)>, ContractError> {
+        let (a0_u256, a1_u256) =
+            get_amounts_for_liquidity(sqrt_price_x96, sqrt_lower_x96, sqrt_upper_x96, liq, true)?;
+        let a0 = uint256_to_uint128(a0_u256)?;
+        let a1 = uint256_to_uint128(a1_u256)?;
+        if a0 <= max_amount_0 && a1 <= max_amount_1 {
+            Ok(Some((a0, a1)))
+        } else {
+            Ok(None)
         }
-        liquidity_delta = liquidity_delta
-            .checked_sub(Uint128::new(1))
-            .map_err(|_| ContractError::new("insufficient liquidity amount after rounding"))?;
+    };
+
+    if let Some((a0, a1)) = fits(liquidity_delta)? {
+        return Ok((liquidity_delta, a0, a1));
     }
 
-    Err(ContractError::new(
-        "failed to fit liquidity amounts within provided amounts",
-    ))
+    let mut lo = Uint128::zero();
+    let mut hi = liquidity_delta;
+    let mut best: Option<(Uint128, Uint128, Uint128)> = None;
+
+    for _ in 0..128u32 {
+        if lo >= hi {
+            break;
+        }
+        let mid = lo.checked_add(hi.checked_sub(lo)? / Uint128::new(2))?;
+        if let Some((a0, a1)) = fits(mid)? {
+            best = Some((mid, a0, a1));
+            lo = mid.checked_add(Uint128::new(1))?;
+        } else {
+            hi = mid;
+        }
+    }
+
+    best.ok_or_else(|| {
+        ContractError::new("failed to fit liquidity amounts within provided amounts")
+    })
 }
 
 fn assert_unused_within_slippage(
@@ -385,6 +396,16 @@ fn execute_add_concentrated_liquidity(
     let tx_id = add_liquidity_msg.tx_id.clone();
     let lower_tick_index = add_liquidity_msg.lower_tick_index;
     let upper_tick_index = add_liquidity_msg.upper_tick_index;
+    if let Some(explicit_id) = add_liquidity_msg.position_id {
+        ensure!(
+            POSITIONS
+                .may_load(deps.storage, explicit_id.u128())?
+                .is_some(),
+            ContractError::new(
+                "explicit position_id does not exist; new positions must omit position_id"
+            )
+        );
+    }
     let position_id = add_liquidity_msg
         .position_id
         .unwrap_or(next_position_id(deps.storage)?);
@@ -396,7 +417,7 @@ fn execute_add_concentrated_liquidity(
     );
     let (provided_0, provided_1) = extract_token_amount(&add_liquidity_msg.liquidity, &state.pair);
     ensure!(
-        !provided_0.is_zero() && !provided_1.is_zero(),
+        !provided_0.is_zero() || !provided_1.is_zero(),
         ContractError::ZeroAssetAmount {}
     );
 
@@ -496,12 +517,25 @@ fn execute_add_concentrated_liquidity(
     position.liquidity = position.liquidity.checked_add(liquidity_delta)?;
     POSITIONS.save(deps.storage, position_id.u128(), &position)?;
 
-    let mut chain_lp_tokens = CHAIN_LP_TOKENS.load(deps.storage, sender.chain_uid.clone())?;
+    let mut chain_lp_tokens = CHAIN_LP_TOKENS
+        .may_load(deps.storage, sender.chain_uid.clone())?
+        .ok_or(ContractError::Generic {
+            err: format!(
+                "chain {:?} is not registered for this pool",
+                sender.chain_uid
+            ),
+        })?;
     chain_lp_tokens = chain_lp_tokens.checked_add(liquidity_delta)?;
     CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
 
     state.total_lp_tokens = state.total_lp_tokens.checked_add(liquidity_delta)?;
     STATE.save(deps.storage, &state)?;
+
+    // Update oracle so seconds_per_liquidity_cumulative stays accurate
+    // across periods with only liquidity changes and no swaps (I-06).
+    let slot0 = SLOT0.load(deps.storage)?;
+    let active_liq = ACTIVE_LIQUIDITY.load(deps.storage)?;
+    write_observation(deps.storage, env.block.time.seconds(), slot0.tick, active_liq)?;
 
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
@@ -650,8 +684,14 @@ fn execute_remove_concentrated_liquidity(
         )?;
     }
 
-    let mut chain_lp_tokens =
-        CHAIN_LP_TOKENS.load(deps.storage, remove_liquidity_msg.sender.chain_uid.clone())?;
+    let mut chain_lp_tokens = CHAIN_LP_TOKENS
+        .may_load(deps.storage, remove_liquidity_msg.sender.chain_uid.clone())?
+        .ok_or(ContractError::Generic {
+            err: format!(
+                "chain {:?} is not registered for this pool",
+                remove_liquidity_msg.sender.chain_uid
+            ),
+        })?;
     chain_lp_tokens = chain_lp_tokens.checked_sub(remove_liquidity_msg.liquidity_delta)?;
     CHAIN_LP_TOKENS.save(
         deps.storage,
@@ -663,6 +703,11 @@ fn execute_remove_concentrated_liquidity(
         .total_lp_tokens
         .checked_sub(remove_liquidity_msg.liquidity_delta)?;
     STATE.save(deps.storage, &state)?;
+
+    // Update oracle so seconds_per_liquidity_cumulative stays accurate (I-06).
+    let slot0 = SLOT0.load(deps.storage)?;
+    let active_liq = ACTIVE_LIQUIDITY.load(deps.storage)?;
+    write_observation(deps.storage, env.block.time.seconds(), slot0.tick, active_liq)?;
 
     let total_0_out = amount_0_out.checked_add(fee_0_collected)?;
     let total_1_out = amount_1_out.checked_add(fee_1_collected)?;
@@ -908,11 +953,12 @@ fn run_swap_simulation(
     deps: Deps,
     asset_in: Token,
     amount_in: Uint128,
-    test_fail: Option<bool>,
+    _test_fail: Option<bool>,
     sqrt_price_limit_x96: Option<Uint256>,
 ) -> Result<SwapSimulation, ContractError> {
+    #[cfg(test)]
     ensure!(
-        !test_fail.unwrap_or(false),
+        !_test_fail.unwrap_or(false),
         ContractError::new("Force fail flag")
     );
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
@@ -1039,6 +1085,10 @@ fn run_swap_simulation(
         amount_remaining = amount_remaining.checked_sub(consumed)?;
         amount_out_total = amount_out_total.checked_add(step.amount_out)?;
 
+        // Protocol fee truncates down; the remainder accrues to LPs.
+        // A second truncation in fee_growth accumulation (fee * 2^128 / liquidity)
+        // means a small amount of dust per swap step is unclaimable by either party
+        // and remains locked in reserves. This matches Uniswap V3 behavior.
         let protocol_fee_step = step
             .fee_amount
             .checked_mul(Uint256::from(protocol_cut_bps as u128))?
@@ -1535,7 +1585,6 @@ fn query_slot0(deps: Deps) -> Result<Slot0Response, ContractError> {
         observation_index: slot0.observation_index,
         observation_cardinality: slot0.observation_cardinality,
         observation_cardinality_next: slot0.observation_cardinality_next,
-        unlocked: slot0.unlocked,
         liquidity: ACTIVE_LIQUIDITY.load(deps.storage)?,
         fee_growth_global_0_x128: FEE_GROWTH_GLOBAL_0_X128.load(deps.storage)?,
         fee_growth_global_1_x128: FEE_GROWTH_GLOBAL_1_X128.load(deps.storage)?,
@@ -1729,7 +1778,6 @@ mod tests {
             observation_index: 0,
             observation_cardinality: 1,
             observation_cardinality_next: 1,
-            unlocked: true,
         };
         SLOT0
             .save(deps.as_mut().storage, &slot0)
@@ -2245,7 +2293,7 @@ mod tests {
             liquidity: wrong_pair,
             lower_tick_index: -600,
             upper_tick_index: 600,
-            position_id: Some(Uint128::new(1)),
+            position_id: None,
             slippage_tolerance_bps: 100,
         };
 

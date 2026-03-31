@@ -34,7 +34,7 @@ use crate::{
         VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        pool_key_to_map_key, ADMIN, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, ESCROW_BALANCES,
+        ADMIN, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, ESCROW_BALANCES,
         FEE_STATE, FUNDS_INFO, PENDING_CONCENTRATED_COLLECT_FEES,
         PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
         PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
@@ -168,7 +168,7 @@ pub fn ibc_execute_request_pool_creation(
         )?;
 
         let existing_vlp =
-            CONCENTRATED_VLPS.may_load(deps.storage, pool_key_to_map_key(&pool_key))?;
+            CONCENTRATED_VLPS.may_load(deps.storage, pool_key.to_map_key())?;
         let register_msg =
             ConcentratedVlpExecuteMsg::RegisterPool(VlpConcentratedRegisterPoolMsg {
                 sender: sender.clone(),
@@ -424,7 +424,7 @@ pub fn ibc_execute_add_concentrated_liquidity(
     deps: DepsMut,
     msg: RouterCrossChainConcentratedAddLiquidityExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, pool_key_to_map_key(&msg.pool_key))?;
+    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, msg.pool_key.to_map_key())?;
 
     let mut response = Response::new().add_event(
         tx_event(
@@ -544,7 +544,7 @@ pub fn ibc_execute_remove_concentrated_liquidity(
     _env: Env,
     msg: RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, pool_key_to_map_key(&msg.pool_key))?;
+    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, msg.pool_key.to_map_key())?;
     let response = Response::new()
         .add_event(tx_event(
             &msg.tx_id,
@@ -583,7 +583,7 @@ pub fn ibc_execute_collect_concentrated_fees(
     _env: Env,
     msg: RouterCrossChainConcentratedCollectFeesExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, pool_key_to_map_key(&msg.pool_key))?;
+    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, msg.pool_key.to_map_key())?;
     let response = Response::new()
         .add_event(tx_event(
             &msg.tx_id,
@@ -622,7 +622,7 @@ pub fn ibc_execute_collect_concentrated_protocol_fees(
     _env: Env,
     msg: RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, pool_key_to_map_key(&msg.pool_key))?;
+    let vlp_address = CONCENTRATED_VLPS.load(deps.storage, msg.pool_key.to_map_key())?;
     let response = Response::new()
         .add_event(tx_event(
             &msg.tx_id,

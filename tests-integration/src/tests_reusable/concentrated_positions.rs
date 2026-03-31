@@ -61,7 +61,7 @@ fn test_add_liquidity_mints_position_nft(
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
         .query::<euclid::msgs::position_token::TokensResponse>(
-            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+            &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
         )
         .unwrap()
         .tokens;

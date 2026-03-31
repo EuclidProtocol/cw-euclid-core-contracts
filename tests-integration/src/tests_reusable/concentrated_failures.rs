@@ -66,7 +66,7 @@ fn test_no_ack_does_not_finalize_position() {
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
         .query::<euclid::msgs::position_token::TokensResponse>(
-            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+            &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
         )
         .unwrap()
         .tokens;
@@ -148,7 +148,7 @@ fn test_ack_error_rolls_back_pending() {
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
         .query::<euclid::msgs::position_token::TokensResponse>(
-            &euclid::msgs::position_token::QueryMsg::AllTokens {},
+            &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
         )
         .unwrap()
         .tokens;

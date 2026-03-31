@@ -84,6 +84,10 @@ pub struct ConcentratedFundsInfo {
     pub upper_tick_index: i64,
     pub position_id: Option<Uint128>,
 }
+/// Singleton holding funds info for the current concentrated pool creation.
+/// Safe as a singleton because CosmWasm SubMsg replies are synchronous — the
+/// reply handler runs before control returns to the caller, so no concurrent
+/// pool creation can overwrite this value between save and load.
 pub const CONCENTRATED_FUNDS_INFO: Item<ConcentratedFundsInfo> =
     Item::new("concentrated_funds_info");
 
@@ -97,6 +101,8 @@ pub struct PendingReleaseVoucher {
 pub const PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher> =
     Map::new("pending_release_voucher");
 
+/// Singleton holding funds info for the current classic pool creation.
+/// Same synchronous-SubMsg safety rationale as CONCENTRATED_FUNDS_INFO.
 pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
 
 /// The key is TokenID_ChainUID

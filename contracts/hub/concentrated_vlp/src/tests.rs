@@ -20,12 +20,14 @@ use euclid::{
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 
 use crate::{
+    contract::amounts_for_position_liquidity_with_bound,
     math::{liquidity_amounts::get_amounts_for_liquidity, tick_math::get_sqrt_ratio_at_tick},
-    migrate::migrate,
+    migrate::{fit_liquidity_with_bound, migrate},
     mock::mock_concentrated_vlp,
     state::{
-        ConcentratedPosition, MigrationMetadata, TickInfo, ACTIVE_LIQUIDITY, BALANCES,
-        CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA,
+        initialize_position_namespace_if_missing, next_position_id, ConcentratedPosition,
+        MigrationMetadata, TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS,
+        FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA,
         MIGRATION_REVISION, OBSERVATIONS, POOL_KEY, POSITIONS, POSITION_ID_PREFIX, POSITION_NONCE,
         PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
     },
@@ -734,4 +736,266 @@ fn migration_status_markers_are_written() {
         .may_load(deps.as_ref().storage, 0)
         .unwrap()
         .is_some());
+}
+
+// ---------------------------------------------------------------------------
+// next_position_id — table-driven
+// ---------------------------------------------------------------------------
+
+#[test]
+fn next_position_id_table() {
+    struct Case {
+        label: &'static str,
+        /// Position IDs to pre-populate (simulates existing positions).
+        existing: Vec<u128>,
+        /// Expected nonce component of the returned ID (lower 64 bits).
+        expected_nonce: u64,
+    }
+
+    let cases = vec![
+        Case {
+            label: "empty storage yields nonce 1",
+            existing: vec![],
+            expected_nonce: 1,
+        },
+        Case {
+            label: "skips occupied nonce 1, returns nonce 2",
+            existing: vec![1], // nonce 1 under same prefix
+            expected_nonce: 2,
+        },
+        Case {
+            label: "skips occupied nonces 1-3, returns nonce 4",
+            existing: vec![1, 2, 3],
+            expected_nonce: 4,
+        },
+    ];
+
+    for case in cases {
+        let mut deps = mock_dependencies();
+        let prefix: u64 = 42;
+        POSITION_ID_PREFIX
+            .save(deps.as_mut().storage, &prefix)
+            .unwrap();
+        POSITION_NONCE.save(deps.as_mut().storage, &0).unwrap();
+
+        let pool_key = sample_pool_key(sample_pair());
+        for nonce in &case.existing {
+            let id = (u128::from(prefix) << 64) | u128::from(*nonce);
+            let pos = make_position(
+                owner("andr", "alice"),
+                pool_key.clone(),
+                -10,
+                10,
+                Uint128::new(100),
+            );
+            POSITIONS.save(deps.as_mut().storage, id, &pos).unwrap();
+        }
+
+        let result = next_position_id(deps.as_mut().storage).unwrap();
+        let got_nonce = result.u128() as u64;
+        assert_eq!(
+            got_nonce, case.expected_nonce,
+            "FAIL [{}]: expected nonce {}, got {}",
+            case.label, case.expected_nonce, got_nonce,
+        );
+    }
+}
+
+#[test]
+fn next_position_id_exhaustion_returns_error() {
+    let mut deps = mock_dependencies();
+    let prefix: u64 = 1;
+    POSITION_ID_PREFIX
+        .save(deps.as_mut().storage, &prefix)
+        .unwrap();
+    POSITION_NONCE.save(deps.as_mut().storage, &0).unwrap();
+
+    let pool_key = sample_pool_key(sample_pair());
+    // Fill nonces 1..=1024 so the loop exhausts all attempts.
+    for nonce in 1..=1024u64 {
+        let id = (u128::from(prefix) << 64) | u128::from(nonce);
+        let pos = make_position(
+            owner("andr", "alice"),
+            pool_key.clone(),
+            -10,
+            10,
+            Uint128::new(1),
+        );
+        POSITIONS.save(deps.as_mut().storage, id, &pos).unwrap();
+    }
+
+    let err = next_position_id(deps.as_mut().storage).unwrap_err();
+    assert!(
+        err.to_string().contains("exhausted"),
+        "expected exhaustion error, got: {err}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// initialize_position_namespace_if_missing — table-driven
+// ---------------------------------------------------------------------------
+
+#[test]
+fn initialize_position_namespace_table() {
+    struct Case {
+        label: &'static str,
+        /// If Some, pre-save POSITION_NONCE to this value.
+        pre_nonce: Option<u64>,
+        /// Position IDs to pre-populate.
+        existing_ids: Vec<u128>,
+        /// Expected POSITION_NONCE value after the call.
+        expected_nonce: u64,
+    }
+
+    let contract_addr = "wasm1concentrated";
+    let cases = vec![
+        Case {
+            label: "early return when nonce already set",
+            pre_nonce: Some(99),
+            existing_ids: vec![],
+            expected_nonce: 99,
+        },
+        Case {
+            label: "fresh state with no positions yields nonce 0",
+            pre_nonce: None,
+            existing_ids: vec![],
+            expected_nonce: 0,
+        },
+    ];
+
+    for case in cases {
+        let mut deps = mock_dependencies();
+        if let Some(nonce) = case.pre_nonce {
+            POSITION_NONCE
+                .save(deps.as_mut().storage, &nonce)
+                .unwrap();
+        }
+        let pool_key = sample_pool_key(sample_pair());
+        for id in &case.existing_ids {
+            let pos = make_position(
+                owner("andr", "alice"),
+                pool_key.clone(),
+                -10,
+                10,
+                Uint128::new(1),
+            );
+            POSITIONS.save(deps.as_mut().storage, *id, &pos).unwrap();
+        }
+
+        initialize_position_namespace_if_missing(deps.as_mut().storage, contract_addr).unwrap();
+
+        let nonce = POSITION_NONCE.load(deps.as_ref().storage).unwrap();
+        assert_eq!(
+            nonce, case.expected_nonce,
+            "FAIL [{}]: expected nonce {}, got {}",
+            case.label, case.expected_nonce, nonce,
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// amounts_for_position_liquidity_with_bound — table-driven
+// ---------------------------------------------------------------------------
+
+/// Helper: sqrt prices for the standard tick range [-10, 10] around tick 0.
+fn sqrt_prices_for_range() -> (Uint256, Uint256, Uint256) {
+    let sqrt_price = get_sqrt_ratio_at_tick(0).unwrap(); // price = 1.0
+    let sqrt_lower = get_sqrt_ratio_at_tick(-10).unwrap();
+    let sqrt_upper = get_sqrt_ratio_at_tick(10).unwrap();
+    (sqrt_price, sqrt_lower, sqrt_upper)
+}
+
+#[test]
+fn liquidity_bound_search_table() {
+    let (sqrt_price, sqrt_lower, sqrt_upper) = sqrt_prices_for_range();
+
+    struct Case {
+        label: &'static str,
+        liquidity: u128,
+        max_0: u128,
+        max_1: u128,
+        /// If true, the target liquidity should fit without binary search.
+        expect_exact_fit: bool,
+    }
+
+    let cases = vec![
+        Case {
+            label: "zero liquidity returns zero",
+            liquidity: 0,
+            max_0: 1_000_000,
+            max_1: 1_000_000,
+            expect_exact_fit: true,
+        },
+        Case {
+            label: "generous bounds fit exactly",
+            liquidity: 1_000,
+            max_0: u128::MAX / 2,
+            max_1: u128::MAX / 2,
+            expect_exact_fit: true,
+        },
+        Case {
+            label: "tight bounds force binary search reduction",
+            liquidity: 1_000_000,
+            max_0: 10,
+            max_1: 10,
+            expect_exact_fit: false,
+        },
+    ];
+
+    for case in cases {
+        let liq = Uint128::new(case.liquidity);
+        let max_0 = Uint128::new(case.max_0);
+        let max_1 = Uint128::new(case.max_1);
+
+        // Test both functions (contract path and migrate path) — identical logic.
+        for (func_label, result) in [
+            (
+                "amounts_for_position_liquidity_with_bound",
+                amounts_for_position_liquidity_with_bound(
+                    sqrt_price, sqrt_lower, sqrt_upper, liq, max_0, max_1,
+                ),
+            ),
+            (
+                "fit_liquidity_with_bound",
+                fit_liquidity_with_bound(sqrt_price, sqrt_lower, sqrt_upper, liq, max_0, max_1),
+            ),
+        ] {
+            let (fitted_liq, a0, a1) =
+                result.unwrap_or_else(|e| panic!("FAIL [{} / {}]: {e}", case.label, func_label));
+
+            assert!(
+                a0 <= max_0,
+                "FAIL [{} / {}]: a0 {a0} exceeds max {max_0}",
+                case.label,
+                func_label,
+            );
+            assert!(
+                a1 <= max_1,
+                "FAIL [{} / {}]: a1 {a1} exceeds max {max_1}",
+                case.label,
+                func_label,
+            );
+
+            if case.expect_exact_fit {
+                assert_eq!(
+                    fitted_liq, liq,
+                    "FAIL [{} / {}]: expected exact fit",
+                    case.label, func_label,
+                );
+            } else {
+                assert!(
+                    fitted_liq < liq,
+                    "FAIL [{} / {}]: expected reduced liquidity, got {fitted_liq} >= {liq}",
+                    case.label,
+                    func_label,
+                );
+                assert!(
+                    fitted_liq > Uint128::zero(),
+                    "FAIL [{} / {}]: fitted liquidity should be > 0",
+                    case.label,
+                    func_label,
+                );
+            }
+        }
+    }
 }

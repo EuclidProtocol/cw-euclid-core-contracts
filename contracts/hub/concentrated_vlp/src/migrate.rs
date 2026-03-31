@@ -25,7 +25,6 @@ use crate::{
 const CONTRACT_NAME: &str = "crates.io:concentrated_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const TARGET_MIGRATION_REVISION: u16 = 2;
-const MAX_LIQUIDITY_ADJUSTMENT_STEPS: u32 = 1024;
 const SUPPORTED_SOURCE_VERSIONS: [&str; 2] = ["0.0.1", "0.1.0"];
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -91,7 +90,6 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
     slot0.observation_index = 0;
     slot0.observation_cardinality = 1;
     slot0.observation_cardinality_next = 1;
-    slot0.unlocked = true;
 
     let positions: Vec<(u128, ConcentratedPosition)> = POSITIONS
         .range(deps.storage, None, None, Order::Ascending)
@@ -315,7 +313,6 @@ fn resolve_slot0(
             observation_index: 0,
             observation_cardinality: 1,
             observation_cardinality_next: 1,
-            unlocked: true,
         })
     };
 
@@ -356,39 +353,55 @@ fn validate_position(
     Ok(())
 }
 
-fn fit_liquidity_with_bound(
+pub(crate) fn fit_liquidity_with_bound(
     sqrt_price_x96: Uint256,
     sqrt_lower_x96: Uint256,
     sqrt_upper_x96: Uint256,
-    mut liquidity_delta: Uint128,
+    liquidity_delta: Uint128,
     max_amount_0: Uint128,
     max_amount_1: Uint128,
 ) -> Result<(Uint128, Uint128, Uint128), ContractError> {
     if liquidity_delta.is_zero() {
         return Ok((Uint128::zero(), Uint128::zero(), Uint128::zero()));
     }
-    for _ in 0..MAX_LIQUIDITY_ADJUSTMENT_STEPS {
-        let (amount_0_u256, amount_1_u256) = get_amounts_for_liquidity(
-            sqrt_price_x96,
-            sqrt_lower_x96,
-            sqrt_upper_x96,
-            liquidity_delta,
-            true,
-        )?;
-        let amount_0 =
-            Uint128::try_from(amount_0_u256).map_err(|_| ContractError::new("amount0 overflow"))?;
-        let amount_1 =
-            Uint128::try_from(amount_1_u256).map_err(|_| ContractError::new("amount1 overflow"))?;
-        if amount_0 <= max_amount_0 && amount_1 <= max_amount_1 {
-            return Ok((liquidity_delta, amount_0, amount_1));
+    let fits = |liq: Uint128| -> Result<Option<(Uint128, Uint128)>, ContractError> {
+        let (a0_u256, a1_u256) =
+            get_amounts_for_liquidity(sqrt_price_x96, sqrt_lower_x96, sqrt_upper_x96, liq, true)?;
+        let a0 =
+            Uint128::try_from(a0_u256).map_err(|_| ContractError::new("amount0 overflow"))?;
+        let a1 =
+            Uint128::try_from(a1_u256).map_err(|_| ContractError::new("amount1 overflow"))?;
+        if a0 <= max_amount_0 && a1 <= max_amount_1 {
+            Ok(Some((a0, a1)))
+        } else {
+            Ok(None)
         }
-        liquidity_delta = liquidity_delta
-            .checked_sub(Uint128::new(1))
-            .map_err(|_| ContractError::new("failed to fit liquidity to nominal amounts"))?;
+    };
+
+    if let Some((a0, a1)) = fits(liquidity_delta)? {
+        return Ok((liquidity_delta, a0, a1));
     }
-    Err(ContractError::new(
-        "failed to fit liquidity amounts within provided amounts",
-    ))
+
+    let mut lo = Uint128::zero();
+    let mut hi = liquidity_delta;
+    let mut best: Option<(Uint128, Uint128, Uint128)> = None;
+
+    for _ in 0..128u32 {
+        if lo >= hi {
+            break;
+        }
+        let mid = lo.checked_add(hi.checked_sub(lo)? / Uint128::new(2))?;
+        if let Some((a0, a1)) = fits(mid)? {
+            best = Some((mid, a0, a1));
+            lo = mid.checked_add(Uint128::new(1))?;
+        } else {
+            hi = mid;
+        }
+    }
+
+    best.ok_or_else(|| {
+        ContractError::new("failed to fit liquidity amounts within provided amounts")
+    })
 }
 
 fn add_signed_liquidity(value: Uint128, delta: i128) -> Result<Uint128, ContractError> {

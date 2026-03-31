@@ -532,10 +532,11 @@ pub fn pre_swap(
     asset_in: &Token,
     amount_in: Uint128,
     calculation_method: SwapCalculationMethod,
-    test_fail: Option<bool>,
+    _test_fail: Option<bool>,
 ) -> Result<PreSwapResponse, ContractError> {
+    #[cfg(test)]
     ensure!(
-        !test_fail.unwrap_or(false),
+        !_test_fail.unwrap_or(false),
         ContractError::new("Force fail flag")
     );
     // Verify that the asset amount is non-zero

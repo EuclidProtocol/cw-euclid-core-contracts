@@ -5,14 +5,12 @@ use function_name::named;
 
 #[named]
 pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 

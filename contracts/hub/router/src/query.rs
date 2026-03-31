@@ -19,9 +19,8 @@ use euclid::{
 };
 
 use crate::state::{
-    map_key_to_pool_parts, pool_key_to_map_key, ADMIN, CHAIN_UID_TO_CHAIN, CONCENTRATED_VLPS,
-    ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
-    VLPS,
+    ADMIN, CHAIN_UID_TO_CHAIN, CONCENTRATED_VLPS, ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES,
+    STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -67,9 +66,11 @@ pub fn query_all_vlps(
 
     let concentrated_vlps: Result<Vec<_>, ContractError> = CONCENTRATED_VLPS
         .range(deps.storage, None, None, Order::Ascending)
+        .skip(skip.unwrap_or(0) as usize)
+        .take(limit.unwrap_or(10) as usize)
         .map(|v| {
             let v = v?;
-            let (token_1, token_2, _, _) = map_key_to_pool_parts(&v.0)
+            let (token_1, token_2, _, _) = PoolKey::parse_map_key(&v.0)
                 .ok_or(ContractError::new("invalid concentrated pool key in state"))?;
             Ok(VlpResponse {
                 vlp: v.1.to_string(),
@@ -95,7 +96,7 @@ pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
 }
 
 pub fn query_vlp_by_pool_key(deps: Deps, pool_key: PoolKey) -> Result<Binary, ContractError> {
-    let key = pool_key_to_map_key(&pool_key);
+    let key = pool_key.to_map_key();
     let vlp = CONCENTRATED_VLPS.load(deps.storage, key)?;
     Ok(to_json_binary(&PoolKeyVlpResponse {
         vlp: vlp.to_string(),
@@ -194,7 +195,7 @@ pub fn validate_swap_pairs(
                     ContractError::new("swap hop tokens do not match pool_key pair")
                 );
 
-                let key = pool_key_to_map_key(pool_key);
+                let key = pool_key.to_map_key();
                 CONCENTRATED_VLPS.load(deps.storage, key).map_err(|_| {
                     ContractError::new("concentrated pool for provided pool_key is not registered")
                 })?

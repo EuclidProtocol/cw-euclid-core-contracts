@@ -15,7 +15,7 @@ use euclid_ibc::router_ibc::{RouterCrossChainExecuteMsg, RouterCrossChainSwapExe
 
 use crate::{
     query::get_chain_type,
-    state::{pool_key_to_map_key, PENDING_SWAPS, POOL_KEY_TO_VLP, STATE, TOKEN_TO_ESCROW},
+    state::{PENDING_SWAPS, POOL_KEY_TO_VLP, STATE, TOKEN_TO_ESCROW},
 };
 
 pub fn execute_swap_request(
@@ -131,7 +131,7 @@ pub fn execute_swap_request(
                 ContractError::new("swap hop tokens do not match pool_key pair")
             );
             ensure!(
-                POOL_KEY_TO_VLP.has(deps.storage, pool_key_to_map_key(pool_key)),
+                POOL_KEY_TO_VLP.has(deps.storage, pool_key.to_map_key()),
                 ContractError::new("swap hop concentrated pool_key is not registered on factory")
             );
         }
