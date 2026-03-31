@@ -44,6 +44,28 @@ jobs:
         env:
           RUSTFLAGS: "-C link-arg=-s"
 
+  fuzz:
+    name: Fuzz Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run fuzz tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p tests-fuzz -- --test-threads=1
+        env:
+          RUST_BACKTRACE: 1
+
   lints:
     name: Lints
     runs-on: ubuntu-latest
