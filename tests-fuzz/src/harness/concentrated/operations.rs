@@ -49,7 +49,7 @@ impl ConcentratedPool {
     ) -> Result<(), String> {
         let pair = pair_with_amounts(&self.token_a, &self.token_b, amount_0, amount_1);
 
-        let position_id = add_concentrated_liquidity(
+        add_concentrated_liquidity(
             &self.factory,
             &self.router,
             pair,
@@ -61,26 +61,10 @@ impl ConcentratedPool {
         )
         .map_err(|e| format!("add_liquidity: {}", root_cause(&e)))?;
 
-        // Use position_id from response if available, otherwise
-        // fall back to querying the last position token ID.
-        let id = if !position_id.is_zero() {
-            position_id
-        } else {
-            let ids = list_position_ids(&self.factory).unwrap_or_default();
-            ids.last()
-                .and_then(|s| s.parse::<u128>().ok())
-                .map(Uint128::new)
-                .expect("failed to parse last position ID from factory")
-        };
-
-        if !id.is_zero() && !self.positions.iter().any(|p| p.position_id == id) {
-            self.positions.push(TrackedPosition {
-                position_id: id,
-                owner: self.factory.environment().sender.to_string(),
-                lower_tick,
-                upper_tick,
-            });
-        }
+        // Sync from position token NFTs to discover the newly minted position.
+        // This is more robust than parsing event attributes, which can fail
+        // if the attribute key changes or is missing from relay events.
+        self.sync_positions();
         Ok(())
     }
 
@@ -186,4 +170,5 @@ impl ConcentratedPool {
             }
         }
     }
+
 }

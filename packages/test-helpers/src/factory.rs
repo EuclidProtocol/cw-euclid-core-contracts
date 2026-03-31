@@ -395,7 +395,7 @@ pub fn list_position_ids(
     }
     let tokens: euclid::msgs::position_token::TokensResponse =
         contract.query(&euclid::msgs::position_token::QueryMsg::AllTokens {
-            pagination: euclid::utils::pagination::Pagination::default(),
+            pagination: euclid::utils::pagination::Pagination::new(None, None, None, Some(1000)),
         })?;
     Ok(tokens.tokens)
 }
