@@ -99,7 +99,13 @@ impl RunStats {
         } else {
             self.error_count += 1;
             if let Err(ref msg) = result {
-                *self.error_counts.entry((op_name, msg.clone())).or_default() += 1;
+                // Truncate to avoid unbounded map growth from variable error messages
+                let key = if msg.len() > 120 {
+                    format!("{}...", &msg[..120])
+                } else {
+                    msg.clone()
+                };
+                *self.error_counts.entry((op_name, key)).or_default() += 1;
             }
         }
         self.timings

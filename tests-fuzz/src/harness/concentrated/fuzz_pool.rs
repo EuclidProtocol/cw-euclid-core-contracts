@@ -171,6 +171,9 @@ impl FuzzPool for ConcentratedPool {
 
     fn seed_liquidity(&mut self, rng: &mut StdRng, num_positions: usize) {
         self.seed_positions(rng, num_positions);
+        // Re-sync to pick up any positions created by pool operations
+        // that the harness didn't track (e.g., initial pool creation position)
+        self.sync_positions();
     }
 
     fn drain_all_liquidity(&mut self) {

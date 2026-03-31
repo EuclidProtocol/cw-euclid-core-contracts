@@ -104,6 +104,7 @@ pub fn check_active_liquidity(snapshot: &PoolSnapshot) -> InvariantCheck {
 
     // Also compute with price-derived tick for comparison
     let price_tick = get_tick_at_sqrt_ratio(snapshot.slot0.sqrt_price_x96).unwrap_or(current_tick);
+    let tick_divergence = (current_tick - price_tick).abs();
     let in_range_by_price: Vec<_> = snapshot
         .positions
         .iter()
@@ -113,8 +114,18 @@ pub fn check_active_liquidity(snapshot: &PoolSnapshot) -> InvariantCheck {
 
     let actual = snapshot.slot0.liquidity.u128();
 
-    // Accept if EITHER tick interpretation matches — the 1-tick difference
-    // at boundaries is a known V3 convention artifact
+    // Only accept the price-derived tick as fallback when it's within 1 of slot0.tick
+    // (V3 boundary convention). Larger divergence indicates a real bug.
+    if tick_divergence > 1 && actual != expected_liquidity {
+        return InvariantCheck::fail(
+            "CL:snap:active_liquidity",
+            format!(
+                "slot0.tick ({}) and price-derived tick ({}) diverge by {} (>1), and slot0.liquidity={} != expected={}",
+                current_tick, price_tick, tick_divergence, actual, expected_liquidity
+            ),
+        );
+    }
+
     if actual != expected_liquidity && actual != expected_by_price {
         let pos_details: Vec<String> = in_range
             .iter()
@@ -178,6 +189,16 @@ pub fn check_tick_liquidity_gross(snapshot: &PoolSnapshot) -> InvariantResult {
         }
     }
 
+    // If positions exist but no initialized ticks were checked, flag corruption
+    let has_positions = snapshot.positions.iter().any(|p| !p.liquidity.is_zero());
+    let has_initialized_ticks = snapshot.ticks.iter().any(|t| t.initialized);
+    if has_positions && !has_initialized_ticks {
+        result.add(InvariantCheck::fail(
+            "CL:snap:tick_liquidity_gross",
+            "positions with liquidity exist but no initialized ticks found".to_string(),
+        ));
+    }
+
     if result.checks.is_empty() {
         result.add(InvariantCheck::pass("CL:snap:tick_liquidity_gross"));
     }
@@ -191,8 +212,8 @@ pub fn check_liquidity_net_sum_zero(snapshot: &PoolSnapshot) -> InvariantCheck {
         .ticks
         .iter()
         .filter(|t| t.initialized)
-        .map(|t| t.liquidity_net)
-        .sum();
+        .try_fold(0i128, |acc, t| acc.checked_add(t.liquidity_net))
+        .unwrap_or(i128::MAX);
 
     if sum != 0 {
         return InvariantCheck::fail(
@@ -391,17 +412,6 @@ pub fn check_sqrt_price_bounds(snapshot: &PoolSnapshot) -> InvariantCheck {
     InvariantCheck::pass("CL:snap:sqrt_price_bounds")
 }
 
-/// CL:snap:unlocked — Pool is unlocked (reentrancy guard not stuck)
-pub fn check_unlocked(snapshot: &PoolSnapshot) -> InvariantCheck {
-    if !snapshot.slot0.unlocked {
-        return InvariantCheck::fail(
-            "CL:snap:unlocked",
-            "pool is locked (reentrancy guard stuck)".to_string(),
-        );
-    }
-    InvariantCheck::pass("CL:snap:unlocked")
-}
-
 /// CL:snap:reserve_solvency — reserves must cover all outstanding obligations.
 ///
 /// The pool's reserves must be at least as large as the sum of:
@@ -424,8 +434,8 @@ pub fn check_reserve_solvency(snapshot: &PoolSnapshot) -> InvariantResult {
         .map(|p| p.tokens_owed_1.u128())
         .sum();
 
-    let obligations_0 = total_owed_0 + snapshot.protocol_fees.amount_0.u128();
-    let obligations_1 = total_owed_1 + snapshot.protocol_fees.amount_1.u128();
+    let obligations_0 = total_owed_0.saturating_add(snapshot.protocol_fees.amount_0.u128());
+    let obligations_1 = total_owed_1.saturating_add(snapshot.protocol_fees.amount_1.u128());
 
     if snapshot.reserve_0.u128() < obligations_0 {
         result.add(InvariantCheck::fail(

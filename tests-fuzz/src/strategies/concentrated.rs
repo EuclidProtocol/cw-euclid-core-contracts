@@ -308,8 +308,8 @@ pub fn gen_in_range_ticks(
     current_tick: i64,
     spacing: i64,
 ) -> (i64, i64) {
-    // Align current tick down to spacing
-    let current_aligned = (current_tick / spacing) * spacing;
+    // Align current tick down to spacing (floor division for negative ticks)
+    let current_aligned = current_tick.div_euclid(spacing) * spacing;
 
     // Lower tick: between min_tick and current_aligned (at least one spacing below)
     let lower_bound = min_tick;

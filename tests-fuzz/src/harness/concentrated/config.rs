@@ -64,7 +64,7 @@ impl Default for ConcentratedConfig {
             num_users: 1,
             max_positions: 200,
         };
-        debug_assert_eq!(
+        assert_eq!(
             config.weight_swap + config.weight_add + config.weight_remove + config.weight_collect,
             100,
             "operation weights must sum to 100"

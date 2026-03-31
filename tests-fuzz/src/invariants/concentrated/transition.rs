@@ -1,22 +1,11 @@
-use cosmwasm_std::{Uint128, Uint256};
+use cosmwasm_std::Uint128;
 
 use crate::invariants::{InvariantCheck, InvariantResult, PoolSnapshot};
 use crate::strategies::concentrated::ConcentratedOp;
 
-use super::super::shared::{check_add_liquidity_reserves, check_remove_liquidity_reserves};
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-/// Returns true if a Uint256 "decrease" is actually a wrapping forward step
-/// (the decrease spans more than half the Uint256 space).
-fn is_wrapping_forward(before: Uint256, after: Uint256) -> bool {
-    if after >= before {
-        return false;
-    }
-    (before - after) > Uint256::MAX >> 1
-}
+use super::super::shared::{
+    check_add_liquidity_reserves, check_remove_liquidity_reserves, is_wrapping_decrease,
+};
 
 /// Shared logic for CL:txn:mint and CL:txn:burn liquidity checks.
 ///
@@ -103,7 +92,7 @@ pub fn check_swap_fee_growth(
     };
 
     // Input token's fee growth must increase (or wrap forward)
-    if input_after < input_before && !is_wrapping_forward(input_before, input_after) {
+    if input_after < input_before && !is_wrapping_decrease(input_before, input_after) {
         result.add(InvariantCheck::fail(
             "CL:txn:swap_fee_growth_input",
             format!(
@@ -254,6 +243,10 @@ pub fn check_swap_reserve_conservation(
     } else {
         result.add(InvariantCheck::pass("CL:txn:swap_output_reserve_decreased"));
     }
+
+    // Note: raw amount_in >= amount_out does NOT hold in general — tokens have
+    // different prices. Conservation is enforced by fee checks (T1, T8) which
+    // verify the pool extracts fees on every swap.
 
     result
 }

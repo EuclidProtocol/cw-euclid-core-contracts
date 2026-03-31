@@ -6,7 +6,7 @@ use super::{InvariantCheck, InvariantResult, PoolSnapshot};
 /// fee_growth accumulators use modular arithmetic (mod 2^256) — a decrease that
 /// spans more than half the Uint256 space is actually a forward wrap, not a
 /// real decrease. A real decrease would be a small backward step.
-fn is_wrapping_decrease(before: Uint256, after: Uint256) -> bool {
+pub fn is_wrapping_decrease(before: Uint256, after: Uint256) -> bool {
     if after >= before {
         return false; // not a decrease at all
     }

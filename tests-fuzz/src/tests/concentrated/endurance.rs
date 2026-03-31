@@ -26,7 +26,7 @@ fn endurance_config() -> ConcentratedConfig {
 /// Long-running endurance fuzz test: 5 users, wide tick range, all invariants
 /// checked after every operation, with periodic progress reports.
 ///
-/// Runs for 1 hour by default. Use `--ignored` to include in test runs:
+/// Runs for 90 minutes by default. Use `--ignored` to include in test runs:
 /// ```
 /// cargo test -p tests-fuzz -- endurance --ignored --nocapture
 /// ```
@@ -58,7 +58,7 @@ fn test_endurance_1h() {
 
     runner.run_mixed_timed(
         Duration::from_secs(60 * 90), // 90 minutes
-        Duration::from_secs(60),      // report every 30 seconds
+        Duration::from_secs(60),      // report every 60 seconds
     );
 
     println!("Draining all positions...");
@@ -185,7 +185,7 @@ fn test_endurance_10m() {
 
     runner.run_mixed_timed(
         Duration::from_secs(10 * 60), // 10 minutes
-        Duration::from_secs(30),      // report every minute
+        Duration::from_secs(30),      // report every 30 seconds
     );
 
     runner.pool.drain_all_liquidity();

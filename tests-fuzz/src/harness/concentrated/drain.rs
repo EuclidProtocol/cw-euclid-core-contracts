@@ -13,8 +13,8 @@ impl ConcentratedPool {
         let spacing = self.config.tick_spacing as i64;
         let state = self.pool_state();
         let seed_range = self.config.seed_amount_range;
-        let min_tick = (self.config.tick_range.0 / spacing) * spacing;
-        let max_tick = (self.config.tick_range.1 / spacing) * spacing;
+        let min_tick = self.config.tick_range.0.div_euclid(spacing) * spacing;
+        let max_tick = self.config.tick_range.1.div_euclid(spacing) * spacing;
 
         for user_idx in 0..self.users.len() {
             for _ in 0..positions_per_user {

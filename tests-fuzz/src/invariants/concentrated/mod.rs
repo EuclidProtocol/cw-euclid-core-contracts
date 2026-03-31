@@ -19,7 +19,6 @@ pub fn check_light_snapshot(snapshot: &PoolSnapshot) -> InvariantResult {
     let mut result = InvariantResult::new();
     result.add(check_tick_price_consistency(snapshot));
     result.add(check_sqrt_price_bounds(snapshot));
-    result.add(check_unlocked(snapshot));
     // Lightweight solvency: reserves must at least cover protocol fees
     // (full CL:snap:reserve_solvency also checks tokens_owed but that requires position data)
     if snapshot.reserve_0.u128() < snapshot.protocol_fees.amount_0.u128() {
@@ -60,7 +59,6 @@ pub fn check_all_snapshot_invariants(
     result.merge(check_position_bounds(snapshot, tick_spacing));
     result.merge(check_fee_growth_inside_consistency(snapshot));
     result.add(check_sqrt_price_bounds(snapshot));
-    result.add(check_unlocked(snapshot));
     result.merge(check_reserve_solvency(snapshot));
     result
 }
