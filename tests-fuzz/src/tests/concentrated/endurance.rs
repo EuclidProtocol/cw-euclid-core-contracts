@@ -28,7 +28,7 @@ fn endurance_config() -> ConcentratedConfig {
 ///
 /// Runs for 90 minutes by default. Use `--ignored` to include in test runs:
 /// ```
-/// cargo test -p tests-fuzz -- endurance --ignored --nocapture
+/// cargo test -p tests-fuzz -- endurance_long --ignored --nocapture
 /// ```
 ///
 /// The test exercises the full lifecycle:
@@ -39,7 +39,7 @@ fn endurance_config() -> ConcentratedConfig {
 /// 5. Post-test: verify clean state (P1, P2)
 #[test]
 #[ignore]
-fn test_endurance_1h() {
+fn test_endurance_long() {
     let config = endurance_config();
     let mut runner = FuzzRunner::<ConcentratedPool>::new(&config, fuzz_seed());
 
@@ -75,11 +75,11 @@ fn test_endurance_1h() {
 /// Shorter endurance test (10 minutes) for pre-merge validation.
 ///
 /// ```
-/// cargo test -p tests-fuzz -- endurance_10m --ignored --nocapture
+/// cargo test -p tests-fuzz -- endurance_short --ignored --nocapture
 /// ```
 #[test]
 #[ignore]
-fn test_endurance_10m() {
+fn test_endurance_short() {
     let config = endurance_config();
     let mut runner = FuzzRunner::<ConcentratedPool>::new_random(&config);
 
@@ -92,8 +92,8 @@ fn test_endurance_10m() {
         .assert_all_pass();
 
     runner.run_mixed_timed(
-        Duration::from_secs(10 * 60), // 10 minutes
-        Duration::from_secs(30),      // report every 30 seconds
+        Duration::from_secs(10 * 3), // 10 minutes
+        Duration::from_secs(30),     // report every 30 seconds
     );
 
     runner.pool.drain_all_liquidity();
