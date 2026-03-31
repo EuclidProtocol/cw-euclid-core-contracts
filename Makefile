@@ -15,4 +15,4 @@ proto:
 		fi; \
 	done
 	@echo "Converting to proto..."
-	@python3 scripts/schema_to_proto.py
+	@cargo run -p schema-to-proto

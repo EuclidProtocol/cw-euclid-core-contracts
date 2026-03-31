@@ -6,7 +6,7 @@ on:
     paths:
       - "contracts/**"
       - "packages/**"
-      - "scripts/schema_to_proto.py"
+      - "tools/schema-to-proto/**"
   workflow_dispatch:
 
 permissions:
@@ -43,7 +43,7 @@ jobs:
       - name: Tag BSR commit with branch label
         run: |
           BRANCH="${GITHUB_REF_NAME}"
-          COMMIT=$(buf registry commit list buf.build/euclid/core-contracts --format json --page-size 1 | python3 -c "import sys,json; print(json.load(sys.stdin)['commits'][0]['id'])")
+          COMMIT=$(buf registry commit list buf.build/euclid/core-contracts --format json --page-size 1 | jq -r '.commits[0].id')
           buf registry label create "buf.build/euclid/core-contracts:${BRANCH}" --commit "${COMMIT}" --force
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
