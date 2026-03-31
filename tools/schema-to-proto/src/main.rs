@@ -904,7 +904,7 @@ fn main() {
 version: v2
 modules:
   - path: .
-    name: buf.build/euclid/core-contracts
+    name: buf.build/euclidprotocol/contracts
 lint:
   use:
     - STANDARD
