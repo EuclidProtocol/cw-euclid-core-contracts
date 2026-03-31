@@ -28,6 +28,7 @@ pub fn execute_mint(
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+    // Reject mixed-case or empty addresses before mutating state
     msg.balance_key.cross_chain_user.validate()?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
@@ -68,6 +69,7 @@ pub fn execute_burn(
 
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+    // Reject mixed-case or empty addresses before mutating state
     msg.balance_key.cross_chain_user.validate()?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
@@ -120,6 +122,7 @@ pub fn execute_transfer(
     } else {
         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
     };
+    // Validate all CrossChainUser fields to reject mixed-case or empty addresses
     sender.validate()?;
     transfer_msg.to.validate()?;
 
@@ -340,6 +343,7 @@ pub fn execute_approve(
     } else {
         CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string())
     };
+    // Reject mixed-case or empty addresses before mutating state
     spender.validate()?;
     owner.validate()?;
 
@@ -430,6 +434,8 @@ pub fn execute_remove_zero_state_values(
     Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
 }
 
+/// Migrates mixed-case balance/allowance keys to lowercase.
+/// Call repeatedly with pagination until normalized_count returns 0.
 pub fn execute_normalize_balance_keys(
     deps: DepsMut,
     info: MessageInfo,
@@ -442,11 +448,12 @@ pub fn execute_normalize_balance_keys(
         ContractError::Unauthorized {}
     );
 
+    // Default to 100 to stay within gas limits on production chains
     let limit = limit.unwrap_or(100) as usize;
     let start = start_after.map(Bound::exclusive);
     let mut normalized_count: u32 = 0;
 
-    // Normalize BALANCES
+    // Collect first to avoid mutating storage while iterating
     let balance_entries: Vec<(SerializedBalanceKey, Uint128)> = BALANCES
         .range(deps.storage, start.clone(), None, Order::Ascending)
         .take(limit)
@@ -457,20 +464,19 @@ pub fn execute_normalize_balance_keys(
         let (chain_uid, address, token_id) = key.clone();
         let lowercase_address = address.to_lowercase();
         if lowercase_address != address {
+            // Remove the mixed-case entry
             BALANCES.remove(deps.storage, key);
+            // Add balance to the lowercase key, combining with any existing balance
             let normalized_key: SerializedBalanceKey = (chain_uid, lowercase_address, token_id);
-            let existing = BALANCES
-                .may_load(deps.storage, normalized_key.clone())?
-                .unwrap_or(Uint128::zero());
-            let combined = existing.checked_add(balance)?;
-            if !combined.is_zero() {
-                BALANCES.save(deps.storage, normalized_key, &combined)?;
-            }
+            BALANCES.update(deps.storage, normalized_key, |existing| {
+                let combined = existing.unwrap_or(Uint128::zero()).checked_add(balance)?;
+                Ok::<_, ContractError>(combined)
+            })?;
             normalized_count += 1;
         }
     }
 
-    // Normalize ALLOWANCES
+    // Collect first to avoid mutating storage while iterating
     let allowance_entries: Vec<(SerializedBalanceKey, _)> = ALLOWANCES
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -483,6 +489,7 @@ pub fn execute_normalize_balance_keys(
         if lowercase_address != address {
             ALLOWANCES.remove(deps.storage, key);
             let normalized_key: SerializedBalanceKey = (chain_uid, lowercase_address, token_id);
+            // Only write if no lowercase entry exists yet (avoid overwriting a valid allowance)
             if !ALLOWANCES.has(deps.storage, normalized_key.clone()) {
                 ALLOWANCES.save(deps.storage, normalized_key, &allowance)?;
             }

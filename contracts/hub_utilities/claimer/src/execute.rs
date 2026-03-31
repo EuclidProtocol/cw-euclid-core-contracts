@@ -64,6 +64,7 @@ pub fn execute_create_voucher_claim(
     amount: Uint128,
     msg: CreateVoucherClaim,
 ) -> Result<Response, ContractError> {
+    // Reject mixed-case or empty addresses before storing the claim
     sender.validate()?;
     // Lets create a claim
     let claim_id = CLAIM_ID.load(deps.storage).unwrap_or(0u128); // Get latest claim id
