@@ -27,6 +27,26 @@ pub enum TransferVoucherMsg {
 }
 impl ContractInterface for TransferVoucherMsg {}
 
+/// Interface for [`super::execute::ExecuteMsg::SendPacket`]
+#[cw_serde]
+pub enum SendPacketMsg {
+    SendPacket {
+        sender: String,
+        msg: Binary,
+        chain: crate::chain::Chain,
+        timeout: Option<u64>,
+        ack_response: Option<Binary>,
+    },
+}
+impl ContractInterface for SendPacketMsg {}
+
+/// Interface for [`super::execute::ExecuteMsg::NativeReceiveCallback`]
+#[cw_serde]
+pub enum NativeReceiveCallbackMsg {
+    NativeReceiveCallback { msg: Binary, chain_uid: ChainUid },
+}
+impl ContractInterface for NativeReceiveCallbackMsg {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,6 +96,43 @@ mod tests {
             amount,
             recipient,
         };
+        assert_interface_eq(&interface, &parent);
+    }
+
+    #[test]
+    fn send_packet_interface_matches_parent() {
+        let msg = Binary::from(b"test_data");
+        let chain = crate::chain::Chain {
+            chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+            factory_address: "factory1".to_string(),
+            chain_type: crate::chain::ChainType::Native {},
+        };
+        let interface = SendPacketMsg::SendPacket {
+            sender: "sender1".to_string(),
+            msg: msg.clone(),
+            chain: chain.clone(),
+            timeout: Some(100),
+            ack_response: None,
+        };
+        let parent = ExecuteMsg::SendPacket {
+            sender: "sender1".to_string(),
+            msg,
+            chain,
+            timeout: Some(100),
+            ack_response: None,
+        };
+        assert_interface_eq(&interface, &parent);
+    }
+
+    #[test]
+    fn native_receive_callback_interface_matches_parent() {
+        let msg = Binary::from(b"test_data");
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let interface = NativeReceiveCallbackMsg::NativeReceiveCallback {
+            msg: msg.clone(),
+            chain_uid: chain_uid.clone(),
+        };
+        let parent = ExecuteMsg::NativeReceiveCallback { msg, chain_uid };
         assert_interface_eq(&interface, &parent);
     }
 }

@@ -7,7 +7,7 @@ use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::vlp::base::PoolConfig,
-    msgs::{factory, router},
+    msgs::{factory::interface as factory_interface, router::interface as router_interface},
     recipient::Recipient,
     swap::NextSwapPair,
     token::{Pair, PairWithDenomAndAmount, Token, TokenWithDenom},
@@ -96,7 +96,7 @@ impl RouterCrossChainExecuteMsg {
     ) -> Result<SubMsg, ContractError> {
         match chain_type {
             ChainType::Native {} => {
-                let router_msg = router::execute::ExecuteMsg::NativeReceiveCallback {
+                let router_msg = router_interface::NativeReceiveCallbackMsg::NativeReceiveCallback {
                     msg: to_json_binary(self)?,
                     chain_uid: chain_uid.clone(),
                 };
@@ -137,7 +137,7 @@ impl RouterCrossChainExecuteMsg {
                 ))
             }
             ChainType::Cosmos(_) => {
-                let factory_internal_msg = factory::msg::ExecuteMsg::SendPacket {
+                let factory_internal_msg = factory_interface::SendPacketMsg::SendPacket {
                     msg: to_json_binary(self)?,
                     timeout,
                     ack_response,

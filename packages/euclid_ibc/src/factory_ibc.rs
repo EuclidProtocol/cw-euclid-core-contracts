@@ -7,8 +7,8 @@ use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::{
-        factory,
-        router::{self, RegisterFactoryChainType},
+        factory::interface as factory_interface,
+        router::{interface as router_interface, RegisterFactoryChainType},
     },
     token::{Token, TokenType},
 };
@@ -61,7 +61,7 @@ impl FactoryCrossChainExecuteMsg {
     ) -> Result<SubMsg, ContractError> {
         match chain.chain_type {
             euclid::chain::ChainType::Native {} => {
-                let factory_msg = factory::ExecuteMsg::NativeReceiveCallback {
+                let factory_msg = factory_interface::NativeReceiveCallbackMsg::NativeReceiveCallback {
                     msg: to_json_binary(self)?,
                 };
                 let mut count = NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_COUNT
@@ -103,7 +103,7 @@ impl FactoryCrossChainExecuteMsg {
                 ))
             }
             _ => {
-                let router_internal_msg = router::execute::ExecuteMsg::SendPacket {
+                let router_internal_msg = router_interface::SendPacketMsg::SendPacket {
                     msg: to_json_binary(self)?,
                     chain,
                     timeout,

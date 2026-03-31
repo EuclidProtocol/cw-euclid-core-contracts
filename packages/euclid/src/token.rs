@@ -417,13 +417,13 @@ impl TokenType {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: contract_address.to_string(),
                         msg: match allowance {
-                            Some(owner) => to_json_binary(&cw20_base::msg::ExecuteMsg::SendFrom {
+                            Some(owner) => to_json_binary(&crate::cw20_interface::Cw20SendFromMsg::SendFrom {
                                 owner,
                                 amount,
                                 contract: recipient.to_string(),
                                 msg: forwarding_message.clone(),
                             })?,
-                            None => to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
+                            None => to_json_binary(&crate::cw20_interface::Cw20SendMsg::Send {
                                 contract: recipient.to_string(),
                                 msg: forwarding_message.clone(),
                                 amount,
@@ -436,13 +436,13 @@ impl TokenType {
                         contract_addr: contract_address.to_string(),
                         msg: match allowance {
                             Some(owner) => {
-                                to_json_binary(&cw20_base::msg::ExecuteMsg::TransferFrom {
+                                to_json_binary(&crate::cw20_interface::Cw20TransferFromMsg::TransferFrom {
                                     owner,
                                     recipient,
                                     amount,
                                 })?
                             }
-                            None => to_json_binary(&cw20_base::msg::ExecuteMsg::Transfer {
+                            None => to_json_binary(&crate::cw20_interface::Cw20TransferMsg::Transfer {
                                 recipient,
                                 amount,
                             })?,
@@ -466,12 +466,12 @@ impl TokenType {
         let msg: CosmosMsg = match self {
             Self::Native { denom } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_contract.into_string(),
-                msg: to_json_binary(&crate::msgs::escrow::ExecuteMsg::DepositNative {})?,
+                msg: to_json_binary(&crate::msgs::escrow::interface::DepositNativeMsg::DepositNative {})?,
                 funds: vec![coin(amount.u128(), denom)],
             }),
             Self::Smart { contract_address } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_address.clone(),
-                msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
+                msg: to_json_binary(&crate::cw20_interface::Cw20SendMsg::Send {
                     contract: escrow_contract.to_string(),
                     amount,
                     msg: to_json_binary(&crate::msgs::escrow::cw20::EscrowCw20HookMsg::Deposit {})?,

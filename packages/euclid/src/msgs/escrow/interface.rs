@@ -17,6 +17,13 @@ pub enum DisallowDenomMsg {
 }
 impl ContractInterface for DisallowDenomMsg {}
 
+/// Interface for [`super::msg::ExecuteMsg::DepositNative`]
+#[cw_serde]
+pub enum DepositNativeMsg {
+    DepositNative {},
+}
+impl ContractInterface for DepositNativeMsg {}
+
 /// Interface for [`super::msg::ExecuteMsg::Withdraw`]
 #[cw_serde]
 pub enum WithdrawMsg {
@@ -77,6 +84,13 @@ mod tests {
             },
             forwarding_message: Some("fwd".into()),
         };
+        assert_interface_eq(&interface, &parent);
+    }
+
+    #[test]
+    fn deposit_native_interface_matches_parent() {
+        let interface = DepositNativeMsg::DepositNative {};
+        let parent = ExecuteMsg::DepositNative {};
         assert_interface_eq(&interface, &parent);
     }
 }

@@ -1,17 +1,18 @@
 use cosmwasm_std::{
-    attr, ensure, from_json, to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdError, Timestamp, Uint128, WasmMsg,
+    attr, ensure, from_json, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response,
+    StdError, Timestamp, Uint128,
 };
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
+    interface::ContractInterface,
     msgs::{
         hook::VoucherReceive,
         orderbook_deposits::{
             AssetTotal, ExecuteMsg, MerkleProofStep, OrderbookDepositsStatus, Permit, PermitData,
             ProofPosition, VoucherReceiveHookMsg, WithdrawalLeaf,
         },
-        virtual_balance::{ExecuteMsg as VirtualBalanceExecuteMsg, ExecuteTransfer},
+        virtual_balance::{interface as vb_interface, ExecuteTransfer},
     },
     token::Token,
 };
@@ -445,21 +446,15 @@ fn execute_withdraw(
 
     let destination_chain_uid = ChainUid::create(destination_chain_uid)?;
     let destination_user = CrossChainUser::new(destination_chain_uid, destination.clone());
-    let transfer_msg = VirtualBalanceExecuteMsg::Transfer(ExecuteTransfer {
+    let send_msg = vb_interface::TransferMsg::Transfer(ExecuteTransfer {
         amount,
         token_id: permit_data.token_id.clone(),
         sender: None,
         to: destination_user,
         from: None,
         msg: None,
-    });
-
-    let send_msg: CosmosMsg = WasmMsg::Execute {
-        contract_addr: state.virtual_balance.to_string(),
-        msg: to_json_binary(&transfer_msg)?,
-        funds: vec![],
-    }
-    .into();
+    })
+    .into_cosmos_msg(state.virtual_balance)?;
 
     Ok(Response::new().add_message(send_msg).add_attributes(vec![
         attr("action", "withdrawal_completed"),
