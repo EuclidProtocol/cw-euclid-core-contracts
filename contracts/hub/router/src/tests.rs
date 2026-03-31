@@ -96,7 +96,10 @@ pub(crate) mod tests {
         let token = Token::create("usdc".to_string()).unwrap();
 
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked(TEST_VIRTUAL_BALANCE))
+            .save(
+                deps.as_mut().storage,
+                &Addr::unchecked(TEST_VIRTUAL_BALANCE),
+            )
             .unwrap();
         CHAIN_UID_TO_CHAIN
             .save(
@@ -151,7 +154,10 @@ pub(crate) mod tests {
     /// Helper: seed VIRTUAL_BALANCE_CONTRACT with address "virtual_balance".
     pub fn seed_virtual_balance(deps: &mut MockDeps) {
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked(TEST_VIRTUAL_BALANCE))
+            .save(
+                deps.as_mut().storage,
+                &Addr::unchecked(TEST_VIRTUAL_BALANCE),
+            )
             .unwrap();
     }
 
