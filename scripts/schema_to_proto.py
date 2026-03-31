@@ -21,38 +21,29 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 PROTO_DIR = ROOT / "proto"
 
-# Schema file -> (proto package, proto output path)
-CONTRACTS = {
-    "contracts/hub/router/schema/router.json":
-        ("euclid.hub.router.v1", "euclid/hub/router/v1/router.proto"),
-    "contracts/hub/cp_vlp/schema/cp_vlp.json":
-        ("euclid.hub.cp_vlp.v1", "euclid/hub/cp_vlp/v1/cp_vlp.proto"),
-    "contracts/hub/stable_vlp/schema/stable_vlp.json":
-        ("euclid.hub.stable_vlp.v1", "euclid/hub/stable_vlp/v1/stable_vlp.proto"),
-    "contracts/hub/virtual_balance/schema/virtual_balance.json":
-        ("euclid.hub.virtual_balance.v1", "euclid/hub/virtual_balance/v1/virtual_balance.proto"),
-    "contracts/hub/meta_transaction/schema/meta-transaction.json":
-        ("euclid.hub.meta_transaction.v1", "euclid/hub/meta_transaction/v1/meta_transaction.proto"),
-    "contracts/liquidity/factory/schema/factory.json":
-        ("euclid.liquidity.factory.v1", "euclid/liquidity/factory/v1/factory.proto"),
-    "contracts/liquidity/escrow/schema/escrow.json":
-        ("euclid.liquidity.escrow.v1", "euclid/liquidity/escrow/v1/escrow.proto"),
-    "contracts/liquidity/lp_token/schema/lp_token.json":
-        ("euclid.liquidity.lp_token.v1", "euclid/liquidity/lp_token/v1/lp_token.proto"),
-    "contracts/common/cw-multicall/schema/cw-multicall.json":
-        ("euclid.common.multicall.v1", "euclid/common/multicall/v1/multicall.proto"),
-    "contracts/common/euclid-relayer/schema/euclid-relayer.json":
-        ("euclid.common.relayer.v1", "euclid/common/relayer/v1/relayer.proto"),
-    "contracts/forwarding/astroport-forwarding/schema/astroport-forwarding.json":
-        ("euclid.forwarding.astroport.v1", "euclid/forwarding/astroport/v1/astroport.proto"),
-    "contracts/forwarding/osmosis-forwarding/schema/osmosis-forwarding.json":
-        ("euclid.forwarding.osmosis.v1", "euclid/forwarding/osmosis/v1/osmosis.proto"),
-    "contracts/hub_utilities/claimer/schema/claimer.json":
-        ("euclid.hub_utilities.claimer.v1", "euclid/hub_utilities/claimer/v1/claimer.proto"),
-    "contracts/hub_utilities/orderbook_deposits/schema/orderbook_deposits.json":
-        ("euclid.hub_utilities.orderbook_deposits.v1",
-         "euclid/hub_utilities/orderbook_deposits/v1/orderbook_deposits.proto"),
-}
+
+def discover_contracts():
+    """Auto-discover contracts by scanning for schema JSON files.
+
+    Derives proto package and output path from the directory structure:
+      contracts/{category}/{name}/schema/{file}.json
+      -> euclid.{category}.{name}.v1 / euclid/{category}/{name}/v1/{name}.proto
+    """
+    contracts = {}
+    for schema_rs in sorted(ROOT.glob("contracts/*/*/src/bin/schema.rs")):
+        contract_dir = schema_rs.parent.parent.parent
+        schema_files = list(contract_dir.glob("schema/*.json"))
+        if not schema_files:
+            continue
+        schema_path = str(schema_files[0].relative_to(ROOT))
+        category = contract_dir.parent.name
+        name = contract_dir.name
+        # Normalize for proto (hyphens -> underscores)
+        proto_name = name.replace("-", "_")
+        pkg = f"euclid.{category}.{proto_name}.v1"
+        proto_path = f"euclid/{category}/{proto_name}/v1/{proto_name}.proto"
+        contracts[schema_path] = (pkg, proto_path)
+    return contracts
 
 TYPES_PACKAGE = "euclid.types.v1"
 TYPES_PROTO_PATH = "euclid/types/v1/types.proto"
@@ -72,17 +63,18 @@ def snake_to_pascal(name):
 
 
 def sanitize_type_name(name):
-    """Pagination_for_Uint128 -> PaginationForUint128"""
-    for old, new in [("_for_", "For"), ("_of_", "Of"), ("_and_", "And")]:
+    """Pagination_for_Uint128 -> PaginationForUint128
+
+    Replaces _for_, _of_, _and_ with PascalCase keywords, then capitalizes
+    any remaining underscore-separated segments. Also capitalizes the char
+    immediately after each keyword insertion to handle cases like
+    Tuple_of_uint128 -> TupleOfUint128 (not TupleOfuint128).
+    """
+    # Replace keyword separators and capitalize the following char
+    for old, new in [("_for_", "_For_"), ("_of_", "_Of_"), ("_and_", "_And_")]:
         name = name.replace(old, new)
-    result, cap = "", True
-    for ch in name:
-        if ch == "_":
-            cap = True
-        else:
-            result += ch.upper() if cap else ch
-            cap = False
-    return result
+    # Split on underscores and capitalize each segment
+    return "".join(seg[0].upper() + seg[1:] if seg else "" for seg in name.split("_"))
 
 
 def enum_prefix(pascal_name):
@@ -418,9 +410,9 @@ def generate_types(shared, all_defs):
     return TYPES_PROTO_PATH, pf.render()
 
 
-def generate_contract(path, schema, shared):
+def generate_contract(path, schema, shared, contracts):
     """Generate a single contract's proto file."""
-    pkg, proto_path = CONTRACTS[path]
+    pkg, proto_path = contracts[path]
     pf = ProtoFile(pkg)
     defs = merge_defs(schema)
 
@@ -482,8 +474,16 @@ def generate_contract(path, schema, shared):
 def main():
     dry_run = "--dry-run" in sys.argv
 
+    contracts = discover_contracts()
+    if not contracts:
+        print("No contract schemas found. Generate them first:")
+        print('  for d in contracts/*/*/; do [ -f "$d/src/bin/schema.rs" ] && (cd "$d" && cargo run --bin schema); done')
+        sys.exit(1)
+
+    print(f"Discovered {len(contracts)} contracts")
+
     schemas = {}
-    for sp in CONTRACTS:
+    for sp in contracts:
         with open(ROOT / sp) as f:
             schemas[sp] = json.load(f)
 
@@ -501,8 +501,8 @@ def main():
     outputs.append((tp, tc))
 
     # Per-contract
-    for sp in CONTRACTS:
-        cp, cc = generate_contract(sp, schemas[sp], shared)
+    for sp in contracts:
+        cp, cc = generate_contract(sp, schemas[sp], shared, contracts)
         outputs.append((cp, cc))
 
     # buf configuration
