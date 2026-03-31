@@ -458,8 +458,7 @@ pub fn execute_normalize_balance_keys(
         let lowercase_address = address.to_lowercase();
         if lowercase_address != address {
             BALANCES.remove(deps.storage, key);
-            let normalized_key: SerializedBalanceKey =
-                (chain_uid, lowercase_address, token_id);
+            let normalized_key: SerializedBalanceKey = (chain_uid, lowercase_address, token_id);
             let existing = BALANCES
                 .may_load(deps.storage, normalized_key.clone())?
                 .unwrap_or(Uint128::zero());
@@ -483,8 +482,7 @@ pub fn execute_normalize_balance_keys(
         let lowercase_address = address.to_lowercase();
         if lowercase_address != address {
             ALLOWANCES.remove(deps.storage, key);
-            let normalized_key: SerializedBalanceKey =
-                (chain_uid, lowercase_address, token_id);
+            let normalized_key: SerializedBalanceKey = (chain_uid, lowercase_address, token_id);
             if !ALLOWANCES.has(deps.storage, normalized_key.clone()) {
                 ALLOWANCES.save(deps.storage, normalized_key, &allowance)?;
             }

@@ -464,7 +464,12 @@ mod tests {
             let router = deps.api.addr_make("router");
             let admin = EuclidAdmin::default(router.clone());
             STATE
-                .save(&mut deps.storage, &State { router: router.clone() })
+                .save(
+                    &mut deps.storage,
+                    &State {
+                        router: router.clone(),
+                    },
+                )
                 .unwrap();
             ADMIN.save(&mut deps.storage, &admin).unwrap();
             router
@@ -551,14 +556,10 @@ mod tests {
             let env = mock_env();
             let router = setup_with_state(&mut deps);
 
-            let owner = CrossChainUser::new(
-                ChainUid::vsl_chain_uid().unwrap(),
-                "owner".to_string(),
-            );
-            let mixed_case_spender = CrossChainUser::new(
-                ChainUid::vsl_chain_uid().unwrap(),
-                "Spender".to_string(),
-            );
+            let owner =
+                CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "owner".to_string());
+            let mixed_case_spender =
+                CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "Spender".to_string());
 
             let approve_msg = ExecuteMsg::Approve(ExecuteApprove {
                 amount: Uint128::new(10),
@@ -671,8 +672,7 @@ mod tests {
             let chain = ChainUid::create("cosmos".to_string()).unwrap();
             let key1: (ChainUid, String, String) =
                 (chain.clone(), "AAAA".to_string(), "eucl".to_string());
-            let key2: (ChainUid, String, String) =
-                (chain, "BBBB".to_string(), "eucl".to_string());
+            let key2: (ChainUid, String, String) = (chain, "BBBB".to_string(), "eucl".to_string());
 
             BALANCES
                 .save(&mut deps.storage, key1.clone(), &Uint128::new(10))
