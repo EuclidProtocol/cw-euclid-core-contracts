@@ -145,6 +145,7 @@ pub fn execute_meta_transaction(
         meta_transaction.data.signer_chain_uid.clone(),
         meta_transaction.data.signer_address.clone(),
     );
+    verified_sender.validate()?;
 
     for call_data in meta_transaction.data.call_data {
         let meta_receive = MetaReceive {

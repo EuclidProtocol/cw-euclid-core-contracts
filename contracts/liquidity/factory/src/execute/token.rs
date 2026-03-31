@@ -201,6 +201,7 @@ pub fn execute_deposit_token(
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    sender.validate()?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
     let state = STATE.load(deps.storage)?;
     ensure!(

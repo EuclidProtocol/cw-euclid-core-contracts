@@ -28,6 +28,7 @@ pub fn execute_mint(
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+    msg.balance_key.cross_chain_user.validate()?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
@@ -67,6 +68,7 @@ pub fn execute_burn(
 
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+    msg.balance_key.cross_chain_user.validate()?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
     let old_balance =
@@ -118,8 +120,11 @@ pub fn execute_transfer(
     } else {
         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
     };
+    sender.validate()?;
+    transfer_msg.to.validate()?;
 
     let mut response = if let Some(from) = transfer_msg.from {
+        from.validate()?;
         let attributes = _deduct_allowance(
             deps,
             &sender,
@@ -335,6 +340,8 @@ pub fn execute_approve(
     } else {
         CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string())
     };
+    spender.validate()?;
+    owner.validate()?;
 
     // Ensure that spender and owner are not the same
     ensure!(spender != owner, ContractError::SameAddress {});
@@ -421,4 +428,71 @@ pub fn execute_remove_zero_state_values(
     }
 
     Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
+}
+
+pub fn execute_normalize_balance_keys(
+    deps: DepsMut,
+    info: MessageInfo,
+    start_after: Option<SerializedBalanceKey>,
+    limit: Option<u32>,
+) -> Result<Response, ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    ensure!(
+        admin.general_admin == info.sender,
+        ContractError::Unauthorized {}
+    );
+
+    let limit = limit.unwrap_or(100) as usize;
+    let start = start_after.map(Bound::exclusive);
+    let mut normalized_count: u32 = 0;
+
+    // Normalize BALANCES
+    let balance_entries: Vec<(SerializedBalanceKey, Uint128)> = BALANCES
+        .range(deps.storage, start.clone(), None, Order::Ascending)
+        .take(limit)
+        .filter_map(|result| result.ok())
+        .collect();
+
+    for (key, balance) in balance_entries {
+        let (chain_uid, address, token_id) = key.clone();
+        let lowercase_address = address.to_lowercase();
+        if lowercase_address != address {
+            BALANCES.remove(deps.storage, key);
+            let normalized_key: SerializedBalanceKey =
+                (chain_uid, lowercase_address, token_id);
+            let existing = BALANCES
+                .may_load(deps.storage, normalized_key.clone())?
+                .unwrap_or(Uint128::zero());
+            let combined = existing.checked_add(balance)?;
+            if !combined.is_zero() {
+                BALANCES.save(deps.storage, normalized_key, &combined)?;
+            }
+            normalized_count += 1;
+        }
+    }
+
+    // Normalize ALLOWANCES
+    let allowance_entries: Vec<(SerializedBalanceKey, _)> = ALLOWANCES
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .filter_map(|result| result.ok())
+        .collect();
+
+    for (key, allowance) in allowance_entries {
+        let (chain_uid, address, token_id) = key.clone();
+        let lowercase_address = address.to_lowercase();
+        if lowercase_address != address {
+            ALLOWANCES.remove(deps.storage, key);
+            let normalized_key: SerializedBalanceKey =
+                (chain_uid, lowercase_address, token_id);
+            if !ALLOWANCES.has(deps.storage, normalized_key.clone()) {
+                ALLOWANCES.save(deps.storage, normalized_key, &allowance)?;
+            }
+            normalized_count += 1;
+        }
+    }
+
+    Ok(Response::new()
+        .add_attribute("action", "execute_normalize_balance_keys")
+        .add_attribute("normalized_count", normalized_count.to_string()))
 }

@@ -31,6 +31,7 @@ pub fn execute_swap_request(
     cross_chain_config: CrossChainConfig,
     partner_fee: Option<PartnerFee>,
 ) -> Result<Response, ContractError> {
+    sender.validate()?;
     // Validate asset in
     asset_in.token_type.validate(&deps.as_ref())?;
     asset_in.token.validate()?;
