@@ -322,6 +322,11 @@ pub fn execute_transfer_voucher(
         recipient.validate()?;
     }
 
+    // Validate optional from address before sending cross-chain
+    if let Some(ref from) = from {
+        from.validate()?;
+    }
+
     let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
     let tx_id = generate_tx(deps, &env, &sender)?;
 

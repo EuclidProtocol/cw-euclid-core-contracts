@@ -605,7 +605,7 @@ mod tests {
             assert_eq!(
                 res.attributes
                     .iter()
-                    .find(|a| a.key == "normalized_count")
+                    .find(|a| a.key == "normalized_balances")
                     .unwrap()
                     .value,
                 "1"
@@ -694,7 +694,7 @@ mod tests {
             assert_eq!(
                 res.attributes
                     .iter()
-                    .find(|a| a.key == "normalized_count")
+                    .find(|a| a.key == "normalized_balances")
                     .unwrap()
                     .value,
                 "1"
@@ -717,7 +717,7 @@ mod tests {
             assert_eq!(
                 res.attributes
                     .iter()
-                    .find(|a| a.key == "normalized_count")
+                    .find(|a| a.key == "normalized_balances")
                     .unwrap()
                     .value,
                 "1"
@@ -770,11 +770,75 @@ mod tests {
             assert_eq!(
                 res.attributes
                     .iter()
-                    .find(|a| a.key == "normalized_count")
+                    .find(|a| a.key == "normalized_balances")
                     .unwrap()
                     .value,
                 "0"
             );
+        }
+
+        #[test]
+        fn test_normalize_allowance_keeps_max_on_collision() {
+            let mut deps = mock_dependencies();
+            let _router = setup_with_state(&mut deps);
+            let env = mock_env();
+            let admin = ADMIN.load(&deps.storage).unwrap();
+
+            let chain = ChainUid::create("cosmos".to_string()).unwrap();
+            let spender =
+                CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "spender".to_string());
+
+            let mixed_key: (ChainUid, String, String) =
+                (chain.clone(), "Owner".to_string(), "eucl".to_string());
+            let lowercase_key: (ChainUid, String, String) =
+                (chain, "owner".to_string(), "eucl".to_string());
+
+            // Mixed-case entry has higher allowance
+            ALLOWANCES
+                .save(
+                    &mut deps.storage,
+                    mixed_key.clone(),
+                    &Allowance {
+                        amount: Uint128::new(200),
+                        spender: spender.clone(),
+                    },
+                )
+                .unwrap();
+            // Lowercase entry has lower allowance
+            ALLOWANCES
+                .save(
+                    &mut deps.storage,
+                    lowercase_key.clone(),
+                    &Allowance {
+                        amount: Uint128::new(50),
+                        spender: spender.clone(),
+                    },
+                )
+                .unwrap();
+
+            let msg = ExecuteMsg::NormalizeBalanceKeys {
+                start_after: None,
+                limit: None,
+            };
+            let info = MessageInfo {
+                sender: admin.general_admin,
+                funds: vec![],
+            };
+            let res = execute(deps.as_mut(), env, info, msg).unwrap();
+            assert_eq!(
+                res.attributes
+                    .iter()
+                    .find(|a| a.key == "normalized_allowances")
+                    .unwrap()
+                    .value,
+                "1"
+            );
+
+            // Mixed-case removed
+            assert!(ALLOWANCES.load(&deps.storage, mixed_key).is_err());
+            // Keeps max(200, 50) = 200
+            let result = ALLOWANCES.load(&deps.storage, lowercase_key).unwrap();
+            assert_eq!(result.amount, Uint128::new(200));
         }
     }
 }

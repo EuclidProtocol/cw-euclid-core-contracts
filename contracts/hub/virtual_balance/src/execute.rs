@@ -435,7 +435,10 @@ pub fn execute_remove_zero_state_values(
 }
 
 /// Migrates mixed-case balance/allowance keys to lowercase.
-/// Call repeatedly with pagination until normalized_count returns 0.
+/// Call repeatedly with `start_after: None` until both
+/// `normalized_balances` and `normalized_allowances` return "0".
+/// Note: the `start_after` cursor applies independently to both BALANCES
+/// and ALLOWANCES ranges, so for simplest usage pass `None` each call.
 pub fn execute_normalize_balance_keys(
     deps: DepsMut,
     info: MessageInfo,
@@ -451,14 +454,22 @@ pub fn execute_normalize_balance_keys(
     // Default to 100 to stay within gas limits on production chains
     let limit = limit.unwrap_or(100) as usize;
     let start = start_after.map(Bound::exclusive);
-    let mut normalized_count: u32 = 0;
+    let mut normalized_balances: u32 = 0;
+    let mut normalized_allowances: u32 = 0;
+    let mut skipped_errors: u32 = 0;
 
-    // Collect first to avoid mutating storage while iterating
-    let balance_entries: Vec<(SerializedBalanceKey, Uint128)> = BALANCES
+    // Collect first to avoid mutating storage while iterating.
+    // Deserialization errors are counted (skipped_errors) rather than silently dropped.
+    let mut balance_entries: Vec<(SerializedBalanceKey, Uint128)> = Vec::new();
+    for result in BALANCES
         .range(deps.storage, start.clone(), None, Order::Ascending)
         .take(limit)
-        .filter_map(|result| result.ok())
-        .collect();
+    {
+        match result {
+            Ok(entry) => balance_entries.push(entry),
+            Err(_) => skipped_errors += 1,
+        }
+    }
 
     for (key, balance) in balance_entries {
         let (chain_uid, address, token_id) = key.clone();
@@ -472,16 +483,21 @@ pub fn execute_normalize_balance_keys(
                 let combined = existing.unwrap_or(Uint128::zero()).checked_add(balance)?;
                 Ok::<_, ContractError>(combined)
             })?;
-            normalized_count += 1;
+            normalized_balances += 1;
         }
     }
 
     // Collect first to avoid mutating storage while iterating
-    let allowance_entries: Vec<(SerializedBalanceKey, _)> = ALLOWANCES
+    let mut allowance_entries: Vec<(SerializedBalanceKey, _)> = Vec::new();
+    for result in ALLOWANCES
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .filter_map(|result| result.ok())
-        .collect();
+    {
+        match result {
+            Ok(entry) => allowance_entries.push(entry),
+            Err(_) => skipped_errors += 1,
+        }
+    }
 
     for (key, allowance) in allowance_entries {
         let (chain_uid, address, token_id) = key.clone();
@@ -489,15 +505,23 @@ pub fn execute_normalize_balance_keys(
         if lowercase_address != address {
             ALLOWANCES.remove(deps.storage, key);
             let normalized_key: SerializedBalanceKey = (chain_uid, lowercase_address, token_id);
-            // Only write if no lowercase entry exists yet (avoid overwriting a valid allowance)
-            if !ALLOWANCES.has(deps.storage, normalized_key.clone()) {
+            // On collision, keep the higher allowance to avoid silently dropping approved value
+            if let Some(existing) = ALLOWANCES.may_load(deps.storage, normalized_key.clone())? {
+                let merged = Allowance {
+                    amount: existing.amount.max(allowance.amount),
+                    spender: existing.spender,
+                };
+                ALLOWANCES.save(deps.storage, normalized_key, &merged)?;
+            } else {
                 ALLOWANCES.save(deps.storage, normalized_key, &allowance)?;
             }
-            normalized_count += 1;
+            normalized_allowances += 1;
         }
     }
 
     Ok(Response::new()
         .add_attribute("action", "execute_normalize_balance_keys")
-        .add_attribute("normalized_count", normalized_count.to_string()))
+        .add_attribute("normalized_balances", normalized_balances.to_string())
+        .add_attribute("normalized_allowances", normalized_allowances.to_string())
+        .add_attribute("skipped_errors", skipped_errors.to_string()))
 }

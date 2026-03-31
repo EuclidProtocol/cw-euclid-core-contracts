@@ -34,6 +34,8 @@ pub fn reusable_internal_call(
         ContractError::DeregisteredChain {}
     );
     let tx_id = msg.get_tx_id();
+    // Reject mixed-case or empty addresses from IBC packet data
+    msg.get_sender().validate()?;
 
     let mut response = match msg {
         RouterCrossChainExecuteMsg::RegisterDenom {
