@@ -26,16 +26,8 @@ jobs:
         with:
           cache: true
 
-      - name: Generate JSON schemas
-        run: |
-          for d in contracts/*/*/; do
-            if [ -f "$d/src/bin/schema.rs" ]; then
-              (cd "$d" && cargo run --bin schema)
-            fi
-          done
-
-      - name: Convert schemas to proto
-        run: python3 scripts/schema_to_proto.py
+      - name: Generate protos
+        run: make proto
 
       - uses: bufbuild/buf-setup-action@v1
 
