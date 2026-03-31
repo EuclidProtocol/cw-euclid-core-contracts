@@ -53,11 +53,19 @@ pub(crate) mod tests {
         MockQuerier,
     >;
 
+    // Fixture address constants — any test that needs to reference one of these
+    // addresses by value should use these constants so that a change to init()
+    // is caught at compile time rather than silently breaking auth assertions.
+    pub const TEST_RELAYER: &str = "relayer";
+    pub const TEST_VIRTUAL_BALANCE: &str = "virtual_balance";
+    pub const TEST_RELEASE_FEE_RECIPIENT: &str = "release_fee_recipient";
+    pub const TEST_DEFAULT_FEE_RECIPIENT: &str = "default_fee_recipient";
+
     fn init(deps: DepsMut, info: MessageInfo) -> Response {
         let msg = InstantiateMsg {
-            relayer_contract: Addr::unchecked("relayer"),
-            release_fee_recipient: Addr::unchecked("release_fee_recipient"),
-            default_fee_recipient: Addr::unchecked("default_fee_recipient"),
+            relayer_contract: Addr::unchecked(TEST_RELAYER),
+            release_fee_recipient: Addr::unchecked(TEST_RELEASE_FEE_RECIPIENT),
+            default_fee_recipient: Addr::unchecked(TEST_DEFAULT_FEE_RECIPIENT),
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
@@ -88,7 +96,7 @@ pub(crate) mod tests {
         let token = Token::create("usdc".to_string()).unwrap();
 
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+            .save(deps.as_mut().storage, &Addr::unchecked(TEST_VIRTUAL_BALANCE))
             .unwrap();
         CHAIN_UID_TO_CHAIN
             .save(
@@ -143,7 +151,7 @@ pub(crate) mod tests {
     /// Helper: seed VIRTUAL_BALANCE_CONTRACT with address "virtual_balance".
     pub fn seed_virtual_balance(deps: &mut MockDeps) {
         VIRTUAL_BALANCE_CONTRACT
-            .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+            .save(deps.as_mut().storage, &Addr::unchecked(TEST_VIRTUAL_BALANCE))
             .unwrap();
     }
 
@@ -217,14 +225,14 @@ pub(crate) mod tests {
         assert_eq!(res.messages.len(), 1);
 
         let relayer = RELAYER_CONTRACT.load(deps.as_ref().storage).unwrap();
-        assert_eq!(relayer, Addr::unchecked("relayer"));
+        assert_eq!(relayer, Addr::unchecked(TEST_RELAYER));
 
         let fee_state = FEE_STATE.load(deps.as_ref().storage).unwrap();
         assert_eq!(
             fee_state,
             FeeState {
-                release_fee_recipient: Addr::unchecked("release_fee_recipient"),
-                default_fee_recipient: Addr::unchecked("default_fee_recipient"),
+                release_fee_recipient: Addr::unchecked(TEST_RELEASE_FEE_RECIPIENT),
+                default_fee_recipient: Addr::unchecked(TEST_DEFAULT_FEE_RECIPIENT),
             }
         );
 
@@ -1013,7 +1021,7 @@ pub(crate) mod tests {
         let res = execute(
             initialized.as_mut(),
             env.clone(),
-            message_info(&Addr::unchecked("relayer"), &[]),
+            message_info(&Addr::unchecked(TEST_RELAYER), &[]),
             ExecuteMsg::ReceivePacket {
                 source_port: source_port.to_string(),
                 destination_port: format!("vsl.{}", env.contract.address),
@@ -1031,7 +1039,7 @@ pub(crate) mod tests {
         let res = execute(
             initialized.as_mut(),
             env.clone(),
-            message_info(&Addr::unchecked("relayer"), &[]),
+            message_info(&Addr::unchecked(TEST_RELAYER), &[]),
             ExecuteMsg::ReceivePacket {
                 source_port: "unknownchain.factory1".to_string(),
                 destination_port: format!("vsl.{}", env.contract.address),
@@ -1052,7 +1060,7 @@ pub(crate) mod tests {
         let res = execute(
             initialized.as_mut(),
             mock_env(),
-            message_info(&Addr::unchecked("relayer"), &[]),
+            message_info(&Addr::unchecked(TEST_RELAYER), &[]),
             ExecuteMsg::AcknowledgePacket {
                 source_port: "chain1.factory1".to_string(),
                 destination_port: "wrong.something".to_string(),

@@ -335,7 +335,10 @@ mod query_tests {
     use crate::{
         contract::execute,
         state::TOKEN_DENOMS,
-        tests::tests::{initialized, seed_chain1_native, seed_virtual_balance, MockDeps},
+        tests::tests::{
+            initialized, seed_chain1_native, seed_virtual_balance, MockDeps, TEST_RELAYER,
+            TEST_VIRTUAL_BALANCE,
+        },
     };
     use euclid::{
         chain::ChainUid,
@@ -470,7 +473,7 @@ mod query_tests {
         assert_eq!(parsed.admins.general_admin, creator);
         assert_eq!(
             parsed.virtual_balance_address,
-            Addr::unchecked("virtual_balance")
+            Addr::unchecked(TEST_VIRTUAL_BALANCE)
         );
     }
 
@@ -687,7 +690,7 @@ mod query_tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(parsed.relayer_contract, Addr::unchecked("relayer"));
+        assert_eq!(parsed.relayer_contract, Addr::unchecked(TEST_RELAYER));
     }
 
     #[rstest]
