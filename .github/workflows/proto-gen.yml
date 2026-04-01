@@ -56,9 +56,13 @@ jobs:
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
+      - name: Set short SHA
+        id: vars
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Push to BSR
         if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development' || github.event_name == 'workflow_dispatch')
-        run: buf push proto --label "${{ github.sha }}" --label "${{ github.ref_name }}"
+        run: buf push proto --label "${{ github.sha }}" --label "${{ steps.vars.outputs.short_sha }}" --label "${{ github.ref_name }}"
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
@@ -70,7 +74,12 @@ jobs:
           token: ${{ secrets.CROSS_REPO_PAT }}
           repository: EuclidProtocol/euclid-frontend-monorepo
           event-type: contract-types-updated
-          client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}"}'
+          client-payload: >-
+            {
+              "sha": "${{ github.sha }}",
+              "short_sha": "${{ steps.vars.outputs.short_sha }}",
+              "branch": "${{ github.ref_name }}"
+            }
 
       - name: Trigger backend codegen
         if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development')
@@ -79,4 +88,9 @@ jobs:
           token: ${{ secrets.CROSS_REPO_PAT }}
           repository: EuclidProtocol/euclid_api
           event-type: contract-types-updated
-          client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}"}'
+          client-payload: >-
+            {
+              "sha": "${{ github.sha }}",
+              "short_sha": "${{ steps.vars.outputs.short_sha }}",
+              "branch": "${{ github.ref_name }}"
+            }
