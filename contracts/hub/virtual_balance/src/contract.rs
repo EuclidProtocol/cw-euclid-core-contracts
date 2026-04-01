@@ -66,8 +66,8 @@ pub fn execute(
         ExecuteMsg::RemoveZeroStateValues { start_after, limit } => {
             execute_remove_zero_state_values(deps, info, start_after, limit)
         }
-        ExecuteMsg::NormalizeBalanceKeys { start_after, limit } => {
-            execute_normalize_balance_keys(deps, info, start_after, limit)
+        ExecuteMsg::NormalizeBalanceKeys { skip, limit } => {
+            execute_normalize_balance_keys(deps, info, skip, limit)
         }
     }
 }
