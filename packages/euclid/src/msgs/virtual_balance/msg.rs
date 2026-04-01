@@ -38,6 +38,10 @@ pub enum ExecuteMsg {
         start_after: Option<SerializedBalanceKey>,
         limit: Option<u32>,
     },
+    NormalizeBalanceKeys {
+        start_after: Option<SerializedBalanceKey>,
+        limit: Option<u32>,
+    },
     Approve(ExecuteApprove),
 }
 

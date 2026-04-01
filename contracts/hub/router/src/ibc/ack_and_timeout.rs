@@ -43,6 +43,9 @@ pub fn reusable_internal_ack_call(
         } => {
             let res = from_json(ack)?;
             let recipient = CrossChainUser::new(chain_uid, recipient.to_string());
+            // Reject mixed-case or empty addresses from IBC packet data
+            sender.validate()?;
+            recipient.validate()?;
             ibc_ack_release_escrow(deps, env, sender, amount, token, res, recipient, tx_id)?
         }
     };
