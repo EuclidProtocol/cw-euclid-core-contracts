@@ -594,7 +594,7 @@ mod tests {
                 .unwrap();
 
             let msg = ExecuteMsg::NormalizeBalanceKeys {
-                start_after: None,
+                skip: None,
                 limit: None,
             };
             let info = MessageInfo {
@@ -646,7 +646,7 @@ mod tests {
                 .unwrap();
 
             let msg = ExecuteMsg::NormalizeBalanceKeys {
-                start_after: None,
+                skip: None,
                 limit: None,
             };
             let info = MessageInfo {
@@ -683,7 +683,7 @@ mod tests {
 
             // Process only 1 entry
             let msg = ExecuteMsg::NormalizeBalanceKeys {
-                start_after: None,
+                skip: None,
                 limit: Some(1),
             };
             let info = MessageInfo {
@@ -704,9 +704,9 @@ mod tests {
             assert!(BALANCES.load(&deps.storage, key1.clone()).is_err());
             assert!(BALANCES.load(&deps.storage, key2.clone()).is_ok());
 
-            // Process remaining with start_after
+            // Process remaining entries
             let msg = ExecuteMsg::NormalizeBalanceKeys {
-                start_after: Some(key1),
+                skip: None,
                 limit: Some(10),
             };
             let info = MessageInfo {
@@ -733,7 +733,7 @@ mod tests {
 
             let not_admin = deps.api.addr_make("not_admin");
             let msg = ExecuteMsg::NormalizeBalanceKeys {
-                start_after: None,
+                skip: None,
                 limit: None,
             };
             let info = MessageInfo {
@@ -759,7 +759,7 @@ mod tests {
                 .unwrap();
 
             let msg = ExecuteMsg::NormalizeBalanceKeys {
-                start_after: None,
+                skip: None,
                 limit: None,
             };
             let info = MessageInfo {
@@ -817,7 +817,7 @@ mod tests {
                 .unwrap();
 
             let msg = ExecuteMsg::NormalizeBalanceKeys {
-                start_after: None,
+                skip: None,
                 limit: None,
             };
             let info = MessageInfo {
