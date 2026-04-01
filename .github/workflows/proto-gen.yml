@@ -43,8 +43,8 @@ jobs:
       - name: Tag BSR commit with branch label
         run: |
           BRANCH="${GITHUB_REF_NAME}"
-          COMMIT=$(buf registry commit list buf.build/euclidprotocol/contracts --format json --page-size 1 | jq -r '.commits[0].id')
-          buf registry label create "buf.build/euclidprotocol/contracts:${BRANCH}" --commit "${COMMIT}" --force
+          COMMIT=$(buf registry module commit list buf.build/euclidprotocol/contracts --format json --page-size 1 | jq -r '.commits[0].id')
+          buf registry module commit add-label "buf.build/euclidprotocol/contracts:${COMMIT}" --label "${BRANCH}"
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
