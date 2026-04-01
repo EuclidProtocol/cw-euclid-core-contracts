@@ -39,7 +39,7 @@ pub enum ExecuteMsg {
         limit: Option<u32>,
     },
     NormalizeBalanceKeys {
-        start_after: Option<SerializedBalanceKey>,
+        skip: Option<u32>,
         limit: Option<u32>,
     },
     Approve(ExecuteApprove),
