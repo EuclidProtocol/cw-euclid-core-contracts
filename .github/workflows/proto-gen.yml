@@ -63,7 +63,7 @@ jobs:
 
       # Notify consumer repos with branch info
       - name: Trigger frontend codegen
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development')
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.CROSS_REPO_PAT }}
@@ -72,7 +72,7 @@ jobs:
           client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}"}'
 
       - name: Trigger backend codegen
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development')
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.CROSS_REPO_PAT }}
