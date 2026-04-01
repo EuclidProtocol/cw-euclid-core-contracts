@@ -62,7 +62,7 @@ jobs:
 
       - name: Push to BSR
         if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development' || github.event_name == 'workflow_dispatch')
-        run: buf push proto --label "${{ github.sha }}" --label "${{ github.ref_name }}"
+        run: buf push proto --label "${{ github.sha }}" --label "${{ steps.vars.outputs.short_sha }}" --label "${{ github.ref_name }}"
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
