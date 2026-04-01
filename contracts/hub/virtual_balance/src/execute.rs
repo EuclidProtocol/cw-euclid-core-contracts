@@ -442,7 +442,7 @@ pub fn execute_remove_zero_state_values(
 pub fn execute_normalize_balance_keys(
     deps: DepsMut,
     info: MessageInfo,
-    start_after: Option<SerializedBalanceKey>,
+    skip: Option<u32>,
     limit: Option<u32>,
 ) -> Result<Response, ContractError> {
     let admin = ADMIN.load(deps.storage)?;
@@ -453,7 +453,7 @@ pub fn execute_normalize_balance_keys(
 
     // Default to 100 to stay within gas limits on production chains
     let limit = limit.unwrap_or(100) as usize;
-    let start = start_after.map(Bound::exclusive);
+    let skip = skip.unwrap_or(0) as usize;
     let mut normalized_balances: u32 = 0;
     let mut normalized_allowances: u32 = 0;
     let mut skipped_errors: u32 = 0;
@@ -462,7 +462,8 @@ pub fn execute_normalize_balance_keys(
     // Deserialization errors are counted (skipped_errors) rather than silently dropped.
     let mut balance_entries: Vec<(SerializedBalanceKey, Uint128)> = Vec::new();
     for result in BALANCES
-        .range(deps.storage, start.clone(), None, Order::Ascending)
+        .range(deps.storage, None, None, Order::Ascending)
+        .skip(skip)
         .take(limit)
     {
         match result {
@@ -490,7 +491,8 @@ pub fn execute_normalize_balance_keys(
     // Collect first to avoid mutating storage while iterating
     let mut allowance_entries: Vec<(SerializedBalanceKey, _)> = Vec::new();
     for result in ALLOWANCES
-        .range(deps.storage, start, None, Order::Ascending)
+        .range(deps.storage, None, None, Order::Ascending)
+        .skip(skip)
         .take(limit)
     {
         match result {
