@@ -35,16 +35,7 @@ jobs:
         run: cd proto && buf lint
 
       - name: Push to BSR
-        uses: bufbuild/buf-push-action@v1
-        with:
-          input: proto
-          buf_token: ${{ secrets.BUF_TOKEN }}
-
-      - name: Tag BSR commit with branch label
-        run: |
-          BRANCH="${GITHUB_REF_NAME}"
-          COMMIT=$(buf registry module commit list buf.build/euclidprotocol/contracts --format json --page-size 1 | jq -r '.commits[0].commit')
-          buf registry module commit add-label "buf.build/euclidprotocol/contracts:${COMMIT}" --label "${BRANCH}"
+        run: buf push proto --label "${{ github.sha }}" --label "${{ github.ref_name }}"
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
