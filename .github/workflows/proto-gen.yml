@@ -34,22 +34,37 @@ jobs:
       - name: Lint protos
         run: cd proto && buf lint
 
-      - name: Push to BSR
-        uses: bufbuild/buf-push-action@v1
-        with:
-          input: proto
-          buf_token: ${{ secrets.BUF_TOKEN }}
-
-      - name: Tag BSR commit with branch label
+      - name: Check for proto changes
+        id: diff
+        if: github.ref_name == 'main' || github.ref_name == 'development' || github.event_name == 'workflow_dispatch'
         run: |
           BRANCH="${GITHUB_REF_NAME}"
-          COMMIT=$(buf registry commit list buf.build/euclidprotocol/contracts --format json --page-size 1 | jq -r '.commits[0].id')
-          buf registry label create "buf.build/euclidprotocol/contracts:${BRANCH}" --commit "${COMMIT}" --force
+          if buf export "buf.build/euclidprotocol/contracts:${BRANCH}" -o /tmp/bsr-current 2>/dev/null; then
+            LOCAL_HASH=$(find proto -name '*.proto' -print0 | sort -z | xargs -0 sha256sum | cut -d' ' -f1 | sha256sum | cut -d' ' -f1)
+            REMOTE_HASH=$(find /tmp/bsr-current -name '*.proto' -print0 | sort -z | xargs -0 sha256sum | cut -d' ' -f1 | sha256sum | cut -d' ' -f1)
+            if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "Proto schemas unchanged, skipping BSR push"
+            else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              echo "Proto schemas changed, will push to BSR"
+            fi
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "No existing BSR state for branch ${BRANCH}, will push"
+          fi
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
-      # Notify consumer repos with branch info
+      - name: Push to BSR
+        if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development' || github.event_name == 'workflow_dispatch')
+        run: buf push proto --label "${{ github.sha }}" --label "${{ github.ref_name }}"
+        env:
+          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
+
+      # Notify consumer repos on main/development only
       - name: Trigger frontend codegen
+        if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development')
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.CROSS_REPO_PAT }}
@@ -58,6 +73,7 @@ jobs:
           client-payload: '{"sha": "${{ github.sha }}", "branch": "${{ github.ref_name }}"}'
 
       - name: Trigger backend codegen
+        if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development')
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.CROSS_REPO_PAT }}
