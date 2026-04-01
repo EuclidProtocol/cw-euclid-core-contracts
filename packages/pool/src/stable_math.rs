@@ -38,7 +38,7 @@ pub fn compute_stable_swap(
     }
 
     // Convert Uint128 inputs to Decimal256 for internal math
-    let offer_asset_dec = Decimal256::checked_from_integer(offer_amount)?;
+    let offer_amount_dec = Decimal256::checked_from_integer(offer_amount)?;
     let offer_pool_dec = Decimal256::checked_from_integer(offer_pool)?;
     let ask_pool_dec = Decimal256::checked_from_integer(ask_pool)?;
 
@@ -55,7 +55,7 @@ pub fn compute_stable_swap(
 
     // Calculate new pool amount after swap
     let new_offer_pool = offer_pool_dec
-        .checked_add(offer_asset_dec)
+        .checked_add(offer_amount_dec)
         .map_err(|e| ContractError::new(&e.to_string()))?;
     let new_ask_pool = calc_y(amp_factor, new_offer_pool, &xp, TOKEN_PRECISION)?;
 
@@ -68,7 +68,7 @@ pub fn compute_stable_swap(
         .checked_div(Uint128::new(10u128.pow(TOKEN_PRECISION as u32)))?;
 
     // Calculate offer amount for spread calculation
-    let offer_amount = offer_asset_dec.to_uint128_with_precision(0_u32)?;
+    let offer_amount = offer_amount_dec.to_uint128_with_precision(0_u32)?;
 
     // Calculate spread (difference between what user provides and receives)
     let spread_amount = offer_amount.abs_diff(return_amount);
