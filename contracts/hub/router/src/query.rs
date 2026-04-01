@@ -335,9 +335,12 @@ mod query_tests {
     use crate::{
         contract::execute,
         state::TOKEN_DENOMS,
-        tests::tests::{
-            initialized, seed_chain1_native, seed_virtual_balance, MockDeps, TEST_RELAYER,
-            TEST_VIRTUAL_BALANCE,
+        tests::{
+            fixtures::initialized,
+            tests::tests::{
+                seed_chain1_native, seed_virtual_balance, MockDeps, TEST_RELAYER,
+                TEST_VIRTUAL_BALANCE,
+            },
         },
     };
     use euclid::{
