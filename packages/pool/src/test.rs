@@ -270,7 +270,6 @@ mod tests {
         0u64,
         1000000000000000000u128
     )]
-
     // ask_pool > offer_pool: return_amount > offer_amount
     #[case(true, 5000u128, 10000u128, 100u64, 50u64, 1000u128)]
     #[case(false, 20000u128, 8000u128, 30u64, 20u64, 500u128)]
@@ -431,7 +430,6 @@ mod tests {
         1000u64,
         1000000000000000000u128
     )]
-
     // ask_pool > offer_pool: return_amount > offer_amount
     #[case(true, 5000u128, 10000u128, 100u64, 50u64, 1000u64, 1000u128)]
     #[case(false, 20000u128, 8000u128, 30u64, 20u64, 1000u64, 500u128)]
@@ -1093,7 +1091,9 @@ mod tests {
             assert!(
                 relative_diff < Decimal256::from_ratio(1u128, 1000u128),
                 "Invariant D should be preserved. D_before: {}, D_after: {}, relative_diff: {}",
-                d_before, d_after, relative_diff
+                d_before,
+                d_after,
+                relative_diff
             );
         }
 
@@ -1122,12 +1122,9 @@ mod tests {
         // CP swap also yields return > offer when ask_pool > offer_pool
         #[test]
         fn test_cp_swap_return_exceeds_offer_when_ask_pool_larger() {
-            let result = calculate_cp_swap(
-                Uint128::new(100),
-                Uint128::new(1000),
-                Uint128::new(5000),
-            )
-            .unwrap();
+            let result =
+                calculate_cp_swap(Uint128::new(100), Uint128::new(1000), Uint128::new(5000))
+                    .unwrap();
 
             assert!(
                 result.return_amount > Uint128::new(100),
