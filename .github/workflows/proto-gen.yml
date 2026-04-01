@@ -36,6 +36,7 @@ jobs:
 
       - name: Check for proto changes
         id: diff
+        if: github.ref_name == 'main' || github.ref_name == 'development' || github.event_name == 'workflow_dispatch'
         run: |
           BRANCH="${GITHUB_REF_NAME}"
           if buf export "buf.build/euclidprotocol/contracts:${BRANCH}" -o /tmp/bsr-current 2>/dev/null; then
@@ -56,12 +57,12 @@ jobs:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
       - name: Push to BSR
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development' || github.event_name == 'workflow_dispatch')
         run: buf push proto --label "${{ github.sha }}" --label "${{ github.ref_name }}"
         env:
           BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
-      # Notify consumer repos with branch info
+      # Notify consumer repos on main/development only
       - name: Trigger frontend codegen
         if: steps.diff.outputs.changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'development')
         uses: peter-evans/repository-dispatch@v3
