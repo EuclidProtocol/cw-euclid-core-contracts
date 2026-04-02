@@ -396,7 +396,7 @@ fn process_transfer_voucher_meta_transaction(
 }
 
 #[cfg(test)]
-mod base_tests {
+mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
         to_json_binary, Addr, Uint128,

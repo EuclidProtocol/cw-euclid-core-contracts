@@ -274,7 +274,7 @@ pub fn execute_native_receive_callback(
 }
 
 #[cfg(test)]
-mod relay_tests {
+mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
         Addr, Binary, Uint128,

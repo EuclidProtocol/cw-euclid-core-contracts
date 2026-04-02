@@ -339,7 +339,7 @@ pub fn _release_voucher(
 }
 
 #[cfg(test)]
-mod token_tests {
+mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
         Addr, Order, Uint128,
