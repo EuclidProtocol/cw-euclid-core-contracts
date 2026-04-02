@@ -414,7 +414,7 @@ pub fn on_cross_chain_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
 }
 
 #[cfg(test)]
-mod reply_tests {
+mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env, MockQuerier},

@@ -325,7 +325,7 @@ pub fn query_release_fees(
 }
 
 #[cfg(test)]
-mod query_tests {
+mod tests {
     use cosmwasm_std::{
         from_json,
         testing::{message_info, mock_env},
