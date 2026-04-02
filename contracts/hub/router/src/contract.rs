@@ -263,7 +263,7 @@ mod tests {
 
     use crate::{
         state::{FeeState, State, ADMIN, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE},
-        tests::tests::tests::{
+        testing::helpers::{
             init, TEST_DEFAULT_FEE_RECIPIENT, TEST_RELAYER, TEST_RELEASE_FEE_RECIPIENT,
         },
     };

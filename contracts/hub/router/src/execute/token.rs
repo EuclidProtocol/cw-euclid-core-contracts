@@ -357,9 +357,9 @@ mod tests {
     use crate::{
         contract::execute,
         state::{ESCROW_BALANCES, LOCKED_CHAINS, PENDING_RELEASE_VOUCHER, RELEASE_FEES},
-        tests::{
+        testing::{
             fixtures::{initialized, transfer_deps, voucher_deps},
-            tests::tests::{make_native_recipient, seed_virtual_balance, MockDeps},
+            helpers::{make_native_recipient, seed_virtual_balance, MockDeps},
         },
     };
     use euclid::msgs::router::ExecuteMsg;
@@ -384,7 +384,7 @@ mod tests {
 
         use crate::{
             state::TOKEN_DENOMS,
-            tests::tests::tests::{seed_chain1_native, seed_virtual_balance},
+            testing::helpers::{seed_chain1_native, seed_virtual_balance},
         };
 
         let creator = initialized.api.addr_make("creator");

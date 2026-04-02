@@ -245,7 +245,7 @@ mod tests {
     use crate::{
         reply::SWAP_REPLY_ID,
         state::{ESCROW_BALANCES, PENDING_SWAPS},
-        tests::tests::tests::{call_reusable, make_swap_deps_with_mock_querier},
+        testing::helpers::{call_reusable, make_swap_deps_with_mock_querier},
     };
 
     fn make_swap_msg(chain_uid: &ChainUid, tx_id: &str) -> RouterCrossChainExecuteMsg {

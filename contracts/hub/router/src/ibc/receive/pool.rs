@@ -325,9 +325,9 @@ mod tests {
             VLP_POOL_REGISTER_REPLY_ID,
         },
         state::{ESCROW_BALANCES, PENDING_REMOVE_LIQUIDITY, TOKEN_DENOMS, VLPS},
-        tests::{
+        testing::{
             fixtures::initialized,
-            tests::tests::{
+            helpers::{
                 call_reusable, make_pool_pair, seed_virtual_balance, seed_vlp_aaa_bbb, MockDeps,
             },
         },

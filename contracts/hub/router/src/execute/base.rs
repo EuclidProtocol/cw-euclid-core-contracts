@@ -424,9 +424,9 @@ mod tests {
             ADMIN, FEE_STATE, LOCKED_CHAINS, META_TRANSACTION_CONTRACT, RELAYER_CONTRACT,
             RELEASE_FEES, STATE,
         },
-        tests::{
+        testing::{
             fixtures::initialized,
-            tests::tests::{seed_chain1_native, MockDeps},
+            helpers::{seed_chain1_native, MockDeps},
         },
     };
     use euclid::msgs::router::ExecuteMsg;

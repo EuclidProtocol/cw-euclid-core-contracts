@@ -257,9 +257,9 @@ mod tests {
 
     use crate::{
         state::{ESCROW_BALANCES, TOKEN_DENOMS},
-        tests::{
+        testing::{
             fixtures::initialized,
-            tests::tests::{call_reusable, register_denom_msg, seed_virtual_balance, MockDeps},
+            helpers::{call_reusable, register_denom_msg, seed_virtual_balance, MockDeps},
         },
     };
 

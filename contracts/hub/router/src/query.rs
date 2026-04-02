@@ -335,9 +335,9 @@ mod query_tests {
     use crate::{
         contract::execute,
         state::TOKEN_DENOMS,
-        tests::{
+        testing::{
             fixtures::initialized,
-            tests::tests::{
+            helpers::{
                 seed_chain1_native, seed_virtual_balance, MockDeps, TEST_RELAYER,
                 TEST_VIRTUAL_BALANCE,
             },

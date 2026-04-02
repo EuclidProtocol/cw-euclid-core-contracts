@@ -141,9 +141,9 @@ mod tests {
 
     use crate::{
         state::{LOCKED_CHAINS, STATE},
-        tests::{
+        testing::{
             fixtures::initialized,
-            tests::tests::{call_reusable, register_denom_msg, MockDeps},
+            helpers::{call_reusable, register_denom_msg, MockDeps},
         },
     };
 

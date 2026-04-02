@@ -1,15 +1,13 @@
 use crate::state::{
     CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, LOCKED_CHAINS, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
 };
-use crate::tests::tests::tests::{init, seed_virtual_balance, TEST_VIRTUAL_BALANCE};
+use crate::testing::helpers::{init, seed_virtual_balance, MockDeps, TEST_VIRTUAL_BALANCE};
 use cosmwasm_std::testing::{message_info, mock_dependencies};
 use cosmwasm_std::{Addr, Uint128};
 use euclid::chain::{Chain, ChainType, ChainUid};
 use euclid::msgs::router::TokenDenom;
 use euclid::token::{Token, TokenType};
 use rstest::fixture;
-
-use crate::tests::tests::tests::MockDeps;
 /// Fixture: deps with the router contract already instantiated.
 #[fixture]
 pub fn initialized() -> MockDeps {

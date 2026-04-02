@@ -286,9 +286,9 @@ mod tests {
 
     use crate::{
         contract::execute,
-        tests::{
+        testing::{
             fixtures::initialized,
-            tests::tests::{MockDeps, TEST_RELAYER},
+            helpers::{MockDeps, TEST_RELAYER},
         },
     };
     use euclid::msgs::router::ExecuteMsg;
@@ -375,7 +375,7 @@ mod tests {
         #[case] setup_duplicate: bool,
         #[case] expected_error: ContractError,
     ) {
-        use crate::tests::tests::tests::{seed_chain1_native, TEST_RELAYER};
+        use crate::testing::helpers::{seed_chain1_native, TEST_RELAYER};
 
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         seed_chain1_native(&mut initialized);
