@@ -272,3 +272,269 @@ pub fn execute_native_receive_callback(
     let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
     receive::reusable_internal_call(deps, env, info, msg, chain_uid)
 }
+
+#[cfg(test)]
+mod relay_tests {
+    use cosmwasm_std::{
+        testing::{message_info, mock_env},
+        Addr, Binary, Uint128,
+    };
+    use euclid::{
+        chain::{Chain, ChainType, ChainUid, CosmosChain},
+        error::ContractError,
+    };
+
+    use crate::{
+        contract::execute,
+        tests::{
+            fixtures::initialized,
+            tests::tests::{MockDeps, TEST_RELAYER},
+        },
+    };
+    use euclid::msgs::router::ExecuteMsg;
+    use rstest::*;
+    // -----------------------------------------------------------------------
+    // Relay handlers: unauthorized callers (table-driven)
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::send_packet(
+        Addr::unchecked("external_caller"),
+        ExecuteMsg::SendPacket {
+            chain: Chain {
+                chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+                factory_address: "factory1".to_string(),
+                chain_type: ChainType::Native {},
+            },
+            msg: Binary::default(),
+            sender: "sender".to_string(),
+            timeout: None,
+            ack_response: None,
+        },
+    )]
+    #[case::receive_packet(
+        Addr::unchecked("attacker"),
+        ExecuteMsg::ReceivePacket {
+            source_port: "chain1.factory1".to_string(),
+            destination_port: "vsl.contract".to_string(),
+            msg: Binary::default(),
+            sequence: 0,
+            timeout: u64::MAX,
+        },
+    )]
+    #[case::acknowledge_packet(
+        Addr::unchecked("attacker"),
+        ExecuteMsg::AcknowledgePacket {
+            source_port: "chain1.factory1".to_string(),
+            destination_port: "vsl.contract".to_string(),
+            msg: Binary::default(),
+            sequence: 0,
+            ack: Binary::default(),
+        },
+    )]
+    #[case::receive_packet_internal_callback(
+        Addr::unchecked("external"),
+        ExecuteMsg::ReceivePacketInternalCallback {
+            msg: Binary::default(),
+            chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+            timeout: u64::MAX,
+        },
+    )]
+    fn test_relay_handler_rejects_unauthorized_caller(
+        mut initialized: MockDeps,
+        #[case] sender: Addr,
+        #[case] msg: ExecuteMsg,
+    ) {
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&sender, &[]),
+            msg,
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    // -----------------------------------------------------------------------
+    // ReceivePacket: port & sequence validation (table-driven)
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::invalid_source_port(
+        "chain1.wrongfactory",
+        false,
+        ContractError::new("Invalid source port")
+    )]
+    #[case::duplicate_sequence(
+        "chain1.factory1",
+        true,
+        ContractError::Generic { err: "Processed sequence already exists".to_string() },
+    )]
+    fn test_receive_packet_validation_errors(
+        mut initialized: MockDeps,
+        #[case] source_port: &str,
+        #[case] setup_duplicate: bool,
+        #[case] expected_error: ContractError,
+    ) {
+        use crate::tests::tests::tests::{seed_chain1_native, TEST_RELAYER};
+
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        seed_chain1_native(&mut initialized);
+
+        if setup_duplicate {
+            use crate::relay_state::CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS;
+            CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS
+                .save(
+                    initialized.as_mut().storage,
+                    (chain_uid.clone(), 0_u128),
+                    &Uint128::from(1_u64),
+                )
+                .unwrap();
+        }
+
+        let env = mock_env();
+        let res = execute(
+            initialized.as_mut(),
+            env.clone(),
+            message_info(&Addr::unchecked(TEST_RELAYER), &[]),
+            ExecuteMsg::ReceivePacket {
+                source_port: source_port.to_string(),
+                destination_port: format!("vsl.{}", env.contract.address),
+                msg: Binary::default(),
+                sequence: 0,
+                timeout: u64::MAX,
+            },
+        );
+        assert_eq!(res.unwrap_err(), expected_error);
+    }
+
+    #[rstest]
+    fn test_receive_packet_unregistered_chain_fails(mut initialized: MockDeps) {
+        let env = mock_env();
+        let res = execute(
+            initialized.as_mut(),
+            env.clone(),
+            message_info(&Addr::unchecked(TEST_RELAYER), &[]),
+            ExecuteMsg::ReceivePacket {
+                source_port: "unknownchain.factory1".to_string(),
+                destination_port: format!("vsl.{}", env.contract.address),
+                msg: Binary::default(),
+                sequence: 0,
+                timeout: u64::MAX,
+            },
+        );
+        assert!(res.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // AcknowledgePacket: port validation
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_acknowledge_packet_invalid_destination_port(mut initialized: MockDeps) {
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&Addr::unchecked(TEST_RELAYER), &[]),
+            ExecuteMsg::AcknowledgePacket {
+                source_port: "chain1.factory1".to_string(),
+                destination_port: "wrong.something".to_string(),
+                msg: Binary::default(),
+                sequence: 0,
+                ack: Binary::default(),
+            },
+        );
+        assert_eq!(
+            res.unwrap_err(),
+            ContractError::new("Invalid destination port")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // ReceivePacketInternalCallback: timeout
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_receive_packet_internal_callback_timed_out(mut initialized: MockDeps) {
+        let env = mock_env();
+        // timeout=0 is below mock_env block time (1571797419)
+        let res = execute(
+            initialized.as_mut(),
+            env.clone(),
+            message_info(&env.contract.address, &[]),
+            ExecuteMsg::ReceivePacketInternalCallback {
+                msg: Binary::default(),
+                chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+                timeout: 0,
+            },
+        );
+        assert!(matches!(
+            res.unwrap_err(),
+            ContractError::PacketTimedOut { .. }
+        ));
+    }
+
+    // -----------------------------------------------------------------------
+    // NativeReceiveCallback: access control (table-driven)
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_native_receive_callback_unregistered_chain(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::NativeReceiveCallback {
+                chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
+                msg: Binary::default(),
+            },
+        );
+        assert!(res.is_err());
+    }
+
+    #[rstest]
+    #[case::non_native_chain(
+        ChainType::Cosmos(CosmosChain { chain_id: "cosmos-1".to_string() }),
+        "factory1",
+        "factory1",
+    )]
+    #[case::wrong_factory_caller(
+        ChainType::Native {},
+        "real_factory",
+        "attacker",
+    )]
+    fn test_native_receive_callback_unauthorized(
+        mut initialized: MockDeps,
+        #[case] chain_type: ChainType,
+        #[case] factory_address: &str,
+        #[case] caller_name: &str,
+    ) {
+        use crate::state::CHAIN_UID_TO_CHAIN;
+
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        CHAIN_UID_TO_CHAIN
+            .save(
+                initialized.as_mut().storage,
+                chain_uid.clone(),
+                &Chain {
+                    chain_uid: chain_uid.clone(),
+                    factory_address: factory_address.to_string(),
+                    chain_type,
+                },
+            )
+            .unwrap();
+
+        let caller = initialized.api.addr_make(caller_name);
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&caller, &[]),
+            ExecuteMsg::NativeReceiveCallback {
+                chain_uid,
+                msg: Binary::default(),
+            },
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+}

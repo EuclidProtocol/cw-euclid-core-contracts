@@ -229,3 +229,94 @@ pub fn ibc_execute_swap(
     };
     Ok(response.add_submessage(SubMsg::reply_always(msg, SWAP_REPLY_ID)))
 }
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::Uint128;
+    use euclid::{
+        chain::ChainUid,
+        cross_chain_user::CrossChainUser,
+        error::ContractError,
+        swap::NextSwapPair,
+        token::{Token, TokenType, TokenWithDenom},
+    };
+    use euclid_ibc::router_ibc::{RouterCrossChainExecuteMsg, RouterCrossChainSwapExecuteMsg};
+
+    use crate::{
+        reply::SWAP_REPLY_ID,
+        state::{ESCROW_BALANCES, PENDING_SWAPS},
+        tests::tests::tests::{call_reusable, make_swap_deps_with_mock_querier},
+    };
+
+    fn make_swap_msg(chain_uid: &ChainUid, tx_id: &str) -> RouterCrossChainExecuteMsg {
+        let sender = CrossChainUser::new(chain_uid.clone(), "user".to_string());
+        let token_a = Token::create("aaa".to_string()).unwrap();
+        let token_b = Token::create("bbb".to_string()).unwrap();
+        RouterCrossChainExecuteMsg::Swap(RouterCrossChainSwapExecuteMsg {
+            sender: sender.clone(),
+            asset_in: TokenWithDenom {
+                token: token_a.clone(),
+                token_type: TokenType::Native {
+                    denom: "uaaa".to_string(),
+                },
+            },
+            amount_in: Uint128::new(100),
+            asset_out: token_b.clone(),
+            min_amount_out: Uint128::new(80),
+            swaps: vec![NextSwapPair {
+                token_in: token_a,
+                token_out: token_b,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee_amount: Uint128::zero(),
+            partner_fee_recipient: sender,
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    #[test]
+    fn test_ibc_swap_saves_pending_and_emits_submsg() {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let mut deps = make_swap_deps_with_mock_querier(90);
+        let token_a = Token::create("aaa".to_string()).unwrap();
+
+        let res = call_reusable(
+            &mut deps,
+            make_swap_msg(&chain_uid, "tx_swap"),
+            chain_uid.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            res.messages.last().unwrap().id,
+            SWAP_REPLY_ID,
+            "expected swap submsg"
+        );
+        assert!(
+            PENDING_SWAPS.has(deps.as_ref().storage, "tx_swap".to_string()),
+            "expected PENDING_SWAPS entry"
+        );
+        let escrow = ESCROW_BALANCES
+            .load(deps.as_ref().storage, (token_a.to_string(), chain_uid))
+            .unwrap();
+        assert_eq!(
+            escrow,
+            Uint128::new(100),
+            "escrow balance should equal amount_in"
+        );
+    }
+
+    #[test]
+    fn test_ibc_swap_slippage_exceeded() {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        // amount_out=10 < min_amount_out=80
+        let mut deps = make_swap_deps_with_mock_querier(10);
+
+        let result = call_reusable(&mut deps, make_swap_msg(&chain_uid, "tx_slip"), chain_uid);
+        assert!(
+            matches!(result.unwrap_err(), ContractError::SlippageExceeded { .. }),
+            "expected SlippageExceeded"
+        );
+    }
+}

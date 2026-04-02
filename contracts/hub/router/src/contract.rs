@@ -248,3 +248,67 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         )))),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // -----------------------------------------------------------------------
+    // Instantiate
+    // -----------------------------------------------------------------------
+
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies},
+        Addr,
+    };
+    use euclid::admin::EuclidAdmin;
+
+    use crate::{
+        state::{FeeState, State, ADMIN, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE},
+        tests::tests::tests::{
+            init, TEST_DEFAULT_FEE_RECIPIENT, TEST_RELAYER, TEST_RELEASE_FEE_RECIPIENT,
+        },
+    };
+
+    #[test]
+    fn test_instantiate() {
+        let mut deps = mock_dependencies();
+        let creator = deps.api.addr_make("creator");
+        let info = message_info(&creator, &[]);
+        init(deps.as_mut(), info);
+        let expected_state = State {
+            constant_product_vlp_code_id: 1,
+            stable_vlp_code_id: 3,
+            locked: false,
+        };
+        let state = STATE.load(deps.as_ref().storage).unwrap();
+        let admins = ADMIN.load(deps.as_ref().storage).unwrap();
+        assert_eq!(expected_state, state);
+        assert_eq!(admins, EuclidAdmin::default(creator));
+    }
+
+    #[test]
+    fn test_instantiate_state_fields() {
+        let mut deps = mock_dependencies();
+        let creator = deps.api.addr_make("creator");
+        let info = message_info(&creator, &[]);
+        let res = init(deps.as_mut(), info.clone());
+
+        assert_eq!(res.attributes[0].key, "method");
+        assert_eq!(res.attributes[0].value, "instantiate");
+        assert_eq!(res.messages.len(), 1);
+
+        let relayer = RELAYER_CONTRACT.load(deps.as_ref().storage).unwrap();
+        assert_eq!(relayer, Addr::unchecked(TEST_RELAYER));
+
+        let fee_state = FEE_STATE.load(deps.as_ref().storage).unwrap();
+        assert_eq!(
+            fee_state,
+            FeeState {
+                release_fee_recipient: Addr::unchecked(TEST_RELEASE_FEE_RECIPIENT),
+                default_fee_recipient: Addr::unchecked(TEST_DEFAULT_FEE_RECIPIENT),
+            }
+        );
+
+        let locked_chains = LOCKED_CHAINS.load(deps.as_ref().storage).unwrap();
+        assert!(locked_chains.is_empty());
+    }
+}
