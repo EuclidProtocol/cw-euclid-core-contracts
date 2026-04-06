@@ -60,3 +60,49 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{ADMIN, STATE};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
+    use cosmwasm_std::{attr, Addr};
+    use euclid::admin::EuclidAdmin;
+    use euclid::msgs::meta_transaction::msg::InstantiateMsg;
+
+    fn router_contract() -> Addr {
+        Addr::unchecked("router")
+    }
+
+    fn make_instantiate_msg() -> InstantiateMsg {
+        InstantiateMsg {
+            router_contract: router_contract(),
+        }
+    }
+
+    #[test]
+    fn test_instantiate_stores_state_and_admin() {
+        let mut deps = mock_dependencies();
+        let sender = deps.api.addr_make("creator");
+        let info = message_info(&sender, &[]);
+
+        let res = instantiate(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            make_instantiate_msg(),
+        )
+        .unwrap();
+
+        assert_eq!(res.attributes[0], attr("method", "instantiate"));
+        assert_eq!(
+            res.attributes[1],
+            attr("router_contract", router_contract().as_str())
+        );
+
+        let state = STATE.load(&deps.storage).unwrap();
+        assert_eq!(state.router_contract, router_contract());
+
+        let admin = ADMIN.load(&deps.storage).unwrap();
+        assert_eq!(admin, EuclidAdmin::default(sender));
+    }
+}
