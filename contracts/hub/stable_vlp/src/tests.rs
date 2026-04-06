@@ -8,7 +8,7 @@ mod tests {
     use cosmwasm_std::{
         coins,
         testing::{message_info, mock_dependencies, mock_env, MockQuerier},
-        Addr, Decimal256, Response, Uint128, Uint64,
+        Addr, Response, Uint128, Uint64,
     };
     use euclid::{
         admin::EuclidAdmin,
@@ -22,8 +22,7 @@ mod tests {
         },
         token::{Pair, Token},
     };
-    use euclid_pool::stable_math::compute_stable_swap;
-    use rstest::rstest;
+
     use std::collections::HashMap;
 
     fn init(

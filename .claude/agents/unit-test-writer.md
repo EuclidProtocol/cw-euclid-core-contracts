@@ -41,59 +41,35 @@ fn initialized() -> MockDeps {
 }
 ```
 
-For tests that need extra pre-seeded state (e.g., token balances, chain registrations), create a dedicated fixture that builds on top of `initialized()`:
+## Test Case Struct Pattern
+
+For execute tests with multiple scenarios, use `rstest` parameterized tests instead of copy-pasting. Add `rstest` to `[dev-dependencies]` in the contract's `Cargo.toml` if not already present.
 
 ```rust
-#[fixture]
-fn with_chain(mut initialized: MockDeps) -> MockDeps {
-    CHAIN_UID_TO_CHAIN
-        .save(initialized.as_mut().storage, ChainUid::create("chain1".to_string()).unwrap(), &chain)
-        .unwrap();
-    initialized
-}
-```
-
-Inject fixtures into tests by matching the parameter name to the fixture function name:
-
-```rust
-#[rstest]
-fn test_foo(mut initialized: MockDeps) { ... }
+use rstest::rstest;
 
 #[rstest]
-fn test_bar(mut with_chain: MockDeps) { ... }
-```
-
-## rstest: Table-Driven (Parametrized) Tests
-
-**Always prefer `#[rstest]` + `#[case]` over copy-pasting test functions.** Any time two or more tests share the same logic with different inputs or expected outcomes, collapse them into one parametrized test.
-
-```rust
-#[rstest]
-#[case("unauthorized_caller", ExecuteMsg::Foo { .. }, "attacker", Some(ContractError::Unauthorized {}))]
-#[case("valid_caller",        ExecuteMsg::Foo { .. }, "admin",    None)]
-fn test_foo_access_control(
-    mut initialized: MockDeps,
-    #[case] name: &str,
+#[case::happy_path(ExecuteMsg::SomeVariant { .. }, "sender", None)]
+#[case::unauthorized(ExecuteMsg::SomeVariant { .. }, "other", Some(ContractError::Unauthorized {}))]
+fn test_execute_some_variant(
     #[case] msg: ExecuteMsg,
     #[case] sender: &str,
     #[case] expected_error: Option<ContractError>,
 ) {
-    let sender = initialized.api.addr_make(sender);
-    let info = message_info(&sender, &[]);
-    let res = execute(initialized.as_mut(), mock_env(), info, msg);
+    let mut deps = mock_dependencies();
+    init(&mut deps);
+    let env = mock_env();
+    let sender_addr = deps.api.addr_make(sender);
+    let info = message_info(&sender_addr, &[]);
+    let res = execute(deps.as_mut(), env, info, msg);
     match expected_error {
-        Some(err) => assert_eq!(res.unwrap_err(), err, "{name}"),
-        None => assert!(res.is_ok(), "{name}"),
+        Some(err) => assert_eq!(res.unwrap_err(), err),
+        None => assert!(res.is_ok()),
     }
 }
 ```
 
-Rules:
-- Each `#[case]` becomes a separate named test (`::case_1`, `::case_2`, …) in the output.
-- Use descriptive first-argument strings (`name: &str`) so failures are self-documenting.
-- `#[case]` parameters are positional — order must match function parameter order after `#[case]`.
-- All types used as `#[case]` values must implement `Debug`. `ContractError`, `ExecuteMsg`, `QueryMsg`, and most domain types already do.
-- Use `Binary::default()` for cases where a binary payload is irrelevant to the scenario under test.
+Use `#[case::descriptive_name(...)]` labels so test output identifies each scenario by name. Group cases that share the same execute handler into one `#[rstest]` function.
 
 ## What to Test
 
@@ -145,15 +121,3 @@ Common `ContractError` variants to test against:
 - `ContractError::DeregisteredChain {}`
 - `ContractError::new("some message")` — for string-based errors
 
-## How to Proceed
-
-When asked to write tests for a contract:
-
-1. Read the contract's `src/contract.rs`, `src/state.rs`, and existing `src/tests.rs` (if any).
-2. Read the relevant message types from `packages/euclid/src/msgs/`.
-3. Identify all `ExecuteMsg` variants, `QueryMsg` variants, and `InstantiateMsg` fields.
-4. Plan your fixtures first: one base fixture that instantiates the contract, plus one fixture per distinct pre-seeded state configuration needed across multiple tests.
-5. For each group of related scenarios (access control, input validation, error paths, query errors), write a single `#[rstest]` + `#[case]` parametrized function rather than separate test functions.
-6. Write standalone `#[rstest]` functions (no `#[case]`) only for tests that are truly unique (e.g., happy-path state mutation with specific assertions, state invariant sequences).
-7. Write the tests to `src/tests.rs`. If the file already exists, add to it without removing existing tests.
-8. Run `cargo test -p <package-name>` to verify all tests pass before finishing.

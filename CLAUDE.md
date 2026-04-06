@@ -75,11 +75,16 @@ Remote Chain A          Hub Chain              Remote Chain B
 
 ### Key State in Router (`contracts/hub/router/src/state.rs`)
 
-- `VLPS: Map<(String, String), Addr>` — registered VLP pool addresses
-- `PENDING_SWAPS: Map<String, SwapMsg>` — in-flight cross-chain swaps (keyed by tx_id)
-- `PENDING_RELEASE_VOUCHER` — in-flight voucher releases awaiting IBC ack
-- `ESCROW_BALANCES: Map<(Token, ChainUid), Uint128>` — per-chain token balances
-- `LOCKED_CHAINS` — chains paused for emergency stops
+Storage items/maps:
+- `VLPS: Map<(String, String), Addr>` — registered VLP pool addresses (keyed by token pair)
+- `TOKEN_VLPS: Map<Token, Vec<Addr>>` — all VLPs associated with a given token
+- `PENDING_SWAPS: Map<String, RouterCrossChainSwapExecuteMsg>` — in-flight cross-chain swaps (keyed by tx_id)
+- `PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher>` — in-flight voucher releases awaiting IBC ack
+- `ESCROW_BALANCES: Map<(String, ChainUid), Uint128>` — per-chain token balances
+- `LOCKED_CHAINS: Item<Vec<ChainUid>>` — chains paused for emergency stops
+- `DEFAULT_RELEASE_FEE: Item<Uint128>` — fallback release fee when no per-chain fee is set
+- `RELEASE_FEES: Map<(Token, ChainUid), Uint128>` — per-(token, chain) release fee overrides
+- `CHAIN_TIMEOUT_SECONDS: Map<ChainUid, u64>` — per-chain IBC packet timeout in seconds
 
 ### IBC Module (`contracts/hub/router/src/ibc/`)
 
@@ -96,6 +101,7 @@ Contracts use CosmWasm's `SubMsg` + `reply` for async outcomes (VLP instantiatio
 ```rust
 pub struct EuclidAdmin {
     general_admin: Addr,   // day-to-day operations
+    fee_admin: Addr, // fee management
     migration_admin: Addr, // contract migrations
 }
 ```
@@ -107,3 +113,5 @@ pub struct EuclidAdmin {
 - Fuzz tests: `tests-fuzz/`
 
 The `tests-integration` package includes all contracts as dev-dependencies and sets up multi-contract and multi-chain scenarios.
+
+When writing unit tests for a contract, use the `unit-test-writer` agent. It understands the project's test conventions (rstest parameterization, `MockDeps` fixtures, `init` helpers, state assertions). Invoke it via the `/write-tests <contract-path>` skill.
