@@ -128,7 +128,10 @@ mod tests {
                 nonce: "no_such_nonce".to_string(),
             },
         );
-        assert!(res.is_err(), "expected error for missing nonce via dispatch");
+        assert!(
+            res.is_err(),
+            "expected error for missing nonce via dispatch"
+        );
     }
 
     #[test]
@@ -150,9 +153,7 @@ mod tests {
         let bin = query(
             deps.as_ref(),
             mock_env(),
-            QueryMsg::NonceRelayed {
-                nonce: nonce_key,
-            },
+            QueryMsg::NonceRelayed { nonce: nonce_key },
         )
         .unwrap();
         let resp: NonceRelayedResponse = from_json(&bin).unwrap();

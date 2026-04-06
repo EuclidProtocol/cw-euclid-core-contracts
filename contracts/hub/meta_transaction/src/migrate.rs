@@ -211,4 +211,77 @@ mod tests {
         assert_eq!(version.contract, CONTRACT_NAME);
         assert_eq!(version.version, CONTRACT_VERSION);
     }
+
+    // -------------------------------------------------------------------------
+    // Branch 1 — method attribute is "migrate"
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_migrate_emits_method_migrate_attribute() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Pre-populate a current ADMIN item so branch 1 is taken.
+        let admin = deps.api.addr_make("admin");
+        ADMIN
+            .save(deps.as_mut().storage, &EuclidAdmin::default(admin))
+            .unwrap();
+
+        let res = migrate(deps.as_mut(), env, MigrateMsg {}).unwrap();
+
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "method")
+                .map(|a| a.value.as_str()),
+            Some("migrate"),
+            "expected method = migrate attribute"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Branch 2 — admins_migrated attribute is "true" for LegacyWithEuclidAdmin
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_migrate_reports_migrated_for_legacy_euclid_admin_state() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        let admin = deps.api.addr_make("admin");
+        write_legacy_euclid_admin_state(&mut deps, EuclidAdmin::default(admin));
+
+        let res = migrate(deps.as_mut(), env, MigrateMsg {}).unwrap();
+
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "admins_migrated")
+                .map(|a| a.value.as_str()),
+            Some("true"),
+            "expected admins_migrated = true for LegacyStateWithEuclidAdmin"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Branch 3 — router_contract from LegacyState is preserved in STATE
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_migrate_preserves_router_contract_from_legacy_state() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        let admin = deps.api.addr_make("admin");
+        write_legacy_state(&mut deps, admin.as_str());
+
+        migrate(deps.as_mut(), env, MigrateMsg {}).unwrap();
+
+        let saved_state = STATE.load(deps.as_ref().storage).unwrap();
+        assert_eq!(
+            saved_state.router_contract,
+            Addr::unchecked("router"),
+            "router_contract must be preserved from legacy state"
+        );
+    }
 }

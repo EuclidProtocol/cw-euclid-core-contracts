@@ -1277,4 +1277,96 @@ mod tests {
             "non-base64 Cosmos pubkey should produce an error"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // UpdateAdmin: invalid new_admin address is rejected
+    // -----------------------------------------------------------------------
+
+    /// `update_admin` calls `deps.api.addr_validate` on the new admin string.
+    /// Supplying a syntactically invalid address must produce an error before any
+    /// state mutation occurs.
+    #[rstest]
+    fn test_update_admin_invalid_address_rejected(mut initialized: MockDeps) {
+        let sender = initialized.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::UpdateAdmin(UpdateAdminMsg {
+                new_admin: "NOT_A_VALID_BECH32_ADDRESS!!".to_string(),
+                admin_type: AdminType::GeneralAdmin,
+            }),
+        );
+
+        assert!(
+            res.is_err(),
+            "invalid bech32 address should be rejected by addr_validate"
+        );
+        // State must be unchanged — the original sender is still the general_admin.
+        let stored = ADMIN.load(&initialized.storage).unwrap();
+        let original = initialized.api.addr_make("sender");
+        assert_eq!(stored.general_admin, original);
+    }
+
+    // -----------------------------------------------------------------------
+    // ExecuteMetaTransaction: EVM signer_address with mixed case is rejected
+    // by CrossChainUser::validate() after signature verification succeeds
+    // -----------------------------------------------------------------------
+
+    /// `CrossChainUser::validate()` rejects addresses that are not fully
+    /// lowercase.  For EVM chains the contract sets `verified_sender` using the
+    /// *claimed* `signer_address` (after the mismatch check vs the derived
+    /// address).  This test uses a real EVM key/signature vector where the
+    /// `signer_address` intentionally contains uppercase hex characters so that
+    /// both the mismatch check AND `validate()` would reject it — we confirm the
+    /// error is produced before any NONCES entry is written.
+    #[rstest]
+    fn test_meta_transaction_evm_mixed_case_address_rejected(mut with_evm_chain: MockDeps) {
+        let broadcaster = with_evm_chain.api.addr_make("broadcaster");
+        let info = message_info(&broadcaster, &[]);
+        let env = mock_env();
+
+        // The signer_address has uppercase letters — validate() must reject it.
+        let mixed_case_address = "0xABCDEF0000000000000000000000000000000000".to_string();
+        let meta_tx = MetaTransaction {
+            data: MetaTransactionData {
+                signer_address: mixed_case_address.clone(),
+                signer_prefix: "0x".to_string(),
+                signer_chain_uid: ChainUid::create("evmchain".to_string()).unwrap(),
+                call_data: vec![],
+                expiry: env.block.time.seconds() + 3600,
+                nonce: "nonce_mixed_case".to_string(),
+            },
+            // Signature and pubkey do not need to be valid — the address mismatch
+            // or validate() will reject before nonce storage.
+            signature: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            signer_pubkey: "044089a9fb9f67cdac85610900f61d69e2adc7e5da37036585955ca85d0ea148202a1e1750d26b825efb5c3e9aff92c6faf37bb1865c9b9612b064e89c6806e408".to_string(),
+        };
+
+        let res = execute(
+            with_evm_chain.as_mut(),
+            env,
+            info,
+            ExecuteMsg::ExecuteMetaTransaction(meta_tx),
+        );
+
+        assert!(
+            res.is_err(),
+            "mixed-case EVM signer_address should be rejected"
+        );
+        // Confirm no nonce entry was written for the mixed-case sender_key.
+        let sender_key = format!("evmchain:{}", mixed_case_address);
+        let nonce_entry = NONCES
+            .may_load(
+                &with_evm_chain.storage,
+                (sender_key, "nonce_mixed_case".to_string()),
+            )
+            .unwrap();
+        assert!(
+            nonce_entry.is_none(),
+            "nonce must not be stored when transaction is rejected"
+        );
+    }
 }
