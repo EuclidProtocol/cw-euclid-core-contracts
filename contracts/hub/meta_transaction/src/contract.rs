@@ -105,4 +105,19 @@ mod tests {
         let admin = ADMIN.load(&deps.storage).unwrap();
         assert_eq!(admin, EuclidAdmin::default(sender));
     }
+
+    #[test]
+    fn test_instantiate_sets_cw2_contract_version() {
+        use cw2::get_contract_version;
+
+        let mut deps = mock_dependencies();
+        let sender = deps.api.addr_make("creator");
+        let info = message_info(&sender, &[]);
+
+        instantiate(deps.as_mut(), mock_env(), info, make_instantiate_msg()).unwrap();
+
+        let version = get_contract_version(&deps.storage).unwrap();
+        assert_eq!(version.contract, CONTRACT_NAME);
+        assert_eq!(version.version, CONTRACT_VERSION);
+    }
 }

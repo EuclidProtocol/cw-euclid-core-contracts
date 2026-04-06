@@ -334,6 +334,13 @@ mod tests {
         initialized
     }
 
+    #[fixture]
+    fn with_native_chain(mut initialized: MockDeps) -> MockDeps {
+        let chain_uid = ChainUid::create("testchain".to_string()).unwrap();
+        set_router_chain_query(&mut initialized, chain_uid, ChainType::Native {});
+        initialized
+    }
+
     // -----------------------------------------------------------------------
     // UpdateAdmin: access control (table-driven)
     // -----------------------------------------------------------------------
@@ -1177,5 +1184,95 @@ mod tests {
             )
             .unwrap();
         assert_eq!(height, Uint128::from(env.block.height));
+    }
+
+    // -----------------------------------------------------------------------
+    // ExecuteMetaTransaction: Native chain type — reuses Cosmos code path
+    // -----------------------------------------------------------------------
+
+    /// `ChainType::Native {}` is matched alongside `ChainType::Cosmos` in the
+    /// same arm of the `match chain_type` block.  This test ensures that arm
+    /// is exercised for a Native chain and that a correctly signed transaction
+    /// is accepted end-to-end.
+    #[rstest]
+    fn test_meta_transaction_native_chain_type_happy_path(mut with_native_chain: MockDeps) {
+        let broadcaster = with_native_chain.api.addr_make("broadcaster");
+        let info = message_info(&broadcaster, &[]);
+        let env = mock_env();
+        let target = Addr::unchecked("native_target");
+
+        let meta_tx = make_signed_cosmos_tx(
+            &env,
+            "native_nonce_happy",
+            vec![MetaTransactionCallData {
+                target: target.clone(),
+                call_data: "native_call".to_string(),
+            }],
+        );
+
+        let res = execute(
+            with_native_chain.as_mut(),
+            env.clone(),
+            info,
+            ExecuteMsg::ExecuteMetaTransaction(meta_tx),
+        )
+        .unwrap();
+
+        assert_eq!(res.messages.len(), 1);
+        if let CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, .. }) = &res.messages[0].msg {
+            assert_eq!(contract_addr, &target.to_string());
+        } else {
+            panic!("expected WasmMsg::Execute for native chain");
+        }
+
+        let sender_key = format!("testchain:{}", get_cosmos_address());
+        let height = NONCES
+            .load(
+                &with_native_chain.storage,
+                (sender_key, "native_nonce_happy".to_string()),
+            )
+            .unwrap();
+        assert_eq!(height, Uint128::from(env.block.height));
+    }
+
+    // -----------------------------------------------------------------------
+    // ExecuteMetaTransaction: invalid Cosmos pubkey format (non-base64) rejected
+    // -----------------------------------------------------------------------
+
+    /// Parallel to the EVM non-hex pubkey test: `Binary::from_base64` should
+    /// return an error before signature verification is attempted.
+    #[rstest]
+    fn test_meta_transaction_cosmos_invalid_pubkey_format_rejected(
+        mut with_cosmos_chain: MockDeps,
+    ) {
+        let broadcaster = with_cosmos_chain.api.addr_make("broadcaster");
+        let info = message_info(&broadcaster, &[]);
+        let env = mock_env();
+
+        let meta_tx = MetaTransaction {
+            data: MetaTransactionData {
+                signer_address: get_cosmos_address(),
+                signer_prefix: "euclid".to_string(),
+                signer_chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+                call_data: vec![],
+                expiry: env.block.time.seconds() + 3600,
+                nonce: "nonce_bad_cosmos_pubkey".to_string(),
+            },
+            // Valid base64 alphabet contains [A-Za-z0-9+/=]; "!!not_base64!!"
+            // will cause from_base64 to fail immediately.
+            signer_pubkey: "!!not_base64!!".to_string(),
+            signature: Binary::from(vec![0u8; 64]).to_base64(),
+        };
+
+        let res = execute(
+            with_cosmos_chain.as_mut(),
+            env,
+            info,
+            ExecuteMsg::ExecuteMetaTransaction(meta_tx),
+        );
+        assert!(
+            res.is_err(),
+            "non-base64 Cosmos pubkey should produce an error"
+        );
     }
 }
