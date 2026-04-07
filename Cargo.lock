@@ -546,6 +546,7 @@ dependencies = [
  "euclid-pool",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
