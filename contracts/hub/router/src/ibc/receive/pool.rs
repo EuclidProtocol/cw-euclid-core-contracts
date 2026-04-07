@@ -42,6 +42,9 @@ use crate::{
 };
 
 fn default_aligned_tick_bounds(tick_spacing: u64) -> (i64, i64) {
+    // Tick bounds from Q64.96 sqrt_price representation.
+    // MIN_TICK → smallest non-zero sqrt_price (~2.94e-39 price).
+    // MAX_TICK → largest sqrt_price fitting Uint256 (~3.40e38 price).
     const MIN_TICK: i64 = -887_272;
     const MAX_TICK: i64 = 887_272;
     let spacing = tick_spacing as i64;
@@ -63,6 +66,7 @@ pub fn ibc_execute_request_pool_creation(
     pool_config: PoolConfig,
     tx_id: String,
     slippage_tolerance_bps: u64,
+    initial_tick: Option<i64>,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let admins = ADMIN.load(deps.storage)?;
@@ -164,6 +168,7 @@ pub fn ibc_execute_request_pool_creation(
                 lower_tick_index,
                 upper_tick_index,
                 position_id: None,
+                initial_tick,
             },
         )?;
 
@@ -214,6 +219,7 @@ pub fn ibc_execute_request_pool_creation(
                 admin: admins.general_admin,
                 fee_tier_bps,
                 tick_spacing,
+                initial_tick,
             })?,
             funds: vec![],
             label: "Concentrated VLP".to_string(),
@@ -396,6 +402,7 @@ pub fn ibc_execute_request_concentrated_pool_creation(
     pool_key: PoolKey,
     tx_id: String,
     slippage_tolerance_bps: u64,
+    initial_tick: Option<i64>,
 ) -> Result<Response, ContractError> {
     let (fee_tier_bps, tick_spacing) = match pool_key.pool_type {
         PoolType::Concentrated {
@@ -416,6 +423,7 @@ pub fn ibc_execute_request_concentrated_pool_creation(
         },
         tx_id,
         slippage_tolerance_bps,
+        initial_tick,
     )
 }
 

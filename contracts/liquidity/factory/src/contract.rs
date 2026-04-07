@@ -211,6 +211,7 @@ pub fn execute(
             fee_tier_bps,
             tick_spacing,
             slippage_tolerance_bps,
+            initial_tick,
             cross_chain_config,
         } => execute_request_concentrated_pool_creation(
             &mut deps,
@@ -220,6 +221,7 @@ pub fn execute(
             fee_tier_bps,
             tick_spacing,
             slippage_tolerance_bps,
+            initial_tick,
             cross_chain_config,
         ),
         ExecuteMsg::AddLiquidity {

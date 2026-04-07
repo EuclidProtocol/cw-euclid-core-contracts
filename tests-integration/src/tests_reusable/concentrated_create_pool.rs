@@ -13,7 +13,9 @@ use router::RouterContract;
 use rstest::rstest;
 
 use crate::helpers::chains::setup_router;
-use crate::helpers::factory::{concentrated_pool_key, create_concentrated_pool, faucet};
+use crate::helpers::factory::{
+    concentrated_pool_key, create_concentrated_pool, create_concentrated_pool_with_tick, faucet,
+};
 use crate::tests_reusable::constants::{
     FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
 };
@@ -101,18 +103,30 @@ fn test_create_two_fee_tiers_same_pair(
 #[rstest]
 #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
 #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-fn test_create_two_fee_tiers_same_pair_slippage_failing(
+fn test_create_two_fee_tiers_same_pair_with_initial_tick(
     #[case] mode: FactorySetupMode,
     #[case] factory_chain_id: &str,
 ) {
     let (_interchain, factory, router, token_a, token_b) =
         setup_concentrated_env(mode, factory_chain_id);
 
-    let pair = pair_with_amounts(&token_a, &token_b, 10_000_000, 100_000_000);
-    let pool_key_500 = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100)
-        .expect("500 bps pool should be created");
-    let pool_key_3000 = create_concentrated_pool(&factory, &router, pair.clone(), 3_000, 60, 100)
-        .expect("3000 bps pool should be created");
+    let (amount_a, amount_b) = (10_000_000_u128, 100_000_000_u128);
+    let pair = pair_with_amounts(&token_a, &token_b, amount_a, amount_b);
+
+    // tick = floor(ln(price) / ln(1.0001)) where price = amount_token2 / amount_token1
+    // Pair sorts tokens alphabetically, so token_1 < token_2.
+    // price = amount_b / amount_a = 10 → tick ≈ 23025
+    let price = amount_b as f64 / amount_a as f64;
+    let initial_tick = (price.ln() / 1.0001_f64.ln()).floor() as i64;
+
+    let pool_key_500 = create_concentrated_pool_with_tick(
+        &factory, &router, pair.clone(), 500, 10, 100, Some(initial_tick),
+    )
+    .expect("500 bps pool should be created");
+    let pool_key_3000 = create_concentrated_pool_with_tick(
+        &factory, &router, pair.clone(), 3_000, 60, 100, Some(initial_tick),
+    )
+    .expect("3000 bps pool should be created");
 
     let pool_500 = factory.get_concentrated_vlp(pool_key_500.clone()).unwrap();
     let pool_3000 = factory.get_concentrated_vlp(pool_key_3000.clone()).unwrap();
@@ -156,6 +170,7 @@ fn test_create_pool_invalid_spacing_rejected(
                 fee_tier_bps: 500,
                 tick_spacing: 11,
                 slippage_tolerance_bps: 100,
+                initial_tick: None,
                 cross_chain_config: CrossChainConfig::default(),
             },
             &funds,

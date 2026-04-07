@@ -23,6 +23,8 @@ pub struct InstantiateMsg {
     pub admin: Addr,
     pub fee_tier_bps: u64,
     pub tick_spacing: u64,
+    /// Initial tick for pool price. `None` defaults to tick 0 (1:1 price).
+    pub initial_tick: Option<i64>,
 }
 
 #[cw_serde]

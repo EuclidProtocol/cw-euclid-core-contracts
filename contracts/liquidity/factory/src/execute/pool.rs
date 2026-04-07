@@ -470,8 +470,11 @@ pub fn execute_request_concentrated_pool_creation(
     fee_tier_bps: u64,
     tick_spacing: u64,
     slippage_tolerance_bps: u64,
+    initial_tick: Option<i64>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    // Ensure position token contract is registered
+    POSITION_TOKEN_CONTRACT.load(deps.storage).or(Err(ContractError::new("Position token contract not registered")))?;
     ensure!(
         slippage_tolerance_bps.le(&BPS_100_PERCENT),
         ContractError::InvalidSlippageTolerance {}
@@ -534,6 +537,7 @@ pub fn execute_request_concentrated_pool_creation(
             pair: pair_with_denom_and_amount,
             pool_key,
             slippage_tolerance_bps,
+            initial_tick,
         },
     )
     .to_msg(
@@ -737,7 +741,7 @@ pub fn remove_concentrated_liquidity_request(
     // position_meta.owner, because CW721 NFTs are transferable. If the token has
     // been transferred since it was minted, position_meta.owner would be stale and
     // the wrong address would pass the check.
-    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage).or(Err(ContractError::new("Position token contract not registered")))?;
     let owner_resp: OwnerOfResponse = deps.querier.query_wasm_smart(
         position_token_contract,
         &PositionTokenQueryMsg::OwnerOf {
@@ -836,7 +840,7 @@ pub fn collect_concentrated_fees_request(
     // position_meta.owner, because CW721 NFTs are transferable. If the token has
     // been transferred since it was minted, position_meta.owner would be stale and
     // the wrong address would pass the check.
-    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage)?;
+    let position_token_contract = POSITION_TOKEN_CONTRACT.load(deps.storage).or(Err(ContractError::new("Position token contract not registered")))?;
     let owner_resp: OwnerOfResponse = deps.querier.query_wasm_smart(
         position_token_contract,
         &PositionTokenQueryMsg::OwnerOf {

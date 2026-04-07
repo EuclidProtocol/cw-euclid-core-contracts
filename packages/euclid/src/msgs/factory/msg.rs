@@ -77,6 +77,8 @@ pub enum ExecuteMsg {
         fee_tier_bps: u64,
         tick_spacing: u64,
         slippage_tolerance_bps: u64,
+        /// Initial tick for the pool price. If `None`, defaults to tick 0 (1:1 price).
+        initial_tick: Option<i64>,
         cross_chain_config: CrossChainConfig,
     },
     AddLiquidity {

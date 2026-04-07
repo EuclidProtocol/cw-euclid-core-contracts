@@ -80,6 +80,7 @@ fn test_proper_instantiation() {
                 admin: owner.clone(),
                 fee_tier_bps: 500,
                 tick_spacing: 10,
+                initial_tick: None,
             },
             &[],
             "Concentrated VLP",

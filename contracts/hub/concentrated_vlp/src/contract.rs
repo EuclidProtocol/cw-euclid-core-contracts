@@ -129,11 +129,16 @@ pub fn instantiate(
         },
     )?;
     initialize_position_nonce(deps.storage, env.contract.address.as_str())?;
+    let initial_tick = msg.initial_tick.unwrap_or(0);
+    ensure!(
+        initial_tick >= MIN_TICK && initial_tick <= MAX_TICK,
+        ContractError::new("initial_tick out of bounds")
+    );
     SLOT0.save(
         deps.storage,
         &Slot0 {
-            sqrt_price_x96: get_sqrt_ratio_at_tick(0)?,
-            tick: 0,
+            sqrt_price_x96: get_sqrt_ratio_at_tick(initial_tick)?,
+            tick: initial_tick,
             observation_index: 0,
             observation_cardinality: 1,
             observation_cardinality_next: 1,
@@ -2330,6 +2335,205 @@ mod tests {
             err.to_string()
                 .contains("liquidity tokens do not match pool pair"),
             "expected liquidity tokens mismatch error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn instantiate_with_initial_tick_none_defaults_to_zero() {
+        use cosmwasm_std::testing::{message_info, mock_env};
+
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let info = message_info(&Addr::unchecked("router"), &[]);
+
+        let pair = Pair::new(
+            Token::create("alpha".to_string()).unwrap(),
+            Token::create("beta".to_string()).unwrap(),
+        )
+        .unwrap();
+
+        let msg = InstantiateMsg {
+            virtual_balance_contract: Addr::unchecked("vb"),
+            pair,
+            fee: Fee::new(
+                500,
+                0,
+                CrossChainUser {
+                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
+                    address: "fee".to_string(),
+                },
+            ),
+            execute: None,
+            admin: Addr::unchecked("admin"),
+            fee_tier_bps: 500,
+            tick_spacing: 10,
+            initial_tick: None,
+        };
+
+        instantiate(deps.as_mut(), env, info, msg).unwrap();
+
+        let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
+        assert_eq!(slot0.tick, 0);
+        assert_eq!(slot0.sqrt_price_x96, get_sqrt_ratio_at_tick(0).unwrap());
+    }
+
+    #[test]
+    fn instantiate_with_custom_initial_tick() {
+        use cosmwasm_std::testing::{message_info, mock_env};
+
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let info = message_info(&Addr::unchecked("router"), &[]);
+
+        let pair = Pair::new(
+            Token::create("alpha".to_string()).unwrap(),
+            Token::create("beta".to_string()).unwrap(),
+        )
+        .unwrap();
+
+        let initial_tick = 23027_i64; // ~10:1 price ratio
+
+        let msg = InstantiateMsg {
+            virtual_balance_contract: Addr::unchecked("vb"),
+            pair,
+            fee: Fee::new(
+                500,
+                0,
+                CrossChainUser {
+                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
+                    address: "fee".to_string(),
+                },
+            ),
+            execute: None,
+            admin: Addr::unchecked("admin"),
+            fee_tier_bps: 500,
+            tick_spacing: 10,
+            initial_tick: Some(initial_tick),
+        };
+
+        instantiate(deps.as_mut(), env, info, msg).unwrap();
+
+        let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
+        assert_eq!(slot0.tick, initial_tick);
+        assert_eq!(
+            slot0.sqrt_price_x96,
+            get_sqrt_ratio_at_tick(initial_tick).unwrap()
+        );
+    }
+
+    #[test]
+    fn instantiate_with_negative_initial_tick() {
+        use cosmwasm_std::testing::{message_info, mock_env};
+
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let info = message_info(&Addr::unchecked("router"), &[]);
+
+        let pair = Pair::new(
+            Token::create("alpha".to_string()).unwrap(),
+            Token::create("beta".to_string()).unwrap(),
+        )
+        .unwrap();
+
+        let initial_tick = -23027_i64; // ~0.1:1 price ratio
+
+        let msg = InstantiateMsg {
+            virtual_balance_contract: Addr::unchecked("vb"),
+            pair,
+            fee: Fee::new(
+                500,
+                0,
+                CrossChainUser {
+                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
+                    address: "fee".to_string(),
+                },
+            ),
+            execute: None,
+            admin: Addr::unchecked("admin"),
+            fee_tier_bps: 500,
+            tick_spacing: 10,
+            initial_tick: Some(initial_tick),
+        };
+
+        instantiate(deps.as_mut(), env, info, msg).unwrap();
+
+        let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
+        assert_eq!(slot0.tick, initial_tick);
+        assert_eq!(
+            slot0.sqrt_price_x96,
+            get_sqrt_ratio_at_tick(initial_tick).unwrap()
+        );
+    }
+
+    #[test]
+    fn instantiate_with_out_of_bounds_initial_tick_fails() {
+        use cosmwasm_std::testing::{message_info, mock_env};
+
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let info = message_info(&Addr::unchecked("router"), &[]);
+
+        let pair = Pair::new(
+            Token::create("alpha".to_string()).unwrap(),
+            Token::create("beta".to_string()).unwrap(),
+        )
+        .unwrap();
+
+        let msg = InstantiateMsg {
+            virtual_balance_contract: Addr::unchecked("vb"),
+            pair,
+            fee: Fee::new(
+                500,
+                0,
+                CrossChainUser {
+                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
+                    address: "fee".to_string(),
+                },
+            ),
+            execute: None,
+            admin: Addr::unchecked("admin"),
+            fee_tier_bps: 500,
+            tick_spacing: 10,
+            initial_tick: Some(MIN_TICK - 1),
+        };
+
+        let err = instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap_err();
+        assert!(
+            err.to_string().contains("initial_tick out of bounds"),
+            "expected out of bounds error, got: {}",
+            err
+        );
+
+        // Also test above MAX_TICK
+        let pair = Pair::new(
+            Token::create("alpha".to_string()).unwrap(),
+            Token::create("beta".to_string()).unwrap(),
+        )
+        .unwrap();
+
+        let msg = InstantiateMsg {
+            virtual_balance_contract: Addr::unchecked("vb"),
+            pair,
+            fee: Fee::new(
+                500,
+                0,
+                CrossChainUser {
+                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
+                    address: "fee".to_string(),
+                },
+            ),
+            execute: None,
+            admin: Addr::unchecked("admin"),
+            fee_tier_bps: 500,
+            tick_spacing: 10,
+            initial_tick: Some(MAX_TICK + 1),
+        };
+
+        let err = instantiate(deps.as_mut(), env, info, msg).unwrap_err();
+        assert!(
+            err.to_string().contains("initial_tick out of bounds"),
+            "expected out of bounds error, got: {}",
             err
         );
     }
