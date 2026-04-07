@@ -76,11 +76,7 @@ pub enum ExecuteMsg {
         pair_with_denom_and_amount: PairWithDenomAndAmount,
         fee_tier_bps: u64,
         tick_spacing: u64,
-        lp_token_name: String,
-        lp_token_symbol: String,
-        lp_token_decimal: u8,
         slippage_tolerance_bps: u64,
-        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
         cross_chain_config: CrossChainConfig,
     },
     AddLiquidity {

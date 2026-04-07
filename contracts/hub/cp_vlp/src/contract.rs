@@ -9,7 +9,7 @@ use euclid::{
     error::ContractError,
     fee::{DenomFees, TotalFees},
     msgs::vlp::{
-        base::{State, NEXT_SWAP_REPLY_ID},
+        base::{PoolConfig, State, NEXT_SWAP_REPLY_ID},
         cp::msg::{ExecuteMsg, InstantiateMsg, QueryMsg},
     },
 };
@@ -72,7 +72,7 @@ pub fn instantiate(
                     info.clone(),
                     &STATE,
                     &CHAIN_LP_TOKENS,
-                    None,
+                    PoolConfig::ConstantProduct {},
                     register_pool_msg.sender,
                     register_pool_msg.pair,
                     register_pool_msg.tx_id,
@@ -101,7 +101,7 @@ pub fn execute(
             info,
             &STATE,
             &CHAIN_LP_TOKENS,
-            None,
+            PoolConfig::ConstantProduct {},
             register_pool_msg.sender,
             register_pool_msg.pair,
             register_pool_msg.tx_id,

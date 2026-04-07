@@ -16,7 +16,7 @@ use euclid::{
     fee::{DenomFees, TotalFees},
     msgs::vlp::{
         base::{
-            GetSwapQueryResponse, PoolType, State, VlpConcentratedAddLiquidityResponse,
+            GetSwapQueryResponse, PoolConfig, PoolType, State, VlpConcentratedAddLiquidityResponse,
             VlpConcentratedCollectFeesResponse, VlpConcentratedCollectProtocolFeesResponse,
             VlpConcentratedRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse,
             NEXT_SWAP_REPLY_ID,
@@ -166,7 +166,10 @@ pub fn instantiate(
                         info.clone(),
                         &STATE,
                         &CHAIN_LP_TOKENS,
-                        None,
+                        PoolConfig::Concentrated {
+                            fee_tier_bps: msg.fee_tier_bps,
+                            tick_spacing: msg.tick_spacing,
+                        },
                         register_pool_msg.sender.clone(),
                         register_pool_msg.pool_key.pair.clone(),
                         register_pool_msg.tx_id.clone(),
@@ -198,13 +201,26 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::RegisterPool(register_pool_msg) => {
+            let pool_state = POOL_KEY.load(deps.storage)?;
+            ensure!(
+                pool_state == register_pool_msg.pool_key,
+                ContractError::Generic {
+                    err: format!(
+                        "Invalid pool key: expected {:?}, got {:?}",
+                        pool_state, register_pool_msg.pool_key
+                    ),
+                }
+            );
             let register_res = register_pool(
                 deps,
                 env.clone(),
                 info,
                 &STATE,
                 &CHAIN_LP_TOKENS,
-                None,
+                PoolConfig::Concentrated {
+                    fee_tier_bps: pool_state.get_fee_tier_bps()?,
+                    tick_spacing: pool_state.get_tick_spacing()?,
+                },
                 register_pool_msg.sender.clone(),
                 register_pool_msg.pool_key.pair.clone(),
                 register_pool_msg.tx_id.clone(),

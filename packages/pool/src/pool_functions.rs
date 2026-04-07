@@ -6,9 +6,12 @@ use euclid::{
     events::{liquidity_event, simple_event, tx_event, TxType},
     fee::{BPS_50_PERCENT, MAX_FEE_BPS},
     liquidity::AddLiquidityResponse,
-    msgs::vlp::base::{
-        GetSwapQueryResponse, State, VlpRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse,
-        NEXT_SWAP_REPLY_ID,
+    msgs::vlp::{
+        base::{
+            GetSwapQueryResponse, PoolConfig, State, VlpRemoveLiquidityResponse, VlpSwapMsg,
+            VlpSwapResponse, NEXT_SWAP_REPLY_ID,
+        },
+        stable::msg::DEFAULT_AMP_FACTOR,
     },
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
@@ -204,7 +207,7 @@ pub fn register_pool(
     info: MessageInfo,
     state_storage: &Item<State>,
     chain_lp_tokens: &Map<ChainUid, Uint128>,
-    amp_factor: Option<Uint64>,
+    config: PoolConfig,
     sender: CrossChainUser,
     pair: Pair,
     tx_id: String,
@@ -234,11 +237,6 @@ pub fn register_pool(
         mint_lp_tokens: Uint128::zero(),
         sender: sender.clone(),
     };
-    let pool_type = if amp_factor.is_some() {
-        "stable"
-    } else {
-        "constant_product"
-    };
 
     let mut response = Response::new()
         .add_event(tx_event(
@@ -248,12 +246,28 @@ pub fn register_pool(
         ))
         .add_attribute("action", "register_pool")
         .add_attribute("pool_chain", sender.chain_uid.to_string())
-        .add_attribute("pool_type", pool_type)
         .set_data(to_json_binary(&ack)?);
 
-    if let Some(amp_factor) = amp_factor {
-        response = response.add_attribute("amp_factor", amp_factor.to_string());
-    }
+    match config {
+        PoolConfig::Stable { amp_factor } => {
+            response = response.add_attribute("pool_type", "stable").add_attribute(
+                "amp_factor",
+                amp_factor.unwrap_or(DEFAULT_AMP_FACTOR).to_string(),
+            );
+        }
+        PoolConfig::ConstantProduct {} => {
+            response = response.add_attribute("pool_type", "constant_product");
+        }
+        PoolConfig::Concentrated {
+            fee_tier_bps,
+            tick_spacing,
+        } => {
+            response = response
+                .add_attribute("pool_type", "concentrated")
+                .add_attribute("fee_tier_bps", fee_tier_bps.to_string())
+                .add_attribute("tick_spacing", tick_spacing.to_string());
+        }
+    };
 
     Ok(response)
 }

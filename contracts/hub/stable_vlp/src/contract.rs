@@ -13,7 +13,7 @@ use crate::query::{
 use crate::reply;
 use crate::state::{ADMIN, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, COLLATERAL_LP_TOKENS, STATE};
 use euclid::error::ContractError;
-use euclid::msgs::vlp::base::{State, NEXT_SWAP_REPLY_ID};
+use euclid::msgs::vlp::base::{PoolConfig, State, NEXT_SWAP_REPLY_ID};
 use euclid::msgs::vlp::stable::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
 use euclid_pool::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_admin, update_amp_factor,
@@ -69,7 +69,9 @@ pub fn instantiate(
                     info.clone(),
                     &STATE,
                     &CHAIN_LP_TOKENS,
-                    Some(amp_factor),
+                    PoolConfig::Stable {
+                        amp_factor: Some(amp_factor),
+                    },
                     register_pool_msg.sender,
                     register_pool_msg.pair,
                     register_pool_msg.tx_id,
@@ -99,7 +101,9 @@ pub fn execute(
                 info,
                 &STATE,
                 &CHAIN_LP_TOKENS,
-                Some(amp_factor),
+                PoolConfig::Stable {
+                    amp_factor: Some(amp_factor),
+                },
                 register_pool_msg.sender,
                 register_pool_msg.pair,
                 register_pool_msg.tx_id,

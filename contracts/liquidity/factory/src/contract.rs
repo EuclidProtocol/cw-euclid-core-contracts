@@ -212,7 +212,6 @@ pub fn execute(
             tick_spacing,
             slippage_tolerance_bps,
             cross_chain_config,
-            ..
         } => execute_request_concentrated_pool_creation(
             &mut deps,
             env,

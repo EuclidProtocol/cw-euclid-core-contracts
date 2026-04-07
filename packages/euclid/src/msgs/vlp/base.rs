@@ -1,5 +1,6 @@
 use crate::{
     cross_chain_user::CrossChainUser,
+    error::ContractError,
     fee::{Fee, TotalFees},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
@@ -243,6 +244,22 @@ pub struct PoolKey {
 }
 
 impl PoolKey {
+    pub fn get_fee_tier_bps(&self) -> Result<u64, ContractError> {
+        match self.pool_type {
+            PoolType::Concentrated { fee_tier_bps, .. } => Ok(fee_tier_bps),
+            _ => Err(ContractError::new("Invalid pool type")),
+        }
+    }
+
+    pub fn get_tick_spacing(&self) -> Result<u64, ContractError> {
+        match self.pool_type {
+            PoolType::Concentrated { tick_spacing, .. } => Ok(tick_spacing),
+            _ => Err(ContractError::new("Invalid pool type")),
+        }
+    }
+}
+
+impl PoolKey {
     /// Encode this pool key as a null-byte-delimited string suitable for use as a storage map key.
     pub fn to_map_key(&self) -> String {
         let (fee_tier_bps, tick_spacing) = match self.pool_type {
@@ -282,6 +299,19 @@ pub enum PoolConfig {
         fee_tier_bps: u64,
         tick_spacing: u64,
     },
+}
+
+impl PoolConfig {
+    pub fn to_string(&self) -> String {
+        match self {
+            PoolConfig::Stable { amp_factor } => "stable".to_string(),
+            PoolConfig::ConstantProduct {} => "constant_product".to_string(),
+            PoolConfig::Concentrated {
+                fee_tier_bps,
+                tick_spacing,
+            } => "concentrated".to_string(),
+        }
+    }
 }
 
 #[cw_serde]
