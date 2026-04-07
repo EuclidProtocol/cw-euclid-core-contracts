@@ -143,13 +143,9 @@ mod tests {
         let sender = deps.api.addr_make("alice");
         let msg = to_json_binary("payload").unwrap();
 
-        let seq = create_pending_packet_and_update_sequence(
-            deps.as_mut().storage,
-            &msg,
-            None,
-            &sender,
-        )
-        .unwrap();
+        let seq =
+            create_pending_packet_and_update_sequence(deps.as_mut().storage, &msg, None, &sender)
+                .unwrap();
 
         assert_eq!(seq, 0);
     }
@@ -279,13 +275,9 @@ mod tests {
             )
             .unwrap();
 
-        let err = create_pending_packet_and_update_sequence(
-            deps.as_mut().storage,
-            &msg,
-            None,
-            &sender,
-        )
-        .unwrap_err();
+        let err =
+            create_pending_packet_and_update_sequence(deps.as_mut().storage, &msg, None, &sender)
+                .unwrap_err();
 
         assert_eq!(
             err,

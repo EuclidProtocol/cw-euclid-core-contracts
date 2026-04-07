@@ -378,8 +378,8 @@ mod tests {
     use crate::{
         contract::execute,
         testing::helpers::{
-            default_cross_chain_config, init, native_token, seed_escrow,
-            set_escrow_token_allowed, voucher_token, TEST_CHAIN_UID,
+            default_cross_chain_config, init, native_token, seed_escrow, set_escrow_token_allowed,
+            voucher_token, TEST_CHAIN_UID,
         },
     };
 

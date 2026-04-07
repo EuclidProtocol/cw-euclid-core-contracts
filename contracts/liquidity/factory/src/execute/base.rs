@@ -254,9 +254,7 @@ pub fn receive_euclid_cw20(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{
-        testing::{message_info, mock_dependencies, mock_env},
-    };
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
     use euclid::{
         admin::AdminType,
         error::ContractError,

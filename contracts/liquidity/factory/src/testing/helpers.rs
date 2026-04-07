@@ -97,11 +97,7 @@ pub fn set_escrow_token_allowed(deps: &mut MockDeps, allowed: bool) {
 pub fn seed_escrow(deps: &mut MockDeps, token_id: &str, escrow_addr: &str) {
     let token = Token::create(token_id.to_string()).unwrap();
     TOKEN_TO_ESCROW
-        .save(
-            deps.as_mut().storage,
-            token,
-            &Addr::unchecked(escrow_addr),
-        )
+        .save(deps.as_mut().storage, token, &Addr::unchecked(escrow_addr))
         .unwrap();
 }
 

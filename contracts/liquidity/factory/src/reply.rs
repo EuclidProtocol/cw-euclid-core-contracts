@@ -208,10 +208,7 @@ mod tests {
         state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN},
         testing::helpers::init,
     };
-    use cosmwasm_std::{
-        testing::mock_dependencies,
-        Binary, Reply, SubMsgResponse, SubMsgResult,
-    };
+    use cosmwasm_std::{testing::mock_dependencies, Binary, Reply, SubMsgResponse, SubMsgResult};
     use euclid::{
         msgs::escrow::{Cw20InstantiateResponse, EscrowInstantiateResponse},
         token::{Pair, Token, TokenType, TokenWithDenomAndAmount},
@@ -354,9 +351,7 @@ mod tests {
         assert!(res.messages.is_empty());
 
         // State saved
-        let stored = TOKEN_TO_ESCROW
-            .load(&deps.storage, token.clone())
-            .unwrap();
+        let stored = TOKEN_TO_ESCROW.load(&deps.storage, token.clone()).unwrap();
         assert_eq!(stored, escrow_addr);
     }
 

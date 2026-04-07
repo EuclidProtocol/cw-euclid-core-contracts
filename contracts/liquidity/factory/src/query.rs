@@ -189,9 +189,7 @@ mod tests {
         chain::ChainUid,
         msgs::{
             escrow::AllowedDenomsResponse,
-            factory::{
-                AllPoolsResponse, AllTokensResponse, QueryMsg, StateResponse,
-            },
+            factory::{AllPoolsResponse, AllTokensResponse, QueryMsg, StateResponse},
         },
         token::{Pair, Token, TokenType},
         utils::pagination::Pagination,
@@ -199,9 +197,7 @@ mod tests {
 
     use crate::{
         contract::query,
-        testing::helpers::{
-            init, seed_escrow, seed_vlp, TEST_RELAYER, TEST_ROUTER,
-        },
+        testing::helpers::{init, seed_escrow, seed_vlp, TEST_RELAYER, TEST_ROUTER},
     };
 
     // -----------------------------------------------------------------------
