@@ -103,6 +103,11 @@ impl RouterCrossChainExecuteMsg {
             Self::AddLiquidity { sender, .. } => sender,
             Self::RemoveLiquidity(msg) => &msg.sender,
             Self::Swap(msg) => &msg.sender,
+            Self::RequestConcentratedPoolCreation(msg) => &msg.sender,
+            Self::AddConcentratedLiquidity(msg) => &msg.sender,
+            Self::RemoveConcentratedLiquidity(msg) => &msg.sender,
+            Self::CollectConcentratedFees(msg) => &msg.sender,
+            Self::CollectConcentratedProtocolFees(msg) => &msg.sender,
         }
     }
 

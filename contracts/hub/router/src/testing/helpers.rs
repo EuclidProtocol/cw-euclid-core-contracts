@@ -42,6 +42,7 @@ pub const TEST_DEFAULT_FEE_RECIPIENT: &str = "default_fee_recipient";
 
 pub(crate) fn init(deps: DepsMut, info: MessageInfo) -> Response {
     let msg = InstantiateMsg {
+        concentrated_vlp_code_id: 4,
         relayer_contract: Addr::unchecked(TEST_RELAYER),
         release_fee_recipient: Addr::unchecked(TEST_RELEASE_FEE_RECIPIENT),
         default_fee_recipient: Addr::unchecked(TEST_DEFAULT_FEE_RECIPIENT),

@@ -282,6 +282,7 @@ mod tests {
         let expected_state = State {
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
+            concentrated_vlp_code_id: 4,
             locked: false,
         };
         let state = STATE.load(deps.as_ref().storage).unwrap();

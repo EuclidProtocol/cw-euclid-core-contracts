@@ -663,6 +663,7 @@ mod tests {
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
+            concentrated_vlp_code_id: 4,
         };
         let sender = deps.api.addr_make("creator");
         let info = message_info(&sender, &[]);
@@ -996,7 +997,7 @@ mod tests {
         // Attribute check
         assert_eq!(res.attributes[0], attr("action", "reply_remove_liquidity"));
         assert_eq!(
-            res.attributes[2],
+            res.attributes[3],
             attr("lp_burned", vlp_response.burn_lp_tokens.to_string())
         );
 
@@ -1229,7 +1230,7 @@ mod tests {
         let res = on_pool_register_reply(deps.as_mut(), reply).unwrap();
 
         assert_eq!(res.attributes[0], attr("action", "reply_pool_register"));
-        assert_eq!(res.attributes[1], attr("vlp", "vlp_addr"));
+        assert_eq!(res.attributes[2], attr("vlp", "vlp_addr"));
         // Ack data is set
         assert!(res.data.is_some());
         // No submessages — ibc_execute_add_liquidity not triggered

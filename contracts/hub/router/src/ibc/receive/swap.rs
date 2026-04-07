@@ -237,6 +237,7 @@ mod tests {
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         error::ContractError,
+        msgs::vlp::base::PoolKey,
         swap::NextSwapPair,
         token::{Token, TokenType, TokenWithDenom},
     };
@@ -267,6 +268,7 @@ mod tests {
                 token_in: token_a,
                 token_out: token_b,
                 test_fail: None,
+                pool_key: None,
             }],
             recipients: vec![],
             partner_fee_amount: Uint128::zero(),

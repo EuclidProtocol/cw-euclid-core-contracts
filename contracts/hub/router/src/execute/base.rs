@@ -440,7 +440,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[rstest]
     #[case::lock_state(ManageRouterState::LockState { locked: true })]
-    #[case::vlp_code_id(ManageRouterState::Vlp { vlp_code_id: Some(99), stable_vlp_code_id: None })]
+    #[case::vlp_code_id(ManageRouterState::Vlp { vlp_code_id: Some(99), stable_vlp_code_id: None, concentrated_vlp_code_id: None })]
     #[case::relayer_contract(ManageRouterState::RelayerContract { relayer_contract: Addr::unchecked("x") })]
     #[case::meta_transaction_contract(ManageRouterState::MetaTransactionContract { meta_transaction_contract: Addr::unchecked("x") })]
     #[case::update_fee_state(ManageRouterState::UpdateFeeState { release_fee_recipient: None, default_fee_recipient: None })]
@@ -539,6 +539,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: Some(99),
                 stable_vlp_code_id: None,
+                concentrated_vlp_code_id: None,
             }),
         )
         .unwrap();
@@ -553,6 +554,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: None,
                 stable_vlp_code_id: Some(77),
+                concentrated_vlp_code_id: None,
             }),
         )
         .unwrap();
@@ -891,6 +893,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: Some(99),
                 stable_vlp_code_id: None,
+                concentrated_vlp_code_id: None,
             }),
         );
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
@@ -903,6 +906,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: Some(99),
                 stable_vlp_code_id: None,
+                concentrated_vlp_code_id: None,
             }),
         )
         .unwrap();
@@ -1044,6 +1048,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: Some(99),
                 stable_vlp_code_id: Some(88),
+                concentrated_vlp_code_id: Some(77),
             }),
         )
         .unwrap();
@@ -1058,6 +1063,7 @@ mod tests {
         let state = STATE.load(initialized.as_ref().storage).unwrap();
         assert_eq!(state.constant_product_vlp_code_id, 99);
         assert_eq!(state.stable_vlp_code_id, 88);
+        assert_eq!(state.concentrated_vlp_code_id, 77);
         assert!(state.locked);
 
         execute(
@@ -1339,6 +1345,7 @@ mod tests {
                 token_in: token_a,
                 token_out: Token::create("bbb".to_string()).unwrap(),
                 test_fail: None,
+                pool_key: None,
             }],
             recipients: vec![],
             partner_fee_amount: Uint128::zero(),
@@ -1382,6 +1389,7 @@ mod tests {
                 token_in: token_a,
                 token_out: Token::create("bbb".to_string()).unwrap(),
                 test_fail: None,
+                pool_key: None,
             }],
             recipients: vec![],
             partner_fee_amount: Uint128::zero(),
