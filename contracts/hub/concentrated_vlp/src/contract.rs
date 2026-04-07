@@ -2340,202 +2340,118 @@ mod tests {
     }
 
     #[test]
-    fn instantiate_with_initial_tick_none_defaults_to_zero() {
+    fn instantiate_initial_tick_cases() {
         use cosmwasm_std::testing::{message_info, mock_env};
 
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let info = message_info(&Addr::unchecked("router"), &[]);
+        struct Case {
+            name: &'static str,
+            initial_tick: Option<i64>,
+            expected_tick: i64,
+            expect_err: bool,
+        }
 
-        let pair = Pair::new(
-            Token::create("alpha".to_string()).unwrap(),
-            Token::create("beta".to_string()).unwrap(),
-        )
-        .unwrap();
+        let cases = [
+            Case {
+                name: "None defaults to tick 0",
+                initial_tick: None,
+                expected_tick: 0,
+                expect_err: false,
+            },
+            Case {
+                name: "positive tick (~10:1 price)",
+                initial_tick: Some(23027),
+                expected_tick: 23027,
+                expect_err: false,
+            },
+            Case {
+                name: "negative tick (~0.1:1 price)",
+                initial_tick: Some(-23027),
+                expected_tick: -23027,
+                expect_err: false,
+            },
+            Case {
+                name: "tick 0 explicit",
+                initial_tick: Some(0),
+                expected_tick: 0,
+                expect_err: false,
+            },
+            Case {
+                name: "MIN_TICK boundary",
+                initial_tick: Some(MIN_TICK),
+                expected_tick: MIN_TICK,
+                expect_err: false,
+            },
+            Case {
+                name: "MAX_TICK boundary",
+                initial_tick: Some(MAX_TICK),
+                expected_tick: MAX_TICK,
+                expect_err: false,
+            },
+            Case {
+                name: "below MIN_TICK rejected",
+                initial_tick: Some(MIN_TICK - 1),
+                expected_tick: 0, // unused
+                expect_err: true,
+            },
+            Case {
+                name: "above MAX_TICK rejected",
+                initial_tick: Some(MAX_TICK + 1),
+                expected_tick: 0, // unused
+                expect_err: true,
+            },
+        ];
 
-        let msg = InstantiateMsg {
-            virtual_balance_contract: Addr::unchecked("vb"),
-            pair,
-            fee: Fee::new(
-                500,
-                0,
-                CrossChainUser {
-                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
-                    address: "fee".to_string(),
-                },
-            ),
-            execute: None,
-            admin: Addr::unchecked("admin"),
-            fee_tier_bps: 500,
-            tick_spacing: 10,
-            initial_tick: None,
-        };
+        for case in &cases {
+            let mut deps = mock_dependencies();
+            let env = mock_env();
+            let info = message_info(&Addr::unchecked("router"), &[]);
 
-        instantiate(deps.as_mut(), env, info, msg).unwrap();
+            let pair = Pair::new(
+                Token::create("alpha".to_string()).unwrap(),
+                Token::create("beta".to_string()).unwrap(),
+            )
+            .unwrap();
 
-        let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
-        assert_eq!(slot0.tick, 0);
-        assert_eq!(slot0.sqrt_price_x96, get_sqrt_ratio_at_tick(0).unwrap());
-    }
+            let msg = InstantiateMsg {
+                virtual_balance_contract: Addr::unchecked("vb"),
+                pair,
+                fee: Fee::new(
+                    500,
+                    0,
+                    CrossChainUser {
+                        chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
+                        address: "fee".to_string(),
+                    },
+                ),
+                execute: None,
+                admin: Addr::unchecked("admin"),
+                fee_tier_bps: 500,
+                tick_spacing: 10,
+                initial_tick: case.initial_tick,
+            };
 
-    #[test]
-    fn instantiate_with_custom_initial_tick() {
-        use cosmwasm_std::testing::{message_info, mock_env};
+            let result = instantiate(deps.as_mut(), env, info, msg);
 
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let info = message_info(&Addr::unchecked("router"), &[]);
-
-        let pair = Pair::new(
-            Token::create("alpha".to_string()).unwrap(),
-            Token::create("beta".to_string()).unwrap(),
-        )
-        .unwrap();
-
-        let initial_tick = 23027_i64; // ~10:1 price ratio
-
-        let msg = InstantiateMsg {
-            virtual_balance_contract: Addr::unchecked("vb"),
-            pair,
-            fee: Fee::new(
-                500,
-                0,
-                CrossChainUser {
-                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
-                    address: "fee".to_string(),
-                },
-            ),
-            execute: None,
-            admin: Addr::unchecked("admin"),
-            fee_tier_bps: 500,
-            tick_spacing: 10,
-            initial_tick: Some(initial_tick),
-        };
-
-        instantiate(deps.as_mut(), env, info, msg).unwrap();
-
-        let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
-        assert_eq!(slot0.tick, initial_tick);
-        assert_eq!(
-            slot0.sqrt_price_x96,
-            get_sqrt_ratio_at_tick(initial_tick).unwrap()
-        );
-    }
-
-    #[test]
-    fn instantiate_with_negative_initial_tick() {
-        use cosmwasm_std::testing::{message_info, mock_env};
-
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let info = message_info(&Addr::unchecked("router"), &[]);
-
-        let pair = Pair::new(
-            Token::create("alpha".to_string()).unwrap(),
-            Token::create("beta".to_string()).unwrap(),
-        )
-        .unwrap();
-
-        let initial_tick = -23027_i64; // ~0.1:1 price ratio
-
-        let msg = InstantiateMsg {
-            virtual_balance_contract: Addr::unchecked("vb"),
-            pair,
-            fee: Fee::new(
-                500,
-                0,
-                CrossChainUser {
-                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
-                    address: "fee".to_string(),
-                },
-            ),
-            execute: None,
-            admin: Addr::unchecked("admin"),
-            fee_tier_bps: 500,
-            tick_spacing: 10,
-            initial_tick: Some(initial_tick),
-        };
-
-        instantiate(deps.as_mut(), env, info, msg).unwrap();
-
-        let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
-        assert_eq!(slot0.tick, initial_tick);
-        assert_eq!(
-            slot0.sqrt_price_x96,
-            get_sqrt_ratio_at_tick(initial_tick).unwrap()
-        );
-    }
-
-    #[test]
-    fn instantiate_with_out_of_bounds_initial_tick_fails() {
-        use cosmwasm_std::testing::{message_info, mock_env};
-
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let info = message_info(&Addr::unchecked("router"), &[]);
-
-        let pair = Pair::new(
-            Token::create("alpha".to_string()).unwrap(),
-            Token::create("beta".to_string()).unwrap(),
-        )
-        .unwrap();
-
-        let msg = InstantiateMsg {
-            virtual_balance_contract: Addr::unchecked("vb"),
-            pair,
-            fee: Fee::new(
-                500,
-                0,
-                CrossChainUser {
-                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
-                    address: "fee".to_string(),
-                },
-            ),
-            execute: None,
-            admin: Addr::unchecked("admin"),
-            fee_tier_bps: 500,
-            tick_spacing: 10,
-            initial_tick: Some(MIN_TICK - 1),
-        };
-
-        let err = instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap_err();
-        assert!(
-            err.to_string().contains("initial_tick out of bounds"),
-            "expected out of bounds error, got: {}",
-            err
-        );
-
-        // Also test above MAX_TICK
-        let pair = Pair::new(
-            Token::create("alpha".to_string()).unwrap(),
-            Token::create("beta".to_string()).unwrap(),
-        )
-        .unwrap();
-
-        let msg = InstantiateMsg {
-            virtual_balance_contract: Addr::unchecked("vb"),
-            pair,
-            fee: Fee::new(
-                500,
-                0,
-                CrossChainUser {
-                    chain_uid: ChainUid::create("vsl".to_string()).unwrap(),
-                    address: "fee".to_string(),
-                },
-            ),
-            execute: None,
-            admin: Addr::unchecked("admin"),
-            fee_tier_bps: 500,
-            tick_spacing: 10,
-            initial_tick: Some(MAX_TICK + 1),
-        };
-
-        let err = instantiate(deps.as_mut(), env, info, msg).unwrap_err();
-        assert!(
-            err.to_string().contains("initial_tick out of bounds"),
-            "expected out of bounds error, got: {}",
-            err
-        );
+            if case.expect_err {
+                let err = result.expect_err(&format!("{}: should fail", case.name));
+                assert!(
+                    err.to_string().contains("initial_tick out of bounds"),
+                    "{}: expected out of bounds error, got: {}",
+                    case.name,
+                    err
+                );
+            } else {
+                result.unwrap_or_else(|e| panic!("{}: unexpected error: {}", case.name, e));
+                let slot0 = SLOT0.load(deps.as_ref().storage).unwrap();
+                assert_eq!(slot0.tick, case.expected_tick, "{}: wrong tick", case.name);
+                assert_eq!(
+                    slot0.sqrt_price_x96,
+                    get_sqrt_ratio_at_tick(case.expected_tick).unwrap(),
+                    "{}: wrong sqrt_price_x96",
+                    case.name
+                );
+            }
+        }
     }
 
     #[test]
