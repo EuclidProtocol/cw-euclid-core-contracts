@@ -318,6 +318,7 @@ pub struct ConcentratedPoolVlpResponse {
 #[cw_serde]
 pub struct MigrateMsg {
     pub mock_relayer_address: Option<String>,
+    pub position_token_code_id: Option<u64>,
 }
 
 #[cw_serde]
