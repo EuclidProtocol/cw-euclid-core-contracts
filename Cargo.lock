@@ -1662,8 +1662,10 @@ dependencies = [
  "euclid-ibc",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 

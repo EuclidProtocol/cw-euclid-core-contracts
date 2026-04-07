@@ -251,3 +251,152 @@ pub fn receive_euclid_cw20(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies, mock_env},
+    };
+    use euclid::{
+        admin::AdminType,
+        error::ContractError,
+        msgs::factory::{ExecuteMsg, ManageFactoryState},
+    };
+    use rstest::rstest;
+
+    use crate::{
+        contract::execute,
+        testing::helpers::{init, load_general_admin, load_state},
+    };
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – UpdateEscrowCodeId
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::migration_admin_succeeds("sender", 42u64, None)]
+    #[case::non_admin_fails("other", 42u64, Some(ContractError::Unauthorized {}))]
+    fn test_update_escrow_code_id(
+        #[case] actor: &str,
+        #[case] new_id: u64,
+        #[case] expected_err: Option<ContractError>,
+    ) {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let actor_addr = deps.api.addr_make(actor);
+        let info = message_info(&actor_addr, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateEscrowCodeId {
+            escrow_code_id: new_id,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        match expected_err {
+            Some(err) => assert_eq!(res.unwrap_err(), err),
+            None => {
+                assert!(res.is_ok());
+                let state = load_state(&deps);
+                assert_eq!(state.escrow_code_id, new_id);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – UpdateLPCodeId
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::migration_admin_succeeds("sender", 99u64, None)]
+    #[case::non_admin_fails("other", 99u64, Some(ContractError::Unauthorized {}))]
+    fn test_update_lp_code_id(
+        #[case] actor: &str,
+        #[case] new_id: u64,
+        #[case] expected_err: Option<ContractError>,
+    ) {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let actor_addr = deps.api.addr_make(actor);
+        let info = message_info(&actor_addr, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateLPCodeId {
+            lp_code_id: new_id,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        match expected_err {
+            Some(err) => assert_eq!(res.unwrap_err(), err),
+            None => {
+                assert!(res.is_ok());
+                assert_eq!(load_state(&deps).lp_code_id, new_id);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – UpdateRelayerAddress
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::general_admin_succeeds("sender", None)]
+    #[case::non_admin_fails("other", Some(ContractError::Unauthorized {}))]
+    fn test_update_relayer_address(
+        #[case] actor: &str,
+        #[case] expected_err: Option<ContractError>,
+    ) {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let actor_addr = deps.api.addr_make(actor);
+        let new_relayer = deps.api.addr_make("new_relayer");
+        let info = message_info(&actor_addr, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateRelayerAddress {
+            relayer_address: new_relayer.to_string(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        match expected_err {
+            Some(err) => assert_eq!(res.unwrap_err(), err),
+            None => {
+                assert!(res.is_ok());
+                assert_eq!(load_state(&deps).relayer_contract, new_relayer);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – UpdateAdmin
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_update_general_admin_succeeds() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let old_admin = deps.api.addr_make("sender");
+        let new_admin = deps.api.addr_make("new_admin");
+        let info = message_info(&old_admin, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateAdmin {
+            admin: new_admin.to_string(),
+            admin_type: AdminType::GeneralAdmin,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(res.is_ok());
+        assert_eq!(load_general_admin(&deps), new_admin);
+    }
+
+    #[test]
+    fn test_update_admin_wrong_sender_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let non_admin = deps.api.addr_make("stranger");
+        let target = deps.api.addr_make("target");
+        let info = message_info(&non_admin, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateAdmin {
+            admin: target.to_string(),
+            admin_type: AdminType::FeeAdmin,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(res.is_err());
+    }
+}

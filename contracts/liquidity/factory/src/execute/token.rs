@@ -361,3 +361,248 @@ pub fn execute_transfer_voucher(
         .add_attribute("method", "transfer_voucher")
         .add_submessage(withdraw_msg))
 }
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies, mock_env},
+        Uint128,
+    };
+    use euclid::{
+        chain::ChainUid,
+        error::ContractError,
+        msgs::factory::ExecuteMsg,
+        token::{Token, TokenType},
+    };
+
+    use crate::{
+        contract::execute,
+        testing::helpers::{
+            default_cross_chain_config, init, native_token, seed_escrow,
+            set_escrow_token_allowed, voucher_token, TEST_CHAIN_UID,
+        },
+    };
+
+    // -----------------------------------------------------------------------
+    // Execute: RegisterDenom – authorization check
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_register_denom_unauthorized() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        deps.querier
+            .bank
+            .update_balance("addr", vec![cosmwasm_std::coin(1000, "uusdc")]);
+
+        let non_admin = deps.api.addr_make("stranger");
+        let info = message_info(&non_admin, &[]);
+        let msg = ExecuteMsg::RegisterDenom {
+            token_with_denom: native_token("usdc", "uusdc"),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_register_denom_voucher_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let admin = deps.api.addr_make("sender");
+        let info = message_info(&admin, &[]);
+        let msg = ExecuteMsg::RegisterDenom {
+            token_with_denom: voucher_token("usdc"),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::UnsupportedDenomination {});
+    }
+
+    #[test]
+    fn test_register_denom_happy_path_writes_pending_state() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+
+        set_escrow_token_allowed(&mut deps, false);
+
+        let admin = deps.api.addr_make("sender");
+        let info = message_info(&admin, &[]);
+        let msg = ExecuteMsg::RegisterDenom {
+            token_with_denom: native_token("usdc", "uusdc"),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "request_register_denom"));
+
+        let tx_id = res
+            .attributes
+            .iter()
+            .find(|a| a.key == "tx_id")
+            .map(|a| a.value.clone())
+            .unwrap();
+        assert!(!tx_id.is_empty());
+
+        let pending = crate::state::PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
+            .load(&deps.storage, (admin.clone(), tx_id.clone()))
+            .unwrap();
+        assert_eq!(pending.tx_id, tx_id);
+        assert_eq!(pending.sender, admin);
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: TransferVoucher
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_transfer_voucher_zero_amount_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let recipient_user = euclid::cross_chain_user::CrossChainUser::new(
+            ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap(),
+            deps.api.addr_make("recipient").to_string(),
+        );
+        let info = message_info(&sender, &[]);
+        let msg = ExecuteMsg::TransferVoucher {
+            token_id: Token::create("usdc".to_string()).unwrap(),
+            amount: Uint128::zero(),
+            from: None,
+            recipients: vec![euclid::recipient::Recipient {
+                recipient: recipient_user,
+                amount: euclid::limit::Limit::LessThanOrEqual(Uint128::new(100)),
+                denom: TokenType::Voucher {},
+                forwarding_message: None,
+                unsafe_refund_as_voucher: None,
+            }],
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::ZeroAssetAmount {});
+    }
+
+    #[test]
+    fn test_transfer_voucher_nonzero_amount_emits_attributes() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let recipient_user = euclid::cross_chain_user::CrossChainUser::new(
+            ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap(),
+            deps.api.addr_make("recipient").to_string(),
+        );
+        let info = message_info(&sender, &[]);
+        let msg = ExecuteMsg::TransferVoucher {
+            token_id: Token::create("usdc".to_string()).unwrap(),
+            amount: Uint128::new(500),
+            from: None,
+            recipients: vec![euclid::recipient::Recipient {
+                recipient: recipient_user,
+                amount: euclid::limit::Limit::LessThanOrEqual(Uint128::new(500)),
+                denom: TokenType::Voucher {},
+                forwarding_message: None,
+                unsafe_refund_as_voucher: None,
+            }],
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "transfer_voucher"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: DeregisterDenom – authorization check
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_deregister_denom_unauthorized() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000, "uusdc")]);
+
+        let non_admin = deps.api.addr_make("stranger");
+        let info = message_info(&non_admin, &[]);
+        let msg = ExecuteMsg::DeregisterDenom {
+            token_with_denom: native_token("usdc", "uusdc"),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_deregister_denom_voucher_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let admin = deps.api.addr_make("sender");
+        let info = message_info(&admin, &[]);
+        let msg = ExecuteMsg::DeregisterDenom {
+            token_with_denom: voucher_token("usdc"),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::UnsupportedDenomination {});
+    }
+
+    #[test]
+    fn test_deregister_denom_escrow_does_not_exist() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000, "uusdc")]);
+
+        let admin = deps.api.addr_make("sender");
+        let info = message_info(&admin, &[]);
+        let msg = ExecuteMsg::DeregisterDenom {
+            token_with_denom: native_token("usdc", "uusdc"),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(res.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: RegisterDenom – escrow already has the token allowed
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_register_denom_escrow_already_has_token_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let admin = deps.api.addr_make("sender");
+        let info = message_info(&admin, &[]);
+        let msg = ExecuteMsg::RegisterDenom {
+            token_with_denom: native_token("usdc", "uusdc"),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::EscrowAlreadyExists {});
+    }
+}
