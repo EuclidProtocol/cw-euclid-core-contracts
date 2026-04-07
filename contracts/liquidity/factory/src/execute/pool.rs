@@ -389,6 +389,10 @@ pub fn remove_liquidity_request(
     recipient: CrossChainUser,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    // Reject mixed-case or empty addresses before mutating state
+    sender.validate()?;
+    recipient.validate()?;
+
     let state = STATE.load(deps.storage)?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
 

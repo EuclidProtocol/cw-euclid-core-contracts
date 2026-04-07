@@ -5,12 +5,13 @@ use cw2::set_contract_version;
 use euclid::admin::EuclidAdmin;
 
 use crate::execute::{
-    execute_approve, execute_burn, execute_mint, execute_remove_zero_state_values,
-    execute_transfer, execute_update_admin, execute_update_router,
+    execute_approve, execute_burn, execute_mint, execute_normalize_balance_keys,
+    execute_remove_zero_state_values, execute_transfer, execute_update_admin,
+    execute_update_router,
 };
 use crate::query::{
-    query_admin, query_all_balances, query_balance, query_state, query_token_balances,
-    query_user_balances,
+    query_admin, query_all_balances, query_allowance, query_balance, query_state,
+    query_token_balances, query_user_balances,
 };
 use crate::state::{ADMIN, STATE};
 use euclid::error::ContractError;
@@ -65,6 +66,9 @@ pub fn execute(
         ExecuteMsg::RemoveZeroStateValues { start_after, limit } => {
             execute_remove_zero_state_values(deps, info, start_after, limit)
         }
+        ExecuteMsg::NormalizeBalanceKeys { skip, limit } => {
+            execute_normalize_balance_keys(deps, info, skip, limit)
+        }
     }
 }
 
@@ -74,6 +78,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAdmin {} => query_admin(deps),
         QueryMsg::GetBalance { balance_key } => query_balance(deps, balance_key),
+        QueryMsg::GetAllowance { balance_key } => query_allowance(deps, balance_key),
         QueryMsg::GetUserBalances { user, pagination } => {
             query_user_balances(deps, user.chain_uid, user.address, pagination)
         }

@@ -5,15 +5,15 @@ use euclid::{
     error::ContractError,
     msgs::virtual_balance::{
         msg::{GetBalanceResponse, GetUserBalancesResponse, GetUserBalancesResponseItem},
-        GetAllBalancesResponse, GetAllBalancesResponseItem, GetTokenBalancesResponse,
-        GetTokenBalancesResponseItem,
+        GetAllBalancesResponse, GetAllBalancesResponseItem, GetAllowanceResponse,
+        GetTokenBalancesResponse, GetTokenBalancesResponseItem,
     },
     utils::pagination::Pagination,
     voucher::BalanceKey,
 };
 use schemars::Map;
 
-use crate::state::{ADMIN, BALANCES, STATE};
+use crate::state::{ADMIN, ALLOWANCES, BALANCES, STATE};
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -33,6 +33,16 @@ pub fn query_balance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, Cont
     Ok(to_json_binary(&GetBalanceResponse {
         amount: balance.unwrap_or(Uint128::zero()),
     })?)
+}
+
+pub fn query_allowance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, ContractError> {
+    let allowance = ALLOWANCES
+        .may_load(
+            deps.storage,
+            balance_key.clone().to_serialized_balance_key(),
+        )?
+        .ok_or(ContractError::NoAllowance {})?;
+    Ok(to_json_binary(&GetAllowanceResponse { allowance })?)
 }
 
 pub fn query_user_balances(

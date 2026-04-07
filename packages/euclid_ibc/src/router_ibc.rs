@@ -92,6 +92,20 @@ impl RouterCrossChainExecuteMsg {
         }
     }
 
+    /// Returns a reference to the sender CrossChainUser from any variant.
+    pub fn get_sender(&self) -> &CrossChainUser {
+        match self {
+            Self::RegisterDenom { sender, .. } => sender,
+            Self::DeregisterDenom { sender, .. } => sender,
+            Self::DepositToken(msg) => &msg.sender,
+            Self::TransferVoucher(msg) => &msg.sender,
+            Self::RequestPoolCreation { sender, .. } => sender,
+            Self::AddLiquidity { sender, .. } => sender,
+            Self::RemoveLiquidity(msg) => &msg.sender,
+            Self::Swap(msg) => &msg.sender,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn to_msg(
         &self,

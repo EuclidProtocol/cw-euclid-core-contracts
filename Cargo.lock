@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "cp_vlp"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "euclid-pool"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -1620,6 +1620,7 @@ dependencies = [
  "cw-utils 2.0.0",
  "euclid",
  "itertools 0.10.5",
+ "rstest",
  "thiserror 1.0.69",
 ]
 
@@ -2944,7 +2945,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -2958,6 +2959,7 @@ dependencies = [
  "euclid-ibc",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
@@ -3076,6 +3078,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "891d81b926048e76efe18581bf793546b4c0eaf8448d72be8de2bbee5fd166e1"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "schema-to-proto"
+version = "0.1.0"
+dependencies = [
+ "glob",
+ "regex",
+ "serde_json",
 ]
 
 [[package]]
@@ -3356,7 +3367,7 @@ dependencies = [
 
 [[package]]
 name = "stable_vlp"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -3369,6 +3380,7 @@ dependencies = [
  "euclid-pool",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
