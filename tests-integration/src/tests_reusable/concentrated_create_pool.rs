@@ -101,6 +101,34 @@ fn test_create_two_fee_tiers_same_pair(
 #[rstest]
 #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
 #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_create_two_fee_tiers_same_pair_slippage_failing(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+
+    let pair = pair_with_amounts(&token_a, &token_b, 10_000_000, 100_000_000);
+    let pool_key_500 = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100)
+        .expect("500 bps pool should be created");
+    let pool_key_3000 = create_concentrated_pool(&factory, &router, pair.clone(), 3_000, 60, 100)
+        .expect("3000 bps pool should be created");
+
+    let pool_500 = factory.get_concentrated_vlp(pool_key_500.clone()).unwrap();
+    let pool_3000 = factory.get_concentrated_vlp(pool_key_3000.clone()).unwrap();
+    assert_ne!(
+        pool_500.vlp_address, pool_3000.vlp_address,
+        "different fee tiers must map to different concentrated pools",
+    );
+
+    let router_500 = router.get_vlp_by_pool_key(pool_key_500).unwrap();
+    let router_3000 = router.get_vlp_by_pool_key(pool_key_3000).unwrap();
+    assert_ne!(router_500.vlp, router_3000.vlp);
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
 fn test_create_pool_invalid_spacing_rejected(
     #[case] mode: FactorySetupMode,
     #[case] factory_chain_id: &str,
