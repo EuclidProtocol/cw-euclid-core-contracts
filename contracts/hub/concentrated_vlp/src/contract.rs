@@ -2346,10 +2346,7 @@ mod tests {
     #[case::explicit_zero(Some(0), 0)]
     #[case::min_tick_boundary(Some(MIN_TICK), MIN_TICK)]
     #[case::max_tick_boundary(Some(MAX_TICK), MAX_TICK)]
-    fn instantiate_initial_tick_ok(
-        #[case] initial_tick: Option<i64>,
-        #[case] expected_tick: i64,
-    ) {
+    fn instantiate_initial_tick_ok(#[case] initial_tick: Option<i64>, #[case] expected_tick: i64) {
         use cosmwasm_std::testing::{message_info, mock_env};
 
         let mut deps = mock_dependencies();

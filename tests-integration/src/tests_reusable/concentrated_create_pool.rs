@@ -120,11 +120,23 @@ fn test_create_two_fee_tiers_same_pair_with_initial_tick(
     let initial_tick = (price.ln() / 1.0001_f64.ln()).floor() as i64;
 
     let pool_key_500 = create_concentrated_pool_with_tick(
-        &factory, &router, pair.clone(), 500, 10, 100, Some(initial_tick),
+        &factory,
+        &router,
+        pair.clone(),
+        500,
+        10,
+        100,
+        Some(initial_tick),
     )
     .expect("500 bps pool should be created");
     let pool_key_3000 = create_concentrated_pool_with_tick(
-        &factory, &router, pair.clone(), 3_000, 60, 100, Some(initial_tick),
+        &factory,
+        &router,
+        pair.clone(),
+        3_000,
+        60,
+        100,
+        Some(initial_tick),
     )
     .expect("3000 bps pool should be created");
 
