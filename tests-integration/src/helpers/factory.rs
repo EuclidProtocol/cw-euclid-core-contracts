@@ -251,6 +251,27 @@ pub fn create_concentrated_pool(
     tick_spacing: u64,
     slippage_tolerance_bps: u64,
 ) -> Result<PoolKey, CwOrchError> {
+    create_concentrated_pool_with_tick(
+        factory,
+        router,
+        pair_with_denom,
+        fee_tier_bps,
+        tick_spacing,
+        slippage_tolerance_bps,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_concentrated_pool_with_tick(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    pair_with_denom: PairWithDenomAndAmount,
+    fee_tier_bps: u64,
+    tick_spacing: u64,
+    slippage_tolerance_bps: u64,
+    initial_tick: Option<i64>,
+) -> Result<PoolKey, CwOrchError> {
     let chain = factory.environment();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
@@ -268,6 +289,7 @@ pub fn create_concentrated_pool(
             fee_tier_bps,
             tick_spacing,
             slippage_tolerance_bps,
+            initial_tick,
             cross_chain_config: CrossChainConfig::default(),
         },
         &funds,

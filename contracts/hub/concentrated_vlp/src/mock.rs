@@ -70,6 +70,7 @@ pub fn mock_concentrated_vlp_instantiate_msg(
         admin,
         fee_tier_bps: 500,
         tick_spacing: 10,
+        initial_tick: None,
     }
 }
 

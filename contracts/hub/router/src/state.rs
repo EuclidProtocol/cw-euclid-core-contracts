@@ -83,6 +83,8 @@ pub struct ConcentratedFundsInfo {
     pub lower_tick_index: i64,
     pub upper_tick_index: i64,
     pub position_id: Option<Uint128>,
+    /// Initial tick for pool price. `None` means tick 0 (1:1).
+    pub initial_tick: Option<i64>,
 }
 /// Singleton holding funds info for the current concentrated pool creation.
 /// Safe as a singleton because CosmWasm SubMsg replies are synchronous — the

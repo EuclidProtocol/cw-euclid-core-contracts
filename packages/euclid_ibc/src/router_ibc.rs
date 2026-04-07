@@ -204,6 +204,8 @@ pub struct RouterCrossChainConcentratedRequestPoolCreationExecuteMsg {
     pub pair: PairWithDenomAndAmount,
     pub pool_key: PoolKey,
     pub slippage_tolerance_bps: u64,
+    /// Initial tick for the pool price. `None` means tick 0 (1:1 price).
+    pub initial_tick: Option<i64>,
 }
 
 #[cw_serde]

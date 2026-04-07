@@ -96,6 +96,7 @@ pub fn reusable_internal_call(
                 pool_config,
                 tx_id,
                 slippage_tolerance_bps,
+                None,
             )?
         }
         RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation(msg) => {
@@ -111,6 +112,7 @@ pub fn reusable_internal_call(
                 msg.pool_key,
                 msg.tx_id,
                 msg.slippage_tolerance_bps,
+                msg.initial_tick,
             )?
         }
 
