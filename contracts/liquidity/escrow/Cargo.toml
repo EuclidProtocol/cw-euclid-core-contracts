@@ -48,3 +48,6 @@ euclid-ibc = { workspace = true }
 cw-orch = { workspace = true }
 cw-multi-test = { workspace = true }
 mock = { workspace = true }
+
+[dev-dependencies]
+rstest = "0.19.0"
