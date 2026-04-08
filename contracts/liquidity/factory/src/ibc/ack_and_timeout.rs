@@ -52,7 +52,7 @@ pub fn reusable_internal_ack_call(
     match msg {
         RouterCrossChainExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
 
             ack_pool_creation(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
@@ -165,7 +165,7 @@ fn ack_pool_creation(
     deps: DepsMut,
     env: Env,
     sender: String,
-    res: AcknowledgementMsg<PoolCreationResponse>,
+    res: AcknowledgementMsg<AddLiquidityResponse>,
     tx_id: String,
     is_native: bool,
 ) -> Result<Response, ContractError> {
@@ -190,13 +190,13 @@ fn ack_pool_creation(
             PAIR_TO_VLP.save(
                 deps.storage,
                 existing_req.pair_info.get_pair()?.get_tupple(),
-                &data.vlp_contract.clone(),
+                &data.vlp_address.clone(),
             )?;
             // Prepare response
             let mut res = Response::new()
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "pool_creation")
-                .add_attribute("vlp", data.vlp_contract.clone());
+                .add_attribute("vlp", data.vlp_address.clone());
             // Collects PairInfo into a vector of Token Info for easy iteration
             let tokens = existing_req.pair_info.get_vec_token_info();
             for token in tokens {
@@ -249,7 +249,7 @@ fn ack_pool_creation(
                     }],
                     mint: lp_token_instantiate_data.mint,
                     marketing: lp_token_instantiate_data.marketing,
-                    vlp: data.vlp_contract.clone(),
+                    vlp: data.vlp_address.clone(),
                     factory: env.contract.address,
                     token_pair: existing_req.pair_info.get_pair()?,
                 })?,
@@ -257,7 +257,11 @@ fn ack_pool_creation(
                 label: "cw20".to_string(),
             });
             // Save lp shares against vlp address
-            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_contract, &data.mint_lp_tokens.into())?;
+            VLP_TO_LP_SHARES.save(
+                deps.storage,
+                data.vlp_address.clone(),
+                &data.mint_lp_tokens.into(),
+            )?;
 
             Ok(res.add_submessage(SubMsg {
                 id: LP_INSTANTIATE_REPLY_ID,
@@ -1346,7 +1350,6 @@ mod tests {
                 pool_key,
                 position_id: Uint128::new(1),
                 liquidity_delta: Uint128::new(500),
-                mint_lp_tokens: Uint128::zero(),
                 vlp_address: "vlp_contract".to_string(),
                 tx_id: tx_id.clone(),
                 sender: CrossChainUser::new(

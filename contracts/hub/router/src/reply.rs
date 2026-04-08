@@ -13,7 +13,7 @@ use euclid::{
     msgs::{
         self,
         vlp::base::{
-            ConcentratedPoolCreationResponse, PoolCreationResponse,
+            ConcentratedPoolCreationResponse, PoolCreationResponse, VlpAddLiquidityResponse,
             VlpConcentratedAddLiquidityResponse, VlpConcentratedCollectFeesResponse,
             VlpConcentratedCollectProtocolFeesResponse, VlpConcentratedRemoveLiquidityResponse,
             VlpRemoveLiquidityResponse, VlpSwapResponse,
@@ -230,14 +230,12 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                 from_json::<VlpConcentratedAddLiquidityResponse>(data.clone())
             {
                 let mut res = Response::new();
-                if CONCENTRATED_FUNDS_INFO.may_load(deps.storage)?.is_some() {
-                    CONCENTRATED_FUNDS_INFO.remove(deps.storage);
-                }
+                // Remove funds info if it exists
+                CONCENTRATED_FUNDS_INFO.remove(deps.storage);
                 let ack = AcknowledgementMsg::Ok(ConcentratedAddLiquidityResponse {
                     pool_key: liquidity_response.pool_key.clone(),
                     position_id: liquidity_response.position_id,
                     liquidity_delta: liquidity_response.liquidity_delta,
-                    mint_lp_tokens: liquidity_response.liquidity_delta,
                     vlp_address: liquidity_response.vlp_address.clone(),
                     tx_id: liquidity_response.tx_id.clone(),
                     sender: liquidity_response.sender.clone(),
@@ -249,29 +247,22 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                     .add_attribute("liquidity", format!("{liquidity_response:?}")));
             }
 
-            let liquidity_response: AddLiquidityResponse = from_json(data)?;
+            let liquidity_response: VlpAddLiquidityResponse = from_json(data)?;
 
             let mut res = Response::new();
-            let funds = FUNDS_INFO.may_load(deps.storage)?;
-            match funds {
-                Some(_) => {
-                    let pool_response = PoolCreationResponse {
-                        mint_lp_tokens: liquidity_response.mint_lp_tokens,
-                        vlp_contract: liquidity_response.vlp_address.clone(),
-                        tx_id: liquidity_response.tx_id.clone(),
-                        sender: liquidity_response.sender.clone(),
-                    };
-                    FUNDS_INFO.remove(deps.storage);
+            // Remove funds info if it exists
+            FUNDS_INFO.remove(deps.storage);
 
-                    let ack = AcknowledgementMsg::Ok(pool_response);
-                    res = res.set_data(to_json_binary(&ack)?);
-                }
-                None => {
-                    let ack: AcknowledgementMsg<AddLiquidityResponse> =
-                        AcknowledgementMsg::Ok(liquidity_response.clone());
-                    res = res.set_data(to_json_binary(&ack)?);
-                }
-            }
+            let add_liquidity_response = AddLiquidityResponse {
+                mint_lp_tokens: liquidity_response.mint_lp_tokens,
+                vlp_address: liquidity_response.vlp_address.clone(),
+                tx_id: liquidity_response.tx_id.clone(),
+                sender: liquidity_response.sender.clone(),
+            };
+
+            let ack: AcknowledgementMsg<AddLiquidityResponse> =
+                AcknowledgementMsg::Ok(add_liquidity_response.clone());
+            res = res.set_data(to_json_binary(&ack)?);
 
             Ok(res
                 .add_attribute("action", "reply_add_liquidity")
@@ -626,8 +617,13 @@ mod tests {
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         liquidity::AddLiquidityResponse,
-        msgs::vlp::base::{PoolCreationResponse, VlpRemoveLiquidityResponse, VlpSwapResponse},
-        token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount},
+        msgs::vlp::base::{
+            PoolCreationResponse, VlpAddLiquidityResponse, VlpRemoveLiquidityResponse,
+            VlpSwapResponse,
+        },
+        token::{
+            Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount,
+        },
     };
     use euclid_ibc::router_ibc::{
         RouterCrossChainRemoveLiquidityExecuteMsg, RouterCrossChainSwapExecuteMsg,
@@ -844,8 +840,9 @@ mod tests {
     // on_add_liquidity_reply — plain add-liquidity path (no FUNDS_INFO)
     // -----------------------------------------------------------------------
 
-    fn make_add_liquidity_response() -> AddLiquidityResponse {
-        AddLiquidityResponse {
+    fn make_add_liquidity_response(pair_with_amount: PairWithAmount) -> VlpAddLiquidityResponse {
+        VlpAddLiquidityResponse {
+            liquidity_added: pair_with_amount,
             mint_lp_tokens: Uint128::new(500),
             vlp_address: "vlp_contract".to_string(),
             tx_id: "tx-add-liq-1".to_string(),
@@ -860,7 +857,16 @@ mod tests {
     fn test_add_liquidity_reply_no_funds_info_returns_add_liq_ack() {
         let mut deps = initialized();
 
-        let liq_response = make_add_liquidity_response();
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+
+        let liq_response = make_add_liquidity_response(
+            pair.get_pair_with_amount(Uint128::new(100), Uint128::new(200))
+                .unwrap(),
+        );
         let inner_json = cosmwasm_std::to_json_binary(&liq_response).unwrap();
         let proto_bytes = encode_execute_response(&inner_json);
         let reply = ok_reply(ADD_LIQUIDITY_REPLY_ID, proto_bytes);
@@ -881,7 +887,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_liquidity_reply_with_funds_info_builds_pool_creation_ack_and_clears_funds_info() {
+    fn test_add_liquidity_reply_with_funds_info_builds_add_liquidity_ack_and_clears_funds_info() {
         let mut deps = initialized();
 
         // Seed FUNDS_INFO (simulates pool-creation path)
@@ -900,10 +906,11 @@ mod tests {
             },
         };
         FUNDS_INFO
-            .save(deps.as_mut().storage, &(pair_with_denom, 50u64))
+            .save(deps.as_mut().storage, &(pair_with_denom.clone(), 50u64))
             .unwrap();
 
-        let liq_response = make_add_liquidity_response();
+        let liq_response =
+            make_add_liquidity_response(pair_with_denom.get_pair_with_amount().unwrap());
         let inner_json = cosmwasm_std::to_json_binary(&liq_response).unwrap();
         let proto_bytes = encode_execute_response(&inner_json);
         let reply = ok_reply(ADD_LIQUIDITY_REPLY_ID, proto_bytes);
@@ -1209,7 +1216,6 @@ mod tests {
         PoolCreationResponse {
             vlp_contract: vlp_address.to_string(),
             tx_id: tx_id.to_string(),
-            mint_lp_tokens: Uint128::new(1000),
             sender: CrossChainUser::new(
                 ChainUid::create("chain1".to_string()).unwrap(),
                 "user1".to_string(),
