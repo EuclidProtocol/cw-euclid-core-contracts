@@ -117,9 +117,7 @@ mod tests {
 
     use crate::{
         state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE},
-        testing::helpers::{
-            init, init_no_denom, native_denom, token, NATIVE_DENOM, TOKEN_ID,
-        },
+        testing::helpers::{init, init_no_denom, native_denom, token, NATIVE_DENOM, TOKEN_ID},
     };
 
     use super::{execute, instantiate};
@@ -218,7 +216,13 @@ mod tests {
 
         for _ in 0..2 {
             let info = message_info(&factory, &[coin(300, NATIVE_DENOM)]);
-            execute(deps.as_mut(), mock_env(), info, ExecuteMsg::DepositNative {}).unwrap();
+            execute(
+                deps.as_mut(),
+                mock_env(),
+                info,
+                ExecuteMsg::DepositNative {},
+            )
+            .unwrap();
         }
 
         let state = STATE.load(&deps.storage).unwrap();
@@ -255,7 +259,13 @@ mod tests {
         let factory = deps.api.addr_make("factory");
 
         let info = message_info(&factory, &[coin(500, NATIVE_DENOM)]);
-        execute(deps.as_mut(), mock_env(), info, ExecuteMsg::DepositNative {}).unwrap();
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
 
         let finfo = message_info(&factory, &[]);
         execute(
@@ -269,8 +279,13 @@ mod tests {
         .unwrap();
 
         let info = message_info(&factory, &[coin(100, NATIVE_DENOM)]);
-        let err = execute(deps.as_mut(), mock_env(), info, ExecuteMsg::DepositNative {})
-            .unwrap_err();
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap_err();
         assert_eq!(err, ContractError::UnsupportedDenomination {});
 
         execute(

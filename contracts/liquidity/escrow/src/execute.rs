@@ -308,14 +308,11 @@ mod tests {
     use cosmwasm_std::{
         attr, coin, from_json,
         testing::{message_info, mock_env},
-        Addr, Binary, BankMsg, CosmosMsg, Uint128, WasmMsg,
+        Addr, BankMsg, Binary, CosmosMsg, Uint128, WasmMsg,
     };
     use euclid::{
         error::ContractError,
-        msgs::{
-            escrow::ExecuteMsg,
-            factory::ReleaseEscrowResponse,
-        },
+        msgs::{escrow::ExecuteMsg, factory::ReleaseEscrowResponse},
         token::TokenType,
     };
     use euclid_ibc::ack::AcknowledgementMsg;
@@ -1155,7 +1152,13 @@ mod tests {
         .unwrap();
 
         let info = message_info(&factory, &[coin(700, NATIVE_DENOM)]);
-        execute(deps.as_mut(), mock_env(), info, ExecuteMsg::DepositNative {}).unwrap();
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
 
         let cw20_info = message_info(&cw20_contract, &[]);
         let recv_msg = make_cw20_receive_msg(factory.as_str(), 300);
@@ -1188,7 +1191,13 @@ mod tests {
         let factory = deps.api.addr_make("factory");
 
         let info = message_info(&factory, &[coin(200, NATIVE_DENOM)]);
-        execute(deps.as_mut(), mock_env(), info, ExecuteMsg::DepositNative {}).unwrap();
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
 
         let finfo = message_info(&factory, &[]);
         execute(
@@ -1212,7 +1221,13 @@ mod tests {
         .unwrap();
 
         let info = message_info(&factory, &[coin(50, NATIVE_DENOM)]);
-        execute(deps.as_mut(), mock_env(), info, ExecuteMsg::DepositNative {}).unwrap();
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
 
         let bal = DENOM_TO_AMOUNT
             .load(&deps.storage, native_denom().get_key())

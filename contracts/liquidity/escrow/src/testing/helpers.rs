@@ -10,8 +10,8 @@ use euclid::{
 
 use crate::contract::{execute, instantiate};
 
-use cw20::Cw20ReceiveMsg;
 use cosmwasm_std::{to_json_binary, Uint128};
+use cw20::Cw20ReceiveMsg;
 use euclid::msgs::escrow::cw20::EscrowCw20HookMsg;
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
@@ -65,7 +65,13 @@ pub fn init_no_denom(deps: &mut MockDeps) -> Response {
 pub fn deposit_native(deps: &mut MockDeps, amount: u128) {
     let factory = deps.api.addr_make("factory");
     let info = message_info(&factory, &[coin(amount, NATIVE_DENOM)]);
-    execute(deps.as_mut(), mock_env(), info, ExecuteMsg::DepositNative {}).unwrap();
+    execute(
+        deps.as_mut(),
+        mock_env(),
+        info,
+        ExecuteMsg::DepositNative {},
+    )
+    .unwrap();
 }
 
 pub fn make_cw20_receive_msg(sender: &str, amount: u128) -> Cw20ReceiveMsg {

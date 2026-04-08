@@ -72,10 +72,9 @@ mod tests {
     #[rstest]
     fn test_query_state(initialized: MockDeps) {
         let factory = initialized.api.addr_make("factory");
-        let res: StateResponse = from_json(
-            query(initialized.as_ref(), mock_env(), QueryMsg::State {}).unwrap(),
-        )
-        .unwrap();
+        let res: StateResponse =
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::State {}).unwrap())
+                .unwrap();
 
         assert_eq!(res.token, token());
         assert_eq!(res.factory_address, factory);
@@ -84,19 +83,17 @@ mod tests {
 
     #[rstest]
     fn test_query_state_reflects_deposit(with_deposit: MockDeps) {
-        let res: StateResponse = from_json(
-            query(with_deposit.as_ref(), mock_env(), QueryMsg::State {}).unwrap(),
-        )
-        .unwrap();
+        let res: StateResponse =
+            from_json(query(with_deposit.as_ref(), mock_env(), QueryMsg::State {}).unwrap())
+                .unwrap();
         assert_eq!(res.total_amount, Uint128::new(1_000));
     }
 
     #[rstest]
     fn test_query_token_id(initialized: MockDeps) {
-        let res: TokenIdResponse = from_json(
-            query(initialized.as_ref(), mock_env(), QueryMsg::TokenId {}).unwrap(),
-        )
-        .unwrap();
+        let res: TokenIdResponse =
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::TokenId {}).unwrap())
+                .unwrap();
         assert_eq!(res.token_id, TOKEN_ID);
     }
 
@@ -167,10 +164,9 @@ mod tests {
         let mut deps = mock_dependencies();
         init_no_denom(&mut deps);
 
-        let res: AllowedDenomsResponse = from_json(
-            query(deps.as_ref(), mock_env(), QueryMsg::AllowedDenoms {}).unwrap(),
-        )
-        .unwrap();
+        let res: AllowedDenomsResponse =
+            from_json(query(deps.as_ref(), mock_env(), QueryMsg::AllowedDenoms {}).unwrap())
+                .unwrap();
         assert!(res.denoms.is_empty());
     }
 
@@ -191,10 +187,9 @@ mod tests {
         )
         .unwrap();
 
-        let res: AllowedDenomsResponse = from_json(
-            query(initialized.as_ref(), mock_env(), QueryMsg::AllowedDenoms {}).unwrap(),
-        )
-        .unwrap();
+        let res: AllowedDenomsResponse =
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::AllowedDenoms {}).unwrap())
+                .unwrap();
 
         assert_eq!(res.denoms.len(), 2);
         assert!(res.denoms.contains(&native_denom()));
@@ -215,10 +210,9 @@ mod tests {
         )
         .unwrap();
 
-        let res: AllowedDenomsResponse = from_json(
-            query(initialized.as_ref(), mock_env(), QueryMsg::AllowedDenoms {}).unwrap(),
-        )
-        .unwrap();
+        let res: AllowedDenomsResponse =
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::AllowedDenoms {}).unwrap())
+                .unwrap();
         assert!(res.denoms.is_empty());
     }
 }
