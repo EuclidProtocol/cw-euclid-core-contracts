@@ -720,7 +720,7 @@ pub fn remove_concentrated_liquidity_request(
     sender: CrossChainUser,
     pool_key: euclid::msgs::vlp::base::PoolKey,
     position_id: Uint128,
-    lp_allocation: Uint128,
+    liquidity_delta: Uint128,
     recipient: CrossChainUser,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
@@ -733,7 +733,10 @@ pub fn remove_concentrated_liquidity_request(
             .has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-    ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
+    ensure!(
+        !liquidity_delta.is_zero(),
+        ContractError::ZeroAssetAmount {}
+    );
 
     // position_meta is loaded for the pool_key structural check below.
     // position_meta.owner is NOT used for authorization here — the NFT contract
@@ -771,7 +774,7 @@ pub fn remove_concentrated_liquidity_request(
         sender: sender_addr.clone(),
         pool_key: pool_key.clone(),
         position_id: position_id.u128(),
-        lp_allocation,
+        liquidity_delta,
     };
 
     PENDING_CONCENTRATED_REMOVE_LIQUIDITY.save(
@@ -786,7 +789,7 @@ pub fn remove_concentrated_liquidity_request(
             sender,
             pool_key,
             position_id,
-            lp_allocation,
+            liquidity_delta,
             recipient,
             tx_id: tx_id.clone(),
         },

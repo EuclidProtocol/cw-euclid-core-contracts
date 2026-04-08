@@ -144,7 +144,7 @@ pub struct ConcentratedRemoveLiquidityRequest {
     pub sender: Addr,
     pub pool_key: PoolKey,
     pub position_id: u128,
-    pub lp_allocation: cosmwasm_std::Uint128,
+    pub liquidity_delta: cosmwasm_std::Uint128,
 }
 pub const PENDING_CONCENTRATED_REMOVE_LIQUIDITY: Map<
     (Addr, String),

@@ -225,7 +225,7 @@ pub struct RouterCrossChainConcentratedRemoveLiquidityExecuteMsg {
     pub sender: CrossChainUser,
     pub pool_key: PoolKey,
     pub position_id: Uint128,
-    pub lp_allocation: Uint128,
+    pub liquidity_delta: Uint128,
     pub recipient: CrossChainUser,
     pub tx_id: String,
 }
