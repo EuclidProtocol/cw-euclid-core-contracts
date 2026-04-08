@@ -60,6 +60,7 @@ pub fn query_all_vlps(
                 vlp: v.1.to_string(),
                 token_1: Token::create(v.0 .0)?,
                 token_2: Token::create(v.0 .1)?,
+                pool_key: None,
             })
         })
         .collect::<Result<_, ContractError>>()?;
@@ -70,12 +71,19 @@ pub fn query_all_vlps(
         .take(limit.unwrap_or(10) as usize)
         .map(|v| {
             let v = v?;
-            let (token_1, token_2, _, _) = PoolKey::parse_map_key(&v.0)
+            let (token_1, token_2, fee_tier_bps, tick_spacing) = PoolKey::parse_map_key(&v.0)
                 .ok_or(ContractError::new("invalid concentrated pool key in state"))?;
             Ok(VlpResponse {
                 vlp: v.1.to_string(),
-                token_1: Token::create(token_1)?,
-                token_2: Token::create(token_2)?,
+                token_1: Token::create(token_1.clone())?,
+                token_2: Token::create(token_2.clone())?,
+                pool_key: Some(PoolKey {
+                    pair: Pair::new(Token::create(token_1)?, Token::create(token_2)?)?,
+                    pool_type: PoolType::Concentrated {
+                        fee_tier_bps,
+                        tick_spacing,
+                    },
+                }),
             })
         })
         .collect();
@@ -92,6 +100,7 @@ pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
         vlp: vlp.to_string(),
         token_1: Token::create(key.0)?,
         token_2: Token::create(key.1)?,
+        pool_key: None,
     })?)
 }
 
