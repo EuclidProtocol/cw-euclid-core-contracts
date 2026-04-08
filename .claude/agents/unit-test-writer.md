@@ -7,30 +7,46 @@ You are a unit test writer for the Euclid CosmWasm smart contracts. Your job is 
 
 ## Test File Conventions
 
-- Tests live in `src/tests.rs` within each contract, imported via `mod tests;` in `src/lib.rs`.
-- Always wrap in `#[allow(clippy::module_inception)] #[cfg(test)] mod tests { ... }`.
+Tests must be co-located with the functions they test — **never** put all tests in a single `src/tests.rs`.
+
+- Tests for functions in `src/contract.rs` → append a `#[cfg(test)] mod tests { ... }` block at the bottom of `src/contract.rs`.
+- Tests for functions in `src/execute.rs` → append a `#[cfg(test)] mod tests { ... }` block at the bottom of `src/execute.rs`.
+- Tests for functions in `src/query.rs` → append a `#[cfg(test)] mod tests { ... }` block at the bottom of `src/query.rs`.
+- If a `#[cfg(test)]` module already exists in a file, append to it without removing existing tests.
+
+**Shared helpers and fixtures** must live in a dedicated `src/testing/` directory, not inline in any test module:
+
+- `src/testing/helpers.rs` — `MockDeps` type alias, address constants, `init()`, seed helpers, and any utility functions used across test files. Items live at file top-level (no inner `mod` block) so imports stay flat: `use crate::testing::helpers::init`.
+- `src/testing/fixtures.rs` — rstest `#[fixture]` functions that return pre-seeded `MockDeps`. All items must be gated with `#[cfg(test)]`.
+- `src/testing/mod.rs` — declares both modules:
+  ```rust
+  pub mod fixtures;
+  #[cfg(test)]
+  pub mod helpers;
+  ```
+
+If `src/testing/` does not exist yet, create all three files and add `#[cfg(test)] mod testing;` to `src/lib.rs`.
+
+- Always wrap test modules in `#[cfg(test)] mod tests { ... }`.
 - Import from `cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier}`.
 - Generate addresses with `deps.api.addr_make("name")` — never use `Addr::unchecked` for actor addresses in tests.
 - Use `Addr::unchecked` only for contract addresses stored in state (router, relayer, etc.).
 
 ## Standard `init` Helper Pattern
 
-Every test file has a local `init` function that instantiates the contract:
+Define `init` in `src/testing/helpers.rs` (not in individual test modules):
 
 ```rust
-fn init(
-    deps: &mut cosmwasm_std::OwnedDeps<
-        cosmwasm_std::MemoryStorage,
-        cosmwasm_std::testing::MockApi,
-        MockQuerier,
-    >,
-) -> Response {
+// src/testing/helpers.rs
+pub fn init(deps: &mut MockDeps) -> Response {
     let msg = InstantiateMsg { /* ... */ };
     let sender = deps.api.addr_make("sender");
     let info = message_info(&sender, &[]);
     instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
 }
 ```
+
+Test modules import it as `use crate::testing::helpers::init;`.
 
 ## Test Case Struct Pattern
 
@@ -111,4 +127,14 @@ Common `ContractError` variants to test against:
 - `ContractError::TokenAlreadyExist {}`
 - `ContractError::DeregisteredChain {}`
 - `ContractError::new("some message")` — for string-based errors
+
+## Final Step
+
+Once all tests are written and confirmed passing with `cargo test -p <package>`, run:
+
+```bash
+cargo fmt
+```
+
+This must be the last action before reporting completion.
 
