@@ -391,7 +391,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
-        QueryMsg::GetPositionTokenContract { pool_key } => get_position_token_contract(deps, pool_key),
+        QueryMsg::GetPositionTokenContract { pool_key } => {
+            get_position_token_contract(deps, pool_key)
+        }
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

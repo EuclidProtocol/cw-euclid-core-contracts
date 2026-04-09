@@ -241,7 +241,11 @@ impl Pair {
     }
 
     pub fn display_name(&self) -> String {
-        format!("{}-{}", self.token_1.to_uppercase(), self.token_2.to_uppercase())
+        format!(
+            "{}-{}",
+            self.token_1.to_uppercase(),
+            self.token_2.to_uppercase()
+        )
     }
 
     pub fn symbol(&self) -> String {

@@ -166,7 +166,9 @@ mod tests {
 
     use super::execute_update_position;
 
-    fn setup_position(initial_liquidity: u128) -> (
+    fn setup_position(
+        initial_liquidity: u128,
+    ) -> (
         cosmwasm_std::OwnedDeps<
             cosmwasm_std::MemoryStorage,
             cosmwasm_std::testing::MockApi,
@@ -312,7 +314,9 @@ mod tests {
             first_delta,
         )
         .unwrap();
-        let at_boundary = POSITION_INFO.load(deps.as_ref().storage, &token_id).unwrap();
+        let at_boundary = POSITION_INFO
+            .load(deps.as_ref().storage, &token_id)
+            .unwrap();
         assert_eq!(at_boundary.liquidity, expected_after_first);
 
         // Second step must error instead of wrapping.
