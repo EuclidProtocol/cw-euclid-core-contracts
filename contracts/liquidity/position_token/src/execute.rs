@@ -137,15 +137,18 @@ pub(crate) fn execute_update_position(
             })?;
     ensure!(info.sender == state.factory, ContractError::Unauthorized {});
 
-    let abs_delta: Uint128 = liquidity_change
-        .unsigned_abs()
-        .try_into()
-        .map_err(|_| ContractError::new("liquidity change overflow"))?;
+    let abs_delta = convert_int256_to_uint128(liquidity_change)?;
 
     if liquidity_change.is_negative() {
-        position.liquidity = position.liquidity.checked_sub(abs_delta)?;
+        position.liquidity = position
+            .liquidity
+            .checked_sub(abs_delta)
+            .map_err(|_| ContractError::new("liquidity change overflow"))?;
     } else {
-        position.liquidity = position.liquidity.checked_add(abs_delta)?;
+        position.liquidity = position
+            .liquidity
+            .checked_add(abs_delta)
+            .map_err(|_| ContractError::new("liquidity change overflow"))?;
     }
     POSITION_INFO.save(deps.storage, &token_id, &position)?;
     Ok(Response::new()
@@ -155,8 +158,17 @@ pub(crate) fn execute_update_position(
         .add_attribute("new_liquidity", position.liquidity.to_string()))
 }
 
+fn convert_int256_to_uint128(liquidity_change: Int256) -> Result<Uint128, ContractError> {
+    liquidity_change
+        .unsigned_abs()
+        .try_into()
+        .map_err(|_| ContractError::new("liquidity change overflow"))
+}
+
 #[cfg(test)]
 mod tests {
+    use std::ops::Add;
+
     use cosmwasm_std::testing::{message_info, mock_dependencies};
     use cosmwasm_std::{Int256, Uint128};
     use euclid::msgs::position_token::{PositionInfo, State};
@@ -204,6 +216,36 @@ mod tests {
             .unwrap();
 
         (deps, factory, token_id)
+    }
+
+    #[rstest]
+    #[case::int256_zero(Int256::from(0), Uint128::zero(), false)]
+    #[case::int256_positive(Int256::from(10), Uint128::new(10), false)]
+    #[case::int256_positive_overflow(Int256::from(u128::MAX).add(Int256::from(1)), Uint128::MAX, true)]
+    #[case::int256_negative(Int256::from(-10), Uint128::new(10), false)]
+    #[case::int256_negative_overflow(-Int256::from(u128::MAX) - Int256::from(1), Uint128::MAX, true)]
+    fn convert_int256_to_uint128(
+        #[case] int_value: Int256,
+        #[case] uint_value: Uint128,
+        #[case] expect_overflow: bool,
+    ) {
+        let result = super::convert_int256_to_uint128(int_value);
+        match result {
+            Ok(value) => {
+                if expect_overflow {
+                    panic!("expected overflow, got {value:?}");
+                } else {
+                    assert_eq!(value, uint_value);
+                }
+            }
+            Err(err) => {
+                if expect_overflow {
+                    assert!(err.to_string().contains("liquidity change overflow"));
+                } else {
+                    panic!("expected success, got {err:?}");
+                }
+            }
+        }
     }
 
     #[rstest]
@@ -260,29 +302,51 @@ mod tests {
         let result = execute_update_position(
             deps.as_mut(),
             message_info(&factory, &[]),
-            token_id,
+            token_id.clone(),
             liquidity_change,
         );
-        assert!(result.is_err());
+        match result {
+            Err(err) => assert!(
+                err.to_string().contains("liquidity change overflow"),
+                "got {err:?}"
+            ),
+            _ => {
+                let updated_position = POSITION_INFO
+                    .load(deps.as_ref().storage, &token_id)
+                    .unwrap();
+                panic!("expected overflow error, got {updated_position:?}");
+            }
+        }
     }
 
     #[rstest]
-    #[case::int256_max(1_000u128, Int256::MAX)]
+    #[case::int256_max(1_000u128, Int256::from(u128::MAX))]
+    #[case::int256_min(1_000u128, -Int256::from(u128::MAX))]
     fn execute_update_position_rejects_delta_bigger_than_u128(
         #[case] start_liquidity: u128,
         #[case] liquidity_change: Int256,
     ) {
         let (mut deps, factory, token_id) = setup_position(start_liquidity);
 
-        let err = execute_update_position(
+        let result = execute_update_position(
             deps.as_mut(),
             message_info(&factory, &[]),
-            token_id,
+            token_id.clone(),
             liquidity_change,
-        )
-        .unwrap_err();
+        );
 
-        assert!(err.to_string().contains("liquidity change overflow"));
+        match result {
+            Err(err) => assert!(
+                err.to_string().contains("liquidity change overflow"),
+                "got {err:?}"
+            ),
+            _ => {
+                let updated_position = POSITION_INFO
+                    .load(deps.as_ref().storage, &token_id)
+                    .unwrap();
+                panic!("expected overflow error, got {updated_position:?}");
+            }
+        }
     }
 
     #[rstest]
