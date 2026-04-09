@@ -42,6 +42,7 @@ pub(crate) fn query_position_info(deps: Deps, token_id: String) -> Result<Binary
 
     Ok(to_json_binary(&PositionInfoResponse {
         liquidity: position.liquidity,
+        vlp_address: position.vlp_address,
     })?)
 }
 
@@ -85,7 +86,6 @@ pub(crate) fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         name: state.name,
         symbol: state.symbol,
         factory: state.factory,
-        vlp_address: state.vlp_address,
         total_tokens: state.total_tokens,
     })?)
 }

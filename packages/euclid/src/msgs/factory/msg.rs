@@ -173,6 +173,7 @@ pub enum ManageFactoryState {
     UpdatePositionTokenCodeId {
         position_token_code_id: u64,
     },
+    RegisterPositionToken {},
 }
 
 #[cw_serde]
@@ -238,7 +239,7 @@ pub enum QueryMsg {
     GetEscrow { token_id: String },
 
     #[returns(GetPositionTokenContractResponse)]
-    GetPositionTokenContract { pool_key: PoolKey },
+    GetPositionTokenContract {},
 }
 
 #[cw_serde]
@@ -265,7 +266,7 @@ pub struct GetEscrowResponse {
 
 #[cw_serde]
 pub struct GetPositionTokenContractResponse {
-    pub position_token_contract: Addr,
+    pub position_token_contract: Option<Addr>,
 }
 // We define a custom struct for each query response
 #[cw_serde]

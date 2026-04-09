@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, DepsMut, Env, Int128, Int256, MessageInfo, Response, SubMsg, Uint128};
+use cosmwasm_std::{ensure, DepsMut, Env, Int256, MessageInfo, Response, SubMsg, Uint128};
 use cw20::Logo;
 use euclid::{
     cross_chain_user::CrossChainUser,
@@ -36,8 +36,8 @@ use crate::{
         PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
-        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, POOL_KEY_TO_VLP, STATE, TOKEN_TO_ESCROW,
-        VLP_TO_LP_TOKEN, VLP_TO_POSITION_TOKEN,
+        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT,
+        STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -614,19 +614,28 @@ pub fn add_concentrated_liquidity_request(
         .load(deps.storage, pool_key.to_map_key())
         .map_err(|_| ContractError::PoolDoesNotExist {})?;
     if let Some(position_id) = position_id {
-        let position_token_address = VLP_TO_POSITION_TOKEN
-            .load(deps.storage, vlp_address)
-            .map_err(|_| ContractError::new("Position token does not exist for this vlp"))?;
+        let position_token_address = POSITION_TOKEN_CONTRACT
+            .load(deps.storage)
+            .map_err(|_| ContractError::new("Position token contract not registered"))?;
         let owner_resp: OwnerOfResponse = deps.querier.query_wasm_smart(
-            position_token_address,
+            position_token_address.clone(),
             &PositionTokenQueryMsg::OwnerOf {
                 token_id: position_id.to_string(),
             },
         )?;
-        // Ensure the position is owned by the sender
         ensure!(
             owner_resp.owner == info.sender.to_string(),
             ContractError::Unauthorized {}
+        );
+        let position_info: PositionInfoResponse = deps.querier.query_wasm_smart(
+            position_token_address,
+            &PositionTokenQueryMsg::PositionInfo {
+                token_id: position_id.to_string(),
+            },
+        )?;
+        ensure!(
+            position_info.vlp_address == vlp_address,
+            ContractError::new("Position does not belong to this pool")
         );
     }
 
@@ -755,16 +764,15 @@ pub fn remove_concentrated_liquidity_request(
         .load(deps.storage, pool_key.to_map_key())
         .map_err(|_| ContractError::PoolDoesNotExist {})?;
 
-    let position_token_address = VLP_TO_POSITION_TOKEN
-        .load(deps.storage, vlp_address)
-        .map_err(|_| ContractError::new("Position token does not exist for this vlp"))?;
+    let position_token_address = POSITION_TOKEN_CONTRACT
+        .load(deps.storage)
+        .map_err(|_| ContractError::new("Position token contract not registered"))?;
     let owner_resp: OwnerOfResponse = deps.querier.query_wasm_smart(
         position_token_address.clone(),
         &PositionTokenQueryMsg::OwnerOf {
             token_id: position_id.to_string(),
         },
     )?;
-    // Ensure the position is owned by the sender
     ensure!(
         owner_resp.owner == info.sender.to_string(),
         ContractError::Unauthorized {}
@@ -776,7 +784,10 @@ pub fn remove_concentrated_liquidity_request(
             token_id: position_id.to_string(),
         },
     )?;
-
+    ensure!(
+        position_info.vlp_address == vlp_address,
+        ContractError::new("Position does not belong to this pool")
+    );
     ensure!(
         position_info.liquidity.ge(&liquidity_delta),
         ContractError::InsufficientFunds {}
@@ -786,7 +797,7 @@ pub fn remove_concentrated_liquidity_request(
 
     // Lets update liquidity of the position before removing liquidity so next calls will error if the position is not enough liquidity
     let update_position_msg = msgs::position_token::ExecuteMsg::UpdatePosition {
-        token_id: position_id.to_string(),
+        token_id: position_id,
         liquidity_change: -int128_liquidity_delta,
     };
 
@@ -866,9 +877,9 @@ pub fn collect_concentrated_fees_request(
         .load(deps.storage, pool_key.to_map_key())
         .map_err(|_| ContractError::PoolDoesNotExist {})?;
 
-    let position_token_address = VLP_TO_POSITION_TOKEN
-        .load(deps.storage, vlp_address)
-        .map_err(|_| ContractError::new("Position token does not exist for this vlp"))?;
+    let position_token_address = POSITION_TOKEN_CONTRACT
+        .load(deps.storage)
+        .map_err(|_| ContractError::new("Position token contract not registered"))?;
     let owner_resp: OwnerOfResponse = deps.querier.query_wasm_smart(
         position_token_address.clone(),
         &PositionTokenQueryMsg::OwnerOf {
@@ -878,6 +889,16 @@ pub fn collect_concentrated_fees_request(
     ensure!(
         owner_resp.owner == info.sender.to_string(),
         ContractError::Unauthorized {}
+    );
+    let position_info: PositionInfoResponse = deps.querier.query_wasm_smart(
+        position_token_address,
+        &PositionTokenQueryMsg::PositionInfo {
+            token_id: position_id.to_string(),
+        },
+    )?;
+    ensure!(
+        position_info.vlp_address == vlp_address,
+        ContractError::new("Position does not belong to this pool")
     );
     let req = ConcentratedCollectFeesRequest {
         tx_id: tx_id.clone(),

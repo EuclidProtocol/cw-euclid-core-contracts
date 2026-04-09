@@ -37,6 +37,7 @@ pub struct TokenInfoResponse {
 #[cw_serde]
 pub struct PositionInfoResponse {
     pub liquidity: Uint128,
+    pub vlp_address: String,
 }
 
 #[cw_serde]
@@ -49,6 +50,5 @@ pub struct StateResponse {
     pub name: String,
     pub symbol: String,
     pub factory: Addr,
-    pub vlp_address: String,
     pub total_tokens: u64,
 }

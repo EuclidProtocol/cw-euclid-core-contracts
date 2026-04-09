@@ -61,8 +61,8 @@ pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 // New LP Token states. Only applicable for constant product and stable pools
 pub const VLP_TO_LP_TOKEN: Map<String, Addr> = Map::new("vlp_to_lp_token");
 
-// Only applicable for concentrated pools
-pub const VLP_TO_POSITION_TOKEN: Map<String, Addr> = Map::new("vlp_to_position_token");
+// Common position token contract for all concentrated pools
+pub const POSITION_TOKEN_CONTRACT: Item<Addr> = Item::new("position_token_contract");
 
 #[cw_serde]
 pub struct PoolCreateRequest {

@@ -1,6 +1,6 @@
 use crate::{
     ibc,
-    state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN, VLP_TO_POSITION_TOKEN},
+    state::{PENDING_DEPOSIT_TOKEN, POSITION_TOKEN_CONTRACT, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN},
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Event, Reply, Response, SubMsgResult};
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
@@ -89,14 +89,12 @@ pub fn on_position_token_instantiate_reply(
             let position_token_address =
                 deps.api.addr_validate(&instantiate_data.contract_address)?;
 
-            let position_token_data: euclid::msgs::position_token::InstantiateResponse =
-                from_json(instantiate_data.data.unwrap_or_default())?;
-
-            VLP_TO_POSITION_TOKEN.save(
-                deps.storage,
-                position_token_data.vlp_address,
-                &position_token_address,
-            )?;
+            if POSITION_TOKEN_CONTRACT.may_load(deps.storage)?.is_some() {
+                return Err(ContractError::Generic {
+                    err: "position token contract already registered".to_string(),
+                });
+            }
+            POSITION_TOKEN_CONTRACT.save(deps.storage, &position_token_address)?;
 
             Ok(Response::new()
                 .add_attribute("action", "reply_position_token_instantiate")

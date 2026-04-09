@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response,
-    SubMsg, WasmMsg,
+    SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20Coin;
 use euclid::{
@@ -30,16 +30,14 @@ use euclid_ibc::{
 };
 
 use crate::{
-    reply::{
-        ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
-    },
+    reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
         ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, POOL_KEY_TO_VLP, STATE,
-        TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN, VLP_TO_POSITION_TOKEN,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, POOL_KEY_TO_VLP,
+        POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -317,8 +315,6 @@ fn ack_concentrated_pool_creation(
         })?;
 
     PENDING_CONCENTRATED_POOL_REQUESTS.remove(deps.storage, req_key);
-    let state = STATE.load(deps.storage)?;
-    let admins = ADMIN.load(deps.storage)?;
 
     match res {
         AcknowledgementMsg::Ok(data) => {
@@ -342,29 +338,22 @@ fn ack_concentrated_pool_creation(
                 res = res.add_message(send_msg);
             }
 
-            let mint_msg = position_token::MintMsg {
-                token_id: data.position_id.to_string(),
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
+
+            let mint_msg = msgs::position_token::ExecuteMsg::Mint(position_token::MintMsg {
+                token_id: data.position_id,
                 token_info: position_token::TokenInfo {
                     owner: sender.clone(),
                     token_uri: None,
                 },
                 position_info: position_token::PositionInfo {
                     liquidity: data.liquidity_delta,
+                    vlp_address: data.vlp_address.clone(),
                 },
-            };
-            let instantiate_msg = position_token::InstantiateMsg {
-                name: existing_req.pair_info.get_pair()?.display_name(),
-                symbol: existing_req.pair_info.get_pair()?.symbol(),
-                vlp_address: data.vlp_address.clone(),
-                mint_msg: Some(mint_msg),
-            };
-            res = res.add_submessage(SubMsg::reply_always(
-                instantiate_msg.to_msg(
-                    state.position_token_code_id,
-                    Some(admins.migration_admin.into_string()),
-                )?,
-                POSITION_TOKEN_INSTANTIATE_REPLY_ID,
-            ));
+            });
+            res = res.add_message(mint_msg.to_msg(position_token_contract)?);
 
             Ok(res
                 .add_attribute("tx_id", msg.tx_id)
@@ -688,46 +677,42 @@ fn ack_add_concentrated_liquidity(
                 }
             }
 
-            let position_token_address = VLP_TO_POSITION_TOKEN
-                .load(deps.storage, data.vlp_address)
-                .map_err(|_| ContractError::new("Position token does not exist for this vlp"))?;
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
 
-            // NOTE (M-04): POSITION_ID_TO_METADATA is updated here in the IBC ack handler,
-            // while the CLP-side position was already updated synchronously during execute.
-            // Between execute and this ack, the two views are temporarily inconsistent.
-            // This is expected IBC behavior — metadata is a best-effort cache, not a
-            // source of truth. Authorization uses live NFT ownership queries, not metadata.
-            let position_id = data.position_id.u128();
             let existing_position: Result<PositionInfoResponse, _> = deps.querier.query_wasm_smart(
-                position_token_address.clone(),
+                position_token_contract.clone(),
                 &msgs::position_token::QueryMsg::PositionInfo {
-                    token_id: position_id.to_string(),
+                    token_id: data.position_id.to_string(),
                 },
             );
             match existing_position {
                 Ok(_position) => {
                     // Add liquidity to existing position
                     let update_position_msg = msgs::position_token::ExecuteMsg::UpdatePosition {
-                        token_id: position_id.to_string(),
+                        token_id: data.position_id,
                         liquidity_change: data.liquidity_delta.into(),
                     };
-                    let update_position_msg = update_position_msg.to_msg(position_token_address)?;
+                    let update_position_msg =
+                        update_position_msg.to_msg(position_token_contract)?;
                     res = res.add_message(update_position_msg);
                 }
                 Err(_err) => {
                     // Mint new position
                     let mint_msg =
                         msgs::position_token::ExecuteMsg::Mint(msgs::position_token::MintMsg {
-                            token_id: position_id.to_string(),
+                            token_id: data.position_id,
                             token_info: msgs::position_token::TokenInfo {
                                 owner: sender.clone(),
                                 token_uri: None,
                             },
                             position_info: msgs::position_token::PositionInfo {
                                 liquidity: data.liquidity_delta,
+                                vlp_address: data.vlp_address.clone(),
                             },
                         });
-                    let mint_msg = mint_msg.to_msg(position_token_address)?;
+                    let mint_msg = mint_msg.to_msg(position_token_contract)?;
                     res = res.add_message(mint_msg);
                 }
             }
@@ -884,19 +869,16 @@ fn ack_remove_concentrated_liquidity(
             if is_native {
                 return Err(ContractError::new(&err));
             }
-            let vlp_address = POOL_KEY_TO_VLP
-                .load(deps.storage, liquidity_info.pool_key.to_map_key())
-                .map_err(|_| ContractError::new("VLP does not exist for this pool key"))?;
-            let position_token_address = VLP_TO_POSITION_TOKEN
-                .load(deps.storage, vlp_address)
-                .map_err(|_| ContractError::new("Position token does not exist for this vlp"))?;
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
 
             // Give back the liquidity to the position
             let update_position_msg = msgs::position_token::ExecuteMsg::UpdatePosition {
-                token_id: liquidity_info.position_id.to_string(),
+                token_id: Uint128::new(liquidity_info.position_id),
                 liquidity_change: liquidity_info.liquidity_delta.into(),
             };
-            let update_position_msg = update_position_msg.to_msg(position_token_address)?;
+            let update_position_msg = update_position_msg.to_msg(position_token_contract)?;
             Ok(Response::new()
                 .add_attribute("method", "concentrated_remove_liquidity_err_refund")
                 .add_attribute("sender", sender)
@@ -1194,8 +1176,8 @@ mod tests {
 
     use crate::reply::ESCROW_INSTANTIATE_REPLY_ID;
     use crate::state::{
-        ConcentratedAddLiquidityRequest, ADMIN, PENDING_CONCENTRATED_ADD_LIQUIDITY, STATE,
-        TOKEN_TO_ESCROW, VLP_TO_POSITION_TOKEN,
+        ConcentratedAddLiquidityRequest, ADMIN, PENDING_CONCENTRATED_ADD_LIQUIDITY,
+        POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW,
     };
 
     struct EscrowAckCase {
@@ -1261,12 +1243,8 @@ mod tests {
                     &EuclidAdmin::default(Addr::unchecked("admin")),
                 )
                 .unwrap();
-            VLP_TO_POSITION_TOKEN
-                .save(
-                    deps.as_mut().storage,
-                    "vlp_contract".to_string(),
-                    &Addr::unchecked("position_token"),
-                )
+            POSITION_TOKEN_CONTRACT
+                .save(deps.as_mut().storage, &Addr::unchecked("position_token"))
                 .unwrap();
 
             let pool_key = PoolKey {
@@ -1384,7 +1362,7 @@ mod tests {
     }
 
     #[test]
-    fn ack_add_concentrated_liquidity_errors_without_position_token_mapping() {
+    fn ack_add_concentrated_liquidity_errors_without_position_token_contract() {
         let mut deps = mock_dependencies();
         let sender = deps.api.addr_make("sender");
         let tx_id = "tx_missing_position_token".to_string();
@@ -1485,7 +1463,7 @@ mod tests {
 
         assert!(
             err.to_string()
-                .contains("Position token does not exist for this vlp"),
+                .contains("Position token contract not registered"),
             "expected missing position token error, got: {err:?}"
         );
     }

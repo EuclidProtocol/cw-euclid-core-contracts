@@ -6,14 +6,14 @@ use cosmwasm_std::{to_json_binary, Addr, CosmosMsg, Int256, StdResult, Uint128, 
 pub enum ExecuteMsg {
     Mint(MintMsg),
     Burn {
-        token_id: String,
+        token_id: Uint128,
     },
     Transfer {
-        token_id: String,
+        token_id: Uint128,
         recipient: String,
     },
     UpdatePosition {
-        token_id: String,
+        token_id: Uint128,
         liquidity_change: Int256,
     },
 }
@@ -31,7 +31,7 @@ impl ExecuteMsg {
 
 #[cw_serde]
 pub struct MintMsg {
-    pub token_id: String,
+    pub token_id: Uint128,
     pub token_info: TokenInfo,
     pub position_info: PositionInfo,
 }
@@ -41,7 +41,6 @@ pub struct State {
     pub name: String,
     pub symbol: String,
     pub factory: Addr,
-    pub vlp_address: String,
     pub total_tokens: u64,
 }
 
@@ -54,4 +53,5 @@ pub struct TokenInfo {
 #[cw_serde]
 pub struct PositionInfo {
     pub liquidity: Uint128,
+    pub vlp_address: String,
 }

@@ -6,9 +6,10 @@ mod tests {
 
     use crate::contract::instantiate;
     use crate::execute::pool::{
-        collect_concentrated_fees_request, remove_concentrated_liquidity_request,
+        add_concentrated_liquidity_request, collect_concentrated_fees_request,
+        remove_concentrated_liquidity_request,
     };
-    use crate::state::{State, ADMIN, POOL_KEY_TO_VLP, STATE, VLP_TO_POSITION_TOKEN};
+    use crate::state::{State, ADMIN, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi, MockQuerier};
     use cosmwasm_std::{
@@ -23,7 +24,7 @@ mod tests {
     use euclid::msgs::factory::InstantiateMsg;
     use euclid::msgs::position_token::{OwnerOfResponse, PositionInfoResponse, TokenInfoResponse};
     use euclid::msgs::vlp::base::{PoolKey, PoolType};
-    use euclid::token::{Pair, Token};
+    use euclid::token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount};
 
     // ── shared helpers ────────────────────────────────────────────────────────
 
@@ -49,6 +50,22 @@ mod tests {
             pool_type: PoolType::Concentrated {
                 fee_tier_bps: 500,
                 tick_spacing: 10,
+            },
+        }
+    }
+
+    /// A pool key that exists in storage but maps to a different VLP than the
+    /// position's vlp_address, so the "position does not belong to this pool"
+    /// check fires.
+    fn mock_other_pool_key() -> PoolKey {
+        PoolKey {
+            pair: Pair {
+                token_1: Token::create("tokena".to_string()).unwrap(),
+                token_2: Token::create("tokenb".to_string()).unwrap(),
+            },
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 1000,
+                tick_spacing: 20,
             },
         }
     }
@@ -111,6 +128,7 @@ mod tests {
                         SystemResult::Ok(ContractResult::Ok(
                             to_json_binary(&PositionInfoResponse {
                                 liquidity: Uint128::new(1000),
+                                vlp_address: "vlp_address".to_string(),
                             })
                             .unwrap(),
                         ))
@@ -152,12 +170,17 @@ mod tests {
                 &"vlp_address".to_string(),
             )
             .unwrap();
-        VLP_TO_POSITION_TOKEN
+        // A second pool that maps to a different VLP, used to test
+        // "position does not belong to this pool" checks.
+        POOL_KEY_TO_VLP
             .save(
                 deps.storage,
-                "vlp_address".to_string(),
-                &position_token_address,
+                mock_other_pool_key().to_map_key(),
+                &"other_vlp_address".to_string(),
             )
+            .unwrap();
+        POSITION_TOKEN_CONTRACT
+            .save(deps.storage, &position_token_address)
             .unwrap();
     }
 
@@ -214,8 +237,8 @@ mod tests {
     fn test_init() {
         let mut deps = mock_dependencies();
         let res = init(&mut deps);
-        // No messages are expected because the factory is not used in the tests.
-        assert_eq!(0, res.messages.len());
+        // One submessage is expected for position token instantiation.
+        assert_eq!(1, res.messages.len());
         let owner = deps.api.addr_make("owner");
         let expected_state = State {
             router_contract: "router".to_string(),
@@ -300,6 +323,14 @@ mod tests {
         Uint128::new(1001), // Overflow error
         Some(ContractError::InsufficientFunds {})
     )]
+    #[case::position_does_not_belong_to_pool(
+        mock_other_pool_key(),
+        Who::Alice,
+        Who::Alice,
+        Uint128::one(),
+        Uint128::one(),
+        Some(ContractError::new("Position does not belong to this pool"))
+    )]
     fn test_remove_concentrated_liquidity_authorization(
         #[case] pool_key: PoolKey,
         #[case] nft_owner: Who,
@@ -371,6 +402,13 @@ mod tests {
         Uint128::zero(), // Wrong position id
         Some(ContractError::NotFound { msg: "token 0 not found".to_string() })
     )]
+    #[case::position_does_not_belong_to_pool(
+        mock_other_pool_key(),
+        Who::Alice,
+        Who::Alice,
+        Uint128::one(),
+        Some(ContractError::new("Position does not belong to this pool"))
+    )]
     fn test_collect_concentrated_fees_authorization(
         #[case] pool_key: PoolKey,
         #[case] nft_owner: Who,
@@ -399,6 +437,85 @@ mod tests {
             recipient,
             CrossChainConfig::default(),
         );
+        match expected_error {
+            Some(expected_error) => {
+                let err = result.unwrap_err();
+                assert!(
+                    err.to_string().contains(&expected_error.to_string()),
+                    "expected error {:?} but got {:?}",
+                    expected_error,
+                    err
+                );
+            }
+            None => {
+                assert!(result.is_ok());
+            }
+        }
+    }
+
+    // ── add concentrated liquidity authorization tests ────────────────────────
+
+    fn mock_pair_info() -> PairWithDenomAndAmount {
+        PairWithDenomAndAmount {
+            token_1: TokenWithDenomAndAmount {
+                token: Token::create("tokena".to_string()).unwrap(),
+                amount: Uint128::new(1000),
+                token_type: TokenType::Native {
+                    denom: "utokena".to_string(),
+                },
+            },
+            token_2: TokenWithDenomAndAmount {
+                token: Token::create("tokenb".to_string()).unwrap(),
+                amount: Uint128::new(2000),
+                token_type: TokenType::Native {
+                    denom: "utokenb".to_string(),
+                },
+            },
+        }
+    }
+
+    #[rstest]
+    #[case::caller_does_not_own_position(
+        mock_pool_key(),
+        Who::Alice,
+        Who::Bob,
+        Some(ContractError::Unauthorized {})
+    )]
+    #[case::position_does_not_belong_to_pool(
+        mock_other_pool_key(),
+        Who::Alice,
+        Who::Alice,
+        Some(ContractError::new("Position does not belong to this pool"))
+    )]
+    fn test_add_concentrated_liquidity_authorization(
+        #[case] pool_key: PoolKey,
+        #[case] nft_owner: Who,
+        #[case] caller: Who,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let setup_pool_key = mock_pool_key();
+
+        let mut deps = mock_dependencies();
+
+        let nft_owner = nft_owner.to_address(&deps.api);
+        setup_concentrated_state(&mut deps, nft_owner, &setup_pool_key);
+
+        let caller = caller.to_address(&deps.api);
+        let info = message_info(&caller, &[]);
+
+        let result = add_concentrated_liquidity_request(
+            &mut deps.as_mut(),
+            info,
+            mock_env(),
+            mock_pair_info(),
+            pool_key.clone(),
+            -100,
+            100,
+            Some(Uint128::one()),
+            500,
+            CrossChainConfig::default(),
+        );
+
         match expected_error {
             Some(expected_error) => {
                 let err = result.unwrap_err();

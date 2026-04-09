@@ -9,34 +9,31 @@ use crate::state::{OWNER_TOKEN_SET, POSITION_INFO, STATE, TOKENS};
 pub(crate) fn execute_mint(
     deps: DepsMut,
     info: &MessageInfo,
-    token_id: String,
+    token_id: Uint128,
     token_info: TokenInfo,
     position_info: PositionInfo,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
+    let token_id_str = token_id.to_string();
 
     ensure!(info.sender == state.factory, ContractError::Unauthorized {});
     ensure!(
-        !token_id.trim().is_empty(),
-        ContractError::InvalidTokenID {}
-    );
-    ensure!(
-        !TOKENS.has(deps.storage, &token_id),
+        !TOKENS.has(deps.storage, &token_id_str),
         ContractError::TokenAlreadyExist {}
     );
 
     let owner_addr = deps.api.addr_validate(token_info.owner.as_str())?;
     TOKENS.save(
         deps.storage,
-        &token_id,
+        &token_id_str,
         &TokenInfo {
             owner: owner_addr.clone(),
             token_uri: token_info.token_uri,
         },
     )?;
-    POSITION_INFO.save(deps.storage, &token_id, &position_info)?;
+    POSITION_INFO.save(deps.storage, &token_id_str, &position_info)?;
 
-    OWNER_TOKEN_SET.save(deps.storage, (&owner_addr, &token_id), &Empty {})?;
+    OWNER_TOKEN_SET.save(deps.storage, (&owner_addr, &token_id_str), &Empty {})?;
     state.total_tokens += 1;
     STATE.save(deps.storage, &state)?;
 
@@ -44,7 +41,7 @@ pub(crate) fn execute_mint(
         .add_attribute("action", "mint_position")
         .add_attribute("token_id", token_id)
         .add_attribute("owner", owner_addr)
-        .add_attribute("vlp_address", state.vlp_address)
+        .add_attribute("vlp_address", position_info.vlp_address)
         .add_attribute("liquidity", position_info.liquidity.to_string())
         .add_attribute("total_tokens", state.total_tokens.to_string()))
 }
@@ -52,19 +49,20 @@ pub(crate) fn execute_mint(
 pub(crate) fn execute_burn(
     deps: DepsMut,
     info: MessageInfo,
-    token_id: String,
+    token_id: Uint128,
 ) -> Result<Response, ContractError> {
     let mut state = STATE.load(deps.storage)?;
+    let token_id_str = token_id.to_string();
 
     let token = TOKENS
-        .may_load(deps.storage, &token_id)?
+        .may_load(deps.storage, &token_id_str)?
         .ok_or(ContractError::NotFound {
             msg: format!("token {token_id} not found"),
         })?;
 
     let position =
         POSITION_INFO
-            .may_load(deps.storage, &token_id)?
+            .may_load(deps.storage, &token_id_str)?
             .ok_or(ContractError::NotFound {
                 msg: format!("position {token_id} not found"),
             })?;
@@ -77,15 +75,15 @@ pub(crate) fn execute_burn(
         ContractError::new("Cannot burn a position with liquidity")
     );
 
-    TOKENS.remove(deps.storage, &token_id);
-    POSITION_INFO.remove(deps.storage, &token_id);
-    OWNER_TOKEN_SET.remove(deps.storage, (&token.owner, &token_id));
+    TOKENS.remove(deps.storage, &token_id_str);
+    POSITION_INFO.remove(deps.storage, &token_id_str);
+    OWNER_TOKEN_SET.remove(deps.storage, (&token.owner, &token_id_str));
     state.total_tokens -= 1;
     STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_attribute("action", "burn_position")
-        .add_attribute("vlp_address", state.vlp_address)
+        .add_attribute("vlp_address", position.vlp_address)
         .add_attribute("token_id", token_id)
         .add_attribute("total_tokens", state.total_tokens.to_string()))
 }
@@ -93,15 +91,23 @@ pub(crate) fn execute_burn(
 pub(crate) fn execute_transfer(
     deps: DepsMut,
     info: MessageInfo,
-    token_id: String,
+    token_id: Uint128,
     recipient: String,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    let mut token = TOKENS
-        .may_load(deps.storage, &token_id)?
-        .ok_or(ContractError::NotFound {
-            msg: format!("token {token_id} not found"),
-        })?;
+    let token_id_str = token_id.to_string();
+    let mut token =
+        TOKENS
+            .may_load(deps.storage, &token_id_str)?
+            .ok_or(ContractError::NotFound {
+                msg: format!("token {token_id} not found"),
+            })?;
+
+    let position =
+        POSITION_INFO
+            .may_load(deps.storage, &token_id_str)?
+            .ok_or(ContractError::NotFound {
+                msg: format!("position {token_id} not found"),
+            })?;
 
     // Only token owner can transfer a position
     ensure!(info.sender == token.owner, ContractError::Unauthorized {});
@@ -109,15 +115,15 @@ pub(crate) fn execute_transfer(
     let recipient_addr = deps.api.addr_validate(recipient.as_str())?;
     ensure!(recipient_addr != token.owner, ContractError::SameAddress {});
 
-    OWNER_TOKEN_SET.remove(deps.storage, (&token.owner, &token_id));
-    OWNER_TOKEN_SET.save(deps.storage, (&recipient_addr, &token_id), &Empty {})?;
+    OWNER_TOKEN_SET.remove(deps.storage, (&token.owner, &token_id_str));
+    OWNER_TOKEN_SET.save(deps.storage, (&recipient_addr, &token_id_str), &Empty {})?;
 
     token.owner = recipient_addr.clone();
-    TOKENS.save(deps.storage, &token_id, &token)?;
+    TOKENS.save(deps.storage, &token_id_str, &token)?;
 
     Ok(Response::new()
         .add_attribute("action", "transfer_position")
-        .add_attribute("vlp_address", state.vlp_address)
+        .add_attribute("vlp_address", position.vlp_address)
         .add_attribute("token_id", token_id)
         .add_attribute("recipient", recipient_addr))
 }
@@ -125,13 +131,14 @@ pub(crate) fn execute_transfer(
 pub(crate) fn execute_update_position(
     deps: DepsMut,
     info: MessageInfo,
-    token_id: String,
+    token_id: Uint128,
     liquidity_change: Int256,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let token_id_str = token_id.to_string();
     let mut position =
         POSITION_INFO
-            .may_load(deps.storage, &token_id)?
+            .may_load(deps.storage, &token_id_str)?
             .ok_or(ContractError::NotFound {
                 msg: format!("position {token_id} not found"),
             })?;
@@ -150,11 +157,11 @@ pub(crate) fn execute_update_position(
             .checked_add(abs_delta)
             .map_err(|_| ContractError::new("liquidity change overflow"))?;
     }
-    POSITION_INFO.save(deps.storage, &token_id, &position)?;
+    POSITION_INFO.save(deps.storage, &token_id_str, &position)?;
     Ok(Response::new()
         .add_attribute("action", "update_position")
         .add_attribute("token_id", token_id)
-        .add_attribute("vlp_address", state.vlp_address)
+        .add_attribute("vlp_address", position.vlp_address)
         .add_attribute("new_liquidity", position.liquidity.to_string()))
 }
 
@@ -187,11 +194,11 @@ mod tests {
             cosmwasm_std::testing::MockQuerier,
         >,
         cosmwasm_std::Addr,
-        String,
+        Uint128,
     ) {
         let mut deps = mock_dependencies();
         let factory = deps.api.addr_make("factory");
-        let token_id = "position-1".to_string();
+        let token_id = Uint128::new(1);
 
         STATE
             .save(
@@ -200,7 +207,6 @@ mod tests {
                     name: "Position Token".to_string(),
                     symbol: "POS".to_string(),
                     factory: factory.clone(),
-                    vlp_address: "vlp-1".to_string(),
                     total_tokens: 1,
                 },
             )
@@ -208,9 +214,10 @@ mod tests {
         POSITION_INFO
             .save(
                 deps.as_mut().storage,
-                &token_id,
+                &token_id.to_string(),
                 &PositionInfo {
                     liquidity: Uint128::new(initial_liquidity),
+                    vlp_address: "vlp-1".to_string(),
                 },
             )
             .unwrap();
@@ -269,8 +276,9 @@ mod tests {
         )
         .unwrap();
 
+        let token_id_str = token_id.to_string();
         let updated_position = POSITION_INFO
-            .load(deps.as_ref().storage, &token_id)
+            .load(deps.as_ref().storage, &token_id_str)
             .unwrap();
         assert_eq!(updated_position.liquidity, Uint128::new(expected_liquidity));
         assert_eq!(response.attributes[0].value, "update_position");
@@ -298,11 +306,12 @@ mod tests {
         #[case] liquidity_change: Int256,
     ) {
         let (mut deps, factory, token_id) = setup_position(start_liquidity);
+        let token_id_str = token_id.to_string();
 
         let result = execute_update_position(
             deps.as_mut(),
             message_info(&factory, &[]),
-            token_id.clone(),
+            token_id,
             liquidity_change,
         );
         match result {
@@ -312,7 +321,7 @@ mod tests {
             ),
             _ => {
                 let updated_position = POSITION_INFO
-                    .load(deps.as_ref().storage, &token_id)
+                    .load(deps.as_ref().storage, &token_id_str)
                     .unwrap();
                 panic!("expected overflow error, got {updated_position:?}");
             }
@@ -327,11 +336,12 @@ mod tests {
         #[case] liquidity_change: Int256,
     ) {
         let (mut deps, factory, token_id) = setup_position(start_liquidity);
+        let token_id_str = token_id.to_string();
 
         let result = execute_update_position(
             deps.as_mut(),
             message_info(&factory, &[]),
-            token_id.clone(),
+            token_id,
             liquidity_change,
         );
 
@@ -342,7 +352,7 @@ mod tests {
             ),
             _ => {
                 let updated_position = POSITION_INFO
-                    .load(deps.as_ref().storage, &token_id)
+                    .load(deps.as_ref().storage, &token_id_str)
                     .unwrap();
                 panic!("expected overflow error, got {updated_position:?}");
             }
@@ -369,17 +379,18 @@ mod tests {
         #[case] second_delta: Int256,
     ) {
         let (mut deps, factory, token_id) = setup_position(start_liquidity);
+        let token_id_str = token_id.to_string();
 
         // First step reaches the boundary exactly.
         execute_update_position(
             deps.as_mut(),
             message_info(&factory, &[]),
-            token_id.clone(),
+            token_id,
             first_delta,
         )
         .unwrap();
         let at_boundary = POSITION_INFO
-            .load(deps.as_ref().storage, &token_id)
+            .load(deps.as_ref().storage, &token_id_str)
             .unwrap();
         assert_eq!(at_boundary.liquidity, expected_after_first);
 

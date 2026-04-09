@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 use cw2::set_contract_version;
 
 use euclid::error::ContractError;
@@ -11,9 +11,7 @@ use crate::query::{
     query_tokens_by_owner,
 };
 use crate::state::STATE;
-use euclid::msgs::position_token::{
-    ExecuteMsg, InstantiateMsg, InstantiateResponse, MintMsg, QueryMsg, State,
-};
+use euclid::msgs::position_token::{ExecuteMsg, InstantiateMsg, MintMsg, QueryMsg, State};
 
 const CONTRACT_NAME: &str = "crates.io:position_token";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -42,33 +40,14 @@ pub fn instantiate(
             name: msg.name,
             symbol: msg.symbol,
             factory: info.sender.clone(),
-            vlp_address: msg.vlp_address.clone(),
             total_tokens: 0,
         },
     )?;
 
-    let mut res = Response::new();
-
-    if let Some(mint_msg) = msg.mint_msg {
-        res = execute_mint(
-            deps,
-            &info,
-            mint_msg.token_id,
-            mint_msg.token_info,
-            mint_msg.position_info,
-        )?;
-    }
-    let data = InstantiateResponse {
-        position_token_address: env.contract.address,
-        vlp_address: msg.vlp_address.clone(),
-    };
-
-    Ok(res
+    Ok(Response::new()
         .add_attribute("action", "instantiate")
         .add_attribute("method", "create_position_token")
-        .add_attribute("factory", info.sender.as_str())
-        .add_attribute("vlp_address", msg.vlp_address)
-        .set_data(to_json_binary(&data)?))
+        .add_attribute("factory", info.sender.as_str()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

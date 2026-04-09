@@ -1,20 +1,10 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_json_binary, Addr, CosmosMsg, StdResult, WasmMsg};
-
-use crate::msgs::position_token::MintMsg;
+use cosmwasm_std::{to_json_binary, CosmosMsg, StdResult, WasmMsg};
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub name: String,
     pub symbol: String,
-    pub vlp_address: String,
-    pub mint_msg: Option<MintMsg>,
-}
-
-#[cw_serde]
-pub struct InstantiateResponse {
-    pub position_token_address: Addr,
-    pub vlp_address: String,
 }
 
 impl InstantiateMsg {

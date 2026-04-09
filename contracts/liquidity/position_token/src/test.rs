@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{from_json, Addr, Int256, OverflowError, OverflowOperation, Uint128};
-    use euclid::msgs::factory;
+    use cosmwasm_std::{from_json, Addr, Int256, Uint128};
 
     use crate::contract::{execute, instantiate, query};
     use euclid::error::ContractError;
@@ -49,8 +48,6 @@ mod tests {
                 InstantiateMsg {
                     name: "Position Token".to_string(),
                     symbol: "POS".to_string(),
-                    vlp_address: "vlp-1".to_string(),
-                    mint_msg: None,
                 },
             ),
             None,
@@ -61,21 +58,20 @@ mod tests {
     }
 
     #[rstest]
-    #[case("Position Token", "POS", "vlp-1", None)]
-    #[case("Pool NFT", "PNFT", "vlp-custom", None)]
-    #[case("", "POS", "vlp-1", Some(ContractError::Generic {
+    #[case("Position Token", "POS", None)]
+    #[case("Pool NFT", "PNFT", None)]
+    #[case("", "POS", Some(ContractError::Generic {
         err: "name cannot be empty".to_string(),
     }))]
-    #[case("   ", "POS", "vlp-1", Some(ContractError::Generic {
+    #[case("   ", "POS", Some(ContractError::Generic {
         err: "name cannot be empty".to_string(),
     }))]
-    #[case("Name", "", "vlp-1", Some(ContractError::Generic {
+    #[case("Name", "", Some(ContractError::Generic {
         err: "symbol cannot be empty".to_string(),
     }))]
     fn instantiate_respects_metadata(
         #[case] name: &str,
         #[case] symbol: &str,
-        #[case] vlp_address: &str,
         #[case] expected_error: Option<ContractError>,
     ) {
         let mut deps = mock_dependencies();
@@ -89,8 +85,6 @@ mod tests {
                 InstantiateMsg {
                     name: name.to_string(),
                     symbol: symbol.to_string(),
-                    vlp_address: vlp_address.to_string(),
-                    mint_msg: None,
                 },
             ),
             expected_error,
@@ -106,7 +100,6 @@ mod tests {
         assert_eq!(state.name, name);
         assert_eq!(state.symbol, symbol);
         assert_eq!(state.factory, factory);
-        assert_eq!(state.vlp_address, vlp_address);
         assert_eq!(state.total_tokens, 0);
     }
 
@@ -121,18 +114,20 @@ mod tests {
         let owner = deps.api.addr_make("owner");
         let sender = deps.api.addr_make(sender);
 
+        let token_id = Uint128::new(1);
         let result = execute(
             deps.as_mut(),
             mock_env(),
             message_info(&sender, &[]),
             ExecuteMsg::Mint(MintMsg {
-                token_id: "position-1".to_string(),
+                token_id,
                 token_info: TokenInfo {
                     owner: owner.clone(),
                     token_uri: Some("ipfs://position-1".to_string()),
                 },
                 position_info: PositionInfo {
                     liquidity: Uint128::new(1000),
+                    vlp_address: "vlp-1".to_string(),
                 },
             }),
         );
@@ -146,7 +141,7 @@ mod tests {
                 deps.as_ref(),
                 mock_env(),
                 QueryMsg::OwnerOf {
-                    token_id: "position-1".to_string(),
+                    token_id: token_id.to_string(),
                 },
             )
             .unwrap(),
@@ -159,7 +154,7 @@ mod tests {
                 deps.as_ref(),
                 mock_env(),
                 QueryMsg::PositionInfo {
-                    token_id: "position-1".to_string(),
+                    token_id: token_id.to_string(),
                 },
             )
             .unwrap(),
@@ -173,29 +168,30 @@ mod tests {
     }
 
     #[rstest]
-    #[case::valid_with_uri("position-1", Some("ipfs://position-1"), None)]
-    #[case::valid_without_uri("pos-alt", None, None)]
-    #[case::invalid_token_id("", None, Some(ContractError::InvalidTokenID {}))]
+    #[case::valid_with_uri(1u128, Some("ipfs://position-1"), None)]
+    #[case::valid_without_uri(2u128, None, None)]
     fn mint_tests(
-        #[case] token_id: &str,
+        #[case] token_id: u128,
         #[case] token_uri: Option<&str>,
         #[case] expected_error: Option<ContractError>,
     ) {
         let (mut deps, factory) = setup();
         let owner = deps.api.addr_make("owner");
+        let token_id = Uint128::new(token_id);
 
         let result = execute(
             deps.as_mut(),
             mock_env(),
             message_info(&factory, &[]),
             ExecuteMsg::Mint(MintMsg {
-                token_id: token_id.to_string(),
+                token_id,
                 token_info: TokenInfo {
                     owner: owner.clone(),
                     token_uri: token_uri.map(String::from),
                 },
                 position_info: PositionInfo {
                     liquidity: Uint128::new(1000),
+                    vlp_address: "vlp-1".to_string(),
                 },
             }),
         );
@@ -235,33 +231,34 @@ mod tests {
     }
 
     #[rstest]
-    #[case::duplicate("dup-id", Some(ContractError::TokenAlreadyExist {}))]
-    #[case::unique("unique-id", None)]
+    #[case::duplicate(1u128, Some(ContractError::TokenAlreadyExist {}))]
+    #[case::unique(2u128, None)]
     fn mint_rejects_duplicate_token_id(
-        #[case] token_id: &str,
+        #[case] second_token_id: u128,
         #[case] expected_error: Option<ContractError>,
     ) {
         let (mut deps, factory) = setup();
         let owner = deps.api.addr_make("owner");
-        let mut mint = |token_id: &str| {
+        let mut mint = |token_id: u128| {
             execute(
                 deps.as_mut(),
                 mock_env(),
                 message_info(&factory, &[]),
                 ExecuteMsg::Mint(MintMsg {
-                    token_id: token_id.to_string(),
+                    token_id: Uint128::new(token_id),
                     token_info: TokenInfo {
                         owner: owner.clone(),
                         token_uri: None,
                     },
                     position_info: PositionInfo {
                         liquidity: Uint128::new(1),
+                        vlp_address: "vlp-1".to_string(),
                     },
                 }),
             )
         };
-        assert_result(mint("dup-id"), None).unwrap();
-        assert_result(mint(token_id), expected_error);
+        assert_result(mint(1), None).unwrap();
+        assert_result(mint(second_token_id), expected_error);
     }
 
     #[rstest]
@@ -279,7 +276,7 @@ mod tests {
     ) {
         let (mut deps, factory) = setup();
         let owner = deps.api.addr_make("owner");
-        let token_id = "position-1".to_string();
+        let token_id = Uint128::new(1);
         let sender = deps.api.addr_make(sender);
 
         assert_result(
@@ -288,13 +285,14 @@ mod tests {
                 mock_env(),
                 message_info(&factory, &[]),
                 ExecuteMsg::Mint(MintMsg {
-                    token_id: token_id.clone(),
+                    token_id,
                     token_info: TokenInfo {
-                        owner: owner,
+                        owner,
                         token_uri: None,
                     },
                     position_info: PositionInfo {
                         liquidity: Uint128::new(1000),
+                        vlp_address: "vlp-1".to_string(),
                     },
                 }),
             ),
@@ -307,7 +305,7 @@ mod tests {
             mock_env(),
             message_info(&sender, &[]),
             ExecuteMsg::UpdatePosition {
-                token_id: token_id.clone(),
+                token_id,
                 liquidity_change,
             },
         );
@@ -320,7 +318,9 @@ mod tests {
             query(
                 deps.as_ref(),
                 mock_env(),
-                QueryMsg::PositionInfo { token_id },
+                QueryMsg::PositionInfo {
+                    token_id: token_id.to_string(),
+                },
             )
             .unwrap(),
         )
@@ -330,7 +330,7 @@ mod tests {
 
     #[rstest]
     #[case(Some(ContractError::NotFound {
-        msg: "position missing-token not found".to_string(),
+        msg: "position 999 not found".to_string(),
     }))]
     fn update_position_rejects_unknown_token(#[case] expected_error: Option<ContractError>) {
         let (mut deps, factory) = setup();
@@ -340,7 +340,7 @@ mod tests {
             mock_env(),
             message_info(&factory, &[]),
             ExecuteMsg::UpdatePosition {
-                token_id: "missing-token".to_string(),
+                token_id: Uint128::new(999),
                 liquidity_change: Int256::zero(),
             },
         );
@@ -359,7 +359,7 @@ mod tests {
         let (mut deps, factory) = setup();
         let owner = deps.api.addr_make("owner");
         let recipient = deps.api.addr_make(recipient_key);
-        let token_id = "position-1".to_string();
+        let token_id = Uint128::new(1);
 
         assert_result(
             execute(
@@ -367,13 +367,14 @@ mod tests {
                 mock_env(),
                 message_info(&factory, &[]),
                 ExecuteMsg::Mint(MintMsg {
-                    token_id: token_id.clone(),
+                    token_id,
                     token_info: TokenInfo {
                         owner: owner.clone(),
                         token_uri: None,
                     },
                     position_info: PositionInfo {
                         liquidity: Uint128::new(1000),
+                        vlp_address: "vlp-1".to_string(),
                     },
                 }),
             ),
@@ -382,7 +383,7 @@ mod tests {
         .unwrap();
 
         let transfer_msg = ExecuteMsg::Transfer {
-            token_id: token_id.clone(),
+            token_id,
             recipient: recipient.to_string(),
         };
 
@@ -398,7 +399,7 @@ mod tests {
                 mock_env(),
                 message_info(&owner, &[]),
                 ExecuteMsg::Transfer {
-                    token_id: token_id.clone(),
+                    token_id,
                     recipient: owner.to_string(),
                 },
             ),
@@ -440,25 +441,26 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(recipient_tokens.tokens, vec![token_id]);
+        assert_eq!(recipient_tokens.tokens, vec![token_id.to_string()]);
     }
 
     #[rstest]
-    #[case("burn-a", None)]
-    #[case("burn-b", None)]
-    #[case("burn-c", Some(ContractError::Unauthorized {}))]
+    #[case(1u128, None)]
+    #[case(2u128, None)]
+    #[case(3u128, Some(ContractError::Unauthorized {}))]
     #[case(
-        "burn-d",
+        4u128,
         Some(ContractError::Generic {
             err: "Cannot burn a position with liquidity".to_string(),
         })
     )]
     fn burn_requires_factory_and_zero_liquidity(
-        #[case] token_id: &str,
+        #[case] token_id: u128,
         #[case] expected_error: Option<ContractError>,
     ) {
         let (mut deps, factory) = setup();
         let owner = deps.api.addr_make("owner");
+        let token_id = Uint128::new(token_id);
 
         assert_result(
             execute(
@@ -466,13 +468,14 @@ mod tests {
                 mock_env(),
                 message_info(&factory, &[]),
                 ExecuteMsg::Mint(MintMsg {
-                    token_id: token_id.to_string(),
+                    token_id,
                     token_info: TokenInfo {
                         owner: owner.clone(),
                         token_uri: None,
                     },
                     position_info: PositionInfo {
                         liquidity: Uint128::new(1000),
+                        vlp_address: "vlp-1".to_string(),
                     },
                 }),
             ),
@@ -487,7 +490,7 @@ mod tests {
                     mock_env(),
                     message_info(&factory, &[]),
                     ExecuteMsg::UpdatePosition {
-                        token_id: token_id.to_string(),
+                        token_id,
                         liquidity_change: Int256::from(-1000i128),
                     },
                 ),
@@ -501,17 +504,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 message_info(&owner, &[]),
-                ExecuteMsg::Burn {
-                    token_id: token_id.to_string(),
-                },
+                ExecuteMsg::Burn { token_id },
             ),
             _ => execute(
                 deps.as_mut(),
                 mock_env(),
                 message_info(&factory, &[]),
-                ExecuteMsg::Burn {
-                    token_id: token_id.to_string(),
-                },
+                ExecuteMsg::Burn { token_id },
             ),
         };
 
@@ -538,18 +537,20 @@ mod tests {
     }
 
     #[rstest]
-    #[case("w", None)]
-    #[case("z", None)]
+    #[case(10u128, None)]
+    #[case(20u128, None)]
     fn transfer_then_burn_updates_owner_and_global_lists(
-        #[case] prefix: &str,
+        #[case] base: u128,
         #[case] expected_error: Option<ContractError>,
     ) {
         let (mut deps, factory) = setup();
         let owner = deps.api.addr_make("owner");
         let recipient = deps.api.addr_make("recipient");
 
-        let id = |n: u8| format!("{prefix}-{n}");
-        for n in 1u8..=3 {
+        let id = |n: u128| Uint128::new(base + n);
+        let id_str = |n: u128| id(n).to_string();
+
+        for n in 1u128..=3 {
             assert_result(
                 execute(
                     deps.as_mut(),
@@ -563,6 +564,7 @@ mod tests {
                         },
                         position_info: PositionInfo {
                             liquidity: Uint128::new(1000),
+                            vlp_address: "vlp-1".to_string(),
                         },
                     }),
                 ),
@@ -583,7 +585,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(owner_tokens.tokens, vec![id(1), id(2), id(3)]);
+        assert_eq!(owner_tokens.tokens, vec![id_str(1), id_str(2), id_str(3)]);
 
         let result = execute(
             deps.as_mut(),
@@ -635,7 +637,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(owner_tokens.tokens, vec![id(3)]);
+        assert_eq!(owner_tokens.tokens, vec![id_str(3)]);
 
         let recipient_tokens: TokensResponse = from_json(
             query(
@@ -649,7 +651,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(recipient_tokens.tokens, vec![id(2)]);
+        assert_eq!(recipient_tokens.tokens, vec![id_str(2)]);
 
         let all_tokens: TokensResponse = from_json(
             query(
@@ -662,7 +664,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(all_tokens.tokens, vec![id(2), id(3)]);
+        assert_eq!(all_tokens.tokens, vec![id_str(2), id_str(3)]);
 
         let state: StateResponse =
             from_json(query(deps.as_ref(), mock_env(), QueryMsg::State {}).unwrap()).unwrap();
