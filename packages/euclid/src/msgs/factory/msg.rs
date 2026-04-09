@@ -98,7 +98,7 @@ pub enum ExecuteMsg {
     RemoveConcentratedLiquidity {
         pool_key: PoolKey,
         position_id: Uint128,
-        lp_allocation: Uint128,
+        liquidity_delta: Uint128,
         recipient: CrossChainUser,
         cross_chain_config: CrossChainConfig,
     },

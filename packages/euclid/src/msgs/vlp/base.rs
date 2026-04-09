@@ -137,16 +137,15 @@ pub struct GetSwapQueryResponse {
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
     pub tx_id: String,
-    pub mint_lp_tokens: Uint128,
     pub sender: CrossChainUser,
 }
 
 #[cw_serde]
 pub struct ConcentratedPoolCreationResponse {
+    pub pool_key: PoolKey,
     pub vlp_contract: String,
     pub tx_id: String,
     pub sender: CrossChainUser,
-    pub pool_key: PoolKey,
 }
 
 #[cw_serde]

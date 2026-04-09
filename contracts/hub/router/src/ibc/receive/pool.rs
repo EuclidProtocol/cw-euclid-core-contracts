@@ -573,7 +573,7 @@ pub fn ibc_execute_remove_concentrated_liquidity(
             sender: msg.sender,
             pool_key: msg.pool_key,
             position_id: msg.position_id,
-            liquidity_delta: msg.lp_allocation,
+            liquidity_delta: msg.liquidity_delta,
             tx_id: msg.tx_id,
         });
 

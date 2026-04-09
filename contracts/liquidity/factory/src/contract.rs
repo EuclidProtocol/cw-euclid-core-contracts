@@ -259,7 +259,7 @@ pub fn execute(
         ExecuteMsg::RemoveConcentratedLiquidity {
             pool_key,
             position_id,
-            lp_allocation,
+            liquidity_delta,
             recipient,
             cross_chain_config,
         } => {
@@ -272,7 +272,7 @@ pub fn execute(
                 sender,
                 pool_key,
                 position_id,
-                lp_allocation,
+                liquidity_delta,
                 recipient,
                 cross_chain_config,
             )

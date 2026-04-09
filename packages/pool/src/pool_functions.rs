@@ -8,8 +8,8 @@ use euclid::{
     liquidity::AddLiquidityResponse,
     msgs::vlp::{
         base::{
-            GetSwapQueryResponse, PoolConfig, State, VlpRemoveLiquidityResponse, VlpSwapMsg,
-            VlpSwapResponse, NEXT_SWAP_REPLY_ID,
+            GetSwapQueryResponse, PoolConfig, State, VlpAddLiquidityResponse,
+            VlpRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse, NEXT_SWAP_REPLY_ID,
         },
         stable::msg::DEFAULT_AMP_FACTOR,
     },
@@ -234,7 +234,6 @@ pub fn register_pool(
     let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
         tx_id: tx_id.clone(),
-        mint_lp_tokens: Uint128::zero(),
         sender: sender.clone(),
     };
 
@@ -490,7 +489,8 @@ pub fn add_liquidity(
     // Add current balance to SNAPSHOT MAP
 
     // Prepare Liquidity Response
-    let liquidity_response = AddLiquidityResponse {
+    let liquidity_response = VlpAddLiquidityResponse {
+        liquidity_added: liquidity.clone(),
         mint_lp_tokens: lp_allocation,
         vlp_address: env.contract.address.to_string(),
         tx_id: tx_id.clone(),
