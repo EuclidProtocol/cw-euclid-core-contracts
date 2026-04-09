@@ -5,10 +5,7 @@ mod tests {
     use crate::execute::pool::{
         collect_concentrated_fees_request, remove_concentrated_liquidity_request,
     };
-    use crate::state::{
-        ConcentratedPositionMetadata, State, ADMIN, POOL_KEY_TO_VLP, POSITION_ID_TO_METADATA,
-        POSITION_TOKEN_CONTRACT, STATE,
-    };
+    use crate::state::{State, ADMIN, POOL_KEY_TO_VLP, STATE, VLP_TO_POSITION_TOKEN};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{
@@ -39,7 +36,7 @@ mod tests {
         }
     }
 
-    /// Saves STATE, ADMIN, POSITION_TOKEN_CONTRACT, and one position metadata entry.
+    /// Saves STATE/ADMIN and maps one concentrated pool to a position-token contract.
     fn setup_concentrated_state(deps: &mut DepsMut, owner: &Addr, pool_key: &PoolKey) {
         STATE
             .save(
@@ -61,21 +58,21 @@ mod tests {
                 &EuclidAdmin::default(Addr::unchecked("admin")),
             )
             .unwrap();
-        POSITION_TOKEN_CONTRACT
-            .save(deps.storage, &Addr::unchecked("position_nft"))
-            .unwrap();
-        POSITION_ID_TO_METADATA
+        POOL_KEY_TO_VLP
             .save(
                 deps.storage,
-                1u128,
-                &ConcentratedPositionMetadata {
-                    owner: owner.clone(),
-                    pool_key: pool_key.clone(),
-                    liquidity: Uint128::from(100u128),
-                    vlp_address: "vlp".to_string(),
-                },
+                pool_key.to_map_key(),
+                &"vlp_address".to_string(),
             )
             .unwrap();
+        VLP_TO_POSITION_TOKEN
+            .save(
+                deps.storage,
+                "vlp_address".to_string(),
+                &Addr::unchecked("position_nft"),
+            )
+            .unwrap();
+        let _ = owner; // owner is used by the mocked owner-of query setup in tests.
     }
 
     fn _initialize_state(deps: &mut DepsMut) {
@@ -169,8 +166,8 @@ mod tests {
 
     struct AuthCase {
         name: &'static str,
-        /// When false the position metadata is not saved, exercising the
-        /// "position not found" path before the ownership check is reached.
+        /// When false pool/position-token mappings are not saved, exercising the
+        /// "pool not found" path before ownership checks.
         setup_position: bool,
         /// Who the NFT contract reports as current owner (ignored when
         /// `setup_position` is false because the querier is never called).
@@ -203,11 +200,11 @@ mod tests {
                 check_err: |e| matches!(e, ContractError::Unauthorized {}),
             },
             AuthCase {
-                name: "position metadata not found",
+                name: "pool mapping not found",
                 setup_position: false,
                 nft_owner: Who::Alice, // irrelevant — querier is never reached
                 caller: Who::Alice,
-                check_err: |e| e.to_string().contains("Position not found"),
+                check_err: |e| matches!(e, ContractError::PoolDoesNotExist {}),
             },
         ]
     }
@@ -246,9 +243,6 @@ mod tests {
                             is_native: true,
                         },
                     )
-                    .unwrap();
-                POSITION_TOKEN_CONTRACT
-                    .save(deps.as_mut().storage, &Addr::unchecked("position_nft"))
                     .unwrap();
             }
 

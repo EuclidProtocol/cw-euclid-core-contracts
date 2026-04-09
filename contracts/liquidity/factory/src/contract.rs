@@ -2,10 +2,7 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, ReplyOn, Response,
-    StdError, SubMsg, Uint512, WasmMsg,
-};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint512};
 use cw2::set_contract_version;
 use euclid::admin::EuclidAdmin;
 use euclid::cross_chain_user::CrossChainUser;
@@ -40,8 +37,8 @@ use crate::reply::{
     CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
 };
 use crate::reply::{
-    on_escrow_instantiate_reply, on_nft_mint_reply, on_release_escrow_reply,
-    ESCROW_INSTANTIATE_REPLY_ID, NFT_MINT_REPLY_ID, RELEASE_ESCROW_REPLY_ID,
+    on_escrow_instantiate_reply, on_release_escrow_reply, ESCROW_INSTANTIATE_REPLY_ID,
+    RELEASE_ESCROW_REPLY_ID,
 };
 use crate::state::{FeeState, State, ADMIN, FEE_STATE, STATE};
 use cosmwasm_std::ensure;
@@ -92,27 +89,7 @@ pub fn instantiate(
     let admin = EuclidAdmin::default(info.sender.clone());
     ADMIN.save(deps.storage, &admin)?;
 
-    let init_position_token_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-        admin: Some(admin.migration_admin.to_string()),
-        code_id: msg.position_token_code_id,
-        msg: to_json_binary(&euclid::msgs::position_token::InstantiateMsg {
-            name: "Euclid Concentrated Positions".to_string(),
-            symbol: "EUPOS".to_string(),
-            minter: env.contract.address.clone(),
-            admin: env.contract.address,
-        })?,
-        funds: vec![],
-        label: "position_token".to_string(),
-    });
-
     Ok(Response::new()
-        .add_submessage(SubMsg {
-            id: POSITION_TOKEN_INSTANTIATE_REPLY_ID,
-            msg: init_position_token_msg,
-            gas_limit: None,
-            reply_on: ReplyOn::Success,
-            payload: Binary::default(),
-        })
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
         .add_attribute("escrow_code_id", state.escrow_code_id.to_string())
@@ -414,7 +391,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
-        QueryMsg::GetPositionTokenContract {} => get_position_token_contract(deps),
+        QueryMsg::GetPositionTokenContract { pool_key } => get_position_token_contract(deps, pool_key),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -435,8 +412,6 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         POSITION_TOKEN_INSTANTIATE_REPLY_ID => {
             on_position_token_instantiate_reply(deps.branch(), msg)
         }
-        NFT_MINT_REPLY_ID => on_nft_mint_reply(deps.branch(), msg),
-
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

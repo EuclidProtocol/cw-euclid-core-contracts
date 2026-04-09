@@ -17,7 +17,7 @@ use euclid::{
 
 use crate::state::{
     ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-    POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+    POOL_KEY_TO_VLP, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN, VLP_TO_POSITION_TOKEN,
 };
 use euclid::msgs::vlp::base::PoolKey;
 
@@ -83,9 +83,11 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     })?)
 }
 
-pub fn get_position_token_contract(deps: Deps) -> Result<Binary, ContractError> {
+pub fn get_position_token_contract(deps: Deps, pool_key: PoolKey) -> Result<Binary, ContractError> {
+    let vlp_address = POOL_KEY_TO_VLP.load(deps.storage, pool_key.to_map_key())?;
+    let position_token_address = VLP_TO_POSITION_TOKEN.load(deps.storage, vlp_address)?;
     Ok(to_json_binary(&GetPositionTokenContractResponse {
-        position_token_contract: POSITION_TOKEN_CONTRACT.may_load(deps.storage)?,
+        position_token_contract: position_token_address,
     })?)
 }
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {

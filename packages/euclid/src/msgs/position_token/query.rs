@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, Uint128};
 
 use crate::utils::pagination::Pagination;
 
@@ -10,6 +10,8 @@ pub enum QueryMsg {
     OwnerOf { token_id: String },
     #[returns(TokenInfoResponse)]
     TokenInfo { token_id: String },
+    #[returns(PositionInfoResponse)]
+    PositionInfo { token_id: String },
     #[returns(TokensResponse)]
     TokensByOwner {
         owner: String,
@@ -28,9 +30,13 @@ pub struct OwnerOfResponse {
 
 #[cw_serde]
 pub struct TokenInfoResponse {
-    pub token_id: String,
     pub owner: String,
     pub token_uri: Option<String>,
+}
+
+#[cw_serde]
+pub struct PositionInfoResponse {
+    pub liquidity: Uint128,
 }
 
 #[cw_serde]
@@ -42,7 +48,7 @@ pub struct TokensResponse {
 pub struct StateResponse {
     pub name: String,
     pub symbol: String,
-    pub minter: Addr,
-    pub admin: Addr,
+    pub factory: Addr,
+    pub vlp_address: String,
     pub total_tokens: u64,
 }

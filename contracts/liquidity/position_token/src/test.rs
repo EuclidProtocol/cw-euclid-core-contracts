@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{from_json, Addr};
+    use cosmwasm_std::{from_json, Addr, Int256, Uint128};
 
     use crate::contract::{execute, instantiate, query};
     use euclid::msgs::position_token::{
-        ExecuteMsg, InstantiateMsg, OwnerOfResponse, QueryMsg, StateResponse, TokensResponse,
+        ExecuteMsg, InstantiateMsg, MintMsg, OwnerOfResponse, PositionInfo, QueryMsg,
+        StateResponse, TokenInfo, TokensResponse,
     };
     use euclid::utils::pagination::Pagination;
 
@@ -16,48 +17,44 @@ mod tests {
             cosmwasm_std::testing::MockQuerier,
         >,
         Addr,
-        Addr,
-        Addr,
     ) {
         let mut deps = mock_dependencies();
 
-        let minter = deps.api.addr_make("minter");
-        let admin = deps.api.addr_make("admin");
-        let creator = deps.api.addr_make("creator");
+        let factory = deps.api.addr_make("factory");
 
         instantiate(
             deps.as_mut(),
             mock_env(),
-            message_info(&creator, &[]),
+            message_info(&factory, &[]),
             InstantiateMsg {
                 name: "Position Token".to_string(),
                 symbol: "POS".to_string(),
-                minter: minter.clone(),
-                admin: admin.clone(),
+                vlp_address: "vlp-1".to_string(),
+                mint_msg: None,
             },
         )
         .unwrap();
 
-        (deps, minter, admin, creator)
+        (deps, factory)
     }
 
     #[test]
     fn instantiate_and_query_state() {
-        let (deps, minter, admin, _) = setup();
+        let (deps, factory) = setup();
 
         let state: StateResponse =
             from_json(query(deps.as_ref(), mock_env(), QueryMsg::State {}).unwrap()).unwrap();
 
         assert_eq!(state.name, "Position Token");
         assert_eq!(state.symbol, "POS");
-        assert_eq!(state.minter, minter);
-        assert_eq!(state.admin, admin);
+        assert_eq!(state.factory, factory);
+        assert_eq!(state.vlp_address, "vlp-1");
         assert_eq!(state.total_tokens, 0);
     }
 
     #[test]
     fn mint_transfer_burn_flow() {
-        let (mut deps, minter, _, _) = setup();
+        let (mut deps, factory) = setup();
 
         let owner = deps.api.addr_make("owner");
         let recipient = deps.api.addr_make("recipient");
@@ -65,12 +62,17 @@ mod tests {
         execute(
             deps.as_mut(),
             mock_env(),
-            message_info(&minter, &[]),
-            ExecuteMsg::Mint {
+            message_info(&factory, &[]),
+            ExecuteMsg::Mint(MintMsg {
                 token_id: "position-1".to_string(),
-                owner: owner.to_string(),
-                token_uri: Some("ipfs://position-1".to_string()),
-            },
+                token_info: TokenInfo {
+                    owner: owner.clone(),
+                    token_uri: Some("ipfs://position-1".to_string()),
+                },
+                position_info: PositionInfo {
+                    liquidity: Uint128::new(1000),
+                },
+            }),
         )
         .unwrap();
 
@@ -112,10 +114,22 @@ mod tests {
         .unwrap();
         assert_eq!(recipient_tokens.tokens, vec!["position-1".to_string()]);
 
+        // Set liquidity to zero before burning
         execute(
             deps.as_mut(),
             mock_env(),
-            message_info(&recipient, &[]),
+            message_info(&factory, &[]),
+            ExecuteMsg::UpdatePosition {
+                token_id: "position-1".to_string(),
+                liquidity_change: Int256::zero(),
+            },
+        )
+        .unwrap();
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&factory, &[]),
             ExecuteMsg::Burn {
                 token_id: "position-1".to_string(),
             },
@@ -142,7 +156,7 @@ mod tests {
 
     #[test]
     fn multi_token_transfer_and_burn() {
-        let (mut deps, minter, _, _) = setup();
+        let (mut deps, factory) = setup();
 
         let owner = deps.api.addr_make("owner");
         let recipient = deps.api.addr_make("recipient");
@@ -152,12 +166,17 @@ mod tests {
             execute(
                 deps.as_mut(),
                 mock_env(),
-                message_info(&minter, &[]),
-                ExecuteMsg::Mint {
+                message_info(&factory, &[]),
+                ExecuteMsg::Mint(MintMsg {
                     token_id: id.to_string(),
-                    owner: owner.to_string(),
-                    token_uri: None,
-                },
+                    token_info: TokenInfo {
+                        owner: owner.clone(),
+                        token_uri: None,
+                    },
+                    position_info: PositionInfo {
+                        liquidity: Uint128::new(1000),
+                    },
+                }),
             )
             .expect("mint should succeed");
         }
@@ -189,11 +208,22 @@ mod tests {
         )
         .expect("transfer should succeed");
 
-        // Burn pos-1
+        // Set liquidity to zero and burn pos-1
         execute(
             deps.as_mut(),
             mock_env(),
-            message_info(&owner, &[]),
+            message_info(&factory, &[]),
+            ExecuteMsg::UpdatePosition {
+                token_id: "pos-1".to_string(),
+                liquidity_change: Int256::zero(),
+            },
+        )
+        .expect("update position should succeed");
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&factory, &[]),
             ExecuteMsg::Burn {
                 token_id: "pos-1".to_string(),
             },

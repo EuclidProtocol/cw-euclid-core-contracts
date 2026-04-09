@@ -1,9 +1,9 @@
-use crate::state::{ALL_TOKEN_SET, OWNER_TOKEN_SET, STATE, TOKENS};
+use crate::state::{OWNER_TOKEN_SET, POSITION_INFO, STATE, TOKENS};
 use cosmwasm_std::{to_json_binary, Binary, Deps, Order};
 use cw_storage_plus::Bound;
 use euclid::error::ContractError;
 use euclid::msgs::position_token::{
-    OwnerOfResponse, StateResponse, TokenInfoResponse, TokensResponse,
+    OwnerOfResponse, PositionInfoResponse, StateResponse, TokenInfoResponse, TokensResponse,
 };
 use euclid::utils::pagination::Pagination;
 
@@ -27,9 +27,21 @@ pub(crate) fn query_token_info(deps: Deps, token_id: String) -> Result<Binary, C
         })?;
 
     Ok(to_json_binary(&TokenInfoResponse {
-        token_id,
         owner: token.owner.to_string(),
         token_uri: token.token_uri,
+    })?)
+}
+
+pub(crate) fn query_position_info(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
+    let position =
+        POSITION_INFO
+            .may_load(deps.storage, &token_id)?
+            .ok_or(ContractError::NotFound {
+                msg: format!("token {token_id} not found"),
+            })?;
+
+    Ok(to_json_binary(&PositionInfoResponse {
+        liquidity: position.liquidity,
     })?)
 }
 
@@ -59,7 +71,7 @@ pub(crate) fn query_all_tokens(
     let min = pagination.min.as_deref().map(Bound::inclusive);
     let max = pagination.max.as_deref().map(Bound::inclusive);
 
-    let tokens: Vec<String> = ALL_TOKEN_SET
+    let tokens: Vec<String> = TOKENS
         .keys(deps.storage, min, max, Order::Ascending)
         .skip(pagination.skip.unwrap_or(0) as usize)
         .take(pagination.limit.unwrap_or(10) as usize)
@@ -72,8 +84,8 @@ pub(crate) fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&StateResponse {
         name: state.name,
         symbol: state.symbol,
-        minter: state.minter,
-        admin: state.admin,
+        factory: state.factory,
+        vlp_address: state.vlp_address,
         total_tokens: state.total_tokens,
     })?)
 }

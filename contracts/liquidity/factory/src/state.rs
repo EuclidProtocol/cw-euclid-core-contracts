@@ -49,35 +49,20 @@ pub const FEE_STATE: Item<FeeState> = Item::new("fee_state");
 
 // Map Pair to vlp address
 pub const PAIR_TO_VLP: Map<(String, String), String> = Map::new("pair_to_vlp");
+// Map pool key to vlp address - for concentrated pools
 pub const POOL_KEY_TO_VLP: Map<String, String> = Map::new("pool_key_to_vlp");
 
-// Map vlp to LP Allocations
+// Map vlp to LP Allocations. (Might not be needed anymore as LP token will have this data or can be updated to store this data)
 pub const VLP_TO_LP_SHARES: Map<String, Int256> = Map::new("vlp_to_lp_shares");
 
 // New Factory states
 pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 
-// New LP Token states
+// New LP Token states. Only applicable for constant product and stable pools
 pub const VLP_TO_LP_TOKEN: Map<String, Addr> = Map::new("vlp_to_lp_token");
-pub const POSITION_TOKEN_CONTRACT: Item<Addr> = Item::new("position_token_contract");
 
-#[cw_serde]
-pub struct ConcentratedPositionMetadata {
-    pub owner: Addr,
-    pub pool_key: PoolKey,
-    pub liquidity: cosmwasm_std::Uint128,
-    pub vlp_address: String,
-}
-pub const POSITION_ID_TO_METADATA: Map<u128, ConcentratedPositionMetadata> =
-    Map::new("position_id_to_metadata");
-/// Per-owner position index. Each (owner, position_id) pair is a separate storage key,
-/// avoiding unbounded Vec deserialization on every operation.
-pub const OWNER_POSITION_SET: Map<(Addr, u128), cosmwasm_std::Empty> =
-    Map::new("owner_position_set");
-
-/// Temporarily stores (owner, position_id) while an NFT mint SubMsg is in flight.
-/// Used by the reply handler to rollback metadata if the mint fails.
-pub const PENDING_NFT_MINT_POSITION: Item<(Addr, u128)> = Item::new("pending_nft_mint_pos");
+// Only applicable for concentrated pools
+pub const VLP_TO_POSITION_TOKEN: Map<String, Addr> = Map::new("vlp_to_position_token");
 
 #[cw_serde]
 pub struct PoolCreateRequest {
@@ -191,16 +176,4 @@ pub fn pool_key_to_map_key(pool_key: &PoolKey) -> String {
         "{}\0{}\0{}\0{}",
         pool_key.pair.token_1, pool_key.pair.token_2, fee_tier_bps, tick_spacing
     )
-}
-
-pub fn map_key_to_pool_parts(key: &str) -> Option<(String, String, u64, u64)> {
-    let mut parts = key.split('\0');
-    let token_1 = parts.next()?.to_string();
-    let token_2 = parts.next()?.to_string();
-    let fee_tier_bps = parts.next()?.parse::<u64>().ok()?;
-    let tick_spacing = parts.next()?.parse::<u64>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((token_1, token_2, fee_tier_bps, tick_spacing))
 }

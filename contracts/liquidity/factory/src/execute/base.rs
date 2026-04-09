@@ -22,7 +22,7 @@ use crate::{
         pool::remove_liquidity_request, swap::execute_swap_request, token::execute_deposit_token,
     },
     reply::POSITION_TOKEN_INSTANTIATE_REPLY_ID,
-    state::{ADMIN, POSITION_TOKEN_CONTRACT, STATE},
+    state::{ADMIN, STATE},
 };
 
 pub fn execute_manage_factory_state(
@@ -80,43 +80,6 @@ pub fn execute_manage_factory_state(
             STATE.save(deps.storage, &state)?;
             Ok(Response::new()
                 .add_attribute("position_token_code_id", position_token_code_id.to_string()))
-        }
-        ManageFactoryState::RegisterPositionToken {} => {
-            ensure!(
-                admins.migration_admin == info.sender,
-                ContractError::Unauthorized {}
-            );
-            ensure!(
-                POSITION_TOKEN_CONTRACT.may_load(deps.storage)?.is_none(),
-                ContractError::new("Position token contract already registered")
-            );
-            ensure!(
-                state.position_token_code_id > 0,
-                ContractError::new("Position token code ID not set")
-            );
-
-            let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
-                admin: Some(admins.migration_admin.into_string()),
-                code_id: state.position_token_code_id,
-                msg: to_json_binary(&euclid::msgs::position_token::InstantiateMsg {
-                    name: "Euclid Concentrated Positions".to_string(),
-                    symbol: "EUPOS".to_string(),
-                    minter: env.contract.address.clone(),
-                    admin: env.contract.address,
-                })?,
-                funds: vec![],
-                label: "position_token".to_string(),
-            });
-
-            Ok(Response::new()
-                .add_submessage(SubMsg {
-                    id: POSITION_TOKEN_INSTANTIATE_REPLY_ID,
-                    msg: init_msg,
-                    gas_limit: None,
-                    reply_on: ReplyOn::Always,
-                    payload: Binary::default(),
-                })
-                .add_attribute("action", "register_position_token"))
         }
     }
 }
