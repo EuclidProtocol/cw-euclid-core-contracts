@@ -11,7 +11,6 @@ use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 use cw_orch_interchain::prelude::MockInterchainEnv;
 use euclid::cross_chain_user::CrossChainUser;
-use euclid::error::ContractError;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;

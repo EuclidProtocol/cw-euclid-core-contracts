@@ -274,15 +274,15 @@ pub fn extract_ack_packet_events(events: &[Event]) -> Vec<AckPacketEvent> {
         .collect::<Vec<_>>();
 
     for event in related_events.chunks(2) {
-        let msg_binary = Binary::from_base64(get_event_attr(&event[0], "msg"))
+        let msg_binary = Binary::from_base64(get_event_attr(event[0], "msg"))
             .expect("msg attribute should be valid base64");
-        let ack_binary = Binary::from_base64(get_event_attr(&event[1], "ack"))
+        let ack_binary = Binary::from_base64(get_event_attr(event[1], "ack"))
             .expect("ack attribute should be valid base64");
-        let sequence: u128 = get_event_attr(&event[0], "sequence")
+        let sequence: u128 = get_event_attr(event[0], "sequence")
             .parse()
             .expect("sequence attribute should be a valid u128");
-        let source_port = get_event_attr(&event[0], "source_port").to_string();
-        let destination_port = get_event_attr(&event[0], "destination_port").to_string();
+        let source_port = get_event_attr(event[0], "source_port").to_string();
+        let destination_port = get_event_attr(event[0], "destination_port").to_string();
         ack_packet_events.push(AckPacketEvent {
             msg: msg_binary,
             ack: ack_binary,
