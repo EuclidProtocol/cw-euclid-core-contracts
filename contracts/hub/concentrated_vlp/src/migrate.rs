@@ -1,9 +1,11 @@
 use cosmwasm_std::{entry_point, DepsMut, Env, Isqrt, Order, Response, Storage, Uint128, Uint256};
 use cw2::{get_contract_version, set_contract_version};
+use cw_storage_plus::Map;
 use euclid::{
+    cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::vlp::{
-        base::PoolType,
+        base::{PoolKey, PoolType},
         concentrated::msg::{LegacyLiquidityMode, MigrateMsg},
     },
 };
@@ -15,12 +17,31 @@ use crate::{
         tick_math::{get_sqrt_ratio_at_tick, get_tick_at_sqrt_ratio},
     },
     state::{
-        initialize_position_namespace_if_missing, ConcentratedPosition, MigrationMetadata, Slot0,
-        TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128,
-        FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA, MIGRATION_REVISION, OBSERVATIONS, POOL_KEY,
-        POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
+        ConcentratedPosition, MigrationMetadata, Slot0, TickInfo, ACTIVE_LIQUIDITY, BALANCES,
+        CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA,
+        MIGRATION_REVISION, OBSERVATIONS, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1,
+        SLOT0, STATE, TICKS,
     },
 };
+
+/// Legacy position struct for deserializing positions stored before the migration
+/// that removed `owner` and `pool_key` fields from `ConcentratedPosition`.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+struct LegacyConcentratedPosition {
+    pub owner: CrossChainUser,
+    pub lower_tick_index: i64,
+    pub upper_tick_index: i64,
+    pub liquidity: Uint128,
+    pub pool_key: PoolKey,
+    #[serde(default)]
+    pub fee_growth_inside_0_last_x128: Uint256,
+    #[serde(default)]
+    pub fee_growth_inside_1_last_x128: Uint256,
+    #[serde(default)]
+    pub tokens_owed_0: Uint128,
+    #[serde(default)]
+    pub tokens_owed_1: Uint128,
+}
 
 const CONTRACT_NAME: &str = "crates.io:concentrated_vlp";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -71,8 +92,6 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
         _ => return Err(ContractError::new("pool key must be concentrated")),
     };
 
-    initialize_position_namespace_if_missing(deps.storage, env.contract.address.as_str())?;
-
     let reserve_0 = BALANCES
         .may_load(deps.storage, state.pair.token_1.clone())?
         .unwrap_or_default();
@@ -91,9 +110,40 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
     slot0.observation_cardinality = 1;
     slot0.observation_cardinality_next = 1;
 
-    let positions: Vec<(u128, ConcentratedPosition)> = POSITIONS
+    // Try loading positions in the current format first. If that fails (e.g. because
+    // the stored data still has the legacy `owner`/`pool_key` fields), fall back to
+    // deserializing as LegacyConcentratedPosition and converting.
+    let positions: Vec<(u128, ConcentratedPosition)> = match POSITIONS
         .range(deps.storage, None, None, Order::Ascending)
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(ps) => ps,
+        Err(_) => {
+            // Deserialize using the legacy map with the same storage key.
+            const LEGACY_POSITIONS: Map<u128, LegacyConcentratedPosition> = Map::new("positions");
+            let legacy: Vec<(u128, LegacyConcentratedPosition)> = LEGACY_POSITIONS
+                .range(deps.storage, None, None, Order::Ascending)
+                .collect::<Result<Vec<_>, _>>()?;
+            legacy
+                .into_iter()
+                .map(|(id, lp)| {
+                    (
+                        id,
+                        ConcentratedPosition {
+                            chain_uid: lp.owner.chain_uid,
+                            lower_tick_index: lp.lower_tick_index,
+                            upper_tick_index: lp.upper_tick_index,
+                            liquidity: lp.liquidity,
+                            fee_growth_inside_0_last_x128: lp.fee_growth_inside_0_last_x128,
+                            fee_growth_inside_1_last_x128: lp.fee_growth_inside_1_last_x128,
+                            tokens_owed_0: lp.tokens_owed_0,
+                            tokens_owed_1: lp.tokens_owed_1,
+                        },
+                    )
+                })
+                .collect()
+        }
+    };
     let positions_migrated = positions.len() as u64;
     let total_legacy_liquidity = positions.iter().try_fold(
         Uint128::zero(),
@@ -106,7 +156,7 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
     let mut normalized: Vec<(u128, ConcentratedPosition, Uint256, Uint256)> =
         Vec::with_capacity(positions.len());
     for (position_id, mut position) in positions {
-        validate_position(&position, &pool_key, tick_spacing)?;
+        validate_position(&position, tick_spacing)?;
         let sqrt_lower = get_sqrt_ratio_at_tick(position.lower_tick_index)?;
         let sqrt_upper = get_sqrt_ratio_at_tick(position.upper_tick_index)?;
 
@@ -206,11 +256,11 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
 
         total_liquidity = total_liquidity.checked_add(position.liquidity)?;
         let existing_chain_liquidity = CHAIN_LP_TOKENS
-            .may_load(deps.storage, position.owner.chain_uid.clone())?
+            .may_load(deps.storage, position.chain_uid.clone())?
             .unwrap_or_default();
         CHAIN_LP_TOKENS.save(
             deps.storage,
-            position.owner.chain_uid.clone(),
+            position.chain_uid.clone(),
             &existing_chain_liquidity.checked_add(position.liquidity)?,
         )?;
 
@@ -273,7 +323,6 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
             positions_migrated,
         },
     )?;
-    initialize_position_namespace_if_missing(deps.storage, env.contract.address.as_str())?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     Ok(Response::new()
@@ -330,13 +379,8 @@ fn resolve_slot0(
 
 fn validate_position(
     position: &ConcentratedPosition,
-    expected_pool_key: &euclid::msgs::vlp::base::PoolKey,
     tick_spacing: i64,
 ) -> Result<(), ContractError> {
-    position.owner.validate()?;
-    if position.pool_key != *expected_pool_key {
-        return Err(ContractError::new("position pool key mismatch"));
-    }
     if position.lower_tick_index >= position.upper_tick_index {
         return Err(ContractError::new("invalid tick range"));
     }

@@ -83,7 +83,7 @@ pub struct VlpConcentratedAddLiquidityMsg {
     pub liquidity: PairWithAmount,
     pub lower_tick_index: i64,
     pub upper_tick_index: i64,
-    pub position_id: Option<Uint128>,
+    pub position_id: Uint128,
     pub slippage_tolerance_bps: u64,
 }
 
@@ -195,6 +195,8 @@ pub struct VlpConcentratedRemoveLiquidityResponse {
     pub sender: CrossChainUser,
     pub vlp_address: String,
     pub pool_key: PoolKey,
+    /// True when the VLP deleted the position from storage (zero liquidity and zero owed fees).
+    pub position_burned: bool,
 }
 
 #[cw_serde]

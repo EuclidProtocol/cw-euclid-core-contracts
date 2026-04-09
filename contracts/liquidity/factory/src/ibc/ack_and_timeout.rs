@@ -847,8 +847,8 @@ fn ack_remove_concentrated_liquidity(
 
     match res {
         AcknowledgementMsg::Ok(data) => {
-            // We already have removed the liquidity from the position in the execute call, so we just need to emit the event
-            Ok(Response::new()
+            // We already have removed the liquidity from the position in the execute call.
+            let mut res = Response::new()
                 .add_attribute("method", "ack_remove_concentrated_liquidity")
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id)
@@ -863,7 +863,22 @@ fn ack_remove_concentrated_liquidity(
                 )
                 .add_attribute("liquidity_delta", data.liquidity_delta.to_string())
                 .add_attribute("liquidity_after", data.liquidity_after.to_string())
-                .add_attribute("vlp_address", data.vlp_address))
+                .add_attribute("vlp_address", data.vlp_address)
+                .add_attribute("position_burned", data.position_burned.to_string());
+
+            // Burn the position token only when the VLP has confirmed the
+            // position is fully cleared (zero liquidity AND zero owed fees).
+            if data.position_burned {
+                let position_token_contract = POSITION_TOKEN_CONTRACT
+                    .load(deps.storage)
+                    .map_err(|_| ContractError::new("Position token contract not registered"))?;
+                let burn_msg = msgs::position_token::ExecuteMsg::Burn {
+                    token_id: data.position_id,
+                };
+                res = res.add_message(burn_msg.to_msg(position_token_contract)?);
+            }
+
+            Ok(res)
         }
         AcknowledgementMsg::Error(err) => {
             if is_native {

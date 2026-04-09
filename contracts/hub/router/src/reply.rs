@@ -310,6 +310,7 @@ pub fn on_remove_liquidity_reply(
                     vlp_address: vlp_liquidity_response.vlp_address,
                     tx_id: vlp_liquidity_response.tx_id,
                     sender: vlp_liquidity_response.sender,
+                    position_burned: vlp_liquidity_response.position_burned,
                 };
 
                 let ack = AcknowledgementMsg::Ok(liquidity_response.clone());

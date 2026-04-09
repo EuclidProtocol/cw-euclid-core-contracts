@@ -452,12 +452,8 @@ pub fn get_position_token(
     factory: &FactoryContract<MockBase>,
 ) -> Result<PositionTokenContract<MockBase>, CwOrchError> {
     let contract = PositionTokenContract::new(factory.environment().clone());
-    let pools = factory.get_all_concentrated_pools()?;
-    let Some(first_pool) = pools.pools.first() else {
-        return Ok(contract);
-    };
-    let response = factory.get_position_token_contract(first_pool.pool_key.clone())?;
-    contract.set_address(&response.position_token_contract);
+    let response = factory.get_position_token_contract()?;
+    contract.set_address(&response.position_token_contract.unwrap());
     Ok(contract)
 }
 

@@ -25,11 +25,10 @@ use crate::{
     migrate::{fit_liquidity_with_bound, migrate},
     mock::mock_concentrated_vlp,
     state::{
-        initialize_position_namespace_if_missing, next_position_id, ConcentratedPosition,
-        MigrationMetadata, TickInfo, ACTIVE_LIQUIDITY, BALANCES, CHAIN_LP_TOKENS,
-        FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA, MIGRATION_REVISION,
-        OBSERVATIONS, POOL_KEY, POSITIONS, POSITION_ID_PREFIX, POSITION_NONCE, PROTOCOL_FEES_0,
-        PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
+        ConcentratedPosition, MigrationMetadata, TickInfo, ACTIVE_LIQUIDITY, BALANCES,
+        CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MIGRATION_METADATA,
+        MIGRATION_REVISION, OBSERVATIONS, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1,
+        SLOT0, STATE, TICKS,
     },
 };
 
@@ -159,26 +158,17 @@ fn sample_state(pair: Pair, total_lp_tokens: Uint128) -> State {
     }
 }
 
-fn owner(chain: &str, address: &str) -> CrossChainUser {
-    CrossChainUser::new(
-        ChainUid::create(chain.to_string()).unwrap(),
-        address.to_string(),
-    )
-}
-
 fn make_position(
-    owner: CrossChainUser,
-    pool_key: PoolKey,
+    chain_uid: ChainUid,
     lower_tick_index: i64,
     upper_tick_index: i64,
     liquidity: Uint128,
 ) -> ConcentratedPosition {
     ConcentratedPosition {
-        owner,
+        chain_uid,
         lower_tick_index,
         upper_tick_index,
         liquidity,
-        pool_key,
         fee_growth_inside_0_last_x128: Uint256::zero(),
         fee_growth_inside_1_last_x128: Uint256::zero(),
         tokens_owed_0: Uint128::zero(),
@@ -232,15 +222,13 @@ fn migration_rebuilds_ticks_and_active_liquidity_from_positions() {
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
     let p1 = make_position(
-        owner("andr", "alice"),
-        pool_key.clone(),
+        ChainUid::create("andr".to_string()).unwrap(),
         -10,
         10,
         Uint128::new(1000),
     );
     let p2 = make_position(
-        owner("sepolia", "bob"),
-        pool_key.clone(),
+        ChainUid::create("sepolia".to_string()).unwrap(),
         10,
         20,
         Uint128::new(2000),
@@ -345,15 +333,13 @@ fn migration_legacy_share_mode_converts_liquidity_and_recomputes_totals() {
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
     let p1 = make_position(
-        owner("andr", "alice"),
-        pool_key.clone(),
+        ChainUid::create("andr".to_string()).unwrap(),
         -10,
         10,
         Uint128::new(100),
     );
     let p2 = make_position(
-        owner("andr", "bob"),
-        pool_key.clone(),
+        ChainUid::create("andr".to_string()).unwrap(),
         -10,
         10,
         Uint128::new(300),
@@ -402,8 +388,7 @@ fn migration_assigns_rounding_residuals_to_protocol_fees() {
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
     let position = make_position(
-        owner("andr", "alice"),
-        pool_key.clone(),
+        ChainUid::create("andr".to_string()).unwrap(),
         -10,
         10,
         Uint128::new(1000),
@@ -472,8 +457,7 @@ fn migration_rejects_invalid_tick_alignment_or_bounds() {
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
     let invalid_position = make_position(
-        owner("andr", "alice"),
-        pool_key.clone(),
+        ChainUid::create("andr".to_string()).unwrap(),
         -7,
         10,
         Uint128::new(10),
@@ -535,8 +519,7 @@ fn migration_idempotent_noop_without_force() {
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
     let position = make_position(
-        owner("andr", "alice"),
-        pool_key.clone(),
+        ChainUid::create("andr".to_string()).unwrap(),
         -10,
         10,
         Uint128::new(100),
@@ -585,8 +568,7 @@ fn migration_force_rebuild_is_stable() {
     let pair = sample_pair();
     let pool_key = sample_pool_key(pair.clone());
     let position = make_position(
-        owner("andr", "alice"),
-        pool_key.clone(),
+        ChainUid::create("andr".to_string()).unwrap(),
         -10,
         10,
         Uint128::new(100),
@@ -632,7 +614,7 @@ fn migration_force_rebuild_is_stable() {
 }
 
 #[test]
-fn migration_preserves_position_ids_and_owner() {
+fn migration_preserves_position_ids_and_chain_uid() {
     let mut deps = mock_dependencies();
     let env = mock_env();
 
@@ -643,15 +625,13 @@ fn migration_preserves_position_ids_and_owner() {
     let id_2 = (123u128 << 64) | 45u128;
 
     let pos_1 = make_position(
-        owner("andr", "alice"),
-        pool_key.clone(),
+        ChainUid::create("andr".to_string()).unwrap(),
         -10,
         10,
         Uint128::new(150),
     );
     let pos_2 = make_position(
-        owner("sepolia", "bob"),
-        pool_key.clone(),
+        ChainUid::create("sepolia".to_string()).unwrap(),
         10,
         20,
         Uint128::new(200),
@@ -676,19 +656,10 @@ fn migration_preserves_position_ids_and_owner() {
 
     let out_1 = POSITIONS.load(deps.as_ref().storage, id_1).unwrap();
     let out_2 = POSITIONS.load(deps.as_ref().storage, id_2).unwrap();
-    assert_eq!(out_1.owner, pos_1.owner);
-    assert_eq!(out_2.owner, pos_2.owner);
+    assert_eq!(out_1.chain_uid, pos_1.chain_uid);
+    assert_eq!(out_2.chain_uid, pos_2.chain_uid);
     assert_eq!(out_1.lower_tick_index, pos_1.lower_tick_index);
     assert_eq!(out_2.upper_tick_index, pos_2.upper_tick_index);
-
-    assert!(POSITION_ID_PREFIX
-        .may_load(deps.as_ref().storage)
-        .unwrap()
-        .is_some());
-    assert!(POSITION_NONCE
-        .may_load(deps.as_ref().storage)
-        .unwrap()
-        .is_some());
 }
 
 #[test]
@@ -737,159 +708,6 @@ fn migration_status_markers_are_written() {
         .may_load(deps.as_ref().storage, 0)
         .unwrap()
         .is_some());
-}
-
-// ---------------------------------------------------------------------------
-// next_position_id — table-driven
-// ---------------------------------------------------------------------------
-
-#[test]
-fn next_position_id_table() {
-    struct Case {
-        label: &'static str,
-        /// Position IDs to pre-populate (simulates existing positions).
-        existing: Vec<u128>,
-        /// Expected nonce component of the returned ID (lower 64 bits).
-        expected_nonce: u64,
-    }
-
-    let cases = vec![
-        Case {
-            label: "empty storage yields nonce 1",
-            existing: vec![],
-            expected_nonce: 1,
-        },
-        Case {
-            label: "skips occupied nonce 1, returns nonce 2",
-            existing: vec![1], // nonce 1 under same prefix
-            expected_nonce: 2,
-        },
-        Case {
-            label: "skips occupied nonces 1-3, returns nonce 4",
-            existing: vec![1, 2, 3],
-            expected_nonce: 4,
-        },
-    ];
-
-    for case in cases {
-        let mut deps = mock_dependencies();
-        let prefix: u64 = 42;
-        POSITION_ID_PREFIX
-            .save(deps.as_mut().storage, &prefix)
-            .unwrap();
-        POSITION_NONCE.save(deps.as_mut().storage, &0).unwrap();
-
-        let pool_key = sample_pool_key(sample_pair());
-        for nonce in &case.existing {
-            let id = (u128::from(prefix) << 64) | u128::from(*nonce);
-            let pos = make_position(
-                owner("andr", "alice"),
-                pool_key.clone(),
-                -10,
-                10,
-                Uint128::new(100),
-            );
-            POSITIONS.save(deps.as_mut().storage, id, &pos).unwrap();
-        }
-
-        let result = next_position_id(deps.as_mut().storage).unwrap();
-        let got_nonce = result.u128() as u64;
-        assert_eq!(
-            got_nonce, case.expected_nonce,
-            "FAIL [{}]: expected nonce {}, got {}",
-            case.label, case.expected_nonce, got_nonce,
-        );
-    }
-}
-
-#[test]
-fn next_position_id_exhaustion_returns_error() {
-    let mut deps = mock_dependencies();
-    let prefix: u64 = 1;
-    POSITION_ID_PREFIX
-        .save(deps.as_mut().storage, &prefix)
-        .unwrap();
-    POSITION_NONCE.save(deps.as_mut().storage, &0).unwrap();
-
-    let pool_key = sample_pool_key(sample_pair());
-    // Fill nonces 1..=1024 so the loop exhausts all attempts.
-    for nonce in 1..=1024u64 {
-        let id = (u128::from(prefix) << 64) | u128::from(nonce);
-        let pos = make_position(
-            owner("andr", "alice"),
-            pool_key.clone(),
-            -10,
-            10,
-            Uint128::new(1),
-        );
-        POSITIONS.save(deps.as_mut().storage, id, &pos).unwrap();
-    }
-
-    let err = next_position_id(deps.as_mut().storage).unwrap_err();
-    assert!(
-        err.to_string().contains("exhausted"),
-        "expected exhaustion error, got: {err}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// initialize_position_namespace_if_missing — table-driven
-// ---------------------------------------------------------------------------
-
-#[test]
-fn initialize_position_namespace_table() {
-    struct Case {
-        label: &'static str,
-        /// If Some, pre-save POSITION_NONCE to this value.
-        pre_nonce: Option<u64>,
-        /// Position IDs to pre-populate.
-        existing_ids: Vec<u128>,
-        /// Expected POSITION_NONCE value after the call.
-        expected_nonce: u64,
-    }
-
-    let contract_addr = "wasm1concentrated";
-    let cases = vec![
-        Case {
-            label: "early return when nonce already set",
-            pre_nonce: Some(99),
-            existing_ids: vec![],
-            expected_nonce: 99,
-        },
-        Case {
-            label: "fresh state with no positions yields nonce 0",
-            pre_nonce: None,
-            existing_ids: vec![],
-            expected_nonce: 0,
-        },
-    ];
-
-    for case in cases {
-        let mut deps = mock_dependencies();
-        if let Some(nonce) = case.pre_nonce {
-            POSITION_NONCE.save(deps.as_mut().storage, &nonce).unwrap();
-        }
-        let pool_key = sample_pool_key(sample_pair());
-        for id in &case.existing_ids {
-            let pos = make_position(
-                owner("andr", "alice"),
-                pool_key.clone(),
-                -10,
-                10,
-                Uint128::new(1),
-            );
-            POSITIONS.save(deps.as_mut().storage, *id, &pos).unwrap();
-        }
-
-        initialize_position_namespace_if_missing(deps.as_mut().storage, contract_addr).unwrap();
-
-        let nonce = POSITION_NONCE.load(deps.as_ref().storage).unwrap();
-        assert_eq!(
-            nonce, case.expected_nonce,
-            "FAIL [{}]: expected nonce {}, got {}",
-            case.label, case.expected_nonce, nonce,
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------

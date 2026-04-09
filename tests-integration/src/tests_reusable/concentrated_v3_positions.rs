@@ -270,9 +270,16 @@ fn test_add_then_partial_remove_updates_position_liquidity_exactly(
     );
 
     let remove_delta = Uint128::new((added_liquidity.u128() / 2).max(1));
-    remove_concentrated_liquidity(&factory, &router, pool_key, position_id, remove_delta).unwrap();
+    remove_concentrated_liquidity(
+        &factory,
+        &router,
+        pool_key.clone(),
+        position_id,
+        remove_delta,
+    )
+    .unwrap();
 
-    let after_remove = position(&router, before.pool_key.clone(), position_id);
+    let after_remove = position(&router, pool_key, position_id);
     assert_eq!(
         after_remove.liquidity,
         after_add.liquidity.checked_sub(remove_delta).unwrap(),

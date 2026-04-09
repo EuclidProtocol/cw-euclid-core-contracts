@@ -59,6 +59,8 @@ pub struct ConcentratedRemoveLiquidityResponse {
     pub vlp_address: String,
     pub tx_id: String,
     pub sender: CrossChainUser,
+    /// True when the VLP deleted the position from storage (zero liquidity and zero owed fees).
+    pub position_burned: bool,
 }
 
 #[cw_serde]
