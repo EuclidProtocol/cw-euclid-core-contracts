@@ -233,7 +233,6 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                 // Remove funds info if it exists
                 CONCENTRATED_FUNDS_INFO.remove(deps.storage);
                 let ack = AcknowledgementMsg::Ok(ConcentratedAddLiquidityResponse {
-                    pool_key: liquidity_response.pool_key.clone(),
                     position_id: liquidity_response.position_id,
                     liquidity_delta: liquidity_response.liquidity_delta,
                     vlp_address: liquidity_response.vlp_address.clone(),

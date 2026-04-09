@@ -346,7 +346,7 @@ fn ack_concentrated_pool_creation(
                 data.position_id.u128(),
                 &crate::state::ConcentratedPositionMetadata {
                     owner: sender.clone(),
-                    pool_key: data.pool_key.clone(),
+                    pool_key: existing_req.pool_key.clone(),
                     liquidity: data.liquidity_delta,
                     vlp_address: data.vlp_address.clone(),
                 },
@@ -706,18 +706,17 @@ fn ack_add_concentrated_liquidity(
             let existing_meta = POSITION_ID_TO_METADATA.may_load(deps.storage, position_id)?;
             match existing_meta {
                 Some(mut meta) => {
-                    // IBC acks carry no info.sender, so we cannot do a live NFT
+                                     // IBC acks carry no info.sender, so we cannot do a live NFT
                     // ownership query here. meta.owner is the address that was
                     // recorded when the metadata was first written on mint, and
                     // sender is recovered from the pending request — together they
                     // confirm this ack belongs to the original requester.
                     ensure!(meta.owner == sender, ContractError::Unauthorized {});
                     ensure!(
-                        meta.pool_key == data.pool_key,
+                        meta.pool_key == liquidity_info.pool_key,
                         ContractError::new("Pool key mismatch")
                     );
                     meta.liquidity = meta.liquidity.checked_add(data.liquidity_delta)?;
-                    meta.vlp_address = data.vlp_address.clone();
                     POSITION_ID_TO_METADATA.save(deps.storage, position_id, &meta)?;
                 }
                 None => {
@@ -726,7 +725,7 @@ fn ack_add_concentrated_liquidity(
                         position_id,
                         &crate::state::ConcentratedPositionMetadata {
                             owner: sender.clone(),
-                            pool_key: data.pool_key.clone(),
+                            pool_key: liquidity_info.pool_key.clone(),
                             liquidity: data.liquidity_delta,
                             vlp_address: data.vlp_address.clone(),
                         },
@@ -1227,8 +1226,9 @@ mod tests {
 
     use crate::reply::{ESCROW_INSTANTIATE_REPLY_ID, NFT_MINT_REPLY_ID};
     use crate::state::{
-        ConcentratedAddLiquidityRequest, ADMIN, PENDING_CONCENTRATED_ADD_LIQUIDITY,
-        PENDING_DEPOSIT_TOKEN, STATE, TOKEN_TO_ESCROW,
+        ConcentratedAddLiquidityRequest, ConcentratedPositionMetadata, ADMIN,
+        PENDING_CONCENTRATED_ADD_LIQUIDITY, PENDING_DEPOSIT_TOKEN, POSITION_ID_TO_METADATA, STATE,
+        TOKEN_TO_ESCROW,
     };
 
     struct EscrowAckCase {
@@ -1347,7 +1347,6 @@ mod tests {
             }
 
             let ack_data = ConcentratedAddLiquidityResponse {
-                pool_key,
                 position_id: Uint128::new(1),
                 liquidity_delta: Uint128::new(500),
                 vlp_address: "vlp_contract".to_string(),
@@ -1391,5 +1390,130 @@ mod tests {
                 case.name
             );
         }
+    }
+
+    #[test]
+    fn ack_add_concentrated_liquidity_rejects_mismatched_metadata_owner() {
+        let mut deps = mock_dependencies();
+        let sender = deps.api.addr_make("sender");
+        let other_owner = deps.api.addr_make("other_owner");
+        let tx_id = "tx_owner_mismatch".to_string();
+        let token_a = Token::create("tokena".to_string()).unwrap();
+        let token_b = Token::create("tokenb".to_string()).unwrap();
+        let pair = euclid::token::Pair::new(token_a.clone(), token_b.clone()).unwrap();
+
+        STATE
+            .save(
+                deps.as_mut().storage,
+                &crate::state::State {
+                    router_contract: "router".to_string(),
+                    relayer_contract: Addr::unchecked("relayer"),
+                    escrow_code_id: 42,
+                    lp_code_id: 2,
+                    position_token_code_id: 3,
+                    chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+                    is_native: false,
+                },
+            )
+            .unwrap();
+        ADMIN
+            .save(
+                deps.as_mut().storage,
+                &EuclidAdmin::default(Addr::unchecked("admin")),
+            )
+            .unwrap();
+        POSITION_TOKEN_CONTRACT
+            .save(deps.as_mut().storage, &Addr::unchecked("position_token"))
+            .unwrap();
+
+        let pool_key = PoolKey {
+            pair,
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 3000,
+                tick_spacing: 60,
+            },
+        };
+
+        // Pending request has `sender` as the requester
+        PENDING_CONCENTRATED_ADD_LIQUIDITY
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.clone()),
+                &ConcentratedAddLiquidityRequest {
+                    tx_id: tx_id.clone(),
+                    sender: sender.clone(),
+                    pair_info: PairWithDenomAndAmount {
+                        token_1: TokenWithDenomAndAmount {
+                            token: token_a.clone(),
+                            amount: Uint128::new(1000),
+                            token_type: TokenType::Native {
+                                denom: "utokena".to_string(),
+                            },
+                        },
+                        token_2: TokenWithDenomAndAmount {
+                            token: token_b.clone(),
+                            amount: Uint128::new(2000),
+                            token_type: TokenType::Native {
+                                denom: "utokenb".to_string(),
+                            },
+                        },
+                    },
+                    pool_key: pool_key.clone(),
+                    lower_tick_index: -600,
+                    upper_tick_index: 600,
+                    position_id: Some(1u128),
+                },
+            )
+            .unwrap();
+
+        // Pre-existing metadata with a *different* owner
+        POSITION_ID_TO_METADATA
+            .save(
+                deps.as_mut().storage,
+                1u128,
+                &ConcentratedPositionMetadata {
+                    owner: other_owner.clone(),
+                    pool_key: pool_key.clone(),
+                    liquidity: Uint128::new(500),
+                    vlp_address: "vlp_contract".to_string(),
+                },
+            )
+            .unwrap();
+
+        // Seed both escrows so escrow handling doesn't interfere
+        for (tok, addr) in [("tokena", "escrow_a"), ("tokenb", "escrow_b")] {
+            TOKEN_TO_ESCROW
+                .save(
+                    deps.as_mut().storage,
+                    Token::create(tok.to_string()).unwrap(),
+                    &Addr::unchecked(addr),
+                )
+                .unwrap();
+        }
+
+        let ack_data = ConcentratedAddLiquidityResponse {
+            position_id: Uint128::new(1),
+            liquidity_delta: Uint128::new(300),
+            vlp_address: "vlp_contract".to_string(),
+            tx_id: tx_id.clone(),
+            sender: CrossChainUser::new(
+                ChainUid::create("testchain".to_string()).unwrap(),
+                sender.to_string(),
+            ),
+        };
+
+        let err = ack_add_concentrated_liquidity(
+            deps.as_mut(),
+            AcknowledgementMsg::Ok(ack_data),
+            sender.to_string(),
+            tx_id,
+            false,
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(err, ContractError::Unauthorized {}),
+            "expected Unauthorized, got: {err:?}"
+        );
     }
 }

@@ -42,7 +42,6 @@ pub struct RemoveLiquidityResponse {
 
 #[cw_serde]
 pub struct ConcentratedAddLiquidityResponse {
-    pub pool_key: PoolKey,
     pub vlp_address: String,
     pub tx_id: String,
     pub sender: CrossChainUser,
