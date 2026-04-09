@@ -3,3 +3,6 @@
 .DS_Store
 /schema
 /proto
+.worktrees
+.claude
+TODO.md

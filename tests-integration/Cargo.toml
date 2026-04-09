@@ -27,6 +27,7 @@ orderbook_deposits = { path = "../contracts/hub_utilities/orderbook_deposits" }
 euclid = { path = "../packages/euclid" }
 euclid-ibc = { path = "../packages/euclid_ibc" }
 relayer = { path = "../packages/relayer" }
+test-helpers = { path = "../packages/test-helpers" }
 
 
 #Cosmwasm Crates
