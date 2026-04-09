@@ -12,7 +12,7 @@ use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    events::{liquidity_event, tx_event, TxType},
+    events::{clp_add_liquidity_event, liquidity_event, tx_event, TxType},
     fee::{DenomFees, TotalFees},
     msgs::vlp::{
         base::{
@@ -607,6 +607,13 @@ fn execute_add_concentrated_liquidity(
         .add_attribute("liquidity_delta", liquidity_delta)
         .add_attribute("used_token_1", amount_0_used)
         .add_attribute("used_token_2", amount_1_used)
+        .add_event(clp_add_liquidity_event(
+            &tx_id,
+            position_id,
+            liquidity_delta,
+            amount_0_used,
+            amount_1_used,
+        ))
         .set_data(to_json_binary(&concentrated_ack)?))
 }
 

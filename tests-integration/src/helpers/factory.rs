@@ -1,13 +1,17 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use std::collections::HashMap;
+
 use super::chains::{get_virtual_balance, migrate_concentrated_vlp, upload_concentrated_vlp_code};
 use crate::helpers::chains::{get_escrow, query_concentrated_migration_status};
 use crate::helpers::relayer::relay_factory_router_factory;
-use cosmwasm_std::{coin, Addr, Uint128};
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{coin, Addr, StdError, Uint128};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 use cw_orch_interchain::prelude::MockInterchainEnv;
 use euclid::cross_chain_user::CrossChainUser;
+use euclid::error::ContractError;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
@@ -303,6 +307,14 @@ pub fn create_concentrated_pool_with_tick(
     Ok(pool_key)
 }
 
+#[cw_serde]
+pub struct AddConcentratedLiquidityResponse {
+    pub position_id: Uint128,
+    pub liquidity_delta: Uint128,
+    pub used_token_1: Uint128,
+    pub used_token_2: Uint128,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn add_concentrated_liquidity(
     factory: &FactoryContract<MockBase>,
@@ -313,7 +325,7 @@ pub fn add_concentrated_liquidity(
     upper_tick_index: i64,
     position_id: Option<Uint128>,
     slippage_tolerance_bps: u64,
-) -> Result<(), CwOrchError> {
+) -> Result<AddConcentratedLiquidityResponse, CwOrchError> {
     let chain = factory.environment();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
@@ -340,8 +352,52 @@ pub fn add_concentrated_liquidity(
     )?;
 
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-    Ok(())
+    let mut all_events = tx_response.events.clone();
+    let relay_events =
+        relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+    all_events.extend(relay_events);
+    for event in all_events {
+        if event
+            .attributes
+            .iter()
+            .any(|attr| attr.key == "action" && attr.value == "clp_add_liquidity")
+        {
+            let attr_map = event
+                .attributes
+                .iter()
+                .map(|attr| (attr.key.clone(), attr.value.clone()))
+                .collect::<HashMap<String, String>>();
+            let position_id = attr_map
+                .get("position_id")
+                .unwrap()
+                .parse::<Uint128>()
+                .unwrap();
+            let liquidity_delta = attr_map
+                .get("liquidity_delta")
+                .unwrap()
+                .parse::<Uint128>()
+                .unwrap();
+            let used_token_1 = attr_map
+                .get("used_token_1")
+                .unwrap()
+                .parse::<Uint128>()
+                .unwrap();
+            let used_token_2 = attr_map
+                .get("used_token_2")
+                .unwrap()
+                .parse::<Uint128>()
+                .unwrap();
+            return Ok(AddConcentratedLiquidityResponse {
+                position_id,
+                liquidity_delta,
+                used_token_1,
+                used_token_2,
+            });
+        }
+    }
+    Err(CwOrchError::CosmWasmError(StdError::generic_err(
+        "Add Concentrated Liquidity event not found",
+    )))
 }
 
 pub fn remove_concentrated_liquidity(
