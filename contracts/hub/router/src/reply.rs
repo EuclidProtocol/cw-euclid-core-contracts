@@ -307,7 +307,6 @@ pub fn on_remove_liquidity_reply(
                     liquidity_removed: vlp_liquidity_response.liquidity_released,
                     liquidity_delta: vlp_liquidity_response.liquidity_delta,
                     liquidity_after: vlp_liquidity_response.liquidity_after,
-                    burn_lp_tokens: vlp_liquidity_response.liquidity_delta,
                     vlp_address: vlp_liquidity_response.vlp_address,
                     tx_id: vlp_liquidity_response.tx_id,
                     sender: vlp_liquidity_response.sender,
@@ -318,7 +317,7 @@ pub fn on_remove_liquidity_reply(
                 return Ok(response
                     .add_attribute("pool_type", "concentrated")
                     .add_attribute("liquidity", format!("{liquidity_response:?}"))
-                    .add_attribute("lp_burned", liquidity_response.burn_lp_tokens.to_string())
+                    .add_attribute("lp_burned", liquidity_response.liquidity_delta.to_string())
                     .set_data(to_json_binary(&ack)?));
             }
 

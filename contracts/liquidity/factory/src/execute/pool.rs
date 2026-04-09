@@ -777,6 +777,11 @@ pub fn remove_concentrated_liquidity_request(
         },
     )?;
 
+    ensure!(
+        position_info.liquidity.ge(&liquidity_delta),
+        ContractError::InsufficientFunds {}
+    );
+
     let int128_liquidity_delta = Int256::from(liquidity_delta);
 
     // Lets update liquidity of the position before removing liquidity so next calls will error if the position is not enough liquidity

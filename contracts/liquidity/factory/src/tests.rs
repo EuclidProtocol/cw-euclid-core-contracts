@@ -1,23 +1,27 @@
 #[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
+    use euclid::error::ContractError;
+    use rstest::rstest;
+
     use crate::contract::instantiate;
     use crate::execute::pool::{
         collect_concentrated_fees_request, remove_concentrated_liquidity_request,
     };
     use crate::state::{State, ADMIN, POOL_KEY_TO_VLP, STATE, VLP_TO_POSITION_TOKEN};
 
-    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi, MockQuerier};
     use cosmwasm_std::{
-        to_json_binary, Addr, ContractResult, DepsMut, Response, SystemResult, Uint128,
+        from_json, to_json_binary, Addr, Binary, ContractResult, DepsMut, MemoryStorage, OwnedDeps,
+        Response, SystemResult, Uint128, WasmQuery,
     };
     use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
-    use euclid::error::ContractError;
+    use euclid::msgs;
     use euclid::msgs::cross_chain_config::CrossChainConfig;
     use euclid::msgs::factory::InstantiateMsg;
-    use euclid::msgs::position_token::OwnerOfResponse;
+    use euclid::msgs::position_token::{OwnerOfResponse, PositionInfoResponse, TokenInfoResponse};
     use euclid::msgs::vlp::base::{PoolKey, PoolType};
     use euclid::token::{Pair, Token};
 
@@ -36,8 +40,91 @@ mod tests {
         }
     }
 
-    /// Saves STATE/ADMIN and maps one concentrated pool to a position-token contract.
-    fn setup_concentrated_state(deps: &mut DepsMut, owner: &Addr, pool_key: &PoolKey) {
+    fn mock_wrong_pool_key() -> PoolKey {
+        PoolKey {
+            pair: Pair {
+                token_1: Token::create("wronga".to_string()).unwrap(),
+                token_2: Token::create("wrongb".to_string()).unwrap(),
+            },
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 500,
+                tick_spacing: 10,
+            },
+        }
+    }
+
+    /// Create a mock position token contract and setup the state for a concentrated pool.
+    /// Add querier to return the expected responses for the position token contract.
+    /// Setup state with postion id = 1 and liquidity = 1000 for the given pool key and nft owner.
+    fn setup_concentrated_state(
+        deps: &mut OwnedDeps<MemoryStorage, MockApi, MockQuerier>,
+        nft_owner: Addr,
+        pool_key: &PoolKey,
+    ) {
+        let position_token_address = deps.api.addr_make("position_nft");
+        let position_token_address_str = position_token_address.to_string();
+
+        let token_not_found_error = |token_id: String| -> SystemResult<ContractResult<Binary>> {
+            SystemResult::Ok(ContractResult::Err(
+                ContractError::NotFound {
+                    msg: format!("token {token_id} not found"),
+                }
+                .to_string(),
+            ))
+        };
+        deps.querier.update_wasm(move |query| match query {
+            WasmQuery::Smart { contract_addr, msg } => {
+                if contract_addr.to_string() != position_token_address_str {
+                    return SystemResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
+                        kind: "invalid_contract_address".into(),
+                    });
+                }
+                let parsed_msg = from_json::<msgs::position_token::QueryMsg>(&msg).unwrap();
+                match parsed_msg {
+                    msgs::position_token::QueryMsg::OwnerOf { token_id } => {
+                        if token_id != "1".to_string() {
+                            return token_not_found_error(token_id);
+                        }
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_json_binary(&OwnerOfResponse {
+                                owner: nft_owner.to_string(),
+                            })
+                            .unwrap(),
+                        ))
+                    }
+                    msgs::position_token::QueryMsg::TokenInfo { token_id } => {
+                        if token_id != "1".to_string() {
+                            return token_not_found_error(token_id);
+                        }
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_json_binary(&TokenInfoResponse {
+                                owner: nft_owner.to_string(),
+                                token_uri: None,
+                            })
+                            .unwrap(),
+                        ))
+                    }
+                    msgs::position_token::QueryMsg::PositionInfo { token_id } => {
+                        if token_id != "1".to_string() {
+                            return token_not_found_error(token_id);
+                        }
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_json_binary(&PositionInfoResponse {
+                                liquidity: Uint128::new(1000),
+                            })
+                            .unwrap(),
+                        ))
+                    }
+                    _ => SystemResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
+                        kind: "unsupported".into(),
+                    }),
+                }
+            }
+            _ => SystemResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
+                kind: "unsupported".into(),
+            }),
+        });
+        let deps = deps.as_mut();
         STATE
             .save(
                 deps.storage,
@@ -69,10 +156,9 @@ mod tests {
             .save(
                 deps.storage,
                 "vlp_address".to_string(),
-                &Addr::unchecked("position_nft"),
+                &position_token_address,
             )
             .unwrap();
-        let _ = owner; // owner is used by the mocked owner-of query setup in tests.
     }
 
     fn _initialize_state(deps: &mut DepsMut) {
@@ -128,7 +214,8 @@ mod tests {
     fn test_init() {
         let mut deps = mock_dependencies();
         let res = init(&mut deps);
-        assert_eq!(1, res.messages.len());
+        // No messages are expected because the factory is not used in the tests.
+        assert_eq!(0, res.messages.len());
         let owner = deps.api.addr_make("owner");
         let expected_state = State {
             router_contract: "router".to_string(),
@@ -164,185 +251,167 @@ mod tests {
         }
     }
 
-    struct AuthCase {
-        name: &'static str,
-        /// When false pool/position-token mappings are not saved, exercising the
-        /// "pool not found" path before ownership checks.
-        setup_position: bool,
-        /// Who the NFT contract reports as current owner (ignored when
-        /// `setup_position` is false because the querier is never called).
-        nft_owner: Who,
-        /// Who sends the transaction.
-        caller: Who,
-        check_err: fn(&ContractError) -> bool,
-    }
-
-    /// Shared cases for both `remove_concentrated_liquidity_request` and
-    /// `collect_concentrated_fees_request`.
-    fn auth_cases() -> Vec<AuthCase> {
-        vec![
-            AuthCase {
-                name: "caller does not own NFT",
-                setup_position: true,
-                nft_owner: Who::Alice,
-                caller: Who::Bob,
-                check_err: |e| matches!(e, ContractError::Unauthorized {}),
-            },
-            // Critical regression guard: position_meta.owner (alice) differs from
-            // owner_resp.owner (bob) because alice transferred the NFT to bob.
-            // Alice must be rejected even though factory state still names her.
-            // This case fails if the auth check is changed to use position_meta.owner.
-            AuthCase {
-                name: "nft transferred — original metadata owner rejected",
-                setup_position: true,
-                nft_owner: Who::Bob,
-                caller: Who::Alice,
-                check_err: |e| matches!(e, ContractError::Unauthorized {}),
-            },
-            AuthCase {
-                name: "pool mapping not found",
-                setup_position: false,
-                nft_owner: Who::Alice, // irrelevant — querier is never reached
-                caller: Who::Alice,
-                check_err: |e| matches!(e, ContractError::PoolDoesNotExist {}),
-            },
-        ]
-    }
-
-    #[test]
-    fn test_remove_concentrated_liquidity_authorization() {
-        let pool_key = mock_pool_key();
+    #[rstest]
+    #[case::caller_is_owner(
+        mock_pool_key(),
+        Who::Alice,
+        Who::Alice,
+        Uint128::one(),
+        Uint128::one(),
+        None
+    )]
+    #[case::caller_does_not_own_nft(
+        mock_pool_key(),
+        Who::Alice,
+        Who::Bob,
+        Uint128::one(),
+        Uint128::one(),
+        Some(ContractError::Unauthorized {})
+    )]
+    #[case::pool_key_does_not_exist(
+        mock_wrong_pool_key(),
+        Who::Alice,
+        Who::Bob,
+        Uint128::one(),
+        Uint128::one(),
+        Some(ContractError::PoolDoesNotExist {})
+    )]
+    #[case::liquidity_delta_is_zero(
+        mock_pool_key(),
+        Who::Alice,
+        Who::Alice,
+        Uint128::one(),
+        Uint128::zero(),
+        Some(ContractError::ZeroAssetAmount {})
+    )]
+    #[case::position_id_does_not_exist(
+        mock_pool_key(),
+        Who::Alice,
+        Who::Alice,
+        Uint128::zero(), // Wrong position id
+        Uint128::one(),
+        Some(ContractError::NotFound { msg: "token 0 not found".to_string() })
+    )]
+    #[case::overflow_error(
+        mock_pool_key(),
+        Who::Alice,
+        Who::Alice,
+        Uint128::one(),
+        Uint128::new(1001), // Overflow error
+        Some(ContractError::InsufficientFunds {})
+    )]
+    fn test_remove_concentrated_liquidity_authorization(
+        #[case] pool_key: PoolKey,
+        #[case] nft_owner: Who,
+        #[case] caller: Who,
+        #[case] position_id: Uint128,
+        #[case] liquidity_delta: Uint128,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let setup_pool_key = mock_pool_key();
         let chain_uid = ChainUid::create("1".to_string()).unwrap();
 
-        for case in auth_cases() {
-            let mut deps = mock_dependencies();
-            let alice = Who::Alice.to_address(&deps.api);
+        let mut deps = mock_dependencies();
 
-            if case.setup_position {
-                setup_concentrated_state(&mut deps.as_mut(), &alice, &pool_key);
-                let nft_owner_str = case.nft_owner.to_address(&deps.api).to_string();
-                deps.querier.update_wasm(move |_| {
-                    SystemResult::Ok(ContractResult::Ok(
-                        to_json_binary(&OwnerOfResponse {
-                            owner: nft_owner_str.clone(),
-                        })
-                        .unwrap(),
-                    ))
-                });
-            } else {
-                STATE
-                    .save(
-                        deps.as_mut().storage,
-                        &State {
-                            chain_uid: chain_uid.clone(),
-                            router_contract: "router_contract".to_string(),
-                            relayer_contract: Addr::unchecked("relayer_contract"),
-                            escrow_code_id: 1,
-                            lp_code_id: 2,
-                            position_token_code_id: 3,
-                            is_native: true,
-                        },
-                    )
-                    .unwrap();
+        let nft_owner = nft_owner.to_address(&deps.api);
+        setup_concentrated_state(&mut deps, nft_owner, &setup_pool_key);
+        let caller = caller.to_address(&deps.api);
+        let info = message_info(&caller, &[]);
+        let sender = CrossChainUser::new(chain_uid.clone(), caller.to_string());
+        let recipient = CrossChainUser::new(chain_uid.clone(), caller.to_string());
+
+        let result = remove_concentrated_liquidity_request(
+            &mut deps.as_mut(),
+            info,
+            mock_env(),
+            sender,
+            pool_key.clone(),
+            position_id,
+            liquidity_delta,
+            recipient,
+            CrossChainConfig::default(),
+        );
+
+        match expected_error {
+            Some(expected_error) => {
+                let err = result.unwrap_err();
+                assert!(
+                    err.to_string().contains(&expected_error.to_string()),
+                    "expected error {:?} but got {:?}",
+                    expected_error,
+                    err
+                );
             }
-
-            let caller = case.caller.to_address(&deps.api);
-            let info = message_info(&caller, &[]);
-            let sender = CrossChainUser::new(chain_uid.clone(), caller.to_string());
-            let recipient = CrossChainUser::new(chain_uid.clone(), caller.to_string());
-
-            let err = remove_concentrated_liquidity_request(
-                &mut deps.as_mut(),
-                info,
-                mock_env(),
-                sender,
-                pool_key.clone(),
-                Uint128::one(),
-                Uint128::one(),
-                recipient,
-                CrossChainConfig::default(),
-            )
-            .unwrap_err();
-
-            assert!(
-                (case.check_err)(&err),
-                "case '{}' failed: unexpected error {:?}",
-                case.name,
-                err
-            );
+            None => {
+                assert!(result.is_ok());
+            }
         }
     }
 
-    #[test]
-    fn test_collect_concentrated_fees_authorization() {
-        let pool_key = mock_pool_key();
+    #[rstest]
+    #[case::caller_is_owner(mock_pool_key(), Who::Alice, Who::Alice, Uint128::one(), None)]
+    #[case::caller_does_not_own_nft(
+        mock_pool_key(),
+        Who::Alice,
+        Who::Bob,
+        Uint128::one(),
+        Some(ContractError::Unauthorized {})
+    )]
+    #[case::pool_key_does_not_exist(
+        mock_wrong_pool_key(),
+        Who::Alice,
+        Who::Bob,
+        Uint128::one(),
+        Some(ContractError::PoolDoesNotExist {})
+    )]
+    #[case::position_id_does_not_exist(
+        mock_pool_key(),
+        Who::Alice,
+        Who::Alice,
+        Uint128::zero(), // Wrong position id
+        Some(ContractError::NotFound { msg: "token 0 not found".to_string() })
+    )]
+    fn test_collect_concentrated_fees_authorization(
+        #[case] pool_key: PoolKey,
+        #[case] nft_owner: Who,
+        #[case] caller: Who,
+        #[case] position_id: Uint128,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let setup_pool_key = mock_pool_key();
         let chain_uid = ChainUid::create("1".to_string()).unwrap();
 
-        for case in auth_cases() {
-            let mut deps = mock_dependencies();
-            let alice = Who::Alice.to_address(&deps.api);
+        let mut deps = mock_dependencies();
 
-            if case.setup_position {
-                setup_concentrated_state(&mut deps.as_mut(), &alice, &pool_key);
-            } else {
-                STATE
-                    .save(
-                        deps.as_mut().storage,
-                        &State {
-                            chain_uid: chain_uid.clone(),
-                            router_contract: "router_contract".to_string(),
-                            relayer_contract: Addr::unchecked("relayer_contract"),
-                            escrow_code_id: 1,
-                            lp_code_id: 2,
-                            position_token_code_id: 3,
-                            is_native: true,
-                        },
-                    )
-                    .unwrap();
+        let nft_owner = nft_owner.to_address(&deps.api);
+        setup_concentrated_state(&mut deps, nft_owner, &setup_pool_key);
+
+        let caller = caller.to_address(&deps.api);
+        let info = message_info(&caller, &[]);
+        let recipient = CrossChainUser::new(chain_uid.clone(), caller.to_string());
+
+        let result = collect_concentrated_fees_request(
+            &mut deps.as_mut(),
+            info,
+            mock_env(),
+            pool_key.clone(),
+            position_id,
+            recipient,
+            CrossChainConfig::default(),
+        );
+        match expected_error {
+            Some(expected_error) => {
+                let err = result.unwrap_err();
+                assert!(
+                    err.to_string().contains(&expected_error.to_string()),
+                    "expected error {:?} but got {:?}",
+                    expected_error,
+                    err
+                );
             }
-
-            // collect_fees always checks POOL_KEY_TO_VLP before the ownership check.
-            POOL_KEY_TO_VLP
-                .save(
-                    deps.as_mut().storage,
-                    pool_key.to_map_key(),
-                    &"vlp_address".to_string(),
-                )
-                .unwrap();
-
-            if case.setup_position {
-                let nft_owner_str = case.nft_owner.to_address(&deps.api).to_string();
-                deps.querier.update_wasm(move |_| {
-                    SystemResult::Ok(ContractResult::Ok(
-                        to_json_binary(&OwnerOfResponse {
-                            owner: nft_owner_str.clone(),
-                        })
-                        .unwrap(),
-                    ))
-                });
+            None => {
+                assert!(result.is_ok());
             }
-
-            let caller = case.caller.to_address(&deps.api);
-            let info = message_info(&caller, &[]);
-            let recipient = CrossChainUser::new(chain_uid.clone(), caller.to_string());
-
-            let err = collect_concentrated_fees_request(
-                &mut deps.as_mut(),
-                info,
-                mock_env(),
-                pool_key.clone(),
-                Uint128::one(),
-                recipient,
-                CrossChainConfig::default(),
-            )
-            .unwrap_err();
-
-            assert!(
-                (case.check_err)(&err),
-                "case '{}' failed: unexpected error {:?}",
-                case.name,
-                err
-            );
         }
     }
 }

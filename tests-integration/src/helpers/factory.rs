@@ -451,13 +451,13 @@ pub fn query_concentrated_pool_migration_status(
 pub fn get_position_token(
     factory: &FactoryContract<MockBase>,
 ) -> Result<PositionTokenContract<MockBase>, CwOrchError> {
-    let response = factory.get_position_token_contract()?;
     let contract = PositionTokenContract::new(factory.environment().clone());
-    if let Some(address) = response.position_token_contract {
-        let contract = contract;
-        contract.set_address(&address);
+    let pools = factory.get_all_concentrated_pools()?;
+    let Some(first_pool) = pools.pools.first() else {
         return Ok(contract);
-    }
+    };
+    let response = factory.get_position_token_contract(first_pool.pool_key.clone())?;
+    contract.set_address(&response.position_token_contract);
     Ok(contract)
 }
 
