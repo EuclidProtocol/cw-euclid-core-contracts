@@ -226,14 +226,14 @@ pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, Con
             apply_tick_delta(
                 tick_aggregates
                     .entry(position.lower_tick_index)
-                    .or_insert_with(TickInfo::default),
+                    .or_default(),
                 liquidity_i128,
                 false,
             )?;
             apply_tick_delta(
                 tick_aggregates
                     .entry(position.upper_tick_index)
-                    .or_insert_with(TickInfo::default),
+                    .or_default(),
                 liquidity_i128,
                 true,
             )?;

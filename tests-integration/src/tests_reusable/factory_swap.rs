@@ -84,7 +84,7 @@ pub fn swap_request(
                 partner_fee,
                 cross_chain_config: CrossChainConfig::default(),
             },
-            &vec![coin(
+            &[coin(
                 amount_in.u128(),
                 asset_in.token_type.get_denom().unwrap(),
             )],

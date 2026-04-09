@@ -5,7 +5,6 @@ use euclid::{
     error::ContractError,
     events::{liquidity_event, simple_event, tx_event, TxType},
     fee::{BPS_50_PERCENT, MAX_FEE_BPS},
-    liquidity::AddLiquidityResponse,
     msgs::vlp::{
         base::{
             GetSwapQueryResponse, PoolConfig, State, VlpAddLiquidityResponse,

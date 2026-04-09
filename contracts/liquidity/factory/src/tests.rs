@@ -91,7 +91,7 @@ mod tests {
         };
         deps.querier.update_wasm(move |query| match query {
             WasmQuery::Smart { contract_addr, msg } => {
-                if contract_addr.to_string() != position_token_address_str {
+                if *contract_addr != position_token_address_str {
                     return SystemResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
                         kind: "invalid_contract_address".into(),
                     });
@@ -99,7 +99,7 @@ mod tests {
                 let parsed_msg = from_json::<msgs::position_token::QueryMsg>(&msg).unwrap();
                 match parsed_msg {
                     msgs::position_token::QueryMsg::OwnerOf { token_id } => {
-                        if token_id != "1".to_string() {
+                        if token_id != *"1" {
                             return token_not_found_error(token_id);
                         }
                         SystemResult::Ok(ContractResult::Ok(
@@ -110,7 +110,7 @@ mod tests {
                         ))
                     }
                     msgs::position_token::QueryMsg::TokenInfo { token_id } => {
-                        if token_id != "1".to_string() {
+                        if token_id != *"1" {
                             return token_not_found_error(token_id);
                         }
                         SystemResult::Ok(ContractResult::Ok(
@@ -122,7 +122,7 @@ mod tests {
                         ))
                     }
                     msgs::position_token::QueryMsg::PositionInfo { token_id } => {
-                        if token_id != "1".to_string() {
+                        if token_id != *"1" {
                             return token_not_found_error(token_id);
                         }
                         SystemResult::Ok(ContractResult::Ok(

@@ -129,7 +129,7 @@ pub fn instantiate(
     )?;
     let initial_tick = msg.initial_tick.unwrap_or(0);
     ensure!(
-        initial_tick >= MIN_TICK && initial_tick <= MAX_TICK,
+        (MIN_TICK..=MAX_TICK).contains(&initial_tick),
         ContractError::new("initial_tick out of bounds")
     );
     SLOT0.save(

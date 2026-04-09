@@ -271,7 +271,7 @@ mod tests {
         let response = execute_update_position(
             deps.as_mut(),
             message_info(&factory, &[]),
-            token_id.clone(),
+            token_id,
             liquidity_change,
         )
         .unwrap();

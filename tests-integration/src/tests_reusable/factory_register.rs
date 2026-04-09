@@ -6,7 +6,6 @@ use cw_orch_interchain::prelude::IbcQueryHandler;
 use cw_orch_interchain::prelude::InterchainEnv;
 use escrow::EscrowContract;
 use euclid::chain::ChainType;
-use euclid::msgs::factory::msg::ExecuteMsgFns as FactoryExecuteMsgFns;
 use euclid::msgs::router::execute::ExecuteMsgFns as RouterExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::router::{RegisterFactoryChainCosmos, RegisterFactoryChainNative};

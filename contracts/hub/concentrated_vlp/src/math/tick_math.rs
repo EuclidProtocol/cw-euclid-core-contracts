@@ -259,8 +259,8 @@ mod tests {
         ];
 
         for (tick, expected_str) in cases {
-            let result =
-                get_sqrt_ratio_at_tick(*tick).expect(&format!("tick {tick} should succeed"));
+            let result = get_sqrt_ratio_at_tick(*tick)
+                .unwrap_or_else(|_| panic!("tick {tick} should succeed"));
             let expected = Uint256::from_str(expected_str).expect("valid decimal");
             assert_eq!(
                 result, expected,
@@ -299,8 +299,10 @@ mod tests {
         ];
 
         for tick in ticks {
-            let sqrt = get_sqrt_ratio_at_tick(*tick).expect(&format!("tick {tick} forward"));
-            let resolved = get_tick_at_sqrt_ratio(sqrt).expect(&format!("tick {tick} inverse"));
+            let sqrt =
+                get_sqrt_ratio_at_tick(*tick).unwrap_or_else(|_| panic!("tick {tick} forward"));
+            let resolved =
+                get_tick_at_sqrt_ratio(sqrt).unwrap_or_else(|_| panic!("tick {tick} inverse"));
             assert_eq!(resolved, *tick, "roundtrip failed for tick {tick}");
         }
     }
@@ -324,8 +326,8 @@ mod tests {
 
         for (sqrt_str, expected_tick) in cases {
             let sqrt = Uint256::from_str(sqrt_str).expect("valid decimal");
-            let result =
-                get_tick_at_sqrt_ratio(sqrt).expect(&format!("sqrt {sqrt_str} should succeed"));
+            let result = get_tick_at_sqrt_ratio(sqrt)
+                .unwrap_or_else(|_| panic!("sqrt {sqrt_str} should succeed"));
             assert_eq!(
                 result, *expected_tick,
                 "get_tick_at_sqrt_ratio({sqrt_str}): got {result}, expected {expected_tick}"
@@ -381,7 +383,8 @@ mod tests {
 
         for (sqrt_str, expected_str) in cases {
             let sqrt = Uint256::from_str(sqrt_str).expect("valid decimal");
-            let result = log2_q64(sqrt).expect(&format!("log2_q64({sqrt_str}) should succeed"));
+            let result =
+                log2_q64(sqrt).unwrap_or_else(|_| panic!("log2_q64({sqrt_str}) should succeed"));
             let expected = Int256::from_str(expected_str).expect("valid decimal");
             assert_eq!(
                 result, expected,

@@ -5,10 +5,7 @@ use euclid::{
     admin::EuclidAdmin,
     chain::{Chain, ChainUid},
     error::ContractError,
-    msgs::{
-        router::TokenDenom,
-        vlp::base::{PoolKey, PoolType},
-    },
+    msgs::{router::TokenDenom, vlp::base::PoolKey},
     token::{PairWithDenomAndAmount, Token},
 };
 use euclid_ibc::router_ibc::{

@@ -615,7 +615,6 @@ mod tests {
     use euclid::{
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
-        liquidity::AddLiquidityResponse,
         msgs::vlp::base::{
             PoolCreationResponse, VlpAddLiquidityResponse, VlpRemoveLiquidityResponse,
             VlpSwapResponse,

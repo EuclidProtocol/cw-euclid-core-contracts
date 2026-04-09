@@ -35,9 +35,7 @@ use virtual_balance::VirtualBalanceContract;
 use euclid::msgs::router::execute::ExecuteMsgFns as RouterExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 
-use euclid::msgs::factory::msg::{
-    ExecuteMsgFns as FactoryExecuteMsgFns, QueryMsgFns as FactoryQueryMsgFns,
-};
+use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 
 use crate::helpers::relayer::{
     ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
