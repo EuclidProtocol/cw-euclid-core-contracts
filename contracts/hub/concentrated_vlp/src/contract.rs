@@ -497,11 +497,11 @@ fn execute_add_concentrated_liquidity(
         position.chain_uid == sender.chain_uid,
         ContractError::Unauthorized {}
     );
-    if position.lower_tick_index != lower_tick_index
-        || position.upper_tick_index != upper_tick_index
-    {
-        return Err(ContractError::new("position tick range mismatch"));
-    }
+    ensure!(
+        position.lower_tick_index == lower_tick_index
+            && position.upper_tick_index == upper_tick_index,
+        ContractError::new("position tick range mismatch")
+    );
 
     // Update ticks BEFORE settling fees — tick initialization sets
     // fee_growth_outside, which affects the fee_growth_inside calculation.

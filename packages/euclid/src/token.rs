@@ -239,22 +239,6 @@ impl Pair {
             self.token_2.with_amount(reserve_2),
         )
     }
-
-    pub fn display_name(&self) -> String {
-        format!(
-            "{}-{}",
-            self.token_1.to_uppercase(),
-            self.token_2.to_uppercase()
-        )
-    }
-
-    pub fn symbol(&self) -> String {
-        format!(
-            "{}{}",
-            self.token_1.to_uppercase(),
-            self.token_2.to_uppercase()
-        )
-    }
 }
 
 impl PrimaryKey<'_> for Pair {

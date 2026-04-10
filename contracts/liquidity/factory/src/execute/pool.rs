@@ -476,6 +476,9 @@ pub fn execute_request_concentrated_pool_creation(
     initial_tick: Option<i64>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    POSITION_TOKEN_CONTRACT
+        .load(deps.storage)
+        .map_err(|_| ContractError::new("Position token contract not registered"))?;
     ensure!(
         slippage_tolerance_bps.le(&BPS_100_PERCENT),
         ContractError::InvalidSlippageTolerance {}
@@ -793,12 +796,12 @@ pub fn remove_concentrated_liquidity_request(
         ContractError::InsufficientFunds {}
     );
 
-    let int128_liquidity_delta = Int256::from(liquidity_delta);
+    let liquidity_delta_signed = Int256::from(liquidity_delta);
 
     // Lets update liquidity of the position before removing liquidity so next calls will error if the position is not enough liquidity
     let update_position_msg = msgs::position_token::ExecuteMsg::UpdatePosition {
         token_id: position_id,
-        liquidity_change: -int128_liquidity_delta,
+        liquidity_change: -liquidity_delta_signed,
     };
 
     let update_position_msg = SubMsg::new(update_position_msg.to_msg(position_token_address)?);

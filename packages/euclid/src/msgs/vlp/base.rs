@@ -305,12 +305,9 @@ pub enum PoolConfig {
 impl PoolConfig {
     pub fn to_string(&self) -> String {
         match self {
-            PoolConfig::Stable { amp_factor: _ } => "stable".to_string(),
+            PoolConfig::Stable { .. } => "stable".to_string(),
             PoolConfig::ConstantProduct {} => "constant_product".to_string(),
-            PoolConfig::Concentrated {
-                fee_tier_bps: _,
-                tick_spacing: _,
-            } => "concentrated".to_string(),
+            PoolConfig::Concentrated { .. } => "concentrated".to_string(),
         }
     }
 }
