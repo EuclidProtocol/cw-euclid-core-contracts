@@ -5,6 +5,7 @@ use euclid::{
     error::ContractError,
     events::{register_denom_event, tx_event, TxType},
     fee::Fee,
+    liquidity::{MAX_TICK, MIN_TICK},
     msgs::{
         self,
         router::TokenDenom,
@@ -43,11 +44,6 @@ use crate::{
 };
 
 fn default_aligned_tick_bounds(tick_spacing: u64) -> (i64, i64) {
-    // Tick bounds from Q64.96 sqrt_price representation.
-    // MIN_TICK → smallest non-zero sqrt_price (~2.94e-39 price).
-    // MAX_TICK → largest sqrt_price fitting Uint256 (~3.40e38 price).
-    const MIN_TICK: i64 = -887_272;
-    const MAX_TICK: i64 = 887_272;
     let spacing = tick_spacing as i64;
     let lower = (MIN_TICK / spacing) * spacing;
     let lower = if lower < MIN_TICK {
