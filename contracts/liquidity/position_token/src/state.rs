@@ -7,7 +7,7 @@ pub const STATE: Item<State> = Item::new("state");
 pub const TOKENS: Map<&str, TokenInfo> = Map::new("tokens");
 
 /// Map for position info
-pub const POSITION_INFO: Map<&str, PositionInfo> = Map::new("positions");
+pub const POSITION_INFO: Map<&str, PositionInfo> = Map::new("position_info");
 
 /// Per-owner token index. Each (owner, token_id) pair is a separate storage key,
 /// avoiding unbounded Vec deserialization on every operation.

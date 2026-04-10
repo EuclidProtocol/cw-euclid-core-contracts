@@ -35,9 +35,10 @@ use crate::{
         receive::pool::{ibc_execute_add_concentrated_liquidity, ibc_execute_add_liquidity},
     },
     state::{
-        CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, FUNDS_INFO, PENDING_CONCENTRATED_COLLECT_FEES,
-        PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+        CLP_POSITION_ID_VLP_MAP, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, FUNDS_INFO,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
+        PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS,
+        VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
 
@@ -300,6 +301,11 @@ pub fn on_remove_liquidity_reply(
                     PENDING_CONCENTRATED_REMOVE_LIQUIDITY.key(vlp_liquidity_response.tx_id.clone());
                 let _remove_liquidity_tx = req_key.load(deps.storage)?;
                 req_key.remove(deps.storage);
+
+                if vlp_liquidity_response.position_burned {
+                    CLP_POSITION_ID_VLP_MAP
+                        .remove(deps.storage, vlp_liquidity_response.position_id.u128());
+                }
 
                 let liquidity_response = ConcentratedRemoveLiquidityResponse {
                     pool_key: vlp_liquidity_response.pool_key,

@@ -683,10 +683,7 @@ fn execute_remove_concentrated_liquidity(
         (Uint128::zero(), Uint128::zero())
     };
 
-    let position_burned = position.liquidity.is_zero()
-        && position.tokens_owed_0.is_zero()
-        && position.tokens_owed_1.is_zero();
-    if position_burned {
+    if liquidity_after.is_zero() {
         POSITIONS.remove(deps.storage, remove_liquidity_msg.position_id.u128());
     } else {
         POSITIONS.save(
@@ -748,7 +745,7 @@ fn execute_remove_concentrated_liquidity(
         sender: remove_liquidity_msg.sender.clone(),
         vlp_address: env.contract.address.to_string(),
         pool_key: remove_liquidity_msg.pool_key,
-        position_burned,
+        position_burned: liquidity_after.is_zero(),
     };
 
     let mut response = Response::new();
