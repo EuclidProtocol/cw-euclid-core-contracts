@@ -129,7 +129,7 @@ pub fn instantiate(
     )?;
     let initial_tick = msg.initial_tick.unwrap_or(0);
     ensure!(
-        (MIN_TICK..=MAX_TICK).contains(&initial_tick),
+        initial_tick >= MIN_TICK && initial_tick <= MAX_TICK,
         ContractError::new("initial_tick out of bounds")
     );
     SLOT0.save(
@@ -493,9 +493,10 @@ fn execute_add_concentrated_liquidity(
             tokens_owed_1: Uint128::zero(),
         });
 
-    if position.chain_uid != sender.chain_uid {
-        return Err(ContractError::Unauthorized {});
-    }
+    ensure!(
+        position.chain_uid == sender.chain_uid,
+        ContractError::Unauthorized {}
+    );
     if position.lower_tick_index != lower_tick_index
         || position.upper_tick_index != upper_tick_index
     {
@@ -634,9 +635,10 @@ fn execute_remove_concentrated_liquidity(
         .may_load(deps.storage, remove_liquidity_msg.position_id.u128())?
         .ok_or(ContractError::new("Position not found"))?;
 
-    if position.chain_uid != remove_liquidity_msg.sender.chain_uid {
-        return Err(ContractError::Unauthorized {});
-    }
+    ensure!(
+        position.chain_uid == remove_liquidity_msg.sender.chain_uid,
+        ContractError::Unauthorized {}
+    );
     settle_position_fees(deps.storage, &mut position)?;
     ensure!(
         position.liquidity >= remove_liquidity_msg.liquidity_delta,
