@@ -3,10 +3,7 @@ use cw_storage_plus::{Item, Map};
 use euclid::admin::EuclidAdmin;
 use euclid::chain::ChainUid;
 use euclid::{
-    msgs::vlp::{
-        base::{PoolKey, State},
-        concentrated::msg::LegacyLiquidityMode,
-    },
+    msgs::vlp::base::{PoolKey, State},
     token::Token,
 };
 
@@ -44,7 +41,7 @@ pub const FEE_GROWTH_GLOBAL_1_X128: Item<Uint256> = Item::new("fee_growth_global
 pub const PROTOCOL_FEES_0: Item<Uint128> = Item::new("protocol_fees_0");
 pub const PROTOCOL_FEES_1: Item<Uint128> = Item::new("protocol_fees_1");
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct TickInfo {
     pub initialized: bool,
     pub liquidity_gross: Uint128,
@@ -64,17 +61,6 @@ pub struct Observation {
 }
 
 pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct MigrationMetadata {
-    pub source_version: String,
-    pub mode: LegacyLiquidityMode,
-    pub migrated_at: u64,
-    pub positions_migrated: u64,
-}
-
-pub const MIGRATION_REVISION: Item<u16> = Item::new("migration_revision");
-pub const MIGRATION_METADATA: Item<MigrationMetadata> = Item::new("migration_metadata");
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct ConcentratedPosition {

@@ -50,10 +50,9 @@ use crate::{
     },
     reply,
     state::{
-        ConcentratedPosition, MigrationMetadata, Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN,
-        BALANCES, CHAIN_LP_TOKENS, FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK,
-        MIGRATION_METADATA, MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0,
-        PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
+        ConcentratedPosition, Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS,
+        FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIN_TICK, POOL_KEY,
+        POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
     },
 };
 
@@ -148,16 +147,6 @@ pub fn instantiate(
     PROTOCOL_FEES_0.save(deps.storage, &Uint128::zero())?;
     PROTOCOL_FEES_1.save(deps.storage, &Uint128::zero())?;
     initialize_observation(deps.storage, env.block.time.seconds())?;
-    MIGRATION_REVISION.save(deps.storage, &2)?;
-    MIGRATION_METADATA.save(
-        deps.storage,
-        &MigrationMetadata {
-            source_version: CONTRACT_VERSION.to_string(),
-            mode: LegacyLiquidityMode::AlreadyV3Liquidity,
-            migrated_at: env.block.time.seconds(),
-            positions_migrated: 0,
-        },
-    )?;
 
     let response =
         msg.execute
@@ -1691,33 +1680,13 @@ fn query_protocol_fees(deps: Deps) -> Result<ProtocolFeesResponse, ContractError
 }
 
 fn query_migration_status(deps: Deps) -> Result<MigrationStatusResponse, ContractError> {
-    let revision = MIGRATION_REVISION.may_load(deps.storage)?.unwrap_or(0);
-    let metadata = MIGRATION_METADATA.may_load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
-
-    let (source_version, mode, migrated_at, positions_migrated) = metadata.map_or(
-        (
-            "unknown".to_string(),
-            LegacyLiquidityMode::AlreadyV3Liquidity,
-            0u64,
-            0u64,
-        ),
-        |meta| {
-            (
-                meta.source_version,
-                meta.mode,
-                meta.migrated_at,
-                meta.positions_migrated,
-            )
-        },
-    );
-
     Ok(MigrationStatusResponse {
-        revision,
-        source_version,
-        mode,
-        migrated_at,
-        positions_migrated,
+        revision: 0,
+        source_version: "none".to_string(),
+        mode: LegacyLiquidityMode::AlreadyV3Liquidity,
+        migrated_at: 0,
+        positions_migrated: 0,
         active_liquidity: ACTIVE_LIQUIDITY.may_load(deps.storage)?.unwrap_or_default(),
         total_liquidity: state.total_lp_tokens,
     })
