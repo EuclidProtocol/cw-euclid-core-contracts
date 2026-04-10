@@ -66,10 +66,10 @@ mod tests {
     use crate::state::{ADMIN, STATE};
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{attr, to_json_binary, Addr, ContractResult, SystemResult};
-    use euclid::admin::{AdminType, EuclidAdmin};
+    use euclid::admin::EuclidAdmin;
     use euclid::chain::{Chain, ChainType, ChainUid, CosmosChain};
     use euclid::msgs::meta_transaction::msg::{
-        ExecuteMsg, InstantiateMsg, MetaTransaction, MetaTransactionData, UpdateAdminMsg,
+        ExecuteMsg, InstantiateMsg, MetaTransaction, MetaTransactionData,
     };
     use euclid::msgs::router::ChainResponse;
 
@@ -114,6 +114,8 @@ mod tests {
 
     #[test]
     fn test_instantiate_stores_state_and_admin() {
+        use cw2::get_contract_version;
+
         let mut deps = mock_dependencies();
         let sender = deps.api.addr_make("creator");
         let info = message_info(&sender, &[]);
@@ -131,52 +133,10 @@ mod tests {
 
         let admin = ADMIN.load(&deps.storage).unwrap();
         assert_eq!(admin, EuclidAdmin::default(sender));
-    }
-
-    #[test]
-    fn test_instantiate_sets_cw2_contract_version() {
-        use cw2::get_contract_version;
-
-        let mut deps = mock_dependencies();
-        let sender = deps.api.addr_make("creator");
-        let info = message_info(&sender, &[]);
-
-        instantiate(deps.as_mut(), mock_env(), info, make_instantiate_msg()).unwrap();
 
         let version = get_contract_version(&deps.storage).unwrap();
         assert_eq!(version.contract, CONTRACT_NAME);
         assert_eq!(version.version, CONTRACT_VERSION);
-    }
-
-    // -----------------------------------------------------------------------
-    // execute() dispatch: UpdateAdmin variant reaches execute_update_admin
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_execute_dispatch_update_admin_routes_correctly() {
-        let mut deps = initialized();
-        let sender = deps.api.addr_make("sender");
-        let new_admin = deps.api.addr_make("new_admin");
-        let info = message_info(&sender, &[]);
-
-        let res = execute(
-            deps.as_mut(),
-            mock_env(),
-            info,
-            ExecuteMsg::UpdateAdmin(UpdateAdminMsg {
-                new_admin: new_admin.to_string(),
-                admin_type: AdminType::GeneralAdmin,
-            }),
-        )
-        .unwrap();
-
-        // The execute_update_admin handler adds a "method" = "update_admin" attribute.
-        assert!(
-            res.attributes.iter().any(|a| a.key == "method"),
-            "dispatch should reach update_admin handler"
-        );
-        let stored = ADMIN.load(&deps.storage).unwrap();
-        assert_eq!(stored.general_admin, new_admin);
     }
 
     // -----------------------------------------------------------------------

@@ -2364,6 +2364,7 @@ dependencies = [
  "cw-storage-plus 2.0.0",
  "cw-utils 2.0.0",
  "cw20 2.0.0",
+ "euclid",
  "itertools 0.10.5",
  "schemars",
  "serde",

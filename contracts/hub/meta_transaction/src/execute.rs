@@ -183,6 +183,7 @@ mod tests {
     };
     use euclid::msgs::router::ChainResponse;
     use k256::{ecdsa::SigningKey, elliptic_curve::NonZeroScalar};
+    use mock::admin_tests::run_update_admin_access_control;
     use relayer::verify::{cosmos_address_from_pubkey, msg_to_sign_data};
     use rstest::{fixture, rstest};
     use sha2::{digest::Update, Digest, Sha256};
@@ -344,76 +345,37 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // UpdateAdmin: access control (table-driven)
+    // UpdateAdmin: access control (table-driven via shared helper)
     // -----------------------------------------------------------------------
 
-    #[rstest]
-    #[case(
-        "general_admin_updates_general_admin",
-        "sender",
-        AdminType::GeneralAdmin,
-        "new_general",
-        false
-    )]
-    #[case(
-        "wrong_sender_cannot_update_general_admin",
-        "attacker",
-        AdminType::GeneralAdmin,
-        "new_general",
-        true
-    )]
-    #[case(
-        "general_admin_updates_fee_admin",
-        "sender",
-        AdminType::FeeAdmin,
-        "new_fee",
-        false
-    )]
-    #[case(
-        "wrong_sender_cannot_update_fee_admin",
-        "attacker",
-        AdminType::FeeAdmin,
-        "new_fee",
-        true
-    )]
-    #[case(
-        "migration_admin_updates_migration_admin",
-        "sender",
-        AdminType::MigrationAdmin,
-        "new_migration",
-        false
-    )]
-    #[case(
-        "wrong_sender_cannot_update_migration_admin",
-        "attacker",
-        AdminType::MigrationAdmin,
-        "new_migration",
-        true
-    )]
-    fn test_update_admin_access_control(
-        mut initialized: MockDeps,
-        #[case] name: &str,
-        #[case] sender_name: &str,
-        #[case] admin_type: AdminType,
-        #[case] new_admin_name: &str,
-        #[case] expect_error: bool,
-    ) {
-        let sender = initialized.api.addr_make(sender_name);
-        let new_admin = initialized.api.addr_make(new_admin_name);
-        let info = message_info(&sender, &[]);
-
-        let msg = ExecuteMsg::UpdateAdmin(UpdateAdminMsg {
-            new_admin: new_admin.to_string(),
-            admin_type,
-        });
-
-        let res = execute(initialized.as_mut(), mock_env(), info, msg);
-
-        if expect_error {
-            assert!(res.is_err(), "{name}: expected error");
-        } else {
-            assert!(res.is_ok(), "{name}: expected success, got {:?}", res.err());
-        }
+    #[test]
+    fn test_update_admin_access_control() {
+        run_update_admin_access_control(
+            || {
+                let mut deps = mock_dependencies();
+                let sender = deps.api.addr_make("sender");
+                let info = message_info(&sender, &[]);
+                crate::contract::instantiate(
+                    deps.as_mut(),
+                    mock_env(),
+                    info,
+                    make_instantiate_msg(),
+                )
+                .unwrap();
+                deps
+            },
+            |deps, env, info, admin_type, new_admin| {
+                execute(
+                    deps,
+                    env,
+                    info,
+                    ExecuteMsg::UpdateAdmin(UpdateAdminMsg {
+                        new_admin,
+                        admin_type,
+                    }),
+                )
+            },
+        );
     }
 
     // -----------------------------------------------------------------------
