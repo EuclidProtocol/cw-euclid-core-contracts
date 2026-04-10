@@ -22,13 +22,7 @@ pub mod fixtures {
     #[allow(dead_code)]
     pub fn deps_with_allowance() -> MockDeps {
         let mut deps = deps_with_balances();
-        seed_allowance(
-            &mut deps,
-            vsl_user("alice"),
-            "eucl",
-            vsl_user("bob"),
-            300,
-        );
+        seed_allowance(&mut deps, vsl_user("alice"), "eucl", vsl_user("bob"), 300);
         deps
     }
 }

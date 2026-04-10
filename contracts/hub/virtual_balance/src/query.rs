@@ -324,8 +324,7 @@ mod tests {
         let mut deps: MockDeps = mock_dependencies();
         init(&mut deps);
         let user = vsl_user("nobody");
-        let bin =
-            query_user_balances(deps.as_ref(), user.chain_uid, user.address, None).unwrap();
+        let bin = query_user_balances(deps.as_ref(), user.chain_uid, user.address, None).unwrap();
         let resp: GetUserBalancesResponse = from_json(&bin).unwrap();
         assert!(resp.balances.is_empty());
     }
@@ -345,13 +344,8 @@ mod tests {
             skip: None,
             limit: Some(2),
         });
-        let bin = query_user_balances(
-            deps.as_ref(),
-            user.chain_uid,
-            user.address,
-            pagination,
-        )
-        .unwrap();
+        let bin =
+            query_user_balances(deps.as_ref(), user.chain_uid, user.address, pagination).unwrap();
         let resp: GetUserBalancesResponse = from_json(&bin).unwrap();
         assert_eq!(resp.balances.len(), 2);
     }

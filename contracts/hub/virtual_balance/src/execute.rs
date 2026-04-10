@@ -531,7 +531,9 @@ pub fn execute_normalize_balance_keys(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::helpers::{init, remote_user, seed_allowance, seed_balance, vsl_user, TEST_ROUTER};
+    use crate::testing::helpers::{
+        init, remote_user, seed_allowance, seed_balance, vsl_user, TEST_ROUTER,
+    };
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
     use cosmwasm_std::{attr, Addr};
     use euclid::msgs::virtual_balance::msg::{
@@ -545,11 +547,13 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Return the router address as an owned `Addr`.
-    fn router_addr_for(deps: &cosmwasm_std::OwnedDeps<
-        cosmwasm_std::MemoryStorage,
-        cosmwasm_std::testing::MockApi,
-        cosmwasm_std::testing::MockQuerier,
-    >) -> Addr {
+    fn router_addr_for(
+        deps: &cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) -> Addr {
         deps.api.addr_make(TEST_ROUTER)
     }
 
@@ -577,15 +581,24 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.attributes.iter().any(|a| a == &attr("action", "execute_mint")));
-        assert!(res.attributes.iter().any(|a| a == &attr("mint_amount", "500")));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a == &attr("action", "execute_mint")));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a == &attr("mint_amount", "500")));
 
         let key = BalanceKey {
             cross_chain_user: user,
             token_id: "eucl".to_string(),
         }
         .to_serialized_balance_key();
-        assert_eq!(BALANCES.load(&deps.storage, key).unwrap(), Uint128::new(500));
+        assert_eq!(
+            BALANCES.load(&deps.storage, key).unwrap(),
+            Uint128::new(500)
+        );
     }
 
     #[test]
@@ -626,7 +639,9 @@ mod tests {
         }
 
         assert_eq!(
-            BALANCES.load(&deps.storage, bk.to_serialized_balance_key()).unwrap(),
+            BALANCES
+                .load(&deps.storage, bk.to_serialized_balance_key())
+                .unwrap(),
             Uint128::new(500)
         );
     }
@@ -733,7 +748,10 @@ mod tests {
             token_id: "eucl".to_string(),
         }
         .to_serialized_balance_key();
-        assert_eq!(BALANCES.load(&deps.storage, key).unwrap(), Uint128::new(600));
+        assert_eq!(
+            BALANCES.load(&deps.storage, key).unwrap(),
+            Uint128::new(600)
+        );
     }
 
     #[test]
@@ -1409,7 +1427,9 @@ mod tests {
         assert!(BALANCES.load(&deps.storage, zero_key).is_err());
         assert!(BALANCES.load(&deps.storage, nonzero_key).is_ok());
         assert!(ALLOWANCES.load(&deps.storage, allowance_zero_key).is_err());
-        assert!(ALLOWANCES.load(&deps.storage, allowance_nonzero_key).is_ok());
+        assert!(ALLOWANCES
+            .load(&deps.storage, allowance_nonzero_key)
+            .is_ok());
     }
 
     #[test]
@@ -1611,10 +1631,8 @@ mod tests {
         init(&mut deps);
 
         let owner = vsl_user("owner");
-        let mixed_case_spender = CrossChainUser::new(
-            ChainUid::vsl_chain_uid().unwrap(),
-            "Spender".to_string(),
-        );
+        let mixed_case_spender =
+            CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "Spender".to_string());
 
         let router = router_addr_for(&deps);
         let info = message_info(&router, &[]);
