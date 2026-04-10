@@ -5,7 +5,7 @@ use euclid::{
     error::ContractError,
     events::tx_event,
     fee::BPS_100_PERCENT,
-    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest, MAX_TICK, MIN_TICK},
     msgs::{
         self,
         cross_chain_config::CrossChainConfig,
@@ -582,6 +582,10 @@ pub fn add_concentrated_liquidity_request(
     ensure!(
         lower_tick_index < upper_tick_index,
         ContractError::new("Invalid tick range")
+    );
+    ensure!(
+        lower_tick_index >= MIN_TICK && upper_tick_index <= MAX_TICK,
+        ContractError::new("Tick index out of bounds")
     );
     let tick_spacing = match pool_key.pool_type {
         PoolType::Concentrated { tick_spacing, .. } => tick_spacing,

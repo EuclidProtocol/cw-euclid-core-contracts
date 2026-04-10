@@ -17,13 +17,7 @@ pub const BALANCES: Map<Token, Uint128> = Map::new("balances");
 
 pub const POOL_KEY: Item<PoolKey> = Item::new("pool_key");
 
-/// Tick bounds derived from the Q64.96 fixed point representation of sqrt_price.
-/// price = 1.0001^tick, stored as sqrt_price_x96 = sqrt(1.0001^tick) * 2^96.
-/// MIN_TICK is the lowest tick whose sqrt_price_x96 remains non-zero (~2.94e-39 price).
-/// MAX_TICK is the highest tick that fits in Uint256 without overflow (~3.40e38 price).
-/// Any tick outside this range cannot be represented in the swap math.
-pub const MIN_TICK: i64 = -887272;
-pub const MAX_TICK: i64 = 887272;
+pub use euclid::liquidity::{MAX_TICK, MIN_TICK};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct Slot0 {
