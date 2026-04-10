@@ -147,8 +147,7 @@ pub struct Slot0Response {
 #[cw_serde]
 pub struct PositionResponse {
     pub position_id: Uint128,
-    pub owner: CrossChainUser,
-    pub pool_key: PoolKey,
+    pub chain_uid: ChainUid,
     pub lower_tick_index: i64,
     pub upper_tick_index: i64,
     pub liquidity: Uint128,

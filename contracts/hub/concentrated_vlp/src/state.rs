@@ -1,14 +1,9 @@
-use cosmwasm_std::Order;
 use cosmwasm_std::{Uint128, Uint256};
 use cw_storage_plus::{Item, Map};
 use euclid::admin::EuclidAdmin;
-use euclid::{chain::ChainUid, error::ContractError};
+use euclid::chain::ChainUid;
 use euclid::{
-    cross_chain_user::CrossChainUser,
-    msgs::vlp::{
-        base::{PoolKey, State},
-        concentrated::msg::LegacyLiquidityMode,
-    },
+    msgs::vlp::base::{PoolKey, State},
     token::Token,
 };
 
@@ -46,7 +41,7 @@ pub const FEE_GROWTH_GLOBAL_1_X128: Item<Uint256> = Item::new("fee_growth_global
 pub const PROTOCOL_FEES_0: Item<Uint128> = Item::new("protocol_fees_0");
 pub const PROTOCOL_FEES_1: Item<Uint128> = Item::new("protocol_fees_1");
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct TickInfo {
     pub initialized: bool,
     pub liquidity_gross: Uint128,
@@ -68,23 +63,11 @@ pub struct Observation {
 pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct MigrationMetadata {
-    pub source_version: String,
-    pub mode: LegacyLiquidityMode,
-    pub migrated_at: u64,
-    pub positions_migrated: u64,
-}
-
-pub const MIGRATION_REVISION: Item<u16> = Item::new("migration_revision");
-pub const MIGRATION_METADATA: Item<MigrationMetadata> = Item::new("migration_metadata");
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct ConcentratedPosition {
-    pub owner: CrossChainUser,
+    pub chain_uid: ChainUid,
     pub lower_tick_index: i64,
     pub upper_tick_index: i64,
     pub liquidity: Uint128,
-    pub pool_key: PoolKey,
     #[serde(default)]
     pub fee_growth_inside_0_last_x128: Uint256,
     #[serde(default)]
@@ -96,74 +79,3 @@ pub struct ConcentratedPosition {
 }
 
 pub const POSITIONS: Map<u128, ConcentratedPosition> = Map::new("positions");
-pub const POSITION_NONCE: Item<u64> = Item::new("position_nonce");
-pub const POSITION_ID_PREFIX: Item<u64> = Item::new("position_id_prefix");
-
-fn position_prefix_from_addr(contract_addr: &str) -> u64 {
-    // Stable FNV-1a hash so each VLP gets a unique position-id namespace.
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for byte in contract_addr.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
-
-pub fn initialize_position_nonce(
-    storage: &mut dyn cosmwasm_std::Storage,
-    contract_addr: &str,
-) -> Result<(), ContractError> {
-    POSITION_NONCE.save(storage, &0)?;
-    POSITION_ID_PREFIX.save(storage, &position_prefix_from_addr(contract_addr))?;
-    Ok(())
-}
-
-pub fn initialize_position_namespace_if_missing(
-    storage: &mut dyn cosmwasm_std::Storage,
-    contract_addr: &str,
-) -> Result<(), ContractError> {
-    let prefix = match POSITION_ID_PREFIX.may_load(storage)? {
-        Some(existing) => existing,
-        None => {
-            let computed = position_prefix_from_addr(contract_addr);
-            POSITION_ID_PREFIX.save(storage, &computed)?;
-            computed
-        }
-    };
-    if POSITION_NONCE.may_load(storage)?.is_some() {
-        return Ok(());
-    }
-    let mut max_nonce: u64 = 0;
-    for item in POSITIONS.range(storage, None, None, Order::Ascending) {
-        let (id, _) = item?;
-        if ((id >> 64) as u64) == prefix {
-            let nonce = id as u64;
-            if nonce > max_nonce {
-                max_nonce = nonce;
-            }
-        }
-    }
-    POSITION_NONCE.save(storage, &max_nonce)?;
-    Ok(())
-}
-
-pub fn next_position_id(storage: &mut dyn cosmwasm_std::Storage) -> Result<Uint128, ContractError> {
-    let prefix = POSITION_ID_PREFIX
-        .may_load(storage)?
-        .ok_or_else(|| ContractError::new("position id prefix not initialized"))?;
-    let mut nonce = POSITION_NONCE.may_load(storage)?.unwrap_or(0);
-
-    for _ in 0..1024u32 {
-        nonce = nonce
-            .checked_add(1)
-            .ok_or_else(|| ContractError::new("position id overflow"))?;
-        let id = (u128::from(prefix) << 64) | u128::from(nonce);
-        if POSITIONS.may_load(storage, id)?.is_none() {
-            POSITION_NONCE.save(storage, &nonce)?;
-            return Ok(Uint128::new(id));
-        }
-    }
-    Err(ContractError::new(
-        "exhausted position id search after 1024 attempts",
-    ))
-}

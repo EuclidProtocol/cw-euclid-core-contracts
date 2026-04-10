@@ -194,7 +194,7 @@ pub fn create_concentrated_pool_with_tick(
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
+            chain,
             chain.sender.as_str(),
             token.amount.u128(),
             token.token_type.clone(),
@@ -237,7 +237,7 @@ pub fn add_concentrated_liquidity(
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
+            chain,
             chain.sender.as_str(),
             token.amount.u128(),
             token.token_type.clone(),
@@ -279,7 +279,7 @@ pub fn remove_concentrated_liquidity(
     router: &RouterContract<MockBase>,
     pool_key: PoolKey,
     position_id: Uint128,
-    lp_allocation: Uint128,
+    liquidity_delta: Uint128,
 ) -> Result<(), CwOrchError> {
     let state = factory.get_state()?;
     let sender = CrossChainUser::new(state.chain_uid, factory.environment().sender.to_string());
@@ -288,7 +288,7 @@ pub fn remove_concentrated_liquidity(
         &euclid::msgs::factory::ExecuteMsg::RemoveConcentratedLiquidity {
             pool_key,
             position_id,
-            lp_allocation,
+            liquidity_delta,
             recipient: sender,
             cross_chain_config: CrossChainConfig::default(),
         },

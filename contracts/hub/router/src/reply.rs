@@ -35,9 +35,10 @@ use crate::{
         receive::pool::{ibc_execute_add_concentrated_liquidity, ibc_execute_add_liquidity},
     },
     state::{
-        CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, FUNDS_INFO, PENDING_CONCENTRATED_COLLECT_FEES,
-        PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+        CLP_POSITION_ID_VLP_MAP, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, FUNDS_INFO,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
+        PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS,
+        VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
 
@@ -301,16 +302,21 @@ pub fn on_remove_liquidity_reply(
                 let _remove_liquidity_tx = req_key.load(deps.storage)?;
                 req_key.remove(deps.storage);
 
+                if vlp_liquidity_response.position_burned {
+                    CLP_POSITION_ID_VLP_MAP
+                        .remove(deps.storage, vlp_liquidity_response.position_id.u128());
+                }
+
                 let liquidity_response = ConcentratedRemoveLiquidityResponse {
                     pool_key: vlp_liquidity_response.pool_key,
                     position_id: vlp_liquidity_response.position_id,
                     liquidity_removed: vlp_liquidity_response.liquidity_released,
                     liquidity_delta: vlp_liquidity_response.liquidity_delta,
                     liquidity_after: vlp_liquidity_response.liquidity_after,
-                    burn_lp_tokens: vlp_liquidity_response.liquidity_delta,
                     vlp_address: vlp_liquidity_response.vlp_address,
                     tx_id: vlp_liquidity_response.tx_id,
                     sender: vlp_liquidity_response.sender,
+                    position_burned: vlp_liquidity_response.position_burned,
                 };
 
                 let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
@@ -318,7 +324,7 @@ pub fn on_remove_liquidity_reply(
                 return Ok(response
                     .add_attribute("pool_type", "concentrated")
                     .add_attribute("liquidity", format!("{liquidity_response:?}"))
-                    .add_attribute("lp_burned", liquidity_response.burn_lp_tokens.to_string())
+                    .add_attribute("lp_burned", liquidity_response.liquidity_delta.to_string())
                     .set_data(to_json_binary(&ack)?));
             }
 
@@ -615,7 +621,6 @@ mod tests {
     use euclid::{
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
-        liquidity::AddLiquidityResponse,
         msgs::vlp::base::{
             PoolCreationResponse, VlpAddLiquidityResponse, VlpRemoveLiquidityResponse,
             VlpSwapResponse,

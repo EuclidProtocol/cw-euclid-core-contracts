@@ -54,7 +54,7 @@ fn test_collect_fees_is_idempotent(#[case] mode: FactorySetupMode, #[case] facto
     );
     vlp.set_sender(&router.address().unwrap());
 
-    let mut virtual_balance = get_virtual_balance(
+    let virtual_balance = get_virtual_balance(
         router.environment(),
         &router.get_state().unwrap().virtual_balance_address,
     );
@@ -188,7 +188,7 @@ fn test_out_of_range_position_collects_zero(
     );
     vlp.set_sender(&router.address().unwrap());
 
-    let mut virtual_balance = get_virtual_balance(
+    let virtual_balance = get_virtual_balance(
         router.environment(),
         &router.get_state().unwrap().virtual_balance_address,
     );

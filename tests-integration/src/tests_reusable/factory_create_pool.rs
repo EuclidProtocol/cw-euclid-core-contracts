@@ -28,7 +28,7 @@ pub fn create_pool(
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
+            chain,
             chain.sender.as_str(),
             token.amount.u128(),
             token.token_type.clone(),

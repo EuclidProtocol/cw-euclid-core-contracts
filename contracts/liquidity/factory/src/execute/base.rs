@@ -101,8 +101,6 @@ pub fn execute_manage_factory_state(
                 msg: to_json_binary(&euclid::msgs::position_token::InstantiateMsg {
                     name: "Euclid Concentrated Positions".to_string(),
                     symbol: "EUPOS".to_string(),
-                    minter: env.contract.address.clone(),
-                    admin: env.contract.address,
                 })?,
                 funds: vec![],
                 label: "position_token".to_string(),

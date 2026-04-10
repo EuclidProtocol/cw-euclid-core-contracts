@@ -34,7 +34,8 @@ use crate::{
         VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
     },
     state::{
-        ADMIN, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, ESCROW_BALANCES, FEE_STATE, FUNDS_INFO,
+        get_clp_position_id, ADMIN, CLP_POSITION_ID_VLP_MAP, CONCENTRATED_FUNDS_INFO,
+        CONCENTRATED_VLPS, ESCROW_BALANCES, FEE_STATE, FUNDS_INFO,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_DENOMS,
         VIRTUAL_BALANCE_CONTRACT, VLPS,
@@ -428,10 +429,30 @@ pub fn ibc_execute_request_concentrated_pool_creation(
 }
 
 pub fn ibc_execute_add_concentrated_liquidity(
-    deps: DepsMut,
+    mut deps: DepsMut,
     msg: RouterCrossChainConcentratedAddLiquidityExecuteMsg,
 ) -> Result<Response, ContractError> {
     let vlp_address = CONCENTRATED_VLPS.load(deps.storage, msg.pool_key.to_map_key())?;
+
+    let position_id = match msg.position_id {
+        Some(id) => {
+            // Validate existing position maps to this VLP
+            let mapped_vlp = CLP_POSITION_ID_VLP_MAP
+                .load(deps.storage, id.u128())
+                .map_err(|_| ContractError::new("Position ID not found"))?;
+            ensure!(
+                mapped_vlp == vlp_address,
+                ContractError::new("Position does not belong to this pool")
+            );
+            id
+        }
+        None => {
+            // Generate new position ID and save mapping
+            let new_id = get_clp_position_id(&mut deps)?;
+            CLP_POSITION_ID_VLP_MAP.save(deps.storage, new_id, &vlp_address)?;
+            Uint128::new(new_id)
+        }
+    };
 
     let mut response = Response::new().add_event(
         tx_event(
@@ -496,7 +517,7 @@ pub fn ibc_execute_add_concentrated_liquidity(
             pool_key: msg.pool_key,
             lower_tick_index: msg.lower_tick_index,
             upper_tick_index: msg.upper_tick_index,
-            position_id: msg.position_id,
+            position_id,
             slippage_tolerance_bps: msg.slippage_tolerance_bps,
         });
 

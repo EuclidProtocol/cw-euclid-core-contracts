@@ -12,7 +12,7 @@ use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    events::{liquidity_event, tx_event, TxType},
+    events::{clp_add_liquidity_event, liquidity_event, tx_event, TxType},
     fee::{DenomFees, TotalFees},
     msgs::vlp::{
         base::{
@@ -50,11 +50,9 @@ use crate::{
     },
     reply,
     state::{
-        initialize_position_nonce, next_position_id, ConcentratedPosition, MigrationMetadata,
-        Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS,
-        FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIGRATION_METADATA,
-        MIGRATION_REVISION, MIN_TICK, POOL_KEY, POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0,
-        STATE, TICKS,
+        ConcentratedPosition, Slot0, TickInfo, ACTIVE_LIQUIDITY, ADMIN, BALANCES, CHAIN_LP_TOKENS,
+        FEE_GROWTH_GLOBAL_0_X128, FEE_GROWTH_GLOBAL_1_X128, MAX_TICK, MIN_TICK, POOL_KEY,
+        POSITIONS, PROTOCOL_FEES_0, PROTOCOL_FEES_1, SLOT0, STATE, TICKS,
     },
 };
 
@@ -128,7 +126,6 @@ pub fn instantiate(
             },
         },
     )?;
-    initialize_position_nonce(deps.storage, env.contract.address.as_str())?;
     let initial_tick = msg.initial_tick.unwrap_or(0);
     ensure!(
         initial_tick >= MIN_TICK && initial_tick <= MAX_TICK,
@@ -150,16 +147,6 @@ pub fn instantiate(
     PROTOCOL_FEES_0.save(deps.storage, &Uint128::zero())?;
     PROTOCOL_FEES_1.save(deps.storage, &Uint128::zero())?;
     initialize_observation(deps.storage, env.block.time.seconds())?;
-    MIGRATION_REVISION.save(deps.storage, &2)?;
-    MIGRATION_METADATA.save(
-        deps.storage,
-        &MigrationMetadata {
-            source_version: CONTRACT_VERSION.to_string(),
-            mode: LegacyLiquidityMode::AlreadyV3Liquidity,
-            migrated_at: env.block.time.seconds(),
-            positions_migrated: 0,
-        },
-    )?;
 
     let response =
         msg.execute
@@ -417,19 +404,7 @@ fn execute_add_concentrated_liquidity(
     let tx_id = add_liquidity_msg.tx_id.clone();
     let lower_tick_index = add_liquidity_msg.lower_tick_index;
     let upper_tick_index = add_liquidity_msg.upper_tick_index;
-    if let Some(explicit_id) = add_liquidity_msg.position_id {
-        ensure!(
-            POSITIONS
-                .may_load(deps.storage, explicit_id.u128())?
-                .is_some(),
-            ContractError::new(
-                "explicit position_id does not exist; new positions must omit position_id"
-            )
-        );
-    }
-    let position_id = add_liquidity_msg
-        .position_id
-        .unwrap_or(next_position_id(deps.storage)?);
+    let position_id = add_liquidity_msg.position_id;
     validate_tick_range(&pool_key, lower_tick_index, upper_tick_index)?;
 
     ensure!(
@@ -497,28 +472,25 @@ fn execute_add_concentrated_liquidity(
     let mut position = POSITIONS
         .may_load(deps.storage, position_id.u128())?
         .unwrap_or(ConcentratedPosition {
-            owner: sender.clone(),
+            chain_uid: sender.chain_uid.clone(),
             lower_tick_index,
             upper_tick_index,
             liquidity: Uint128::zero(),
-            pool_key: pool_key.clone(),
             fee_growth_inside_0_last_x128: Uint256::zero(),
             fee_growth_inside_1_last_x128: Uint256::zero(),
             tokens_owed_0: Uint128::zero(),
             tokens_owed_1: Uint128::zero(),
         });
 
-    if position.owner != sender {
-        return Err(ContractError::Unauthorized {});
-    }
-    if position.pool_key != pool_key {
-        return Err(ContractError::new("position pool key mismatch"));
-    }
-    if position.lower_tick_index != lower_tick_index
-        || position.upper_tick_index != upper_tick_index
-    {
-        return Err(ContractError::new("position tick range mismatch"));
-    }
+    ensure!(
+        position.chain_uid == sender.chain_uid,
+        ContractError::Unauthorized {}
+    );
+    ensure!(
+        position.lower_tick_index == lower_tick_index
+            && position.upper_tick_index == upper_tick_index,
+        ContractError::new("position tick range mismatch")
+    );
 
     // Update ticks BEFORE settling fees — tick initialization sets
     // fee_growth_outside, which affects the fee_growth_inside calculation.
@@ -625,6 +597,13 @@ fn execute_add_concentrated_liquidity(
         .add_attribute("liquidity_delta", liquidity_delta)
         .add_attribute("used_token_1", amount_0_used)
         .add_attribute("used_token_2", amount_1_used)
+        .add_event(clp_add_liquidity_event(
+            &tx_id,
+            position_id,
+            liquidity_delta,
+            amount_0_used,
+            amount_1_used,
+        ))
         .set_data(to_json_binary(&concentrated_ack)?))
 }
 
@@ -645,12 +624,10 @@ fn execute_remove_concentrated_liquidity(
         .may_load(deps.storage, remove_liquidity_msg.position_id.u128())?
         .ok_or(ContractError::new("Position not found"))?;
 
-    if position.owner != remove_liquidity_msg.sender {
-        return Err(ContractError::Unauthorized {});
-    }
-    if position.pool_key != remove_liquidity_msg.pool_key {
-        return Err(ContractError::new("position pool key mismatch"));
-    }
+    ensure!(
+        position.chain_uid == remove_liquidity_msg.sender.chain_uid,
+        ContractError::Unauthorized {}
+    );
     settle_position_fees(deps.storage, &mut position)?;
     ensure!(
         position.liquidity >= remove_liquidity_msg.liquidity_delta,
@@ -697,10 +674,7 @@ fn execute_remove_concentrated_liquidity(
         (Uint128::zero(), Uint128::zero())
     };
 
-    if position.liquidity.is_zero()
-        && position.tokens_owed_0.is_zero()
-        && position.tokens_owed_1.is_zero()
-    {
+    if liquidity_after.is_zero() {
         POSITIONS.remove(deps.storage, remove_liquidity_msg.position_id.u128());
     } else {
         POSITIONS.save(
@@ -762,6 +736,7 @@ fn execute_remove_concentrated_liquidity(
         sender: remove_liquidity_msg.sender.clone(),
         vlp_address: env.contract.address.to_string(),
         pool_key: remove_liquidity_msg.pool_key,
+        position_burned: liquidity_after.is_zero(),
     };
 
     let mut response = Response::new();
@@ -1434,10 +1409,9 @@ fn execute_collect_fees(
     let mut position = POSITIONS
         .may_load(deps.storage, msg.position_id.u128())?
         .ok_or_else(|| ContractError::new("position not found"))?;
-    ensure!(position.owner == msg.sender, ContractError::Unauthorized {});
     ensure!(
-        position.pool_key == msg.pool_key,
-        ContractError::new("pool key mismatch")
+        position.chain_uid == msg.sender.chain_uid,
+        ContractError::Unauthorized {}
     );
 
     settle_position_fees(deps.storage, &mut position)?;
@@ -1628,8 +1602,7 @@ fn query_position(deps: Deps, position_id: Uint128) -> Result<PositionResponse, 
         .ok_or_else(|| ContractError::new("position not found"))?;
     Ok(PositionResponse {
         position_id,
-        owner: position.owner,
-        pool_key: position.pool_key,
+        chain_uid: position.chain_uid,
         lower_tick_index: position.lower_tick_index,
         upper_tick_index: position.upper_tick_index,
         liquidity: position.liquidity,
@@ -1707,33 +1680,13 @@ fn query_protocol_fees(deps: Deps) -> Result<ProtocolFeesResponse, ContractError
 }
 
 fn query_migration_status(deps: Deps) -> Result<MigrationStatusResponse, ContractError> {
-    let revision = MIGRATION_REVISION.may_load(deps.storage)?.unwrap_or(0);
-    let metadata = MIGRATION_METADATA.may_load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
-
-    let (source_version, mode, migrated_at, positions_migrated) = metadata.map_or(
-        (
-            "unknown".to_string(),
-            LegacyLiquidityMode::AlreadyV3Liquidity,
-            0u64,
-            0u64,
-        ),
-        |meta| {
-            (
-                meta.source_version,
-                meta.mode,
-                meta.migrated_at,
-                meta.positions_migrated,
-            )
-        },
-    );
-
     Ok(MigrationStatusResponse {
-        revision,
-        source_version,
-        mode,
-        migrated_at,
-        positions_migrated,
+        revision: 0,
+        source_version: "none".to_string(),
+        mode: LegacyLiquidityMode::AlreadyV3Liquidity,
+        migrated_at: 0,
+        positions_migrated: 0,
         active_liquidity: ACTIVE_LIQUIDITY.may_load(deps.storage)?.unwrap_or_default(),
         total_liquidity: state.total_lp_tokens,
     })
@@ -2270,7 +2223,7 @@ mod tests {
                 .unwrap(),
             lower_tick_index: -600,
             upper_tick_index: 600,
-            position_id: Some(Uint128::new(1)),
+            position_id: Uint128::new(1),
             slippage_tolerance_bps: 100,
         };
 
@@ -2286,14 +2239,12 @@ mod tests {
 
     #[test]
     fn add_liquidity_rejects_wrong_token_pair() {
-        use crate::state::initialize_position_nonce;
         use cosmwasm_std::testing::mock_env;
         use euclid::msgs::vlp::base::VlpConcentratedAddLiquidityMsg;
         use euclid::token::TokenWithAmount;
 
         let mut deps = mock_dependencies();
         setup_pool(&mut deps);
-        initialize_position_nonce(deps.as_mut().storage, "contract_addr").unwrap();
 
         let stored_pool_key = POOL_KEY.load(deps.as_ref().storage).expect("load pool_key");
 
@@ -2324,7 +2275,7 @@ mod tests {
             liquidity: wrong_pair,
             lower_tick_index: -600,
             upper_tick_index: 600,
-            position_id: None,
+            position_id: Uint128::new(1),
             slippage_tolerance_bps: 100,
         };
 

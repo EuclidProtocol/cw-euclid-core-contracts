@@ -1,7 +1,7 @@
 use core::fmt;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Event;
+use cosmwasm_std::{Event, Uint128};
 
 use crate::{
     deposit::DepositTokenRequest,
@@ -52,6 +52,22 @@ pub fn deposit_token_event(tx_id: &str, deposit: &DepositTokenRequest) -> Event 
         .add_attribute("asset_in", deposit.asset_in.token.to_string())
         .add_attribute("asset_in_denom", deposit.asset_in.token_type.get_key())
         .add_attribute("amount_in", deposit.amount_in)
+}
+
+pub fn clp_add_liquidity_event(
+    tx_id: &str,
+    position_id: Uint128,
+    liquidity_delta: Uint128,
+    used_token_1: Uint128,
+    used_token_2: Uint128,
+) -> Event {
+    simple_event()
+        .add_attribute("action", "clp_add_liquidity")
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("position_id", position_id)
+        .add_attribute("liquidity_delta", liquidity_delta)
+        .add_attribute("used_token_1", used_token_1)
+        .add_attribute("used_token_2", used_token_2)
 }
 
 pub fn register_factory_event(

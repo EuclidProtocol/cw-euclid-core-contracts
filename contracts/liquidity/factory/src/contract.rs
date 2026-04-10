@@ -40,8 +40,8 @@ use crate::reply::{
     CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
 };
 use crate::reply::{
-    on_escrow_instantiate_reply, on_nft_mint_reply, on_release_escrow_reply,
-    ESCROW_INSTANTIATE_REPLY_ID, NFT_MINT_REPLY_ID, RELEASE_ESCROW_REPLY_ID,
+    on_escrow_instantiate_reply, on_release_escrow_reply, ESCROW_INSTANTIATE_REPLY_ID,
+    RELEASE_ESCROW_REPLY_ID,
 };
 use crate::state::{FeeState, State, ADMIN, FEE_STATE, STATE};
 use cosmwasm_std::ensure;
@@ -98,8 +98,6 @@ pub fn instantiate(
         msg: to_json_binary(&euclid::msgs::position_token::InstantiateMsg {
             name: "Euclid Concentrated Positions".to_string(),
             symbol: "EUPOS".to_string(),
-            minter: env.contract.address.clone(),
-            admin: env.contract.address,
         })?,
         funds: vec![],
         label: "position_token".to_string(),
@@ -435,8 +433,6 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         POSITION_TOKEN_INSTANTIATE_REPLY_ID => {
             on_position_token_instantiate_reply(deps.branch(), msg)
         }
-        NFT_MINT_REPLY_ID => on_nft_mint_reply(deps.branch(), msg),
-
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

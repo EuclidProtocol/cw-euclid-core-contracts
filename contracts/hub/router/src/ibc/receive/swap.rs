@@ -237,7 +237,6 @@ mod tests {
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         error::ContractError,
-        msgs::vlp::base::PoolKey,
         swap::NextSwapPair,
         token::{Token, TokenType, TokenWithDenom},
     };
