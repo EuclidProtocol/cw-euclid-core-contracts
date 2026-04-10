@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    attr, ensure, from_json, to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdError, Timestamp, Uint128, WasmMsg,
+    attr, ensure, from_json, to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, HexBinary,
+    MessageInfo, Response, StdError, Timestamp, Uint128, WasmMsg,
 };
 use euclid::{
     chain::ChainUid,
@@ -563,7 +563,7 @@ fn verify_permit(
 
 fn permit_id(permit: &Permit) -> String {
     let digest: [u8; 32] = Sha256::digest(permit.data.as_bytes()).into();
-    to_hex(&digest)
+    HexBinary::from(digest).to_hex()
 }
 
 fn hash_leaf(leaf: &WithdrawalLeaf) -> Result<[u8; 32], ContractError> {
@@ -598,12 +598,47 @@ fn hash_bytes(data: &[u8]) -> [u8; 32] {
     Sha256::digest(data).into()
 }
 
-fn to_hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[(byte >> 4) as usize] as char);
-        out.push(HEX[(byte & 0x0f) as usize] as char);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manual_to_hex(bytes: &[u8]) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut out = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+        out
     }
-    out
+
+    #[test]
+    fn hexbinary_matches_previous_manual_hex_encoding() {
+        let cases: Vec<Vec<u8>> = vec![
+            vec![],
+            vec![0x00],
+            vec![0x00, 0x0a, 0xff, 0x10],
+            vec![0xde, 0xad, 0xbe, 0xef],
+        ];
+
+        for bytes in cases {
+            assert_eq!(
+                HexBinary::from(bytes.clone()).to_hex(),
+                manual_to_hex(&bytes)
+            );
+        }
+    }
+
+    #[test]
+    fn permit_id_matches_known_sha256_hex() {
+        let permit = Permit {
+            data: "hello".to_string(),
+            signature: Binary::default(),
+        };
+
+        assert_eq!(
+            permit_id(&permit),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
 }
