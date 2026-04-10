@@ -17,7 +17,6 @@ pub mod concentrated_fees;
 pub mod concentrated_positions;
 pub mod concentrated_swap;
 pub mod concentrated_v3_fees;
-pub mod concentrated_v3_migration;
 pub mod concentrated_v3_oracle;
 pub mod concentrated_v3_positions;
 pub mod concentrated_v3_swap;
