@@ -120,6 +120,51 @@ mod tests {
     #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_IBC)]
     #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_EVM)]
     #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_EVM)]
+    fn test_create_pool_with_both_tokens_unregistered_rejected(
+        #[case] pool_config: PoolConfig,
+        #[case] factory_chain_id: &str,
+    ) {
+        let sender = "sender_for_all_chains";
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
+
+        // Neither token is registered
+        let token_x = TokenWithDenom {
+            token: Token::create("tokenx".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "tokenx".to_string(),
+            },
+        };
+        let token_y = TokenWithDenom {
+            token: Token::create("tokeny".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "tokeny".to_string(),
+            },
+        };
+
+        let pair_with_denom = PairWithDenomAndAmount {
+            token_1: token_x.with_amount(Uint128::from(10_000u128)),
+            token_2: token_y.with_amount(Uint128::from(10_000u128)),
+        };
+
+        let err = create_pool(&factory, &router, pair_with_denom, 500, pool_config)
+            .expect_err("pool creation with both tokens unregistered must fail");
+        let err_str = err.root().to_string();
+        assert!(
+            err_str.contains("Atleast one token must already be registered"),
+            "expected both-new-tokens error, got: {err_str}",
+        );
+    }
+
+    #[rstest]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_IBC)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_IBC)]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_EVM)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_EVM)]
     fn test_create_pool(#[case] pool_config: PoolConfig, #[case] factory_chain_id: &str) {
         let sender = "sender_for_all_chains";
         let interchain = setup_interchain(sender, factory_chain_id);

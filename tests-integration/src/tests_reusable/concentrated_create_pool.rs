@@ -4,7 +4,6 @@ use cosmwasm_std::Uint128;
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
-use euclid::error::ContractError;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
@@ -156,7 +155,7 @@ fn test_create_two_fee_tiers_same_pair_with_initial_tick(
 #[rstest]
 #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
 #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-fn test_create_pool_with_unregistered_token_rejected(
+fn test_create_pool_with_unregistered_token_passes_and_creates_escrow(
     #[case] mode: FactorySetupMode,
     #[case] factory_chain_id: &str,
 ) {
@@ -180,6 +179,47 @@ fn test_create_pool_with_unregistered_token_rejected(
     assert!(
         escrow.denoms.contains(&token_c.token_type),
         "new token denom must be registered in its escrow after pool creation",
+    );
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_create_pool_with_both_tokens_unregistered_rejected(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let sender = "sender_for_all_chains";
+    let mut chains = vec![(ROUTER_CHAIN_ID, sender)];
+    if factory_chain_id != ROUTER_CHAIN_ID {
+        chains.push((factory_chain_id, sender));
+    }
+    let interchain = MockInterchainEnv::new(chains);
+    let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
+    let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+    // Intentionally do not register any tokens
+    let factory = setup_factory_with_mode(&interchain, factory_chain_id, &router, mode).unwrap();
+
+    let token_x = TokenWithDenom {
+        token: Token::create("conc.token.x".to_string()).unwrap(),
+        token_type: TokenType::Native {
+            denom: "conc.token.x".to_string(),
+        },
+    };
+    let token_y = TokenWithDenom {
+        token: Token::create("conc.token.y".to_string()).unwrap(),
+        token_type: TokenType::Native {
+            denom: "conc.token.y".to_string(),
+        },
+    };
+
+    let pair = pair_with_amounts(&token_x, &token_y, 20_000, 20_000);
+    let err = create_concentrated_pool(&factory, &router, pair, 500, 10, 100)
+        .expect_err("pool creation with both tokens unregistered must fail");
+    let err_str = err.root().to_string();
+    assert!(
+        err_str.contains("Atleast one token must already be registered"),
+        "expected both-new-tokens error, got: {err_str}",
     );
 }
 
