@@ -330,8 +330,11 @@ fn ack_concentrated_pool_creation(
                     continue;
                 }
 
-                let escrow_contract =
-                    TOKEN_TO_ESCROW.load(deps.storage, token_info.token.clone())?;
+                let escrow_contract = TOKEN_TO_ESCROW
+                    .load(deps.storage, token_info.token.clone())
+                    .map_err(|_| ContractError::TokenEscrowDoesNotExist {
+                        token: token_info.token.to_string(),
+                    })?;
                 let send_msg = token_info
                     .token_type
                     .create_escrow_msg(token_info.amount, escrow_contract)?;

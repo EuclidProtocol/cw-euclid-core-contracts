@@ -4,6 +4,7 @@ use cosmwasm_std::Uint128;
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
+use euclid::error::ContractError;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
@@ -150,6 +151,36 @@ fn test_create_two_fee_tiers_same_pair_with_initial_tick(
     let router_500 = router.get_vlp_by_pool_key(pool_key_500).unwrap();
     let router_3000 = router.get_vlp_by_pool_key(pool_key_3000).unwrap();
     assert_ne!(router_500.vlp, router_3000.vlp);
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_create_pool_with_unregistered_token_rejected(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, _token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+
+    // token_c is never registered via register_denom
+    let token_c = TokenWithDenom {
+        token: Token::create("conc.token.c".to_string()).unwrap(),
+        token_type: TokenType::Native {
+            denom: "conc.token.c".to_string(),
+        },
+    };
+
+    let pair = pair_with_amounts(&token_a, &token_c, 20_000, 20_000);
+    let result = create_concentrated_pool(&factory, &router, pair, 500, 10, 100);
+    result.expect("pool creation with only 1 unregistered token should succeed");
+    let escrow = factory
+        .get_escrow(token_c.token.to_string())
+        .expect("escrow for the new token must be created by pool creation ACK");
+    assert!(
+        escrow.denoms.contains(&token_c.token_type),
+        "new token denom must be registered in its escrow after pool creation",
+    );
 }
 
 #[rstest]

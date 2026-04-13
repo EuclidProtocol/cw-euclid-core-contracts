@@ -35,19 +35,17 @@ pub fn create_pool(
             &mut funds,
         );
     }
-    let tx_response = factory
-        .request_pool_creation(
-            CrossChainConfig::default(),
-            6,
-            "LPSYMBOL".to_string(),
-            "LPSYMBOL".to_string(),
-            pair_with_denom.clone(),
-            pool_config,
-            slippage_tolerance_bps,
-            None,
-            &funds.to_vec(),
-        )
-        .unwrap();
+    let tx_response = factory.request_pool_creation(
+        CrossChainConfig::default(),
+        6,
+        "LPSYMBOL".to_string(),
+        "LPSYMBOL".to_string(),
+        pair_with_denom.clone(),
+        pool_config,
+        slippage_tolerance_bps,
+        None,
+        &funds.to_vec(),
+    )?;
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 
@@ -64,6 +62,56 @@ mod tests {
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register_denom::register_denom;
     use cosmwasm_std::Uint64;
+
+    #[rstest]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_IBC)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_IBC)]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_EVM)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_EVM)]
+    fn test_create_pool_with_unregistered_token_should_pass_and_create_escrow(
+        #[case] pool_config: PoolConfig,
+        #[case] factory_chain_id: &str,
+    ) {
+        let sender = "sender_for_all_chains";
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
+
+        let token_a = TokenWithDenom {
+            token: Token::create("tokena".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "tokena".to_string(),
+            },
+        };
+        // token_c is intentionally not pre-registered — the pool creation ACK should create its escrow
+        let token_c = TokenWithDenom {
+            token: Token::create("tokenc".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "tokenc".to_string(),
+            },
+        };
+
+        register_denom(&factory, &router, token_a.clone()).unwrap();
+
+        let pair_with_denom = PairWithDenomAndAmount {
+            token_1: token_a.with_amount(Uint128::from(10_000u128)),
+            token_2: token_c.with_amount(Uint128::from(10_000u128)),
+        };
+
+        create_pool(&factory, &router, pair_with_denom, 500, pool_config)
+            .expect("pool creation with one new token must succeed");
+
+        let escrow = factory
+            .get_escrow(token_c.token.to_string())
+            .expect("escrow for the new token must be created by pool creation ACK");
+        assert!(
+            escrow.denoms.contains(&token_c.token_type),
+            "new token denom must be registered in its escrow after pool creation",
+        );
+    }
 
     #[rstest]
     #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_LOCAL)]
