@@ -20,7 +20,7 @@ use crate::tests_reusable::constants::{
     FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
 };
 use crate::tests_reusable::factory_register::{setup_factory_with_mode, FactorySetupMode};
-use crate::tests_reusable::factory_register_denom::register_denom;
+use crate::tests_reusable::factory_register_denom::{deregister_denom, register_denom};
 
 pub fn setup_concentrated_env(
     mode: FactorySetupMode,
@@ -220,6 +220,29 @@ fn test_create_pool_with_both_tokens_unregistered_rejected(
     assert!(
         err_str.contains("Atleast one token must already be registered"),
         "expected both-new-tokens error, got: {err_str}",
+    );
+}
+
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_create_pool_with_disallowed_token_rejected(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, factory_chain_id);
+
+    // Deregister token_b — escrow still exists but denom is now disallowed
+    deregister_denom(&factory, &router, token_b.clone()).unwrap();
+
+    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+    let err = create_concentrated_pool(&factory, &router, pair, 500, 10, 100)
+        .expect_err("pool creation with a disallowed token must be rejected on factory call");
+    let err_str = err.root().to_string();
+    assert!(
+        err_str.contains("UnsupportedDenomination"),
+        "expected UnsupportedDenomination error, got: {err_str}",
     );
 }
 

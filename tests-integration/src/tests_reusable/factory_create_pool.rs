@@ -60,7 +60,7 @@ mod tests {
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
     use crate::tests_reusable::factory_register::setup_factory;
-    use crate::tests_reusable::factory_register_denom::register_denom;
+    use crate::tests_reusable::factory_register_denom::{deregister_denom, register_denom};
     use cosmwasm_std::Uint64;
 
     #[rstest]
@@ -155,6 +155,55 @@ mod tests {
         assert!(
             err_str.contains("Atleast one token must already be registered"),
             "expected both-new-tokens error, got: {err_str}",
+        );
+    }
+
+    #[rstest]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_LOCAL)]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_IBC)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_IBC)]
+    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_EVM)]
+    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_EVM)]
+    fn test_create_pool_with_disallowed_token_rejected(
+        #[case] pool_config: PoolConfig,
+        #[case] factory_chain_id: &str,
+    ) {
+        let sender = "sender_for_all_chains";
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
+
+        let token_a = TokenWithDenom {
+            token: Token::create("tokena".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "tokena".to_string(),
+            },
+        };
+        let token_b = TokenWithDenom {
+            token: Token::create("tokenb".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "tokenb".to_string(),
+            },
+        };
+
+        register_denom(&factory, &router, token_a.clone()).unwrap();
+        register_denom(&factory, &router, token_b.clone()).unwrap();
+        // Deregister token_b — escrow still exists but denom is now disallowed
+        deregister_denom(&factory, &router, token_b.clone()).unwrap();
+
+        let pair_with_denom = PairWithDenomAndAmount {
+            token_1: token_a.with_amount(Uint128::from(10_000u128)),
+            token_2: token_b.with_amount(Uint128::from(10_000u128)),
+        };
+
+        let err = create_pool(&factory, &router, pair_with_denom, 500, pool_config)
+            .expect_err("pool creation with a disallowed token must be rejected on factory call");
+        let err_str = err.root().to_string();
+        assert!(
+            err_str.contains("UnsupportedDenomination"),
+            "expected UnsupportedDenomination error, got: {err_str}",
         );
     }
 
