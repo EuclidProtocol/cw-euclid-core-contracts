@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Event, Uint128};
+use cosmwasm_std::{Addr, Event, Uint128};
 use cw_orch::prelude::*;
 use euclid::events::EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
@@ -94,6 +94,17 @@ fn test_ack_error_rolls_back_pending() {
         );
     }
 
+    let chain = factory.environment();
+    let sender_addr = Addr::unchecked(chain.sender.as_str());
+    let balance_a_before = chain
+        .query_balance(&sender_addr, "conc.token.a")
+        .unwrap()
+        .u128();
+    let balance_b_before = chain
+        .query_balance(&sender_addr, "conc.token.b")
+        .unwrap()
+        .u128();
+
     let tx = factory
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestConcentratedPoolCreation {
@@ -152,6 +163,24 @@ fn test_ack_error_rolls_back_pending() {
         .unwrap()
         .tokens;
     assert!(tokens.is_empty(), "error ack must not mint position NFT");
+
+    // Verify tokens refunded back to sender
+    let balance_a_after = chain
+        .query_balance(&sender_addr, "conc.token.a")
+        .unwrap()
+        .u128();
+    let balance_b_after = chain
+        .query_balance(&sender_addr, "conc.token.b")
+        .unwrap()
+        .u128();
+    assert_eq!(
+        balance_a_after, balance_a_before,
+        "token_a must be refunded to sender after error ack",
+    );
+    assert_eq!(
+        balance_b_after, balance_b_before,
+        "token_b must be refunded to sender after error ack",
+    );
 }
 
 #[test]
