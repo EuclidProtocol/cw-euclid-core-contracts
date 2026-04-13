@@ -324,10 +324,6 @@ fn ack_concentrated_pool_creation(
                 &data.vlp_address,
             )?;
 
-            let state = STATE.load(deps.storage)?;
-            let admins = ADMIN.load(deps.storage)?;
-            let escrow_code_id = state.escrow_code_id;
-
             let mut res = Response::new();
             for token_info in existing_req.pair_info.get_vec_token_info() {
                 if token_info.token_type.is_voucher() {
@@ -345,6 +341,9 @@ fn ack_concentrated_pool_creation(
                         res = res.add_message(send_msg);
                     }
                     None => {
+                        let state = STATE.load(deps.storage)?;
+                        let admins = ADMIN.load(deps.storage)?;
+                        let escrow_code_id = state.escrow_code_id;
                         let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
                             admin: Some(admins.migration_admin.clone().into_string()),
                             code_id: escrow_code_id,

@@ -17,7 +17,6 @@ use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
 use euclid::msgs::factory::msg::ExecuteMsgFns as FactoryExecuteMsgFns;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::factory::ExecuteSwapRequest;
-use euclid::msgs::lp_token::msg::ExecuteMsgFns as LpTokenExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::base::{PoolConfig, PoolKey, PoolType};
@@ -184,13 +183,48 @@ pub fn faucet(
             funds.push(coin(amount, denom));
         }
         TokenType::Smart { contract_address } => {
+            // Mint cw20 tokens to the recipient. Callers are responsible for
+            // granting allowance to the factory (or using the cw20 Send hook)
+            // when they need the factory to pull these tokens.
             let cw20 = LpTokenContract::new(chain.clone());
             cw20.set_address(&Addr::unchecked(contract_address));
-            // Increase allowance
-            cw20.increase_allowance(amount, address, None).unwrap();
+            cw20.execute(
+                &euclid::msgs::lp_token::msg::ExecuteMsg::Mint {
+                    recipient: address.to_string(),
+                    amount: Uint128::new(amount),
+                },
+                &[],
+            )
+            .unwrap();
         }
         _ => {}
     };
+}
+
+/// For each `TokenType::Smart` in `pair_with_denom`, granted an allowance to
+/// the factory contract equal to the requested amount, executed as the current
+/// chain sender. Native/voucher tokens are skipped.
+pub fn approve_factory_for_smart_tokens(
+    factory: &FactoryContract<MockBase>,
+    pair_with_denom: &PairWithDenomAndAmount,
+) -> Result<(), CwOrchError> {
+    let chain = factory.environment();
+    let factory_addr = factory.address()?.to_string();
+    for token in pair_with_denom.get_vec_token_info() {
+        if let TokenType::Smart { contract_address } = token.token_type {
+            let cw20 = LpTokenContract::new(chain.clone());
+            cw20.set_address(&Addr::unchecked(contract_address));
+            cw20.execute(
+                &euclid::msgs::lp_token::msg::ExecuteMsg::IncreaseAllowance {
+                    spender: factory_addr.clone(),
+                    amount: token.amount,
+                    expires: None,
+                },
+                &[],
+            )?;
+        }
+    }
+    Ok(())
 }
 
 pub fn create_pool(
@@ -286,6 +320,7 @@ pub fn create_concentrated_pool_with_tick(
             &mut funds,
         );
     }
+    approve_factory_for_smart_tokens(factory, &pair_with_denom)?;
     let tx_response = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::RequestConcentratedPoolCreation {
             pair_with_denom_and_amount: pair_with_denom.clone(),
@@ -336,6 +371,7 @@ pub fn add_concentrated_liquidity(
             &mut funds,
         );
     }
+    approve_factory_for_smart_tokens(factory, &pair_with_denom)?;
 
     let tx_response = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::AddConcentratedLiquidity {
