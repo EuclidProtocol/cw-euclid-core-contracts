@@ -266,7 +266,7 @@ pub fn add_liquidity_request(
     let tx_id = generate_tx(deps, &env, &sender)?;
 
     ensure!(
-        (1..=BPS_100_PERCENT).contains(&slippage_tolerance_bps),
+        slippage_tolerance_bps >= 1 && slippage_tolerance_bps <= BPS_100_PERCENT,
         ContractError::InvalidSlippageTolerance {}
     );
 
@@ -600,7 +600,7 @@ pub fn add_concentrated_liquidity_request(
         ContractError::new("Tick indexes must align with pool tick spacing")
     );
     ensure!(
-        (1..=BPS_100_PERCENT).contains(&slippage_tolerance_bps),
+        slippage_tolerance_bps >= 1 && slippage_tolerance_bps <= BPS_100_PERCENT,
         ContractError::InvalidSlippageTolerance {}
     );
     ensure!(

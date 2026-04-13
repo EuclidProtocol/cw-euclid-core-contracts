@@ -44,8 +44,21 @@ pub fn max_sqrt_ratio() -> Uint256 {
     Uint256::from_str(MAX_SQRT_RATIO_STR).expect("valid max sqrt ratio")
 }
 
+/// Converts a tick index to its corresponding Q96 fixed-point square-root price.
+///
+/// Each tick `t` represents the price ratio `1.0001^t`, so:
+///
+///   sqrt_price = sqrt(1.0001^t) * 2^96
+///
+/// The implementation avoids floating-point by decomposing `|t|` into its binary
+/// bits and multiplying in a chain of precomputed Q128 constants — one constant
+/// per bit position — each equal to `sqrt(1.0001^(2^i))` in Q128. After the
+/// chain multiply the result is shifted right by 32 bits (Q128 → Q96) and
+/// rounded up. For negative ticks the final ratio is inverted via `MAX / ratio`.
+///
+/// Valid range: `MIN_TICK..=MAX_TICK`. Returns an error outside that range.
 pub fn get_sqrt_ratio_at_tick(tick: i64) -> Result<Uint256, ContractError> {
-    if !(MIN_TICK..=MAX_TICK).contains(&tick) {
+    if tick < MIN_TICK || tick > MAX_TICK {
         return Err(ContractError::new("tick out of bounds"));
     }
 
@@ -173,9 +186,28 @@ fn log2_q64(sqrt_price_x96: Uint256) -> Result<Int256, ContractError> {
     Ok(log2)
 }
 
-/// O(1) inverse of get_sqrt_ratio_at_tick. Returns the largest tick t where
-/// get_sqrt_ratio_at_tick(t) <= sqrt_price_x96.
-/// Ported from Uniswap V3's TickMath.sol. See docs/tick_math_algorithm.md.
+/// Converts a Q96 fixed-point square-root price back to the largest tick `t`
+/// such that `get_sqrt_ratio_at_tick(t) <= sqrt_price_x96` (i.e. floor toward
+/// lower tick).
+///
+/// To find the tick from a price:
+///
+///   t = floor( log_{sqrt(1.0001)}( sqrt_price_x96 / 2^96 ) )
+///     = floor( log2(sqrt_price_x96 / 2^96) / log2(sqrt(1.0001)) )
+///
+/// Steps:
+///   1. Compute `log2(sqrt_price_x96)` as a Q64 fixed-point integer using
+///      the MSB for the integer part and 14 rounds of repeated squaring for
+///      the fractional bits (`log2_q64`).
+///   2. Multiply by `1 / log2(sqrt(1.0001))` (the precomputed Q64 constant
+///      `LOG_SQRT10001_SCALE`) to change the base, yielding a Q128 tick.
+///   3. Shift right 128 bits to get candidate ticks `tick_low` and `tick_high`
+///      (differing by ±1) after applying precomputed error margins that account
+///      for rounding in step 1.
+///   4. Verify by calling `get_sqrt_ratio_at_tick(tick_high)` and return the
+///      correct floor tick.
+///
+/// Ported from Uniswap V3's TickMath.sol.
 pub fn get_tick_at_sqrt_ratio(sqrt_price_x96: Uint256) -> Result<i64, ContractError> {
     if sqrt_price_x96 < min_sqrt_ratio() || sqrt_price_x96 >= max_sqrt_ratio() {
         return Err(ContractError::new("sqrt price out of bounds"));
