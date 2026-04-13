@@ -45,7 +45,7 @@ pub fn max_sqrt_ratio() -> Uint256 {
 }
 
 pub fn get_sqrt_ratio_at_tick(tick: i64) -> Result<Uint256, ContractError> {
-    if !(MIN_TICK..=MAX_TICK).contains(&tick) {
+    if tick < MIN_TICK || tick > MAX_TICK {
         return Err(ContractError::new("tick out of bounds"));
     }
 
