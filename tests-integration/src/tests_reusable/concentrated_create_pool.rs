@@ -5,17 +5,21 @@ use cw20::{Cw20Coin, MinterResponse};
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
+use euclid::chain::ChainUid;
+use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::lp_token::msg::InstantiateMsg as LpTokenInstantiateMsg;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
+use euclid::msgs::virtual_balance::msg::{ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg};
 use euclid::token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom};
+use euclid::voucher::BalanceKey;
 use factory::FactoryContract;
 use lp_token::LpTokenContract;
 use router::RouterContract;
 use rstest::rstest;
 
-use crate::helpers::chains::setup_router;
+use crate::helpers::chains::{get_virtual_balance, setup_router};
 use crate::helpers::factory::{
     concentrated_pool_key, create_concentrated_pool, create_concentrated_pool_with_tick, faucet,
 };
@@ -131,7 +135,9 @@ pub fn setup_concentrated_env(
 
 /// Full setup parameterised by each token's kind (`"native"`, `"smart"`, or
 /// `"voucher"`). Each token is registered on the factory/router so pool
-/// creation sees them as existing tokens.
+/// creation sees them as existing tokens. For voucher tokens, a backing
+/// native denom is registered (so the router recognises the token id) and
+/// voucher balance is minted on the hub for the sender.
 pub fn setup_concentrated_env_ext(
     mode: FactorySetupMode,
     factory_chain_id: &str,
@@ -146,19 +152,69 @@ pub fn setup_concentrated_env_ext(
 ) {
     let (interchain, factory, router) = setup_concentrated_base(mode, factory_chain_id);
 
-    let token_a = make_token(&factory, "conc.token.a", token_a_kind);
-    let token_b = make_token(&factory, "conc.token.b", token_b_kind);
-
-    // Voucher tokens live on the hub's virtual balance; there is no factory
-    // escrow to register. Only register non-voucher tokens.
-    if !token_a.token_type.is_voucher() {
-        register_denom(&factory, &router, token_a.clone()).unwrap();
-    }
-    if !token_b.token_type.is_voucher() {
-        register_denom(&factory, &router, token_b.clone()).unwrap();
-    }
+    let token_a = prepare_token(&factory, &router, "conc.token.a", token_a_kind);
+    let token_b = prepare_token(&factory, &router, "conc.token.b", token_b_kind);
 
     (interchain, factory, router, token_a, token_b)
+}
+
+/// Build a token of the requested kind and perform any per-kind registration
+/// required for it to be usable in a pool-creation request.
+fn prepare_token(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    token_id: &str,
+    kind: &str,
+) -> TokenWithDenom {
+    let token = make_token(factory, token_id, kind);
+    match kind {
+        "voucher" => {
+            // Router-side voucher validation requires the token to exist on at
+            // least one chain, so register a backing native denom on the
+            // factory chain. Then mint voucher balance on the hub so the
+            // sender can actually spend vouchers of this token.
+            let backing = TokenWithDenom {
+                token: token.token.clone(),
+                token_type: TokenType::Native {
+                    denom: token_id.to_string(),
+                },
+            };
+            register_denom(factory, router, backing).unwrap();
+            mint_voucher_balance(factory, router, &token.token, 1_000_000_000u128);
+        }
+        "native" | "smart" => {
+            register_denom(factory, router, token.clone()).unwrap();
+        }
+        _ => unreachable!("make_token already validated the kind"),
+    }
+    token
+}
+
+/// Mint `amount` of voucher balance for the factory sender on the hub's
+/// virtual balance contract. Only the router is authorised to mint, so the
+/// call is dispatched via a temporary `set_sender` override.
+fn mint_voucher_balance(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    token: &Token,
+    amount: u128,
+) {
+    let factory_chain_uid = factory.get_state().unwrap().chain_uid;
+    let sender = factory.environment().sender.to_string();
+    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
+    let mut vb = get_virtual_balance(router.environment(), &virtual_balance_address);
+    vb.set_sender(&router.address().unwrap());
+    vb.execute(
+        &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
+            amount: Uint128::new(amount),
+            balance_key: BalanceKey {
+                cross_chain_user: CrossChainUser::new(factory_chain_uid, sender),
+                token_id: token.to_string(),
+            },
+        }),
+        &[],
+    )
+    .unwrap();
 }
 
 /// Maps a `FactorySetupMode` to the canonical factory chain id used in tests.
@@ -184,16 +240,16 @@ pub fn pair_with_amounts(
 
 // Each rstest below uses `#[values]` on chain mode and each token kind,
 // yielding the full cartesian product of chain type (Native/Ibc/Evm) × token
-// kinds (native/smart). Voucher inputs are not exercised here: they require
-// the token to already exist on some chain (via a prior deposit or pool op),
-// which is out of scope for pool-creation tests.
+// kinds. Tests restrict the kind list to combinations that are meaningful for
+// their scenario (e.g. voucher cannot represent the "new / unregistered" side
+// of a pool because the router requires voucher tokens to already be known).
 
 #[rstest]
 fn test_create_two_fee_tiers_same_pair(
     #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
     mode: FactorySetupMode,
-    #[values("native", "smart")] token_a_kind: &str,
-    #[values("native", "smart")] token_b_kind: &str,
+    #[values("native", "smart", "voucher")] token_a_kind: &str,
+    #[values("native", "smart", "voucher")] token_b_kind: &str,
 ) {
     let (_interchain, factory, router, token_a, token_b) =
         setup_concentrated_env_ext(mode, chain_id_for_mode(mode), token_a_kind, token_b_kind);
@@ -220,8 +276,8 @@ fn test_create_two_fee_tiers_same_pair(
 fn test_create_two_fee_tiers_same_pair_with_initial_tick(
     #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
     mode: FactorySetupMode,
-    #[values("native", "smart")] token_a_kind: &str,
-    #[values("native", "smart")] token_b_kind: &str,
+    #[values("native", "smart", "voucher")] token_a_kind: &str,
+    #[values("native", "smart", "voucher")] token_b_kind: &str,
 ) {
     let (_interchain, factory, router, token_a, token_b) =
         setup_concentrated_env_ext(mode, chain_id_for_mode(mode), token_a_kind, token_b_kind);
@@ -272,7 +328,10 @@ fn test_create_two_fee_tiers_same_pair_with_initial_tick(
 fn test_create_pool_with_unregistered_token_passes_and_creates_escrow(
     #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
     mode: FactorySetupMode,
-    #[values("native", "smart")] token_a_kind: &str,
+    // token_a is the registered side, so voucher is valid here.
+    #[values("native", "smart", "voucher")] token_a_kind: &str,
+    // token_c is the intentionally-new side; voucher is excluded because the
+    // router rejects voucher tokens that don't yet exist on any chain.
     #[values("native", "smart")] token_c_kind: &str,
 ) {
     // token_a is registered via setup; the second slot is reused for token_c,
@@ -346,8 +405,8 @@ fn test_create_pool_with_disallowed_token_rejected(
 fn test_create_pool_invalid_spacing_rejected(
     #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
     mode: FactorySetupMode,
-    #[values("native", "smart")] token_a_kind: &str,
-    #[values("native", "smart")] token_b_kind: &str,
+    #[values("native", "smart", "voucher")] token_a_kind: &str,
+    #[values("native", "smart", "voucher")] token_b_kind: &str,
 ) {
     let (_interchain, factory, _router, token_a, token_b) =
         setup_concentrated_env_ext(mode, chain_id_for_mode(mode), token_a_kind, token_b_kind);
