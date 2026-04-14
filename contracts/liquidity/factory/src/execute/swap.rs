@@ -204,7 +204,8 @@ mod tests {
     use crate::{
         contract::execute,
         testing::helpers::{
-            default_cross_chain_config, init, seed_escrow, set_escrow_token_allowed,
+            assert_euclid_action, assert_tx_event, default_cross_chain_config, init, seed_escrow,
+            set_escrow_token_allowed,
         },
     };
 
@@ -365,6 +366,9 @@ mod tests {
             .unwrap();
         assert_eq!(pending.tx_id, tx_id);
         assert_eq!(pending.amount_in, Uint128::new(100));
+
+        assert_tx_event(&res, "swap");
+        assert_euclid_action(&res, "swap");
     }
 
     // -----------------------------------------------------------------------

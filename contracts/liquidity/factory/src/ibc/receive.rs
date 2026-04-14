@@ -146,6 +146,11 @@ fn execute_release_escrow(
     );
 
     Ok(response
+        .add_event(tx_event(
+            &tx_id,
+            &sender.to_sender_string(),
+            TxType::EscrowRelease,
+        ))
         .add_submessage(user_withdraw_msg)
         .add_attribute("method", "release escrow_execute")
         .add_attribute("sender", sender.to_sender_string())
@@ -159,7 +164,9 @@ fn execute_release_escrow(
 #[allow(clippy::module_inception)]
 mod tests {
     use super::reusable_internal_call;
-    use crate::testing::helpers::{init, seed_escrow, TEST_CHAIN_UID, TEST_ESCROW};
+    use crate::testing::helpers::{
+        assert_tx_event, init, seed_escrow, TEST_CHAIN_UID, TEST_ESCROW,
+    };
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env},
         CosmosMsg, ReplyOn, Uint128, WasmMsg,
@@ -265,6 +272,8 @@ mod tests {
             .find(|a| a.key == "tx_id")
             .expect("missing tx_id attribute");
         assert_eq!(tx_attr.value, "tx-cosmos-1");
+
+        assert_tx_event(&res, "register_factory");
 
         // Response data is an Ok acknowledgement with factory address and chain id
         let ack: AcknowledgementMsg<euclid::msgs::factory::RegisterFactoryResponse> =
@@ -457,6 +466,8 @@ mod tests {
             .find(|a| a.key == "to_address")
             .expect("missing to_address attribute");
         assert_eq!(to_attr.value, recipient.as_str());
+
+        assert_tx_event(&res, "escrow_release");
     }
 
     // -----------------------------------------------------------------------

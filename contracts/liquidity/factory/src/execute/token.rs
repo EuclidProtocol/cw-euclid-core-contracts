@@ -100,7 +100,7 @@ pub fn execute_request_register_denom(
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            euclid::events::TxType::PoolCreation,
+            euclid::events::TxType::RegisterDenom,
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_register_denom")
@@ -182,7 +182,7 @@ pub fn execute_request_deregister_denom(
         .add_event(tx_event(
             &tx_id,
             info.sender.as_str(),
-            euclid::events::TxType::PoolCreation,
+            euclid::events::TxType::DeregisterDenom,
         ))
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_deregister_denom")
@@ -378,8 +378,8 @@ mod tests {
     use crate::{
         contract::execute,
         testing::helpers::{
-            default_cross_chain_config, init, native_token, seed_escrow, set_escrow_token_allowed,
-            voucher_token, TEST_CHAIN_UID,
+            assert_tx_event, default_cross_chain_config, init, native_token, seed_escrow,
+            set_escrow_token_allowed, voucher_token, TEST_CHAIN_UID,
         },
     };
 
@@ -457,6 +457,8 @@ mod tests {
             .unwrap();
         assert_eq!(pending.tx_id, tx_id);
         assert_eq!(pending.sender, admin);
+
+        assert_tx_event(&res, "register_denom");
     }
 
     // -----------------------------------------------------------------------
@@ -521,6 +523,8 @@ mod tests {
             .attributes
             .iter()
             .any(|a| a.key == "method" && a.value == "transfer_voucher"));
+
+        assert_tx_event(&res, "transfer_voucher");
     }
 
     // -----------------------------------------------------------------------
@@ -604,5 +608,32 @@ mod tests {
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg);
         assert_eq!(res.unwrap_err(), ContractError::EscrowAlreadyExists {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: DeregisterDenom – correct TxType in tx_event
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_deregister_denom_happy_path_emits_correct_tx_type() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        set_escrow_token_allowed(&mut deps, true);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000, "uusdc")]);
+
+        let admin = deps.api.addr_make("sender");
+        let info = message_info(&admin, &[]);
+        let msg = ExecuteMsg::DeregisterDenom {
+            token_with_denom: native_token("usdc", "uusdc"),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        assert_tx_event(&res, "deregister_denom");
     }
 }
