@@ -146,6 +146,9 @@ pub fn execute_swap_request(
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
 
+    let asset_in_id = asset_in.token.to_string();
+    let asset_out_id = asset_out.to_string();
+
     let swap_msg = RouterCrossChainExecuteMsg::Swap(RouterCrossChainSwapExecuteMsg {
         sender,
         asset_in,
@@ -183,8 +186,12 @@ pub fn execute_swap_request(
             "meta",
             cross_chain_config.meta.unwrap_or("no_meta".to_string()),
         ))
+        .add_attribute("action", "swap")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
+        .add_attribute("asset_in", asset_in_id)
+        .add_attribute("asset_out", asset_out_id)
+        .add_attribute("amount_in", amount_in)
         .add_submessage(swap_msg))
 }
 
@@ -204,8 +211,8 @@ mod tests {
     use crate::{
         contract::execute,
         testing::helpers::{
-            assert_euclid_action, assert_tx_event, default_cross_chain_config, init, seed_escrow,
-            set_escrow_token_allowed,
+            assert_attribute, assert_euclid_action, assert_tx_event, default_cross_chain_config,
+            init, seed_escrow, set_escrow_token_allowed,
         },
     };
 
@@ -367,6 +374,10 @@ mod tests {
         assert_eq!(pending.tx_id, tx_id);
         assert_eq!(pending.amount_in, Uint128::new(100));
 
+        assert_attribute(&res, "action", "swap");
+        assert_attribute(&res, "asset_in", "usdc");
+        assert_attribute(&res, "asset_out", "eth");
+        assert_attribute(&res, "amount_in", "100");
         assert_tx_event(&res, "swap");
         assert_euclid_action(&res, "swap");
     }

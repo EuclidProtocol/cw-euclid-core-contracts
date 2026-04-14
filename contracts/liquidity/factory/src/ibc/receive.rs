@@ -104,6 +104,7 @@ fn execute_register_router(
             &state.router_contract,
             TxType::RegisterFactory,
         ))
+        .add_attribute("action", "register_factory")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "register_router")
         .add_attribute("router", state.router_contract)
@@ -152,6 +153,7 @@ fn execute_release_escrow(
             TxType::EscrowRelease,
         ))
         .add_submessage(user_withdraw_msg)
+        .add_attribute("action", "escrow_release")
         .add_attribute("method", "release escrow_execute")
         .add_attribute("sender", sender.to_sender_string())
         .add_attribute("token", token.to_string())
@@ -165,7 +167,7 @@ fn execute_release_escrow(
 mod tests {
     use super::reusable_internal_call;
     use crate::testing::helpers::{
-        assert_tx_event, init, seed_escrow, TEST_CHAIN_UID, TEST_ESCROW,
+        assert_attribute, assert_tx_event, init, seed_escrow, TEST_CHAIN_UID, TEST_ESCROW,
     };
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env},
@@ -273,6 +275,7 @@ mod tests {
             .expect("missing tx_id attribute");
         assert_eq!(tx_attr.value, "tx-cosmos-1");
 
+        assert_attribute(&res, "action", "register_factory");
         assert_tx_event(&res, "register_factory");
 
         // Response data is an Ok acknowledgement with factory address and chain id
@@ -467,6 +470,7 @@ mod tests {
             .expect("missing to_address attribute");
         assert_eq!(to_attr.value, recipient.as_str());
 
+        assert_attribute(&res, "action", "escrow_release");
         assert_tx_event(&res, "escrow_release");
     }
 

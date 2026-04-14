@@ -102,6 +102,7 @@ pub fn execute_request_register_denom(
             info.sender.as_str(),
             euclid::events::TxType::RegisterDenom,
         ))
+        .add_attribute("action", "register_denom")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_register_denom")
         .add_attribute("token", token.token.to_string())
@@ -184,6 +185,7 @@ pub fn execute_request_deregister_denom(
             info.sender.as_str(),
             euclid::events::TxType::DeregisterDenom,
         ))
+        .add_attribute("action", "deregister_denom")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_deregister_denom")
         .add_attribute("token", token.token.to_string())
@@ -273,6 +275,8 @@ pub fn execute_deposit_token(
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
 
+    let asset_in_id = asset_in.token.to_string();
+
     let deposit_token_msg =
         RouterCrossChainExecuteMsg::DepositToken(RouterCrossChainDepositTokenExecuteMsg {
             sender,
@@ -300,8 +304,11 @@ pub fn execute_deposit_token(
             euclid::events::TxType::DepositToken,
         ))
         .add_event(deposit_token_event(&tx_id, &deposit_token_info))
+        .add_attribute("action", "deposit_token")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_deposit_token")
+        .add_attribute("asset_in", asset_in_id)
+        .add_attribute("amount_in", amount_in)
         .add_submessages(msgs))
 }
 
@@ -357,6 +364,7 @@ pub fn execute_transfer_voucher(
             info.sender.as_str(),
             TxType::TransferVoucher,
         ))
+        .add_attribute("action", "transfer_voucher")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "transfer_voucher")
         .add_submessage(withdraw_msg))
@@ -378,8 +386,8 @@ mod tests {
     use crate::{
         contract::execute,
         testing::helpers::{
-            assert_tx_event, default_cross_chain_config, init, native_token, seed_escrow,
-            set_escrow_token_allowed, voucher_token, TEST_CHAIN_UID,
+            assert_attribute, assert_tx_event, default_cross_chain_config, init, native_token,
+            seed_escrow, set_escrow_token_allowed, voucher_token, TEST_CHAIN_UID,
         },
     };
 
@@ -458,6 +466,7 @@ mod tests {
         assert_eq!(pending.tx_id, tx_id);
         assert_eq!(pending.sender, admin);
 
+        assert_attribute(&res, "action", "register_denom");
         assert_tx_event(&res, "register_denom");
     }
 
@@ -524,6 +533,7 @@ mod tests {
             .iter()
             .any(|a| a.key == "method" && a.value == "transfer_voucher"));
 
+        assert_attribute(&res, "action", "transfer_voucher");
         assert_tx_event(&res, "transfer_voucher");
     }
 
@@ -634,6 +644,7 @@ mod tests {
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
+        assert_attribute(&res, "action", "deregister_denom");
         assert_tx_event(&res, "deregister_denom");
     }
 }

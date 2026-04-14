@@ -157,6 +157,16 @@ pub fn voucher_token(token_id: &str) -> euclid::token::TokenWithDenom {
 // Event assertion helpers
 // -----------------------------------------------------------------------
 
+/// Assert that `res.attributes` contains an attribute with the given key and value.
+pub fn assert_attribute(res: &Response, key: &str, value: &str) {
+    assert!(
+        res.attributes
+            .iter()
+            .any(|a| a.key == key && a.value == value),
+        "expected attribute {key}={value}"
+    );
+}
+
 /// Assert that `res.events` contains a `tx_event` — a euclid event with
 /// `action = "transaction"` and `type = tx_type`.
 pub fn assert_tx_event(res: &Response, tx_type: &str) {
