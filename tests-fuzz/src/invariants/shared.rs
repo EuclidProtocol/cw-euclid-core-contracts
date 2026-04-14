@@ -209,4 +209,3 @@ pub fn check_shared_transition(before: &PoolSnapshot, after: &PoolSnapshot) -> I
     result.merge(check_protocol_fees_monotonic(before, after));
     result
 }
-

@@ -41,7 +41,6 @@ pub fn fuzz_seed() -> u64 {
     }
 }
 
-
 impl<P: FuzzPool> FuzzRunner<P> {
     /// Create a runner with a fresh pool from config and a deterministic RNG.
     pub fn new(config: &P::Config, seed: u64) -> Self {
@@ -58,7 +57,6 @@ impl<P: FuzzPool> FuzzRunner<P> {
     pub fn new_random(config: &P::Config) -> Self {
         Self::new(config, fuzz_seed())
     }
-
 
     /// Seed initial liquidity positions.
     pub fn seed(&mut self, num_positions: usize) {

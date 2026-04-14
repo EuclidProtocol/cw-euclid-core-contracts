@@ -370,11 +370,13 @@ fn assert_unused_within_slippage(
         return Ok(());
     }
 
-    let unused = provided.checked_sub(used).map_err(|_| {
-        ContractError::Generic { err: format!(
-            "slippage check: used ({used}) > provided ({provided}), rounding overflow"
-        )}
-    })?;
+    let unused = provided
+        .checked_sub(used)
+        .map_err(|_| ContractError::Generic {
+            err: format!(
+                "slippage check: used ({used}) > provided ({provided}), rounding overflow"
+            ),
+        })?;
     let lhs = Uint256::from(unused.u128()).checked_mul(Uint256::from(10_000u128))?;
     let rhs = Uint256::from(provided.u128())
         .checked_mul(Uint256::from(u128::from(slippage_tolerance_bps)))?;
@@ -546,16 +548,16 @@ fn execute_add_concentrated_liquidity(
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
-    let refund_0 = provided_0.checked_sub(amount_0_used).map_err(|_| {
-        ContractError::Generic { err: format!(
-            "refund: amount_0_used ({amount_0_used}) > provided_0 ({provided_0})"
-        )}
-    })?;
-    let refund_1 = provided_1.checked_sub(amount_1_used).map_err(|_| {
-        ContractError::Generic { err: format!(
-            "refund: amount_1_used ({amount_1_used}) > provided_1 ({provided_1})"
-        )}
-    })?;
+    let refund_0 = provided_0
+        .checked_sub(amount_0_used)
+        .map_err(|_| ContractError::Generic {
+            err: format!("refund: amount_0_used ({amount_0_used}) > provided_0 ({provided_0})"),
+        })?;
+    let refund_1 = provided_1
+        .checked_sub(amount_1_used)
+        .map_err(|_| ContractError::Generic {
+            err: format!("refund: amount_1_used ({amount_1_used}) > provided_1 ({provided_1})"),
+        })?;
     if !refund_0.is_zero() {
         response = response.add_message(state.pair.token_1.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),

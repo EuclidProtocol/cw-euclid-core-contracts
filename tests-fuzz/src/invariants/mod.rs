@@ -17,7 +17,6 @@ pub struct PoolSnapshot {
     pub reserve_1: Uint128,
 }
 
-
 /// Result of a single invariant check
 #[derive(Debug, Clone)]
 pub struct InvariantCheck {
