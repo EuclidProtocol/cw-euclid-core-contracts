@@ -167,6 +167,17 @@ pub fn assert_attribute(res: &Response, key: &str, value: &str) {
     );
 }
 
+/// Parse a named attribute from `res.attributes` and return its value as `&str`.
+/// Panics with a descriptive message if the attribute is absent.
+pub fn get_attribute<'a>(res: &'a Response, key: &str) -> &'a str {
+    res.attributes
+        .iter()
+        .find(|a| a.key == key)
+        .unwrap_or_else(|| panic!("attribute '{key}' not found in response"))
+        .value
+        .as_str()
+}
+
 /// Assert that `res.events` contains a `tx_event` — a euclid event with
 /// `action = "transaction"` and `type = tx_type`.
 pub fn assert_tx_event(res: &Response, tx_type: &str) {
@@ -181,6 +192,28 @@ pub fn assert_tx_event(res: &Response, tx_type: &str) {
                     .any(|a| a.key == "type" && a.value == tx_type)
         }),
         "expected tx_event with type={tx_type}"
+    );
+}
+
+/// Assert that `res.events` contains a `tx_event` with the exact type, tx_id, and sender.
+pub fn assert_tx_event_full(res: &Response, tx_type: &str, tx_id: &str, sender: &str) {
+    assert!(
+        res.events.iter().any(|e| {
+            e.ty == "euclid"
+                && e.attributes
+                    .iter()
+                    .any(|a| a.key == "action" && a.value == "transaction")
+                && e.attributes
+                    .iter()
+                    .any(|a| a.key == "type" && a.value == tx_type)
+                && e.attributes
+                    .iter()
+                    .any(|a| a.key == "tx_id" && a.value == tx_id)
+                && e.attributes
+                    .iter()
+                    .any(|a| a.key == "sender" && a.value == sender)
+        }),
+        "expected tx_event with type={tx_type}, tx_id={tx_id}, sender={sender}"
     );
 }
 

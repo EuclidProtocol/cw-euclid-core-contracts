@@ -386,8 +386,9 @@ mod tests {
     use crate::{
         contract::execute,
         testing::helpers::{
-            assert_attribute, assert_tx_event, default_cross_chain_config, init, native_token,
-            seed_escrow, set_escrow_token_allowed, voucher_token, TEST_CHAIN_UID,
+            assert_attribute, assert_tx_event_full, default_cross_chain_config, get_attribute,
+            init, native_token, seed_escrow, set_escrow_token_allowed, voucher_token,
+            TEST_CHAIN_UID,
         },
     };
 
@@ -439,10 +440,11 @@ mod tests {
 
         set_escrow_token_allowed(&mut deps, false);
 
+        let token_with_denom = native_token("usdc", "uusdc");
         let admin = deps.api.addr_make("sender");
         let info = message_info(&admin, &[]);
         let msg = ExecuteMsg::RegisterDenom {
-            token_with_denom: native_token("usdc", "uusdc"),
+            token_with_denom: token_with_denom.clone(),
             cross_chain_config: default_cross_chain_config(),
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -452,12 +454,7 @@ mod tests {
             .iter()
             .any(|a| a.key == "method" && a.value == "request_register_denom"));
 
-        let tx_id = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "tx_id")
-            .map(|a| a.value.clone())
-            .unwrap();
+        let tx_id = get_attribute(&res, "tx_id").to_owned();
         assert!(!tx_id.is_empty());
 
         let pending = crate::state::PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
@@ -467,7 +464,16 @@ mod tests {
         assert_eq!(pending.sender, admin);
 
         assert_attribute(&res, "action", "register_denom");
-        assert_tx_event(&res, "register_denom");
+        assert_eq!(get_attribute(&res, "tx_id"), tx_id);
+        assert_eq!(
+            get_attribute(&res, "token"),
+            token_with_denom.token.to_string()
+        );
+        assert_eq!(
+            get_attribute(&res, "token_type"),
+            token_with_denom.token_type.get_key()
+        );
+        assert_tx_event_full(&res, "register_denom", &tx_id, admin.as_str());
     }
 
     // -----------------------------------------------------------------------
@@ -507,6 +513,9 @@ mod tests {
         let mut deps = mock_dependencies();
         init(&mut deps);
 
+        let token_id = Token::create("usdc".to_string()).unwrap();
+        let amount = Uint128::new(500);
+
         let sender = deps.api.addr_make("sender");
         let recipient_user = euclid::cross_chain_user::CrossChainUser::new(
             ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap(),
@@ -514,12 +523,12 @@ mod tests {
         );
         let info = message_info(&sender, &[]);
         let msg = ExecuteMsg::TransferVoucher {
-            token_id: Token::create("usdc".to_string()).unwrap(),
-            amount: Uint128::new(500),
+            token_id: token_id.clone(),
+            amount,
             from: None,
             recipients: vec![euclid::recipient::Recipient {
                 recipient: recipient_user,
-                amount: euclid::limit::Limit::LessThanOrEqual(Uint128::new(500)),
+                amount: euclid::limit::Limit::LessThanOrEqual(amount),
                 denom: TokenType::Voucher {},
                 forwarding_message: None,
                 unsafe_refund_as_voucher: None,
@@ -528,13 +537,16 @@ mod tests {
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
+        let tx_id = get_attribute(&res, "tx_id").to_owned();
+
         assert!(res
             .attributes
             .iter()
             .any(|a| a.key == "method" && a.value == "transfer_voucher"));
 
         assert_attribute(&res, "action", "transfer_voucher");
-        assert_tx_event(&res, "transfer_voucher");
+        assert_eq!(get_attribute(&res, "tx_id"), tx_id);
+        assert_tx_event_full(&res, "transfer_voucher", &tx_id, sender.as_str());
     }
 
     // -----------------------------------------------------------------------
@@ -636,15 +648,26 @@ mod tests {
             .bank
             .update_balance("any", vec![cosmwasm_std::coin(1_000, "uusdc")]);
 
+        let token_with_denom = native_token("usdc", "uusdc");
         let admin = deps.api.addr_make("sender");
         let info = message_info(&admin, &[]);
         let msg = ExecuteMsg::DeregisterDenom {
-            token_with_denom: native_token("usdc", "uusdc"),
+            token_with_denom: token_with_denom.clone(),
             cross_chain_config: default_cross_chain_config(),
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
+        let tx_id = get_attribute(&res, "tx_id").to_owned();
+
         assert_attribute(&res, "action", "deregister_denom");
-        assert_tx_event(&res, "deregister_denom");
+        assert_eq!(
+            get_attribute(&res, "token"),
+            token_with_denom.token.to_string()
+        );
+        assert_eq!(
+            get_attribute(&res, "token_type"),
+            token_with_denom.token_type.get_key()
+        );
+        assert_tx_event_full(&res, "deregister_denom", &tx_id, admin.as_str());
     }
 }

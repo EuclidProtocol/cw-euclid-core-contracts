@@ -211,8 +211,8 @@ mod tests {
     use crate::{
         contract::execute,
         testing::helpers::{
-            assert_attribute, assert_euclid_action, assert_tx_event, default_cross_chain_config,
-            init, seed_escrow, set_escrow_token_allowed,
+            assert_attribute, assert_euclid_action, assert_tx_event_full,
+            default_cross_chain_config, get_attribute, init, seed_escrow, set_escrow_token_allowed,
         },
     };
 
@@ -350,9 +350,13 @@ mod tests {
         let mut deps = mock_dependencies();
         init(&mut deps);
 
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+        let amount_in = Uint128::new(100);
+
         let sender = deps.api.addr_make("sender");
         let info = message_info(&sender, &[]);
-        let msg = make_voucher_swap_msg(Uint128::new(100), Uint128::new(1));
+        let msg = make_voucher_swap_msg(amount_in, Uint128::new(1));
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         assert!(res
@@ -360,25 +364,20 @@ mod tests {
             .iter()
             .any(|a| a.key == "method" && a.value == "execute_request_swap"));
 
-        let tx_id = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "tx_id")
-            .unwrap()
-            .value
-            .clone();
+        let tx_id = get_attribute(&res, "tx_id").to_owned();
 
         let pending = crate::state::PENDING_SWAPS
-            .load(&deps.storage, (sender, tx_id.clone()))
+            .load(&deps.storage, (sender.clone(), tx_id.clone()))
             .unwrap();
         assert_eq!(pending.tx_id, tx_id);
-        assert_eq!(pending.amount_in, Uint128::new(100));
+        assert_eq!(pending.amount_in, amount_in);
 
         assert_attribute(&res, "action", "swap");
-        assert_attribute(&res, "asset_in", "usdc");
-        assert_attribute(&res, "asset_out", "eth");
-        assert_attribute(&res, "amount_in", "100");
-        assert_tx_event(&res, "swap");
+        assert_eq!(get_attribute(&res, "asset_in"), token_in.to_string());
+        assert_eq!(get_attribute(&res, "asset_out"), token_out.to_string());
+        assert_eq!(get_attribute(&res, "amount_in"), amount_in.to_string());
+        assert_eq!(get_attribute(&res, "tx_id"), tx_id);
+        assert_tx_event_full(&res, "swap", &tx_id, sender.as_str());
         assert_euclid_action(&res, "swap");
     }
 

@@ -167,7 +167,8 @@ fn execute_release_escrow(
 mod tests {
     use super::reusable_internal_call;
     use crate::testing::helpers::{
-        assert_attribute, assert_tx_event, init, seed_escrow, TEST_CHAIN_UID, TEST_ESCROW,
+        assert_attribute, assert_tx_event_full, get_attribute, init, seed_escrow, TEST_CHAIN_UID,
+        TEST_ESCROW, TEST_ROUTER,
     };
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env},
@@ -261,22 +262,10 @@ mod tests {
         let res = reusable_internal_call(&mut deps.as_mut(), env.clone(), msg).unwrap();
 
         // Response has expected attributes
-        let method_attr = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "method")
-            .expect("missing method attribute");
-        assert_eq!(method_attr.value, "register_router");
-
-        let tx_attr = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "tx_id")
-            .expect("missing tx_id attribute");
-        assert_eq!(tx_attr.value, "tx-cosmos-1");
-
         assert_attribute(&res, "action", "register_factory");
-        assert_tx_event(&res, "register_factory");
+        assert_eq!(get_attribute(&res, "method"), "register_router");
+        assert_eq!(get_attribute(&res, "tx_id"), "tx-cosmos-1");
+        assert_tx_event_full(&res, "register_factory", "tx-cosmos-1", TEST_ROUTER);
 
         // Response data is an Ok acknowledgement with factory address and chain id
         let ack: AcknowledgementMsg<euclid::msgs::factory::RegisterFactoryResponse> =
@@ -441,37 +430,19 @@ mod tests {
             panic!("expected Wasm Execute message");
         }
 
-        // Attributes
-        let method_attr = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "method")
-            .expect("missing method attribute");
-        assert_eq!(method_attr.value, "release escrow_execute");
-
-        let token_attr = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "token")
-            .expect("missing token attribute");
-        assert_eq!(token_attr.value, "usdc");
-
-        let amount_attr = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "amount")
-            .expect("missing amount attribute");
-        assert_eq!(amount_attr.value, "1000");
-
-        let to_attr = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "to_address")
-            .expect("missing to_address attribute");
-        assert_eq!(to_attr.value, recipient.as_str());
-
+        // Attributes — parse each field and bind to input values
         assert_attribute(&res, "action", "escrow_release");
-        assert_tx_event(&res, "escrow_release");
+        assert_eq!(get_attribute(&res, "method"), "release escrow_execute");
+        assert_eq!(get_attribute(&res, "tx_id"), "tx-release-1");
+        assert_eq!(get_attribute(&res, "token"), "usdc");
+        assert_eq!(get_attribute(&res, "amount"), "1000");
+        assert_eq!(get_attribute(&res, "to_address"), recipient.as_str());
+        assert_tx_event_full(
+            &res,
+            "escrow_release",
+            "tx-release-1",
+            &format!("{}:{}", TEST_CHAIN_UID, "senderaddr"),
+        );
     }
 
     // -----------------------------------------------------------------------
