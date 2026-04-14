@@ -302,12 +302,12 @@ pub enum PoolConfig {
     },
 }
 
-impl PoolConfig {
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for PoolConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PoolConfig::Stable { .. } => "stable".to_string(),
-            PoolConfig::ConstantProduct {} => "constant_product".to_string(),
-            PoolConfig::Concentrated { .. } => "concentrated".to_string(),
+            PoolConfig::Stable { .. } => write!(f, "stable"),
+            PoolConfig::ConstantProduct {} => write!(f, "constant_product"),
+            PoolConfig::Concentrated { .. } => write!(f, "concentrated"),
         }
     }
 }

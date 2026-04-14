@@ -23,6 +23,24 @@ pub struct FuzzRunner<P: FuzzPool> {
     pub coverage: InvariantCoverage,
 }
 
+/// Get a seed from `FUZZ_SEED` env var (for reproducibility) or generate
+/// a random one from system entropy. Always prints the seed so failures
+/// can be reproduced with `FUZZ_SEED=<value>`.
+pub fn fuzz_seed() -> u64 {
+    match std::env::var("FUZZ_SEED") {
+        Ok(val) => {
+            let seed = val.parse::<u64>().expect("FUZZ_SEED must be a u64");
+            println!("Using FUZZ_SEED={}", seed);
+            seed
+        }
+        Err(_) => {
+            let seed = rand::random::<u64>();
+            println!("Random seed={} (reproduce with FUZZ_SEED={})", seed, seed);
+            seed
+        }
+    }
+}
+
 impl<P: FuzzPool> FuzzRunner<P> {
     /// Create a runner with a fresh pool from config and a deterministic RNG.
     pub fn new(config: &P::Config, seed: u64) -> Self {
@@ -33,6 +51,11 @@ impl<P: FuzzPool> FuzzRunner<P> {
             stats: RunStats::new(),
             coverage: InvariantCoverage::new(),
         }
+    }
+
+    /// Create a runner with a random seed (or from FUZZ_SEED env var).
+    pub fn new_random(config: &P::Config) -> Self {
+        Self::new(config, fuzz_seed())
     }
 
     /// Seed initial liquidity positions.
@@ -46,7 +69,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
         let result = self.pool.execute_op(op);
         let elapsed = start.elapsed();
         let op_name = P::op_name(op);
-        self.stats.record(op_name, result.is_ok(), elapsed);
+        self.stats.record(op_name, &result, elapsed);
         (result, elapsed)
     }
 
@@ -238,8 +261,14 @@ impl<P: FuzzPool> FuzzRunner<P> {
             if SystemTime::now() >= next_report {
                 let elapsed = SystemTime::now().duration_since(start).unwrap_or_default();
                 let remaining = duration.saturating_sub(elapsed);
+                let err_info = self.stats.error_breakdown();
+                let err_line = if err_info.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n    {}", err_info)
+                };
                 println!(
-                    "  [{}] {} ops ({} ok, {} err), ~{:.0} ops/sec, {} remaining\n    {}",
+                    "  [{}] {} ops ({} ok, {} err), ~{:.0} ops/sec, {} remaining\n    {}{}",
                     humanize_duration(elapsed),
                     self.stats.total_ops,
                     self.stats.success_count,
@@ -247,6 +276,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
                     self.stats.total_ops as f64 / elapsed.as_secs_f64(),
                     humanize_duration(remaining),
                     self.stats.op_breakdown(),
+                    err_line,
                 );
                 next_report = SystemTime::now() + report_interval;
             }

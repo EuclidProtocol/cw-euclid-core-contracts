@@ -403,17 +403,33 @@ pub fn execute_concentrated_swap(
     Ok(after_out - before_out)
 }
 
-/// List all position token IDs owned by the factory's position token contract.
+/// List all position token IDs by paginating until exhausted.
 pub fn list_position_ids(factory: &FactoryContract<MockBase>) -> Result<Vec<String>, CwOrchError> {
     let contract = get_position_token_for_factory(factory)?;
     if contract.address().is_err() {
         return Ok(vec![]);
     }
-    let tokens: euclid::msgs::position_token::TokensResponse =
-        contract.query(&euclid::msgs::position_token::QueryMsg::AllTokens {
-            pagination: euclid::utils::pagination::Pagination::default(),
-        })?;
-    Ok(tokens.tokens)
+    let mut all_tokens = Vec::new();
+    let mut skip = 0u64;
+    let page_size = 100u64;
+    loop {
+        let page: euclid::msgs::position_token::TokensResponse =
+            contract.query(&euclid::msgs::position_token::QueryMsg::AllTokens {
+                pagination: euclid::utils::pagination::Pagination::new(
+                    None,
+                    None,
+                    Some(skip),
+                    Some(page_size),
+                ),
+            })?;
+        let count = page.tokens.len() as u64;
+        all_tokens.extend(page.tokens);
+        if count < page_size {
+            break;
+        }
+        skip += count;
+    }
+    Ok(all_tokens)
 }
 
 /// Get the position token contract wrapper for a factory.
