@@ -1,11 +1,11 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, DepsMut, Uint128};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     admin::EuclidAdmin,
     chain::{Chain, ChainUid},
-    msgs::router::TokenDenom,
-    msgs::vlp::base::{PoolKey, PoolType},
+    error::ContractError,
+    msgs::{router::TokenDenom, vlp::base::PoolKey},
     token::{PairWithDenomAndAmount, Token},
 };
 use euclid_ibc::router_ibc::{
@@ -83,6 +83,8 @@ pub struct ConcentratedFundsInfo {
     pub lower_tick_index: i64,
     pub upper_tick_index: i64,
     pub position_id: Option<Uint128>,
+    /// Initial tick for pool price. `None` means tick 0 (1:1).
+    pub initial_tick: Option<i64>,
 }
 /// Singleton holding funds info for the current concentrated pool creation.
 /// Safe as a singleton because CosmWasm SubMsg replies are synchronous — the
@@ -109,31 +111,31 @@ pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_inf
 pub const RELEASE_FEES: Map<(Token, ChainUid), Uint128> = Map::new("release_fees");
 pub const DEFAULT_RELEASE_FEE: Item<Uint128> = Item::new("default_release_fee");
 
-pub fn pool_key_to_map_key(pool_key: &PoolKey) -> String {
-    let (fee_tier_bps, tick_spacing) = match pool_key.pool_type {
-        PoolType::Concentrated {
-            fee_tier_bps,
-            tick_spacing,
-        } => (fee_tier_bps, tick_spacing),
-        _ => (0, 0),
-    };
-    format!(
-        "{}\0{}\0{}\0{}",
-        pool_key.pair.token_1, pool_key.pair.token_2, fee_tier_bps, tick_spacing
-    )
-}
-
-pub fn map_key_to_pool_parts(key: &str) -> Option<(String, String, u64, u64)> {
-    let mut parts = key.split('\0');
-    let token_1 = parts.next()?.to_string();
-    let token_2 = parts.next()?.to_string();
-    let fee_tier_bps = parts.next()?.parse::<u64>().ok()?;
-    let tick_spacing = parts.next()?.parse::<u64>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((token_1, token_2, fee_tier_bps, tick_spacing))
-}
-
 // The key is ChainUid and the value is the timeout in seconds for chain send packets
 pub const CHAIN_TIMEOUT_SECONDS: Map<ChainUid, u64> = Map::new("chains_timeout_seconds");
+
+// Router acts as centralized entity for CLP position id handling
+pub const CLP_POSITION_ID_NONCE: Item<u128> = Item::new("clp_position_id_nonce");
+
+// The key is Position ID and the value is the VLP address
+pub const CLP_POSITION_ID_VLP_MAP: Map<u128, Addr> = Map::new("clp_position_id_vlp_map");
+
+/// Get a new CLP position id which is not already used (avoiding collisions)
+/// Mutates the CLP_POSITION_ID_NONCE storage item to the last checked position id so next time we start from the next position id
+/// Returns the position id if found, otherwise returns an error
+pub fn get_clp_position_id(deps: &mut DepsMut) -> Result<u128, ContractError> {
+    let iters = 1000;
+    let mut position_id = CLP_POSITION_ID_NONCE.load(deps.storage).unwrap_or(0);
+    for _ in 0..iters {
+        position_id = position_id.wrapping_add(1);
+        if !CLP_POSITION_ID_VLP_MAP.has(deps.storage, position_id) {
+            CLP_POSITION_ID_NONCE.save(deps.storage, &position_id)?;
+            return Ok(position_id);
+        }
+    }
+    // Update the nonce to the last checked position id so next time we start from the next position id (we only restrict 1000 iterations to avoid infinite loop)
+    CLP_POSITION_ID_NONCE.save(deps.storage, &position_id)?;
+    Err(ContractError::Generic {
+        err: format!("No position id available after {} attempts", iters),
+    })
+}

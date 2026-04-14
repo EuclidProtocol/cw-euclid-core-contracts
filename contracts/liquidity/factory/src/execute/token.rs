@@ -201,6 +201,8 @@ pub fn execute_deposit_token(
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    // Reject mixed-case or empty addresses before mutating state
+    sender.validate()?;
     let sender_addr = deps.api.addr_validate(&sender.address)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
@@ -318,6 +320,11 @@ pub fn execute_transfer_voucher(
     let state = STATE.load(deps.storage)?;
     for recipient in recipients.iter() {
         recipient.validate()?;
+    }
+
+    // Validate optional from address before sending cross-chain
+    if let Some(ref from) = from {
+        from.validate()?;
     }
 
     let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());

@@ -92,6 +92,25 @@ impl RouterCrossChainExecuteMsg {
         }
     }
 
+    /// Returns a reference to the sender CrossChainUser from any variant.
+    pub fn get_sender(&self) -> &CrossChainUser {
+        match self {
+            Self::RegisterDenom { sender, .. } => sender,
+            Self::DeregisterDenom { sender, .. } => sender,
+            Self::DepositToken(msg) => &msg.sender,
+            Self::TransferVoucher(msg) => &msg.sender,
+            Self::RequestPoolCreation { sender, .. } => sender,
+            Self::AddLiquidity { sender, .. } => sender,
+            Self::RemoveLiquidity(msg) => &msg.sender,
+            Self::Swap(msg) => &msg.sender,
+            Self::RequestConcentratedPoolCreation(msg) => &msg.sender,
+            Self::AddConcentratedLiquidity(msg) => &msg.sender,
+            Self::RemoveConcentratedLiquidity(msg) => &msg.sender,
+            Self::CollectConcentratedFees(msg) => &msg.sender,
+            Self::CollectConcentratedProtocolFees(msg) => &msg.sender,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn to_msg(
         &self,
@@ -185,6 +204,8 @@ pub struct RouterCrossChainConcentratedRequestPoolCreationExecuteMsg {
     pub pair: PairWithDenomAndAmount,
     pub pool_key: PoolKey,
     pub slippage_tolerance_bps: u64,
+    /// Initial tick for the pool price. `None` means tick 0 (1:1 price).
+    pub initial_tick: Option<i64>,
 }
 
 #[cw_serde]
@@ -204,7 +225,7 @@ pub struct RouterCrossChainConcentratedRemoveLiquidityExecuteMsg {
     pub sender: CrossChainUser,
     pub pool_key: PoolKey,
     pub position_id: Uint128,
-    pub lp_allocation: Uint128,
+    pub liquidity_delta: Uint128,
     pub recipient: CrossChainUser,
     pub tx_id: String,
 }

@@ -148,9 +148,11 @@ impl ConcentratedPool {
 
     /// Sync tracked positions with on-chain state by querying the position
     /// token contract and adding any positions not yet in self.positions.
+    /// New positions are attributed to the current factory sender.
     pub(crate) fn sync_positions(&mut self) {
         let position_ids = list_position_ids(&self.factory).unwrap_or_default();
         let vlp = self.vlp();
+        let current_sender = self.factory.environment().sender.to_string();
 
         for id_str in &position_ids {
             if let Ok(id) = id_str.parse::<u128>() {
@@ -162,7 +164,7 @@ impl ConcentratedPool {
                 }) {
                     self.positions.push(TrackedPosition {
                         position_id: pos.position_id,
-                        owner: pos.owner.address,
+                        owner: current_sender.clone(),
                         lower_tick: pos.lower_tick_index,
                         upper_tick: pos.upper_tick_index,
                     });

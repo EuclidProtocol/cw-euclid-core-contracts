@@ -53,6 +53,8 @@ fn test_add_liquidity_mints_position_nft(
     #[case] mode: FactorySetupMode,
     #[case] factory_chain_id: &str,
 ) {
+    use euclid::utils::pagination::Pagination;
+
     let (_interchain, factory, router, token_a, token_b) =
         setup_concentrated_env(mode, factory_chain_id);
     let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
@@ -61,7 +63,9 @@ fn test_add_liquidity_mints_position_nft(
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
         .query::<euclid::msgs::position_token::TokensResponse>(
-            &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
+            &euclid::msgs::position_token::QueryMsg::AllTokens {
+                pagination: Pagination::default(),
+            },
         )
         .unwrap()
         .tokens;

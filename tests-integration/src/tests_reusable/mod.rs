@@ -9,6 +9,7 @@ pub mod factory_swap;
 pub mod pending_packets;
 pub mod state_sync;
 
+pub mod clp;
 pub mod concentrated_collect;
 pub mod concentrated_create_pool;
 pub mod concentrated_failures;
@@ -16,7 +17,6 @@ pub mod concentrated_fees;
 pub mod concentrated_positions;
 pub mod concentrated_swap;
 pub mod concentrated_v3_fees;
-pub mod concentrated_v3_migration;
 pub mod concentrated_v3_oracle;
 pub mod concentrated_v3_positions;
 pub mod concentrated_v3_swap;

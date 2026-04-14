@@ -116,10 +116,9 @@ pub fn setup_concentrated_env() -> (
     let router_chain = interchain
         .get_chain(ROUTER_CHAIN_ID)
         .expect("router chain should exist");
-    let router = setup_router(&router_chain, vec![ROUTER_CHAIN_ID])
-        .expect("router setup should succeed");
-    let factory = setup_factory_native(&interchain, &router)
-        .expect("factory setup should succeed");
+    let router =
+        setup_router(&router_chain, vec![ROUTER_CHAIN_ID]).expect("router setup should succeed");
+    let factory = setup_factory_native(&interchain, &router).expect("factory setup should succeed");
 
     let token_a = TokenWithDenom {
         token: euclid::token::Token::create("conc.token.a".to_string())
@@ -135,8 +134,10 @@ pub fn setup_concentrated_env() -> (
             denom: "conc.token.b".to_string(),
         },
     };
-    register_denom(&factory, &router, token_a.clone()).expect("token_a registration should succeed");
-    register_denom(&factory, &router, token_b.clone()).expect("token_b registration should succeed");
+    register_denom(&factory, &router, token_a.clone())
+        .expect("token_a registration should succeed");
+    register_denom(&factory, &router, token_b.clone())
+        .expect("token_b registration should succeed");
 
     (interchain, factory, router, token_a, token_b)
 }
@@ -167,11 +168,33 @@ pub fn create_concentrated_pool(
     tick_spacing: u64,
     slippage_tolerance_bps: u64,
 ) -> Result<PoolKey, CwOrchError> {
+    create_concentrated_pool_with_tick(
+        factory,
+        router,
+        pair_with_denom,
+        fee_tier_bps,
+        tick_spacing,
+        slippage_tolerance_bps,
+        None,
+    )
+}
+
+/// Create a concentrated liquidity pool with an optional initial tick via factory→router relay.
+#[allow(clippy::too_many_arguments)]
+pub fn create_concentrated_pool_with_tick(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    pair_with_denom: PairWithDenomAndAmount,
+    fee_tier_bps: u64,
+    tick_spacing: u64,
+    slippage_tolerance_bps: u64,
+    initial_tick: Option<i64>,
+) -> Result<PoolKey, CwOrchError> {
     let chain = factory.environment();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
+            chain,
             chain.sender.as_str(),
             token.amount.u128(),
             token.token_type.clone(),
@@ -183,11 +206,8 @@ pub fn create_concentrated_pool(
             pair_with_denom_and_amount: pair_with_denom.clone(),
             fee_tier_bps,
             tick_spacing,
-            lp_token_name: "LPNAME".to_string(),
-            lp_token_symbol: "LPSYMBOL".to_string(),
-            lp_token_decimal: 6,
             slippage_tolerance_bps,
-            lp_token_marketing: None,
+            initial_tick,
             cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
@@ -217,7 +237,7 @@ pub fn add_concentrated_liquidity(
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
+            chain,
             chain.sender.as_str(),
             token.amount.u128(),
             token.token_type.clone(),
@@ -239,8 +259,7 @@ pub fn add_concentrated_liquidity(
     )?;
 
     let chain_uid = factory_chain_uid(factory);
-    let ack_events =
-        relay_factory_router_factory(tx_response.events, factory, router, &chain_uid)?;
+    let ack_events = relay_factory_router_factory(tx_response.events, factory, router, &chain_uid)?;
 
     // Extract position_id from the ack events
     let pos_id = ack_events
@@ -260,7 +279,7 @@ pub fn remove_concentrated_liquidity(
     router: &RouterContract<MockBase>,
     pool_key: PoolKey,
     position_id: Uint128,
-    lp_allocation: Uint128,
+    liquidity_delta: Uint128,
 ) -> Result<(), CwOrchError> {
     let state = factory.get_state()?;
     let sender = CrossChainUser::new(state.chain_uid, factory.environment().sender.to_string());
@@ -269,7 +288,7 @@ pub fn remove_concentrated_liquidity(
         &euclid::msgs::factory::ExecuteMsg::RemoveConcentratedLiquidity {
             pool_key,
             position_id,
-            lp_allocation,
+            liquidity_delta,
             recipient: sender,
             cross_chain_config: CrossChainConfig::default(),
         },
@@ -331,8 +350,7 @@ pub fn execute_concentrated_swap(
     deposit_token(factory, router, asset_in.clone(), amount_in, vec![])?;
 
     let vlp_address = router.get_vlp_by_pool_key(pool_key)?.vlp;
-    let mut vlp =
-        get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address.clone()));
+    let mut vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address.clone()));
 
     let mut virtual_balance = get_virtual_balance(
         router.environment(),
@@ -386,9 +404,7 @@ pub fn execute_concentrated_swap(
 }
 
 /// List all position token IDs by paginating until exhausted.
-pub fn list_position_ids(
-    factory: &FactoryContract<MockBase>,
-) -> Result<Vec<String>, CwOrchError> {
+pub fn list_position_ids(factory: &FactoryContract<MockBase>) -> Result<Vec<String>, CwOrchError> {
     let contract = get_position_token_for_factory(factory)?;
     if contract.address().is_err() {
         return Ok(vec![]);

@@ -1,6 +1,6 @@
 [package]
 name = "stable_vlp"
-version = "0.2.3"
+version = "0.2.4"
 authors = [
   "gachouchani1999 <georgeschouchani1@gmail.com>",
   "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
@@ -49,3 +49,6 @@ function_name = { workspace = true }
 cw-orch = { workspace = true }
 cw-multi-test = { workspace = true }
 mock = { workspace = true }
+
+[dev-dependencies]
+rstest = "0.19.0"

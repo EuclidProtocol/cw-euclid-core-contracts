@@ -11,4 +11,5 @@ pub struct State {
 
 pub const STATE: Item<State> = Item::new("state");
 pub const ALLOWED_DENOMS: Item<Vec<TokenType>> = Item::new("allowed_denoms");
+pub const DISALLOWED_DENOMS: Item<Vec<TokenType>> = Item::new("disallowed_denoms");
 pub const DENOM_TO_AMOUNT: Map<String, Uint128> = Map::new("denom_to_amount");

@@ -23,6 +23,8 @@ pub struct InstantiateMsg {
     pub admin: Addr,
     pub fee_tier_bps: u64,
     pub tick_spacing: u64,
+    /// Initial tick for pool price. `None` defaults to tick 0 (1:1 price).
+    pub initial_tick: Option<i64>,
 }
 
 #[cw_serde]
@@ -145,8 +147,7 @@ pub struct Slot0Response {
 #[cw_serde]
 pub struct PositionResponse {
     pub position_id: Uint128,
-    pub owner: CrossChainUser,
-    pub pool_key: PoolKey,
+    pub chain_uid: ChainUid,
     pub lower_tick_index: i64,
     pub upper_tick_index: i64,
     pub liquidity: Uint128,

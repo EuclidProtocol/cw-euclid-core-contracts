@@ -128,6 +128,8 @@ fn execute_deposit(
     sender: CrossChainUser,
 ) -> Result<Response, ContractError> {
     ensure!(!amount.is_zero(), ContractError::InvalidAmount {});
+    // Reject mixed-case or empty addresses before mutating state
+    sender.validate()?;
 
     let is_whitelisted = WHITELISTED_ASSETS
         .may_load(deps.storage, token_id.clone())?
@@ -445,6 +447,8 @@ fn execute_withdraw(
 
     let destination_chain_uid = ChainUid::create(destination_chain_uid)?;
     let destination_user = CrossChainUser::new(destination_chain_uid, destination.clone());
+    // Reject mixed-case or empty addresses before sending to virtual_balance
+    destination_user.validate()?;
     let transfer_msg = VirtualBalanceExecuteMsg::Transfer(ExecuteTransfer {
         amount,
         token_id: permit_data.token_id.clone(),

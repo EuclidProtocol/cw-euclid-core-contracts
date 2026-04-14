@@ -32,15 +32,23 @@ pub fn setup_router(
     let relayer = setup_relayer(chain, factory_chains)?;
 
     router.upload().expect("router upload should succeed");
-    virtual_balance.upload().expect("virtual_balance upload should succeed");
+    virtual_balance
+        .upload()
+        .expect("virtual_balance upload should succeed");
     vlp.upload().expect("vlp upload should succeed");
-    stable_vlp.upload().expect("stable_vlp upload should succeed");
-    concentrated_vlp.upload().expect("concentrated_vlp upload should succeed");
+    stable_vlp
+        .upload()
+        .expect("stable_vlp upload should succeed");
+    concentrated_vlp
+        .upload()
+        .expect("concentrated_vlp upload should succeed");
 
     router.instantiate(
         &euclid::msgs::router::InstantiateMsg {
             constant_product_vlp_code_id: vlp.code_id().expect("vlp should have code_id"),
-            stable_vlp_code_id: stable_vlp.code_id().expect("stable_vlp should have code_id"),
+            stable_vlp_code_id: stable_vlp
+                .code_id()
+                .expect("stable_vlp should have code_id"),
             concentrated_vlp_code_id: concentrated_vlp
                 .code_id()
                 .expect("concentrated_vlp should have code_id"),
@@ -72,8 +80,8 @@ pub fn setup_relayer(
 ) -> Result<RelayerContract<MockBase>, CwOrchError> {
     let relayer = RelayerContract::new(chain.clone());
     let (_, pubkey_binary) = get_signer_key();
-    let validator_address =
-        cosmos_address_from_pubkey(&pubkey_binary, "cosmos").expect("pubkey should produce address");
+    let validator_address = cosmos_address_from_pubkey(&pubkey_binary, "cosmos")
+        .expect("pubkey should produce address");
 
     relayer.upload().expect("relayer upload should succeed");
 
@@ -107,7 +115,9 @@ pub fn setup_meta_transaction_contract(
 ) -> Result<MetaTransactionContract<MockBase>, CwOrchError> {
     let chain = router.environment().clone();
     let meta_transaction_contract = MetaTransactionContract::new(chain);
-    meta_transaction_contract.upload().expect("meta_transaction upload should succeed");
+    meta_transaction_contract
+        .upload()
+        .expect("meta_transaction upload should succeed");
     meta_transaction_contract.instantiate(
         &euclid::msgs::meta_transaction::msg::InstantiateMsg {
             router_contract: router.address().expect("router should have address"),
@@ -153,7 +163,10 @@ pub fn setup_factory_native(
     for _ in 0..string_length {
         factory.instantiate(
             &euclid::msgs::factory::InstantiateMsg {
-                router_contract: router.address().expect("router should have address").to_string(),
+                router_contract: router
+                    .address()
+                    .expect("router should have address")
+                    .to_string(),
                 chain_uid: chain_uid.clone(),
                 escrow_code_id: escrow.code_id().expect("escrow should have code_id"),
                 lp_code_id: lp_token.code_id().expect("lp_token should have code_id"),
@@ -171,22 +184,21 @@ pub fn setup_factory_native(
         )?;
     }
 
-    let chain_info = euclid::msgs::router::RegisterFactoryChainType::Native(
-        RegisterFactoryChainNative {
-            factory_address: factory.address().expect("factory should have address").to_string(),
+    let chain_info =
+        euclid::msgs::router::RegisterFactoryChainType::Native(RegisterFactoryChainNative {
+            factory_address: factory
+                .address()
+                .expect("factory should have address")
+                .to_string(),
             factory_chain_id: factory.environment().chain_id(),
-        },
-    );
+        });
     router.register_factory(chain_info, chain_uid)?;
 
     Ok(factory)
 }
 
 /// Get a concentrated VLP contract wrapper by address.
-pub fn get_concentrated_vlp(
-    chain: &MockBase,
-    address: &Addr,
-) -> ConcentratedVlpContract<MockBase> {
+pub fn get_concentrated_vlp(chain: &MockBase, address: &Addr) -> ConcentratedVlpContract<MockBase> {
     let mut concentrated_vlp = ConcentratedVlpContract::new(chain.clone());
     concentrated_vlp.as_instance_mut().id = format!("concentrated_vlp_{}", address);
     concentrated_vlp.set_address(address);

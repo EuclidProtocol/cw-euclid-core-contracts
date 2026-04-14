@@ -3,7 +3,7 @@
 mod tests {
 
     use crate::contract::{execute, instantiate};
-    use crate::state::{Allowance, ADMIN, ALLOWANCES, BALANCES, STATE};
+    use crate::state::{ADMIN, ALLOWANCES, BALANCES, STATE};
 
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{Addr, MessageInfo, Response, Uint128};
@@ -12,8 +12,8 @@ mod tests {
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::error::ContractError;
     use euclid::msgs::virtual_balance::msg::{
-        ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer, InstantiateMsg,
-        State,
+        Allowance, ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteMsg, ExecuteTransfer,
+        InstantiateMsg, State,
     };
     use euclid::voucher::BalanceKey;
 
@@ -449,5 +449,396 @@ mod tests {
         // Assert zero was removed, non-zero remains
         assert!(BALANCES.load(&deps.storage, key("owner")).is_err());
         assert!(BALANCES.load(&deps.storage, key("owner2")).is_ok());
+    }
+
+    mod cross_chain_user_test {
+        use super::*;
+
+        fn setup_with_state(
+            deps: &mut cosmwasm_std::OwnedDeps<
+                cosmwasm_std::MemoryStorage,
+                cosmwasm_std::testing::MockApi,
+                MockQuerier,
+            >,
+        ) -> Addr {
+            let router = deps.api.addr_make("router");
+            let admin = EuclidAdmin::default(router.clone());
+            STATE
+                .save(
+                    &mut deps.storage,
+                    &State {
+                        router: router.clone(),
+                    },
+                )
+                .unwrap();
+            ADMIN.save(&mut deps.storage, &admin).unwrap();
+            router
+        }
+
+        #[test]
+        fn test_mint_rejects_mixed_case() {
+            let mut deps = mock_dependencies();
+            let env = mock_env();
+            let router = setup_with_state(&mut deps);
+            let info = MessageInfo {
+                sender: router,
+                funds: vec![],
+            };
+
+            let mixed_case_user = CrossChainUser::new(
+                ChainUid::create("cosmos".to_string()).unwrap(),
+                "Cosmos1AbCdEf".to_string(),
+            );
+            let balance_key = BalanceKey {
+                cross_chain_user: mixed_case_user,
+                token_id: "eucl".to_string(),
+            };
+
+            let msg = ExecuteMsg::Mint(ExecuteMint {
+                amount: Uint128::new(100),
+                balance_key,
+            });
+
+            let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
+            assert!(err.to_string().contains("Address must be lowercase"));
+        }
+
+        #[test]
+        fn test_transfer_rejects_mixed_case_to() {
+            let mut deps = mock_dependencies();
+            let env = mock_env();
+            let router = setup_with_state(&mut deps);
+
+            // First mint some tokens to a valid user
+            let valid_user = CrossChainUser::new(
+                ChainUid::create("cosmos".to_string()).unwrap(),
+                "cosmos1sender".to_string(),
+            );
+            let balance_key = BalanceKey {
+                cross_chain_user: valid_user.clone(),
+                token_id: "eucl".to_string(),
+            };
+            let mint_msg = ExecuteMsg::Mint(ExecuteMint {
+                amount: Uint128::new(100),
+                balance_key,
+            });
+            let info = MessageInfo {
+                sender: router.clone(),
+                funds: vec![],
+            };
+            execute(deps.as_mut(), env.clone(), info, mint_msg).unwrap();
+
+            // Try to transfer to a mixed-case address
+            let mixed_case_to = CrossChainUser::new(
+                ChainUid::create("cosmos".to_string()).unwrap(),
+                "Cosmos1MiXeD".to_string(),
+            );
+            let transfer_msg = ExecuteMsg::Transfer(ExecuteTransfer {
+                amount: Uint128::new(50),
+                token_id: "eucl".to_string(),
+                sender: Some(valid_user),
+                to: mixed_case_to,
+                from: None,
+                msg: None,
+            });
+            let info = MessageInfo {
+                sender: router,
+                funds: vec![],
+            };
+
+            let err = execute(deps.as_mut(), env, info, transfer_msg).unwrap_err();
+            assert!(err.to_string().contains("Address must be lowercase"));
+        }
+
+        #[test]
+        fn test_approve_rejects_mixed_case_spender() {
+            let mut deps = mock_dependencies();
+            let env = mock_env();
+            let router = setup_with_state(&mut deps);
+
+            let owner =
+                CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "owner".to_string());
+            let mixed_case_spender =
+                CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "Spender".to_string());
+
+            let approve_msg = ExecuteMsg::Approve(ExecuteApprove {
+                amount: Uint128::new(10),
+                token_id: "eucl".to_string(),
+                spender: mixed_case_spender,
+                owner: owner,
+            });
+            let info = MessageInfo {
+                sender: router,
+                funds: vec![],
+            };
+
+            let err = execute(deps.as_mut(), env, info, approve_msg).unwrap_err();
+            assert!(err.to_string().contains("Address must be lowercase"));
+        }
+
+        #[test]
+        fn test_normalize_balance_keys_basic() {
+            let mut deps = mock_dependencies();
+            let router = setup_with_state(&mut deps);
+            let env = mock_env();
+            let admin = ADMIN.load(&deps.storage).unwrap();
+
+            // Directly write a mixed-case balance entry
+            let mixed_key: (ChainUid, String, String) = (
+                ChainUid::create("cosmos".to_string()).unwrap(),
+                "Cosmos1AbC".to_string(),
+                "eucl".to_string(),
+            );
+            BALANCES
+                .save(&mut deps.storage, mixed_key.clone(), &Uint128::new(100))
+                .unwrap();
+
+            let msg = ExecuteMsg::NormalizeBalanceKeys {
+                skip: None,
+                limit: None,
+            };
+            let info = MessageInfo {
+                sender: admin.general_admin,
+                funds: vec![],
+            };
+            let res = execute(deps.as_mut(), env, info, msg).unwrap();
+            assert_eq!(
+                res.attributes
+                    .iter()
+                    .find(|a| a.key == "normalized_balances")
+                    .unwrap()
+                    .value,
+                "1"
+            );
+
+            // Mixed-case entry removed
+            assert!(BALANCES.load(&deps.storage, mixed_key).is_err());
+            // Lowercase entry exists with same balance
+            let normalized_key: (ChainUid, String, String) = (
+                ChainUid::create("cosmos".to_string()).unwrap(),
+                "cosmos1abc".to_string(),
+                "eucl".to_string(),
+            );
+            assert_eq!(
+                BALANCES.load(&deps.storage, normalized_key).unwrap(),
+                Uint128::new(100)
+            );
+        }
+
+        #[test]
+        fn test_normalize_balance_keys_combines_balances() {
+            let mut deps = mock_dependencies();
+            let _router = setup_with_state(&mut deps);
+            let env = mock_env();
+            let admin = ADMIN.load(&deps.storage).unwrap();
+
+            let chain = ChainUid::create("cosmos".to_string()).unwrap();
+            let mixed_key: (ChainUid, String, String) =
+                (chain.clone(), "Cosmos1AbC".to_string(), "eucl".to_string());
+            let lowercase_key: (ChainUid, String, String) =
+                (chain, "cosmos1abc".to_string(), "eucl".to_string());
+
+            BALANCES
+                .save(&mut deps.storage, mixed_key.clone(), &Uint128::new(100))
+                .unwrap();
+            BALANCES
+                .save(&mut deps.storage, lowercase_key.clone(), &Uint128::new(50))
+                .unwrap();
+
+            let msg = ExecuteMsg::NormalizeBalanceKeys {
+                skip: None,
+                limit: None,
+            };
+            let info = MessageInfo {
+                sender: admin.general_admin,
+                funds: vec![],
+            };
+            execute(deps.as_mut(), env, info, msg).unwrap();
+
+            assert!(BALANCES.load(&deps.storage, mixed_key).is_err());
+            assert_eq!(
+                BALANCES.load(&deps.storage, lowercase_key).unwrap(),
+                Uint128::new(150)
+            );
+        }
+
+        #[test]
+        fn test_normalize_balance_keys_pagination() {
+            let mut deps = mock_dependencies();
+            setup_with_state(&mut deps);
+            let env = mock_env();
+            let admin = ADMIN.load(&deps.storage).unwrap();
+
+            let chain = ChainUid::create("cosmos".to_string()).unwrap();
+            let key1: (ChainUid, String, String) =
+                (chain.clone(), "AAAA".to_string(), "eucl".to_string());
+            let key2: (ChainUid, String, String) = (chain, "BBBB".to_string(), "eucl".to_string());
+
+            BALANCES
+                .save(&mut deps.storage, key1.clone(), &Uint128::new(10))
+                .unwrap();
+            BALANCES
+                .save(&mut deps.storage, key2.clone(), &Uint128::new(20))
+                .unwrap();
+
+            // Process only 1 entry
+            let msg = ExecuteMsg::NormalizeBalanceKeys {
+                skip: None,
+                limit: Some(1),
+            };
+            let info = MessageInfo {
+                sender: admin.general_admin.clone(),
+                funds: vec![],
+            };
+            let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+            assert_eq!(
+                res.attributes
+                    .iter()
+                    .find(|a| a.key == "normalized_balances")
+                    .unwrap()
+                    .value,
+                "1"
+            );
+
+            // key1 should be normalized, key2 still mixed
+            assert!(BALANCES.load(&deps.storage, key1.clone()).is_err());
+            assert!(BALANCES.load(&deps.storage, key2.clone()).is_ok());
+
+            // Process remaining entries
+            let msg = ExecuteMsg::NormalizeBalanceKeys {
+                skip: None,
+                limit: Some(10),
+            };
+            let info = MessageInfo {
+                sender: admin.general_admin,
+                funds: vec![],
+            };
+            let res = execute(deps.as_mut(), env, info, msg).unwrap();
+            assert_eq!(
+                res.attributes
+                    .iter()
+                    .find(|a| a.key == "normalized_balances")
+                    .unwrap()
+                    .value,
+                "1"
+            );
+            assert!(BALANCES.load(&deps.storage, key2).is_err());
+        }
+
+        #[test]
+        fn test_normalize_balance_keys_admin_gated() {
+            let mut deps = mock_dependencies();
+            setup_with_state(&mut deps);
+            let env = mock_env();
+
+            let not_admin = deps.api.addr_make("not_admin");
+            let msg = ExecuteMsg::NormalizeBalanceKeys {
+                skip: None,
+                limit: None,
+            };
+            let info = MessageInfo {
+                sender: not_admin,
+                funds: vec![],
+            };
+            let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
+            assert_eq!(err, ContractError::Unauthorized {});
+        }
+
+        #[test]
+        fn test_normalize_balance_keys_noop() {
+            let mut deps = mock_dependencies();
+            setup_with_state(&mut deps);
+            let env = mock_env();
+            let admin = ADMIN.load(&deps.storage).unwrap();
+
+            let chain = ChainUid::create("cosmos".to_string()).unwrap();
+            let key: (ChainUid, String, String) =
+                (chain, "alreadylowercase".to_string(), "eucl".to_string());
+            BALANCES
+                .save(&mut deps.storage, key, &Uint128::new(100))
+                .unwrap();
+
+            let msg = ExecuteMsg::NormalizeBalanceKeys {
+                skip: None,
+                limit: None,
+            };
+            let info = MessageInfo {
+                sender: admin.general_admin,
+                funds: vec![],
+            };
+            let res = execute(deps.as_mut(), env, info, msg).unwrap();
+            assert_eq!(
+                res.attributes
+                    .iter()
+                    .find(|a| a.key == "normalized_balances")
+                    .unwrap()
+                    .value,
+                "0"
+            );
+        }
+
+        #[test]
+        fn test_normalize_allowance_keeps_max_on_collision() {
+            let mut deps = mock_dependencies();
+            let _router = setup_with_state(&mut deps);
+            let env = mock_env();
+            let admin = ADMIN.load(&deps.storage).unwrap();
+
+            let chain = ChainUid::create("cosmos".to_string()).unwrap();
+            let spender =
+                CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), "spender".to_string());
+
+            let mixed_key: (ChainUid, String, String) =
+                (chain.clone(), "Owner".to_string(), "eucl".to_string());
+            let lowercase_key: (ChainUid, String, String) =
+                (chain, "owner".to_string(), "eucl".to_string());
+
+            // Mixed-case entry has higher allowance
+            ALLOWANCES
+                .save(
+                    &mut deps.storage,
+                    mixed_key.clone(),
+                    &Allowance {
+                        amount: Uint128::new(200),
+                        spender: spender.clone(),
+                    },
+                )
+                .unwrap();
+            // Lowercase entry has lower allowance
+            ALLOWANCES
+                .save(
+                    &mut deps.storage,
+                    lowercase_key.clone(),
+                    &Allowance {
+                        amount: Uint128::new(50),
+                        spender: spender.clone(),
+                    },
+                )
+                .unwrap();
+
+            let msg = ExecuteMsg::NormalizeBalanceKeys {
+                skip: None,
+                limit: None,
+            };
+            let info = MessageInfo {
+                sender: admin.general_admin,
+                funds: vec![],
+            };
+            let res = execute(deps.as_mut(), env, info, msg).unwrap();
+            assert_eq!(
+                res.attributes
+                    .iter()
+                    .find(|a| a.key == "normalized_allowances")
+                    .unwrap()
+                    .value,
+                "1"
+            );
+
+            // Mixed-case removed
+            assert!(ALLOWANCES.load(&deps.storage, mixed_key).is_err());
+            // Keeps max(200, 50) = 200
+            let result = ALLOWANCES.load(&deps.storage, lowercase_key).unwrap();
+            assert_eq!(result.amount, Uint128::new(200));
+        }
     }
 }

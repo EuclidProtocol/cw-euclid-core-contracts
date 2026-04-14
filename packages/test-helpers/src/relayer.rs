@@ -9,10 +9,7 @@ use cw_orch::{
 use euclid::{
     chain::ChainUid,
     events::{EUCLID_SEND_PACKET_EVENT, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT},
-    msgs::{
-        factory::QueryMsgFns as FactoryQueryFns,
-        router::QueryMsgFns as RouterQueryFns,
-    },
+    msgs::{factory::QueryMsgFns as FactoryQueryFns, router::QueryMsgFns as RouterQueryFns},
 };
 use factory::FactoryContract;
 use k256::{ecdsa::SigningKey, elliptic_curve::NonZeroScalar};
@@ -37,16 +34,8 @@ fn get_event_attr<'a>(event: &'a Event, key: &str) -> &'a str {
         .as_str()
 }
 
-/// Relay factory→router send packets (public entry point).
+/// Relay factory→router send packets.
 pub fn relay_factory_send_packet(
-    events: Vec<Event>,
-    router: &RouterContract<MockBase>,
-) -> Result<Vec<Event>, CwEnvError> {
-    relay_factory_send_packet_inner(events, router)
-}
-
-/// Inner implementation: extract send packets from events and relay each to the router.
-fn relay_factory_send_packet_inner(
     events: Vec<Event>,
     router: &RouterContract<MockBase>,
 ) -> Result<Vec<Event>, CwEnvError> {
@@ -285,15 +274,15 @@ pub fn extract_ack_packet_events(events: &[Event]) -> Vec<AckPacketEvent> {
         .collect::<Vec<_>>();
 
     for event in related_events.chunks(2) {
-        let msg_binary = Binary::from_base64(get_event_attr(&event[0], "msg"))
+        let msg_binary = Binary::from_base64(get_event_attr(event[0], "msg"))
             .expect("msg attribute should be valid base64");
-        let ack_binary = Binary::from_base64(get_event_attr(&event[1], "ack"))
+        let ack_binary = Binary::from_base64(get_event_attr(event[1], "ack"))
             .expect("ack attribute should be valid base64");
-        let sequence: u128 = get_event_attr(&event[0], "sequence")
+        let sequence: u128 = get_event_attr(event[0], "sequence")
             .parse()
             .expect("sequence attribute should be a valid u128");
-        let source_port = get_event_attr(&event[0], "source_port").to_string();
-        let destination_port = get_event_attr(&event[0], "destination_port").to_string();
+        let source_port = get_event_attr(event[0], "source_port").to_string();
+        let destination_port = get_event_attr(event[0], "destination_port").to_string();
         ack_packet_events.push(AckPacketEvent {
             msg: msg_binary,
             ack: ack_binary,

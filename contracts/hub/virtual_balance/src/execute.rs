@@ -9,12 +9,14 @@ use euclid::{
     error::ContractError,
     msgs::{
         hook::VoucherReceive,
-        virtual_balance::msg::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer},
+        virtual_balance::msg::{
+            Allowance, ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer,
+        },
     },
     voucher::{BalanceKey, SerializedBalanceKey},
 };
 
-use crate::state::{Allowance, ADMIN, ALLOWANCES, BALANCES, STATE};
+use crate::state::{ADMIN, ALLOWANCES, BALANCES, STATE};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -26,6 +28,8 @@ pub fn execute_mint(
     ensure!(info.sender == state.router, ContractError::Unauthorized {});
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+    // Reject mixed-case or empty addresses before mutating state
+    msg.balance_key.cross_chain_user.validate()?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
 
@@ -65,6 +69,8 @@ pub fn execute_burn(
 
     // Zero amounts not allowed
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
+    // Reject mixed-case or empty addresses before mutating state
+    msg.balance_key.cross_chain_user.validate()?;
 
     let key = msg.balance_key.clone().to_serialized_balance_key();
     let old_balance =
@@ -116,8 +122,12 @@ pub fn execute_transfer(
     } else {
         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string())
     };
+    // Validate all CrossChainUser fields to reject mixed-case or empty addresses
+    sender.validate()?;
+    transfer_msg.to.validate()?;
 
     let mut response = if let Some(from) = transfer_msg.from {
+        from.validate()?;
         let attributes = _deduct_allowance(
             deps,
             &sender,
@@ -333,6 +343,9 @@ pub fn execute_approve(
     } else {
         CrossChainUser::new(vsl_chain_uid.clone(), info.sender.to_string())
     };
+    // Reject mixed-case or empty addresses before mutating state
+    spender.validate()?;
+    owner.validate()?;
 
     // Ensure that spender and owner are not the same
     ensure!(spender != owner, ContractError::SameAddress {});
@@ -419,4 +432,98 @@ pub fn execute_remove_zero_state_values(
     }
 
     Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
+}
+
+/// Migrates mixed-case balance/allowance keys to lowercase.
+/// Call repeatedly with `start_after: None` until both
+/// `normalized_balances` and `normalized_allowances` return "0".
+/// Note: the `start_after` cursor applies independently to both BALANCES
+/// and ALLOWANCES ranges, so for simplest usage pass `None` each call.
+pub fn execute_normalize_balance_keys(
+    deps: DepsMut,
+    info: MessageInfo,
+    skip: Option<u32>,
+    limit: Option<u32>,
+) -> Result<Response, ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    ensure!(
+        admin.general_admin == info.sender,
+        ContractError::Unauthorized {}
+    );
+
+    // Default to 100 to stay within gas limits on production chains
+    let limit = limit.unwrap_or(100) as usize;
+    let skip = skip.unwrap_or(0) as usize;
+    let mut normalized_balances: u32 = 0;
+    let mut normalized_allowances: u32 = 0;
+    let mut skipped_errors: u32 = 0;
+
+    // Collect first to avoid mutating storage while iterating.
+    // Deserialization errors are counted (skipped_errors) rather than silently dropped.
+    let mut balance_entries: Vec<(SerializedBalanceKey, Uint128)> = Vec::new();
+    for result in BALANCES
+        .range(deps.storage, None, None, Order::Ascending)
+        .skip(skip)
+        .take(limit)
+    {
+        match result {
+            Ok(entry) => balance_entries.push(entry),
+            Err(_) => skipped_errors += 1,
+        }
+    }
+
+    for (key, balance) in balance_entries {
+        let (chain_uid, address, token_id) = key.clone();
+        let lowercase_address = address.to_lowercase();
+        if lowercase_address != address {
+            // Remove the mixed-case entry
+            BALANCES.remove(deps.storage, key);
+            // Add balance to the lowercase key, combining with any existing balance
+            let normalized_key: SerializedBalanceKey = (chain_uid, lowercase_address, token_id);
+            BALANCES.update(deps.storage, normalized_key, |existing| {
+                let combined = existing.unwrap_or(Uint128::zero()).checked_add(balance)?;
+                Ok::<_, ContractError>(combined)
+            })?;
+            normalized_balances += 1;
+        }
+    }
+
+    // Collect first to avoid mutating storage while iterating
+    let mut allowance_entries: Vec<(SerializedBalanceKey, _)> = Vec::new();
+    for result in ALLOWANCES
+        .range(deps.storage, None, None, Order::Ascending)
+        .skip(skip)
+        .take(limit)
+    {
+        match result {
+            Ok(entry) => allowance_entries.push(entry),
+            Err(_) => skipped_errors += 1,
+        }
+    }
+
+    for (key, allowance) in allowance_entries {
+        let (chain_uid, address, token_id) = key.clone();
+        let lowercase_address = address.to_lowercase();
+        if lowercase_address != address {
+            ALLOWANCES.remove(deps.storage, key);
+            let normalized_key: SerializedBalanceKey = (chain_uid, lowercase_address, token_id);
+            // On collision, keep the higher allowance to avoid silently dropping approved value
+            if let Some(existing) = ALLOWANCES.may_load(deps.storage, normalized_key.clone())? {
+                let merged = Allowance {
+                    amount: existing.amount.max(allowance.amount),
+                    spender: existing.spender,
+                };
+                ALLOWANCES.save(deps.storage, normalized_key, &merged)?;
+            } else {
+                ALLOWANCES.save(deps.storage, normalized_key, &allowance)?;
+            }
+            normalized_allowances += 1;
+        }
+    }
+
+    Ok(Response::new()
+        .add_attribute("action", "execute_normalize_balance_keys")
+        .add_attribute("normalized_balances", normalized_balances.to_string())
+        .add_attribute("normalized_allowances", normalized_allowances.to_string())
+        .add_attribute("skipped_errors", skipped_errors.to_string()))
 }

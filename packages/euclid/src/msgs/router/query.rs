@@ -81,6 +81,7 @@ pub struct VlpResponse {
     pub vlp: String,
     pub token_1: Token,
     pub token_2: Token,
+    pub pool_key: Option<PoolKey>,
 }
 
 #[cw_serde]

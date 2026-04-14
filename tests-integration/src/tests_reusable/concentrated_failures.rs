@@ -1,12 +1,13 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Event, Uint128};
+use cosmwasm_std::{Addr, Event, Uint128};
 use cw_orch::prelude::*;
 use euclid::events::EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::swap::NextSwapPair;
 use euclid::token::{Token, TokenType, TokenWithDenom};
+use euclid::utils::pagination::Pagination;
 use euclid_ibc::ack::make_ack_fail;
 use rstest::rstest;
 
@@ -15,7 +16,7 @@ use crate::helpers::factory::{
 };
 use crate::helpers::relayer::{
     extract_ack_packet_events, extract_send_packet_events, relay_factory_ack_packet,
-    relay_factory_router_factory, relay_factory_send_packet,
+    relay_factory_send_packet,
 };
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
@@ -44,11 +45,8 @@ fn test_no_ack_does_not_finalize_position() {
                 pair_with_denom_and_amount: pair,
                 fee_tier_bps: 500,
                 tick_spacing: 10,
-                lp_token_name: "LPNAME".to_string(),
-                lp_token_symbol: "LPSYMBOL".to_string(),
-                lp_token_decimal: 6,
                 slippage_tolerance_bps: 100,
-                lp_token_marketing: None,
+                initial_tick: None,
                 cross_chain_config: CrossChainConfig::default(),
             },
             &funds,
@@ -66,7 +64,9 @@ fn test_no_ack_does_not_finalize_position() {
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
         .query::<euclid::msgs::position_token::TokensResponse>(
-            &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
+            &euclid::msgs::position_token::QueryMsg::AllTokens {
+                pagination: Pagination::default(),
+            },
         )
         .unwrap()
         .tokens;
@@ -94,17 +94,25 @@ fn test_ack_error_rolls_back_pending() {
         );
     }
 
+    let chain = factory.environment();
+    let sender_addr = Addr::unchecked(chain.sender.as_str());
+    let balance_a_before = chain
+        .query_balance(&sender_addr, "conc.token.a")
+        .unwrap()
+        .u128();
+    let balance_b_before = chain
+        .query_balance(&sender_addr, "conc.token.b")
+        .unwrap()
+        .u128();
+
     let tx = factory
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestConcentratedPoolCreation {
                 pair_with_denom_and_amount: pair,
                 fee_tier_bps: 500,
                 tick_spacing: 10,
-                lp_token_name: "LPNAME".to_string(),
-                lp_token_symbol: "LPSYMBOL".to_string(),
-                lp_token_decimal: 6,
                 slippage_tolerance_bps: 100,
-                lp_token_marketing: None,
+                initial_tick: None,
                 cross_chain_config: CrossChainConfig::default(),
             },
             &funds,
@@ -148,11 +156,31 @@ fn test_ack_error_rolls_back_pending() {
     let position_token = get_position_token(&factory).unwrap();
     let tokens = position_token
         .query::<euclid::msgs::position_token::TokensResponse>(
-            &euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None },
+            &euclid::msgs::position_token::QueryMsg::AllTokens {
+                pagination: Pagination::default(),
+            },
         )
         .unwrap()
         .tokens;
     assert!(tokens.is_empty(), "error ack must not mint position NFT");
+
+    // Verify tokens refunded back to sender
+    let balance_a_after = chain
+        .query_balance(&sender_addr, "conc.token.a")
+        .unwrap()
+        .u128();
+    let balance_b_after = chain
+        .query_balance(&sender_addr, "conc.token.b")
+        .unwrap()
+        .u128();
+    assert_eq!(
+        balance_a_after, balance_a_before,
+        "token_a must be refunded to sender after error ack",
+    );
+    assert_eq!(
+        balance_b_after, balance_b_before,
+        "token_b must be refunded to sender after error ack",
+    );
 }
 
 #[test]
@@ -191,11 +219,8 @@ fn test_two_unregistered_tokens_rejected() {
                 pair_with_denom_and_amount: pair,
                 fee_tier_bps: 500,
                 tick_spacing: 10,
-                lp_token_name: "LPNAME".to_string(),
-                lp_token_symbol: "LPSYMBOL".to_string(),
-                lp_token_decimal: 6,
                 slippage_tolerance_bps: 100,
-                lp_token_marketing: None,
+                initial_tick: None,
                 cross_chain_config: CrossChainConfig::default(),
             },
             &funds,
@@ -232,11 +257,8 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
                 pair_with_denom_and_amount: pair,
                 fee_tier_bps: 500,
                 tick_spacing: 10,
-                lp_token_name: "LPNAME".to_string(),
-                lp_token_symbol: "LPSYMBOL".to_string(),
-                lp_token_decimal: 6,
                 slippage_tolerance_bps: 100,
-                lp_token_marketing: None,
+                initial_tick: None,
                 cross_chain_config: CrossChainConfig::default(),
             },
             &funds,

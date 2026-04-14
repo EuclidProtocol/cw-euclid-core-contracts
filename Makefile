@@ -16,3 +16,15 @@ fuzz-math:
 .PHONY: fuzz-endurance
 fuzz-endurance:
 	cargo test -p tests-fuzz -- endurance --ignored --test-threads=1 --nocapture
+
+.PHONY: proto
+proto:
+	@echo "Generating JSON schemas..."
+	@for d in contracts/*/*/; do \
+		if [ -f "$$d/src/bin/schema.rs" ]; then \
+			echo "  $$d"; \
+			(cd "$$d" && cargo run --bin schema 2>/dev/null); \
+		fi; \
+	done
+	@echo "Converting to proto..."
+	@cargo run -p schema-to-proto

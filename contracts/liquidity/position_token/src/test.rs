@@ -1,85 +1,147 @@
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{from_json, Addr};
+    use cosmwasm_std::{from_json, Addr, Int256, Uint128};
 
     use crate::contract::{execute, instantiate, query};
+    use euclid::error::ContractError;
     use euclid::msgs::position_token::{
-        ExecuteMsg, InstantiateMsg, OwnerOfResponse, QueryMsg, StateResponse, TokensResponse,
+        ExecuteMsg, InstantiateMsg, MintMsg, OwnerOfResponse, PositionInfo, PositionInfoResponse,
+        QueryMsg, StateResponse, TokenInfo, TokensResponse,
     };
     use euclid::utils::pagination::Pagination;
+    use rstest::rstest;
 
-    fn setup() -> (
-        cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
-            cosmwasm_std::testing::MockApi,
-            cosmwasm_std::testing::MockQuerier,
-        >,
-        Addr,
-        Addr,
-        Addr,
-    ) {
+    type MockDeps = cosmwasm_std::OwnedDeps<
+        cosmwasm_std::MemoryStorage,
+        cosmwasm_std::testing::MockApi,
+        cosmwasm_std::testing::MockQuerier,
+    >;
+
+    /// When `expected_error` is `None`, requires `Ok` and returns the inner value. When `Some`,
+    /// requires `Err` matching exactly (including [`ContractError::NotFound`] message text).
+    fn assert_result<T>(
+        result: Result<T, ContractError>,
+        expected_error: Option<ContractError>,
+    ) -> Option<T> {
+        match (expected_error, result) {
+            (None, Ok(value)) => Some(value),
+            (None, Err(err)) => panic!("expected success, got {err:?}"),
+            (Some(expected), Ok(_)) => panic!("expected error {expected:?}, got Ok"),
+            (Some(expected), Err(actual)) => {
+                assert_eq!(actual, expected);
+                None
+            }
+        }
+    }
+
+    fn setup() -> (MockDeps, Addr) {
         let mut deps = mock_dependencies();
 
-        let minter = deps.api.addr_make("minter");
-        let admin = deps.api.addr_make("admin");
-        let creator = deps.api.addr_make("creator");
+        let factory = deps.api.addr_make("factory");
 
-        instantiate(
-            deps.as_mut(),
-            mock_env(),
-            message_info(&creator, &[]),
-            InstantiateMsg {
-                name: "Position Token".to_string(),
-                symbol: "POS".to_string(),
-                minter: minter.clone(),
-                admin: admin.clone(),
-            },
+        assert_result(
+            instantiate(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                InstantiateMsg {
+                    name: "Position Token".to_string(),
+                    symbol: "POS".to_string(),
+                },
+            ),
+            None,
         )
         .unwrap();
 
-        (deps, minter, admin, creator)
+        (deps, factory)
     }
 
-    #[test]
-    fn instantiate_and_query_state() {
-        let (deps, minter, admin, _) = setup();
+    #[rstest]
+    #[case("Position Token", "POS", None)]
+    #[case("Pool NFT", "PNFT", None)]
+    #[case("", "POS", Some(ContractError::Generic {
+        err: "name cannot be empty".to_string(),
+    }))]
+    #[case("   ", "POS", Some(ContractError::Generic {
+        err: "name cannot be empty".to_string(),
+    }))]
+    #[case("Name", "", Some(ContractError::Generic {
+        err: "symbol cannot be empty".to_string(),
+    }))]
+    fn instantiate_respects_metadata(
+        #[case] name: &str,
+        #[case] symbol: &str,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let mut deps = mock_dependencies();
+        let factory = deps.api.addr_make("factory");
+
+        let outcome = assert_result(
+            instantiate(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                InstantiateMsg {
+                    name: name.to_string(),
+                    symbol: symbol.to_string(),
+                },
+            ),
+            expected_error,
+        );
+
+        if outcome.is_none() {
+            return;
+        }
 
         let state: StateResponse =
             from_json(query(deps.as_ref(), mock_env(), QueryMsg::State {}).unwrap()).unwrap();
 
-        assert_eq!(state.name, "Position Token");
-        assert_eq!(state.symbol, "POS");
-        assert_eq!(state.minter, minter);
-        assert_eq!(state.admin, admin);
+        assert_eq!(state.name, name);
+        assert_eq!(state.symbol, symbol);
+        assert_eq!(state.factory, factory);
         assert_eq!(state.total_tokens, 0);
     }
 
-    #[test]
-    fn mint_transfer_burn_flow() {
-        let (mut deps, minter, _, _) = setup();
-
+    #[rstest]
+    #[case("factory", None)]
+    #[case("stranger", Some(ContractError::Unauthorized {}))]
+    fn mint_respects_factory_only(
+        #[case] sender: &str,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let (mut deps, _) = setup();
         let owner = deps.api.addr_make("owner");
-        let recipient = deps.api.addr_make("recipient");
+        let sender = deps.api.addr_make(sender);
 
-        execute(
+        let token_id = Uint128::new(1);
+        let result = execute(
             deps.as_mut(),
             mock_env(),
-            message_info(&minter, &[]),
-            ExecuteMsg::Mint {
-                token_id: "position-1".to_string(),
-                owner: owner.to_string(),
-                token_uri: Some("ipfs://position-1".to_string()),
-            },
-        )
-        .unwrap();
+            message_info(&sender, &[]),
+            ExecuteMsg::Mint(MintMsg {
+                token_id,
+                token_info: TokenInfo {
+                    owner: owner.clone(),
+                    token_uri: Some("ipfs://position-1".to_string()),
+                },
+                position_info: PositionInfo {
+                    liquidity: Uint128::new(1000),
+                    vlp_address: "vlp-1".to_string(),
+                },
+            }),
+        );
+
+        if assert_result(result, expected_error).is_none() {
+            return;
+        }
 
         let owner_of: OwnerOfResponse = from_json(
             query(
                 deps.as_ref(),
                 mock_env(),
                 QueryMsg::OwnerOf {
-                    token_id: "position-1".to_string(),
+                    token_id: token_id.to_string(),
                 },
             )
             .unwrap(),
@@ -87,16 +149,285 @@ mod tests {
         .unwrap();
         assert_eq!(owner_of.owner, owner.to_string());
 
-        execute(
-            deps.as_mut(),
-            mock_env(),
-            message_info(&owner, &[]),
-            ExecuteMsg::Transfer {
-                token_id: "position-1".to_string(),
-                recipient: recipient.to_string(),
-            },
+        let position: PositionInfoResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::PositionInfo {
+                    token_id: token_id.to_string(),
+                },
+            )
+            .unwrap(),
         )
         .unwrap();
+        assert_eq!(position.liquidity, Uint128::new(1000));
+
+        let state: StateResponse =
+            from_json(query(deps.as_ref(), mock_env(), QueryMsg::State {}).unwrap()).unwrap();
+        assert_eq!(state.total_tokens, 1);
+    }
+
+    #[rstest]
+    #[case::valid_with_uri(1u128, Some("ipfs://position-1"), None)]
+    #[case::valid_without_uri(2u128, None, None)]
+    fn mint_tests(
+        #[case] token_id: u128,
+        #[case] token_uri: Option<&str>,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let (mut deps, factory) = setup();
+        let owner = deps.api.addr_make("owner");
+        let token_id = Uint128::new(token_id);
+
+        let result = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&factory, &[]),
+            ExecuteMsg::Mint(MintMsg {
+                token_id,
+                token_info: TokenInfo {
+                    owner: owner.clone(),
+                    token_uri: token_uri.map(String::from),
+                },
+                position_info: PositionInfo {
+                    liquidity: Uint128::new(1000),
+                    vlp_address: "vlp-1".to_string(),
+                },
+            }),
+        );
+        if assert_result(result, expected_error).is_none() {
+            return;
+        }
+
+        let owner_of: OwnerOfResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::OwnerOf {
+                    token_id: token_id.to_string(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(owner_of.owner, owner.to_string());
+
+        let position: PositionInfoResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::PositionInfo {
+                    token_id: token_id.to_string(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(position.liquidity, Uint128::new(1000));
+
+        let state: StateResponse =
+            from_json(query(deps.as_ref(), mock_env(), QueryMsg::State {}).unwrap()).unwrap();
+        assert_eq!(state.total_tokens, 1);
+    }
+
+    #[rstest]
+    #[case::duplicate(1u128, Some(ContractError::TokenAlreadyExist {}))]
+    #[case::unique(2u128, None)]
+    fn mint_rejects_duplicate_token_id(
+        #[case] second_token_id: u128,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let (mut deps, factory) = setup();
+        let owner = deps.api.addr_make("owner");
+        let mut mint = |token_id: u128| {
+            execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                ExecuteMsg::Mint(MintMsg {
+                    token_id: Uint128::new(token_id),
+                    token_info: TokenInfo {
+                        owner: owner.clone(),
+                        token_uri: None,
+                    },
+                    position_info: PositionInfo {
+                        liquidity: Uint128::new(1),
+                        vlp_address: "vlp-1".to_string(),
+                    },
+                }),
+            )
+        };
+        assert_result(mint(1), None).unwrap();
+        assert_result(mint(second_token_id), expected_error);
+    }
+
+    #[rstest]
+    #[case::stranger("stranger", Int256::from(100i128), 1100u128, Some(ContractError::Unauthorized {}))]
+    #[case::valid_positive("factory", Int256::from(100i128), 1100u128, None)]
+    #[case::valid_negative("factory", Int256::from(-100i128), 900u128, None)]
+    #[case::valid_zero("factory", Int256::zero(), 1000u128, None)]
+    #[case::overflow_positive("factory", Int256::from(u128::MAX) + Int256::from(1), u128::MAX, Some(ContractError::new("liquidity change overflow")))]
+    #[case::overflow_negative("factory", -Int256::from(u128::MAX) - Int256::from(1), 0u128, Some(ContractError::new("liquidity change overflow")))]
+    fn update_position_changes_stored_liquidity(
+        #[case] sender: &str,
+        #[case] liquidity_change: Int256,
+        #[case] expected_liquidity: u128,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let (mut deps, factory) = setup();
+        let owner = deps.api.addr_make("owner");
+        let token_id = Uint128::new(1);
+        let sender = deps.api.addr_make(sender);
+
+        assert_result(
+            execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                ExecuteMsg::Mint(MintMsg {
+                    token_id,
+                    token_info: TokenInfo {
+                        owner,
+                        token_uri: None,
+                    },
+                    position_info: PositionInfo {
+                        liquidity: Uint128::new(1000),
+                        vlp_address: "vlp-1".to_string(),
+                    },
+                }),
+            ),
+            None,
+        )
+        .unwrap();
+
+        let result = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[]),
+            ExecuteMsg::UpdatePosition {
+                token_id,
+                liquidity_change,
+            },
+        );
+
+        if assert_result(result, expected_error).is_none() {
+            return;
+        }
+
+        let position: PositionInfoResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::PositionInfo {
+                    token_id: token_id.to_string(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(position.liquidity, Uint128::new(expected_liquidity));
+    }
+
+    #[rstest]
+    #[case(Some(ContractError::NotFound {
+        msg: "position 999 not found".to_string(),
+    }))]
+    fn update_position_rejects_unknown_token(#[case] expected_error: Option<ContractError>) {
+        let (mut deps, factory) = setup();
+
+        let result = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&factory, &[]),
+            ExecuteMsg::UpdatePosition {
+                token_id: Uint128::new(999),
+                liquidity_change: Int256::zero(),
+            },
+        );
+        assert_result(result, expected_error);
+    }
+
+    #[rstest]
+    #[case("recipient_a", None)]
+    #[case("recipient_b", None)]
+    #[case("recipient_c", Some(ContractError::Unauthorized {}))]
+    #[case("recipient_d", Some(ContractError::SameAddress {}))]
+    fn transfer_respects_owner_and_recipient_rules(
+        #[case] recipient_key: &str,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let (mut deps, factory) = setup();
+        let owner = deps.api.addr_make("owner");
+        let recipient = deps.api.addr_make(recipient_key);
+        let token_id = Uint128::new(1);
+
+        assert_result(
+            execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                ExecuteMsg::Mint(MintMsg {
+                    token_id,
+                    token_info: TokenInfo {
+                        owner: owner.clone(),
+                        token_uri: None,
+                    },
+                    position_info: PositionInfo {
+                        liquidity: Uint128::new(1000),
+                        vlp_address: "vlp-1".to_string(),
+                    },
+                }),
+            ),
+            None,
+        )
+        .unwrap();
+
+        let transfer_msg = ExecuteMsg::Transfer {
+            token_id,
+            recipient: recipient.to_string(),
+        };
+
+        let transfer_result = match expected_error {
+            Some(ContractError::Unauthorized {}) => execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                transfer_msg,
+            ),
+            Some(ContractError::SameAddress {}) => execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&owner, &[]),
+                ExecuteMsg::Transfer {
+                    token_id,
+                    recipient: owner.to_string(),
+                },
+            ),
+            _ => execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&owner, &[]),
+                transfer_msg,
+            ),
+        };
+
+        if assert_result(transfer_result, expected_error).is_none() {
+            return;
+        }
+
+        let owner_tokens: TokensResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::TokensByOwner {
+                    owner: owner.to_string(),
+                    pagination: Pagination::default(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(owner_tokens.tokens.is_empty());
 
         let recipient_tokens: TokensResponse = from_json(
             query(
@@ -110,20 +441,94 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(recipient_tokens.tokens, vec!["position-1".to_string()]);
+        assert_eq!(recipient_tokens.tokens, vec![token_id.to_string()]);
+    }
 
-        execute(
-            deps.as_mut(),
-            mock_env(),
-            message_info(&recipient, &[]),
-            ExecuteMsg::Burn {
-                token_id: "position-1".to_string(),
-            },
+    #[rstest]
+    #[case(1u128, None)]
+    #[case(2u128, None)]
+    #[case(3u128, Some(ContractError::Unauthorized {}))]
+    #[case(
+        4u128,
+        Some(ContractError::Generic {
+            err: "Cannot burn a position with liquidity".to_string(),
+        })
+    )]
+    fn burn_requires_factory_and_zero_liquidity(
+        #[case] token_id: u128,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let (mut deps, factory) = setup();
+        let owner = deps.api.addr_make("owner");
+        let token_id = Uint128::new(token_id);
+
+        assert_result(
+            execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                ExecuteMsg::Mint(MintMsg {
+                    token_id,
+                    token_info: TokenInfo {
+                        owner: owner.clone(),
+                        token_uri: None,
+                    },
+                    position_info: PositionInfo {
+                        liquidity: Uint128::new(1000),
+                        vlp_address: "vlp-1".to_string(),
+                    },
+                }),
+            ),
+            None,
         )
         .unwrap();
 
-        let all_tokens: TokensResponse =
-            from_json(query(deps.as_ref(), mock_env(), QueryMsg::AllTokens { pagination: Pagination::default() }).unwrap()).unwrap();
+        if expected_error.is_none() {
+            assert_result(
+                execute(
+                    deps.as_mut(),
+                    mock_env(),
+                    message_info(&factory, &[]),
+                    ExecuteMsg::UpdatePosition {
+                        token_id,
+                        liquidity_change: Int256::from(-1000i128),
+                    },
+                ),
+                None,
+            )
+            .unwrap();
+        }
+
+        let burn_result = match expected_error {
+            Some(ContractError::Unauthorized {}) => execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&owner, &[]),
+                ExecuteMsg::Burn { token_id },
+            ),
+            _ => execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                ExecuteMsg::Burn { token_id },
+            ),
+        };
+
+        if assert_result(burn_result, expected_error).is_none() {
+            return;
+        }
+
+        let all_tokens: TokensResponse = from_json(
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::AllTokens {
+                    pagination: Pagination::default(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
         assert!(all_tokens.tokens.is_empty());
 
         let state: StateResponse =
@@ -131,29 +536,43 @@ mod tests {
         assert_eq!(state.total_tokens, 0);
     }
 
-    #[test]
-    fn multi_token_transfer_and_burn() {
-        let (mut deps, minter, _, _) = setup();
-
+    #[rstest]
+    #[case(10u128, None)]
+    #[case(20u128, None)]
+    fn transfer_then_burn_updates_owner_and_global_lists(
+        #[case] base: u128,
+        #[case] expected_error: Option<ContractError>,
+    ) {
+        let (mut deps, factory) = setup();
         let owner = deps.api.addr_make("owner");
         let recipient = deps.api.addr_make("recipient");
 
-        // Mint 3 tokens to the same owner
-        for id in ["pos-1", "pos-2", "pos-3"] {
-            execute(
-                deps.as_mut(),
-                mock_env(),
-                message_info(&minter, &[]),
-                ExecuteMsg::Mint {
-                    token_id: id.to_string(),
-                    owner: owner.to_string(),
-                    token_uri: None,
-                },
+        let id = |n: u128| Uint128::new(base + n);
+        let id_str = |n: u128| id(n).to_string();
+
+        for n in 1u128..=3 {
+            assert_result(
+                execute(
+                    deps.as_mut(),
+                    mock_env(),
+                    message_info(&factory, &[]),
+                    ExecuteMsg::Mint(MintMsg {
+                        token_id: id(n),
+                        token_info: TokenInfo {
+                            owner: owner.clone(),
+                            token_uri: None,
+                        },
+                        position_info: PositionInfo {
+                            liquidity: Uint128::new(1000),
+                            vlp_address: "vlp-1".to_string(),
+                        },
+                    }),
+                ),
+                None,
             )
-            .expect("mint should succeed");
+            .unwrap();
         }
 
-        // Verify owner has all 3
         let owner_tokens: TokensResponse = from_json(
             query(
                 deps.as_ref(),
@@ -163,35 +582,49 @@ mod tests {
                     pagination: Pagination::default(),
                 },
             )
-            .expect("query should succeed"),
+            .unwrap(),
         )
-        .expect("deserialize should succeed");
-        assert_eq!(owner_tokens.tokens, vec!["pos-1", "pos-2", "pos-3"]);
+        .unwrap();
+        assert_eq!(owner_tokens.tokens, vec![id_str(1), id_str(2), id_str(3)]);
 
-        // Transfer pos-2 to recipient
-        execute(
+        let result = execute(
             deps.as_mut(),
             mock_env(),
             message_info(&owner, &[]),
             ExecuteMsg::Transfer {
-                token_id: "pos-2".to_string(),
+                token_id: id(2),
                 recipient: recipient.to_string(),
             },
-        )
-        .expect("transfer should succeed");
+        );
+        if assert_result(result, expected_error).is_none() {
+            return;
+        }
 
-        // Burn pos-1
-        execute(
-            deps.as_mut(),
-            mock_env(),
-            message_info(&owner, &[]),
-            ExecuteMsg::Burn {
-                token_id: "pos-1".to_string(),
-            },
+        assert_result(
+            execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                ExecuteMsg::UpdatePosition {
+                    token_id: id(1),
+                    liquidity_change: Int256::from(-1000i128),
+                },
+            ),
+            None,
         )
-        .expect("burn should succeed");
+        .unwrap();
 
-        // Owner should only have pos-3
+        assert_result(
+            execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&factory, &[]),
+                ExecuteMsg::Burn { token_id: id(1) },
+            ),
+            None,
+        )
+        .unwrap();
+
         let owner_tokens: TokensResponse = from_json(
             query(
                 deps.as_ref(),
@@ -201,12 +634,11 @@ mod tests {
                     pagination: Pagination::default(),
                 },
             )
-            .expect("query should succeed"),
+            .unwrap(),
         )
-        .expect("deserialize should succeed");
-        assert_eq!(owner_tokens.tokens, vec!["pos-3"]);
+        .unwrap();
+        assert_eq!(owner_tokens.tokens, vec![id_str(3)]);
 
-        // Recipient should have pos-2
         let recipient_tokens: TokensResponse = from_json(
             query(
                 deps.as_ref(),
@@ -216,23 +648,26 @@ mod tests {
                     pagination: Pagination::default(),
                 },
             )
-            .expect("query should succeed"),
+            .unwrap(),
         )
-        .expect("deserialize should succeed");
-        assert_eq!(recipient_tokens.tokens, vec!["pos-2"]);
+        .unwrap();
+        assert_eq!(recipient_tokens.tokens, vec![id_str(2)]);
 
-        // AllTokens should have pos-2 and pos-3
         let all_tokens: TokensResponse = from_json(
-            query(deps.as_ref(), mock_env(), QueryMsg::AllTokens { pagination: Pagination::default() }).expect("query should succeed"),
+            query(
+                deps.as_ref(),
+                mock_env(),
+                QueryMsg::AllTokens {
+                    pagination: Pagination::default(),
+                },
+            )
+            .unwrap(),
         )
-        .expect("deserialize should succeed");
-        assert_eq!(all_tokens.tokens, vec!["pos-2", "pos-3"]);
+        .unwrap();
+        assert_eq!(all_tokens.tokens, vec![id_str(2), id_str(3)]);
 
-        // Total should be 2
-        let state: StateResponse = from_json(
-            query(deps.as_ref(), mock_env(), QueryMsg::State {}).expect("query should succeed"),
-        )
-        .expect("deserialize should succeed");
+        let state: StateResponse =
+            from_json(query(deps.as_ref(), mock_env(), QueryMsg::State {}).unwrap()).unwrap();
         assert_eq!(state.total_tokens, 2);
     }
 }

@@ -1,9 +1,12 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use std::collections::HashMap;
+
 use super::chains::{get_virtual_balance, migrate_concentrated_vlp, upload_concentrated_vlp_code};
 use crate::helpers::chains::{get_escrow, query_concentrated_migration_status};
 use crate::helpers::relayer::relay_factory_router_factory;
-use cosmwasm_std::{coin, Addr, Uint128};
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{coin, Addr, StdError, Uint128};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 use cw_orch_interchain::prelude::MockInterchainEnv;
@@ -14,7 +17,6 @@ use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
 use euclid::msgs::factory::msg::ExecuteMsgFns as FactoryExecuteMsgFns;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::factory::ExecuteSwapRequest;
-use euclid::msgs::lp_token::msg::ExecuteMsgFns as LpTokenExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::base::{PoolConfig, PoolKey, PoolType};
@@ -181,13 +183,48 @@ pub fn faucet(
             funds.push(coin(amount, denom));
         }
         TokenType::Smart { contract_address } => {
+            // Mint cw20 tokens to the recipient. Callers are responsible for
+            // granting allowance to the factory (or using the cw20 Send hook)
+            // when they need the factory to pull these tokens.
             let cw20 = LpTokenContract::new(chain.clone());
             cw20.set_address(&Addr::unchecked(contract_address));
-            // Increase allowance
-            cw20.increase_allowance(amount, address, None).unwrap();
+            cw20.execute(
+                &euclid::msgs::lp_token::msg::ExecuteMsg::Mint {
+                    recipient: address.to_string(),
+                    amount: Uint128::new(amount),
+                },
+                &[],
+            )
+            .unwrap();
         }
         _ => {}
     };
+}
+
+/// For each `TokenType::Smart` in `pair_with_denom`, granted an allowance to
+/// the factory contract equal to the requested amount, executed as the current
+/// chain sender. Native/voucher tokens are skipped.
+pub fn approve_factory_for_smart_tokens(
+    factory: &FactoryContract<MockBase>,
+    pair_with_denom: &PairWithDenomAndAmount,
+) -> Result<(), CwOrchError> {
+    let chain = factory.environment();
+    let factory_addr = factory.address()?.to_string();
+    for token in pair_with_denom.get_vec_token_info() {
+        if let TokenType::Smart { contract_address } = token.token_type {
+            let cw20 = LpTokenContract::new(chain.clone());
+            cw20.set_address(&Addr::unchecked(contract_address));
+            cw20.execute(
+                &euclid::msgs::lp_token::msg::ExecuteMsg::IncreaseAllowance {
+                    spender: factory_addr.clone(),
+                    amount: token.amount,
+                    expires: None,
+                },
+                &[],
+            )?;
+        }
+    }
+    Ok(())
 }
 
 pub fn create_pool(
@@ -201,7 +238,7 @@ pub fn create_pool(
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
+            chain,
             chain.sender.as_str(),
             token.amount.u128(),
             token.token_type.clone(),
@@ -251,27 +288,46 @@ pub fn create_concentrated_pool(
     tick_spacing: u64,
     slippage_tolerance_bps: u64,
 ) -> Result<PoolKey, CwOrchError> {
+    create_concentrated_pool_with_tick(
+        factory,
+        router,
+        pair_with_denom,
+        fee_tier_bps,
+        tick_spacing,
+        slippage_tolerance_bps,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_concentrated_pool_with_tick(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    pair_with_denom: PairWithDenomAndAmount,
+    fee_tier_bps: u64,
+    tick_spacing: u64,
+    slippage_tolerance_bps: u64,
+    initial_tick: Option<i64>,
+) -> Result<PoolKey, CwOrchError> {
     let chain = factory.environment();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
+            chain,
             chain.sender.as_str(),
             token.amount.u128(),
             token.token_type.clone(),
             &mut funds,
         );
     }
+    approve_factory_for_smart_tokens(factory, &pair_with_denom)?;
     let tx_response = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::RequestConcentratedPoolCreation {
             pair_with_denom_and_amount: pair_with_denom.clone(),
             fee_tier_bps,
             tick_spacing,
-            lp_token_name: "LPNAME".to_string(),
-            lp_token_symbol: "LPSYMBOL".to_string(),
-            lp_token_decimal: 6,
             slippage_tolerance_bps,
-            lp_token_marketing: None,
+            initial_tick,
             cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
@@ -285,6 +341,14 @@ pub fn create_concentrated_pool(
     Ok(pool_key)
 }
 
+#[cw_serde]
+pub struct AddConcentratedLiquidityResponse {
+    pub position_id: Uint128,
+    pub liquidity_delta: Uint128,
+    pub used_token_1: Uint128,
+    pub used_token_2: Uint128,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn add_concentrated_liquidity(
     factory: &FactoryContract<MockBase>,
@@ -295,18 +359,19 @@ pub fn add_concentrated_liquidity(
     upper_tick_index: i64,
     position_id: Option<Uint128>,
     slippage_tolerance_bps: u64,
-) -> Result<Uint128, CwOrchError> {
+) -> Result<AddConcentratedLiquidityResponse, CwOrchError> {
     let chain = factory.environment();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
+            chain,
             chain.sender.as_str(),
             token.amount.u128(),
             token.token_type.clone(),
             &mut funds,
         );
     }
+    approve_factory_for_smart_tokens(factory, &pair_with_denom)?;
 
     let tx_response = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::AddConcentratedLiquidity {
@@ -322,19 +387,52 @@ pub fn add_concentrated_liquidity(
     )?;
 
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    let ack_events =
+    let mut all_events = tx_response.events.clone();
+    let relay_events =
         relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-
-    // Extract position_id from the ack events' "position_id" attribute
-    let pos_id = ack_events
-        .iter()
-        .flat_map(|e| &e.attributes)
-        .find(|a| a.key == "position_id")
-        .and_then(|a| a.value.parse::<u128>().ok())
-        .map(Uint128::new)
-        .unwrap_or_default();
-
-    Ok(pos_id)
+    all_events.extend(relay_events);
+    for event in all_events {
+        if event
+            .attributes
+            .iter()
+            .any(|attr| attr.key == "action" && attr.value == "clp_add_liquidity")
+        {
+            let attr_map = event
+                .attributes
+                .iter()
+                .map(|attr| (attr.key.clone(), attr.value.clone()))
+                .collect::<HashMap<String, String>>();
+            let position_id = attr_map
+                .get("position_id")
+                .unwrap()
+                .parse::<Uint128>()
+                .unwrap();
+            let liquidity_delta = attr_map
+                .get("liquidity_delta")
+                .unwrap()
+                .parse::<Uint128>()
+                .unwrap();
+            let used_token_1 = attr_map
+                .get("used_token_1")
+                .unwrap()
+                .parse::<Uint128>()
+                .unwrap();
+            let used_token_2 = attr_map
+                .get("used_token_2")
+                .unwrap()
+                .parse::<Uint128>()
+                .unwrap();
+            return Ok(AddConcentratedLiquidityResponse {
+                position_id,
+                liquidity_delta,
+                used_token_1,
+                used_token_2,
+            });
+        }
+    }
+    Err(CwOrchError::CosmWasmError(StdError::generic_err(
+        "Add Concentrated Liquidity event not found",
+    )))
 }
 
 pub fn remove_concentrated_liquidity(
@@ -342,7 +440,7 @@ pub fn remove_concentrated_liquidity(
     router: &RouterContract<MockBase>,
     pool_key: PoolKey,
     position_id: Uint128,
-    lp_allocation: Uint128,
+    liquidity_delta: Uint128,
 ) -> Result<(), CwOrchError> {
     let state = factory.get_state()?;
     let sender = CrossChainUser::new(state.chain_uid, factory.environment().sender.to_string());
@@ -351,7 +449,7 @@ pub fn remove_concentrated_liquidity(
         &euclid::msgs::factory::ExecuteMsg::RemoveConcentratedLiquidity {
             pool_key,
             position_id,
-            lp_allocation,
+            liquidity_delta,
             recipient: sender,
             cross_chain_config: CrossChainConfig::default(),
         },
@@ -444,13 +542,9 @@ pub fn query_concentrated_pool_migration_status(
 pub fn get_position_token(
     factory: &FactoryContract<MockBase>,
 ) -> Result<PositionTokenContract<MockBase>, CwOrchError> {
-    let response = factory.get_position_token_contract()?;
     let contract = PositionTokenContract::new(factory.environment().clone());
-    if let Some(address) = response.position_token_contract {
-        let contract = contract;
-        contract.set_address(&address);
-        return Ok(contract);
-    }
+    let response = factory.get_position_token_contract()?;
+    contract.set_address(&response.position_token_contract.unwrap());
     Ok(contract)
 }
 
@@ -460,7 +554,9 @@ pub fn list_position_ids(factory: &FactoryContract<MockBase>) -> Result<Vec<Stri
         return Ok(vec![]);
     }
     let tokens: euclid::msgs::position_token::TokensResponse =
-        contract.query(&euclid::msgs::position_token::QueryMsg::AllTokens { start_after: None, limit: None })?;
+        contract.query(&euclid::msgs::position_token::QueryMsg::AllTokens {
+            pagination: Pagination::default(),
+        })?;
     Ok(tokens.tokens)
 }
 

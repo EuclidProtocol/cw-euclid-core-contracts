@@ -1,5 +1,6 @@
 use crate::{
     cross_chain_user::CrossChainUser,
+    error::ContractError,
     fee::{Fee, TotalFees},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
@@ -82,7 +83,7 @@ pub struct VlpConcentratedAddLiquidityMsg {
     pub liquidity: PairWithAmount,
     pub lower_tick_index: i64,
     pub upper_tick_index: i64,
-    pub position_id: Option<Uint128>,
+    pub position_id: Uint128,
     pub slippage_tolerance_bps: u64,
 }
 
@@ -136,16 +137,15 @@ pub struct GetSwapQueryResponse {
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
     pub tx_id: String,
-    pub mint_lp_tokens: Uint128,
     pub sender: CrossChainUser,
 }
 
 #[cw_serde]
 pub struct ConcentratedPoolCreationResponse {
+    pub pool_key: PoolKey,
     pub vlp_contract: String,
     pub tx_id: String,
     pub sender: CrossChainUser,
-    pub pool_key: PoolKey,
 }
 
 #[cw_serde]
@@ -195,6 +195,8 @@ pub struct VlpConcentratedRemoveLiquidityResponse {
     pub sender: CrossChainUser,
     pub vlp_address: String,
     pub pool_key: PoolKey,
+    /// True when the VLP deleted the position from storage (zero liquidity and zero owed fees).
+    pub position_burned: bool,
 }
 
 #[cw_serde]
@@ -243,6 +245,22 @@ pub struct PoolKey {
 }
 
 impl PoolKey {
+    pub fn get_fee_tier_bps(&self) -> Result<u64, ContractError> {
+        match self.pool_type {
+            PoolType::Concentrated { fee_tier_bps, .. } => Ok(fee_tier_bps),
+            _ => Err(ContractError::new("Invalid pool type")),
+        }
+    }
+
+    pub fn get_tick_spacing(&self) -> Result<u64, ContractError> {
+        match self.pool_type {
+            PoolType::Concentrated { tick_spacing, .. } => Ok(tick_spacing),
+            _ => Err(ContractError::new("Invalid pool type")),
+        }
+    }
+}
+
+impl PoolKey {
     /// Encode this pool key as a null-byte-delimited string suitable for use as a storage map key.
     pub fn to_map_key(&self) -> String {
         let (fee_tier_bps, tick_spacing) = match self.pool_type {
@@ -282,6 +300,16 @@ pub enum PoolConfig {
         fee_tier_bps: u64,
         tick_spacing: u64,
     },
+}
+
+impl PoolConfig {
+    pub fn to_string(&self) -> String {
+        match self {
+            PoolConfig::Stable { .. } => "stable".to_string(),
+            PoolConfig::ConstantProduct {} => "constant_product".to_string(),
+            PoolConfig::Concentrated { .. } => "concentrated".to_string(),
+        }
+    }
 }
 
 #[cw_serde]
