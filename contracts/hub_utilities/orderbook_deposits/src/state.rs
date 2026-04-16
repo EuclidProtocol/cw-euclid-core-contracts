@@ -46,8 +46,9 @@ pub const ASSET_DEPOSITS: Map<AssetId, Uint128> = Map::new("asset_deposits");
 // Per-user deposits keyed by (user address, asset id).
 pub const USER_DEPOSITS: Map<(String, AssetId), Uint128> = Map::new("user_deposits");
 
-// Tracks withdrawn amounts by hashed (root_id, user, asset, nonce).
-pub const NULLIFIERS: Map<String, Uint128> = Map::new("nullifiers");
-
 // Prevents permit replay by storing a hash of the signed permit data.
 pub const USED_PERMITS: Map<String, bool> = Map::new("used_permits");
+
+// Enforces one successful withdrawal per (user, asset, nonce).
+pub const CONSUMED_WITHDRAWALS: Map<(String, AssetId, u64), bool> =
+    Map::new("consumed_withdrawals");
