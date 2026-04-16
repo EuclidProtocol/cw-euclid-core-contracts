@@ -25,7 +25,9 @@ pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, Contra
             Ok(Response::new()
                 .add_attribute("action", "reply_next_swap")
                 .add_attribute("swap_id", swap_response.tx_id.clone())
-                .add_attribute("swap_response", format!("{swap_response:?}"))
+                .add_attribute("asset_out", swap_response.asset_out.to_string())
+                .add_attribute("amount_out", swap_response.amount_out)
+                .add_attribute("sender", swap_response.sender.to_sender_string())
                 .set_data(to_json_binary(&swap_response)?))
         }
     }

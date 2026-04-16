@@ -80,7 +80,8 @@ pub fn instantiate(
     Ok(response
         .add_attribute("method", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
-        .add_attribute("owner", info.sender))
+        .add_attribute("owner", info.sender)
+        .add_attribute("pool_type", "stable"))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
