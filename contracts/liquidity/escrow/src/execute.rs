@@ -115,6 +115,8 @@ pub fn execute_deposit_native(
 
     let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
 
+    let mut response = Response::new().add_attribute("method", "deposit_native");
+
     for token in info.funds {
         // Check that the amount of token sent is not zero
         ensure!(
@@ -140,11 +142,15 @@ pub fn execute_deposit_native(
             &current_balance.checked_add(token.amount)?,
         )?;
         state.total_amount = state.total_amount.checked_add(token.amount)?;
+
+        response = response
+            .add_attribute("denom", token_type.get_key())
+            .add_attribute("amount", token.amount.to_string());
     }
 
     STATE.save(deps.storage, &state)?;
 
-    Ok(Response::new().add_attribute("method", "deposit"))
+    Ok(response)
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
@@ -297,6 +303,7 @@ pub fn execute_withdraw(
         .add_attribute("method", "escrow_withdraw")
         .add_attribute("amount", amount)
         .add_attribute("token", state.token_id.to_string())
+        .add_attribute("denom", denom.get_key())
         .add_attribute("recipient", recipient)
         .set_data(ack);
 
@@ -624,7 +631,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "deposit"));
+        assert_eq!(res.attributes[0], attr("method", "deposit_native"));
+        assert_eq!(res.attributes[1], attr("denom", native_denom().get_key()));
+        assert_eq!(res.attributes[2], attr("amount", "500"));
 
         let bal = DENOM_TO_AMOUNT
             .load(&initialized.storage, native_denom().get_key())
@@ -889,7 +898,8 @@ mod tests {
         assert_eq!(res.attributes[0], attr("method", "escrow_withdraw"));
         assert_eq!(res.attributes[1], attr("amount", "400"));
         assert_eq!(res.attributes[2], attr("token", TOKEN_ID));
-        assert_eq!(res.attributes[3], attr("recipient", recipient.as_str()));
+        assert_eq!(res.attributes[3], attr("denom", native_denom().get_key()));
+        assert_eq!(res.attributes[4], attr("recipient", recipient.as_str()));
 
         assert_eq!(res.messages.len(), 1);
         if let CosmosMsg::Bank(BankMsg::Send { to_address, amount }) = &res.messages[0].msg {
