@@ -54,6 +54,9 @@ pub enum ContractError {
     #[error("permit already used")]
     PermitAlreadyUsed {},
 
+    #[error("withdrawal already consumed")]
+    WithdrawalAlreadyConsumed {},
+
     #[error("insufficient withdrawable balance")]
     InsufficientWithdrawableBalance {},
 
