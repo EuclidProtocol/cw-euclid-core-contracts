@@ -114,12 +114,14 @@ impl RouterCrossChainExecuteMsg {
                     msg: to_json_binary(self)?,
                     chain_uid: chain_uid.clone(),
                 };
-                // Get the current count of the queue
+                // Advance the counter within the reserved range (2001–3000).
+                // When it exceeds 3000, wrap back to 2001 for slot reuse.
+                // The `ensure!` below is the hard guard: if the slot is still occupied
+                // (i.e. all 1 000 slots are in-flight simultaneously), the call errors.
                 let mut reply_id = NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_COUNT
                     .load(deps.storage)
                     .unwrap_or(NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0);
 
-                // Wrap around the reply ID range
                 if reply_id > NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.1 {
                     reply_id = NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0;
                 }

@@ -7,8 +7,6 @@ use cosmwasm_std::{
 use cw20_base::ContractError as Cw20ContractError;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum Never {}
 #[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]

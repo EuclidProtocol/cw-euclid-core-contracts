@@ -20,5 +20,10 @@ pub const NATIVE_CROSS_CHAIN_PENDING_PACKET_SENDER: Map<u64, Addr> =
 pub const NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_COUNT: Item<u64> =
     Item::new("native_cross_chain_original_msg_reply_queue_count");
 
-// Range of reply IDS reserved for native cross chain messages
+// Reply IDs 2001–3000 are reserved for native cross-chain messages (1 000 concurrent slots).
+// The counter advances by 1 per use and wraps back to 2001 once it exceeds 3000.
+// Wrap-around is best-effort reuse: a slot may still be occupied after a full cycle.
+// The `ensure!` guard in the allocation path is the hard safety check — callers that
+// exhaust all 1 000 in-flight slots simultaneously will receive a "Reply ID is already
+// in use" / "Msg Queue is full" error until earlier replies are processed and slots freed.
 pub const NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE: (u64, u64) = (2001, 3000);
