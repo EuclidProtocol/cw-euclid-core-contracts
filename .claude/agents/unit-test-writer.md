@@ -29,10 +29,11 @@ If `src/testing/` does not exist yet, create all three files and add `#[cfg(test
 
 - Always wrap test modules in `#[cfg(test)] mod tests { ... }`.
 - Import from `cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier}`.
+- Always add `use rstest::{fixture, rstest};` at the top of the test module.
 - Generate addresses with `deps.api.addr_make("name")` — never use `Addr::unchecked` for actor addresses in tests.
 - Use `Addr::unchecked` only for contract addresses stored in state (router, relayer, etc.).
 
-## Standard `init` Helper Pattern
+## rstest: Fixtures
 
 Define `init` in `src/testing/helpers.rs` (not in individual test modules):
 
@@ -42,7 +43,8 @@ pub fn init(deps: &mut MockDeps) -> Response {
     let msg = InstantiateMsg { /* ... */ };
     let sender = deps.api.addr_make("sender");
     let info = message_info(&sender, &[]);
-    instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
+    instantiate(deps.as_mut(), mock_env(), info, InstantiateMsg { /* ... */ }).unwrap();
+    deps
 }
 ```
 
