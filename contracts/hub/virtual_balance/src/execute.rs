@@ -230,8 +230,10 @@ fn _transfer(
     let response = Response::new()
         .add_attribute("action", "execute_transfer")
         .add_attribute("transfer_amount", amount)
-        .add_attribute("from", format!("{sender_balance_key:?}"))
-        .add_attribute("to", format!("{receiver_balance_key:?}"))
+        .add_attribute("transfer_from_address", from.to_sender_string())
+        .add_attribute("transfer_from_chain", from.chain_uid.to_string())
+        .add_attribute("transfer_to_address", to.to_sender_string())
+        .add_attribute("transfer_to_chain", to.chain_uid.to_string())
         .add_attribute("token_id", token_id);
 
     Ok(response)
@@ -289,6 +291,7 @@ pub fn execute_update_admin(
     admin_type: AdminType,
 ) -> Result<Response, ContractError> {
     let current_admin = ADMIN.load(deps.storage)?;
+    let admin_type_str = format!("{admin_type:?}");
     let (updated_admins, response) = admin::update_admin(
         &current_admin,
         &deps,
@@ -301,7 +304,8 @@ pub fn execute_update_admin(
     ADMIN.save(deps.storage, &updated_admins)?;
     Ok(response
         .add_attribute("old_admin", current_admin.to_string())
-        .add_attribute("new_admin", new_admin.to_string()))
+        .add_attribute("new_admin", new_admin.to_string())
+        .add_attribute("admin_type", admin_type_str))
 }
 
 pub fn execute_update_router(
@@ -317,11 +321,13 @@ pub fn execute_update_router(
 
     let verified_router = deps.api.addr_validate(router.as_str())?;
     let mut state = STATE.load(deps.storage)?;
+    let old_router = state.router.clone();
     state.router = verified_router.clone();
     STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
-        .add_attribute("action", "execute_update_state")
+        .add_attribute("action", "execute_update_router")
+        .add_attribute("old_router", old_router)
         .add_attribute("router", verified_router))
 }
 
@@ -409,6 +415,7 @@ pub fn execute_remove_zero_state_values(
         })
         .collect();
 
+    let removed_allowances = allowance_keys_to_remove.len();
     for key in allowance_keys_to_remove {
         ALLOWANCES.remove(deps.storage, key);
     }
@@ -427,11 +434,15 @@ pub fn execute_remove_zero_state_values(
         })
         .collect();
 
+    let removed_balances = balances_keys_to_remove.len();
     for key in balances_keys_to_remove {
         BALANCES.remove(deps.storage, key);
     }
 
-    Ok(Response::new().add_attribute("action", "execute_remove_zero_state_values"))
+    Ok(Response::new()
+        .add_attribute("action", "execute_remove_zero_state_values")
+        .add_attribute("removed_balances", removed_balances.to_string())
+        .add_attribute("removed_allowances", removed_allowances.to_string()))
 }
 
 /// Migrates mixed-case balance/allowance keys to lowercase.

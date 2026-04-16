@@ -43,6 +43,7 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("token_balance_address", env.contract.address)
+        .add_attribute("router", state.router)
         .add_attribute("admin", admin.to_string()))
 }
 
