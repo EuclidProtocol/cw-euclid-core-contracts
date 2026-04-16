@@ -40,10 +40,12 @@ ExecuteMsg::Withdraw {
 10. `Token::create(leaf.token_id)` must succeed (token id format validation).
 11. Permit must be valid (see Permit Verification).
 12. Permit must not be replayed (see Permit Replay Protection).
-13. Merkle proof must match the current root (see Merkle Verification).
-14. Remaining withdrawable balance must be sufficient:
-    `amount <= leaf.balance - already_withdrawn`.
-15. Escrow totals must be sufficient for the token:
+13. `(user, token_id, nonce)` must not already be consumed by a prior successful
+    withdrawal.
+14. Merkle proof must match the current root (see Merkle Verification).
+15. Requested amount must not exceed the leaf balance:
+    `amount <= leaf.balance`.
+16. Escrow totals must be sufficient for the token:
     `ASSET_DEPOSITS[token_id] >= amount`.
 
 If any check fails, `execute_withdraw()` returns a `ContractError` and no state
@@ -79,9 +81,11 @@ After a permit is verified, a replay key is computed and stored:
 
 - `permit_id(permit)` computes `sha256(permit.data)` and hex-encodes it.
 - `USED_PERMITS[permit_id]` must be `false` or missing.
-- On success, `USED_PERMITS[permit_id] = true`.
+- `CONSUMED_WITHDRAWALS[(user, token_id, nonce)]` must be `false` or missing.
+- On success, both replay markers are stored.
 
-This prevents the same signed `permit.data` from being used again.
+This prevents both the same signed `permit.data` from being reused and a fresh
+permit from being issued for an already-consumed withdrawal identity.
 
 ## Merkle Verification (Exact)
 
@@ -102,11 +106,9 @@ withdraw fails with `InvalidMerkleProof`.
 
 After all checks pass:
 
-1. Nullifier tracking:
-   - Key: `nullifier_key(root_id, user, token_id, nonce)`
-   - `already_withdrawn = NULLIFIERS[key]` (default 0)
-   - `new_withdrawn = already_withdrawn + amount`
-   - Store `NULLIFIERS[key] = new_withdrawn`
+1. Withdrawal consumption:
+   - Key: `(user, token_id, nonce)`
+   - Store `CONSUMED_WITHDRAWALS[key] = true`
 
 2. Asset totals (`ASSET_DEPOSITS`):
    - `new_asset_total = ASSET_DEPOSITS[token_id] - amount`
@@ -274,5 +276,3 @@ ExecuteTransfer {
 
 - `permit_id(permit)` uses `sha256(permit.data)` and hex encoding.
 - `hash_leaf(leaf)` uses `sha256(JSON(WithdrawalLeaf))`.
-- `nullifier_key` uses `sha256(root_id || 0x00 || user || 0x00 || token_id || 0x00 || nonce_be)`
-  and hex encoding.

@@ -195,8 +195,11 @@ pub fn execute_request_pool_creation(
             info.sender.as_str(),
             euclid::events::TxType::PoolCreation,
         ))
+        .add_attribute("action", "pool_creation")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_pool_creation")
+        .add_attribute("token_1", pair.token_1.to_string())
+        .add_attribute("token_2", pair.token_2.to_string())
         .add_submessage(pool_create_msg))
 }
 
@@ -327,8 +330,11 @@ pub fn add_liquidity_request(
             info.sender.as_str(),
             euclid::events::TxType::AddLiquidity,
         ))
+        .add_attribute("action", "add_liquidity")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "add_liquidity_request")
+        .add_attribute("token_1", pair.token_1.to_string())
+        .add_attribute("token_2", pair.token_2.to_string())
         .add_submessages(msgs)
         .add_submessage(add_liq_msg))
 }
@@ -386,6 +392,8 @@ pub fn remove_liquidity_request(
     )?;
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
+    let token_1 = pair.token_1.to_string();
+    let token_2 = pair.token_2.to_string();
     let remove_liq_msg =
         RouterCrossChainExecuteMsg::RemoveLiquidity(RouterCrossChainRemoveLiquidityExecuteMsg {
             sender,
@@ -411,7 +419,403 @@ pub fn remove_liquidity_request(
             sender_addr.as_str(),
             euclid::events::TxType::RemoveLiquidity,
         ))
+        .add_attribute("action", "remove_liquidity")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "remove_liquidity_request")
+        .add_attribute("token_1", token_1)
+        .add_attribute("token_2", token_2)
         .add_submessage(remove_liq_msg))
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies, mock_env},
+        Uint128,
+    };
+    use euclid::{
+        error::ContractError,
+        msgs::factory::ExecuteMsg,
+        token::{Token, TokenType},
+    };
+
+    use crate::{
+        contract::execute,
+        testing::helpers::{
+            default_cross_chain_config, init, seed_escrow, seed_vlp, set_escrow_token_allowed,
+        },
+    };
+
+    // -----------------------------------------------------------------------
+    // Execute: AddLiquidity – PoolDoesNotExist
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_add_liquidity_pool_does_not_exist() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+        deps.querier
+            .bank
+            .update_balance("any2", vec![cosmwasm_std::coin(1_000_000, "ueth")]);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(
+            &user,
+            &[
+                cosmwasm_std::coin(100, "uusdc"),
+                cosmwasm_std::coin(100, "ueth"),
+            ],
+        );
+
+        let pair_info = euclid::token::PairWithDenomAndAmount {
+            token_1: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("eth".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "ueth".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+            token_2: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+        };
+        let msg = ExecuteMsg::AddLiquidity {
+            pair_with_denom_and_amount: pair_info,
+            slippage_tolerance_bps: 50,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::PoolDoesNotExist {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: AddLiquidity – invalid slippage (zero)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_add_liquidity_zero_slippage_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+        deps.querier
+            .bank
+            .update_balance("any2", vec![cosmwasm_std::coin(1_000_000, "ueth")]);
+
+        set_escrow_token_allowed(&mut deps, true);
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(
+            &user,
+            &[
+                cosmwasm_std::coin(100, "uusdc"),
+                cosmwasm_std::coin(100, "ueth"),
+            ],
+        );
+        let pair_info = euclid::token::PairWithDenomAndAmount {
+            token_1: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("eth".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "ueth".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+            token_2: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+        };
+        let msg = ExecuteMsg::AddLiquidity {
+            pair_with_denom_and_amount: pair_info,
+            slippage_tolerance_bps: 0,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::InvalidSlippageTolerance {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: AddLiquidity – zero token amount
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_add_liquidity_zero_amount_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+        deps.querier
+            .bank
+            .update_balance("any2", vec![cosmwasm_std::coin(1_000_000, "ueth")]);
+
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[]);
+
+        let pair_info = euclid::token::PairWithDenomAndAmount {
+            token_1: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("eth".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "ueth".to_string(),
+                },
+                amount: Uint128::zero(),
+            },
+            token_2: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+        };
+        let msg = ExecuteMsg::AddLiquidity {
+            pair_with_denom_and_amount: pair_info,
+            slippage_tolerance_bps: 50,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::ZeroAssetAmount {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: RequestPoolCreation – slippage tolerance exceeds 100%
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_request_pool_creation_slippage_too_high_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+        deps.querier
+            .bank
+            .update_balance("any2", vec![cosmwasm_std::coin(1_000_000, "ueth")]);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(
+            &user,
+            &[
+                cosmwasm_std::coin(100, "uusdc"),
+                cosmwasm_std::coin(100, "ueth"),
+            ],
+        );
+
+        let pair_info = euclid::token::PairWithDenomAndAmount {
+            token_1: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("eth".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "ueth".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+            token_2: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+        };
+
+        let msg = ExecuteMsg::RequestPoolCreation {
+            pair_with_denom_and_amount: pair_info,
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            lp_token_name: "LP Token".to_string(),
+            lp_token_symbol: "LPT".to_string(),
+            lp_token_decimal: 6,
+            slippage_tolerance_bps: 10_001,
+            lp_token_marketing: None,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::InvalidSlippageTolerance {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: RequestPoolCreation – pool already exists
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_request_pool_creation_pool_already_exists_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "existing_vlp");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+        deps.querier
+            .bank
+            .update_balance("any2", vec![cosmwasm_std::coin(1_000_000, "ueth")]);
+
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(
+            &user,
+            &[
+                cosmwasm_std::coin(100, "uusdc"),
+                cosmwasm_std::coin(100, "ueth"),
+            ],
+        );
+
+        let pair_info = euclid::token::PairWithDenomAndAmount {
+            token_1: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("eth".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "ueth".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+            token_2: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+        };
+
+        let msg = ExecuteMsg::RequestPoolCreation {
+            pair_with_denom_and_amount: pair_info,
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            lp_token_name: "LP Token".to_string(),
+            lp_token_symbol: "LPT".to_string(),
+            lp_token_decimal: 6,
+            slippage_tolerance_bps: 50,
+            lp_token_marketing: None,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::PoolAlreadyExists {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: RequestPoolCreation – same token on both sides
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_request_pool_creation_same_token_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(100, "uusdc")]);
+
+        let pair_info = euclid::token::PairWithDenomAndAmount {
+            token_1: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+            token_2: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+        };
+
+        let msg = ExecuteMsg::RequestPoolCreation {
+            pair_with_denom_and_amount: pair_info,
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            lp_token_name: "LP Token".to_string(),
+            lp_token_symbol: "LPT".to_string(),
+            lp_token_decimal: 6,
+            slippage_tolerance_bps: 50,
+            lp_token_marketing: None,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(res.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: RequestPoolCreation – both tokens new (no pre-existing escrow)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_request_pool_creation_both_tokens_new_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uaaa")]);
+        deps.querier
+            .bank
+            .update_balance("any2", vec![cosmwasm_std::coin(1_000_000, "ubbb")]);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(
+            &user,
+            &[
+                cosmwasm_std::coin(100, "uaaa"),
+                cosmwasm_std::coin(100, "ubbb"),
+            ],
+        );
+
+        let pair_info = euclid::token::PairWithDenomAndAmount {
+            token_1: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("aaa".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uaaa".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+            token_2: euclid::token::TokenWithDenomAndAmount {
+                token: Token::create("bbb".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "ubbb".to_string(),
+                },
+                amount: Uint128::new(100),
+            },
+        };
+
+        let msg = ExecuteMsg::RequestPoolCreation {
+            pair_with_denom_and_amount: pair_info,
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            lp_token_name: "LP Token".to_string(),
+            lp_token_symbol: "LPT".to_string(),
+            lp_token_decimal: 6,
+            slippage_tolerance_bps: 50,
+            lp_token_marketing: None,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
 }

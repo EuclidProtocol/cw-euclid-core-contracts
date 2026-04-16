@@ -3,6 +3,7 @@
 pub use mock::MockEuclid;
 pub use mock_contract::MockContract;
 
+pub mod admin_tests;
 pub mod mock;
 pub mod mock_builder;
 pub mod mock_contract;
