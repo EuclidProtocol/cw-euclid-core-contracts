@@ -39,6 +39,8 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     // Validate token pair
     msg.pair.validate()?;
+    let token_1 = msg.pair.token_1.to_string();
+    let token_2 = msg.pair.token_2.to_string();
 
     let state = State {
         pair: msg.pair,
@@ -84,7 +86,9 @@ pub fn instantiate(
         .add_attribute("method", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
         .add_attribute("owner", info.sender)
-        .add_attribute("pool_type", "xyk"))
+        .add_attribute("pool_type", "xyk")
+        .add_attribute("token_1", token_1)
+        .add_attribute("token_2", token_2))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -284,6 +288,12 @@ mod tests {
 
         let owner_attr = res.attributes.iter().find(|a| a.key == "owner").unwrap();
         assert_eq!(owner_attr.value, router.to_string());
+
+        let token_1_attr = res.attributes.iter().find(|a| a.key == "token_1").unwrap();
+        assert_eq!(token_1_attr.value, "token1");
+
+        let token_2_attr = res.attributes.iter().find(|a| a.key == "token_2").unwrap();
+        assert_eq!(token_2_attr.value, "token2");
     }
 
     #[test]

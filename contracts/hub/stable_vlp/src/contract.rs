@@ -32,6 +32,8 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     // Validate token pair
     msg.pair.validate()?;
+    let token_1 = msg.pair.token_1.to_string();
+    let token_2 = msg.pair.token_2.to_string();
 
     let state = State {
         pair: msg.pair,
@@ -80,7 +82,9 @@ pub fn instantiate(
     Ok(response
         .add_attribute("method", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
-        .add_attribute("owner", info.sender))
+        .add_attribute("owner", info.sender)
+        .add_attribute("token_1", token_1)
+        .add_attribute("token_2", token_2))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
