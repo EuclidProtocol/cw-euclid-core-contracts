@@ -118,19 +118,23 @@ pub fn execute(
             euclid_fee_bps,
             recipient,
         ),
-        ExecuteMsg::AddLiquidity(add_liquidity_msg) => add_liquidity(
-            deps,
-            env,
-            info,
-            &STATE,
-            &BALANCES,
-            &CHAIN_LP_TOKENS,
-            &COLLATERAL_LP_TOKENS,
-            add_liquidity_msg.sender,
-            add_liquidity_msg.liquidity,
-            add_liquidity_msg.slippage_tolerance_bps,
-            add_liquidity_msg.tx_id,
-        ),
+        ExecuteMsg::AddLiquidity(add_liquidity_msg) => {
+            let amp_factor = AMP_FACTOR.load(deps.storage)?;
+            add_liquidity(
+                deps,
+                env,
+                info,
+                &STATE,
+                &BALANCES,
+                &CHAIN_LP_TOKENS,
+                &COLLATERAL_LP_TOKENS,
+                add_liquidity_msg.sender,
+                add_liquidity_msg.liquidity,
+                add_liquidity_msg.slippage_tolerance_bps,
+                Some(amp_factor),
+                add_liquidity_msg.tx_id,
+            )
+        }
         ExecuteMsg::RemoveLiquidity(remove_liquidity_msg) => remove_liquidity(
             deps,
             env,
