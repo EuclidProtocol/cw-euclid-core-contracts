@@ -204,7 +204,6 @@ pub fn execute_request_pool_creation(
 }
 
 // Add liquidity to the pool
-// TODO look into alternatives of using .branch(), maybe unifying the functions would help
 pub fn add_liquidity_request(
     deps: &mut DepsMut,
     info: MessageInfo,
