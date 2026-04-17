@@ -200,13 +200,13 @@ pub fn execute_receive_acknowledgement(
         destination_port == format!("vsl.{router}", router = env.contract.address),
         ContractError::new("Invalid destination port")
     );
-    remove_pending_packet_and_decrement_count(deps.storage, &chain_uid, sequence)?;
+    let existing_request =
+        remove_pending_packet_and_decrement_count(deps.storage, &chain_uid, sequence)?;
 
-    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
-    // ensure!(
-    //     existing_request == msg,
-    //     ContractError::new("Ack source msg doesn't match with existing request")
-    // );
+    ensure!(
+        existing_request.original_msg == msg,
+        ContractError::new("Ack source msg doesn't match with existing request")
+    );
 
     let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
 

@@ -198,11 +198,10 @@ pub fn execute_receive_acknowledgement(
     let (existing_request, sender) =
         remove_pending_packet_and_decrement_count(deps.storage, sequence)?;
 
-    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
-    // ensure!(
-    //     existing_request == msg,
-    //     ContractError::new("Ack source msg doesn't match with existing request")
-    // );
+    ensure!(
+        existing_request.original_msg == msg,
+        ContractError::new("Ack source msg doesn't match with existing request")
+    );
 
     let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
 
