@@ -1,4 +1,7 @@
-use crate::{token::{Pair, Token, TokenType}, utils::pagination::Pagination};
+use crate::{
+    token::{Pair, Token, TokenType},
+    utils::pagination::Pagination,
+};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
@@ -59,7 +62,9 @@ pub enum QueryMsg {
     GetDenomBalance { denom: String },
 
     #[returns(AllDenomBalancesResponse)]
-    GetAllDenomBalances { pagination: Option<Pagination<String>> },
+    GetAllDenomBalances {
+        pagination: Option<Pagination<String>>,
+    },
 }
 
 #[cw_serde]

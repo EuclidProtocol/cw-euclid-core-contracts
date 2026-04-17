@@ -13,7 +13,9 @@ use crate::execute::{
     self, execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom,
     execute_withdraw, receive_cw20,
 };
-use crate::query::{self, query_all_denom_balances, query_denom_balance, query_disallowed_denoms, query_token_id};
+use crate::query::{
+    self, query_all_denom_balances, query_denom_balance, query_disallowed_denoms, query_token_id,
+};
 use crate::state::{State, STATE};
 
 use euclid::msgs::escrow::{EscrowInstantiateResponse, ExecuteMsg, InstantiateMsg, QueryMsg};

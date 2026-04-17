@@ -6,9 +6,9 @@ use euclid::{
     msgs::factory::{
         AllPoolsResponse, AllTokensResponse, FeeBracket, GetEscrowResponse, GetLPTokenResponse,
         GetLpSharesResponse, GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse,
-        GetPendingSwapsResponse, GetRateLimitStateResponse, GetUserRateLimitResponse, GetVlpResponse,
-        PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse, PoolVlpResponse,
-        StateResponse,
+        GetPendingSwapsResponse, GetRateLimitStateResponse, GetUserRateLimitResponse,
+        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
+        PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,

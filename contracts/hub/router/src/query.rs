@@ -340,7 +340,9 @@ pub fn query_fee_state(deps: Deps) -> Result<Binary, ContractError> {
 }
 
 pub fn query_default_release_fee(deps: Deps) -> Result<Binary, ContractError> {
-    let fee = DEFAULT_RELEASE_FEE.may_load(deps.storage)?.unwrap_or_default();
+    let fee = DEFAULT_RELEASE_FEE
+        .may_load(deps.storage)?
+        .unwrap_or_default();
     Ok(to_json_binary(&DefaultReleaseFeeResponse { fee })?)
 }
 

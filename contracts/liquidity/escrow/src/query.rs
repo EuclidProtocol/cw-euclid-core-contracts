@@ -41,7 +41,9 @@ pub fn query_allowed_denoms(deps: Deps) -> Result<Binary, ContractError> {
 }
 
 pub fn query_disallowed_denoms(deps: Deps) -> Result<Binary, ContractError> {
-    let denoms = DISALLOWED_DENOMS.may_load(deps.storage)?.unwrap_or_default();
+    let denoms = DISALLOWED_DENOMS
+        .may_load(deps.storage)?
+        .unwrap_or_default();
     Ok(to_json_binary(&DisallowedDenomsResponse { denoms })?)
 }
 
