@@ -11,7 +11,7 @@ use crate::{
     utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Int256, Uint128};
 use cw20::Cw20ReceiveMsg;
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -181,6 +181,15 @@ pub enum QueryMsg {
 
     #[returns(GetEscrowResponse)]
     GetEscrow { token_id: String },
+
+    #[returns(GetLpSharesResponse)]
+    GetLpShares { vlp: String },
+
+    #[returns(GetRateLimitStateResponse)]
+    GetRateLimitState {},
+
+    #[returns(GetUserRateLimitResponse)]
+    GetUserRateLimit { user: Addr },
 }
 
 #[cw_serde]
@@ -273,4 +282,29 @@ pub struct GetPendingRemoveLiquidityResponse {
 #[cw_serde]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>, // Assuming pool addresses are strings
+}
+
+#[cw_serde]
+pub struct GetLpSharesResponse {
+    pub vlp: String,
+    pub lp_shares: Int256,
+}
+
+#[cw_serde]
+pub struct FeeBracket {
+    pub threshold: u128,
+    pub fee: Uint128,
+}
+
+#[cw_serde]
+pub struct GetRateLimitStateResponse {
+    pub free_limit: u128,
+    pub fee_brackets: Vec<FeeBracket>,
+}
+
+#[cw_serde]
+pub struct GetUserRateLimitResponse {
+    pub user: Addr,
+    pub free_limit: Option<u128>,
+    pub pending_packets: u128,
 }

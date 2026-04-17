@@ -7,7 +7,8 @@ use euclid::{
     msgs::{
         router::{
             AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-            EscrowResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
+            ChainTimeoutResponse, DefaultReleaseFeeResponse, EscrowResponse, FeeStateResponse,
+            LockedChainsResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
             QueryTokenDenomsResponse, ReleaseFee, ReleaseFeesQueryResponse, SimulateSwapResponse,
             StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
         },
@@ -19,8 +20,9 @@ use euclid::{
 };
 
 use crate::state::{
-    ADMIN, CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES, STATE,
-    TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+    ADMIN, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, DEFAULT_RELEASE_FEE, ESCROW_BALANCES,
+    FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS,
+    VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -321,6 +323,33 @@ pub fn query_release_fees(
         .collect::<Result<_, ContractError>>()?;
     Ok(to_json_binary(&ReleaseFeesQueryResponse {
         fees: release_fees,
+    })?)
+}
+
+pub fn query_locked_chains(deps: Deps) -> Result<Binary, ContractError> {
+    let chains = LOCKED_CHAINS.load(deps.storage)?;
+    Ok(to_json_binary(&LockedChainsResponse { chains })?)
+}
+
+pub fn query_fee_state(deps: Deps) -> Result<Binary, ContractError> {
+    let fee_state = FEE_STATE.load(deps.storage)?;
+    Ok(to_json_binary(&FeeStateResponse {
+        release_fee_recipient: fee_state.release_fee_recipient,
+        default_fee_recipient: fee_state.default_fee_recipient,
+    })?)
+}
+
+pub fn query_default_release_fee(deps: Deps) -> Result<Binary, ContractError> {
+    let fee = DEFAULT_RELEASE_FEE.may_load(deps.storage)?.unwrap_or_default();
+    Ok(to_json_binary(&DefaultReleaseFeeResponse { fee })?)
+}
+
+pub fn query_chain_timeout(deps: Deps, chain_uid: ChainUid) -> Result<Binary, ContractError> {
+    let chain_uid = chain_uid.validate()?.to_owned();
+    let timeout_seconds = CHAIN_TIMEOUT_SECONDS.load(deps.storage, chain_uid.clone())?;
+    Ok(to_json_binary(&ChainTimeoutResponse {
+        chain_uid,
+        timeout_seconds,
     })?)
 }
 

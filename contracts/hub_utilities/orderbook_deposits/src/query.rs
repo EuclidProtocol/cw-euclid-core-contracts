@@ -3,10 +3,13 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
 use cw_storage_plus::Bound;
 use euclid::msgs::orderbook_deposits::OrderbookDepositsStatus;
 
-use crate::state::{ADMIN, ASSET_DEPOSITS, CURRENT_ROOT, STATE, USER_DEPOSITS, WHITELISTED_ASSETS};
+use crate::state::{
+    ADMIN, ASSET_DEPOSITS, CURRENT_ROOT, PENDING_ROOT, ROOT_CONFIG, STATE, USER_DEPOSITS,
+    WHITELISTED_ASSETS,
+};
 use euclid::msgs::orderbook_deposits::{
-    AssetDepositResponse, QueryMsg, RootResponse, StateResponse, UserDepositResponse,
-    WhitelistListResponse, WhitelistResponse,
+    AssetDepositResponse, PendingRootResponse, QueryMsg, RootConfigResponse, RootResponse,
+    StateResponse, UserDepositResponse, WhitelistListResponse, WhitelistResponse,
 };
 
 pub fn query(deps: Deps, msg: QueryMsg) -> Result<Binary, ContractError> {
@@ -23,6 +26,8 @@ pub fn query(deps: Deps, msg: QueryMsg) -> Result<Binary, ContractError> {
             &query_whitelisted_assets(deps, start_after, limit),
         )?),
         QueryMsg::CurrentRoot {} => Ok(to_json_binary(&query_current_root(deps)?)?),
+        QueryMsg::GetPendingRoot {} => Ok(to_json_binary(&query_pending_root(deps)?)?),
+        QueryMsg::GetRootConfig {} => Ok(to_json_binary(&query_root_config(deps)?)?),
     }
 }
 
@@ -107,5 +112,28 @@ fn query_current_root(deps: Deps) -> Result<RootResponse, ContractError> {
         da_hash: root.da_hash,
         da_url: root.da_url,
         proposed_at: root.proposed_at,
+    })
+}
+
+fn query_pending_root(deps: Deps) -> Result<PendingRootResponse, ContractError> {
+    let pending = PENDING_ROOT.may_load(deps.storage)?;
+    let pending_root = pending.map(|root| RootResponse {
+        root_id: root.root_id,
+        root_hash: root.root_hash,
+        per_asset_totals: root.per_asset_totals,
+        da_hash: root.da_hash,
+        da_url: root.da_url,
+        proposed_at: root.proposed_at,
+    });
+    Ok(PendingRootResponse { pending_root })
+}
+
+fn query_root_config(deps: Deps) -> Result<RootConfigResponse, ContractError> {
+    let config = ROOT_CONFIG.load(deps.storage)?;
+    Ok(RootConfigResponse {
+        permit_signer_pubkey: config.permit_signer_pubkey,
+        permit_signer_address: config.permit_signer_address,
+        root_challenge_period: config.root_challenge_period,
+        authorized_posters: config.authorized_posters,
     })
 }

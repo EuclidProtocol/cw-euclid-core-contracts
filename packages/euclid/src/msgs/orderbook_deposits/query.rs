@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128};
 
 use crate::msgs::orderbook_deposits::AssetTotal;
 #[cw_serde]
@@ -20,6 +20,10 @@ pub enum QueryMsg {
     },
     #[returns(RootResponse)]
     CurrentRoot {},
+    #[returns(PendingRootResponse)]
+    GetPendingRoot {},
+    #[returns(RootConfigResponse)]
+    GetRootConfig {},
 }
 
 #[cw_serde]
@@ -61,4 +65,17 @@ pub struct RootResponse {
     pub da_hash: Option<Binary>,
     pub da_url: Option<String>,
     pub proposed_at: u64,
+}
+
+#[cw_serde]
+pub struct PendingRootResponse {
+    pub pending_root: Option<RootResponse>,
+}
+
+#[cw_serde]
+pub struct RootConfigResponse {
+    pub permit_signer_pubkey: Option<Binary>,
+    pub permit_signer_address: Option<String>,
+    pub root_challenge_period: u64,
+    pub authorized_posters: Vec<Addr>,
 }
