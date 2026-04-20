@@ -548,6 +548,7 @@ fn execute_add_concentrated_liquidity(
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
+    // Refunding to sender is not ideal in case of forwarding contracts as it can result in locked vouchers if forwarding contract doesn't implement proper voucher handling.
     let refund_0 = provided_0
         .checked_sub(amount_0_used)
         .map_err(|_| ContractError::Generic {
