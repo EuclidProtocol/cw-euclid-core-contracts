@@ -4,7 +4,7 @@ use cosmwasm_std::{Addr, Uint128};
 use crate::{
     admin::EuclidAdmin,
     chain::{Chain, ChainUid},
-    msgs::vlp::base::PoolKey,
+    msgs::vlp::{base::PoolKey, concentrated::msg::PositionResponse},
     swap::NextSwapPair,
     token::{Pair, Token, TokenType},
     utils::pagination::Pagination,
@@ -50,6 +50,8 @@ pub enum QueryMsg {
     GetReleaseFees {
         pagination: Pagination<(Token, ChainUid)>,
     },
+    #[returns(ClpPositionInfoResponse)]
+    GetClpPositionInfo { position_id: Uint128 },
 }
 
 #[cw_serde]
@@ -165,4 +167,10 @@ pub struct QueryTokenDenomsResponse {
 #[cw_serde]
 pub struct QueryRelayerAddressesResponse {
     pub relayer_contract: Addr,
+}
+
+#[cw_serde]
+pub struct ClpPositionInfoResponse {
+    pub vlp_address: String,
+    pub position: PositionResponse,
 }
