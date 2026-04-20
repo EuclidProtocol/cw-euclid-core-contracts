@@ -187,6 +187,7 @@ pub fn execute_swap_request(
             cross_chain_config.meta.unwrap_or("no_meta".to_string()),
         ))
         .add_attribute("action", "request_swap")
+        .add_attribute("method", "execute_request_swap")
         .add_attribute("tx_id", tx_id)
         .add_attribute("asset_in", asset_in_id)
         .add_attribute("asset_out", asset_out_id)

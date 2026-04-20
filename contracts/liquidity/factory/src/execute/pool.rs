@@ -195,7 +195,8 @@ pub fn execute_request_pool_creation(
             info.sender.as_str(),
             euclid::events::TxType::PoolCreation,
         ))
-        .add_attribute("action", "request_pool_creation")
+        .add_attribute("action", "pool_creation")
+        .add_attribute("method", "request_pool_creation")
         .add_attribute("tx_id", tx_id)
         .add_attribute("token_1", pair.token_1.to_string())
         .add_attribute("token_2", pair.token_2.to_string())

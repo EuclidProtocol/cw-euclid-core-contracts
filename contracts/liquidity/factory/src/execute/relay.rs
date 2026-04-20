@@ -7,6 +7,7 @@ use euclid::{
     events::{
         receive_acknowledgement_event, receive_packet_event, send_packet_event,
         write_acknowledgement_event, EUCLID_RECEIVE_PACKET_EVENT,
+        EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT,
     },
     msgs::{factory::ExecuteMsg, hook::EuclidAcknowledgement},
     timeout::get_timeout,
@@ -139,6 +140,7 @@ pub fn execute_receive_packet(
 
     Ok(Response::new()
         .add_attribute("action", EUCLID_RECEIVE_PACKET_EVENT)
+        .add_attribute("method", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)
         .add_event(receive_packet_event)
