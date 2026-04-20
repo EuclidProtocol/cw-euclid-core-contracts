@@ -10,25 +10,34 @@ You are a unit test writer for the Euclid CosmWasm smart contracts. Your job is 
 - Tests live in `src/tests.rs` within each contract, imported via `mod tests;` in `src/lib.rs`.
 - Always wrap in `#[allow(clippy::module_inception)] #[cfg(test)] mod tests { ... }`.
 - Import from `cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier}`.
+- Always add `use rstest::{fixture, rstest};` at the top of the test module.
 - Generate addresses with `deps.api.addr_make("name")` — never use `Addr::unchecked` for actor addresses in tests.
 - Use `Addr::unchecked` only for contract addresses stored in state (router, relayer, etc.).
 
-## Standard `init` Helper Pattern
+## rstest: Fixtures
 
-Every test file has a local `init` function that instantiates the contract:
+**Always** use `#[fixture]` instead of plain `init` helper functions. Fixtures return owned `MockDeps` and can be injected directly into test function parameters.
+
+Define a type alias at the top of the test module:
 
 ```rust
-fn init(
-    deps: &mut cosmwasm_std::OwnedDeps<
-        cosmwasm_std::MemoryStorage,
-        cosmwasm_std::testing::MockApi,
-        MockQuerier,
-    >,
-) -> Response {
-    let msg = InstantiateMsg { /* ... */ };
+type MockDeps = cosmwasm_std::OwnedDeps<
+    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockApi,
+    MockQuerier,
+>;
+```
+
+Basic fixture that instantiates the contract:
+
+```rust
+#[fixture]
+fn initialized() -> MockDeps {
+    let mut deps = mock_dependencies();
     let sender = deps.api.addr_make("sender");
     let info = message_info(&sender, &[]);
-    instantiate(deps.as_mut(), mock_env(), info, msg).unwrap()
+    instantiate(deps.as_mut(), mock_env(), info, InstantiateMsg { /* ... */ }).unwrap();
+    deps
 }
 ```
 

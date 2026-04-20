@@ -54,7 +54,7 @@ pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -441,4 +441,136 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies, mock_env},
+        to_json_binary, Addr, Uint128,
+    };
+    use euclid::{
+        chain::ChainUid,
+        msgs::factory::{ExecuteMsg, InstantiateMsg},
+    };
+
+    use crate::{
+        rate_limit::RATE_LIMIT_STATE,
+        state::ADMIN,
+        testing::helpers::{
+            init, load_fee_state, load_state, TEST_CHAIN_UID, TEST_RATE_LIMIT_FEE_RECIPIENT,
+            TEST_RELAYER, TEST_ROUTER,
+        },
+    };
+
+    use super::{execute, instantiate};
+
+    // -----------------------------------------------------------------------
+    // Instantiate
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_instantiate_stores_correct_state() {
+        let mut deps = mock_dependencies();
+        let res = init(&mut deps);
+
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "instantiate"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "router_contract" && a.value == TEST_ROUTER));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "chain_uid" && a.value == TEST_CHAIN_UID));
+
+        let state = load_state(&deps);
+        assert_eq!(state.router_contract, TEST_ROUTER);
+        assert_eq!(state.relayer_contract, Addr::unchecked(TEST_RELAYER));
+        assert_eq!(state.escrow_code_id, 10);
+        assert_eq!(state.lp_code_id, 11);
+        assert!(!state.is_native);
+        assert_eq!(
+            state.chain_uid,
+            ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap()
+        );
+
+        let admin = ADMIN.load(&deps.storage).unwrap();
+        let sender = deps.api.addr_make("sender");
+        assert_eq!(admin.general_admin, sender);
+        assert_eq!(admin.fee_admin, sender);
+        assert_eq!(admin.migration_admin, sender);
+    }
+
+    #[test]
+    fn test_instantiate_stores_fee_state() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let fee_state = load_fee_state(&deps);
+        assert_eq!(
+            fee_state.rate_limit_fee_recipient,
+            Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT)
+        );
+        assert_eq!(fee_state.rate_limit_fee_denom, "uusd");
+        assert_eq!(
+            fee_state.rate_limit_fee_collected,
+            cosmwasm_std::Uint512::zero()
+        );
+        assert!(fee_state.partner_fees_collected.totals.is_empty());
+    }
+
+    #[test]
+    fn test_instantiate_stores_rate_limit_state() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let rl = RATE_LIMIT_STATE.load(&deps.storage).unwrap();
+        assert_eq!(rl.free_limit, 100);
+        assert!(rl.fee_brackets.is_empty());
+    }
+
+    #[test]
+    fn test_instantiate_accepts_valid_chain_uid() {
+        let mut deps = mock_dependencies();
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let msg = InstantiateMsg {
+            router_contract: TEST_ROUTER.to_string(),
+            chain_uid: ChainUid::create("validuid123".to_string()).unwrap(),
+            escrow_code_id: 10,
+            lp_code_id: 11,
+            position_token_code_id: 12,
+            is_native: false,
+            relayer_contract: Addr::unchecked(TEST_RELAYER),
+            rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),
+            rate_limit_fee_denom: "uusd".to_string(),
+            rate_limit_free_limit: Uint128::new(100),
+        };
+        assert!(instantiate(deps.as_mut(), mock_env(), info, msg).is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: SendPacket – only callable by the contract itself
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_send_packet_unauthorized_external_caller() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let external = deps.api.addr_make("external_caller");
+        let info = message_info(&external, &[]);
+        let msg = ExecuteMsg::SendPacket {
+            msg: to_json_binary(&"test").unwrap(),
+            timeout: None,
+            ack_response: None,
+            sender: external.clone(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(
+            res.unwrap_err(),
+            euclid::error::ContractError::Unauthorized {}
+        );
+    }
+}

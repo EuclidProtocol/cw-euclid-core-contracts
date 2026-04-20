@@ -161,6 +161,9 @@ pub fn execute_swap_request(
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
 
+    let asset_in_id = asset_in.token.to_string();
+    let asset_out_id = asset_out.to_string();
+
     let swap_msg = RouterCrossChainExecuteMsg::Swap(RouterCrossChainSwapExecuteMsg {
         sender,
         asset_in,
@@ -198,7 +201,318 @@ pub fn execute_swap_request(
             "meta",
             cross_chain_config.meta.unwrap_or("no_meta".to_string()),
         ))
+        .add_attribute("action", "swap")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
+        .add_attribute("asset_in", asset_in_id)
+        .add_attribute("asset_out", asset_out_id)
+        .add_attribute("amount_in", amount_in)
         .add_submessage(swap_msg))
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies, mock_env},
+        Uint128,
+    };
+    use euclid::{
+        error::ContractError,
+        msgs::factory::{ExecuteMsg, ExecuteSwapRequest},
+        swap::NextSwapPair,
+        token::{Token, TokenType, TokenWithDenom},
+    };
+
+    use crate::{
+        contract::execute,
+        testing::helpers::{
+            assert_attribute, assert_euclid_action, assert_tx_event_full,
+            default_cross_chain_config, get_attribute, init, seed_escrow, set_escrow_token_allowed,
+        },
+    };
+
+    fn make_voucher_swap_msg(amount_in: Uint128, min_amount_out: Uint128) -> ExecuteMsg {
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+
+        ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: token_in.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in,
+            asset_out: token_out.clone(),
+            min_amount_out,
+            swaps: vec![NextSwapPair {
+                token_in: token_in.clone(),
+                token_out: token_out.clone(),
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ExecuteSwapRequest
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_swap_request_zero_min_amount_out_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let msg = make_voucher_swap_msg(Uint128::new(100), Uint128::zero());
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::ZeroAssetAmount {});
+    }
+
+    #[test]
+    fn test_swap_request_empty_swaps_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint128::new(100),
+            asset_out: Token::create("eth".to_string()).unwrap(),
+            min_amount_out: Uint128::new(1),
+            swaps: vec![],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
+
+    #[test]
+    fn test_swap_request_mismatched_token_in_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let asset_in_token = Token::create("usdc".to_string()).unwrap();
+        let wrong_token_in = Token::create("wbtc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: asset_in_token.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint128::new(100),
+            asset_out: token_out.clone(),
+            min_amount_out: Uint128::new(1),
+            swaps: vec![NextSwapPair {
+                token_in: wrong_token_in,
+                token_out: token_out.clone(),
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
+
+    #[test]
+    fn test_swap_request_mismatched_token_out_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let asset_in_token = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+        let wrong_token_out = Token::create("wbtc".to_string()).unwrap();
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: asset_in_token.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint128::new(100),
+            asset_out: token_out.clone(),
+            min_amount_out: Uint128::new(1),
+            swaps: vec![NextSwapPair {
+                token_in: asset_in_token.clone(),
+                token_out: wrong_token_out,
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
+
+    #[test]
+    fn test_swap_request_voucher_happy_path_writes_pending() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+        let amount_in = Uint128::new(100);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let msg = make_voucher_swap_msg(amount_in, Uint128::new(1));
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "execute_request_swap"));
+
+        let tx_id = get_attribute(&res, "tx_id").to_owned();
+
+        let pending = crate::state::PENDING_SWAPS
+            .load(&deps.storage, (sender.clone(), tx_id.clone()))
+            .unwrap();
+        assert_eq!(pending.tx_id, tx_id);
+        assert_eq!(pending.amount_in, amount_in);
+
+        assert_attribute(&res, "action", "swap");
+        assert_eq!(get_attribute(&res, "asset_in"), token_in.to_string());
+        assert_eq!(get_attribute(&res, "asset_out"), token_out.to_string());
+        assert_eq!(get_attribute(&res, "amount_in"), amount_in.to_string());
+        assert_eq!(get_attribute(&res, "tx_id"), tx_id);
+        assert_tx_event_full(&res, "swap", &tx_id, sender.as_str());
+        assert_euclid_action(&res, "swap");
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ExecuteSwapRequest – partner fee validation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_swap_request_partner_fee_too_high_fails() {
+        use euclid::fee::PartnerFee;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: token_in.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint128::new(100),
+            asset_out: token_out.clone(),
+            min_amount_out: Uint128::new(1),
+            swaps: vec![NextSwapPair {
+                token_in: token_in.clone(),
+                token_out: token_out.clone(),
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: Some(PartnerFee {
+                partner_fee_bps: 10_001,
+                recipient: sender.to_string(),
+            }),
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::InvalidPartnerFee {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ExecuteSwapRequest – native token requires funds
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_swap_request_native_token_requires_funds() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        set_escrow_token_allowed(&mut deps, true);
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: token_in.clone(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                },
+            },
+            amount_in: Uint128::new(100),
+            asset_out: token_out.clone(),
+            min_amount_out: Uint128::new(1),
+            swaps: vec![NextSwapPair {
+                token_in: token_in.clone(),
+                token_out: token_out.clone(),
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::InsufficientFunds {});
+    }
+
+    // -----------------------------------------------------------------------
+    // State invariant: PENDING_SWAPS accumulates across two different senders
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_pending_swaps_accumulated_across_two_different_senders() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let alice = deps.api.addr_make("alice");
+        let bob = deps.api.addr_make("bob");
+
+        for sender_addr in [alice.clone(), bob.clone()] {
+            let info = message_info(&sender_addr, &[]);
+            let msg = make_voucher_swap_msg(Uint128::new(100), Uint128::new(1));
+            let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+            let tx_id = res
+                .attributes
+                .iter()
+                .find(|a| a.key == "tx_id")
+                .unwrap()
+                .value
+                .clone();
+            let pending = crate::state::PENDING_SWAPS
+                .load(&deps.storage, (sender_addr, tx_id))
+                .unwrap();
+            assert_eq!(pending.amount_in, Uint128::new(100));
+        }
+    }
 }

@@ -67,6 +67,8 @@ pub struct RunStats {
     pub error_count: u64,
     pub total_ops: u64,
     timings: HashMap<&'static str, OpTiming>,
+    /// Counts of each (op_name, error_message) pair for error breakdown.
+    error_counts: HashMap<(&'static str, String), u64>,
 }
 
 impl RunStats {
@@ -78,17 +80,33 @@ impl RunStats {
             error_count: 0,
             total_ops: 0,
             timings: HashMap::new(),
+            error_counts: HashMap::new(),
         }
     }
 
     /// Record one operation result with its wall-clock duration.
-    pub fn record(&mut self, op_name: &'static str, success: bool, elapsed: Duration) {
+    pub fn record(
+        &mut self,
+        op_name: &'static str,
+        result: &Result<(), String>,
+        elapsed: Duration,
+    ) {
         *self.op_counts.entry(op_name).or_default() += 1;
         self.total_ops += 1;
+        let success = result.is_ok();
         if success {
             self.success_count += 1;
         } else {
             self.error_count += 1;
+            if let Err(ref msg) = result {
+                // Truncate to avoid unbounded map growth from variable error messages
+                let key = if msg.len() > 120 {
+                    format!("{}...", &msg[..120])
+                } else {
+                    msg.clone()
+                };
+                *self.error_counts.entry((op_name, key)).or_default() += 1;
+            }
         }
         self.timings
             .entry(op_name)
@@ -119,6 +137,37 @@ impl RunStats {
             })
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    /// Format error counts as a compact string for progress lines.
+    /// Shows top 5 errors by frequency.
+    /// e.g., "errs: add_liquidity:\"tick range mismatch\"x3 swap:\"zero output\"x1"
+    /// Returns empty string if no errors.
+    pub fn error_breakdown(&self) -> String {
+        if self.error_counts.is_empty() {
+            return String::new();
+        }
+        let mut errors: Vec<_> = self.error_counts.iter().collect();
+        errors.sort_by(|a, b| b.1.cmp(a.1));
+        let shown = errors.len().min(5);
+        let parts: Vec<String> = errors[..shown]
+            .iter()
+            .map(|((op, msg), count)| {
+                // Truncate long messages for compact display
+                let short = if msg.len() > 60 {
+                    format!("{}...", &msg[..60])
+                } else {
+                    msg.to_string()
+                };
+                format!("{}:\"{}\"x{}", op, short, count)
+            })
+            .collect();
+        let suffix = if errors.len() > 5 {
+            format!(" (+{} more)", errors.len() - 5)
+        } else {
+            String::new()
+        };
+        format!("errs: {}{}", parts.join(" "), suffix)
     }
 
     /// Print a summary with op counts, timing stats, and seed for reproducibility.
@@ -175,6 +224,31 @@ impl RunStats {
             total_err_pct,
             format_duration(total_time),
         );
+
+        self.print_error_summary();
+    }
+
+    /// Print a breakdown of error messages, sorted by frequency.
+    fn print_error_summary(&self) {
+        if self.error_counts.is_empty() {
+            return;
+        }
+
+        let mut errors: Vec<_> = self.error_counts.iter().collect();
+        errors.sort_by(|a, b| b.1.cmp(a.1));
+
+        println!("\nError breakdown ({} distinct):", errors.len());
+        println!("  {:<18} {:>6}  {}", "operation", "count", "error");
+        println!("  {}", "-".repeat(75));
+        for ((op_name, msg), count) in &errors {
+            // Truncate long error messages to keep output readable
+            let display_msg = if msg.len() > 50 {
+                format!("{}...", &msg[..50])
+            } else {
+                msg.to_string()
+            };
+            println!("  {:<18} {:>6}  {}", op_name, count, display_msg);
+        }
     }
 }
 

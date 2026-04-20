@@ -5,7 +5,6 @@ use cw20::{Cw20Coin, MinterResponse};
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
-use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;

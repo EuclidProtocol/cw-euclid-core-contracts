@@ -11,9 +11,6 @@ pub mod relay_state;
 pub mod reply;
 pub mod state;
 
-#[cfg(test)]
-pub mod tests;
-
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mock;
 
@@ -21,3 +18,6 @@ pub mod mock;
 mod interface;
 #[cfg(not(target_arch = "wasm32"))]
 pub use crate::interface::FactoryContract;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod testing;
