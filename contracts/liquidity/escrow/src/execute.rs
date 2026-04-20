@@ -19,6 +19,7 @@ pub fn execute_add_allowed_denom(
     info: MessageInfo,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Vouchers are not escrowed
     ensure!(!denom.is_voucher(), ContractError::CannotEscrowVoucher {});
 
@@ -65,6 +66,7 @@ pub fn execute_disallow_denom(
     info: MessageInfo,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Only the factory can call this function
     let factory_address = STATE.load(deps.storage)?.factory_address;
     ensure!(
@@ -156,6 +158,7 @@ pub fn receive_cw20(
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     match from_json(&cw20_msg.msg)? {
         EscrowCw20HookMsg::Deposit {} => {
             let factory_address = STATE.load(deps.storage)?.factory_address;
@@ -232,6 +235,7 @@ pub fn execute_withdraw(
     denom: TokenType,
     forwarding_message: Option<String>,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
     // Only factory can trigger a withdraw

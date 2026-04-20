@@ -292,6 +292,7 @@ fn test_execute_withdraw() {
     env.block.chain_id = "chain-1".to_string();
     let factory = deps.api.addr_make("factory");
     let not_factory = deps.api.addr_make("not_factory");
+    let factory_info_no_funds = message_info(&factory, &[]);
     let info = message_info(
         &factory,
         &[Coin {
@@ -306,7 +307,13 @@ fn test_execute_withdraw() {
             denom: "denom1".to_string(),
         }),
     };
-    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+    instantiate(
+        deps.as_mut(),
+        env.clone(),
+        factory_info_no_funds.clone(),
+        instantiate_msg,
+    )
+    .unwrap();
 
     let deposit_msg = ExecuteMsg::DepositNative {};
     let deposit_res = execute(deps.as_mut(), env.clone(), info.clone(), deposit_msg).unwrap();
@@ -364,7 +371,7 @@ fn test_execute_withdraw() {
             if test.name.contains("non-factory") {
                 message_info(&not_factory, &[])
             } else {
-                info.clone()
+                factory_info_no_funds.clone()
             },
             test.msg.clone(),
         );
@@ -528,6 +535,7 @@ fn test_withdraw_disallowed_denom_succeeds() {
     let factory = deps.api.addr_make("factory");
 
     // Instantiate with denom1 allowed
+    let factory_info_no_funds = message_info(&factory, &[]);
     let info = message_info(
         &factory,
         &[Coin {
@@ -541,7 +549,13 @@ fn test_withdraw_disallowed_denom_succeeds() {
             denom: "denom1".to_string(),
         }),
     };
-    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+    instantiate(
+        deps.as_mut(),
+        env.clone(),
+        factory_info_no_funds.clone(),
+        instantiate_msg,
+    )
+    .unwrap();
 
     // Deposit funds while denom is still allowed
     execute(

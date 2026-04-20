@@ -27,6 +27,7 @@ pub fn execute_manage_factory_state(
     info: MessageInfo,
     msg: ManageFactoryState,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let mut state = STATE.load(deps.storage)?;
     let mut admins = ADMIN.load(deps.storage)?;
     match msg {
@@ -77,6 +78,7 @@ pub fn receive_cw20(
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
 
     let sender = CrossChainUser::new(state.chain_uid.clone(), cw20_msg.sender);
