@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order, Uint128};
 use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
     chain::ChainUid,
@@ -7,11 +7,15 @@ use euclid::{
     msgs::{
         router::{
             AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-            EscrowResponse, PoolKeyVlpResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
-            QueryTokenDenomsResponse, ReleaseFee, ReleaseFeesQueryResponse, SimulateSwapResponse,
-            StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
+            ClpPositionInfoResponse, EscrowResponse, PoolKeyVlpResponse,
+            QueryRelayerAddressesResponse, QuerySimulateSwap, QueryTokenDenomsResponse, ReleaseFee,
+            ReleaseFeesQueryResponse, SimulateSwapResponse, StateResponse,
+            TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
         },
-        vlp::base::{PoolKey, PoolType, VlpSimulateSwapMsg},
+        vlp::{
+            base::{PoolKey, PoolType, VlpSimulateSwapMsg},
+            concentrated::msg::{PositionResponse, QueryMsg as ConcentratedQueryMsg},
+        },
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token},
@@ -19,8 +23,8 @@ use euclid::{
 };
 
 use crate::state::{
-    ADMIN, CHAIN_UID_TO_CHAIN, CONCENTRATED_VLPS, ESCROW_BALANCES, RELAYER_CONTRACT, RELEASE_FEES,
-    STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+    ADMIN, CHAIN_UID_TO_CHAIN, CLP_POSITION_ID_VLP_MAP, CONCENTRATED_VLPS, ESCROW_BALANCES,
+    RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -343,6 +347,20 @@ pub fn query_relayer_addresses(deps: Deps) -> Result<Binary, ContractError> {
     let relayer_addresses = RELAYER_CONTRACT.load(deps.storage)?;
     Ok(to_json_binary(&QueryRelayerAddressesResponse {
         relayer_contract: relayer_addresses,
+    })?)
+}
+
+pub fn query_clp_position_info(deps: Deps, position_id: Uint128) -> Result<Binary, ContractError> {
+    let vlp_address = CLP_POSITION_ID_VLP_MAP
+        .load(deps.storage, position_id.u128())
+        .map_err(|_| ContractError::new("Position id not found"))?;
+    let position: PositionResponse = deps.querier.query_wasm_smart(
+        &vlp_address,
+        &ConcentratedQueryMsg::Position { position_id },
+    )?;
+    Ok(to_json_binary(&ClpPositionInfoResponse {
+        vlp_address: vlp_address.to_string(),
+        position,
     })?)
 }
 

@@ -15,7 +15,7 @@ use euclid_ibc::router_ibc::{RouterCrossChainExecuteMsg, RouterCrossChainSwapExe
 
 use crate::{
     query::get_chain_type,
-    state::{PENDING_SWAPS, POOL_KEY_TO_VLP, STATE, TOKEN_TO_ESCROW},
+    state::{PENDING_SWAPS, STATE, TOKEN_TO_ESCROW},
 };
 
 pub fn execute_swap_request(
@@ -132,10 +132,6 @@ pub fn execute_swap_request(
                 hop_pair.get_tupple() == pool_key.pair.get_tupple(),
                 ContractError::new("swap hop tokens do not match pool_key pair")
             );
-            ensure!(
-                POOL_KEY_TO_VLP.has(deps.storage, pool_key.to_map_key()),
-                ContractError::new("swap hop concentrated pool_key is not registered on factory")
-            );
         }
     }
 
@@ -223,8 +219,9 @@ mod tests {
     use euclid::{
         error::ContractError,
         msgs::factory::{ExecuteMsg, ExecuteSwapRequest},
+        msgs::vlp::base::{PoolKey, PoolType},
         swap::NextSwapPair,
-        token::{Token, TokenType, TokenWithDenom},
+        token::{Pair, Token, TokenType, TokenWithDenom},
     };
 
     use crate::{
@@ -401,6 +398,78 @@ mod tests {
         assert_eq!(get_attribute(&res, "tx_id"), tx_id);
         assert_tx_event_full(&res, "swap", &tx_id, sender.as_str());
         assert_euclid_action(&res, "swap");
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ExecuteSwapRequest – concentrated pool_key not registered
+    //
+    // The factory previously required every concentrated hop pool_key to
+    // exist in POOL_KEY_TO_VLP, rejecting voucher/cross-chain swaps whose
+    // pool lives on another chain. This test locks in the removal of that
+    // gate: the swap must be accepted even when no registration exists.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_swap_request_concentrated_pool_key_not_registered_succeeds() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+        let pair = Pair::new(token_in.clone(), token_out.clone()).unwrap();
+        let pool_key = PoolKey {
+            pair: pair.clone(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 500,
+                tick_spacing: 10,
+            },
+        };
+
+        assert!(
+            !crate::state::POOL_KEY_TO_VLP.has(&deps.storage, pool_key.to_map_key()),
+            "precondition: pool_key must not be registered"
+        );
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let amount_in = Uint128::new(100);
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: token_in.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in,
+            asset_out: token_out.clone(),
+            min_amount_out: Uint128::new(1),
+            swaps: vec![NextSwapPair {
+                token_in: token_in.clone(),
+                token_out: token_out.clone(),
+                pool_key: Some(pool_key.clone()),
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let tx_id = get_attribute(&res, "tx_id").to_owned();
+        let pending = crate::state::PENDING_SWAPS
+            .load(&deps.storage, (sender.clone(), tx_id.clone()))
+            .unwrap();
+        assert_eq!(pending.tx_id, tx_id);
+        assert_eq!(pending.amount_in, amount_in);
+        assert_eq!(pending.swaps.len(), 1);
+        let stored_pool_key = pending.swaps[0]
+            .pool_key
+            .as_ref()
+            .expect("pool_key should be preserved on the pending swap");
+        assert_eq!(*stored_pool_key, pool_key);
+
+        assert_attribute(&res, "action", "swap");
+        assert_tx_event_full(&res, "swap", &tx_id, sender.as_str());
     }
 
     // -----------------------------------------------------------------------
