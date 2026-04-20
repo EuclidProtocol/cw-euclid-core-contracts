@@ -38,7 +38,7 @@ pub fn ibc_channel_connect(
     CONNECTION_COUNTS.save(deps.storage, channel.clone(), &0)?;
 
     Ok(IbcBasicResponse::new()
-        .add_attribute("method", "ibc_channel_connect")
+        .add_attribute("action", "ibc_channel_connect")
         .add_attribute("channel_id", channel))
 }
 
@@ -52,7 +52,7 @@ pub fn ibc_channel_close(
     // Reset the state for the channel.
     CONNECTION_COUNTS.remove(deps.storage, channel.clone());
     Ok(IbcBasicResponse::new()
-        .add_attribute("method", "ibc_channel_close")
+        .add_attribute("action", "ibc_channel_close")
         .add_attribute("channel", channel))
 }
 

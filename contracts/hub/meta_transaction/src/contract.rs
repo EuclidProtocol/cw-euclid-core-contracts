@@ -33,7 +33,7 @@ pub fn instantiate(
     ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender))?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("router_contract", msg.router_contract))
 }
 
@@ -122,7 +122,7 @@ mod tests {
 
         let res = instantiate(deps.as_mut(), mock_env(), info, make_instantiate_msg()).unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "instantiate"));
+        assert_eq!(res.attributes[0], attr("action", "instantiate"));
         assert_eq!(
             res.attributes[1],
             attr("router_contract", router_contract().as_str())

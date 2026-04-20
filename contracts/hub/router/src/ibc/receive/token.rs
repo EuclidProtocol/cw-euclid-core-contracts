@@ -68,7 +68,7 @@ pub fn ibc_execute_register_denom(
             &token.token_type,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "execute_register_denom")
+        .add_attribute("action", "execute_register_denom")
         .set_data(to_json_binary(&ack)?))
 }
 
@@ -106,7 +106,7 @@ pub fn ibc_execute_deregister_denom(
             TxType::DeregisterDenom,
         ))
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "execute_deregister_denom")
+        .add_attribute("action", "execute_deregister_denom")
         .add_event(deregister_denom_event(
             &token.token,
             &sender.chain_uid.to_string(),

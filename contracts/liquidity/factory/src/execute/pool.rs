@@ -195,9 +195,8 @@ pub fn execute_request_pool_creation(
             info.sender.as_str(),
             euclid::events::TxType::PoolCreation,
         ))
-        .add_attribute("action", "pool_creation")
+        .add_attribute("action", "request_pool_creation")
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "request_pool_creation")
         .add_attribute("token_1", pair.token_1.to_string())
         .add_attribute("token_2", pair.token_2.to_string())
         .add_submessage(pool_create_msg))
@@ -332,7 +331,7 @@ pub fn add_liquidity_request(
         ))
         .add_attribute("action", "add_liquidity")
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "add_liquidity_request")
+        .add_attribute("action", "add_liquidity_request")
         .add_attribute("token_1", pair.token_1.to_string())
         .add_attribute("token_2", pair.token_2.to_string())
         .add_submessages(msgs)
@@ -421,7 +420,7 @@ pub fn remove_liquidity_request(
         ))
         .add_attribute("action", "remove_liquidity")
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "remove_liquidity_request")
+        .add_attribute("action", "remove_liquidity_request")
         .add_attribute("token_1", token_1)
         .add_attribute("token_2", token_2)
         .add_submessage(remove_liq_msg))

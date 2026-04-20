@@ -106,7 +106,6 @@ fn execute_register_router(
         ))
         .add_attribute("action", "register_factory")
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "register_router")
         .add_attribute("router", state.router_contract)
         .set_data(ack))
 }
@@ -154,7 +153,6 @@ fn execute_release_escrow(
         ))
         .add_submessage(user_withdraw_msg)
         .add_attribute("action", "escrow_release")
-        .add_attribute("method", "release escrow_execute")
         .add_attribute("sender", sender.to_sender_string())
         .add_attribute("token", token.to_string())
         .add_attribute("amount", amount.to_string())
@@ -263,7 +261,6 @@ mod tests {
 
         // Response has expected attributes
         assert_attribute(&res, "action", "register_factory");
-        assert_eq!(get_attribute(&res, "method"), "register_router");
         assert_eq!(get_attribute(&res, "tx_id"), "tx-cosmos-1");
         assert_tx_event_full(&res, "register_factory", "tx-cosmos-1", TEST_ROUTER);
 
@@ -291,9 +288,9 @@ mod tests {
         let method_attr = res
             .attributes
             .iter()
-            .find(|a| a.key == "method")
+            .find(|a| a.key == "action")
             .expect("missing method attribute");
-        assert_eq!(method_attr.value, "register_router");
+        assert_eq!(method_attr.value, "register_factory");
 
         let ack: AcknowledgementMsg<euclid::msgs::factory::RegisterFactoryResponse> =
             cosmwasm_std::from_json(res.data.unwrap()).unwrap();
@@ -432,7 +429,6 @@ mod tests {
 
         // Attributes — parse each field and bind to input values
         assert_attribute(&res, "action", "escrow_release");
-        assert_eq!(get_attribute(&res, "method"), "release escrow_execute");
         assert_eq!(get_attribute(&res, "tx_id"), "tx-release-1");
         assert_eq!(get_attribute(&res, "token"), "usdc");
         assert_eq!(get_attribute(&res, "amount"), "1000");

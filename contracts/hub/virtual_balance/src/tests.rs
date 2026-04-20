@@ -579,7 +579,7 @@ mod tests {
         #[test]
         fn test_normalize_balance_keys_basic() {
             let mut deps = mock_dependencies();
-            let router = setup_with_state(&mut deps);
+            let _router = setup_with_state(&mut deps);
             let env = mock_env();
             let admin = ADMIN.load(&deps.storage).unwrap();
 

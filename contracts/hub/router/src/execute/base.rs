@@ -56,7 +56,7 @@ pub fn execute_manage_router_state(
                 vlp_code_id.unwrap_or(state.constant_product_vlp_code_id);
             state.stable_vlp_code_id = stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id);
             STATE.save(deps.storage, &state)?;
-            Ok(Response::new().add_attribute("method", "update_vlp_code_id"))
+            Ok(Response::new().add_attribute("action", "update_vlp_code_id"))
         }
         ManageRouterState::LockState { locked } => {
             ensure!(
@@ -66,7 +66,7 @@ pub fn execute_manage_router_state(
             state.locked = locked;
             STATE.save(deps.storage, &state)?;
             Ok(Response::new()
-                .add_attribute("method", "update_lock_state")
+                .add_attribute("action", "update_lock_state")
                 .add_attribute("locked", locked.to_string()))
         }
         ManageRouterState::RelayerContract { relayer_contract } => {
@@ -76,7 +76,7 @@ pub fn execute_manage_router_state(
             );
             let relayer_contract = deps.api.addr_validate(relayer_contract.as_str())?;
             RELAYER_CONTRACT.save(deps.storage, &relayer_contract)?;
-            Ok(Response::new().add_attribute("method", "update_relayer_contract"))
+            Ok(Response::new().add_attribute("action", "update_relayer_contract"))
         }
         ManageRouterState::MetaTransactionContract {
             meta_transaction_contract,
@@ -89,7 +89,7 @@ pub fn execute_manage_router_state(
                 deps.api.addr_validate(meta_transaction_contract.as_str())?;
             META_TRANSACTION_CONTRACT.save(deps.storage, &meta_transaction_contract)?;
             Ok(Response::new()
-                .add_attribute("method", "update_meta_transaction_contract")
+                .add_attribute("action", "update_meta_transaction_contract")
                 .add_attribute(
                     "meta_transaction_contract",
                     meta_transaction_contract.to_string(),
@@ -112,7 +112,7 @@ pub fn execute_manage_router_state(
             }
             FEE_STATE.save(deps.storage, &fee_state)?;
             Ok(Response::new()
-                .add_attribute("method", "update_fee_state")
+                .add_attribute("action", "update_fee_state")
                 .add_attribute(
                     "release_fee_recipient",
                     fee_state.release_fee_recipient.to_string(),
@@ -137,7 +137,7 @@ pub fn execute_manage_router_state(
                 &release_fee,
             )?;
             Ok(Response::new()
-                .add_attribute("method", "update_release_fee")
+                .add_attribute("action", "update_release_fee")
                 .add_attribute("token", token.to_string())
                 .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("release_fee", release_fee.to_string()))
@@ -151,7 +151,7 @@ pub fn execute_manage_router_state(
             );
             DEFAULT_RELEASE_FEE.save(deps.storage, &default_release_fee)?;
             Ok(Response::new()
-                .add_attribute("method", "update_default_release_fee")
+                .add_attribute("action", "update_default_release_fee")
                 .add_attribute("default_release_fee", default_release_fee.to_string()))
         }
         ManageRouterState::LockChain { chain } => {
@@ -167,7 +167,7 @@ pub fn execute_manage_router_state(
             locked_chains.push(chain.clone());
             LOCKED_CHAINS.save(deps.storage, &locked_chains)?;
             Ok(Response::new()
-                .add_attribute("method", "lock_chain")
+                .add_attribute("action", "lock_chain")
                 .add_attribute("chain", chain.to_string())
                 .add_attribute("locked", "true"))
         }
@@ -184,7 +184,7 @@ pub fn execute_manage_router_state(
             locked_chains.retain(|x| x != &chain);
             LOCKED_CHAINS.save(deps.storage, &locked_chains)?;
             Ok(Response::new()
-                .add_attribute("method", "unlock_chain")
+                .add_attribute("action", "unlock_chain")
                 .add_attribute("chain", chain.to_string())
                 .add_attribute("locked", "false"))
         }
@@ -195,7 +195,7 @@ pub fn execute_manage_router_state(
             );
             CHAIN_TIMEOUT_SECONDS.save(deps.storage, chain_uid.clone(), &timeout)?;
             Ok(Response::new()
-                .add_attribute("method", "update_chain_timeout")
+                .add_attribute("action", "update_chain_timeout")
                 .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("timeout", timeout.to_string()))
         }
@@ -237,7 +237,7 @@ pub fn execute_register_factory(
             info.sender.as_str(),
             TxType::RegisterFactory,
         ))
-        .add_attribute("method", "register_factory");
+        .add_attribute("action", "register_factory");
     let msg = FactoryCrossChainExecuteMsg::RegisterFactory {
         chain_uid: chain_uid.clone(),
         chain_type: chain_info.clone(),
@@ -1104,7 +1104,7 @@ mod tests {
                 use crate::state::CHAIN_UID_TO_CHAIN;
 
                 let res = res.unwrap();
-                assert_eq!(res.attributes[0].key, "method");
+                assert_eq!(res.attributes[0].key, "action");
                 assert_eq!(res.attributes[0].value, "register_factory");
                 assert_eq!(res.messages.len(), 1);
 

@@ -146,7 +146,7 @@ pub fn execute_receive_packet(
         .unwrap_or("tx_id_not_found".to_string());
 
     Ok(Response::new()
-        .add_attribute("method", EUCLID_RECEIVE_PACKET_EVENT)
+        .add_attribute("action", EUCLID_RECEIVE_PACKET_EVENT)
         .add_attribute("action", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT)
         .add_attribute("tx_id", tx_id)
         .set_data(make_ack_fail("default_fail".to_string())?)

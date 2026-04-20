@@ -35,7 +35,7 @@ pub fn instantiate(
     ADMIN.save(deps.storage, &admin)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute(
             "message_signer_pubkey",
             state.message_signer.pubkey.to_string(),

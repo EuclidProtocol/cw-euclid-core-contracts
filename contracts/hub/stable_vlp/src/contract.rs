@@ -78,7 +78,7 @@ pub fn instantiate(
             })?;
 
     Ok(response
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
         .add_attribute("owner", info.sender))
 }

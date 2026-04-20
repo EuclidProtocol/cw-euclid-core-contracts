@@ -75,7 +75,7 @@ pub fn ibc_ack_register_factory(
             };
             CHAIN_UID_TO_CHAIN.save(deps.storage, chain_uid.clone(), &chain_data)?;
             Ok(response
-                .add_attribute("method", "register_factory_ack_success")
+                .add_attribute("action", "register_factory_ack_success")
                 .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("factory_chain", data.chain_id)
                 .add_attribute("factory_address", data.factory_address))
@@ -87,7 +87,7 @@ pub fn ibc_ack_register_factory(
                 return Err(ContractError::new(&err));
             }
             Ok(response
-                .add_attribute("method", "register_factory_ack_error")
+                .add_attribute("action", "register_factory_ack_error")
                 .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("error", err.clone()))
         }
@@ -116,7 +116,7 @@ pub fn ibc_ack_release_escrow(
     match res {
         AcknowledgementMsg::Ok(data) => {
             let mut response = response
-                .add_attribute("method", "release_escrow_success")
+                .add_attribute("action", "release_escrow_success")
                 .add_attribute("amount", amount.to_string())
                 .add_attribute("recipient", data.to_address)
                 .add_attribute("updated_escrow_balance", data.escrow_balance.to_string())
@@ -179,7 +179,7 @@ pub fn ibc_ack_release_escrow(
             // Even if its a native chain, we can't reject via Err because other escrow release will also be rejected
             Ok(response
                 .add_message(msg)
-                .add_attribute("method", "escrow_release_ack")
+                .add_attribute("action", "escrow_release_ack")
                 .add_attribute("error", err)
                 .add_attribute("mint_amount", amount.to_string())
                 .add_attribute("balance_key", format!("{:?}", balance_key)))

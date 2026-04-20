@@ -52,7 +52,7 @@ pub fn execute_withdraw_voucher(
     Ok(Response::new()
         .add_submessages(msgs)
         .add_attribute("released_amount", released_amount.to_string())
-        .add_attribute("method", "withdraw_voucher"))
+        .add_attribute("action", "withdraw_voucher"))
 }
 
 pub fn execute_transfer_voucher(
@@ -142,7 +142,7 @@ pub fn execute_transfer_voucher(
     );
     Ok(response
         .add_attribute("amount", amount.to_string())
-        .add_attribute("method", "release_escrow_initiate")
+        .add_attribute("action", "release_escrow_initiate")
         .add_attribute("token", token.to_string())
         .add_attribute("release_expected", amount.to_string())
         .add_attribute("release_initiated", release_initiated_amount.to_string())

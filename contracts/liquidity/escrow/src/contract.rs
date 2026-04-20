@@ -49,7 +49,7 @@ pub fn instantiate(
     }
 
     Ok(res
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("token_id", msg.token_id.as_str())
         .add_attribute("factory_address", info.sender)
         .set_data(to_json_binary(&data)?))

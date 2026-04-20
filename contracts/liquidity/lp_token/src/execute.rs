@@ -27,7 +27,7 @@ pub fn execute_update_state(
     )?;
 
     Ok(Response::new()
-        .add_attribute("method", "update_state")
+        .add_attribute("action", "update_state")
         .add_attribute(
             "factory_address",
             factory_address.map_or("unchanged".to_string(), |x| x.to_string()),

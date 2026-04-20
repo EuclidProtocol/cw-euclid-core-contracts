@@ -82,7 +82,7 @@ pub fn instantiate(
     ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
 
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
         .add_attribute("escrow_code_id", state.escrow_code_id.to_string())
         .add_attribute("chain_uid", state.chain_uid.to_string()))
@@ -351,7 +351,7 @@ mod tests {
         assert!(res
             .attributes
             .iter()
-            .any(|a| a.key == "method" && a.value == "instantiate"));
+            .any(|a| a.key == "action" && a.value == "instantiate"));
         assert!(res
             .attributes
             .iter()

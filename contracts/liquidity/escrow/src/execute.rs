@@ -54,7 +54,7 @@ pub fn execute_add_allowed_denom(
         })?;
 
     Ok(Response::new()
-        .add_attribute("method", "add_allowed_denom")
+        .add_attribute("action", "add_allowed_denom")
         .add_attribute("new_denom", denom.get_key())
         .add_attribute("amount", new_amount))
 }
@@ -90,7 +90,7 @@ pub fn execute_disallow_denom(
 
     //TODO refund the disallowed funds
     Ok(Response::new()
-        .add_attribute("method", "disallow_denom")
+        .add_attribute("action", "disallow_denom")
         .add_attribute("deregistered_denom", denom.get_key()))
 }
 
@@ -144,7 +144,7 @@ pub fn execute_deposit_native(
 
     STATE.save(deps.storage, &state)?;
 
-    Ok(Response::new().add_attribute("method", "deposit"))
+    Ok(Response::new().add_attribute("action", "deposit"))
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
@@ -218,7 +218,7 @@ pub fn execute_deposit_cw20(
     STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
-        .add_attribute("method", "deposit_cw20")
+        .add_attribute("action", "deposit_cw20")
         .add_attribute("asset", denom.get_key())
         .add_attribute("amount", amount))
 }
@@ -294,7 +294,7 @@ pub fn execute_withdraw(
 
     let response = Response::new()
         .add_message(send_msg)
-        .add_attribute("method", "escrow_withdraw")
+        .add_attribute("action", "escrow_withdraw")
         .add_attribute("amount", amount)
         .add_attribute("token", state.token_id.to_string())
         .add_attribute("recipient", recipient)

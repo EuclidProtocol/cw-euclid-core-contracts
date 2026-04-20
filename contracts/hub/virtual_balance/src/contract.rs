@@ -41,7 +41,7 @@ pub fn instantiate(
     ADMIN.save(deps.storage, &admin)?;
 
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("token_balance_address", env.contract.address)
         .add_attribute("admin", admin.to_string()))
 }

@@ -94,7 +94,7 @@ pub fn update_admin(
 
     let mut updated_admins = admins.clone();
     let validated_admin = deps.api.addr_validate(admin.as_str())?;
-    let mut response = Response::new().add_attribute("method", "update_admin");
+    let mut response = Response::new().add_attribute("action", "update_admin");
     match admin_type {
         AdminType::GeneralAdmin => updated_admins.general_admin = validated_admin,
         AdminType::FeeAdmin => updated_admins.fee_admin = validated_admin,

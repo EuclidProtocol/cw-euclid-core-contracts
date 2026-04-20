@@ -35,7 +35,7 @@ pub fn instantiate(
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("osmo_router", msg.osmo_router))
 }
 
