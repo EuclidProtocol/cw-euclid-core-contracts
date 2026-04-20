@@ -5,10 +5,10 @@ use euclid::{
     error::ContractError,
     msgs::factory::{
         AllPoolsResponse, AllTokensResponse, FeeBracket, GetEscrowResponse, GetLPTokenResponse,
-        GetLpSharesResponse, GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse,
-        GetPendingSwapsResponse, GetRateLimitStateResponse, GetUserRateLimitResponse,
-        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
-        PoolVlpResponse, StateResponse,
+        GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
+        GetRateLimitStateResponse, GetUserRateLimitResponse, GetVlpResponse,
+        PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse, PoolVlpResponse,
+        StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
@@ -18,7 +18,7 @@ use crate::{
     rate_limit::{RATE_LIMIT_STATE, USER_FREE_LIMIT, USER_PENDING_PACKETS_COUNT},
     state::{
         ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
+        PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -170,11 +170,6 @@ pub fn pending_remove_liquidity(
     Ok(to_json_binary(&GetPendingRemoveLiquidityResponse {
         pending_remove_liquidity,
     })?)
-}
-
-pub fn get_lp_shares(deps: Deps, vlp: String) -> Result<Binary, ContractError> {
-    let lp_shares = VLP_TO_LP_SHARES.load(deps.storage, vlp.clone())?;
-    Ok(to_json_binary(&GetLpSharesResponse { vlp, lp_shares })?)
 }
 
 pub fn get_rate_limit_state(deps: Deps) -> Result<Binary, ContractError> {

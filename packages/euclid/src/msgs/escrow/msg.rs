@@ -1,7 +1,4 @@
-use crate::{
-    token::{Pair, Token, TokenType},
-    utils::pagination::Pagination,
-};
+use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 use cw20::Cw20ReceiveMsg;
@@ -55,16 +52,8 @@ pub enum QueryMsg {
     #[returns(AllowedDenomsResponse)]
     AllowedDenoms {},
 
-    #[returns(DisallowedDenomsResponse)]
-    DisallowedDenoms {},
-
     #[returns(DenomBalanceResponse)]
     GetDenomBalance { denom: String },
-
-    #[returns(AllDenomBalancesResponse)]
-    GetAllDenomBalances {
-        pagination: Option<Pagination<String>>,
-    },
 }
 
 #[cw_serde]
@@ -93,25 +82,9 @@ pub struct AllowedTokenResponse {
 }
 
 #[cw_serde]
-pub struct DisallowedDenomsResponse {
-    pub denoms: Vec<TokenType>,
-}
-
-#[cw_serde]
-pub struct DenomBalance {
-    pub denom: String,
-    pub amount: Uint128,
-}
-
-#[cw_serde]
 pub struct DenomBalanceResponse {
     pub denom: String,
     pub amount: Uint128,
-}
-
-#[cw_serde]
-pub struct AllDenomBalancesResponse {
-    pub balances: Vec<DenomBalance>,
 }
 
 #[cw_serde]
