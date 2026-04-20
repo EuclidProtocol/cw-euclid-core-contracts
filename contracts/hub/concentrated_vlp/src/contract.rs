@@ -544,6 +544,8 @@ fn execute_add_concentrated_liquidity(
 
     let refund_0 = provided_0.checked_sub(amount_0_used)?;
     let refund_1 = provided_1.checked_sub(amount_1_used)?;
+
+    // Refunding to sender is not ideal in case of forwarding contracts as it can result in locked vouchers if forwarding contract doesn't implement proper voucher handling.
     if !refund_0.is_zero() {
         response = response.add_message(state.pair.token_1.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),

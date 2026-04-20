@@ -132,10 +132,6 @@ pub fn execute_swap_request(
                 hop_pair.get_tupple() == pool_key.pair.get_tupple(),
                 ContractError::new("swap hop tokens do not match pool_key pair")
             );
-            ensure!(
-                POOL_KEY_TO_VLP.has(deps.storage, pool_key.to_map_key()),
-                ContractError::new("swap hop concentrated pool_key is not registered on factory")
-            );
         }
     }
 
