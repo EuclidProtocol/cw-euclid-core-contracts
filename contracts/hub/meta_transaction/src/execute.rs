@@ -34,7 +34,7 @@ pub fn execute_update_admin(
 
     admins = updated_admins;
     ADMIN.save(deps.storage, &admins)?;
-    Ok(response.add_attribute("new_admin", admins.to_string()))
+    Ok(response.add_attribute("updated_admins", admins.to_string()))
 }
 
 pub fn execute_meta_transaction(
@@ -480,12 +480,20 @@ mod tests {
         .unwrap();
 
         let stored_admin = ADMIN.load(&initialized.storage).unwrap();
+
         let new_admin_attr = res
             .attributes
             .iter()
             .find(|a| a.key == "new_admin")
             .expect("missing new_admin attribute");
-        assert_eq!(new_admin_attr.value, stored_admin.to_string());
+        assert_eq!(new_admin_attr.value, new_admin_addr.to_string());
+
+        let updated_admins_attr = res
+            .attributes
+            .iter()
+            .find(|a| a.key == "updated_admins")
+            .expect("missing updated_admins attribute");
+        assert_eq!(updated_admins_attr.value, stored_admin.to_string());
     }
 
     // -----------------------------------------------------------------------
