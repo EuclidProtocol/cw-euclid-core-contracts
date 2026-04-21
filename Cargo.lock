@@ -1618,10 +1618,13 @@ dependencies = [
  "cw-utils 2.0.0",
  "cw2 2.0.0",
  "euclid",
+ "k256",
  "mock",
  "relayer",
+ "rstest",
  "schemars",
  "serde",
+ "sha2 0.10.8",
  "thiserror 1.0.69",
 ]
 
