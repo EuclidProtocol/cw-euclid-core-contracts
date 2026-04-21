@@ -5,7 +5,7 @@ pub mod query;
 pub mod state;
 
 #[cfg(test)]
-mod tests;
+mod testing;
 
 pub mod mock;
 
