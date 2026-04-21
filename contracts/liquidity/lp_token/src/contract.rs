@@ -4,14 +4,17 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Resp
 use cw2::set_contract_version;
 use euclid::msgs::escrow::Cw20InstantiateResponse;
 
+use crate::cw20::{
+    execute_burn, execute_burn_from, execute_decrease_allowance, execute_increase_allowance,
+    execute_mint, execute_send, execute_send_from, execute_transfer, execute_transfer_from,
+    execute_update_marketing, execute_upload_logo, instantiate_cw20, query_all_accounts,
+    query_all_allowances, query_allowance, query_balance, query_download_logo,
+    query_marketing_info, query_minter, query_token_info,
+};
 use crate::execute::execute_update_state;
 use crate::state::{State, STATE};
 use euclid::error::ContractError;
 use euclid::msgs::lp_token::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, StateResponse};
-
-use cw20_base::contract::{
-    execute as execute_cw20, instantiate as cw20_instantiate, query as cw20_query,
-};
 
 // version info for migration info
 pub(crate) const CONTRACT_NAME: &str = "crates.io:lp_token";
@@ -26,7 +29,7 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let cw20_resp = cw20_instantiate(deps.branch(), env.clone(), info, msg.clone().into())?;
+    let cw20_resp = instantiate_cw20(deps.branch(), env.clone(), info, &msg)?;
     let state = State {
         token_pair: msg.token_pair.clone(),
         factory_address: msg.factory,
@@ -56,12 +59,49 @@ pub fn execute(
             factory_address,
             vlp,
         } => execute_update_state(deps, env, info, token_pair, factory_address, vlp),
-        _ => Ok(execute_cw20(deps, env, info, msg.into())?),
+        ExecuteMsg::Transfer { recipient, amount } => {
+            execute_transfer(deps, env, info, recipient, amount)
+        }
+        ExecuteMsg::Burn { amount } => execute_burn(deps, env, info, amount),
+        ExecuteMsg::Send {
+            contract,
+            amount,
+            msg,
+        } => execute_send(deps, env, info, contract, amount, msg),
+        ExecuteMsg::IncreaseAllowance {
+            spender,
+            amount,
+            expires,
+        } => execute_increase_allowance(deps, env, info, spender, amount, expires),
+        ExecuteMsg::DecreaseAllowance {
+            spender,
+            amount,
+            expires,
+        } => execute_decrease_allowance(deps, env, info, spender, amount, expires),
+        ExecuteMsg::TransferFrom {
+            owner,
+            recipient,
+            amount,
+        } => execute_transfer_from(deps, env, info, owner, recipient, amount),
+        ExecuteMsg::SendFrom {
+            owner,
+            contract,
+            amount,
+            msg,
+        } => execute_send_from(deps, env, info, owner, contract, amount, msg),
+        ExecuteMsg::BurnFrom { owner, amount } => execute_burn_from(deps, env, info, owner, amount),
+        ExecuteMsg::Mint { recipient, amount } => execute_mint(deps, env, info, recipient, amount),
+        ExecuteMsg::UpdateMarketing {
+            project,
+            description,
+            marketing,
+        } => execute_update_marketing(deps, env, info, project, description, marketing),
+        ExecuteMsg::UploadLogo(logo) => execute_upload_logo(deps, env, info, logo),
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::State {} => {
             let state = STATE.load(deps.storage)?;
@@ -72,6 +112,19 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
             };
             Ok(to_json_binary(&response)?)
         }
-        _ => Ok(cw20_query(deps, env, msg.into())?),
+        QueryMsg::Balance { address } => query_balance(deps, address),
+        QueryMsg::TokenInfo {} => query_token_info(deps),
+        QueryMsg::Minter {} => query_minter(deps),
+        QueryMsg::Allowance { owner, spender } => query_allowance(deps, owner, spender),
+        QueryMsg::AllAllowances {
+            owner,
+            start_after,
+            limit,
+        } => query_all_allowances(deps, owner, start_after, limit),
+        QueryMsg::AllAccounts { start_after, limit } => {
+            query_all_accounts(deps, start_after, limit)
+        }
+        QueryMsg::MarketingInfo {} => query_marketing_info(deps),
+        QueryMsg::DownloadLogo {} => query_download_logo(deps),
     }
 }

@@ -1,5 +1,5 @@
 use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, Uint128};
-use cw20::Cw20ReceiveMsg;
+use euclid::cw20_types::Cw20ReceiveMsg;
 use euclid::{
     admin,
     cross_chain_user::CrossChainUser,
@@ -180,11 +180,14 @@ pub fn receive_euclid_native(
             partner_fee,
         } => {
             let amount_in = if let TokenType::Native { denom } = &asset_in.token_type {
-                info.funds
+                let coin_amount = info
+                    .funds
                     .iter()
                     .find(|fund| fund.denom == *denom)
                     .ok_or(ContractError::InsufficientFunds {})?
-                    .amount
+                    .amount;
+                Uint128::try_from(coin_amount)
+                    .map_err(|_| ContractError::new("Coin amount exceeds Uint128 max"))?
             } else {
                 return Err(ContractError::InvalidAsset {
                     asset: asset_in.token.to_string(),

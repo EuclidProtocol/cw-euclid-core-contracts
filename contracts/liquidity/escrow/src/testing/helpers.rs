@@ -11,11 +11,11 @@ use euclid::{
 use crate::contract::{execute, instantiate};
 
 use cosmwasm_std::{to_json_binary, Uint128};
-use cw20::Cw20ReceiveMsg;
+use euclid::cw20_types::Cw20ReceiveMsg;
 use euclid::msgs::escrow::cw20::EscrowCw20HookMsg;
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
-    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     MockQuerier,
 >;

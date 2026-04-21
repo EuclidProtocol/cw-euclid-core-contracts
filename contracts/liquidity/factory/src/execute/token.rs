@@ -244,7 +244,7 @@ pub fn execute_deposit_token(
 
     match &asset_in.token_type {
         TokenType::Native { denom } => {
-            fund_manager.use_fund(amount_in, denom)?;
+            fund_manager.use_fund(amount_in.into(), denom)?;
         }
         TokenType::Smart { contract_address } => {
             ensure!(

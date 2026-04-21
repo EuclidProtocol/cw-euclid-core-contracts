@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint512};
+use cosmwasm_std::{
+    Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128, Uint512,
+};
 use cw2::set_contract_version;
 use euclid::admin::EuclidAdmin;
 use euclid::cross_chain_user::CrossChainUser;
@@ -194,12 +196,14 @@ pub fn execute(
             let mut amount_in = msg.amount_in;
             // If this asset is native, lets get the actual amount of funds sent because these amount can vary depending on forwarding contract swaps
             if let TokenType::Native { denom } = &msg.asset_in.token_type {
-                amount_in = info
+                let coin_amount = info
                     .funds
                     .iter()
                     .find(|fund| fund.denom == *denom)
                     .ok_or(ContractError::InsufficientFunds {})?
                     .amount;
+                amount_in = Uint128::try_from(coin_amount)
+                    .map_err(|_| ContractError::new("Coin amount exceeds Uint128 max"))?;
             }
             ensure!(
                 amount_in.ge(&msg.amount_in),
@@ -310,7 +314,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         RELEASE_ESCROW_REPLY_ID => on_release_escrow_reply(deps.branch(), msg),
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps.branch(), msg),
 
-        id => Err(ContractError::Std(StdError::generic_err(format!(
+        id => Err(ContractError::Std(StdError::msg(format!(
             "Unknown reply id: {}",
             id
         )))),

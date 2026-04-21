@@ -1,14 +1,7 @@
-use crate::contract::{execute, instantiate, query};
-use cw_orch::{interface, prelude::*};
+use cosmwasm_std::Empty;
+use cw_orch::{interface, prelude::CwEnv};
 use euclid::msgs::lp_token::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 pub const CONTRACT_ID: &str = "lp_token_contract";
 
 #[interface(InstantiateMsg, ExecuteMsg, QueryMsg, Empty, id = CONTRACT_ID)]
 pub struct LpTokenContract<Chain: CwEnv>;
-
-// Implement the Uploadable trait so it can be uploaded to the mock.
-impl<Chain> Uploadable for LpTokenContract<Chain> {
-    fn wrapper() -> Box<dyn MockContract<Empty>> {
-        Box::new(ContractWrapper::new_with_empty(execute, instantiate, query))
-    }
-}

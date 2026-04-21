@@ -1,5 +1,5 @@
 use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128};
-use cw20::Logo;
+use euclid::cw20_types::{Cw20InstantiateMsg, InstantiateMarketingInfo, Logo, MinterResponse};
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -34,7 +34,7 @@ pub fn execute_request_pool_creation(
     lp_token_name: String,
     lp_token_symbol: String,
     lp_token_decimal: u8,
-    lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+    lp_token_marketing: Option<InstantiateMarketingInfo>,
     slippage_tolerance_bps: u64,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
@@ -73,7 +73,7 @@ pub fn execute_request_pool_creation(
                 TokenType::Native { denom } => {
                     // Use funds, if its not present this will throw error.
                     // This will make sure enough funds are provided with the message
-                    fund_manager.use_fund(token.amount, &denom)?;
+                    fund_manager.use_fund(token.amount.into(), &denom)?;
                 }
                 TokenType::Smart { .. } => {
                     let msg = token.token_type.create_transfer_msg(
@@ -147,18 +147,17 @@ pub fn execute_request_pool_creation(
         }
     }
 
-    let lp_token_instantiate_msg = cw20_base::msg::InstantiateMsg {
+    let lp_token_instantiate_msg = Cw20InstantiateMsg {
         name: lp_token_name,
         symbol: lp_token_symbol,
         decimals: lp_token_decimal,
         initial_balances: vec![],
-        mint: Some(cw20::MinterResponse {
+        mint: Some(MinterResponse {
             minter: env.contract.address.clone().into_string(),
             cap: None,
         }),
         marketing: lp_token_marketing,
     };
-    lp_token_instantiate_msg.validate()?;
 
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
@@ -272,7 +271,7 @@ pub fn add_liquidity_request(
                     );
                     // Use funds, if its not present this will throw error.
                     // This will make sure enough funds are provided with the message
-                    fund_manager.use_fund(token.amount, &denom)?;
+                    fund_manager.use_fund(token.amount.into(), &denom)?;
                 }
                 TokenType::Smart { .. } => {
                     let msg = token.token_type.create_transfer_msg(

@@ -73,7 +73,7 @@ pub fn execute_swap_request(
     match &asset_in.token_type {
         TokenType::Native { denom } => {
             // Verify thatthe amount of funds passed is greater than the asset amount
-            fund_manager.use_fund(amount_in, denom)?;
+            fund_manager.use_fund(amount_in.into(), denom)?;
         }
         TokenType::Smart { contract_address } => {
             ensure!(

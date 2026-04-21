@@ -3,7 +3,7 @@ use cosmwasm_std::{
     from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response, SubMsg,
     WasmMsg,
 };
-use cw20::Cw20Coin;
+use euclid::cw20_types::Cw20Coin;
 use euclid::{
     deposit::DepositTokenResponse,
     error::ContractError,
@@ -851,7 +851,7 @@ mod tests {
                     tx_id: tx_id.clone(),
                     sender: sender.clone(),
                     pair_info: pair.clone(),
-                    lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg {
+                    lp_token_instantiate_msg: euclid::cw20_types::Cw20InstantiateMsg {
                         name: "LP".to_string(),
                         symbol: "LP".to_string(),
                         decimals: 6,
@@ -898,7 +898,7 @@ mod tests {
                     tx_id: tx_id.clone(),
                     sender: sender.clone(),
                     pair_info: pair.clone(),
-                    lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg {
+                    lp_token_instantiate_msg: euclid::cw20_types::Cw20InstantiateMsg {
                         name: "LP".to_string(),
                         symbol: "LP".to_string(),
                         decimals: 6,
@@ -936,7 +936,7 @@ mod tests {
 
     fn seed_pending_denom_register(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,
@@ -1153,7 +1153,7 @@ mod tests {
 
     fn seed_pending_add_liquidity(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,
@@ -1278,7 +1278,7 @@ mod tests {
 
     fn seed_pending_remove_liquidity(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,
@@ -1416,7 +1416,7 @@ mod tests {
 
     fn seed_pending_swap(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,
@@ -1571,7 +1571,7 @@ mod tests {
 
     fn seed_pending_deposit(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,
