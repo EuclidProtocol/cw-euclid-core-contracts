@@ -130,3 +130,13 @@ Common `ContractError` variants to test against:
 - `ContractError::DeregisteredChain {}`
 - `ContractError::new("some message")` — for string-based errors
 
+## Final Step
+
+Once all tests are written and confirmed passing with `cargo test -p <package>`, run:
+
+```bash
+cargo fmt
+```
+
+This must be the last action before reporting completion.
+
