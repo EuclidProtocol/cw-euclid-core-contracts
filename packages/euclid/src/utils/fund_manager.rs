@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use cosmwasm_std::{ensure, Coin, Uint128};
+use cosmwasm_std::{ensure, Coin, Uint256};
 
 use crate::error::ContractError;
 
 pub struct FundManager {
-    funds: HashMap<String, Uint128>,
+    funds: HashMap<String, Uint256>,
 }
 
 impl FundManager {
@@ -21,8 +21,8 @@ impl FundManager {
     }
 
     /// Get the amount of funds in the manager for a given denom
-    pub fn get(&self, denom: &str) -> Uint128 {
-        self.funds.get(denom).cloned().unwrap_or(Uint128::zero())
+    pub fn get(&self, denom: &str) -> Uint256 {
+        self.funds.get(denom).cloned().unwrap_or(Uint256::zero())
     }
 
     /// Add funds to the manager
@@ -30,11 +30,11 @@ impl FundManager {
         *self
             .funds
             .entry(fund.denom.to_string())
-            .or_insert(Uint128::zero()) += fund.amount;
+            .or_insert(Uint256::zero()) += fund.amount;
     }
 
-    //   Use funds from the manager
-    pub fn use_fund(&mut self, amount: Uint128, denom: &str) -> Result<(), ContractError> {
+    /// Use funds from the manager
+    pub fn use_fund(&mut self, amount: Uint256, denom: &str) -> Result<(), ContractError> {
         ensure!(
             !amount.is_zero(),
             ContractError::new("Amount cannot be zero")
@@ -58,7 +58,7 @@ impl FundManager {
     pub fn get_funds(&self) -> Vec<Coin> {
         self.funds
             .iter()
-            .map(|(denom, amount)| Coin::new(amount.u128(), denom))
+            .map(|(denom, amount)| Coin::new(*amount, denom))
             .collect()
     }
 
@@ -92,7 +92,7 @@ impl FundManager {
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{Coin, Uint128};
+    use cosmwasm_std::{Coin, Uint256};
 
     use crate::error::ContractError;
 
@@ -101,28 +101,28 @@ mod tests {
     #[test]
     fn test_new() {
         let fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
-        assert_eq!(fund_manager.get("atom"), Uint128::new(100));
+        assert_eq!(fund_manager.get("atom"), Uint256::from(100u128));
     }
 
     #[test]
     fn test_duplicate_funds() {
         let fund_manager =
             FundManager::new(&[Coin::new(100u128, "atom"), Coin::new(200u128, "atom")]);
-        assert_eq!(fund_manager.get("atom"), Uint128::new(300));
+        assert_eq!(fund_manager.get("atom"), Uint256::from(300u128));
     }
 
     #[test]
     fn test_use_fund() {
         let mut fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
-        assert_eq!(fund_manager.use_fund(Uint128::new(50), "atom"), Ok(()));
-        assert_eq!(fund_manager.get("atom"), Uint128::new(50));
+        assert_eq!(fund_manager.use_fund(Uint256::from(50u128), "atom"), Ok(()));
+        assert_eq!(fund_manager.get("atom"), Uint256::from(50u128));
     }
 
     #[test]
     fn test_use_fund_insufficient() {
         let mut fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         assert_eq!(
-            fund_manager.use_fund(Uint128::new(150), "atom"),
+            fund_manager.use_fund(Uint256::from(150u128), "atom"),
             Err(ContractError::InsufficientFunds {})
         );
     }
@@ -160,7 +160,9 @@ mod tests {
     #[test]
     fn test_validate_funds_are_empty_after_use() {
         let mut fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
-        fund_manager.use_fund(Uint128::new(100), "atom").unwrap();
+        fund_manager
+            .use_fund(Uint256::from(100u128), "atom")
+            .unwrap();
         assert_eq!(fund_manager.validate_funds_are_empty(), Ok(()));
     }
 
@@ -168,7 +170,7 @@ mod tests {
     fn test_insufficient_funds() {
         let mut fund_manager = FundManager::new(&[Coin::new(100u128, "atom")]);
         assert_eq!(
-            fund_manager.use_fund(Uint128::new(150), "atom"),
+            fund_manager.use_fund(Uint256::from(150u128), "atom"),
             Err(ContractError::InsufficientFunds {})
         );
     }

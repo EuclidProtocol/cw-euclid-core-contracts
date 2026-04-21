@@ -4,8 +4,9 @@ use std::ops::Deref;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     coin, ensure, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, StdError,
-    StdResult, Uint128, WasmMsg,
+    StdResult, Uint128, Uint256, WasmMsg,
 };
+use crate::cw20_types::{BalanceResponse, Cw20ExecuteMsg, Cw20QueryMsg};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::cross_chain_user::CrossChainUser;
@@ -136,7 +137,7 @@ impl KeyDeserialize for Token {
     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
         String::from_utf8(value)
             .map(Token)
-            .map_err(|e| StdError::generic_err(format!("Invalid UTF-8 sequence: {}", e)))
+            .map_err(|e| StdError::msg(format!("Invalid UTF-8 sequence: {}", e)))
     }
 }
 
@@ -266,7 +267,7 @@ fn parse_length(value: &[u8]) -> StdResult<usize> {
     Ok(u16::from_be_bytes(
         value
             .try_into()
-            .map_err(|_| StdError::generic_err("Could not read 2 byte length"))?,
+            .map_err(|_| StdError::msg("Could not read 2 byte length"))?,
     )
     .into())
 }
@@ -349,20 +350,20 @@ impl TokenType {
         Ok(())
     }
 
-    pub fn get_balance(&self, deps: Deps, address: String) -> Result<Uint128, ContractError> {
+    pub fn get_balance(&self, deps: Deps, address: String) -> Result<Uint256, ContractError> {
         match self.clone() {
             TokenType::Native { denom } => {
                 let balance = deps.querier.query_balance(address, denom)?;
                 Ok(balance.amount)
             }
             TokenType::Smart { contract_address } => {
-                let balance_msg = cw20::Cw20QueryMsg::Balance {
+                let balance_msg = Cw20QueryMsg::Balance {
                     address: address.clone(),
                 };
-                let balance: cw20::BalanceResponse = deps
+                let balance: BalanceResponse = deps
                     .querier
                     .query_wasm_smart(contract_address, &balance_msg)?;
-                Ok(balance.balance)
+                Ok(balance.balance.into())
             }
             TokenType::Voucher { .. } => Err(ContractError::new(
                 "Cannot get balance of voucher using this function",
@@ -407,7 +408,7 @@ impl TokenType {
                         to_address: recipient,
                         amount: vec![Coin {
                             denom: denom.to_string(),
-                            amount,
+                            amount: amount.into(),
                         }],
                     })
                 }
@@ -417,13 +418,13 @@ impl TokenType {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: contract_address.to_string(),
                         msg: match allowance {
-                            Some(owner) => to_json_binary(&cw20_base::msg::ExecuteMsg::SendFrom {
+                            Some(owner) => to_json_binary(&Cw20ExecuteMsg::SendFrom {
                                 owner,
                                 amount,
                                 contract: recipient.to_string(),
                                 msg: forwarding_message.clone(),
                             })?,
-                            None => to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
+                            None => to_json_binary(&Cw20ExecuteMsg::Send {
                                 contract: recipient.to_string(),
                                 msg: forwarding_message.clone(),
                                 amount,
@@ -436,13 +437,13 @@ impl TokenType {
                         contract_addr: contract_address.to_string(),
                         msg: match allowance {
                             Some(owner) => {
-                                to_json_binary(&cw20_base::msg::ExecuteMsg::TransferFrom {
+                                to_json_binary(&Cw20ExecuteMsg::TransferFrom {
                                     owner,
                                     recipient,
                                     amount,
                                 })?
                             }
-                            None => to_json_binary(&cw20_base::msg::ExecuteMsg::Transfer {
+                            None => to_json_binary(&Cw20ExecuteMsg::Transfer {
                                 recipient,
                                 amount,
                             })?,
@@ -471,7 +472,7 @@ impl TokenType {
             }),
             Self::Smart { contract_address } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_address.clone(),
-                msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
+                msg: to_json_binary(&Cw20ExecuteMsg::Send {
                     contract: escrow_contract.to_string(),
                     amount,
                     msg: to_json_binary(&crate::msgs::escrow::cw20::EscrowCw20HookMsg::Deposit {})?,

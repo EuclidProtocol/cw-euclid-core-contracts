@@ -116,15 +116,13 @@ pub fn update_admin(
 mod tests {
     use super::*;
     use cosmwasm_std::{
+        testing::MockStorage,
         testing::{mock_dependencies, mock_env},
-        CosmosMsg, MemoryStorage, OwnedDeps,
+        CosmosMsg, OwnedDeps,
     };
 
-    type TestDeps = OwnedDeps<
-        MemoryStorage,
-        cosmwasm_std::testing::MockApi,
-        cosmwasm_std::testing::MockQuerier,
-    >;
+    type TestDeps =
+        OwnedDeps<MockStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>;
 
     fn sample_admins(deps: &TestDeps) -> EuclidAdmin {
         EuclidAdmin::new(

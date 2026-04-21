@@ -73,8 +73,8 @@ impl KeyDeserialize for ChainUid {
     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
         String::from_utf8(value)
             .map(Self::create)
-            .map_err(|e| StdError::generic_err(format!("Invalid UTF-8 sequence: {}", e)))?
-            .map_err(|err| StdError::generic_err(err.to_string()))
+            .map_err(|e| StdError::msg(format!("Invalid UTF-8 sequence: {}", e)))?
+            .map_err(|err| StdError::msg(err.to_string()))
     }
 }
 

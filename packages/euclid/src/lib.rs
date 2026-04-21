@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod chain;
+pub mod cw20_types;
 pub mod cross_chain_user;
 pub mod deposit;
 pub mod error;

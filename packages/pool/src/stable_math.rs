@@ -141,7 +141,7 @@ pub fn compute_d(amp: Uint64, pools: &[Decimal256]) -> StdResult<Decimal256> {
             }
         }
 
-        Err(StdError::generic_err(
+        Err(StdError::msg(
             "Newton method for D failed to converge",
         ))
     }
@@ -176,7 +176,7 @@ pub(crate) fn calc_y(
 
     let b = new_amount.checked_add(
         d.checked_div(leverage)
-            .map_err(|e| StdError::generic_err(e.to_string()))?,
+            .map_err(|e| StdError::msg(e.to_string()))?,
     )?;
 
     // Solve for y by approximating: y**2 + b*y = c
@@ -190,7 +190,7 @@ pub(crate) fn calc_y(
             .checked_mul(N_COINS)?
             .checked_add(b)?
             .checked_sub(d)
-            .map_err(|e| StdError::generic_err(e.to_string()))?;
+            .map_err(|e| StdError::msg(e.to_string()))?;
 
         // y^2 / denom (Uint512 intermediate via checked_multiply_ratio)
         let y_sq_over_denom = y.checked_multiply_ratio(y, denom)?;
@@ -211,5 +211,5 @@ pub(crate) fn calc_y(
     }
 
     // Should definitely converge in 64 iterations.
-    Err(StdError::generic_err("y is not converging"))
+    Err(StdError::msg("y is not converging"))
 }

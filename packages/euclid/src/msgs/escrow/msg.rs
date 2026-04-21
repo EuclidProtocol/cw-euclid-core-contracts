@@ -1,7 +1,7 @@
 use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
-use cw20::Cw20ReceiveMsg;
+use crate::cw20_types::Cw20ReceiveMsg;
 
 #[cw_serde]
 pub struct InstantiateMsg {

@@ -33,11 +33,11 @@ euclid-utils = { path = "./packages/euclid_utils" }
 forwarding = { path = "./packages/forwarding" }
 relayer = { path = "./packages/relayer" }
 
-cosmwasm-std = "2.2.2"
-cosmwasm-schema = "2.2.2"
-cw-storage-plus = "2.0.0"
-cw-utils = "2.0.0"
-cw2 = "2.0.0"
+cosmwasm-std = "=3.0.4"
+cosmwasm-schema = "3.0.4"
+cw-storage-plus = "3.0.1"
+cw-utils = "3.0.0"
+cw2 = "3.0.0"
 cw20 = "2.0.0"
 cw20-base = "2.0.0"
 schemars = "0.8.22"
@@ -47,5 +47,5 @@ itertools = "0.10"
 function_name = "0.3"
 
 mock = { path = "./packages/mock" }
-cw-multi-test = { version = "2.4.0"}
+cw-multi-test = "3.0.1"
 cw-orch = "0.28.0"

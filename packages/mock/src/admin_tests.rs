@@ -1,6 +1,7 @@
 use cosmwasm_std::{
+    testing::MockStorage,
     testing::{message_info, mock_env, MockApi, MockQuerier},
-    DepsMut, Env, MemoryStorage, MessageInfo, OwnedDeps, Response,
+    DepsMut, Env, MessageInfo, OwnedDeps, Response,
 };
 use euclid::{admin::AdminType, error::ContractError};
 
@@ -32,7 +33,7 @@ use euclid::{admin::AdminType, error::ContractError};
 /// );
 /// ```
 pub fn run_update_admin_access_control<F>(
-    make_initialized_deps: impl Fn() -> OwnedDeps<MemoryStorage, MockApi, MockQuerier>,
+    make_initialized_deps: impl Fn() -> OwnedDeps<MockStorage, MockApi, MockQuerier>,
     call_update_admin: F,
 ) where
     F: Fn(DepsMut, Env, MessageInfo, AdminType, String) -> Result<Response, ContractError>,

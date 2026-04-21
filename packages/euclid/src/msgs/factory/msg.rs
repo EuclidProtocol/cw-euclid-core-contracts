@@ -12,7 +12,7 @@ use crate::{
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
-use cw20::Cw20ReceiveMsg;
+use crate::cw20_types::{Cw20ReceiveMsg, InstantiateMarketingInfo};
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
@@ -28,7 +28,6 @@ pub struct InstantiateMsg {
 }
 
 #[cw_serde]
-#[cfg_attr(not(target_arch = "wasm32"), derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
     ManageFactoryState(ManageFactoryState),
     RegisterDenom {
@@ -39,7 +38,6 @@ pub enum ExecuteMsg {
         token_with_denom: TokenWithDenom,
         cross_chain_config: CrossChainConfig,
     },
-    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     DepositToken {
         asset_in: TokenWithDenom,
         amount_in: Uint128,
@@ -54,7 +52,6 @@ pub enum ExecuteMsg {
         recipients: Vec<Recipient>,
         cross_chain_config: CrossChainConfig,
     },
-    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     RequestPoolCreation {
         pair_with_denom_and_amount: PairWithDenomAndAmount,
         pool_config: PoolConfig,
@@ -62,7 +59,7 @@ pub enum ExecuteMsg {
         lp_token_symbol: String,
         lp_token_decimal: u8,
         slippage_tolerance_bps: u64,
-        lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+        lp_token_marketing: Option<InstantiateMarketingInfo>,
         cross_chain_config: CrossChainConfig,
     },
     AddLiquidity {
@@ -70,7 +67,6 @@ pub enum ExecuteMsg {
         slippage_tolerance_bps: u64,
         cross_chain_config: CrossChainConfig,
     },
-    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     ExecuteSwapRequest(ExecuteSwapRequest),
 
     // Recieve CW20 TOKENS structure

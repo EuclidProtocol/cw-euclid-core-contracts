@@ -19,6 +19,7 @@ pub trait MockContract<E: Serialize + fmt::Debug, Q: Serialize + fmt::Debug> {
         funds: &[Coin],
     ) -> AnyResult<AppResponse> {
         app.execute_contract(sender, self.addr().clone(), &msg, funds)
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     fn query<T: DeserializeOwned>(&self, app: &MockApp, msg: Q) -> T {

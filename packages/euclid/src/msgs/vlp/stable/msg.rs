@@ -130,7 +130,7 @@ pub struct AllStablePoolsResponse {
 pub struct MigrateMsg {}
 
 /// This struct describes a Terra asset as decimal.
-#[cw_serde]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DecimalAsset {
     pub info: AssetInfo,
     pub amount: Decimal256,

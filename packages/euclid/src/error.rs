@@ -9,7 +9,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Never {}
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug)]
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
@@ -282,6 +282,12 @@ pub enum ContractError {
     RateLimitExceeded { limit: u128, actual: u128 },
 }
 
+impl PartialEq for ContractError {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_string() == other.to_string()
+    }
+}
+
 impl ContractError {
     pub fn new(err: &str) -> Self {
         ContractError::Generic {
@@ -293,7 +299,7 @@ impl ContractError {
 impl From<Cw20ContractError> for ContractError {
     fn from(err: Cw20ContractError) -> Self {
         match err {
-            Cw20ContractError::Std(std) => ContractError::Std(std),
+            Cw20ContractError::Std(std) => ContractError::Std(StdError::msg(std.to_string())),
             Cw20ContractError::Expired {} => ContractError::Expired {},
             Cw20ContractError::LogoTooBig {} => ContractError::LogoTooBig {},
             Cw20ContractError::NoAllowance {} => ContractError::NoAllowance {},
