@@ -210,4 +210,139 @@ mod tests {
             ContractError::new("Euclid Fee cannot exceed maximum limit")
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Instantiate: response attributes
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_instantiate_response_attributes() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let router = deps.api.addr_make("router");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
+        let msg = InstantiateMsg {
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
+            pair: Pair {
+                token_1: Token::create("token1".to_string()).unwrap(),
+                token_2: Token::create("token2".to_string()).unwrap(),
+            },
+            fee: Fee::new(
+                1,
+                1,
+                CrossChainUser::new(
+                    ChainUid::create("1".to_string()).unwrap(),
+                    "addr".to_string(),
+                ),
+            ),
+            execute: None,
+            admin,
+            amp_factor: None,
+        };
+        let info = message_info(&router, &[]);
+        let res = instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "method")
+                .unwrap()
+                .value,
+            "instantiate"
+        );
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "vlp_address")
+                .unwrap()
+                .value,
+            env.contract.address.to_string()
+        );
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "owner")
+                .unwrap()
+                .value,
+            router.to_string()
+        );
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "token_1")
+                .unwrap()
+                .value,
+            "token1"
+        );
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "token_2")
+                .unwrap()
+                .value,
+            "token2"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: UpdateAmpFactor
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_update_amp_factor_response_attributes() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        init(&mut deps);
+
+        let msg = ExecuteMsg::UpdateAmpFactor {
+            amp_factor: Uint64::from(5000u64),
+        };
+        let admin = deps.api.addr_make("admin");
+        let info = message_info(&admin, &[]);
+        let res = execute(deps.as_mut(), env, info, msg).unwrap();
+
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "action")
+                .unwrap()
+                .value,
+            "update_amp_factor"
+        );
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "amp_factor")
+                .unwrap()
+                .value,
+            "5000"
+        );
+        assert_eq!(res.events.len(), 1);
+        assert_eq!(res.events[0].ty, "euclid");
+        assert_eq!(
+            res.events[0]
+                .attributes
+                .iter()
+                .find(|a| a.key == "version")
+                .unwrap()
+                .value,
+            "1.0.0"
+        );
+    }
+
+    #[test]
+    fn test_update_amp_factor_unauthorized() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        init(&mut deps);
+
+        let msg = ExecuteMsg::UpdateAmpFactor {
+            amp_factor: Uint64::from(5000u64),
+        };
+        let not_admin = deps.api.addr_make("not_admin");
+        let info = message_info(&not_admin, &[]);
+        let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+    }
 }
