@@ -28,7 +28,7 @@ mod tests {
     use euclid::msgs::meta_transaction::msg::InstantiateMsg;
 
     type MockDeps = cosmwasm_std::OwnedDeps<
-        cosmwasm_std::MemoryStorage,
+        cosmwasm_std::testing::MockStorage,
         cosmwasm_std::testing::MockApi,
         cosmwasm_std::testing::MockQuerier,
     >;

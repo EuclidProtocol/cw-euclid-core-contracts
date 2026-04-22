@@ -27,7 +27,7 @@ mod tests {
 
     fn init(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             MockQuerier,
         >,

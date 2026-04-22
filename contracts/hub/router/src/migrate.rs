@@ -90,7 +90,7 @@ mod tests {
 
     fn write_legacy_euclid_admin_state(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,
@@ -109,7 +109,7 @@ mod tests {
 
     fn write_legacy_admins_state(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,
@@ -128,7 +128,7 @@ mod tests {
 
     fn write_legacy_admin_state(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,

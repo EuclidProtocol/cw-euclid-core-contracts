@@ -242,7 +242,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         }
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps, msg),
 
-        id => Err(ContractError::Std(StdError::generic_err(format!(
+        id => Err(ContractError::Std(StdError::msg(format!(
             "Unknown reply id: {}",
             id
         )))),

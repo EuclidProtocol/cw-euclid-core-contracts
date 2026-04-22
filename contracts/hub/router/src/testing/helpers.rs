@@ -27,7 +27,7 @@ use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
 // -----------------------------------------------------------------------
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
-    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     MockQuerier,
 >;
