@@ -48,7 +48,7 @@ mod tests {
 
     fn write_legacy_state(
         deps: &mut cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,
