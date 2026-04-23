@@ -3,6 +3,7 @@ use cosmwasm_std::{
     testing::{message_info, mock_dependencies, mock_env},
     to_json_binary, Addr, Coin, Uint128,
 };
+use rstest::rstest;
 
 use crate::{
     contract::{execute, instantiate, query},
@@ -94,131 +95,86 @@ fn test_deposit_native() {
     assert_eq!(denom_to_amount, expected_denom_to_amount);
 }
 
-struct TestInstantiateMsg {
-    name: &'static str,
-    msg: InstantiateMsg,
-    expected_error: Option<ContractError>,
-}
-
-struct TestExecuteMsg {
-    name: &'static str,
-    msg: ExecuteMsg,
-    expected_error: Option<ContractError>,
-}
-
-#[test]
-fn test_instantiate() {
+#[rstest]
+#[case::with_allowed_denom("token1", Some("denom1"), None)]
+#[case::without_allowed_denom("token2", None, None)]
+fn test_instantiate(
+    #[case] token_id: &str,
+    #[case] denom_str: Option<&str>,
+    #[case] expected_err: Option<ContractError>,
+) {
     let mut deps = mock_dependencies();
-    let env = mock_env();
     let creator = deps.api.addr_make("creator");
     let info = message_info(&creator, &[]);
 
-    let test_cases = vec![
-        TestInstantiateMsg {
-            name: "Valid instantiate message with allowed denom",
-            msg: InstantiateMsg {
-                token_id: Token::create("token1".to_string()).unwrap(),
-                allowed_denom: Some(TokenType::Native {
-                    denom: "denom1".to_string(),
-                }),
-            },
-            expected_error: None,
-        },
-        TestInstantiateMsg {
-            name: "Valid instantiate message without allowed denom",
-            msg: InstantiateMsg {
-                token_id: Token::create("token2".to_string()).unwrap(),
-                allowed_denom: None,
-            },
-            expected_error: None,
-        },
-    ];
+    let msg = InstantiateMsg {
+        token_id: Token::create(token_id.to_string()).unwrap(),
+        allowed_denom: denom_str.map(|d| TokenType::Native {
+            denom: d.to_string(),
+        }),
+    };
+    let res = instantiate(deps.as_mut(), mock_env(), info, msg);
 
-    for test in test_cases {
-        let res = instantiate(deps.as_mut(), env.clone(), info.clone(), test.msg.clone());
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => assert!(res.is_ok(), "{}", test.name),
-        }
+    match expected_err {
+        Some(err) => assert_eq!(res.unwrap_err(), err),
+        None => assert!(res.is_ok()),
     }
 }
 
-#[test]
-fn test_execute_add_allowed_denom() {
+#[rstest]
+#[case::factory_adds_new_denom("creator", "denom1", false, None)]
+#[case::factory_adds_duplicate_denom("creator", "denom1", true, Some(ContractError::DuplicateDenominations {}))]
+#[case::non_factory_fails("not_factory", "denom2", false, Some(ContractError::Unauthorized {}))]
+fn test_execute_add_allowed_denom(
+    #[case] actor: &str,
+    #[case] denom_str: &str,
+    #[case] pre_seed: bool,
+    #[case] expected_err: Option<ContractError>,
+) {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let creator = deps.api.addr_make("creator");
     let info = message_info(&creator, &[]);
-    let not_factory = deps.api.addr_make("not_factory");
 
     let instantiate_msg = InstantiateMsg {
         token_id: Token::create("token1".to_string()).unwrap(),
-        allowed_denom: None,
+        allowed_denom: pre_seed.then(|| TokenType::Native {
+            denom: denom_str.to_string(),
+        }),
     };
-    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+    instantiate(deps.as_mut(), env.clone(), info, instantiate_msg).unwrap();
 
-    let test_cases = vec![
-        TestExecuteMsg {
-            name: "Add allowed denom by factory",
-            msg: ExecuteMsg::AddAllowedDenom {
-                denom: TokenType::Native {
-                    denom: "denom1".to_string(),
-                },
-            },
-            expected_error: None,
-        },
-        TestExecuteMsg {
-            name: "Add duplicate denom",
-            msg: ExecuteMsg::AddAllowedDenom {
-                denom: TokenType::Native {
-                    denom: "denom1".to_string(),
-                },
-            },
-            expected_error: Some(ContractError::DuplicateDenominations {}),
-        },
-        TestExecuteMsg {
-            name: "Add allowed denom by non-factory",
-            msg: ExecuteMsg::AddAllowedDenom {
-                denom: TokenType::Native {
-                    denom: "denom2".to_string(),
-                },
-            },
-            expected_error: Some(ContractError::Unauthorized {}),
-        },
-    ];
+    let actor_addr = deps.api.addr_make(actor);
+    let denom = TokenType::Native {
+        denom: denom_str.to_string(),
+    };
+    let msg = ExecuteMsg::AddAllowedDenom {
+        denom: denom.clone(),
+    };
+    let res = execute(deps.as_mut(), env, message_info(&actor_addr, &[]), msg);
 
-    for test in test_cases {
-        let res = execute(
-            deps.as_mut(),
-            env.clone(),
-            if test.name.contains("non-factory") {
-                message_info(&not_factory, &[])
-            } else {
-                info.clone()
-            },
-            test.msg.clone(),
-        );
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => {
-                assert!(res.is_ok(), "{}", test.name);
-
-                // Verify the denom was added
-                let allowed_denoms = ALLOWED_DENOMS.load(&deps.storage).unwrap();
-                assert!(allowed_denoms.contains(&TokenType::Native {
-                    denom: "denom1".to_string()
-                }));
-            }
+    match expected_err {
+        Some(err) => assert_eq!(res.unwrap_err(), err),
+        None => {
+            assert!(res.is_ok());
+            let allowed_denoms = ALLOWED_DENOMS.load(&deps.storage).unwrap();
+            assert!(allowed_denoms.contains(&denom));
         }
     }
 }
 
-#[test]
-fn test_execute_disallow_denom() {
+#[rstest]
+#[case::factory_disallows_denom("creator", "denom1", None)]
+#[case::factory_disallows_nonexistent("creator", "denom2", Some(ContractError::DenomDoesNotExist {}))]
+#[case::non_factory_fails("not_factory", "denom1", Some(ContractError::Unauthorized {}))]
+fn test_execute_disallow_denom(
+    #[case] actor: &str,
+    #[case] denom_str: &str,
+    #[case] expected_err: Option<ContractError>,
+) {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let creator = deps.api.addr_make("creator");
-    let not_factory = deps.api.addr_make("not_factory");
     let info = message_info(&creator, &[]);
 
     let instantiate_msg = InstantiateMsg {
@@ -227,73 +183,42 @@ fn test_execute_disallow_denom() {
             denom: "denom1".to_string(),
         }),
     };
-    instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+    instantiate(deps.as_mut(), env.clone(), info, instantiate_msg).unwrap();
 
-    let test_cases = vec![
-        TestExecuteMsg {
-            name: "Disallow denom by factory",
-            msg: ExecuteMsg::DisallowDenom {
-                denom: TokenType::Native {
-                    denom: "denom1".to_string(),
-                },
-            },
-            expected_error: None,
-        },
-        TestExecuteMsg {
-            name: "Disallow non-existing denom",
-            msg: ExecuteMsg::DisallowDenom {
-                denom: TokenType::Native {
-                    denom: "denom2".to_string(),
-                },
-            },
-            expected_error: Some(ContractError::DenomDoesNotExist {}),
-        },
-        TestExecuteMsg {
-            name: "Disallow denom by non-factory",
-            msg: ExecuteMsg::DisallowDenom {
-                denom: TokenType::Native {
-                    denom: "denom1".to_string(),
-                },
-            },
-            expected_error: Some(ContractError::Unauthorized {}),
-        },
-    ];
+    let actor_addr = deps.api.addr_make(actor);
+    let denom = TokenType::Native {
+        denom: denom_str.to_string(),
+    };
+    let msg = ExecuteMsg::DisallowDenom {
+        denom: denom.clone(),
+    };
+    let res = execute(deps.as_mut(), env, message_info(&actor_addr, &[]), msg);
 
-    for test in test_cases {
-        let res = execute(
-            deps.as_mut(),
-            env.clone(),
-            if test.name.contains("non-factory") {
-                message_info(&not_factory, &[])
-            } else {
-                info.clone()
-            },
-            test.msg.clone(),
-        );
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => {
-                assert!(res.is_ok(), "{}", test.name);
-
-                // Verify the denom was removed
-                let allowed_denoms = ALLOWED_DENOMS.load(&deps.storage).unwrap();
-                assert!(!allowed_denoms.contains(&TokenType::Native {
-                    denom: "denom1".to_string(),
-                }));
-            }
+    match expected_err {
+        Some(err) => assert_eq!(res.unwrap_err(), err),
+        None => {
+            assert!(res.is_ok());
+            let allowed_denoms = ALLOWED_DENOMS.load(&deps.storage).unwrap();
+            assert!(!allowed_denoms.contains(&denom));
         }
     }
 }
 
-#[test]
-fn test_execute_withdraw() {
+#[rstest]
+#[case::factory_withdraws("factory", 50u128, None)]
+#[case::insufficient_funds("factory", 2000u128, Some(ContractError::InsufficientFunds {}))]
+#[case::non_factory_fails("not_factory", 50u128, Some(ContractError::Unauthorized {}))]
+fn test_execute_withdraw(
+    #[case] actor: &str,
+    #[case] amount: u128,
+    #[case] expected_err: Option<ContractError>,
+) {
     let mut deps = mock_dependencies();
     let mut env = mock_env();
     env.block.chain_id = "chain-1".to_string();
     let factory = deps.api.addr_make("factory");
-    let not_factory = deps.api.addr_make("not_factory");
     let factory_info_no_funds = message_info(&factory, &[]);
-    let info = message_info(
+    let deposit_info = message_info(
         &factory,
         &[Coin {
             denom: "denom1".to_string(),
@@ -310,84 +235,38 @@ fn test_execute_withdraw() {
     instantiate(
         deps.as_mut(),
         env.clone(),
-        factory_info_no_funds.clone(),
+        factory_info_no_funds,
         instantiate_msg,
     )
     .unwrap();
 
-    let deposit_msg = ExecuteMsg::DepositNative {};
-    let deposit_res = execute(deps.as_mut(), env.clone(), info.clone(), deposit_msg).unwrap();
-    dbg!(&deposit_res);
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        deposit_info,
+        ExecuteMsg::DepositNative {},
+    )
+    .unwrap();
 
-    let initial_denom_amount = DENOM_TO_AMOUNT
-        .load(&deps.storage, "native:denom1".to_string())
-        .unwrap();
-    dbg!(&initial_denom_amount);
-
-    let test_cases = vec![
-        TestExecuteMsg {
-            name: "Withdraw by factory",
-            msg: ExecuteMsg::Withdraw {
-                recipient: Addr::unchecked("recipient1".to_string()),
-                amount: Uint128::new(50),
-                denom: TokenType::Native {
-                    denom: "denom1".to_string(),
-                },
-                forwarding_message: None,
-            },
-            expected_error: None,
+    let actor_addr = deps.api.addr_make(actor);
+    let msg = ExecuteMsg::Withdraw {
+        recipient: Addr::unchecked("recipient1"),
+        amount: Uint128::new(amount),
+        denom: TokenType::Native {
+            denom: "denom1".to_string(),
         },
-        TestExecuteMsg {
-            name: "Withdraw with insufficient funds",
-            msg: ExecuteMsg::Withdraw {
-                recipient: Addr::unchecked("recipient1".to_string()),
-                amount: Uint128::new(2000),
-                denom: TokenType::Native {
-                    denom: "denom1".to_string(),
-                },
-                forwarding_message: None,
-            }, // Use 2000 which exceeds the balance
-            expected_error: Some(ContractError::InsufficientFunds {}),
-        },
-        TestExecuteMsg {
-            name: "Withdraw by non-factory",
-            msg: ExecuteMsg::Withdraw {
-                recipient: Addr::unchecked("recipient1".to_string()),
-                amount: Uint128::new(50),
-                denom: TokenType::Native {
-                    denom: "denom1".to_string(),
-                },
-                forwarding_message: None,
-            },
-            expected_error: Some(ContractError::Unauthorized {}),
-        },
-    ];
+        forwarding_message: None,
+    };
+    let res = execute(deps.as_mut(), env, message_info(&actor_addr, &[]), msg);
 
-    for test in test_cases {
-        dbg!(&test.name);
-        let res = execute(
-            deps.as_mut(),
-            env.clone(),
-            if test.name.contains("non-factory") {
-                message_info(&not_factory, &[])
-            } else {
-                factory_info_no_funds.clone()
-            },
-            test.msg.clone(),
-        );
-        dbg!(&res);
-        match test.expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err, "{}", test.name),
-            None => {
-                assert!(res.is_ok(), "{}", test.name);
-
-                // Verify the withdrawal was successful
-                let denom_amount = DENOM_TO_AMOUNT
-                    .load(&deps.storage, "native:denom1".to_string())
-                    .unwrap();
-                dbg!(&denom_amount);
-                assert_eq!(denom_amount, Uint128::new(950));
-            }
+    match expected_err {
+        Some(err) => assert_eq!(res.unwrap_err(), err),
+        None => {
+            assert!(res.is_ok());
+            let balance = DENOM_TO_AMOUNT
+                .load(&deps.storage, "native:denom1".to_string())
+                .unwrap();
+            assert_eq!(balance, Uint128::new(1000 - amount));
         }
     }
 }

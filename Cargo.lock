@@ -1551,6 +1551,7 @@ dependencies = [
  "euclid",
  "euclid-ibc",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
