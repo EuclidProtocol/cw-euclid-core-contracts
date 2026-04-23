@@ -15,6 +15,7 @@ pub fn execute_update_state(
     info: &MessageInfo,
     msg: UpdateStateMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
     let mut state = STATE.load(deps.storage)?;
     let admin = ADMIN.load(deps.storage)?;
     ensure!(
@@ -65,6 +66,7 @@ pub fn execute_update_admin(
     info: &MessageInfo,
     msg: UpdateAdminMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
     let current_admin = ADMIN.load(deps.storage)?;
     let (updated_admins, response) = admin::update_admin(
         &current_admin,
@@ -87,6 +89,7 @@ pub fn execute_meta_transaction(
     info: &MessageInfo,
     msg: MetaTransaction,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
     let state = STATE.load(deps.storage)?;
     let meta_transaction: MetaTransactionData = from_json(msg.data.clone())?;
     // Ensure the nonce is not used
@@ -751,6 +754,7 @@ pub fn execute_add_validator(
     validator: Validator,
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
     let admin = ADMIN.load(deps.storage)?;
     ensure!(
         info.sender == admin.general_admin,
@@ -774,6 +778,7 @@ pub fn execute_remove_validator(
     validator: Validator,
     chain_uid: ChainUid,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
     let admin = ADMIN.load(deps.storage)?;
     ensure!(
         info.sender == admin.general_admin,

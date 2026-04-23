@@ -24,6 +24,10 @@ pub fn execute_cw20_receive(
     info: &MessageInfo,
     receive_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+    ensure!(
+        info.funds.is_empty(),
+        ContractError::new("No funds allowed")
+    );
     let amount = receive_msg.amount;
     let from_token = TokenType::Smart {
         contract_address: info.sender.to_string(),

@@ -290,6 +290,12 @@ impl ContractError {
     }
 }
 
+impl From<cw_utils::PaymentError> for ContractError {
+    fn from(err: cw_utils::PaymentError) -> Self {
+        ContractError::Std(StdError::generic_err(err.to_string()))
+    }
+}
+
 impl From<Cw20ContractError> for ContractError {
     fn from(err: Cw20ContractError) -> Self {
         match err {

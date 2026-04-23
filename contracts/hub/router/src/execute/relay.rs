@@ -39,6 +39,7 @@ pub fn execute_send_packet(
     ack_response: Option<Binary>,
     sender: String,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Only contract can call this function internally
     ensure!(
         info.sender == env.contract.address,
@@ -88,6 +89,7 @@ pub fn execute_receive_packet(
     destination_port: String,
     timeout: u64,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     ensure!(
         RELAYER_CONTRACT.load(deps.storage)? == info.sender,
         ContractError::Unauthorized {}
@@ -163,6 +165,7 @@ pub fn execute_receive_packet_internal_callback(
     chain_uid: ChainUid,
     timeout: u64,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
@@ -189,6 +192,7 @@ pub fn execute_receive_acknowledgement(
     destination_port: String,
     ack: Binary,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     ensure!(
         RELAYER_CONTRACT.load(deps.storage)? == info.sender,
         ContractError::Unauthorized {}
@@ -259,6 +263,7 @@ pub fn execute_native_receive_callback(
     chain_uid: ChainUid,
     msg: Binary,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let chain_uid = chain_uid.validate()?.clone();
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     // Only native chains can directly use this messages

@@ -34,6 +34,7 @@ pub fn execute_manage_router_state(
     info: MessageInfo,
     msg: ManageRouterState,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let mut state = STATE.load(deps.storage)?;
     let mut admins = ADMIN.load(deps.storage)?;
     match msg {
@@ -209,6 +210,7 @@ pub fn execute_register_factory(
     chain_uid: ChainUid,
     chain_info: RegisterFactoryChainType,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let admins = ADMIN.load(deps.storage)?;
     ensure!(
         info.sender == admins.general_admin,
@@ -314,6 +316,7 @@ pub fn execute_meta_receive(
     info: MessageInfo,
     msg: MetaReceive,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let meta_transaction_contract = META_TRANSACTION_CONTRACT.load(deps.storage)?;
     ensure!(
         info.sender == meta_transaction_contract,
