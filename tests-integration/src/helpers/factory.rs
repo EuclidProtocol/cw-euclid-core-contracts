@@ -90,18 +90,6 @@ pub fn deposit_token(
     let mut funds = vec![];
     faucet(env.chain_mut(factory_chain_id), &sender, amount.u128(), token.token_type.clone(), &mut funds);
 
-    let tx_response = env.chain_mut(factory_chain_id).execute(
-        &sender,
-        factory_addr,
-        &euclid::msgs::factory::msg::ExecuteMsg::DepositToken {
-            asset_in: token.clone(),
-            amount_in: amount,
-            recipients,
-            cross_chain_config: CrossChainConfig::default(),
-        },
-        &funds,
-    );
-
     let escrow_addr = get_escrow_addr(env.chain(factory_chain_id), factory_addr, token.token.as_str());
     let old_escrow_state: euclid::msgs::escrow::StateResponse =
         env.chain(factory_chain_id).query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
@@ -118,6 +106,18 @@ pub fn deposit_token(
         Some(chain) => chain.balance,
         None => Uint128::zero(),
     };
+
+    let tx_response = env.chain_mut(factory_chain_id).execute(
+        &sender,
+        factory_addr,
+        &euclid::msgs::factory::msg::ExecuteMsg::DepositToken {
+            asset_in: token.clone(),
+            amount_in: amount,
+            recipients,
+            cross_chain_config: CrossChainConfig::default(),
+        },
+        &funds,
+    );
 
     relay_factory_router_factory(
         tx_response.events,

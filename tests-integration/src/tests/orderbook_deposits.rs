@@ -228,7 +228,7 @@ fn withdraw_with_merkle_and_permit() {
         &[],
     );
     assert!(replay.is_err(), "Expected replay to fail with PermitAlreadyUsed");
-    assert!(replay.unwrap_err().to_string().contains("PermitAlreadyUsed"));
+    assert!(replay.unwrap_err().to_string().contains("permit already used"));
     assert_eq!(query_asset_deposit(&context, token_id), remaining);
     assert_eq!(query_user_deposit(&context, token_id), remaining);
     assert_eq!(query_destination_balance(&context, token_id), withdraw_amount);
@@ -307,7 +307,7 @@ fn same_nonce_new_permit_bytes_fails() {
         &[],
     );
     assert!(replay.is_err(), "Expected replay to fail with WithdrawalAlreadyConsumed");
-    assert!(replay.unwrap_err().to_string().contains("WithdrawalAlreadyConsumed"));
+    assert!(replay.unwrap_err().to_string().contains("withdrawal already consumed"));
 
     let remaining = deposit_amount.checked_sub(withdraw_amount).unwrap();
     assert_eq!(query_asset_deposit(&context, token_id), remaining);
@@ -408,7 +408,7 @@ fn same_nonce_after_root_rotation_fails() {
         &[],
     );
     assert!(replay.is_err(), "Expected replay to fail with WithdrawalAlreadyConsumed");
-    assert!(replay.unwrap_err().to_string().contains("WithdrawalAlreadyConsumed"));
+    assert!(replay.unwrap_err().to_string().contains("withdrawal already consumed"));
     assert_eq!(query_asset_deposit(&context, token_id), remaining);
     assert_eq!(query_user_deposit(&context, token_id), remaining);
     assert_eq!(query_destination_balance(&context, token_id), withdraw_amount);
@@ -660,7 +660,7 @@ fn amount_above_leaf_balance_fails_without_nullifiers() {
         &[],
     );
     assert!(withdraw.is_err(), "Expected error for amount above leaf balance");
-    assert!(withdraw.unwrap_err().to_string().contains("InsufficientWithdrawableBalance"));
+    assert!(withdraw.unwrap_err().to_string().contains("insufficient withdrawable balance"));
     assert_eq!(query_asset_deposit(&context, token_id), deposit_amount);
     assert_eq!(query_user_deposit(&context, token_id), deposit_amount);
     assert_eq!(query_destination_balance(&context, token_id), Uint128::zero());

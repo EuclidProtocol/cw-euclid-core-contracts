@@ -139,6 +139,7 @@ pub fn relay_router_send_packet(
 }
 
 /// Relay acknowledgement packets back to factory. Operates only on the factory chain app.
+/// Returns `Err` if any ack contains an error response.
 pub fn relay_factory_ack_packet(
     factory_addr: &Addr,
     events: Vec<Event>,
@@ -155,9 +156,14 @@ pub fn relay_factory_ack_packet(
     let relayer_addr = factory_state.relayer_contract;
 
     let destination_port = format!("{}.{}", chain_uid.as_str(), factory_addr);
+    let mut error_ack: Option<String> = None;
     for packet in write_ack_packets {
         println!("Packet sequence: {:?}", packet.sequence);
         println!("Ack packet: {:?}", packet.ack.to_base64());
+
+        if let Some(err) = extract_ack_error(&packet.ack) {
+            error_ack = Some(err);
+        }
 
         if packet.destination_port != destination_port {
             println!(
@@ -196,7 +202,23 @@ pub fn relay_factory_ack_packet(
         );
         responses.extend(response.events);
     }
+
+    if let Some(err) = error_ack {
+        return Err(anyhow::anyhow!("{}", err));
+    }
+
     Ok(responses)
+}
+
+fn extract_ack_error(ack: &Binary) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct MaybeError {
+        #[serde(default)]
+        error: Option<String>,
+    }
+    cosmwasm_std::from_json::<MaybeError>(ack)
+        .ok()
+        .and_then(|a| a.error)
 }
 
 /// Relay acknowledgement packets back to router. Operates only on the router chain app.
