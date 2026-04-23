@@ -3,7 +3,7 @@ use cosmwasm_std::Uint128;
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::token::PairWithDenomAndAmount;
 
-use crate::helpers::factory::{create_pool as helpers_create_pool, faucet};
+use crate::helpers::factory::create_pool as helpers_create_pool;
 use crate::helpers::multi_chain::MultiChainEnv;
 
 pub fn create_pool(

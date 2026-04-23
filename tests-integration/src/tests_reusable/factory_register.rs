@@ -52,14 +52,20 @@ mod tests {
         let router_addr =
             setup_router(env.chain_mut(ROUTER_CHAIN_ID), vec![factory_chain_id]).unwrap();
 
-        let _factory_addr =
-            setup_factory_with_mode(&mut env, factory_chain_id, ROUTER_CHAIN_ID, &router_addr, mode)
-                .unwrap();
+        let _factory_addr = setup_factory_with_mode(
+            &mut env,
+            factory_chain_id,
+            ROUTER_CHAIN_ID,
+            &router_addr,
+            mode,
+        )
+        .unwrap();
 
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
-        let all_chains: euclid::msgs::router::AllChainResponse = env
-            .chain(ROUTER_CHAIN_ID)
-            .query(&router_addr, &euclid::msgs::router::QueryMsg::GetAllChains {});
+        let all_chains: euclid::msgs::router::AllChainResponse = env.chain(ROUTER_CHAIN_ID).query(
+            &router_addr,
+            &euclid::msgs::router::QueryMsg::GetAllChains {},
+        );
         let registered_chain = all_chains
             .chains
             .iter()

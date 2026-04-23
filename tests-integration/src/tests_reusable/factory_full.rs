@@ -31,11 +31,15 @@ pub(crate) fn setup_factory_full_flow(
     use crate::helpers::chains::setup_interchain;
 
     let mut env = setup_interchain(sender, factory_chain_id);
-    let router_addr =
-        setup_router(env.chain_mut(router_chain_id), vec![factory_chain_id]).unwrap();
-    let factory_addr =
-        setup_factory_with_mode(&mut env, factory_chain_id, router_chain_id, &router_addr, mode)
-            .unwrap();
+    let router_addr = setup_router(env.chain_mut(router_chain_id), vec![factory_chain_id]).unwrap();
+    let factory_addr = setup_factory_with_mode(
+        &mut env,
+        factory_chain_id,
+        router_chain_id,
+        &router_addr,
+        mode,
+    )
+    .unwrap();
 
     register_denom(
         &factory_addr,
@@ -110,7 +114,7 @@ pub(crate) fn setup_factory_full_flow(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers::chains::{get_escrow_addr, get_virtual_balance_addr, lp_token_code, setup_interchain};
+    use crate::helpers::chains::{get_escrow_addr, get_virtual_balance_addr, lp_token_code};
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
@@ -120,7 +124,9 @@ mod tests {
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::cw20_types::{BalanceResponse, Cw20Coin, MinterResponse};
     use euclid::limit::Limit;
-    use euclid::msgs::lp_token::msg::{InstantiateMsg as LpTokenInstantiateMsg, QueryMsg as LpTokenQueryMsg};
+    use euclid::msgs::lp_token::msg::{
+        InstantiateMsg as LpTokenInstantiateMsg, QueryMsg as LpTokenQueryMsg,
+    };
     use euclid::utils::pagination::Pagination;
     use euclid::voucher::BalanceKey;
 
@@ -266,17 +272,17 @@ mod tests {
             vec![pool_pair.clone()],
         );
 
-        let all_chains: euclid::msgs::router::AllChainResponse = env
-            .chain(ROUTER_CHAIN_ID)
-            .query(&router_addr, &euclid::msgs::router::QueryMsg::GetAllChains {});
+        let all_chains: euclid::msgs::router::AllChainResponse = env.chain(ROUTER_CHAIN_ID).query(
+            &router_addr,
+            &euclid::msgs::router::QueryMsg::GetAllChains {},
+        );
         assert!(
             all_chains.chains.iter().any(|c| c.chain_uid == chain_uid),
             "Factory chain should be registered on router"
         );
 
-        let escrow_response: euclid::msgs::factory::GetEscrowResponse = env
-            .chain(factory_chain_id)
-            .query(
+        let escrow_response: euclid::msgs::factory::GetEscrowResponse =
+            env.chain(factory_chain_id).query(
                 &factory_addr,
                 &euclid::msgs::factory::QueryMsg::GetEscrow {
                     token_id: token_1.token.to_string(),
@@ -309,22 +315,19 @@ mod tests {
             "Router escrow balance should match deposited amount",
         );
 
-        let all_tokens: euclid::msgs::router::AllTokensResponse = env
-            .chain(ROUTER_CHAIN_ID)
-            .query(
-                &router_addr,
-                &euclid::msgs::router::QueryMsg::QueryAllTokens {
-                    pagination: Pagination::new(None, None, None, None),
-                },
-            );
+        let all_tokens: euclid::msgs::router::AllTokensResponse = env.chain(ROUTER_CHAIN_ID).query(
+            &router_addr,
+            &euclid::msgs::router::QueryMsg::QueryAllTokens {
+                pagination: Pagination::new(None, None, None, None),
+            },
+        );
         assert!(
             all_tokens.tokens.iter().any(|t| t == &token_1.token),
             "Token should be registered on router"
         );
 
-        let token_denoms: euclid::msgs::router::QueryTokenDenomsResponse = env
-            .chain(ROUTER_CHAIN_ID)
-            .query(
+        let token_denoms: euclid::msgs::router::QueryTokenDenomsResponse =
+            env.chain(ROUTER_CHAIN_ID).query(
                 &router_addr,
                 &euclid::msgs::router::QueryMsg::QueryTokenDenoms {
                     token: token_1.token.clone(),
@@ -338,11 +341,11 @@ mod tests {
             "Token denom should be registered on router for factory chain"
         );
 
-        let virtual_balance_addr = get_virtual_balance_addr(env.chain(ROUTER_CHAIN_ID), &router_addr);
+        let virtual_balance_addr =
+            get_virtual_balance_addr(env.chain(ROUTER_CHAIN_ID), &router_addr);
         match recipient_case {
             "empty" => {
-                let sender_user =
-                    CrossChainUser::new(chain_uid.clone(), sender_addr.clone());
+                let sender_user = CrossChainUser::new(chain_uid.clone(), sender_addr.clone());
                 let sender_amount = initial_state
                     .voucher_balance(&sender_user, &token_1.token)
                     .expect("Sender voucher balance should exist in synced state");
@@ -427,8 +430,11 @@ mod tests {
             .as_ref()
             .map(|addr| lp_balance(&env, factory_chain_id, addr, factory_addr.to_string()));
 
-        let escrow_addr =
-            get_escrow_addr(env.chain(factory_chain_id), &factory_addr, token_1.token.as_str());
+        let escrow_addr = get_escrow_addr(
+            env.chain(factory_chain_id),
+            &factory_addr,
+            token_1.token.as_str(),
+        );
         let escrow_in_before: euclid::msgs::escrow::StateResponse = env
             .chain(factory_chain_id)
             .query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
@@ -583,8 +589,7 @@ mod tests {
             cw20_sender_balance_before,
             cw20_factory_balance_before,
         ) {
-            let sender_after =
-                lp_balance(&env, factory_chain_id, lp_addr, sender_addr.clone());
+            let sender_after = lp_balance(&env, factory_chain_id, lp_addr, sender_addr.clone());
             let factory_after =
                 lp_balance(&env, factory_chain_id, lp_addr, factory_addr.to_string());
             assert_eq!(

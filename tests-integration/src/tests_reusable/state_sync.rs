@@ -120,16 +120,15 @@ pub(crate) fn sync_state(
         .filter(|recipient| recipient.denom.is_voucher())
         .flat_map(|recipient| {
             voucher_tokens.iter().map(|token| {
-                let balance: euclid::msgs::virtual_balance::GetBalanceResponse =
-                    router_app.query(
-                        &virtual_balance_address,
-                        &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-                            balance_key: BalanceKey {
-                                cross_chain_user: recipient.recipient.clone(),
-                                token_id: token.to_string(),
-                            },
+                let balance: euclid::msgs::virtual_balance::GetBalanceResponse = router_app.query(
+                    &virtual_balance_address,
+                    &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+                        balance_key: BalanceKey {
+                            cross_chain_user: recipient.recipient.clone(),
+                            token_id: token.to_string(),
                         },
-                    );
+                    },
+                );
                 VoucherBalanceState {
                     recipient: recipient.recipient.clone(),
                     token: token.clone(),
@@ -145,9 +144,10 @@ pub(crate) fn sync_state(
             chain_uid: query.chain_uid.clone(),
             user_addr: query.user_addr.clone(),
             denom: query.denom.clone(),
-            amount: env
-                .chain(&query.chain_id)
-                .query_balance(&cosmwasm_std::Addr::unchecked(query.user_addr.clone()), &query.denom),
+            amount: env.chain(&query.chain_id).query_balance(
+                &cosmwasm_std::Addr::unchecked(query.user_addr.clone()),
+                &query.denom,
+            ),
         })
         .collect();
 
@@ -163,7 +163,12 @@ pub(crate) fn sync_state(
                 router_addr,
                 &euclid::msgs::router::QueryMsg::QueryTokenEscrows {
                     token: token.clone(),
-                    pagination: Pagination::new(Some(escrow_chain_uid.clone()), None, None, Some(1)),
+                    pagination: Pagination::new(
+                        Some(escrow_chain_uid.clone()),
+                        None,
+                        None,
+                        Some(1),
+                    ),
                 },
             );
             let router_escrow_balance = router_escrow
@@ -190,8 +195,8 @@ pub(crate) fn sync_state(
                 &euclid::msgs::router::QueryMsg::GetVlp { pair: pair.clone() },
             );
             let vlp_addr = cosmwasm_std::Addr::unchecked(vlp_response.vlp.clone());
-            let liquidity: GetLiquidityQueryResponse = router_app
-                .query(&vlp_addr, &euclid::msgs::vlp::cp::QueryMsg::Liquidity {});
+            let liquidity: GetLiquidityQueryResponse =
+                router_app.query(&vlp_addr, &euclid::msgs::vlp::cp::QueryMsg::Liquidity {});
 
             VlpBalanceState {
                 pair: pair.clone(),

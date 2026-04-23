@@ -22,7 +22,6 @@ pub struct InstantiateMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     Mint(ExecuteMint),
     Transfer(ExecuteTransfer),
@@ -84,7 +83,7 @@ pub struct ExecuteApprove {
 pub struct MigrateMsg {}
 
 #[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(State)]

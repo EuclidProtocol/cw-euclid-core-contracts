@@ -50,8 +50,7 @@ impl Decimal256Ext for Decimal256 {
     }
 
     fn checked_from_integer(i: impl Into<Uint256>) -> StdResult<Decimal256> {
-        Decimal256::checked_from_ratio(i.into(), 1u8)
-            .map_err(|e| StdError::msg(e.to_string()))
+        Decimal256::checked_from_ratio(i.into(), 1u8).map_err(|e| StdError::msg(e.to_string()))
     }
 
     fn checked_multiply_ratio(

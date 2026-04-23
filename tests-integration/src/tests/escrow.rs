@@ -1,6 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::Addr;
 use euclid::msgs::escrow::AllowedDenomsResponse;
 use euclid::token::{Token, TokenType};
 

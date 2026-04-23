@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(StateResponse)]
     GetState {},

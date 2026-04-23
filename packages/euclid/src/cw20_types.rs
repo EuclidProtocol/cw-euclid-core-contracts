@@ -112,10 +112,15 @@ pub struct Cw20InstantiateMsg {
 
 #[cw_serde]
 pub enum Cw20QueryMsg {
-    Balance { address: String },
+    Balance {
+        address: String,
+    },
     TokenInfo {},
     Minter {},
-    Allowance { owner: String, spender: String },
+    Allowance {
+        owner: String,
+        spender: String,
+    },
     AllAllowances {
         owner: String,
         start_after: Option<String>,

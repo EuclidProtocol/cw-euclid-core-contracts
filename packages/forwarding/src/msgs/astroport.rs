@@ -10,7 +10,6 @@ pub struct InstantiateMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     Receive(Cw20ReceiveMsg),
     EuclidReceive(EuclidReceive),
@@ -18,7 +17,7 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {}
 
 #[cw_serde]

@@ -1,11 +1,11 @@
 use cosmwasm_schema::cw_serde;
-use euclid::cw20_types::Cw20ReceiveMsg;
 use cosmwasm_std::{
     ensure, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Order,
     Response, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Bound, Item, Map};
 use cw_utils::Expiration;
+use euclid::cw20_types::Cw20ReceiveMsg;
 use euclid::{
     cw20_types::{
         AllAccountsResponse, AllAllowancesResponse, AllowanceInfo, AllowanceResponse,
@@ -132,7 +132,10 @@ pub fn instantiate_cw20(
     Ok(Response::default())
 }
 
-fn save_marketing(deps: DepsMut, marketing: &InstantiateMarketingInfo) -> Result<(), ContractError> {
+fn save_marketing(
+    deps: DepsMut,
+    marketing: &InstantiateMarketingInfo,
+) -> Result<(), ContractError> {
     let logo_info = marketing.logo.as_ref().map(|logo| match logo {
         Logo::Url(url) => LogoInfo::Url(url.clone()),
         Logo::Embedded(_) => LogoInfo::Embedded,
@@ -182,7 +185,10 @@ pub fn execute_transfer(
     recipient: String,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
-    ensure!(!amount.is_zero(), ContractError::new("Transfer amount must be non-zero"));
+    ensure!(
+        !amount.is_zero(),
+        ContractError::new("Transfer amount must be non-zero")
+    );
     let recipient_addr = deps.api.addr_validate(&recipient)?;
     transfer_tokens(deps, &info.sender, &recipient_addr, amount)?;
     Ok(Response::new()
@@ -198,7 +204,10 @@ pub fn execute_burn(
     info: MessageInfo,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
-    ensure!(!amount.is_zero(), ContractError::new("Burn amount must be non-zero"));
+    ensure!(
+        !amount.is_zero(),
+        ContractError::new("Burn amount must be non-zero")
+    );
     deduct_balance(deps.storage, &info.sender, amount)?;
     TOKEN_INFO.update(deps.storage, |mut info| -> StdResult<_> {
         info.total_supply = info.total_supply.checked_sub(amount)?;
@@ -217,7 +226,10 @@ pub fn execute_mint(
     recipient: String,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
-    ensure!(!amount.is_zero(), ContractError::new("Mint amount must be non-zero"));
+    ensure!(
+        !amount.is_zero(),
+        ContractError::new("Mint amount must be non-zero")
+    );
     let minter = MINT.load(deps.storage)?;
     let minter = minter.ok_or_else(|| ContractError::new("No minter configured"))?;
     ensure!(info.sender == minter.minter, ContractError::Unauthorized {});
@@ -251,7 +263,10 @@ pub fn execute_send(
     amount: Uint128,
     msg: Binary,
 ) -> Result<Response, ContractError> {
-    ensure!(!amount.is_zero(), ContractError::new("Send amount must be non-zero"));
+    ensure!(
+        !amount.is_zero(),
+        ContractError::new("Send amount must be non-zero")
+    );
     let contract_addr = deps.api.addr_validate(&contract)?;
     transfer_tokens(deps, &info.sender, &contract_addr, amount)?;
 
@@ -290,7 +305,10 @@ pub fn execute_increase_allowance(
         ContractError::new("Cannot set own allowance")
     );
     let expires = expires.unwrap_or_default();
-    ensure!(!expires.is_expired(&env.block), ContractError::new("Allowance already expired"));
+    ensure!(
+        !expires.is_expired(&env.block),
+        ContractError::new("Allowance already expired")
+    );
 
     ALLOWANCES.update(
         deps.storage,
@@ -340,7 +358,10 @@ pub fn execute_decrease_allowance(
         ContractError::new("Cannot set own allowance")
     );
     let expires = expires.unwrap_or_default();
-    ensure!(!expires.is_expired(&env.block), ContractError::new("Allowance already expired"));
+    ensure!(
+        !expires.is_expired(&env.block),
+        ContractError::new("Allowance already expired")
+    );
 
     let key = (&info.sender, &spender_addr);
     let mut data = ALLOWANCES
@@ -372,7 +393,10 @@ pub fn execute_transfer_from(
     recipient: String,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
-    ensure!(!amount.is_zero(), ContractError::new("Transfer amount must be non-zero"));
+    ensure!(
+        !amount.is_zero(),
+        ContractError::new("Transfer amount must be non-zero")
+    );
     let owner_addr = deps.api.addr_validate(&owner)?;
     let recipient_addr = deps.api.addr_validate(&recipient)?;
     deduct_allowance(deps.storage, &env, &owner_addr, &info.sender, amount)?;
@@ -394,7 +418,10 @@ pub fn execute_send_from(
     amount: Uint128,
     msg: Binary,
 ) -> Result<Response, ContractError> {
-    ensure!(!amount.is_zero(), ContractError::new("Send amount must be non-zero"));
+    ensure!(
+        !amount.is_zero(),
+        ContractError::new("Send amount must be non-zero")
+    );
     let owner_addr = deps.api.addr_validate(&owner)?;
     let contract_addr = deps.api.addr_validate(&contract)?;
     deduct_allowance(deps.storage, &env, &owner_addr, &info.sender, amount)?;
@@ -426,7 +453,10 @@ pub fn execute_burn_from(
     owner: String,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
-    ensure!(!amount.is_zero(), ContractError::new("Burn amount must be non-zero"));
+    ensure!(
+        !amount.is_zero(),
+        ContractError::new("Burn amount must be non-zero")
+    );
     let owner_addr = deps.api.addr_validate(&owner)?;
     deduct_allowance(deps.storage, &env, &owner_addr, &info.sender, amount)?;
     deduct_balance(deps.storage, &owner_addr, amount)?;
@@ -449,16 +479,17 @@ pub fn execute_update_marketing(
     description: Option<String>,
     marketing: Option<String>,
 ) -> Result<Response, ContractError> {
-    let mut data = MARKETING
-        .may_load(deps.storage)?
-        .unwrap_or(MarketingData {
-            project: None,
-            description: None,
-            marketing: None,
-            logo: None,
-        });
+    let mut data = MARKETING.may_load(deps.storage)?.unwrap_or(MarketingData {
+        project: None,
+        description: None,
+        marketing: None,
+        logo: None,
+    });
     if let Some(ref marketing_addr) = data.marketing {
-        ensure!(info.sender == *marketing_addr, ContractError::Unauthorized {});
+        ensure!(
+            info.sender == *marketing_addr,
+            ContractError::Unauthorized {}
+        );
     } else {
         return Err(ContractError::Unauthorized {});
     }
@@ -492,7 +523,10 @@ pub fn execute_upload_logo(
         logo: None,
     });
     if let Some(ref marketing_addr) = data.marketing {
-        ensure!(info.sender == *marketing_addr, ContractError::Unauthorized {});
+        ensure!(
+            info.sender == *marketing_addr,
+            ContractError::Unauthorized {}
+        );
     } else {
         return Err(ContractError::Unauthorized {});
     }

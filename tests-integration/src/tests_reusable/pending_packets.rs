@@ -19,13 +19,13 @@ mod tests {
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, ROUTER_CHAIN_ID,
     };
 
-    fn query_factory_user_pending_count(factory_app: &EuclidApp, factory_addr: &Addr, sender: Addr) -> u128 {
+    fn query_factory_user_pending_count(
+        factory_app: &EuclidApp,
+        factory_addr: &Addr,
+        sender: Addr,
+    ) -> u128 {
         factory::rate_limit::USER_PENDING_PACKETS_COUNT
-            .query(
-                &factory_app.app().wrap(),
-                factory_addr.clone(),
-                sender,
-            )
+            .query(&factory_app.app().wrap(), factory_addr.clone(), sender)
             .unwrap()
             .unwrap_or(0)
     }
@@ -44,24 +44,24 @@ mod tests {
             .unwrap_or(0)
     }
 
-    fn query_router_pending_count(router_app: &EuclidApp, router_addr: &Addr, chain_uid: ChainUid) -> u128 {
+    fn query_router_pending_count(
+        router_app: &EuclidApp,
+        router_addr: &Addr,
+        chain_uid: ChainUid,
+    ) -> u128 {
         router::relay_state::CROSS_CHAIN_PENDING_PACKETS_COUNT
-            .query(
-                &router_app.app().wrap(),
-                router_addr.clone(),
-                chain_uid,
-            )
+            .query(&router_app.app().wrap(), router_addr.clone(), chain_uid)
             .unwrap()
             .unwrap_or(0)
     }
 
-    fn factory_pending_packet_exists(factory_app: &EuclidApp, factory_addr: &Addr, sequence: u128) -> bool {
+    fn factory_pending_packet_exists(
+        factory_app: &EuclidApp,
+        factory_addr: &Addr,
+        sequence: u128,
+    ) -> bool {
         factory::relay_state::CROSS_CHAIN_PENDING_SEND_PACKETS
-            .query(
-                &factory_app.app().wrap(),
-                factory_addr.clone(),
-                sequence,
-            )
+            .query(&factory_app.app().wrap(), factory_addr.clone(), sequence)
             .unwrap()
             .is_some()
     }
@@ -88,8 +88,13 @@ mod tests {
         let mut env = setup_interchain(sender, FACTORY_CHAIN_ID_IBC);
         let router_addr =
             setup_router(env.chain_mut(ROUTER_CHAIN_ID), vec![FACTORY_CHAIN_ID_IBC]).unwrap();
-        let factory_addr =
-            setup_factory(&mut env, FACTORY_CHAIN_ID_IBC, ROUTER_CHAIN_ID, &router_addr).unwrap();
+        let factory_addr = setup_factory(
+            &mut env,
+            FACTORY_CHAIN_ID_IBC,
+            ROUTER_CHAIN_ID,
+            &router_addr,
+        )
+        .unwrap();
 
         let sender_addr = env.chain(FACTORY_CHAIN_ID_IBC).sender();
         let factory_chain_uid = {
@@ -177,8 +182,13 @@ mod tests {
         let mut env = setup_interchain(sender, FACTORY_CHAIN_ID_IBC);
         let router_addr =
             setup_router(env.chain_mut(ROUTER_CHAIN_ID), vec![FACTORY_CHAIN_ID_IBC]).unwrap();
-        let factory_addr =
-            setup_factory(&mut env, FACTORY_CHAIN_ID_IBC, ROUTER_CHAIN_ID, &router_addr).unwrap();
+        let factory_addr = setup_factory(
+            &mut env,
+            FACTORY_CHAIN_ID_IBC,
+            ROUTER_CHAIN_ID,
+            &router_addr,
+        )
+        .unwrap();
         let sender_addr = env.chain(FACTORY_CHAIN_ID_IBC).sender();
 
         let token_one = TokenWithDenom {
@@ -243,8 +253,13 @@ mod tests {
         let mut env = setup_interchain(sender, FACTORY_CHAIN_ID_IBC);
         let router_addr =
             setup_router(env.chain_mut(ROUTER_CHAIN_ID), vec![FACTORY_CHAIN_ID_IBC]).unwrap();
-        let factory_addr =
-            setup_factory(&mut env, FACTORY_CHAIN_ID_IBC, ROUTER_CHAIN_ID, &router_addr).unwrap();
+        let factory_addr = setup_factory(
+            &mut env,
+            FACTORY_CHAIN_ID_IBC,
+            ROUTER_CHAIN_ID,
+            &router_addr,
+        )
+        .unwrap();
 
         let sender_addr = env.chain(FACTORY_CHAIN_ID_IBC).sender();
         for i in 0..12u8 {

@@ -2,11 +2,7 @@
 
 use cosmwasm_std::{coin, Addr, Uint128};
 use escrow::mock::mock_escrow;
-use euclid::{
-    admin::EuclidAdmin,
-    chain::ChainUid,
-    msgs::factory::StateResponse,
-};
+use euclid::{admin::EuclidAdmin, chain::ChainUid, msgs::factory::StateResponse};
 use factory::mock::{mock_factory, MockFactory};
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
 

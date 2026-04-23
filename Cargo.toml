@@ -48,4 +48,3 @@ function_name = "0.3"
 
 mock = { path = "./packages/mock" }
 cw-multi-test = "3.0.1"
-cw-orch = "0.28.0"

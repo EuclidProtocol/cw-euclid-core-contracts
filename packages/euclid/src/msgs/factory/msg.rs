@@ -1,3 +1,4 @@
+use crate::cw20_types::{Cw20ReceiveMsg, InstantiateMarketingInfo};
 use crate::{
     admin::{AdminType, EuclidAdmin},
     chain::ChainUid,
@@ -12,7 +13,6 @@ use crate::{
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128};
-use crate::cw20_types::{Cw20ReceiveMsg, InstantiateMarketingInfo};
 #[cw_serde]
 pub struct InstantiateMsg {
     // Router contract on VLP
@@ -136,7 +136,7 @@ pub struct ExecuteSwapRequest {
 }
 
 #[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(GetVlpResponse)]
     GetVlp { pair: Pair },

@@ -13,8 +13,8 @@ use relayer::Validator;
 use crate::helpers::app::EuclidApp;
 use crate::helpers::multi_chain::MultiChainEnv;
 use crate::helpers::relayer::{
-    ack_register_factory_evm, extract_send_packet_events, get_signer_key,
-    relay_router_ack_packet, relay_router_send_packet,
+    ack_register_factory_evm, extract_send_packet_events, get_signer_key, relay_router_ack_packet,
+    relay_router_send_packet,
 };
 use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
@@ -137,10 +137,7 @@ pub fn setup_interchain(sender: &str, factory_chain_id: &str) -> MultiChainEnv {
     MultiChainEnv::new(chains)
 }
 
-pub fn setup_router(
-    app: &mut EuclidApp,
-    factory_chains: Vec<&str>,
-) -> Result<Addr, anyhow::Error> {
+pub fn setup_router(app: &mut EuclidApp, factory_chains: Vec<&str>) -> Result<Addr, anyhow::Error> {
     let vlp_code_id = cp_vlp_code(app);
     let stable_vlp_code_id = stable_vlp_code(app);
     let vb_code_id = virtual_balance_code(app);
@@ -178,10 +175,7 @@ pub fn setup_router(
     Ok(router_addr)
 }
 
-pub fn setup_relayer(
-    app: &mut EuclidApp,
-    chain_uids: Vec<&str>,
-) -> Result<Addr, anyhow::Error> {
+pub fn setup_relayer(app: &mut EuclidApp, chain_uids: Vec<&str>) -> Result<Addr, anyhow::Error> {
     let code_id = relayer_code(app);
     let (_, pubkey_binary) = get_signer_key();
 
@@ -305,8 +299,10 @@ fn setup_factory_inner(
     let factory_code_id = factory_code(factory_chain);
     let escrow_code_id = escrow_code(factory_chain);
     let lp_code_id = lp_token_code(factory_chain);
-    let relayer_addr_factory =
-        setup_relayer(factory_chain, vec![vsl_chain_uid.as_str(), chain_uid.as_str()])?;
+    let relayer_addr_factory = setup_relayer(
+        factory_chain,
+        vec![vsl_chain_uid.as_str(), chain_uid.as_str()],
+    )?;
 
     let is_native = router_chain_id == factory_chain_id;
     let rate_limit_fee_recipient = factory_chain.addr_make("rate_limit_fee_recipient");
@@ -369,12 +365,11 @@ fn setup_factory_inner(
                 )?;
             }
             ChainType::Evm(_) => {
-                let chain_info = RegisterFactoryChainType::Evm(
-                    euclid::msgs::router::RegisterFactoryChainEvm {
+                let chain_info =
+                    RegisterFactoryChainType::Evm(euclid::msgs::router::RegisterFactoryChainEvm {
                         factory_address: factory_addr.to_string(),
                         factory_chain_id: factory_chain_id.to_string(),
-                    },
-                );
+                    });
                 let router_sender = env.chain(router_chain_id).sender();
                 let register_response = env.chain_mut(router_chain_id).execute(
                     &router_sender,
@@ -406,11 +401,10 @@ fn setup_factory_inner(
             }
         }
     } else {
-        let chain_info =
-            RegisterFactoryChainType::Native(RegisterFactoryChainNative {
-                factory_address: factory_addr.to_string(),
-                factory_chain_id: factory_chain_id.to_string(),
-            });
+        let chain_info = RegisterFactoryChainType::Native(RegisterFactoryChainNative {
+            factory_address: factory_addr.to_string(),
+            factory_chain_id: factory_chain_id.to_string(),
+        });
         let router_sender = env.chain(router_chain_id).sender();
         env.chain_mut(router_chain_id).execute(
             &router_sender,
@@ -424,8 +418,10 @@ fn setup_factory_inner(
     }
 
     // Assert the chain was registered
-    let all_chains: euclid::msgs::router::AllChainResponse =
-        env.chain(router_chain_id).query(router_addr, &euclid::msgs::router::QueryMsg::GetAllChains {});
+    let all_chains: euclid::msgs::router::AllChainResponse = env.chain(router_chain_id).query(
+        router_addr,
+        &euclid::msgs::router::QueryMsg::GetAllChains {},
+    );
     assert!(
         all_chains.chains.iter().any(|c| c.chain_uid == chain_uid),
         "Factory chain not registered"
@@ -458,8 +454,10 @@ pub fn get_relayer_addr(app: &EuclidApp, router_or_factory_addr: &Addr) -> Addr 
 }
 
 pub fn get_router_relayer_addr(app: &EuclidApp, router_addr: &Addr) -> Addr {
-    let resp: euclid::msgs::router::QueryRelayerAddressesResponse =
-        app.query(router_addr, &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {});
+    let resp: euclid::msgs::router::QueryRelayerAddressesResponse = app.query(
+        router_addr,
+        &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {},
+    );
     resp.relayer_contract
 }
 

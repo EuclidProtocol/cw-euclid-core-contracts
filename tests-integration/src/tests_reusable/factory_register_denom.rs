@@ -16,10 +16,9 @@ pub fn register_denom(
     token: TokenWithDenom,
 ) -> Result<(), anyhow::Error> {
     let factory_chain_uid = {
-        let factory_state: euclid::msgs::factory::StateResponse = env.chain(factory_chain_id).query(
-            factory_addr,
-            &euclid::msgs::factory::QueryMsg::GetState {},
-        );
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
         factory_state.chain_uid
     };
 
@@ -46,14 +45,18 @@ pub fn register_denom(
         env,
     )?;
 
-    let escrow_response: euclid::msgs::factory::GetEscrowResponse = env.chain(factory_chain_id).query(
-        factory_addr,
-        &euclid::msgs::factory::QueryMsg::GetEscrow {
-            token_id: token.token.to_string(),
-        },
-    );
+    let escrow_response: euclid::msgs::factory::GetEscrowResponse =
+        env.chain(factory_chain_id).query(
+            factory_addr,
+            &euclid::msgs::factory::QueryMsg::GetEscrow {
+                token_id: token.token.to_string(),
+            },
+        );
     assert!(
-        escrow_response.denoms.iter().any(|d| d == &token.token_type),
+        escrow_response
+            .denoms
+            .iter()
+            .any(|d| d == &token.token_type),
         "Escrow found but denom not registered"
     );
     println!("Register Denom Success {:?}", escrow_response);
@@ -69,10 +72,9 @@ pub fn deregister_denom(
     token: TokenWithDenom,
 ) -> Result<(), anyhow::Error> {
     let factory_chain_uid = {
-        let factory_state: euclid::msgs::factory::StateResponse = env.chain(factory_chain_id).query(
-            factory_addr,
-            &euclid::msgs::factory::QueryMsg::GetState {},
-        );
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
         factory_state.chain_uid
     };
 
@@ -232,6 +234,9 @@ mod tests {
                     token_id: token.token.to_string(),
                 },
             );
-        assert!(!escrow_response.denoms.iter().any(|d| d == &token.token_type));
+        assert!(!escrow_response
+            .denoms
+            .iter()
+            .any(|d| d == &token.token_type));
     }
 }

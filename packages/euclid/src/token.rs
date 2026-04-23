@@ -1,12 +1,12 @@
 use std::fmt;
 use std::ops::Deref;
 
+use crate::cw20_types::{BalanceResponse, Cw20ExecuteMsg, Cw20QueryMsg};
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     coin, ensure, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, StdError,
     StdResult, Uint128, Uint256, WasmMsg,
 };
-use crate::cw20_types::{BalanceResponse, Cw20ExecuteMsg, Cw20QueryMsg};
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
 use crate::cross_chain_user::CrossChainUser;
@@ -436,17 +436,14 @@ impl TokenType {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: contract_address.to_string(),
                         msg: match allowance {
-                            Some(owner) => {
-                                to_json_binary(&Cw20ExecuteMsg::TransferFrom {
-                                    owner,
-                                    recipient,
-                                    amount,
-                                })?
-                            }
-                            None => to_json_binary(&Cw20ExecuteMsg::Transfer {
+                            Some(owner) => to_json_binary(&Cw20ExecuteMsg::TransferFrom {
+                                owner,
                                 recipient,
                                 amount,
                             })?,
+                            None => {
+                                to_json_binary(&Cw20ExecuteMsg::Transfer { recipient, amount })?
+                            }
                         },
                         funds: vec![],
                     })

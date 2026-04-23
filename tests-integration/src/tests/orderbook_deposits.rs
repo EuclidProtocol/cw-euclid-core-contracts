@@ -20,11 +20,11 @@ use k256::ecdsa::SigningKey;
 use relayer::verify::{MsgSignData, MsgSignDataMsg, MsgSignDataValue};
 use sha2::{digest::Update, Digest, Sha256};
 
+use crate::helpers::relayer::get_signer_key;
 use crate::helpers::{
     app::EuclidApp,
     chains::{orderbook_deposits_code, setup_router},
 };
-use crate::helpers::relayer::get_signer_key;
 use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
 const PERMIT_EXPIRY: u64 = 4_102_444_800u64; // 2100-01-01T00:00:00Z
@@ -51,8 +51,10 @@ fn deposit_and_query_flow() {
     let depositor = app.addr_make("depositor");
     let router_address = setup_router(&mut app, vec![ROUTER_CHAIN_ID]).unwrap();
 
-    let router_state: euclid::msgs::router::StateResponse =
-        app.query(&router_address, &euclid::msgs::router::QueryMsg::GetState {});
+    let router_state: euclid::msgs::router::StateResponse = app.query(
+        &router_address,
+        &euclid::msgs::router::QueryMsg::GetState {},
+    );
     let vb_addr = router_state.virtual_balance_address;
 
     let ob_code_id = orderbook_deposits_code(&mut app);
@@ -209,7 +211,10 @@ fn withdraw_with_merkle_and_permit() {
     let remaining = deposit_amount.checked_sub(withdraw_amount).unwrap();
     assert_eq!(query_asset_deposit(&context, token_id), remaining);
     assert_eq!(query_user_deposit(&context, token_id), remaining);
-    assert_eq!(query_destination_balance(&context, token_id), withdraw_amount);
+    assert_eq!(
+        query_destination_balance(&context, token_id),
+        withdraw_amount
+    );
 
     // Replay should fail
     let replay = context.app.try_execute(
@@ -227,11 +232,20 @@ fn withdraw_with_merkle_and_permit() {
         },
         &[],
     );
-    assert!(replay.is_err(), "Expected replay to fail with PermitAlreadyUsed");
-    assert!(replay.unwrap_err().to_string().contains("permit already used"));
+    assert!(
+        replay.is_err(),
+        "Expected replay to fail with PermitAlreadyUsed"
+    );
+    assert!(replay
+        .unwrap_err()
+        .to_string()
+        .contains("permit already used"));
     assert_eq!(query_asset_deposit(&context, token_id), remaining);
     assert_eq!(query_user_deposit(&context, token_id), remaining);
-    assert_eq!(query_destination_balance(&context, token_id), withdraw_amount);
+    assert_eq!(
+        query_destination_balance(&context, token_id),
+        withdraw_amount
+    );
 }
 
 #[test]
@@ -265,7 +279,14 @@ fn same_nonce_new_permit_bytes_fails() {
     let first_permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, root_id, token_id, withdraw_amount, nonce, PERMIT_EXPIRY),
+        build_permit_data(
+            &context,
+            root_id,
+            token_id,
+            withdraw_amount,
+            nonce,
+            PERMIT_EXPIRY,
+        ),
     );
 
     let depositor = context.depositor.clone();
@@ -288,7 +309,14 @@ fn same_nonce_new_permit_bytes_fails() {
     let second_permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, root_id, token_id, withdraw_amount, nonce, PERMIT_EXPIRY - 60),
+        build_permit_data(
+            &context,
+            root_id,
+            token_id,
+            withdraw_amount,
+            nonce,
+            PERMIT_EXPIRY - 60,
+        ),
     );
 
     let replay = context.app.try_execute(
@@ -306,13 +334,22 @@ fn same_nonce_new_permit_bytes_fails() {
         },
         &[],
     );
-    assert!(replay.is_err(), "Expected replay to fail with WithdrawalAlreadyConsumed");
-    assert!(replay.unwrap_err().to_string().contains("withdrawal already consumed"));
+    assert!(
+        replay.is_err(),
+        "Expected replay to fail with WithdrawalAlreadyConsumed"
+    );
+    assert!(replay
+        .unwrap_err()
+        .to_string()
+        .contains("withdrawal already consumed"));
 
     let remaining = deposit_amount.checked_sub(withdraw_amount).unwrap();
     assert_eq!(query_asset_deposit(&context, token_id), remaining);
     assert_eq!(query_user_deposit(&context, token_id), remaining);
-    assert_eq!(query_destination_balance(&context, token_id), withdraw_amount);
+    assert_eq!(
+        query_destination_balance(&context, token_id),
+        withdraw_amount
+    );
 }
 
 #[test]
@@ -348,7 +385,14 @@ fn same_nonce_after_root_rotation_fails() {
     let first_permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, root_one, token_id, withdraw_amount, nonce, PERMIT_EXPIRY),
+        build_permit_data(
+            &context,
+            root_one,
+            token_id,
+            withdraw_amount,
+            nonce,
+            PERMIT_EXPIRY,
+        ),
     );
 
     let depositor = context.depositor.clone();
@@ -389,7 +433,14 @@ fn same_nonce_after_root_rotation_fails() {
     let second_permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, root_two, token_id, withdraw_amount, nonce, PERMIT_EXPIRY - 60),
+        build_permit_data(
+            &context,
+            root_two,
+            token_id,
+            withdraw_amount,
+            nonce,
+            PERMIT_EXPIRY - 60,
+        ),
     );
 
     let replay = context.app.try_execute(
@@ -407,11 +458,20 @@ fn same_nonce_after_root_rotation_fails() {
         },
         &[],
     );
-    assert!(replay.is_err(), "Expected replay to fail with WithdrawalAlreadyConsumed");
-    assert!(replay.unwrap_err().to_string().contains("withdrawal already consumed"));
+    assert!(
+        replay.is_err(),
+        "Expected replay to fail with WithdrawalAlreadyConsumed"
+    );
+    assert!(replay
+        .unwrap_err()
+        .to_string()
+        .contains("withdrawal already consumed"));
     assert_eq!(query_asset_deposit(&context, token_id), remaining);
     assert_eq!(query_user_deposit(&context, token_id), remaining);
-    assert_eq!(query_destination_balance(&context, token_id), withdraw_amount);
+    assert_eq!(
+        query_destination_balance(&context, token_id),
+        withdraw_amount
+    );
 }
 
 #[test]
@@ -450,7 +510,14 @@ fn different_nonce_still_succeeds() {
     let second_permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, root_id, token_id, second_amount, 11, PERMIT_EXPIRY - 60),
+        build_permit_data(
+            &context,
+            root_id,
+            token_id,
+            second_amount,
+            11,
+            PERMIT_EXPIRY - 60,
+        ),
     );
 
     let depositor = context.depositor.clone();
@@ -493,7 +560,10 @@ fn different_nonce_still_succeeds() {
     let total_withdrawn = first_amount.checked_add(second_amount).unwrap();
     assert_eq!(query_asset_deposit(&context, token_id), remaining);
     assert_eq!(query_user_deposit(&context, token_id), remaining);
-    assert_eq!(query_destination_balance(&context, token_id), total_withdrawn);
+    assert_eq!(
+        query_destination_balance(&context, token_id),
+        total_withdrawn
+    );
 }
 
 #[test]
@@ -531,7 +601,14 @@ fn same_nonce_different_token_still_succeeds() {
     let first_permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, "root-token-1", first_token, first_withdrawal, nonce, PERMIT_EXPIRY),
+        build_permit_data(
+            &context,
+            "root-token-1",
+            first_token,
+            first_withdrawal,
+            nonce,
+            PERMIT_EXPIRY,
+        ),
     );
 
     let depositor = context.depositor.clone();
@@ -570,7 +647,14 @@ fn same_nonce_different_token_still_succeeds() {
     let second_permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, "root-token-2", second_token, second_withdrawal, nonce, PERMIT_EXPIRY - 60),
+        build_permit_data(
+            &context,
+            "root-token-2",
+            second_token,
+            second_withdrawal,
+            nonce,
+            PERMIT_EXPIRY - 60,
+        ),
     );
 
     context.app.execute(
@@ -597,7 +681,10 @@ fn same_nonce_different_token_still_succeeds() {
         query_user_deposit(&context, first_token),
         first_deposit.checked_sub(first_withdrawal).unwrap()
     );
-    assert_eq!(query_destination_balance(&context, first_token), first_withdrawal);
+    assert_eq!(
+        query_destination_balance(&context, first_token),
+        first_withdrawal
+    );
     assert_eq!(
         query_asset_deposit(&context, second_token),
         second_deposit.checked_sub(second_withdrawal).unwrap()
@@ -606,7 +693,10 @@ fn same_nonce_different_token_still_succeeds() {
         query_user_deposit(&context, second_token),
         second_deposit.checked_sub(second_withdrawal).unwrap()
     );
-    assert_eq!(query_destination_balance(&context, second_token), second_withdrawal);
+    assert_eq!(
+        query_destination_balance(&context, second_token),
+        second_withdrawal
+    );
 }
 
 #[test]
@@ -640,7 +730,14 @@ fn amount_above_leaf_balance_fails_without_nullifiers() {
     let permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, root_id, token_id, withdraw_amount, nonce, PERMIT_EXPIRY),
+        build_permit_data(
+            &context,
+            root_id,
+            token_id,
+            withdraw_amount,
+            nonce,
+            PERMIT_EXPIRY,
+        ),
     );
 
     let depositor = context.depositor.clone();
@@ -659,11 +756,20 @@ fn amount_above_leaf_balance_fails_without_nullifiers() {
         },
         &[],
     );
-    assert!(withdraw.is_err(), "Expected error for amount above leaf balance");
-    assert!(withdraw.unwrap_err().to_string().contains("insufficient withdrawable balance"));
+    assert!(
+        withdraw.is_err(),
+        "Expected error for amount above leaf balance"
+    );
+    assert!(withdraw
+        .unwrap_err()
+        .to_string()
+        .contains("insufficient withdrawable balance"));
     assert_eq!(query_asset_deposit(&context, token_id), deposit_amount);
     assert_eq!(query_user_deposit(&context, token_id), deposit_amount);
-    assert_eq!(query_destination_balance(&context, token_id), Uint128::zero());
+    assert_eq!(
+        query_destination_balance(&context, token_id),
+        Uint128::zero()
+    );
 }
 
 #[test]
@@ -705,7 +811,14 @@ fn withdraw_rejects_invalid_merkle_proof() {
     let permit = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, root_id, token_id, withdraw_amount, nonce, PERMIT_EXPIRY),
+        build_permit_data(
+            &context,
+            root_id,
+            token_id,
+            withdraw_amount,
+            nonce,
+            PERMIT_EXPIRY,
+        ),
     );
 
     let bad_position_proof = vec![MerkleProofStep {
@@ -735,7 +848,14 @@ fn withdraw_rejects_invalid_merkle_proof() {
     let permit2 = sign_permit(
         &context.signer_key,
         context.signer_address.clone(),
-        build_permit_data(&context, root_id, token_id, withdraw_amount, nonce, PERMIT_EXPIRY - 60),
+        build_permit_data(
+            &context,
+            root_id,
+            token_id,
+            withdraw_amount,
+            nonce,
+            PERMIT_EXPIRY - 60,
+        ),
     );
     let bad_hash_proof = vec![MerkleProofStep {
         hash: Binary::from(bad_hash_bytes.to_vec()),
@@ -765,8 +885,10 @@ fn setup_withdraw_test_context(root_challenge_period: u64) -> WithdrawTestContex
     let destination = app.addr_make("destination");
     let router_address = setup_router(&mut app, vec![ROUTER_CHAIN_ID]).unwrap();
 
-    let router_state: euclid::msgs::router::StateResponse =
-        app.query(&router_address, &euclid::msgs::router::QueryMsg::GetState {});
+    let router_state: euclid::msgs::router::StateResponse = app.query(
+        &router_address,
+        &euclid::msgs::router::QueryMsg::GetState {},
+    );
     let vb_addr = router_state.virtual_balance_address;
 
     let (signer_key, signer_pubkey) = get_signer_key();

@@ -1,15 +1,15 @@
-use cosmwasm_std::{Decimal256, StdError, StdResult, Uint128, Uint64};
+use cosmwasm_std::{Decimal256, StdError, StdResult, Uint128, Uint256, Uint64};
 use euclid::error::ContractError;
 use euclid::utils::math::Decimal256Ext;
 
 use crate::SwapResult;
 /// N = 2
-pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
+pub const N_COINS: Decimal256 = Decimal256::new(Uint256::new(2_000_000_000_000_000_000u128));
 pub const AMP_PRECISION: u64 = 100;
 /// The maximum number of calculation steps for Newton's method.
 const ITERATIONS: u8 = 64;
 /// 1e-6
-pub const TOL: Decimal256 = Decimal256::raw(1000000000000);
+pub const TOL: Decimal256 = Decimal256::new(Uint256::new(1_000_000_000_000u128));
 
 /// Computes a stable swap result given integer token amounts.
 ///
@@ -141,9 +141,7 @@ pub fn compute_d(amp: Uint64, pools: &[Decimal256]) -> StdResult<Decimal256> {
             }
         }
 
-        Err(StdError::msg(
-            "Newton method for D failed to converge",
-        ))
+        Err(StdError::msg("Newton method for D failed to converge"))
     }
 }
 

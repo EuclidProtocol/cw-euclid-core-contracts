@@ -36,8 +36,10 @@ pub fn relay_factory_send_packet(
     println!("Relay factory send packets to router:");
     println!("send packet count: {:?}", send_packets.len());
 
-    let relayer_state: euclid::msgs::router::QueryRelayerAddressesResponse =
-        router_app.query(router_addr, &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {});
+    let relayer_state: euclid::msgs::router::QueryRelayerAddressesResponse = router_app.query(
+        router_addr,
+        &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {},
+    );
     let relayer_addr = relayer_state.relayer_contract;
 
     for packet in send_packets {
@@ -96,8 +98,7 @@ pub fn relay_router_send_packet(
         println!("Packet sequence: {:?}", packet.sequence);
         println!("Source port: {:?}", packet.source_port);
         println!("Destination port: {:?}", packet.destination_port);
-        let expected_destination_port =
-            format!("{}.{}", factory_chain_uid.as_str(), factory_addr);
+        let expected_destination_port = format!("{}.{}", factory_chain_uid.as_str(), factory_addr);
         if packet.destination_port != expected_destination_port {
             println!(
                 "relay_router_send_packet: skipping packet for destination_port: {:?}",
@@ -233,8 +234,10 @@ pub fn relay_router_ack_packet(
     println!("Relay router acknowledge packets:");
     println!("write ack packet count: {:?}", write_ack_packets.len());
 
-    let relayer_state: euclid::msgs::router::QueryRelayerAddressesResponse =
-        router_app.query(router_addr, &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {});
+    let relayer_state: euclid::msgs::router::QueryRelayerAddressesResponse = router_app.query(
+        router_addr,
+        &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {},
+    );
     let relayer_addr = relayer_state.relayer_contract;
 
     for packet in write_ack_packets {
@@ -288,8 +291,10 @@ pub fn ack_register_factory_evm(
 
     let ack_binary = to_json_binary(&ack).unwrap();
 
-    let relayer_state: euclid::msgs::router::QueryRelayerAddressesResponse =
-        router_app.query(router_addr, &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {});
+    let relayer_state: euclid::msgs::router::QueryRelayerAddressesResponse = router_app.query(
+        router_addr,
+        &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {},
+    );
     let relayer_addr = relayer_state.relayer_contract;
 
     let evm_port = format!("{}.{}", chain_uid.as_str(), factory_address);
@@ -346,11 +351,8 @@ pub fn relay_factory_router_factory(
     env: &mut MultiChainEnv,
 ) -> Result<Vec<Event>, anyhow::Error> {
     // Step 1: relay factory → router (needs router app only)
-    let ack_events = relay_factory_send_packet(
-        send_events,
-        router_addr,
-        env.chain_mut(router_chain_id),
-    )?;
+    let ack_events =
+        relay_factory_send_packet(send_events, router_addr, env.chain_mut(router_chain_id))?;
     // Step 2: relay ack → factory (needs factory app only; safe even if same chain_id)
     relay_factory_ack_packet(
         factory_addr,

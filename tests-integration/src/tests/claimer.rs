@@ -17,11 +17,13 @@ use euclid::{
 
 use crate::{
     helpers::{
-        chains::{get_virtual_balance_addr, setup_claimer, setup_factory, setup_interchain, setup_router},
+        chains::{
+            get_virtual_balance_addr, setup_claimer, setup_factory, setup_interchain, setup_router,
+        },
         claimer::{get_claimer_key, sign_claim_messsage},
         factory::{deposit_token, register_token, transfer_token_vcoin},
-        relayer::relay_router_factory_router,
         multi_chain::MultiChainEnv,
+        relayer::relay_router_factory_router,
     },
     tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, ROUTER_CHAIN_ID},
 };
@@ -41,12 +43,18 @@ fn setup_env() -> (MultiChainEnv, Addr, Addr, Addr) {
 }
 
 fn factory_chain_uid(env: &MultiChainEnv, factory_addr: &Addr) -> ChainUid {
-    let state: euclid::msgs::factory::StateResponse =
-        env.chain(FACTORY_CHAIN_ID).query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+    let state: euclid::msgs::factory::StateResponse = env
+        .chain(FACTORY_CHAIN_ID)
+        .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
     state.chain_uid
 }
 
-fn get_vb_balance(env: &MultiChainEnv, router_addr: &Addr, user: &CrossChainUser, token: &Token) -> Uint128 {
+fn get_vb_balance(
+    env: &MultiChainEnv,
+    router_addr: &Addr,
+    user: &CrossChainUser,
+    token: &Token,
+) -> Uint128 {
     let vb_addr = get_virtual_balance_addr(env.chain(ROUTER_CHAIN_ID), router_addr);
     let resp: GetBalanceResponse = env.chain(ROUTER_CHAIN_ID).query(
         &vb_addr,
@@ -69,7 +77,11 @@ fn get_user_claims(
 ) -> Vec<(u128, euclid::msgs::claimer::msg::Claim)> {
     env.chain(ROUTER_CHAIN_ID).query(
         claimer_addr,
-        &ClaimerQueryMsg::GetUserClaims { pub_key, limit, offset },
+        &ClaimerQueryMsg::GetUserClaims {
+            pub_key,
+            limit,
+            offset,
+        },
     )
 }
 
@@ -78,8 +90,9 @@ fn test_proper_instantiation() {
     let (env, router_addr, _factory_addr, claimer_addr) = setup_env();
     let vcoin_addr = get_virtual_balance_addr(env.chain(ROUTER_CHAIN_ID), &router_addr);
 
-    let state: euclid::msgs::claimer::msg::State =
-        env.chain(ROUTER_CHAIN_ID).query(&claimer_addr, &ClaimerQueryMsg::GetState {});
+    let state: euclid::msgs::claimer::msg::State = env
+        .chain(ROUTER_CHAIN_ID)
+        .query(&claimer_addr, &ClaimerQueryMsg::GetState {});
     assert_eq!(state.router_contract, router_addr);
     assert_eq!(state.vcoin_address, vcoin_addr);
 }
@@ -89,25 +102,34 @@ fn test_create_claim() {
     let (mut env, router_addr, factory_addr, claimer_addr) = setup_env();
     let factory_chain_uid = factory_chain_uid(&env, &factory_addr);
 
-    let claimer_cross_chain_user = CrossChainUser::new(
-        ChainUid::vsl_chain_uid().unwrap(),
-        claimer_addr.to_string(),
-    );
+    let claimer_cross_chain_user =
+        CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), claimer_addr.to_string());
 
     let token = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: "eucl".to_string() },
+        token_type: TokenType::Native {
+            denom: "eucl".to_string(),
+        },
     };
-    register_token(&factory_addr, FACTORY_CHAIN_ID, &router_addr, ROUTER_CHAIN_ID, &mut env, token.clone()).unwrap();
+    register_token(
+        &factory_addr,
+        FACTORY_CHAIN_ID,
+        &router_addr,
+        ROUTER_CHAIN_ID,
+        &mut env,
+        token.clone(),
+    )
+    .unwrap();
     let amount_to_distribute = Uint128::from(10_000u128);
     let (_, pubkey_binary) = get_claimer_key();
-    let claim_obj = euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
-        CreateVoucherClaim {
-            claimer_pubkey: pubkey_binary.clone(),
-            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
-            claim_group_id: Some("group_id".to_string()),
-        },
-    );
+    let claim_obj =
+        euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
+            CreateVoucherClaim {
+                claimer_pubkey: pubkey_binary.clone(),
+                pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+                claim_group_id: Some("group_id".to_string()),
+            },
+        );
 
     deposit_token(
         &factory_addr,
@@ -147,25 +169,34 @@ fn test_create_claim_using_vcoin_transfer() {
     let (mut env, router_addr, factory_addr, claimer_addr) = setup_env();
     let factory_chain_uid = factory_chain_uid(&env, &factory_addr);
 
-    let claimer_cross_chain_user = CrossChainUser::new(
-        ChainUid::vsl_chain_uid().unwrap(),
-        claimer_addr.to_string(),
-    );
+    let claimer_cross_chain_user =
+        CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), claimer_addr.to_string());
 
     let token = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: "eucl".to_string() },
+        token_type: TokenType::Native {
+            denom: "eucl".to_string(),
+        },
     };
-    register_token(&factory_addr, FACTORY_CHAIN_ID, &router_addr, ROUTER_CHAIN_ID, &mut env, token.clone()).unwrap();
+    register_token(
+        &factory_addr,
+        FACTORY_CHAIN_ID,
+        &router_addr,
+        ROUTER_CHAIN_ID,
+        &mut env,
+        token.clone(),
+    )
+    .unwrap();
     let amount_to_distribute = Uint128::from(10_000u128);
     let (_, pubkey_binary) = get_claimer_key();
-    let claim_obj = euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
-        CreateVoucherClaim {
-            claimer_pubkey: pubkey_binary.clone(),
-            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
-            claim_group_id: Some("group_id".to_string()),
-        },
-    );
+    let claim_obj =
+        euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
+            CreateVoucherClaim {
+                claimer_pubkey: pubkey_binary.clone(),
+                pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+                claim_group_id: Some("group_id".to_string()),
+            },
+        );
 
     deposit_token(
         &factory_addr,
@@ -217,24 +248,33 @@ fn test_claim_voucher_as_voucher() {
     let (mut env, router_addr, factory_addr, claimer_addr) = setup_env();
     let factory_chain_uid = factory_chain_uid(&env, &factory_addr);
 
-    let claimer_cross_chain_user = CrossChainUser::new(
-        ChainUid::vsl_chain_uid().unwrap(),
-        claimer_addr.to_string(),
-    );
+    let claimer_cross_chain_user =
+        CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), claimer_addr.to_string());
     let token = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: "eucl".to_string() },
+        token_type: TokenType::Native {
+            denom: "eucl".to_string(),
+        },
     };
-    register_token(&factory_addr, FACTORY_CHAIN_ID, &router_addr, ROUTER_CHAIN_ID, &mut env, token.clone()).unwrap();
+    register_token(
+        &factory_addr,
+        FACTORY_CHAIN_ID,
+        &router_addr,
+        ROUTER_CHAIN_ID,
+        &mut env,
+        token.clone(),
+    )
+    .unwrap();
     let amount_to_distribute = Uint128::from(10_000u128);
     let (signer_key, pubkey_binary) = get_claimer_key();
-    let claim_obj = euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
-        CreateVoucherClaim {
-            claimer_pubkey: pubkey_binary.clone(),
-            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
-            claim_group_id: Some("group_id".to_string()),
-        },
-    );
+    let claim_obj =
+        euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
+            CreateVoucherClaim {
+                claimer_pubkey: pubkey_binary.clone(),
+                pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+                claim_group_id: Some("group_id".to_string()),
+            },
+        );
 
     deposit_token(
         &factory_addr,
@@ -270,7 +310,9 @@ fn test_claim_voucher_as_voucher() {
 
     let new_recipient = CrossChainUser::new(
         factory_chain_uid.clone(),
-        env.chain(FACTORY_CHAIN_ID).addr_make("new_recipient").to_string(),
+        env.chain(FACTORY_CHAIN_ID)
+            .addr_make("new_recipient")
+            .to_string(),
     );
 
     let claim_msg = ClaimVoucherData {
@@ -317,24 +359,33 @@ fn test_claim_voucher_and_release() {
     let (mut env, router_addr, factory_addr, claimer_addr) = setup_env();
     let factory_chain_uid = factory_chain_uid(&env, &factory_addr);
 
-    let claimer_cross_chain_user = CrossChainUser::new(
-        ChainUid::vsl_chain_uid().unwrap(),
-        claimer_addr.to_string(),
-    );
+    let claimer_cross_chain_user =
+        CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), claimer_addr.to_string());
     let token = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: "eucl".to_string() },
+        token_type: TokenType::Native {
+            denom: "eucl".to_string(),
+        },
     };
-    register_token(&factory_addr, FACTORY_CHAIN_ID, &router_addr, ROUTER_CHAIN_ID, &mut env, token.clone()).unwrap();
+    register_token(
+        &factory_addr,
+        FACTORY_CHAIN_ID,
+        &router_addr,
+        ROUTER_CHAIN_ID,
+        &mut env,
+        token.clone(),
+    )
+    .unwrap();
     let amount_to_distribute = Uint128::from(10_000u128);
     let (signer_key, pubkey_binary) = get_claimer_key();
-    let claim_obj = euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
-        CreateVoucherClaim {
-            claimer_pubkey: pubkey_binary.clone(),
-            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
-            claim_group_id: Some("group_id".to_string()),
-        },
-    );
+    let claim_obj =
+        euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
+            CreateVoucherClaim {
+                claimer_pubkey: pubkey_binary.clone(),
+                pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+                claim_group_id: Some("group_id".to_string()),
+            },
+        );
 
     deposit_token(
         &factory_addr,
@@ -360,7 +411,9 @@ fn test_claim_voucher_and_release() {
 
     let new_recipient = CrossChainUser::new(
         factory_chain_uid.clone(),
-        env.chain(FACTORY_CHAIN_ID).addr_make("new_recipient").to_string(),
+        env.chain(FACTORY_CHAIN_ID)
+            .addr_make("new_recipient")
+            .to_string(),
     );
 
     let claim_msg = ClaimVoucherData {
@@ -412,24 +465,33 @@ fn test_claim_voucher_and_release() {
 fn test_unauthorized_claim_voucher() {
     let (mut env, router_addr, factory_addr, claimer_addr) = setup_env();
 
-    let claimer_cross_chain_user = CrossChainUser::new(
-        ChainUid::vsl_chain_uid().unwrap(),
-        claimer_addr.to_string(),
-    );
+    let claimer_cross_chain_user =
+        CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), claimer_addr.to_string());
     let token = TokenWithDenom {
         token: Token::create("eucl".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: "eucl".to_string() },
+        token_type: TokenType::Native {
+            denom: "eucl".to_string(),
+        },
     };
-    register_token(&factory_addr, FACTORY_CHAIN_ID, &router_addr, ROUTER_CHAIN_ID, &mut env, token.clone()).unwrap();
+    register_token(
+        &factory_addr,
+        FACTORY_CHAIN_ID,
+        &router_addr,
+        ROUTER_CHAIN_ID,
+        &mut env,
+        token.clone(),
+    )
+    .unwrap();
     let amount_to_distribute = Uint128::from(10_000u128);
     let (_, pubkey_binary) = get_claimer_key();
-    let claim_obj = euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
-        CreateVoucherClaim {
-            claimer_pubkey: pubkey_binary.clone(),
-            pseudo_claim_id: Some("pseudo_claim_id".to_string()),
-            claim_group_id: Some("group_id".to_string()),
-        },
-    );
+    let claim_obj =
+        euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
+            CreateVoucherClaim {
+                claimer_pubkey: pubkey_binary.clone(),
+                pseudo_claim_id: Some("pseudo_claim_id".to_string()),
+                claim_group_id: Some("group_id".to_string()),
+            },
+        );
 
     deposit_token(
         &factory_addr,
@@ -456,7 +518,9 @@ fn test_unauthorized_claim_voucher() {
     let factory_chain_uid = factory_chain_uid(&env, &factory_addr);
     let new_recipient = CrossChainUser::new(
         factory_chain_uid,
-        env.chain(FACTORY_CHAIN_ID).addr_make("new_recipient").to_string(),
+        env.chain(FACTORY_CHAIN_ID)
+            .addr_make("new_recipient")
+            .to_string(),
     );
 
     // Sign with a DIFFERENT key that doesn't match the pubkey in the claim
@@ -472,8 +536,11 @@ fn test_unauthorized_claim_voucher() {
         }],
     };
 
-    let signed_data =
-        sign_claim_messsage(wrong_signer_key, claim_msg, env.chain(ROUTER_CHAIN_ID).app());
+    let signed_data = sign_claim_messsage(
+        wrong_signer_key,
+        claim_msg,
+        env.chain(ROUTER_CHAIN_ID).app(),
+    );
 
     let router_sender = env.chain(ROUTER_CHAIN_ID).sender();
     let result = env.chain_mut(ROUTER_CHAIN_ID).try_execute(
@@ -482,5 +549,8 @@ fn test_unauthorized_claim_voucher() {
         &ClaimerExecuteMsg::ClaimVoucher(signed_data),
         &[],
     );
-    assert!(result.is_err(), "Claimer should not be able to claim voucher for another user");
+    assert!(
+        result.is_err(),
+        "Claimer should not be able to claim voucher for another user"
+    );
 }

@@ -11,7 +11,6 @@ use crate::{
 };
 
 #[cw_serde]
-#[cfg_attr(not(target_arch = "wasm32"), derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
     ManageRouterState(ManageRouterState),
     RegisterFactory {

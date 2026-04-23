@@ -4,7 +4,6 @@ use crate::helpers::chains::get_escrow_addr;
 use crate::helpers::multi_chain::MultiChainEnv;
 use crate::helpers::relayer::relay_factory_router_factory;
 use cosmwasm_std::{coin, Addr, Coin, Uint128};
-use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
@@ -30,8 +29,9 @@ pub fn register_token(
     token: TokenWithDenom,
 ) -> Result<(), anyhow::Error> {
     let factory_chain_uid = {
-        let factory_state: euclid::msgs::factory::StateResponse =
-            env.chain(factory_chain_id).query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
         factory_state.chain_uid
     };
 
@@ -56,14 +56,18 @@ pub fn register_token(
         env,
     )?;
 
-    let escrow_response: euclid::msgs::factory::GetEscrowResponse = env.chain(factory_chain_id).query(
-        factory_addr,
-        &euclid::msgs::factory::QueryMsg::GetEscrow {
-            token_id: token.token.to_string(),
-        },
-    );
+    let escrow_response: euclid::msgs::factory::GetEscrowResponse =
+        env.chain(factory_chain_id).query(
+            factory_addr,
+            &euclid::msgs::factory::QueryMsg::GetEscrow {
+                token_id: token.token.to_string(),
+            },
+        );
     assert!(
-        escrow_response.denoms.iter().any(|d| d == &token.token_type),
+        escrow_response
+            .denoms
+            .iter()
+            .any(|d| d == &token.token_type),
         "Escrow found but denom not registered"
     );
 
@@ -81,18 +85,30 @@ pub fn deposit_token(
     recipients: Vec<Recipient>,
 ) -> Result<(), anyhow::Error> {
     let factory_chain_uid = {
-        let factory_state: euclid::msgs::factory::StateResponse =
-            env.chain(factory_chain_id).query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
         factory_state.chain_uid
     };
 
     let sender = env.chain(factory_chain_id).sender();
     let mut funds = vec![];
-    faucet(env.chain_mut(factory_chain_id), &sender, amount.u128(), token.token_type.clone(), &mut funds);
+    faucet(
+        env.chain_mut(factory_chain_id),
+        &sender,
+        amount.u128(),
+        token.token_type.clone(),
+        &mut funds,
+    );
 
-    let escrow_addr = get_escrow_addr(env.chain(factory_chain_id), factory_addr, token.token.as_str());
-    let old_escrow_state: euclid::msgs::escrow::StateResponse =
-        env.chain(factory_chain_id).query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
+    let escrow_addr = get_escrow_addr(
+        env.chain(factory_chain_id),
+        factory_addr,
+        token.token.as_str(),
+    );
+    let old_escrow_state: euclid::msgs::escrow::StateResponse = env
+        .chain(factory_chain_id)
+        .query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
 
     let old_router_escrow_balance: euclid::msgs::router::TokenEscrowsResponse =
         env.chain(router_chain_id).query(
@@ -141,10 +157,15 @@ pub fn deposit_token(
         Some(chain) => chain.balance,
         None => Uint128::zero(),
     };
-    assert_eq!(new_balance, old_balance + amount, "Router escrow balance not updated properly");
+    assert_eq!(
+        new_balance,
+        old_balance + amount,
+        "Router escrow balance not updated properly"
+    );
 
-    let new_escrow_state: euclid::msgs::escrow::StateResponse =
-        env.chain(factory_chain_id).query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
+    let new_escrow_state: euclid::msgs::escrow::StateResponse = env
+        .chain(factory_chain_id)
+        .query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
     assert_eq!(
         new_escrow_state.total_amount,
         old_escrow_state.total_amount + amount,
@@ -164,25 +185,29 @@ pub fn transfer_token_vcoin(
     amount: Uint128,
     recipients: Vec<Recipient>,
 ) -> Result<(), anyhow::Error> {
-    let router_state: euclid::msgs::router::StateResponse =
-        env.chain(router_chain_id).query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
+    let router_state: euclid::msgs::router::StateResponse = env
+        .chain(router_chain_id)
+        .query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
     let virtual_balance_address = router_state.virtual_balance_address;
 
-    let factory_state: euclid::msgs::factory::StateResponse =
-        env.chain(factory_chain_id).query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+    let factory_state: euclid::msgs::factory::StateResponse = env
+        .chain(factory_chain_id)
+        .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
     let factory_sender = env.chain(factory_chain_id).sender();
-    let sender_user = CrossChainUser::new(factory_state.chain_uid.clone(), factory_sender.to_string());
+    let sender_user =
+        CrossChainUser::new(factory_state.chain_uid.clone(), factory_sender.to_string());
     let factory_chain_uid = factory_state.chain_uid;
 
-    let old_balance: euclid::msgs::virtual_balance::GetBalanceResponse = env.chain(router_chain_id).query(
-        &virtual_balance_address,
-        &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-            balance_key: BalanceKey {
-                cross_chain_user: sender_user.clone(),
-                token_id: token.to_string(),
+    let old_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
+        env.chain(router_chain_id).query(
+            &virtual_balance_address,
+            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+                balance_key: BalanceKey {
+                    cross_chain_user: sender_user.clone(),
+                    token_id: token.to_string(),
+                },
             },
-        },
-    );
+        );
 
     let tx_response = env.chain_mut(factory_chain_id).execute(
         &factory_sender,
@@ -207,15 +232,16 @@ pub fn transfer_token_vcoin(
         env,
     )?;
 
-    let new_balance: euclid::msgs::virtual_balance::GetBalanceResponse = env.chain(router_chain_id).query(
-        &virtual_balance_address,
-        &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
-            balance_key: BalanceKey {
-                cross_chain_user: sender_user.clone(),
-                token_id: token.to_string(),
+    let new_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
+        env.chain(router_chain_id).query(
+            &virtual_balance_address,
+            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+                balance_key: BalanceKey {
+                    cross_chain_user: sender_user.clone(),
+                    token_id: token.to_string(),
+                },
             },
-        },
-    );
+        );
 
     assert_eq!(
         new_balance.amount.u128() + amount.u128(),
@@ -268,7 +294,13 @@ pub fn create_pool(
     let sender = env.chain(factory_chain_id).sender();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
-        faucet(env.chain_mut(factory_chain_id), &sender, token.amount.u128(), token.token_type.clone(), &mut funds);
+        faucet(
+            env.chain_mut(factory_chain_id),
+            &sender,
+            token.amount.u128(),
+            token.token_type.clone(),
+            &mut funds,
+        );
     }
 
     let tx_response = env.chain_mut(factory_chain_id).execute(
@@ -288,8 +320,9 @@ pub fn create_pool(
     );
 
     let factory_chain_uid = {
-        let factory_state: euclid::msgs::factory::StateResponse =
-            env.chain(factory_chain_id).query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
         factory_state.chain_uid
     };
 
@@ -337,8 +370,9 @@ pub fn add_liquidity(
     );
 
     let factory_chain_uid = {
-        let factory_state: euclid::msgs::factory::StateResponse =
-            env.chain(factory_chain_id).query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
         factory_state.chain_uid
     };
 
@@ -388,8 +422,9 @@ pub fn swap_request(
     );
 
     let factory_chain_uid = {
-        let factory_state: euclid::msgs::factory::StateResponse =
-            env.chain(factory_chain_id).query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
         factory_state.chain_uid
     };
 

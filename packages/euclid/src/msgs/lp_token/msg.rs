@@ -3,8 +3,8 @@ use cosmwasm_std::{Addr, Binary, Uint128};
 use cw_utils::Expiration;
 
 use crate::cw20_types::{
-    AllAccountsResponse, AllAllowancesResponse, AllowanceResponse, BalanceResponse,
-    Cw20Coin, Cw20ExecuteMsg, Cw20InstantiateMsg, Cw20QueryMsg, DownloadLogoResponse,
+    AllAccountsResponse, AllAllowancesResponse, AllowanceResponse, BalanceResponse, Cw20Coin,
+    Cw20ExecuteMsg, Cw20InstantiateMsg, Cw20QueryMsg, DownloadLogoResponse,
     InstantiateMarketingInfo, Logo, MarketingInfoResponse, MinterResponse, TokenInfoResponse,
 };
 use crate::token::Pair;
@@ -37,7 +37,6 @@ impl From<InstantiateMsg> for Cw20InstantiateMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     UpdateState {
         token_pair: Option<Pair>,
@@ -178,7 +177,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     /// Returns metadata on the contract - name, decimals, supply, etc.
     /// Return type: TokenInfoResponse.

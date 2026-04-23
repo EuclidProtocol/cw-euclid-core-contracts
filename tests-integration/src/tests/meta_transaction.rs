@@ -12,7 +12,6 @@ use euclid::{
             ExecuteMsg as MetaExecuteMsg, MetaTransaction, MetaTransactionCallData,
             MetaTransactionData, QueryMsg as MetaQueryMsg,
         },
-        router::{ManageRouterState, ExecuteMsg as RouterExecuteMsg},
         virtual_balance::{GetBalanceResponse, QueryMsg as VirtualBalanceQueryMsg},
         vlp::base::PoolConfig,
     },
@@ -31,12 +30,14 @@ use sha2::{digest::Update, Digest, Sha256};
 
 use crate::helpers::{
     chains::{
-        get_meta_tx_addr, get_virtual_balance_addr, setup_factory, setup_factory_evm,
-        setup_interchain, setup_router,
+        get_meta_tx_addr, get_virtual_balance_addr, setup_factory, setup_interchain, setup_router,
     },
-    factory::{create_pool, deposit_token, faucet, register_token},
+    factory::{create_pool, deposit_token, register_token},
     multi_chain::MultiChainEnv,
-    relayer::{get_random_private_key, get_signer_key_from_pk, get_signer_key_from_pk_evm, relay_router_factory_router},
+    relayer::{
+        get_random_private_key, get_signer_key_from_pk, get_signer_key_from_pk_evm,
+        relay_router_factory_router,
+    },
 };
 use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, ROUTER_CHAIN_ID};
 
@@ -147,15 +148,35 @@ fn sign_meta_transaction_message_evm(
 fn setup_e2e_single_factory() -> (MultiChainEnv, Addr, Addr, Addr, ChainUid) {
     let sender = "sender_for_all_chains";
     let mut env = setup_interchain(sender, META_FACTORY_CHAIN_ID);
-    let router_addr = setup_router(env.chain_mut(META_ROUTER_CHAIN_ID), vec![META_FACTORY_CHAIN_ID]).unwrap();
-    let factory_addr =
-        setup_factory(&mut env, META_FACTORY_CHAIN_ID, META_ROUTER_CHAIN_ID, &router_addr).unwrap();
+    let router_addr = setup_router(
+        env.chain_mut(META_ROUTER_CHAIN_ID),
+        vec![META_FACTORY_CHAIN_ID],
+    )
+    .unwrap();
+    let factory_addr = setup_factory(
+        &mut env,
+        META_FACTORY_CHAIN_ID,
+        META_ROUTER_CHAIN_ID,
+        &router_addr,
+    )
+    .unwrap();
     let meta_tx_addr = get_meta_tx_addr(env.chain(META_ROUTER_CHAIN_ID), &router_addr);
     let factory_chain_uid = ChainUid::create(META_FACTORY_CHAIN_ID.to_string()).unwrap();
-    (env, router_addr, factory_addr, meta_tx_addr, factory_chain_uid)
+    (
+        env,
+        router_addr,
+        factory_addr,
+        meta_tx_addr,
+        factory_chain_uid,
+    )
 }
 
-fn get_vb_balance(env: &MultiChainEnv, router_addr: &Addr, user: &CrossChainUser, token: &Token) -> Uint128 {
+fn get_vb_balance(
+    env: &MultiChainEnv,
+    router_addr: &Addr,
+    user: &CrossChainUser,
+    token: &Token,
+) -> Uint128 {
     let vb_addr = get_virtual_balance_addr(env.chain(META_ROUTER_CHAIN_ID), router_addr);
     let resp: GetBalanceResponse = env.chain(META_ROUTER_CHAIN_ID).query(
         &vb_addr,
@@ -223,16 +244,28 @@ fn test_execute_meta_transaction_withdraw_voucher() {
         get_signer_key_and_address("unauthorized_user");
 
     let user = CrossChainUser::new(factory_chain_uid.clone(), user_signer_address.clone());
-    let unauthorized_user =
-        CrossChainUser::new(factory_chain_uid.clone(), unauthorized_signer_address.clone());
+    let unauthorized_user = CrossChainUser::new(
+        factory_chain_uid.clone(),
+        unauthorized_signer_address.clone(),
+    );
 
     let token_denom = "tokena";
     let token_a = TokenWithDenom {
         token: Token::create("token.a".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: token_denom.to_string() },
+        token_type: TokenType::Native {
+            denom: token_denom.to_string(),
+        },
     };
 
-    register_token(&factory_addr, META_FACTORY_CHAIN_ID, &router_addr, META_ROUTER_CHAIN_ID, &mut env, token_a.clone()).unwrap();
+    register_token(
+        &factory_addr,
+        META_FACTORY_CHAIN_ID,
+        &router_addr,
+        META_ROUTER_CHAIN_ID,
+        &mut env,
+        token_a.clone(),
+    )
+    .unwrap();
     deposit_token(
         &factory_addr,
         META_FACTORY_CHAIN_ID,
@@ -241,20 +274,27 @@ fn test_execute_meta_transaction_withdraw_voucher() {
         &mut env,
         token_a.clone(),
         Uint128::from(1000u128),
-        vec![Recipient::default_voucher_recipient(user.clone(), Limit::Dynamic(Uint128::zero()))],
+        vec![Recipient::default_voucher_recipient(
+            user.clone(),
+            Limit::Dynamic(Uint128::zero()),
+        )],
     )
     .unwrap();
 
     let user_addr = Addr::unchecked(user.address.clone());
     assert_eq!(
-        env.chain(META_FACTORY_CHAIN_ID).query_balance(&user_addr, token_denom),
+        env.chain(META_FACTORY_CHAIN_ID)
+            .query_balance(&user_addr, token_denom),
         Uint128::zero(),
     );
-    assert_eq!(get_vb_balance(&env, &router_addr, &user, &token_a.token), Uint128::from(1000u128));
+    assert_eq!(
+        get_vb_balance(&env, &router_addr, &user, &token_a.token),
+        Uint128::from(1000u128)
+    );
 
     // Attempt unauthorized withdraw
-    let unauthorized_withdraw = RouterCrossChainExecuteMsg::TransferVoucher(
-        RouterCrossChainTransferVoucherExecuteMsg {
+    let unauthorized_withdraw =
+        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
             sender: user.clone(),
             tx_id: "".to_string(),
             token: token_a.token.clone(),
@@ -264,8 +304,7 @@ fn test_execute_meta_transaction_withdraw_voucher() {
                 unauthorized_user.clone(),
                 Limit::Dynamic(Uint128::zero()),
             )],
-        },
-    );
+        });
     let unauthorized_call_data = MetaTransactionCallData {
         target: router_addr.clone(),
         call_data: to_json_string(&unauthorized_withdraw).unwrap(),
@@ -286,11 +325,14 @@ fn test_execute_meta_transaction_withdraw_voucher() {
         &MetaExecuteMsg::ExecuteMetaTransaction(unauthorized_meta_tx),
         &[],
     );
-    assert!(unauth_result.is_err(), "Expected unauthorized meta-tx to fail");
+    assert!(
+        unauth_result.is_err(),
+        "Expected unauthorized meta-tx to fail"
+    );
 
     // Authorized withdraw
-    let withdraw_msg = RouterCrossChainExecuteMsg::TransferVoucher(
-        RouterCrossChainTransferVoucherExecuteMsg {
+    let withdraw_msg =
+        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
             sender: user.clone(),
             tx_id: "".to_string(),
             token: token_a.token.clone(),
@@ -303,8 +345,7 @@ fn test_execute_meta_transaction_withdraw_voucher() {
                 forwarding_message: None,
                 unsafe_refund_as_voucher: None,
             }],
-        },
-    );
+        });
     let withdraw_call_data = MetaTransactionCallData {
         target: router_addr.clone(),
         call_data: to_json_string(&withdraw_msg).unwrap(),
@@ -338,10 +379,14 @@ fn test_execute_meta_transaction_withdraw_voucher() {
     .unwrap();
 
     assert_eq!(
-        env.chain(META_FACTORY_CHAIN_ID).query_balance(&user_addr, token_denom),
+        env.chain(META_FACTORY_CHAIN_ID)
+            .query_balance(&user_addr, token_denom),
         Uint128::from(1000u128),
     );
-    assert_eq!(get_vb_balance(&env, &router_addr, &user, &token_a.token), Uint128::zero());
+    assert_eq!(
+        get_vb_balance(&env, &router_addr, &user, &token_a.token),
+        Uint128::zero()
+    );
 }
 
 #[test]
@@ -353,15 +398,27 @@ fn test_execute_meta_transaction_transfer_voucher() {
     let user = CrossChainUser::new(factory_chain_uid.clone(), user_signer_address.clone());
     let recipient_user = CrossChainUser::new(
         factory_chain_uid.clone(),
-        env.chain(META_FACTORY_CHAIN_ID).addr_make("recipient_user").to_string(),
+        env.chain(META_FACTORY_CHAIN_ID)
+            .addr_make("recipient_user")
+            .to_string(),
     );
 
     let token_a = TokenWithDenom {
         token: Token::create("token.a".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: "tokena".to_string() },
+        token_type: TokenType::Native {
+            denom: "tokena".to_string(),
+        },
     };
 
-    register_token(&factory_addr, META_FACTORY_CHAIN_ID, &router_addr, META_ROUTER_CHAIN_ID, &mut env, token_a.clone()).unwrap();
+    register_token(
+        &factory_addr,
+        META_FACTORY_CHAIN_ID,
+        &router_addr,
+        META_ROUTER_CHAIN_ID,
+        &mut env,
+        token_a.clone(),
+    )
+    .unwrap();
     deposit_token(
         &factory_addr,
         META_FACTORY_CHAIN_ID,
@@ -380,10 +437,13 @@ fn test_execute_meta_transaction_transfer_voucher() {
     )
     .unwrap();
 
-    assert_eq!(get_vb_balance(&env, &router_addr, &user, &token_a.token), Uint128::from(1000u128));
+    assert_eq!(
+        get_vb_balance(&env, &router_addr, &user, &token_a.token),
+        Uint128::from(1000u128)
+    );
 
-    let transfer_msg = RouterCrossChainExecuteMsg::TransferVoucher(
-        RouterCrossChainTransferVoucherExecuteMsg {
+    let transfer_msg =
+        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
             sender: user.clone(),
             tx_id: "".to_string(),
             token: token_a.token.clone(),
@@ -396,8 +456,7 @@ fn test_execute_meta_transaction_transfer_voucher() {
                 forwarding_message: None,
                 unsafe_refund_as_voucher: None,
             }],
-        },
-    );
+        });
     let transfer_call_data = MetaTransactionCallData {
         target: router_addr.clone(),
         call_data: to_json_string(&transfer_msg).unwrap(),
@@ -431,7 +490,10 @@ fn test_execute_meta_transaction_transfer_voucher() {
     )
     .unwrap();
 
-    assert_eq!(get_vb_balance(&env, &router_addr, &user, &token_a.token), Uint128::zero());
+    assert_eq!(
+        get_vb_balance(&env, &router_addr, &user, &token_a.token),
+        Uint128::zero()
+    );
     assert_eq!(
         get_vb_balance(&env, &router_addr, &recipient_user, &token_a.token),
         Uint128::from(1000u128)
@@ -449,15 +511,35 @@ fn test_execute_meta_transaction_swap() {
     let token_denom_b = "tokenb";
     let token_a = TokenWithDenom {
         token: Token::create("token.a".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: "tokena".to_string() },
+        token_type: TokenType::Native {
+            denom: "tokena".to_string(),
+        },
     };
     let token_b = TokenWithDenom {
         token: Token::create("token.b".to_string()).unwrap(),
-        token_type: TokenType::Native { denom: token_denom_b.to_string() },
+        token_type: TokenType::Native {
+            denom: token_denom_b.to_string(),
+        },
     };
 
-    register_token(&factory_addr, META_FACTORY_CHAIN_ID, &router_addr, META_ROUTER_CHAIN_ID, &mut env, token_a.clone()).unwrap();
-    register_token(&factory_addr, META_FACTORY_CHAIN_ID, &router_addr, META_ROUTER_CHAIN_ID, &mut env, token_b.clone()).unwrap();
+    register_token(
+        &factory_addr,
+        META_FACTORY_CHAIN_ID,
+        &router_addr,
+        META_ROUTER_CHAIN_ID,
+        &mut env,
+        token_a.clone(),
+    )
+    .unwrap();
+    register_token(
+        &factory_addr,
+        META_FACTORY_CHAIN_ID,
+        &router_addr,
+        META_ROUTER_CHAIN_ID,
+        &mut env,
+        token_b.clone(),
+    )
+    .unwrap();
 
     let pair_info = PairWithDenomAndAmount {
         token_1: token_a.clone().with_amount(Uint128::from(1_000_000u128)),
@@ -493,7 +575,10 @@ fn test_execute_meta_transaction_swap() {
     )
     .unwrap();
 
-    assert_eq!(get_vb_balance(&env, &router_addr, &user, &token_a.token), Uint128::from(1000u128));
+    assert_eq!(
+        get_vb_balance(&env, &router_addr, &user, &token_a.token),
+        Uint128::from(1000u128)
+    );
 
     let token_a_voucher = TokenWithDenom {
         token: token_a.token.clone(),
@@ -554,10 +639,15 @@ fn test_execute_meta_transaction_swap() {
     )
     .unwrap();
 
-    assert_eq!(get_vb_balance(&env, &router_addr, &user, &token_a.token), Uint128::zero());
-    let user_native_b = env.chain(META_FACTORY_CHAIN_ID).query_balance(
-        &Addr::unchecked(user.address.clone()),
-        token_denom_b,
+    assert_eq!(
+        get_vb_balance(&env, &router_addr, &user, &token_a.token),
+        Uint128::zero()
     );
-    assert!(user_native_b > Uint128::zero(), "User should have received token_b after swap");
+    let user_native_b = env
+        .chain(META_FACTORY_CHAIN_ID)
+        .query_balance(&Addr::unchecked(user.address.clone()), token_denom_b);
+    assert!(
+        user_native_b > Uint128::zero(),
+        "User should have received token_b after swap"
+    );
 }

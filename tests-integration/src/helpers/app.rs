@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use cosmwasm_std::{Addr, BlockInfo, Coin, Empty, Uint128};
-use cw_multi_test::{AppBuilder, AppResponse, BasicApp, BankSudo, Contract, Executor, SudoMsg};
+use cw_multi_test::{AppBuilder, AppResponse, BankSudo, BasicApp, Contract, Executor, SudoMsg};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Thin wrapper around `cw_multi_test::BasicApp` providing the same conveniences

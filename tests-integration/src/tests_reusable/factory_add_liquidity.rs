@@ -52,10 +52,9 @@ pub fn add_liquidity(
     }
 
     let factory_chain_uid = {
-        let factory_state: euclid::msgs::factory::StateResponse = env.chain(factory_chain_id).query(
-            factory_addr,
-            &euclid::msgs::factory::QueryMsg::GetState {},
-        );
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
         factory_state.chain_uid
     };
 
@@ -89,20 +88,17 @@ pub fn add_liquidity(
 mod tests {
     use super::*;
     use crate::helpers::chains::{setup_interchain, setup_router};
-    use crate::helpers::factory::faucet;
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::{setup_factory_with_mode, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
-    use crate::tests_reusable::state_sync::{sync_state, UserFundsQuery};
-    use euclid::chain::ChainUid;
+    use crate::tests_reusable::state_sync::sync_state;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
     use euclid::msgs::vlp::base::PoolConfig;
     use euclid::token::{Token, TokenType, TokenWithDenomAndAmount};
-    use euclid::voucher::BalanceKey;
     use rstest::rstest;
 
     fn mode_for(factory_chain_id: &str) -> FactorySetupMode {
@@ -154,11 +150,9 @@ mod tests {
         .unwrap();
 
         let factory_chain_uid = {
-            let factory_state: euclid::msgs::factory::StateResponse =
-                env.chain(factory_chain_id).query(
-                    &factory_addr,
-                    &euclid::msgs::factory::QueryMsg::GetState {},
-                );
+            let factory_state: euclid::msgs::factory::StateResponse = env
+                .chain(factory_chain_id)
+                .query(&factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
             factory_state.chain_uid
         };
 
