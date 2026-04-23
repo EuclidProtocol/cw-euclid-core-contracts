@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::str::FromStr;
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
-    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     MockQuerier,
 >;

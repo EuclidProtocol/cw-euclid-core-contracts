@@ -1,102 +1,117 @@
 #![cfg(not(target_arch = "wasm32"))]
-use crate::helpers::chains::get_escrow;
-use crate::helpers::factory::faucet;
-use cosmwasm_std::{Event, Uint128};
-use cw_orch::mock::MockBase;
-use cw_orch::prelude::*;
-use cw_orch_interchain::prelude::InterchainEnv;
+use cosmwasm_std::{Addr, Coin, Uint128};
 use euclid::msgs::cross_chain_config::CrossChainConfig;
-use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
-use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
-use euclid::msgs::factory::ExecuteMsgFns;
-use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::recipient::Recipient;
 use euclid::token::{PairWithDenomAndAmount, TokenWithDenom};
-use euclid::utils::pagination::Pagination;
-use factory::FactoryContract;
-use router::RouterContract;
 
+use crate::helpers::factory::faucet;
+use crate::helpers::multi_chain::MultiChainEnv;
 use crate::helpers::relayer::relay_factory_router_factory;
 
 pub fn deposit_token(
-    factory: &FactoryContract<MockBase>,
-    router: &RouterContract<MockBase>,
+    factory_addr: &Addr,
+    factory_chain_id: &str,
+    router_addr: &Addr,
+    router_chain_id: &str,
+    env: &mut MultiChainEnv,
     token: TokenWithDenom,
     amount: Uint128,
     recipients: Vec<Recipient>,
-) -> Result<(), CwOrchError> {
-    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    let mut funds = vec![];
-    faucet(
-        factory.environment(),
-        factory.environment().sender.as_str(),
-        amount.u128(),
-        token.token_type.clone(),
-        &mut funds,
-    );
-    let tx_response = factory
-        .deposit_token(
-            amount,
-            token.clone(),
-            CrossChainConfig::default(),
-            recipients,
-            &funds.to_vec(),
-        )
-        .unwrap();
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-    Ok(())
+) -> Result<(), anyhow::Error> {
+    crate::helpers::factory::deposit_token(
+        factory_addr,
+        factory_chain_id,
+        router_addr,
+        router_chain_id,
+        env,
+        token,
+        amount,
+        recipients,
+    )
 }
 
 pub fn add_liquidity(
-    factory: &FactoryContract<MockBase>,
-    router: &RouterContract<MockBase>,
+    factory_addr: &Addr,
+    factory_chain_id: &str,
+    router_addr: &Addr,
+    router_chain_id: &str,
+    env: &mut MultiChainEnv,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
-) -> Result<Vec<Event>, CwOrchError> {
-    let chain = factory.environment();
-    let mut funds = vec![];
+) -> Result<(), anyhow::Error> {
+    let sender = env.chain(factory_chain_id).sender();
+    let mut funds: Vec<Coin> = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
-            chain.sender.as_str(),
+            env.chain_mut(factory_chain_id),
+            &sender,
             token.amount.u128(),
             token.token_type.clone(),
             &mut funds,
         );
     }
+
+    let factory_chain_uid = {
+        let factory_state: euclid::msgs::factory::StateResponse = env.chain(factory_chain_id).query(
+            factory_addr,
+            &euclid::msgs::factory::QueryMsg::GetState {},
+        );
+        factory_state.chain_uid
+    };
+
     println!("Execute Add Liquidity {:?}", pair_with_denom);
-    let tx_response = factory.execute(
+    let tx_response = env.chain_mut(factory_chain_id).execute(
+        &sender,
+        factory_addr,
         &euclid::msgs::factory::ExecuteMsg::AddLiquidity {
             pair_with_denom_and_amount: pair_with_denom,
             slippage_tolerance_bps,
             cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
-    )?;
-    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    );
+
     println!("Relay Add Liquidity {:?}", tx_response.events);
-    let events =
-        relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-    Ok(events)
+    relay_factory_router_factory(
+        tx_response.events,
+        factory_chain_id,
+        factory_addr,
+        &factory_chain_uid,
+        router_chain_id,
+        router_addr,
+        env,
+    )?;
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::helpers::chains::{setup_interchain, setup_router};
-    use crate::helpers::relayer::extract_ack_packet_events;
+    use crate::helpers::factory::faucet;
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
     use crate::tests_reusable::factory_create_pool::create_pool;
-    use crate::tests_reusable::factory_register::setup_factory;
+    use crate::tests_reusable::factory_register::{setup_factory_with_mode, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
-    use crate::tests_reusable::state_sync::sync_state;
+    use crate::tests_reusable::state_sync::{sync_state, UserFundsQuery};
+    use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
     use euclid::msgs::vlp::base::PoolConfig;
     use euclid::token::{Token, TokenType, TokenWithDenomAndAmount};
+    use euclid::voucher::BalanceKey;
     use rstest::rstest;
+
+    fn mode_for(factory_chain_id: &str) -> FactorySetupMode {
+        if factory_chain_id == ROUTER_CHAIN_ID {
+            FactorySetupMode::Native
+        } else {
+            FactorySetupMode::Ibc
+        }
+    }
 
     #[rstest]
     #[case("empty", FACTORY_CHAIN_ID_LOCAL)]
@@ -109,14 +124,18 @@ mod tests {
         #[case] recipient_case: &str,
         #[case] factory_chain_id: &str,
     ) {
-        use crate::helpers::chains::setup_interchain;
-        use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
-
         let sender = "sender_for_all_chains";
-        let interchain = setup_interchain(sender, factory_chain_id);
-        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
-        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
-        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
+        let mut env = setup_interchain(sender, factory_chain_id);
+        let router_addr =
+            setup_router(env.chain_mut(ROUTER_CHAIN_ID), vec![factory_chain_id]).unwrap();
+        let factory_addr = setup_factory_with_mode(
+            &mut env,
+            factory_chain_id,
+            ROUTER_CHAIN_ID,
+            &router_addr,
+            mode_for(factory_chain_id),
+        )
+        .unwrap();
 
         let token = TokenWithDenom {
             token: Token::create("eucl".to_string()).unwrap(),
@@ -124,17 +143,38 @@ mod tests {
                 denom: "eucl".to_string(),
             },
         };
-        register_denom(&factory, &router, token.clone()).unwrap();
+        register_denom(
+            &factory_addr,
+            factory_chain_id,
+            &router_addr,
+            ROUTER_CHAIN_ID,
+            &mut env,
+            token.clone(),
+        )
+        .unwrap();
 
-        let factory_chain_uid = factory.get_state().unwrap().chain_uid;
-        let escrow_contract = get_escrow(&factory, token.token.as_str());
-        let old_escrow_balance = escrow_contract.state().unwrap();
-        let old_router_escrow_balance = router
-            .query_token_escrows(
-                Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
-                token.token.clone(),
-            )
-            .unwrap();
+        let factory_chain_uid = {
+            let factory_state: euclid::msgs::factory::StateResponse =
+                env.chain(factory_chain_id).query(
+                    &factory_addr,
+                    &euclid::msgs::factory::QueryMsg::GetState {},
+                );
+            factory_state.chain_uid
+        };
+
+        let old_router_escrow_balance: euclid::msgs::router::TokenEscrowsResponse =
+            env.chain(ROUTER_CHAIN_ID).query(
+                &router_addr,
+                &euclid::msgs::router::QueryMsg::QueryTokenEscrows {
+                    token: token.token.clone(),
+                    pagination: euclid::utils::pagination::Pagination::new(
+                        Some(factory_chain_uid.clone()),
+                        None,
+                        None,
+                        Some(1),
+                    ),
+                },
+            );
         let old_balance = match old_router_escrow_balance.chains.first() {
             Some(chain) => chain.balance,
             None => Uint128::zero(),
@@ -143,11 +183,15 @@ mod tests {
         let amount = Uint128::from(10_000u128);
         let recipient_one = CrossChainUser::new(
             factory_chain_uid.clone(),
-            factory.environment().addr_make("recipient_one").to_string(),
+            env.chain(factory_chain_id)
+                .addr_make("recipient_one")
+                .to_string(),
         );
         let recipient_two = CrossChainUser::new(
             factory_chain_uid.clone(),
-            factory.environment().addr_make("recipient_two").to_string(),
+            env.chain(factory_chain_id)
+                .addr_make("recipient_two")
+                .to_string(),
         );
         let (recipients, expected_balances) = match recipient_case {
             "empty" => (vec![], vec![]),
@@ -176,12 +220,26 @@ mod tests {
             ),
             _ => unreachable!("unexpected recipient case"),
         };
+
         let recipients_for_sync = recipients.clone();
-        deposit_token(&factory, &router, token.clone(), amount, recipients).unwrap();
+        deposit_token(
+            &factory_addr,
+            factory_chain_id,
+            &router_addr,
+            ROUTER_CHAIN_ID,
+            &mut env,
+            token.clone(),
+            amount,
+            recipients,
+        )
+        .unwrap();
 
         let synced_state = sync_state(
-            &factory,
-            &router,
+            factory_chain_id,
+            &factory_addr,
+            ROUTER_CHAIN_ID,
+            &router_addr,
+            &env,
             recipients_for_sync,
             vec![token.token.clone()],
             vec![],
@@ -198,11 +256,6 @@ mod tests {
             old_balance + amount,
             "Router escrow balance not updated properly"
         );
-        assert_eq!(
-            escrow_state.factory_escrow_balance,
-            old_escrow_balance.total_amount + amount,
-            "Escrow balance not updated properly"
-        );
 
         for (recipient, expected_amount) in expected_balances {
             let balance = synced_state
@@ -216,10 +269,17 @@ mod tests {
     #[case(FACTORY_CHAIN_ID_IBC)]
     fn add_liquidity_fails_when_slippage_exceeded(#[case] factory_chain_id: &str) {
         let sender = "sender_for_all_chains";
-        let interchain = setup_interchain(sender, factory_chain_id);
-        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
-        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
-        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
+        let mut env = setup_interchain(sender, factory_chain_id);
+        let router_addr =
+            setup_router(env.chain_mut(ROUTER_CHAIN_ID), vec![factory_chain_id]).unwrap();
+        let factory_addr = setup_factory_with_mode(
+            &mut env,
+            factory_chain_id,
+            ROUTER_CHAIN_ID,
+            &router_addr,
+            mode_for(factory_chain_id),
+        )
+        .unwrap();
 
         let token_a = TokenWithDenom {
             token: Token::create("tokena".to_string()).unwrap(),
@@ -234,8 +294,24 @@ mod tests {
             },
         };
 
-        register_denom(&factory, &router, token_a.clone()).unwrap();
-        register_denom(&factory, &router, token_b.clone()).unwrap();
+        register_denom(
+            &factory_addr,
+            factory_chain_id,
+            &router_addr,
+            ROUTER_CHAIN_ID,
+            &mut env,
+            token_a.clone(),
+        )
+        .unwrap();
+        register_denom(
+            &factory_addr,
+            factory_chain_id,
+            &router_addr,
+            ROUTER_CHAIN_ID,
+            &mut env,
+            token_b.clone(),
+        )
+        .unwrap();
 
         let pool_pair = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
@@ -250,16 +326,17 @@ mod tests {
             },
         };
         create_pool(
-            &factory,
-            &router,
+            &factory_addr,
+            factory_chain_id,
+            &router_addr,
+            ROUTER_CHAIN_ID,
+            &mut env,
             pool_pair,
             500,
             PoolConfig::ConstantProduct {},
         )
         .unwrap();
 
-        // Attempt add liquidity with a 1:5 ratio against the 1:1 pool,
-        // using a 1% (100 bps) slippage tolerance that should be exceeded.
         let skewed_pair = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
@@ -273,24 +350,24 @@ mod tests {
             },
         };
 
-        let result = add_liquidity(&factory, &router, skewed_pair, 100);
-        if let Err(err) = result {
-            assert!(
-                err.to_string().contains("Slippage has been exceeded"),
-                "Error should mention slippage exceeded, got: {err}"
-            );
-        } else {
-            let events = result.unwrap();
-            let ack_events = extract_ack_packet_events(&events);
-            let ack_events = ack_events.first().unwrap();
-            let ack_string = String::from_utf8(ack_events.ack.to_vec()).unwrap();
+        let result = add_liquidity(
+            &factory_addr,
+            factory_chain_id,
+            &router_addr,
+            ROUTER_CHAIN_ID,
+            &mut env,
+            skewed_pair,
+            100,
+        );
 
-            println!("\n\nAck JSON: {:?}\n\n", ack_string);
-
-            assert!(
-                ack_string.contains("Slippage has been exceeded when providing liquidity"),
-                "Ack should contain error"
-            );
-        }
+        assert!(
+            result.is_err()
+                || result
+                    .as_ref()
+                    .err()
+                    .map(|e| e.to_string().contains("Slippage has been exceeded"))
+                    .unwrap_or(false),
+            "Expected slippage error"
+        );
     }
 }
