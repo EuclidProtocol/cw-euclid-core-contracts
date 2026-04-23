@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use cosmwasm_std::{Addr, BlockInfo, Coin, Empty, Uint128};
-use cw_multi_test::{AppBuilder, AppResponse, BasicApp, Contract, Executor};
+use cw_multi_test::{AppBuilder, AppResponse, BasicApp, BankSudo, Contract, Executor, SudoMsg};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Thin wrapper around `cw_multi_test::BasicApp` providing the same conveniences
@@ -122,26 +122,12 @@ impl EuclidApp {
     }
 
     pub fn add_balance(&mut self, addr: &Addr, coins: Vec<Coin>) {
-        let current: Vec<Coin> = coins
-            .iter()
-            .map(|c| {
-                let existing: cosmwasm_std::BalanceResponse = self
-                    .inner
-                    .wrap()
-                    .query(&cosmwasm_std::QueryRequest::Bank(
-                        cosmwasm_std::BankQuery::Balance {
-                            address: addr.to_string(),
-                            denom: c.denom.clone(),
-                        },
-                    ))
-                    .unwrap();
-                Coin {
-                    denom: c.denom.clone(),
-                    amount: (existing.amount.amount + c.amount).into(),
-                }
-            })
-            .collect();
-        self.set_balance(addr, current);
+        self.inner
+            .sudo(SudoMsg::Bank(BankSudo::Mint {
+                to_address: addr.to_string(),
+                amount: coins,
+            }))
+            .unwrap();
     }
 
     pub fn query_balance(&self, addr: &Addr, denom: &str) -> Uint128 {
