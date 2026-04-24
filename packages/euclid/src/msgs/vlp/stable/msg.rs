@@ -10,8 +10,7 @@ use crate::{
     token::Pair,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Decimal256, Uint128, Uint64};
-use cw_asset::AssetInfo;
+use cosmwasm_std::{Addr, Uint128, Uint64};
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
 #[cw_serde]
@@ -128,10 +127,3 @@ pub struct AllStablePoolsResponse {
 
 #[cw_serde]
 pub struct MigrateMsg {}
-
-/// This struct describes a Terra asset as decimal.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DecimalAsset {
-    pub info: AssetInfo,
-    pub amount: Decimal256,
-}
