@@ -5,7 +5,6 @@ members = [
     "contracts/hub/*",
     "contracts/hub_utilities/*",
     "contracts/liquidity/*",
-    "contracts/forwarding/*",
     "contracts/common/*",
     "packages/*",
     "tests-integration",

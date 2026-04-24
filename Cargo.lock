@@ -338,25 +338,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "astroport-forwarding"
-version = "0.2.2"
-dependencies = [
- "astroport",
- "cosmwasm-schema 1.5.11",
- "cosmwasm-std 1.5.11",
- "cw-multi-test",
- "cw-storage-plus 1.2.0",
- "cw-utils 1.0.3",
- "cw2 1.1.2",
- "cw20 1.1.2",
- "forwarding",
- "mock",
- "schemars 0.8.22",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2474,26 +2455,6 @@ dependencies = [
  "schemars 0.8.22",
  "serde",
  "sha2 0.10.9",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "osmosis-forwarding"
-version = "0.2.2"
-dependencies = [
- "cosmwasm-schema 1.5.11",
- "cosmwasm-std 1.5.11",
- "cw-multi-test",
- "cw-storage-plus 1.2.0",
- "cw-utils 1.0.3",
- "cw2 1.1.2",
- "cw20 1.1.2",
- "forwarding",
- "mock",
- "osmosis-std",
- "schemars 0.8.22",
- "serde",
- "swaprouter",
  "thiserror 1.0.69",
 ]
 
