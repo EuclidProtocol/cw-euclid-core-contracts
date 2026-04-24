@@ -13,7 +13,7 @@ use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     events::{clp_add_liquidity_event, liquidity_event, tx_event, TxType},
-    fee::{DenomFees, TotalFees},
+    fee::{DenomFees, TotalFees, BPS_100_PERCENT},
     msgs::vlp::{
         base::{
             GetSwapQueryResponse, PoolConfig, PoolType, State, VlpConcentratedAddLiquidityResponse,
@@ -366,10 +366,12 @@ fn assert_unused_within_slippage(
     used: Uint128,
     slippage_tolerance_bps: u64,
 ) -> Result<(), ContractError> {
+    // If no tokens were provided, slippage is irrelevant (pass)
     if provided.is_zero() {
         return Ok(());
     }
 
+    // Calculate unused = provided - used; error if used > provided (shouldn't happen).
     let unused = provided
         .checked_sub(used)
         .map_err(|_| ContractError::Generic {
@@ -377,12 +379,22 @@ fn assert_unused_within_slippage(
                 "slippage check: used ({used}) > provided ({provided}), rounding overflow"
             ),
         })?;
-    let lhs = Uint256::from(unused.u128()).checked_mul(Uint256::from(10_000u128))?;
+
+    // Compute lhs: unused * 10_000  (to get basis-points scale)
+    let lhs = Uint256::from(unused.u128()).checked_mul(Uint256::from(BPS_100_PERCENT))?;
+    // Compute rhs: provided * slippage_tolerance_bps  (maximum unused allowed in bps)
     let rhs = Uint256::from(provided.u128())
         .checked_mul(Uint256::from(u128::from(slippage_tolerance_bps)))?;
+
+    // Ensure that unused tokens do not exceed slippage tolerance
     ensure!(
         lhs <= rhs,
-        ContractError::new("unused token amount exceeds slippage tolerance")
+        ContractError::Generic {
+            err: format!(
+                "Slippage tolerance exceeded: provided {slippage_tolerance_bps} but got {actual_slippage}",
+                actual_slippage = lhs.checked_div(Uint256::from(provided)).unwrap_or(Uint256::zero())
+            ),
+        }
     );
     Ok(())
 }

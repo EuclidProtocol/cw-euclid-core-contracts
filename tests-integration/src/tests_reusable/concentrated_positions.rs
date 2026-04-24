@@ -1,12 +1,12 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use concentrated_vlp::math::liquidity_amounts::get_liquidity_for_amounts;
+use concentrated_vlp::math::tick_math::get_sqrt_ratio_at_tick;
 use cosmwasm_std::{Addr, Uint128};
 use cw_orch::prelude::*;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
-use euclid::msgs::vlp::concentrated::msg::{
-    PositionResponse, QueryMsg as ConcentratedQueryMsg, Slot0Response,
-};
+use euclid::msgs::vlp::concentrated::msg::QueryMsgFns as ConcentratedQueryMsgFns;
 use rstest::rstest;
 use std::collections::HashSet;
 
@@ -15,12 +15,12 @@ use crate::helpers::factory::{
     add_concentrated_liquidity, create_concentrated_pool, get_position_token, list_position_ids,
     remove_concentrated_liquidity,
 };
-use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
-use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
-use crate::tests_reusable::constants::{
-    FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
+use crate::tests_reusable::concentrated_create_pool::{
+    pair_with_amounts, setup_concentrated_env, setup_concentrated_env_ext,
 };
+use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
 use crate::tests_reusable::factory_register::FactorySetupMode;
+use euclid::liquidity::{MAX_TICK, MIN_TICK};
 
 fn first_position_id(factory: &factory::FactoryContract<cw_orch::mock::MockBase>) -> Uint128 {
     let ids = list_position_ids(factory).unwrap();
@@ -36,28 +36,33 @@ fn pool_lp_shares(
     let vlp_address = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
     let chain_uid = factory.get_state().unwrap().chain_uid;
-    let pool: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse = vlp
-        .query(&ConcentratedQueryMsg::Pool {
-            chain_uid,
-            pool_key,
-        })
-        .unwrap();
+    let pool: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse =
+        vlp.pool(chain_uid, pool_key).unwrap();
     pool.lp_shares
 }
 
 #[rstest]
-#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-#[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
 fn test_add_liquidity_mints_position_nft(
-    #[case] mode: FactorySetupMode,
-    #[case] factory_chain_id: &str,
+    #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+    mode: FactorySetupMode,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_a: u128,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_b: u128,
 ) {
     use euclid::utils::pagination::Pagination;
 
     let (_interchain, factory, router, token_a, token_b) =
-        setup_concentrated_env(mode, factory_chain_id);
-    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        setup_concentrated_env(mode, mode.factory_chain_id());
+    let pair = pair_with_amounts(&token_a, &token_b, initial_amount_a, initial_amount_b);
     let _pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
     let position_token = get_position_token(&factory).unwrap();
@@ -83,31 +88,54 @@ fn test_add_liquidity_mints_position_nft(
 }
 
 #[rstest]
-#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-#[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
 fn test_increase_liquidity_updates_same_position(
-    #[case] mode: FactorySetupMode,
-    #[case] factory_chain_id: &str,
+    #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+    mode: FactorySetupMode,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_a: u128,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_b: u128,
+    #[values(5_000_u128)] increase_amount: u128,
 ) {
     let (_interchain, factory, router, token_a, token_b) =
-        setup_concentrated_env(mode, factory_chain_id);
-    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        setup_concentrated_env(mode, mode.factory_chain_id());
+    let pair = pair_with_amounts(&token_a, &token_b, initial_amount_a, initial_amount_b);
     let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
     let initial_position_id = first_position_id(&factory);
     let vlp_address = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
-    let initial_position: euclid::msgs::vlp::concentrated::msg::PositionResponse = vlp
-        .query(&ConcentratedQueryMsg::Position {
-            position_id: initial_position_id,
-        })
-        .unwrap();
+    let initial_position: euclid::msgs::vlp::concentrated::msg::PositionResponse =
+        vlp.position(initial_position_id).unwrap();
+
+    let increase_amount_a = initial_amount_a.div_ceil(increase_amount);
+    let increase_amount_b = initial_amount_b.div_ceil(increase_amount);
+
+    let slot0 = vlp.slot_0().unwrap();
+    let sqrt_price_x96 = slot0.sqrt_price_x96;
+    let sqrt_lower_x96 = get_sqrt_ratio_at_tick(initial_position.lower_tick_index).unwrap();
+    let sqrt_upper_x96 = get_sqrt_ratio_at_tick(initial_position.upper_tick_index).unwrap();
+    let liquidity = get_liquidity_for_amounts(
+        sqrt_price_x96,
+        sqrt_lower_x96,
+        sqrt_upper_x96,
+        Uint128::new(increase_amount_a),
+        Uint128::new(increase_amount_b),
+    )
+    .unwrap();
 
     add_concentrated_liquidity(
         &factory,
         &router,
-        pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+        pair_with_amounts(&token_a, &token_b, increase_amount_a, increase_amount_b),
         pool_key,
         initial_position.lower_tick_index,
         initial_position.upper_tick_index,
@@ -119,19 +147,44 @@ fn test_increase_liquidity_updates_same_position(
     let ids = list_position_ids(&factory).unwrap();
     assert_eq!(ids.len(), 1, "increase should not mint a new position NFT");
     assert_eq!(ids[0], initial_position_id.to_string());
+
+    let after_add: euclid::msgs::vlp::concentrated::msg::PositionResponse =
+        vlp.position(initial_position_id).unwrap();
+    assert_eq!(
+        after_add.liquidity,
+        initial_position.liquidity + liquidity,
+        "liquidity should increase by the amount of liquidity added"
+    );
+    assert_eq!(
+        after_add.lower_tick_index, initial_position.lower_tick_index,
+        "lower tick index should not change"
+    );
+    assert_eq!(
+        after_add.upper_tick_index, initial_position.upper_tick_index,
+        "upper tick index should not change"
+    );
 }
 
 #[rstest]
-#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-#[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
 fn test_partial_decrease_keeps_position(
-    #[case] mode: FactorySetupMode,
-    #[case] factory_chain_id: &str,
+    #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+    mode: FactorySetupMode,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_a: u128,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_b: u128,
 ) {
     let (_interchain, factory, router, token_a, token_b) =
-        setup_concentrated_env(mode, factory_chain_id);
-    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        setup_concentrated_env(mode, mode.factory_chain_id());
+    let pair = pair_with_amounts(&token_a, &token_b, initial_amount_a, initial_amount_b);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
     let position_id = first_position_id(&factory);
@@ -147,13 +200,25 @@ fn test_partial_decrease_keeps_position(
 }
 
 #[rstest]
-#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-#[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
-fn test_full_remove_burns_position(#[case] mode: FactorySetupMode, #[case] factory_chain_id: &str) {
+fn test_full_remove_burns_position(
+    #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+    mode: FactorySetupMode,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_a: u128,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_b: u128,
+) {
     let (_interchain, factory, router, token_a, token_b) =
-        setup_concentrated_env(mode, factory_chain_id);
-    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        setup_concentrated_env(mode, mode.factory_chain_id());
+    let pair = pair_with_amounts(&token_a, &token_b, initial_amount_a, initial_amount_b);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
     let position_id = first_position_id(&factory);
@@ -167,8 +232,9 @@ fn test_full_remove_burns_position(#[case] mode: FactorySetupMode, #[case] facto
 
 #[test]
 fn test_only_owner_can_modify_or_collect() {
+    let mode = FactorySetupMode::Native;
     let (_interchain, mut factory, router, token_a, token_b) =
-        setup_concentrated_env(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL);
+        setup_concentrated_env(mode, mode.factory_chain_id());
     let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
     let position_id = first_position_id(&factory);
@@ -202,16 +268,26 @@ fn test_only_owner_can_modify_or_collect() {
 }
 
 #[rstest]
-#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-#[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
 fn test_multiple_positions_different_ranges_are_independent(
-    #[case] mode: FactorySetupMode,
-    #[case] factory_chain_id: &str,
+    #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+    mode: FactorySetupMode,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_a: u128,
+    #[values(
+        10_000_000_u128,
+        1_000_000_000_000_000_000_u128,
+        1_000_000_000_000_000_000_000_000_u128
+    )]
+    initial_amount_b: u128,
+    #[values(5_000_u128)] second_amount: u128,
 ) {
     let (_interchain, factory, router, token_a, token_b) =
-        setup_concentrated_env(mode, factory_chain_id);
-    let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        setup_concentrated_env(mode, mode.factory_chain_id());
+    let pair = pair_with_amounts(&token_a, &token_b, initial_amount_a, initial_amount_b);
     let pool_key = create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
     let first_ids = list_position_ids(&factory).unwrap();
@@ -224,7 +300,7 @@ fn test_multiple_positions_different_ranges_are_independent(
         &router,
         // Current tick is centered around 0 after pool creation.
         // This range is entirely below spot, so one side will be mostly unused.
-        pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+        pair_with_amounts(&token_a, &token_b, second_amount, second_amount),
         pool_key.clone(),
         -240,
         -120,
@@ -271,18 +347,245 @@ fn test_multiple_positions_different_ranges_are_independent(
     assert_eq!(final_ids[0], first_id.to_string());
 }
 
+/// Covers full-range position creation on a pool using the finest tick
+/// spacing (1) and smallest fee tier (100 bps), with mixed native+smart
+/// token kinds, highly asymmetric seed amounts, and tight slippage (50 bps).
+/// Mirrors a "full-range LP" entry scenario.
+#[rstest]
+fn test_add_full_range_position_with_fine_spacing(
+    #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+    mode: FactorySetupMode,
+    #[values("native", "smart")] kind_a: &str,
+    #[values("native", "smart")] kind_b: &str,
+    #[values(
+        (1000000, 71456145040000000000, MIN_TICK, MAX_TICK),
+        (1000000, 71456145040000000000, 319014, 319020)
+    )]
+    add_info: (u128, u128, i64, i64),
+) {
+    let (add_a, add_b, add_lower_tick, add_upper_tick) = add_info;
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env_ext(mode, mode.factory_chain_id(), kind_a, kind_b);
+
+    let initial_reserve_a = 10_000_000;
+    let initial_reserve_b = 1_000_000_000_000_000_000_000_u128;
+
+    let reserve_a = 11_829_677;
+
+    let swap_amount_a = reserve_a - initial_reserve_a;
+    let expected_amount_out = 154654827754927164121;
+
+    let pair = pair_with_amounts(&token_a, &token_b, initial_reserve_a, initial_reserve_b);
+
+    let fee_tier_bps = 100;
+    let tick_spacing = 1;
+    let slippage_bps = 3500;
+
+    let pool_key = create_concentrated_pool(
+        &factory,
+        &router,
+        pair,
+        fee_tier_bps,
+        tick_spacing,
+        slippage_bps,
+    )
+    .unwrap();
+
+    let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
+    let vlp = get_concentrated_vlp(router.environment(), &vlp_addr);
+
+    let initial_slot0 = vlp.slot_0().unwrap();
+
+    let amount_out = execute_concentrated_swap(
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_a.clone(),
+        token_b.clone().token,
+        Uint128::new(swap_amount_a),
+    );
+    assert_eq!(
+        amount_out,
+        Uint128::new(expected_amount_out),
+        "swap amount out should be equal to expected amount out"
+    );
+
+    let initial_ids = list_position_ids(&factory).unwrap();
+    let initial_id_set: HashSet<&str> = initial_ids.iter().map(String::as_str).collect();
+
+    let new_slot0 = vlp.slot_0().unwrap();
+
+    assert!(
+        new_slot0.tick < initial_slot0.tick,
+        "tick should change after swap with info {:?}",
+        new_slot0
+    );
+    // Full-range add with position_id=None must mint a new NFT spanning
+    // the absolute min/max ticks (±887272, divisible by tick_spacing=1).
+    add_concentrated_liquidity(
+        &factory,
+        &router,
+        pair_with_amounts(&token_a, &token_b, add_a, add_b),
+        pool_key.clone(),
+        add_lower_tick,
+        add_upper_tick,
+        None,
+        slippage_bps,
+    )
+    .unwrap();
+
+    let after_ids = list_position_ids(&factory).unwrap();
+    assert_eq!(after_ids.len(), initial_ids.len() + 1);
+
+    let new_id = after_ids
+        .iter()
+        .find(|id| !initial_id_set.contains(id.as_str()))
+        .expect("new position id must be minted");
+    let new_id = Uint128::new(new_id.parse::<u128>().unwrap());
+
+    let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key).unwrap().vlp);
+    let vlp = get_concentrated_vlp(router.environment(), &vlp_addr);
+    let pos = vlp.position(new_id).unwrap();
+    assert_eq!(pos.lower_tick_index, add_lower_tick);
+    assert_eq!(pos.upper_tick_index, add_upper_tick);
+    assert!(
+        pos.liquidity > Uint128::zero(),
+        "full-range position must have non-zero liquidity",
+    );
+}
+
+/// Exercises the unused-token slippage check on the full-range add that
+/// follows the same pool + swap setup as `test_add_full_range_position_with_fine_spacing`.
+/// The ratio of `add_a` to `add_b` directly controls how much of each side
+/// is left unused, which is exactly what `slippage_tolerance_bps` bounds.
+/// Each case is a `(prices, slippage_bps, slippage_fail)` triple: the add
+/// must either succeed or fail with "Slippage tolerance exceeded" according
+/// to `slippage_fail`.
+#[rstest]
+fn test_add_concentrated_liquidity_slippage_errors(
+    #[values(FactorySetupMode::Native)] mode: FactorySetupMode,
+    #[values(
+        // Balanced amounts matching the post-swap price — 5% slippage passes.
+        ((1_000_000_u128, 71_456_145_040_000_000_000_u128), 500_u64, false),
+        // Imbalanced amounts (add_b ~70x too small for the current price).
+        // The B side pins the liquidity, so ~98% of add_a ends up unused.
+        // Max slippage (100%) allows this.
+        ((1_000_000_u128, 1_000_000_000_000_000_000_u128), 10_000_u64, false),
+        // Same imbalance with 1% slippage — unused far exceeds tolerance.
+        ((1_000_000_u128, 1_000_000_000_000_000_000_u128), 100_u64, true),
+    )]
+    case: ((u128, u128), u64, bool),
+) {
+    let ((add_a, add_b), add_slippage_bps, slippage_fail) = case;
+
+    let (_interchain, factory, router, token_a, token_b) =
+        setup_concentrated_env(mode, mode.factory_chain_id());
+
+    let initial_reserve_a = 10_000_000;
+    let initial_reserve_b = 1_000_000_000_000_000_000_000_u128;
+
+    let reserve_a = 11_829_677;
+    let swap_amount_a = reserve_a - initial_reserve_a;
+    let expected_amount_out = 154_654_827_754_927_164_121_u128;
+
+    let pair = pair_with_amounts(&token_a, &token_b, initial_reserve_a, initial_reserve_b);
+
+    let fee_tier_bps = 100;
+    let tick_spacing = 1;
+    let pool_slippage_bps = 500;
+
+    let pool_key = create_concentrated_pool(
+        &factory,
+        &router,
+        pair,
+        fee_tier_bps,
+        tick_spacing,
+        pool_slippage_bps,
+    )
+    .unwrap();
+
+    let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
+    let vlp = get_concentrated_vlp(router.environment(), &vlp_addr);
+    let initial_slot0 = vlp.slot_0().unwrap();
+
+    let amount_out = execute_concentrated_swap(
+        &factory,
+        &router,
+        pool_key.clone(),
+        token_a.clone(),
+        token_b.clone().token,
+        Uint128::new(swap_amount_a),
+    );
+    assert_eq!(
+        amount_out,
+        Uint128::new(expected_amount_out),
+        "swap amount out should match the fixed setup used by the full-range test"
+    );
+
+    let new_slot0 = vlp.slot_0().unwrap();
+    assert!(
+        new_slot0.tick < initial_slot0.tick,
+        "tick should have moved down after A->B swap, got {new_slot0:?}"
+    );
+
+    let initial_ids = list_position_ids(&factory).unwrap();
+    let initial_id_set: HashSet<&str> = initial_ids.iter().map(String::as_str).collect();
+
+    let result = add_concentrated_liquidity(
+        &factory,
+        &router,
+        pair_with_amounts(&token_a, &token_b, add_a, add_b),
+        pool_key.clone(),
+        MIN_TICK,
+        MAX_TICK,
+        None,
+        add_slippage_bps,
+    );
+
+    if slippage_fail {
+        let err = format!(
+            "{:?}",
+            result.expect_err("expected slippage error, got success")
+        );
+        assert!(
+            err.contains("Slippage tolerance exceeded"),
+            "expected slippage error, got: {err}"
+        );
+        let after_ids = list_position_ids(&factory).unwrap();
+        assert_eq!(
+            after_ids.len(),
+            initial_ids.len(),
+            "no NFT should be minted when the add fails"
+        );
+    } else {
+        result.expect("expected add to succeed");
+        let after_ids = list_position_ids(&factory).unwrap();
+        assert_eq!(after_ids.len(), initial_ids.len() + 1);
+        let new_id = after_ids
+            .iter()
+            .find(|id| !initial_id_set.contains(id.as_str()))
+            .expect("new position id must be minted");
+        let new_id = Uint128::new(new_id.parse::<u128>().unwrap());
+        let pos = vlp.position(new_id).unwrap();
+        assert_eq!(pos.lower_tick_index, MIN_TICK);
+        assert_eq!(pos.upper_tick_index, MAX_TICK);
+        assert!(
+            pos.liquidity > Uint128::zero(),
+            "successful add must produce non-zero liquidity"
+        );
+    }
+}
+
 /// Regression: after many small swaps crossing a position boundary,
 /// ACTIVE_LIQUIDITY must still match the sum of in-range positions.
 /// Without the tick boundary rounding fix, the price can round back to a
 /// just-crossed tick, desyncing the liquidity state.
 #[rstest]
-#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
 fn test_active_liquidity_consistent_after_boundary_crossings(
-    #[case] mode: FactorySetupMode,
-    #[case] factory_chain_id: &str,
+    #[values(FactorySetupMode::Native)] mode: FactorySetupMode,
 ) {
     let (_interchain, factory, router, token_a, token_b) =
-        setup_concentrated_env(mode, factory_chain_id);
+        setup_concentrated_env(mode, mode.factory_chain_id());
 
     // Small initial amounts → low liquidity → price moves easily
     let pair = pair_with_amounts(&token_a, &token_b, 1_000, 1_000);
@@ -292,7 +595,7 @@ fn test_active_liquidity_consistent_after_boundary_crossings(
     let vlp = get_concentrated_vlp(router.environment(), &vlp_addr);
 
     // Add a narrow position around current tick
-    let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
+    let slot0 = vlp.slot_0().unwrap();
     let lower = ((slot0.tick - 50) / 10) * 10;
     let upper = ((slot0.tick + 50) / 10) * 10;
 
@@ -330,15 +633,13 @@ fn test_active_liquidity_consistent_after_boundary_crossings(
     }
 
     // Verify ACTIVE_LIQUIDITY matches sum of in-range positions
-    let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
+    let slot0 = vlp.slot_0().unwrap();
     let position_ids = list_position_ids(&factory).unwrap();
 
     let mut in_range_liquidity: u128 = 0;
     for id_str in &position_ids {
         let id = Uint128::new(id_str.parse::<u128>().unwrap());
-        let pos: PositionResponse = vlp
-            .query(&ConcentratedQueryMsg::Position { position_id: id })
-            .unwrap();
+        let pos = vlp.position(id).unwrap();
         if pos.lower_tick_index <= slot0.tick && slot0.tick < pos.upper_tick_index {
             in_range_liquidity += pos.liquidity.u128();
         }
@@ -351,9 +652,7 @@ fn test_active_liquidity_consistent_after_boundary_crossings(
     let mut in_range_by_price: u128 = 0;
     for id_str in &position_ids {
         let id = Uint128::new(id_str.parse::<u128>().unwrap());
-        let pos: PositionResponse = vlp
-            .query(&ConcentratedQueryMsg::Position { position_id: id })
-            .unwrap();
+        let pos = vlp.position(id).unwrap();
         if pos.lower_tick_index <= price_tick && price_tick < pos.upper_tick_index {
             in_range_by_price += pos.liquidity.u128();
         }
