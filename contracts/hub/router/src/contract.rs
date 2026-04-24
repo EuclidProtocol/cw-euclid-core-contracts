@@ -116,6 +116,7 @@ pub fn execute(
                     recipient,
                     cross_chain_config,
                 } => {
+                    cw_utils::nonpayable(&info)?;
                     let verified_sender =
                         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
                     execute_withdraw_voucher(
@@ -133,6 +134,7 @@ pub fn execute(
                     amount,
                     recipient,
                 } => {
+                    cw_utils::nonpayable(&info)?;
                     let verified_sender =
                         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
                     execute_transfer_voucher(

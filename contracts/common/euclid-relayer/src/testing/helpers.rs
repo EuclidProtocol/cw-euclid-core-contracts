@@ -41,7 +41,7 @@ pub fn sign_message(msg: &str) -> (Binary, Binary) {
     let digest = Sha256::new().chain_update(msg.as_bytes());
     let (secret_key, pub_key) = get_signer_key();
     let (sig, _) = secret_key.sign_digest_recoverable(digest).unwrap();
-    (Binary::from(sig.to_bytes().as_slice()), pub_key)
+    (Binary::from(&sig.to_bytes()[..]), pub_key)
 }
 
 /// Produce the string that the relayer hashes/signs:
@@ -118,7 +118,7 @@ pub fn sign_validator_message(
     );
     ValidatorSignature {
         pubkey: pub_key,
-        signature: Binary::from(sig.to_bytes().as_slice()),
+        signature: Binary::from(&sig.to_bytes()[..]),
         expiry,
     }
 }
