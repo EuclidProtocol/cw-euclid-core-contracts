@@ -5,7 +5,6 @@ use cosmwasm_std::{
     Decimal256, DivideByZeroError, OverflowError, StdError, Uint128,
 };
 use cw20_base::ContractError as Cw20ContractError;
-use cw_utils::PaymentError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -291,11 +290,9 @@ impl ContractError {
     }
 }
 
-impl From<PaymentError> for ContractError {
-    fn from(err: PaymentError) -> Self {
-        ContractError::Generic {
-            err: err.to_string(),
-        }
+impl From<cw_utils::PaymentError> for ContractError {
+    fn from(err: cw_utils::PaymentError) -> Self {
+        ContractError::Std(StdError::generic_err(err.to_string()))
     }
 }
 

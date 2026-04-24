@@ -68,6 +68,7 @@ pub fn execute_disallow_denom(
     info: MessageInfo,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Only the factory can call this function
     let factory_address = STATE.load(deps.storage)?.factory_address;
     ensure!(
@@ -117,6 +118,8 @@ pub fn execute_deposit_native(
 
     let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
 
+    let mut response = Response::new().add_attribute("method", "deposit_native");
+
     for token in info.funds {
         // Check that the amount of token sent is not zero
         ensure!(
@@ -142,11 +145,15 @@ pub fn execute_deposit_native(
             &current_balance.checked_add(token.amount)?,
         )?;
         state.total_amount = state.total_amount.checked_add(token.amount)?;
+
+        response = response
+            .add_attribute("denom", token_type.get_key())
+            .add_attribute("amount", token.amount.to_string());
     }
 
     STATE.save(deps.storage, &state)?;
 
-    Ok(Response::new().add_attribute("method", "deposit"))
+    Ok(response)
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
@@ -158,6 +165,7 @@ pub fn receive_cw20(
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     match from_json(&cw20_msg.msg)? {
         EscrowCw20HookMsg::Deposit {} => {
             let factory_address = STATE.load(deps.storage)?.factory_address;
@@ -233,6 +241,7 @@ pub fn execute_withdraw(
     denom: TokenType,
     forwarding_message: Option<String>,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Only the factory can call this function
     let mut state = STATE.load(deps.storage)?;
     // Only factory can trigger a withdraw
@@ -298,8 +307,948 @@ pub fn execute_withdraw(
         .add_attribute("method", "escrow_withdraw")
         .add_attribute("amount", amount)
         .add_attribute("token", state.token_id.to_string())
+        .add_attribute("denom", denom.get_key())
         .add_attribute("recipient", recipient)
         .set_data(ack);
 
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{
+        attr, coin, from_json,
+        testing::{message_info, mock_env},
+        Addr, BankMsg, Binary, CosmosMsg, Uint128, WasmMsg,
+    };
+    use euclid::{
+        error::ContractError,
+        msgs::{escrow::ExecuteMsg, factory::ReleaseEscrowResponse},
+        token::TokenType,
+    };
+    use euclid_ibc::ack::AcknowledgementMsg;
+    use rstest::rstest;
+
+    use crate::{
+        contract::execute,
+        state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, DISALLOWED_DENOMS, STATE},
+        testing::{
+            fixtures::{initialized, with_deposit},
+            helpers::{
+                init, make_cw20_receive_msg, native_denom, smart_denom, MockDeps, NATIVE_DENOM,
+                TOKEN_ID,
+            },
+        },
+    };
+
+    // -----------------------------------------------------------------------
+    // AddAllowedDenom
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_add_allowed_denom_happy_path(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let new_denom = TokenType::Native {
+            denom: "uosmo".to_string(),
+        };
+        let info = message_info(&factory, &[]);
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::AddAllowedDenom {
+                denom: new_denom.clone(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(res.attributes[0], attr("method", "add_allowed_denom"));
+        assert_eq!(res.attributes[1], attr("new_denom", new_denom.get_key()));
+
+        let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert!(allowed.contains(&new_denom));
+
+        let bal = DENOM_TO_AMOUNT
+            .load(&initialized.storage, new_denom.get_key())
+            .unwrap();
+        assert_eq!(bal, Uint128::zero());
+    }
+
+    #[rstest]
+    fn test_add_allowed_denom_unauthorized(mut initialized: MockDeps) {
+        let stranger = initialized.api.addr_make("stranger");
+        let info = message_info(&stranger, &[]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::AddAllowedDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+    }
+
+    #[rstest]
+    fn test_add_allowed_denom_duplicate_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::AddAllowedDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::DuplicateDenominations {});
+    }
+
+    #[rstest]
+    fn test_add_allowed_denom_voucher_rejected(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::AddAllowedDenom {
+                denom: TokenType::Voucher {},
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::CannotEscrowVoucher {});
+    }
+
+    #[rstest]
+    fn test_add_allowed_denom_removes_from_disallowed(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let factory_info = message_info(&factory, &[]);
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info.clone(),
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+
+        let disallowed = DISALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert!(disallowed.contains(&native_denom()));
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info.clone(),
+            ExecuteMsg::AddAllowedDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+
+        let disallowed = DISALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert!(!disallowed.contains(&native_denom()));
+
+        let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert!(allowed.contains(&native_denom()));
+    }
+
+    #[rstest]
+    fn test_add_smart_denom_happy_path(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let cw20_addr = initialized.api.addr_make("cw20token");
+        let denom = smart_denom(cw20_addr.as_str());
+        let info = message_info(&factory, &[]);
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::AddAllowedDenom {
+                denom: denom.clone(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(res.attributes[0], attr("method", "add_allowed_denom"));
+
+        let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert!(allowed.contains(&denom));
+    }
+
+    // -----------------------------------------------------------------------
+    // DisallowDenom
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_disallow_denom_happy_path(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(res.attributes[0], attr("method", "disallow_denom"));
+        assert_eq!(
+            res.attributes[1],
+            attr("deregistered_denom", native_denom().get_key())
+        );
+
+        let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert!(!allowed.contains(&native_denom()));
+
+        let disallowed = DISALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert!(disallowed.contains(&native_denom()));
+    }
+
+    #[rstest]
+    fn test_disallow_denom_unauthorized(mut initialized: MockDeps) {
+        let stranger = initialized.api.addr_make("stranger");
+        let info = message_info(&stranger, &[]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+    }
+
+    #[rstest]
+    fn test_disallow_denom_not_in_allowed_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DisallowDenom {
+                denom: TokenType::Native {
+                    denom: "nonexistent".to_string(),
+                },
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::DenomDoesNotExist {});
+    }
+
+    #[rstest]
+    fn test_disallow_already_disallowed_denom_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let factory_info = message_info(&factory, &[]);
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info.clone(),
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info,
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::DenomDoesNotExist {});
+    }
+
+    #[rstest]
+    fn test_disallow_multiple_denoms(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let factory_info = message_info(&factory, &[]);
+
+        let denom2 = TokenType::Native {
+            denom: "uatom".to_string(),
+        };
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info.clone(),
+            ExecuteMsg::AddAllowedDenom {
+                denom: denom2.clone(),
+            },
+        )
+        .unwrap();
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info.clone(),
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info.clone(),
+            ExecuteMsg::DisallowDenom {
+                denom: denom2.clone(),
+            },
+        )
+        .unwrap();
+
+        let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert!(allowed.is_empty());
+
+        let disallowed = DISALLOWED_DENOMS.load(&initialized.storage).unwrap();
+        assert_eq!(disallowed.len(), 2);
+        assert!(disallowed.contains(&native_denom()));
+        assert!(disallowed.contains(&denom2));
+    }
+
+    // -----------------------------------------------------------------------
+    // DepositNative
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_deposit_native_happy_path(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let info = message_info(&factory, &[coin(500, NATIVE_DENOM)]);
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
+
+        assert_eq!(res.attributes[0], attr("method", "deposit_native"));
+        assert_eq!(res.attributes[1], attr("denom", native_denom().get_key()));
+        assert_eq!(res.attributes[2], attr("amount", "500"));
+
+        let bal = DENOM_TO_AMOUNT
+            .load(&initialized.storage, native_denom().get_key())
+            .unwrap();
+        assert_eq!(bal, Uint128::new(500));
+
+        let state = STATE.load(&initialized.storage).unwrap();
+        assert_eq!(state.total_amount, Uint128::new(500));
+    }
+
+    #[rstest]
+    fn test_deposit_native_accumulates(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+
+        for _ in 0..3 {
+            let info = message_info(&factory, &[coin(100, NATIVE_DENOM)]);
+            execute(
+                initialized.as_mut(),
+                mock_env(),
+                info,
+                ExecuteMsg::DepositNative {},
+            )
+            .unwrap();
+        }
+
+        let bal = DENOM_TO_AMOUNT
+            .load(&initialized.storage, native_denom().get_key())
+            .unwrap();
+        assert_eq!(bal, Uint128::new(300));
+
+        let state = STATE.load(&initialized.storage).unwrap();
+        assert_eq!(state.total_amount, Uint128::new(300));
+    }
+
+    #[rstest]
+    fn test_deposit_native_no_funds_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::InsufficientDeposit {});
+    }
+
+    #[rstest]
+    fn test_deposit_native_zero_amount_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let info = message_info(&factory, &[coin(0, NATIVE_DENOM)]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::InsufficientDeposit {});
+    }
+
+    #[rstest]
+    fn test_deposit_native_unauthorized_sender(mut initialized: MockDeps) {
+        let stranger = initialized.api.addr_make("stranger");
+        let info = message_info(&stranger, &[coin(100, NATIVE_DENOM)]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+    }
+
+    #[rstest]
+    fn test_deposit_native_unsupported_denom_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let info = message_info(&factory, &[coin(100, "uatom")]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::UnsupportedDenomination {});
+    }
+
+    #[rstest]
+    fn test_deposit_disallowed_denom_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let factory_info = message_info(&factory, &[]);
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info,
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+
+        let info = message_info(&factory, &[coin(100, NATIVE_DENOM)]);
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::UnsupportedDenomination {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Receive (CW20 deposit)
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_receive_cw20_happy_path(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let cw20_contract = initialized.api.addr_make("cw20token");
+
+        let factory_info = message_info(&factory, &[]);
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info,
+            ExecuteMsg::AddAllowedDenom {
+                denom: smart_denom(cw20_contract.as_str()),
+            },
+        )
+        .unwrap();
+
+        let cw20_info = message_info(&cw20_contract, &[]);
+        let recv_msg = make_cw20_receive_msg(factory.as_str(), 250);
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            cw20_info,
+            ExecuteMsg::Receive(recv_msg),
+        )
+        .unwrap();
+
+        assert_eq!(res.attributes[0], attr("method", "deposit_cw20"));
+
+        let bal = DENOM_TO_AMOUNT
+            .load(
+                &initialized.storage,
+                smart_denom(cw20_contract.as_str()).get_key(),
+            )
+            .unwrap();
+        assert_eq!(bal, Uint128::new(250));
+
+        let state = STATE.load(&initialized.storage).unwrap();
+        assert_eq!(state.total_amount, Uint128::new(250));
+    }
+
+    #[rstest]
+    fn test_receive_cw20_unauthorized_inner_sender(mut initialized: MockDeps) {
+        let cw20_contract = initialized.api.addr_make("cw20token");
+        let factory = initialized.api.addr_make("factory");
+        let stranger = initialized.api.addr_make("stranger");
+
+        let factory_info = message_info(&factory, &[]);
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info,
+            ExecuteMsg::AddAllowedDenom {
+                denom: smart_denom(cw20_contract.as_str()),
+            },
+        )
+        .unwrap();
+
+        let cw20_info = message_info(&cw20_contract, &[]);
+        let recv_msg = make_cw20_receive_msg(stranger.as_str(), 100);
+
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            cw20_info,
+            ExecuteMsg::Receive(recv_msg),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+    }
+
+    #[rstest]
+    fn test_receive_cw20_zero_amount_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let cw20_contract = initialized.api.addr_make("cw20token");
+
+        let factory_info = message_info(&factory, &[]);
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info,
+            ExecuteMsg::AddAllowedDenom {
+                denom: smart_denom(cw20_contract.as_str()),
+            },
+        )
+        .unwrap();
+
+        let cw20_info = message_info(&cw20_contract, &[]);
+        let recv_msg = make_cw20_receive_msg(factory.as_str(), 0);
+
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            cw20_info,
+            ExecuteMsg::Receive(recv_msg),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::InsufficientDeposit {});
+    }
+
+    #[rstest]
+    fn test_receive_cw20_unsupported_contract_fails(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+        let cw20_contract = initialized.api.addr_make("unknown_cw20");
+
+        let cw20_info = message_info(&cw20_contract, &[]);
+        let recv_msg = make_cw20_receive_msg(factory.as_str(), 100);
+
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            cw20_info,
+            ExecuteMsg::Receive(recv_msg),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::UnsupportedDenomination {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Withdraw
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_withdraw_native_happy_path(mut with_deposit: MockDeps) {
+        let factory = with_deposit.api.addr_make("factory");
+        let recipient = Addr::unchecked("recipient");
+        let info = message_info(&factory, &[]);
+
+        let res = execute(
+            with_deposit.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::Withdraw {
+                recipient: recipient.clone(),
+                amount: Uint128::new(400),
+                denom: native_denom(),
+                forwarding_message: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(res.attributes[0], attr("method", "escrow_withdraw"));
+        assert_eq!(res.attributes[1], attr("amount", "400"));
+        assert_eq!(res.attributes[2], attr("token", TOKEN_ID));
+        assert_eq!(res.attributes[3], attr("denom", native_denom().get_key()));
+        assert_eq!(res.attributes[4], attr("recipient", recipient.as_str()));
+
+        assert_eq!(res.messages.len(), 1);
+        if let CosmosMsg::Bank(BankMsg::Send { to_address, amount }) = &res.messages[0].msg {
+            assert_eq!(to_address, recipient.as_str());
+            assert_eq!(amount[0].denom, NATIVE_DENOM);
+            assert_eq!(amount[0].amount, Uint128::new(400));
+        } else {
+            panic!("expected BankMsg::Send");
+        }
+
+        let bal = DENOM_TO_AMOUNT
+            .load(&with_deposit.storage, native_denom().get_key())
+            .unwrap();
+        assert_eq!(bal, Uint128::new(600));
+
+        let state = STATE.load(&with_deposit.storage).unwrap();
+        assert_eq!(state.total_amount, Uint128::new(600));
+    }
+
+    #[rstest]
+    fn test_withdraw_response_data_contains_ack(mut with_deposit: MockDeps) {
+        let factory = with_deposit.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let res = execute(
+            with_deposit.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::Withdraw {
+                recipient: Addr::unchecked("recip"),
+                amount: Uint128::new(100),
+                denom: native_denom(),
+                forwarding_message: None,
+            },
+        )
+        .unwrap();
+
+        let data = res.data.expect("expected response data");
+        let ack: AcknowledgementMsg<ReleaseEscrowResponse> = from_json(data).unwrap();
+        match ack {
+            AcknowledgementMsg::Ok(inner) => {
+                assert_eq!(inner.amount, Uint128::new(100));
+                assert_eq!(inner.to_address, "recip");
+                assert_eq!(inner.escrow_balance, Uint128::new(1_000));
+            }
+            AcknowledgementMsg::Error(_) => panic!("expected Ok ack"),
+        }
+    }
+
+    #[rstest]
+    fn test_withdraw_unauthorized(mut with_deposit: MockDeps) {
+        let stranger = with_deposit.api.addr_make("stranger");
+        let info = message_info(&stranger, &[]);
+        let err = execute(
+            with_deposit.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::Withdraw {
+                recipient: Addr::unchecked("recip"),
+                amount: Uint128::new(100),
+                denom: native_denom(),
+                forwarding_message: None,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+    }
+
+    #[rstest]
+    fn test_withdraw_zero_amount_fails(mut with_deposit: MockDeps) {
+        let factory = with_deposit.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let err = execute(
+            with_deposit.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::Withdraw {
+                recipient: Addr::unchecked("recip"),
+                amount: Uint128::zero(),
+                denom: native_denom(),
+                forwarding_message: None,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::ZeroWithdrawalAmount {});
+    }
+
+    #[rstest]
+    fn test_withdraw_insufficient_funds_fails(mut with_deposit: MockDeps) {
+        let factory = with_deposit.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let err = execute(
+            with_deposit.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::Withdraw {
+                recipient: Addr::unchecked("recip"),
+                amount: Uint128::new(9_999_999),
+                denom: native_denom(),
+                forwarding_message: None,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::InsufficientFunds {});
+    }
+
+    #[rstest]
+    fn test_withdraw_unsupported_denom_fails(mut with_deposit: MockDeps) {
+        let factory = with_deposit.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let unknown_denom = TokenType::Native {
+            denom: "unknown".to_string(),
+        };
+        let err = execute(
+            with_deposit.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::Withdraw {
+                recipient: Addr::unchecked("recip"),
+                amount: Uint128::new(100),
+                denom: unknown_denom,
+                forwarding_message: None,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::UnsupportedDenomination {});
+    }
+
+    #[rstest]
+    fn test_withdraw_disallowed_denom_succeeds(mut initialized: MockDeps) {
+        let factory = initialized.api.addr_make("factory");
+
+        let deposit_info = message_info(&factory, &[coin(1_000, NATIVE_DENOM)]);
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            deposit_info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
+
+        let factory_info = message_info(&factory, &[]);
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info.clone(),
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+
+        let res = execute(
+            initialized.as_mut(),
+            mock_env(),
+            factory_info,
+            ExecuteMsg::Withdraw {
+                recipient: Addr::unchecked("recip"),
+                amount: Uint128::new(600),
+                denom: native_denom(),
+                forwarding_message: None,
+            },
+        );
+        assert!(res.is_ok());
+
+        let bal = DENOM_TO_AMOUNT
+            .load(&initialized.storage, native_denom().get_key())
+            .unwrap();
+        assert_eq!(bal, Uint128::new(400));
+
+        let state = STATE.load(&initialized.storage).unwrap();
+        assert_eq!(state.total_amount, Uint128::new(400));
+    }
+
+    #[rstest]
+    fn test_withdraw_exact_balance_succeeds(mut with_deposit: MockDeps) {
+        let factory = with_deposit.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+
+        let res = execute(
+            with_deposit.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::Withdraw {
+                recipient: Addr::unchecked("recip"),
+                amount: Uint128::new(1_000),
+                denom: native_denom(),
+                forwarding_message: None,
+            },
+        );
+        assert!(res.is_ok());
+
+        let bal = DENOM_TO_AMOUNT
+            .load(&with_deposit.storage, native_denom().get_key())
+            .unwrap();
+        assert_eq!(bal, Uint128::zero());
+
+        let state = STATE.load(&with_deposit.storage).unwrap();
+        assert_eq!(state.total_amount, Uint128::zero());
+    }
+
+    #[rstest]
+    fn test_withdraw_with_forwarding_message_sends_wasm_execute(mut with_deposit: MockDeps) {
+        let factory = with_deposit.api.addr_make("factory");
+        let info = message_info(&factory, &[]);
+        let recipient = Addr::unchecked("some_contract");
+
+        let inner_binary = Binary::from(b"forwarding_payload".as_slice());
+        let fwd_msg_b64 = inner_binary.to_base64();
+
+        let res = execute(
+            with_deposit.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::Withdraw {
+                recipient: recipient.clone(),
+                amount: Uint128::new(100),
+                denom: native_denom(),
+                forwarding_message: Some(fwd_msg_b64),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(res.messages.len(), 1);
+        match &res.messages[0].msg {
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr,
+                funds,
+                ..
+            }) => {
+                assert_eq!(contract_addr, recipient.as_str());
+                assert_eq!(funds[0].denom, NATIVE_DENOM);
+                assert_eq!(funds[0].amount, Uint128::new(100));
+            }
+            other => panic!("unexpected message type: {:?}", other),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // CW20 + native balance independence
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_cw20_and_native_deposits_tracked_independently() {
+        use cosmwasm_std::testing::mock_dependencies;
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let factory = deps.api.addr_make("factory");
+        let cw20_contract = deps.api.addr_make("cw20token");
+
+        let finfo = message_info(&factory, &[]);
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            finfo,
+            ExecuteMsg::AddAllowedDenom {
+                denom: smart_denom(cw20_contract.as_str()),
+            },
+        )
+        .unwrap();
+
+        let info = message_info(&factory, &[coin(700, NATIVE_DENOM)]);
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
+
+        let cw20_info = message_info(&cw20_contract, &[]);
+        let recv_msg = make_cw20_receive_msg(factory.as_str(), 300);
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            cw20_info,
+            ExecuteMsg::Receive(recv_msg),
+        )
+        .unwrap();
+
+        let native_bal = DENOM_TO_AMOUNT
+            .load(&deps.storage, native_denom().get_key())
+            .unwrap();
+        let smart_bal = DENOM_TO_AMOUNT
+            .load(&deps.storage, smart_denom(cw20_contract.as_str()).get_key())
+            .unwrap();
+        assert_eq!(native_bal, Uint128::new(700));
+        assert_eq!(smart_bal, Uint128::new(300));
+
+        let state = STATE.load(&deps.storage).unwrap();
+        assert_eq!(state.total_amount, Uint128::new(1_000));
+    }
+
+    #[test]
+    fn test_re_allow_denom_preserves_balance() {
+        use cosmwasm_std::testing::mock_dependencies;
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let factory = deps.api.addr_make("factory");
+
+        let info = message_info(&factory, &[coin(200, NATIVE_DENOM)]);
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
+
+        let finfo = message_info(&factory, &[]);
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            finfo.clone(),
+            ExecuteMsg::DisallowDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            finfo.clone(),
+            ExecuteMsg::AddAllowedDenom {
+                denom: native_denom(),
+            },
+        )
+        .unwrap();
+
+        let info = message_info(&factory, &[coin(50, NATIVE_DENOM)]);
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            ExecuteMsg::DepositNative {},
+        )
+        .unwrap();
+
+        let bal = DENOM_TO_AMOUNT
+            .load(&deps.storage, native_denom().get_key())
+            .unwrap();
+        assert_eq!(bal, Uint128::new(250));
+
+        let state = STATE.load(&deps.storage).unwrap();
+        assert_eq!(state.total_amount, Uint128::new(250));
+    }
 }

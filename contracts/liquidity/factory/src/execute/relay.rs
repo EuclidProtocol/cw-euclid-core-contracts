@@ -41,6 +41,7 @@ pub fn execute_send_packet(
     ack_response: Option<Binary>,
     sender: Addr,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Only contract can call this function internally
     ensure!(
         info.sender == env.contract.address,
@@ -88,6 +89,7 @@ pub fn execute_receive_packet(
     destination_port: String,
     timeout: u64,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == state.relayer_contract,
@@ -156,6 +158,7 @@ pub fn execute_receive_packet_internal_callback(
     msg: Binary,
     timeout: u64,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
@@ -182,6 +185,7 @@ pub fn execute_receive_acknowledgement(
     destination_port: String,
     ack: Binary,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == state.relayer_contract,
@@ -240,6 +244,7 @@ pub fn execute_native_receive_callback(
     info: MessageInfo,
     msg: Binary,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
     let state = STATE.load(deps.storage)?;
 

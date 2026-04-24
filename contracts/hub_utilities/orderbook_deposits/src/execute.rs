@@ -82,18 +82,21 @@ pub fn execute(
             permit,
             destination_chain_uid,
             destination,
-        } => execute_withdraw(
-            deps,
-            env,
-            root_id,
-            amount,
-            nonce,
-            leaf,
-            proof,
-            permit,
-            destination_chain_uid,
-            destination,
-        ),
+        } => {
+            cw_utils::nonpayable(&info)?;
+            execute_withdraw(
+                deps,
+                env,
+                root_id,
+                amount,
+                nonce,
+                leaf,
+                proof,
+                permit,
+                destination_chain_uid,
+                destination,
+            )
+        }
     }
 }
 
@@ -103,6 +106,7 @@ fn execute_voucher_receive(
     info: MessageInfo,
     transfer: VoucherReceive,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == state.virtual_balance,
@@ -170,6 +174,7 @@ fn execute_set_whitelist(
     token_id: String,
     whitelisted: bool,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let admin = ADMIN.load(deps.storage)?;
     ensure!(info.sender == admin, ContractError::Unauthorized {});
 
@@ -194,6 +199,7 @@ fn execute_update_config(
     permit_signer_address: Option<String>,
     authorized_posters: Option<Vec<String>>,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let mut state = STATE.load(deps.storage)?;
     let current_admin = ADMIN.load(deps.storage)?;
     ensure!(info.sender == current_admin, ContractError::Unauthorized {});
@@ -244,6 +250,7 @@ fn execute_propose_root(
     da_hash: Option<Binary>,
     da_url: Option<String>,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         matches!(state.status, OrderbookDepositsStatus::Active),
@@ -289,6 +296,7 @@ fn execute_activate_root(
     info: MessageInfo,
     root_id: String,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         matches!(state.status, OrderbookDepositsStatus::Active),
