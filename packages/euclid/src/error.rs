@@ -300,4 +300,3 @@ impl From<cw_utils::PaymentError> for ContractError {
         ContractError::Std(StdError::msg(err.to_string()))
     }
 }
-
