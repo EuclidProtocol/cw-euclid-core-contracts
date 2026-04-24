@@ -4,7 +4,6 @@ use cosmwasm_std::{
     Addr, CheckedFromRatioError, CheckedMultiplyFractionError, CheckedMultiplyRatioError,
     Decimal256, DivideByZeroError, OverflowError, StdError, Uint128,
 };
-use cw20_base::ContractError as Cw20ContractError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -302,23 +301,3 @@ impl From<cw_utils::PaymentError> for ContractError {
     }
 }
 
-impl From<Cw20ContractError> for ContractError {
-    fn from(err: Cw20ContractError) -> Self {
-        match err {
-            Cw20ContractError::Std(std) => ContractError::Std(StdError::msg(std.to_string())),
-            Cw20ContractError::Expired {} => ContractError::Expired {},
-            Cw20ContractError::LogoTooBig {} => ContractError::LogoTooBig {},
-            Cw20ContractError::NoAllowance {} => ContractError::NoAllowance {},
-            Cw20ContractError::Unauthorized {} => ContractError::Unauthorized {},
-            Cw20ContractError::CannotExceedCap {} => ContractError::CannotExceedCap {},
-            Cw20ContractError::InvalidPngHeader {} => ContractError::InvalidPngHeader {},
-            Cw20ContractError::InvalidXmlPreamble {} => ContractError::InvalidXmlPreamble {},
-            Cw20ContractError::CannotSetOwnAccount {} => ContractError::CannotSetOwnAccount {},
-            Cw20ContractError::DuplicateInitialBalanceAddresses {} => {
-                ContractError::DuplicateInitialBalanceAddresses {}
-            }
-            Cw20ContractError::InvalidExpiration {} => ContractError::InvalidExpiration {},
-            _ => panic!("Unsupported cw20 error: {err:?}"),
-        }
-    }
-}
