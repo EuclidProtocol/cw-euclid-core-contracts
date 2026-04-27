@@ -8,7 +8,7 @@ pub mod relay_state;
 pub mod reply;
 pub mod state;
 #[cfg(test)]
-mod tests;
+mod testing;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mock;

@@ -183,7 +183,8 @@ pub fn update_amp_factor(
     amp_factor_storage.save(deps.storage, &amp_factor)?;
     Ok(Response::new()
         .add_attribute("action", "update_amp_factor")
-        .add_attribute("amp_factor", amp_factor.to_string()))
+        .add_attribute("amp_factor", amp_factor.to_string())
+        .add_event(simple_event()))
 }
 
 pub fn update_admin(

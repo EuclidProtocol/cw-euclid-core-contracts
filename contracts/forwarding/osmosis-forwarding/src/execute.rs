@@ -1,6 +1,11 @@
 use cosmwasm_std::{
+<<<<<<< HEAD
     coin, from_json, to_json_binary, Coin, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128,
     Uint256, WasmMsg,
+=======
+    coin, ensure, from_json, to_json_binary, Coin, DepsMut, Env, MessageInfo, Response, SubMsg,
+    Uint128, WasmMsg,
+>>>>>>> origin/development
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use forwarding::msgs::{
@@ -25,7 +30,15 @@ pub fn execute_cw20_receive(
     info: &MessageInfo,
     receive_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+<<<<<<< HEAD
     let amount: Uint256 = receive_msg.amount.into();
+=======
+    ensure!(
+        info.funds.is_empty(),
+        ContractError::new("No funds allowed")
+    );
+    let amount = receive_msg.amount;
+>>>>>>> origin/development
     let from_token = TokenType::Smart {
         contract_address: info.sender.to_string(),
     };

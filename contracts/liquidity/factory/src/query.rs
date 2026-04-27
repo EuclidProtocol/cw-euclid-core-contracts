@@ -178,3 +178,328 @@ pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError>
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies, mock_env},
+        to_json_binary, Addr, ContractResult, SystemResult, Uint128, WasmQuery,
+    };
+    use euclid::{
+        chain::ChainUid,
+        msgs::{
+            escrow::AllowedDenomsResponse,
+            factory::{AllPoolsResponse, AllTokensResponse, QueryMsg, StateResponse},
+        },
+        token::{Pair, Token, TokenType},
+        utils::pagination::Pagination,
+    };
+
+    use crate::{
+        contract::query,
+        testing::helpers::{init, seed_escrow, seed_vlp, TEST_RELAYER, TEST_ROUTER},
+    };
+
+    // -----------------------------------------------------------------------
+    // Query: GetState
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_query_state() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetState {}).unwrap();
+        let state: StateResponse = cosmwasm_std::from_json(res).unwrap();
+
+        assert_eq!(state.router_contract, TEST_ROUTER);
+        assert_eq!(state.relayer_contract, Addr::unchecked(TEST_RELAYER));
+        assert_eq!(state.escrow_code_id, 10);
+        assert_eq!(state.lp_code_id, 11);
+        assert!(!state.is_native);
+    }
+
+    // -----------------------------------------------------------------------
+    // Query: GetAllPools (empty + seeded)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_query_all_pools_empty() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetAllPools {}).unwrap();
+        let pools: AllPoolsResponse = cosmwasm_std::from_json(res).unwrap();
+        assert!(pools.pools.is_empty());
+    }
+
+    #[test]
+    fn test_query_all_pools_seeded() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "aaa", "bbb", "vlp_addr");
+
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetAllPools {}).unwrap();
+        let pools: AllPoolsResponse = cosmwasm_std::from_json(res).unwrap();
+        assert_eq!(pools.pools.len(), 1);
+        assert_eq!(pools.pools[0].vlp, "vlp_addr");
+    }
+
+    // -----------------------------------------------------------------------
+    // Query: GetAllTokens (empty + seeded)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_query_all_tokens_empty() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetAllTokens {}).unwrap();
+        let tokens: AllTokensResponse = cosmwasm_std::from_json(res).unwrap();
+        assert!(tokens.tokens.is_empty());
+    }
+
+    #[test]
+    fn test_query_all_tokens_seeded() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_escrow(&mut deps, "usdc", "escrow1");
+        seed_escrow(&mut deps, "eth", "escrow2");
+
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetAllTokens {}).unwrap();
+        let tokens: AllTokensResponse = cosmwasm_std::from_json(res).unwrap();
+        assert_eq!(tokens.tokens.len(), 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // Query: GetEscrow
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_query_get_escrow_not_found_returns_none() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetEscrow {
+                token_id: "unknown".to_string(),
+            },
+        )
+        .unwrap();
+        let escrow: euclid::msgs::factory::GetEscrowResponse =
+            cosmwasm_std::from_json(res).unwrap();
+        assert!(escrow.escrow_address.is_none());
+        assert!(escrow.denoms.is_empty());
+    }
+
+    #[test]
+    fn test_query_get_escrow_found_returns_address_and_denoms() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_escrow(&mut deps, "usdc", "escrow_addr");
+
+        deps.querier.update_wasm(|q| match q {
+            WasmQuery::Smart { .. } => {
+                let resp = AllowedDenomsResponse {
+                    denoms: vec![TokenType::Native {
+                        denom: "uusdc".to_string(),
+                    }],
+                };
+                SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
+            }
+            _ => panic!("unexpected query"),
+        });
+
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetEscrow {
+                token_id: "usdc".to_string(),
+            },
+        )
+        .unwrap();
+        let escrow: euclid::msgs::factory::GetEscrowResponse =
+            cosmwasm_std::from_json(res).unwrap();
+        assert_eq!(escrow.escrow_address, Some(Addr::unchecked("escrow_addr")));
+        assert_eq!(escrow.denoms.len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Query: GetVlp
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_query_get_vlp_not_found_errors() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+        let err = query(deps.as_ref(), mock_env(), QueryMsg::GetVlp { pair }).unwrap_err();
+        assert!(matches!(err, euclid::error::ContractError::Std(_)));
+    }
+
+    #[test]
+    fn test_query_get_vlp_found() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "aaa", "bbb", "vlp_addr");
+
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetVlp { pair }).unwrap();
+        let vlp: euclid::msgs::factory::GetVlpResponse = cosmwasm_std::from_json(res).unwrap();
+        assert_eq!(vlp.vlp_address, "vlp_addr");
+    }
+
+    // -----------------------------------------------------------------------
+    // Query: GetPartnerFeesCollected
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_query_partner_fees_collected_starts_empty() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetPartnerFeesCollected {},
+        )
+        .unwrap();
+        let fees: euclid::msgs::factory::PartnerFeesCollectedResponse =
+            cosmwasm_std::from_json(res).unwrap();
+        assert!(fees.total.totals.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Query: PendingSwapsUser / PendingLiquidity / PendingRemoveLiquidity (empty)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_query_pending_swaps_empty() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let user = deps.api.addr_make("user");
+
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::PendingSwapsUser {
+                user: user.clone(),
+                pagination: Pagination {
+                    min: None,
+                    max: None,
+                    skip: None,
+                    limit: None,
+                },
+            },
+        )
+        .unwrap();
+        let pending: euclid::msgs::factory::GetPendingSwapsResponse =
+            cosmwasm_std::from_json(res).unwrap();
+        assert!(pending.pending_swaps.is_empty());
+    }
+
+    #[test]
+    fn test_query_pending_liquidity_empty() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let user = deps.api.addr_make("user");
+
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::PendingLiquidity {
+                user: user.clone(),
+                pagination: Pagination {
+                    min: None,
+                    max: None,
+                    skip: None,
+                    limit: None,
+                },
+            },
+        )
+        .unwrap();
+        let pending: euclid::msgs::factory::GetPendingLiquidityResponse =
+            cosmwasm_std::from_json(res).unwrap();
+        assert!(pending.pending_add_liquidity.is_empty());
+    }
+
+    #[test]
+    fn test_query_pending_remove_liquidity_empty() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let user = deps.api.addr_make("user");
+
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::PendingRemoveLiquidity {
+                user: user.clone(),
+                pagination: Pagination {
+                    min: None,
+                    max: None,
+                    skip: None,
+                    limit: None,
+                },
+            },
+        )
+        .unwrap();
+        let pending: euclid::msgs::factory::GetPendingRemoveLiquidityResponse =
+            cosmwasm_std::from_json(res).unwrap();
+        assert!(pending.pending_remove_liquidity.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // State invariant: ChainType derived from is_native flag
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_chain_type_cosmos_when_not_native() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let state = crate::state::STATE.load(&deps.storage).unwrap();
+        assert!(!state.is_native);
+
+        let chain_type = super::get_chain_type(deps.as_ref(), &mock_env()).unwrap();
+        assert!(matches!(chain_type, euclid::chain::ChainType::Cosmos(_)));
+    }
+
+    #[test]
+    fn test_chain_type_native_when_native() {
+        use euclid::msgs::factory::InstantiateMsg;
+
+        use crate::testing::helpers::{
+            TEST_CHAIN_UID, TEST_RATE_LIMIT_FEE_RECIPIENT, TEST_RELAYER, TEST_ROUTER,
+        };
+
+        let mut deps = mock_dependencies();
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let msg = InstantiateMsg {
+            router_contract: TEST_ROUTER.to_string(),
+            chain_uid: ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap(),
+            escrow_code_id: 10,
+            lp_code_id: 11,
+            is_native: true,
+            relayer_contract: Addr::unchecked(TEST_RELAYER),
+            rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),
+            rate_limit_fee_denom: "uusd".to_string(),
+            rate_limit_free_limit: Uint128::new(100),
+        };
+        crate::contract::instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let chain_type = super::get_chain_type(deps.as_ref(), &mock_env()).unwrap();
+        assert!(matches!(chain_type, euclid::chain::ChainType::Native {}));
+    }
+}

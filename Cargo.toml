@@ -10,6 +10,7 @@ members = [
     "packages/*",
     "tests-integration",
     "tests-fuzz",
+    "tools/schema-to-proto",
 ]
 
 [profile.release]

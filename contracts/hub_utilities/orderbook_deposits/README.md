@@ -116,12 +116,14 @@ Requirements:
 - Permit payload must match `root_id`, `user`, `token_id`, `amount`, `nonce`,
   `destination_chain_uid`, and `destination`.
 - Permit data must not be replayed.
+- `(user, token_id, nonce)` must not already be consumed by a prior successful
+  withdrawal.
 - Merkle proof must compute the current root hash.
-- `amount <= leaf.balance - already_withdrawn`.
+- `amount <= leaf.balance`.
 - Escrow totals must be sufficient.
 
 Effects:
-- Updates nullifier tracking for `(root_id, user, token_id, nonce)`.
+- Marks `(user, token_id, nonce)` as consumed for future withdrawals.
 - Decrements `ASSET_DEPOSITS` and `USER_DEPOSITS`.
 - Transfers virtual balance to `destination` on `destination_chain_uid`.
 - Emits `action=withdrawal_completed` with relevant attributes.

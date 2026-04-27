@@ -51,3 +51,7 @@ pub const NULLIFIERS: Map<String, Uint256> = Map::new("nullifiers");
 
 // Prevents permit replay by storing a hash of the signed permit data.
 pub const USED_PERMITS: Map<String, bool> = Map::new("used_permits");
+
+// Enforces one successful withdrawal per (user, asset, nonce).
+pub const CONSUMED_WITHDRAWALS: Map<(String, AssetId, u64), bool> =
+    Map::new("consumed_withdrawals");

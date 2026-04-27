@@ -21,7 +21,7 @@ pub const TOL: Decimal256 = Decimal256::raw(1000000000000);
 /// The `TOKEN_PRECISION = 1` scaling multiplies pool values by 10 during
 /// the return amount computation, so pools at `Uint128::MAX` would overflow.
 pub fn compute_stable_swap(
-    offer_asset: Uint256,
+    offer_amount: Uint256,
     offer_pool: Uint256,
     ask_pool: Uint256,
     amp_factor: Uint64,
@@ -33,12 +33,12 @@ pub fn compute_stable_swap(
     if offer_pool.is_zero() || ask_pool.is_zero() {
         return Err(ContractError::new("Pool reserves must be non-zero"));
     }
-    if offer_asset.is_zero() {
+    if offer_amount.is_zero() {
         return Err(ContractError::new("Offer amount must be non-zero"));
     }
 
     // Convert Uint128 inputs to Decimal256 for internal math
-    let offer_asset_dec = Decimal256::checked_from_integer(offer_asset)?;
+    let offer_amount_dec = Decimal256::checked_from_integer(offer_amount)?;
     let offer_pool_dec = Decimal256::checked_from_integer(offer_pool)?;
     let ask_pool_dec = Decimal256::checked_from_integer(ask_pool)?;
 
@@ -55,7 +55,7 @@ pub fn compute_stable_swap(
 
     // Calculate new pool amount after swap
     let new_offer_pool = offer_pool_dec
-        .checked_add(offer_asset_dec)
+        .checked_add(offer_amount_dec)
         .map_err(|e| ContractError::new(&e.to_string()))?;
     let new_ask_pool = calc_y(amp_factor, new_offer_pool, &xp, TOKEN_PRECISION)?;
 
@@ -68,11 +68,14 @@ pub fn compute_stable_swap(
         .checked_div(Uint256::from(10u128.pow(TOKEN_PRECISION as u32)))?;
 
     // Calculate offer amount for spread calculation
-    let offer_amount = offer_asset_dec.to_uint256_with_precision(0_u32)?;
+    let offer_amount = offer_amount_dec.to_uint256_with_precision(0_u32)?;
 
     // Calculate spread (difference between what user provides and receives)
-    let spread_amount = offer_amount.checked_sub(return_amount).map_err(|_| {
-        ContractError::new("Invariant violation: return_amount exceeds offer_amount")
+    let spread_amount = offer_amount.abs_diff(return_amount);
+
+    // Never allow the return amount to exceed the ask pool amount
+    ask_pool.checked_sub(return_amount).map_err(|_| {
+        ContractError::new("Invariant violation: return_amount exceeds pool amount")
     })?;
 
     Ok(SwapResult {

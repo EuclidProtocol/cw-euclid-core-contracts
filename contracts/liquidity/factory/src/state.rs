@@ -93,3 +93,45 @@ pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> 
 
 pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
     Map::new("pending_deposit_token");
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{testing::mock_dependencies, Addr};
+    use euclid::token::{Pair, Token};
+
+    use crate::testing::helpers::{init, seed_vlp};
+
+    use super::{PAIR_TO_VLP, VLP_TO_LP_TOKEN};
+
+    // -----------------------------------------------------------------------
+    // State invariant: PAIR_TO_VLP and VLP_TO_LP_TOKEN are independent
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_state_seed_vlp_and_lp_token_independently() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        seed_vlp(&mut deps, "aaa", "bbb", "vlp_addr_1");
+        VLP_TO_LP_TOKEN
+            .save(
+                deps.as_mut().storage,
+                "vlp_addr_1".to_string(),
+                &Addr::unchecked("lp_token_1"),
+            )
+            .unwrap();
+
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+        let vlp = PAIR_TO_VLP.load(&deps.storage, pair.get_tupple()).unwrap();
+        assert_eq!(vlp, "vlp_addr_1");
+
+        let lp = VLP_TO_LP_TOKEN
+            .load(&deps.storage, "vlp_addr_1".to_string())
+            .unwrap();
+        assert_eq!(lp, Addr::unchecked("lp_token_1"));
+    }
+}

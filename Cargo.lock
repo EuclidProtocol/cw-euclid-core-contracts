@@ -794,6 +794,7 @@ dependencies = [
  "euclid-pool",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
@@ -1545,11 +1546,13 @@ dependencies = [
  "cw-multi-test",
  "cw-orch",
  "cw-storage-plus 2.0.0",
+ "cw-utils 2.0.0",
  "cw2 2.0.0",
  "cw20 2.0.0",
  "euclid",
  "euclid-ibc",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
@@ -1617,10 +1620,13 @@ dependencies = [
  "cw-utils 2.0.0",
  "cw2 2.0.0",
  "euclid",
+ "k256",
  "mock",
  "relayer",
+ "rstest",
  "schemars",
  "serde",
+ "sha2 0.10.8",
  "thiserror 1.0.69",
 ]
 
@@ -1663,8 +1669,10 @@ dependencies = [
  "euclid-ibc",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -2316,6 +2324,7 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 name = "meta-transaction"
 version = "0.1.1"
 dependencies = [
+ "bech32 0.8.1",
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
  "cw-multi-test",
@@ -2324,10 +2333,15 @@ dependencies = [
  "cw-utils 2.0.0",
  "cw2 2.0.0",
  "euclid",
+ "k256",
  "mock",
  "relayer",
+ "ripemd",
+ "rstest",
  "schemars",
  "serde",
+ "sha2 0.10.8",
+ "sha3",
  "thiserror 1.0.69",
 ]
 
@@ -2359,6 +2373,7 @@ dependencies = [
  "cw-storage-plus 2.0.0",
  "cw-utils 2.0.0",
  "cw20 2.0.0",
+ "euclid",
  "itertools 0.10.5",
  "schemars",
  "serde",
@@ -2488,6 +2503,7 @@ dependencies = [
  "cw-multi-test",
  "cw-orch",
  "cw-storage-plus 2.0.0",
+ "cw-utils 2.0.0",
  "cw2 2.0.0",
  "euclid",
  "mock",
@@ -2909,7 +2925,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -2923,6 +2939,7 @@ dependencies = [
  "euclid-ibc",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
@@ -3041,6 +3058,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "891d81b926048e76efe18581bf793546b4c0eaf8448d72be8de2bbee5fd166e1"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "schema-to-proto"
+version = "0.1.0"
+dependencies = [
+ "glob",
+ "regex",
+ "serde_json",
 ]
 
 [[package]]

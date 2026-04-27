@@ -40,6 +40,10 @@ pub enum ExecuteMsg {
         start_after: Option<SerializedBalanceKey>,
         limit: Option<u32>,
     },
+    NormalizeBalanceKeys {
+        skip: Option<u32>,
+        limit: Option<u32>,
+    },
     Approve(ExecuteApprove),
     RegisterTokenMetadata {
         token_metadata: TokenMetadata,
@@ -123,6 +127,9 @@ pub enum QueryMsg {
     // Query to simulate a swap for the asset
     #[returns(GetBalanceResponse)]
     GetBalance { balance_key: BalanceKey },
+
+    #[returns(GetAllowanceResponse)]
+    GetAllowance { balance_key: BalanceKey },
 
     // Query to simulate a swap for the asset
     #[returns(GetUserBalancesResponse)]
@@ -216,6 +223,17 @@ pub struct GetAllTokenMetadataResponse {
 #[cw_serde]
 pub struct GetBalanceResponse {
     pub amount: Uint256,
+}
+
+#[cw_serde]
+pub struct Allowance {
+    pub spender: CrossChainUser,
+    pub amount: Uint256,
+}
+
+#[cw_serde]
+pub struct GetAllowanceResponse {
+    pub allowance: Allowance,
 }
 
 #[cw_serde]

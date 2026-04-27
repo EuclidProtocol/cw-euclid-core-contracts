@@ -6,7 +6,7 @@ pub mod state;
 
 pub mod mock;
 #[cfg(test)]
-mod tests;
+mod testing;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod interface;

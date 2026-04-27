@@ -24,7 +24,15 @@ pub fn execute_cw20_receive(
     info: &MessageInfo,
     receive_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+<<<<<<< HEAD
     let amount: Uint256 = receive_msg.amount.into();
+=======
+    ensure!(
+        info.funds.is_empty(),
+        ContractError::new("No funds allowed")
+    );
+    let amount = receive_msg.amount;
+>>>>>>> origin/development
     let from_token = TokenType::Smart {
         contract_address: info.sender.to_string(),
     };

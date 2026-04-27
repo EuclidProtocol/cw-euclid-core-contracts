@@ -36,3 +36,38 @@ impl CrossChainUser {
         Ok(self)
     }
 }
+
+#[cfg(test)]
+mod cross_chain_user_test {
+    use super::*;
+    use crate::chain::ChainUid;
+
+    #[test]
+    fn test_mixed_case_address_validate_rejects() {
+        let user = CrossChainUser::new(
+            ChainUid::create("cosmos".to_string()).unwrap(),
+            "Cosmos1AbCdEf".to_string(),
+        );
+        let err = user.validate().unwrap_err();
+        assert!(err.to_string().contains("Address must be lowercase"));
+    }
+
+    #[test]
+    fn test_lowercase_address_validate_accepts() {
+        let user = CrossChainUser::new(
+            ChainUid::create("cosmos".to_string()).unwrap(),
+            "cosmos1abcdef".to_string(),
+        );
+        user.validate().unwrap();
+    }
+
+    #[test]
+    fn test_empty_address_validate_rejects() {
+        let user = CrossChainUser::new(
+            ChainUid::create("cosmos".to_string()).unwrap(),
+            "".to_string(),
+        );
+        let err = user.validate().unwrap_err();
+        assert!(err.to_string().contains("Address cannot be empty"));
+    }
+}

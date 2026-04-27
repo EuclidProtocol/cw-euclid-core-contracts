@@ -256,3 +256,439 @@ pub fn query_token_registered(deps: Deps, token_id: &Token) -> Result<bool, Cont
     )?;
     Ok(response.token_registered)
 }
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{
+        from_json,
+        testing::{message_info, mock_env},
+        Addr, Uint128,
+    };
+
+    use crate::{
+        contract::execute,
+        state::TOKEN_DENOMS,
+        testing::{
+            fixtures::initialized,
+            helpers::{
+                seed_chain1_native, seed_virtual_balance, MockDeps, TEST_RELAYER,
+                TEST_VIRTUAL_BALANCE,
+            },
+        },
+    };
+    use euclid::{
+        chain::ChainUid,
+        msgs::router::{
+            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
+            ExecuteMsg, ManageRouterState, QueryRelayerAddressesResponse, QueryTokenDenomsResponse,
+            ReleaseFeesQueryResponse, StateResponse, TokenDenom, TokenEscrowsResponse, VlpResponse,
+        },
+        token::{Pair, Token, TokenType},
+        utils::pagination::Pagination,
+    };
+    use rstest::*;
+
+    use crate::{
+        contract::query,
+        state::{ESCROW_BALANCES, RELEASE_FEES, VLPS},
+    };
+    use euclid::msgs::router::QueryMsg;
+    // -----------------------------------------------------------------------
+    // Queries: not-found / empty error cases (table-driven)
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::chain_not_found(QueryMsg::GetChain {
+        chain_uid: ChainUid::create("nonexistent".to_string()).unwrap(),
+    })]
+    #[case::vlp_not_found(QueryMsg::GetVlp {
+        pair: Pair::new(
+            Token::create("token1".to_string()).unwrap(),
+            Token::create("token2".to_string()).unwrap(),
+        ).unwrap(),
+    })]
+    #[case::token_denoms_empty(QueryMsg::QueryTokenDenoms {
+        token: Token::create("usdc".to_string()).unwrap(),
+    })]
+    fn test_query_returns_error_when_not_found(initialized: MockDeps, #[case] msg: QueryMsg) {
+        let res = query(initialized.as_ref(), mock_env(), msg);
+        assert!(res.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Queries: empty collections
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_query_get_all_chains_empty(initialized: MockDeps) {
+        let parsed: AllChainResponse =
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetAllChains {}).unwrap())
+                .unwrap();
+        assert!(parsed.chains.is_empty());
+    }
+
+    #[rstest]
+    fn test_query_get_all_vlps_empty(initialized: MockDeps) {
+        let parsed: AllVlpResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetAllVlps {
+                    pagination: Pagination {
+                        min: None,
+                        max: None,
+                        skip: None,
+                        limit: None,
+                    },
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(parsed.vlps.is_empty());
+    }
+
+    #[rstest]
+    fn test_query_all_tokens_empty(initialized: MockDeps) {
+        let parsed: AllTokensResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::QueryAllTokens {
+                    pagination: Pagination {
+                        min: None,
+                        max: None,
+                        skip: None,
+                        limit: None,
+                    },
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(parsed.tokens.is_empty());
+    }
+
+    #[rstest]
+    fn test_query_all_escrows_empty(initialized: MockDeps) {
+        let parsed: AllEscrowsResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::QueryAllEscrows {
+                    pagination: Pagination {
+                        min: None,
+                        max: None,
+                        skip: None,
+                        limit: None,
+                    },
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(parsed.escrows.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Queries: with data
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    fn test_query_get_state(mut initialized: MockDeps) {
+        seed_virtual_balance(&mut initialized);
+
+        let parsed: StateResponse =
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetState {}).unwrap())
+                .unwrap();
+        let creator = initialized.api.addr_make("creator");
+
+        assert_eq!(parsed.constant_product_vlp_code_id, 1);
+        assert_eq!(parsed.stable_vlp_code_id, 3);
+        assert!(!parsed.locked);
+        assert_eq!(parsed.admins.general_admin, creator);
+        assert_eq!(
+            parsed.virtual_balance_address,
+            Addr::unchecked(TEST_VIRTUAL_BALANCE)
+        );
+    }
+
+    #[rstest]
+    fn test_query_get_all_chains_with_data(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        seed_chain1_native(&mut initialized);
+
+        let parsed: AllChainResponse =
+            from_json(query(initialized.as_ref(), mock_env(), QueryMsg::GetAllChains {}).unwrap())
+                .unwrap();
+        assert_eq!(parsed.chains.len(), 1);
+        assert_eq!(parsed.chains[0].chain_uid, chain_uid);
+    }
+
+    #[rstest]
+    fn test_query_get_chain_success(mut initialized: MockDeps) {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        seed_chain1_native(&mut initialized);
+
+        let parsed: ChainResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetChain {
+                    chain_uid: chain_uid.clone(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.chain_uid, chain_uid);
+        assert_eq!(parsed.chain.factory_address, "factory1");
+    }
+
+    #[rstest]
+    fn test_query_get_vlp_success(mut initialized: MockDeps) {
+        let token1 = Token::create("token1".to_string()).unwrap();
+        let token2 = Token::create("token2".to_string()).unwrap();
+
+        VLPS.save(
+            initialized.as_mut().storage,
+            (token1.to_string(), token2.to_string()),
+            &Addr::unchecked("vlp_addr"),
+        )
+        .unwrap();
+
+        let parsed: VlpResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetVlp {
+                    pair: Pair::new(token1.clone(), token2.clone()).unwrap(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.vlp, "vlp_addr");
+        assert_eq!(parsed.token_1, token1);
+        assert_eq!(parsed.token_2, token2);
+    }
+
+    #[rstest]
+    fn test_query_all_tokens_with_data(mut initialized: MockDeps) {
+        TOKEN_DENOMS
+            .save(
+                initialized.as_mut().storage,
+                Token::create("usdc".to_string()).unwrap(),
+                &vec![],
+            )
+            .unwrap();
+        TOKEN_DENOMS
+            .save(
+                initialized.as_mut().storage,
+                Token::create("atom".to_string()).unwrap(),
+                &vec![],
+            )
+            .unwrap();
+
+        let parsed: AllTokensResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::QueryAllTokens {
+                    pagination: Pagination {
+                        min: None,
+                        max: None,
+                        skip: None,
+                        limit: None,
+                    },
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.tokens.len(), 2);
+    }
+
+    #[rstest]
+    fn test_query_token_escrows_with_data(mut initialized: MockDeps) {
+        let token = Token::create("usdc".to_string()).unwrap();
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+
+        ESCROW_BALANCES
+            .save(
+                initialized.as_mut().storage,
+                (token.to_string(), chain_uid.clone()),
+                &Uint128::new(1000),
+            )
+            .unwrap();
+
+        let parsed: TokenEscrowsResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::QueryTokenEscrows {
+                    token: token.clone(),
+                    pagination: Pagination {
+                        min: None,
+                        max: None,
+                        skip: None,
+                        limit: None,
+                    },
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.chains.len(), 1);
+        assert_eq!(parsed.chains[0].chain_uid, chain_uid);
+        assert_eq!(parsed.chains[0].balance, Uint128::new(1000));
+    }
+
+    #[rstest]
+    fn test_query_token_denoms_success(mut initialized: MockDeps) {
+        let token = Token::create("usdc".to_string()).unwrap();
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+
+        TOKEN_DENOMS
+            .save(
+                initialized.as_mut().storage,
+                token.clone(),
+                &vec![TokenDenom {
+                    chain_uid: chain_uid.clone(),
+                    token_type: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                    },
+                }],
+            )
+            .unwrap();
+
+        let parsed: QueryTokenDenomsResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::QueryTokenDenoms { token },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.denoms.len(), 1);
+        assert_eq!(parsed.denoms[0].chain_uid, chain_uid);
+        assert_eq!(
+            parsed.denoms[0].token_type,
+            TokenType::Native {
+                denom: "uusdc".to_string()
+            }
+        );
+    }
+
+    #[rstest]
+    fn test_query_all_escrows_with_data(mut initialized: MockDeps) {
+        let token = Token::create("atom".to_string()).unwrap();
+        let chain_uid = ChainUid::create("cosmos1".to_string()).unwrap();
+
+        ESCROW_BALANCES
+            .save(
+                initialized.as_mut().storage,
+                (token.to_string(), chain_uid.clone()),
+                &Uint128::new(5000),
+            )
+            .unwrap();
+
+        let parsed: AllEscrowsResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::QueryAllEscrows {
+                    pagination: Pagination {
+                        min: None,
+                        max: None,
+                        skip: None,
+                        limit: None,
+                    },
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.escrows.len(), 1);
+        assert_eq!(parsed.escrows[0].balance, Uint128::new(5000));
+        assert_eq!(parsed.escrows[0].chain_uid, chain_uid);
+    }
+
+    #[rstest]
+    fn test_query_relayer_addresses(initialized: MockDeps) {
+        let parsed: QueryRelayerAddressesResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::QueryRelayerAddresses {},
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.relayer_contract, Addr::unchecked(TEST_RELAYER));
+    }
+
+    #[rstest]
+    fn test_query_get_release_fees_empty(initialized: MockDeps) {
+        let parsed: ReleaseFeesQueryResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetReleaseFees {
+                    pagination: Pagination {
+                        min: None,
+                        max: None,
+                        skip: None,
+                        limit: None,
+                    },
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(parsed.fees.is_empty());
+    }
+
+    #[rstest]
+    fn test_query_get_release_fees_with_data(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let token = Token::create("usdc".to_string()).unwrap();
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+
+        RELEASE_FEES
+            .save(
+                initialized.as_mut().storage,
+                (token.clone(), chain_uid.clone()),
+                &Uint128::new(250),
+            )
+            .unwrap();
+        assert_eq!(
+            RELEASE_FEES
+                .load(
+                    initialized.as_ref().storage,
+                    (token.clone(), chain_uid.clone())
+                )
+                .unwrap(),
+            Uint128::new(250)
+        );
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::UpdateReleaseFee {
+                token: token.clone(),
+                chain_uid: chain_uid.clone(),
+                release_fee: Uint128::new(999),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            RELEASE_FEES
+                .load(initialized.as_ref().storage, (token, chain_uid))
+                .unwrap(),
+            Uint128::new(999)
+        );
+    }
+}
