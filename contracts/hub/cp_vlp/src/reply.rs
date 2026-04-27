@@ -7,7 +7,7 @@ use function_name::named;
 mod tests {
     use super::*;
     use cosmwasm_std::{
-        testing::mock_dependencies, Binary, Reply, SubMsgResponse, SubMsgResult, Uint128,
+        testing::mock_dependencies, Binary, Reply, SubMsgResponse, SubMsgResult, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -40,7 +40,7 @@ mod tests {
             ),
             tx_id: "tx1".to_string(),
             asset_out: Token::create("token2".to_string()).unwrap(),
-            amount_out: Uint128::new(9_000),
+            amount_out: Uint256::from(9_000u128),
         };
 
         let inner = to_json_binary(&swap_response).unwrap();

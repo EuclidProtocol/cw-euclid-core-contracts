@@ -181,48 +181,48 @@ mod tests {
     // Cases where ask_pool > offer_pool: return_amount exceeds offer_amount
     #[case(
         "ask_pool_2x_offer_pool",
-        Uint128::new(100),
-        Uint128::new(1000),
-        Uint128::new(2000),
+        Uint256::from(100u128),
+        Uint256::from(1000u128),
+        Uint256::from(2000u128),
         Uint64::new(1000),
-        Uint128::new(106),
-        Uint128::new(6)
+        Uint256::from(106u128),
+        Uint256::from(6u128)
     )]
     #[case(
         "ask_pool_10x_offer_pool",
-        Uint128::new(100),
-        Uint128::new(1000),
-        Uint128::new(10000),
+        Uint256::from(100u128),
+        Uint256::from(1000u128),
+        Uint256::from(10000u128),
         Uint64::new(1000),
-        Uint128::new(196),
-        Uint128::new(96)
+        Uint256::from(196u128),
+        Uint256::from(96u128)
     )]
     #[case(
         "ask_pool_2x_low_amp",
-        Uint128::new(500),
-        Uint128::new(5000),
-        Uint128::new(10000),
+        Uint256::from(500u128),
+        Uint256::from(5000u128),
+        Uint256::from(10000u128),
         Uint64::new(100),
-        Uint128::new(685),
-        Uint128::new(185)
+        Uint256::from(685u128),
+        Uint256::from(185u128)
     )]
     #[case(
         "ask_pool_4x_offer_pool",
-        Uint128::new(1000),
-        Uint128::new(2000),
-        Uint128::new(8000),
+        Uint256::from(1000u128),
+        Uint256::from(2000u128),
+        Uint256::from(8000u128),
         Uint64::new(1000),
-        Uint128::new(1160),
-        Uint128::new(160)
+        Uint256::from(1160u128),
+        Uint256::from(160u128)
     )]
     #[case(
         "large_values_ask_pool_5x",
-        Uint128::new(1000000000000000000),
-        Uint128::new(1000000000000000000),
-        Uint128::new(5000000000000000000),
+        Uint256::from(1000000000000000000u128),
+        Uint256::from(1000000000000000000u128),
+        Uint256::from(5000000000000000000u128),
         Uint64::new(1000),
-        Uint128::new(1169582311873333606),
-        Uint128::new(169582311873333606)
+        Uint256::from(1169582311873333606u128),
+        Uint256::from(169582311873333606u128)
     )]
     fn test_compute_stable_swap(
         #[case] case_name: &str,
@@ -1053,22 +1053,22 @@ mod tests {
         fn test_return_exceeds_offer_when_ask_pool_larger() {
             // ask_pool is 2x offer_pool, so swapping into the deeper side yields more
             let result = compute_stable_swap(
-                Uint128::new(100),
-                Uint128::new(1000),
-                Uint128::new(2000),
+                Uint256::from(100u128),
+                Uint256::from(1000u128),
+                Uint256::from(2000u128),
                 Uint64::new(1000),
             )
             .unwrap();
 
             assert!(
-                result.return_amount > Uint128::new(100),
+                result.return_amount > Uint256::from(100u128),
                 "return_amount should exceed offer_amount when ask_pool > offer_pool. Got: {}",
                 result.return_amount
             );
             // spread is abs_diff, so it captures the magnitude of price impact
             assert_eq!(
                 result.spread_amount,
-                result.return_amount.abs_diff(Uint128::new(100)),
+                result.return_amount.abs_diff(Uint256::from(100u128)),
                 "spread should be abs_diff(offer, return)"
             );
         }
@@ -1076,9 +1076,9 @@ mod tests {
         // Verify the invariant holds even when return > offer (ask_pool > offer_pool)
         #[test]
         fn test_stableswap_invariant_preserved_imbalanced_ask_larger() {
-            let pool_a_uint = Uint128::new(5000);
-            let pool_b_uint = Uint128::new(15000);
-            let offer_uint = Uint128::new(500);
+            let pool_a_uint = Uint256::from(5000u128);
+            let pool_b_uint = Uint256::from(15000u128);
+            let offer_uint = Uint256::from(500u128);
             let amp = Uint64::new(1000);
 
             let pool_a = Decimal256::from_ratio(pool_a_uint, 1u128);
@@ -1115,9 +1115,9 @@ mod tests {
         // Symmetry test: swapping in both directions should yield consistent results
         #[test]
         fn test_swap_direction_symmetry() {
-            let pool_a = Uint128::new(5000);
-            let pool_b = Uint128::new(10000);
-            let offer = Uint128::new(100);
+            let pool_a = Uint256::from(5000u128);
+            let pool_b = Uint256::from(10000u128);
+            let offer = Uint256::from(100u128);
             let amp = Uint64::new(1000);
 
             // Swap A -> B (ask_pool > offer_pool)
@@ -1137,12 +1137,15 @@ mod tests {
         // CP swap also yields return > offer when ask_pool > offer_pool
         #[test]
         fn test_cp_swap_return_exceeds_offer_when_ask_pool_larger() {
-            let result =
-                calculate_cp_swap(Uint128::new(100), Uint128::new(1000), Uint128::new(5000))
-                    .unwrap();
+            let result = calculate_cp_swap(
+                Uint256::from(100u128),
+                Uint256::from(1000u128),
+                Uint256::from(5000u128),
+            )
+            .unwrap();
 
             assert!(
-                result.return_amount > Uint128::new(100),
+                result.return_amount > Uint256::from(100u128),
                 "CP swap return should exceed offer when ask_pool > offer_pool. Got: {}",
                 result.return_amount
             );

@@ -1,11 +1,11 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Timestamp, Uint256};
+use cosmwasm_std::Uint256;
 use cw_storage_plus::{Item, Map, Path};
 use euclid::{
     admin::EuclidAdmin,
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
-    msgs::virtual_balance::msg::State,
+    msgs::virtual_balance::{msg::State, VoucherAllowance},
     token::{TokenMetadata, TokenType},
     voucher::SerializedBalanceKey,
 };
@@ -25,16 +25,6 @@ pub const VOUCHER_BALANCES: Map<SerializedBalanceKey, Uint256> = Map::new("vouch
 pub struct Allowance {
     pub spender: CrossChainUser,
     pub amount: Uint256,
-}
-
-#[cw_serde]
-pub struct VoucherAllowance {
-    // The user who is allowed to spend the tokens.
-    pub spender: CrossChainUser,
-    // The amount of tokens that the spender is allowed to spend.
-    pub amount: Uint256,
-    // The allowance expires at the given timestamp. If None, the allowance never expires.
-    pub expires_at: Option<Timestamp>,
 }
 
 // Allowance is stored as a map of balance key to allowance. It allows another user to spend on behalf of the owner.

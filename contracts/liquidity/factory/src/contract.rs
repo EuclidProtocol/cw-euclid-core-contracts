@@ -324,7 +324,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, Uint128,
+        to_json_binary, Addr, Uint128, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -424,7 +424,7 @@ mod tests {
             relayer_contract: Addr::unchecked(TEST_RELAYER),
             rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),
             rate_limit_fee_denom: "uusd".to_string(),
-            rate_limit_free_limit: Uint128::new(100),
+            rate_limit_free_limit: Uint256::from(100u128),
         };
         assert!(instantiate(deps.as_mut(), mock_env(), info, msg).is_ok());
     }

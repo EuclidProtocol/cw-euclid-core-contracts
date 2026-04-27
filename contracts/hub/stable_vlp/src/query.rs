@@ -172,7 +172,7 @@ mod tests {
     use cosmwasm_std::{
         from_json,
         testing::{message_info, mock_dependencies, mock_env},
-        Addr, Uint128, Uint64,
+        Addr, Uint256, Uint64,
     };
     use euclid::{
         admin::EuclidAdmin,
@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(state.pair, default_pair());
         assert_eq!(state.router, router);
         assert_eq!(state.fee, default_fee());
-        assert_eq!(state.total_lp_tokens, Uint128::zero());
+        assert_eq!(state.total_lp_tokens, Uint256::zero());
         assert!(matches!(state.pool_config, PoolConfig::Stable { .. }));
 
         if let PoolConfig::Stable { amp_factor } = state.pool_config {
@@ -295,8 +295,8 @@ mod tests {
         )
         .unwrap();
         let resp: TotalFeesPerDenomResponse = from_json(res).unwrap();
-        assert_eq!(resp.lp_fees, Uint128::zero());
-        assert_eq!(resp.euclid_fees, Uint128::zero());
+        assert_eq!(resp.lp_fees, Uint256::zero());
+        assert_eq!(resp.euclid_fees, Uint256::zero());
     }
 
     #[test]
@@ -315,15 +315,15 @@ mod tests {
         };
         let info = message_info(&router, &[]);
         crate::contract::instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let info = message_info(&router, &[]);
         let swap_msg = ExecuteMsg::Swap(euclid::msgs::vlp::base::VlpSwapMsg {
             sender: sender_on_chain1(),
             tx_id: "swap-fee-tx".to_string(),
             asset_in: token1(),
-            amount_in: Uint128::new(10_000),
-            min_token_out: Uint128::new(1),
+            amount_in: Uint256::from(10_000u128),
+            min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -338,8 +338,8 @@ mod tests {
         )
         .unwrap();
         let resp: TotalFeesPerDenomResponse = from_json(res).unwrap();
-        assert_eq!(resp.lp_fees, Uint128::new(30));
-        assert_eq!(resp.euclid_fees, Uint128::zero());
+        assert_eq!(resp.lp_fees, Uint256::from(30u128));
+        assert_eq!(resp.euclid_fees, Uint256::zero());
     }
 
     // -----------------------------------------------------------------------
@@ -353,23 +353,23 @@ mod tests {
 
         let res = query(deps.as_ref(), mock_env(), QueryMsg::Liquidity {}).unwrap();
         let liq: GetLiquidityQueryResponse = from_json(res).unwrap();
-        assert_eq!(liq.token_1_reserve, Uint128::zero());
-        assert_eq!(liq.token_2_reserve, Uint128::zero());
-        assert_eq!(liq.total_lp_tokens, Uint128::zero());
+        assert_eq!(liq.token_1_reserve, Uint256::zero());
+        assert_eq!(liq.token_2_reserve, Uint256::zero());
+        assert_eq!(liq.total_lp_tokens, Uint256::zero());
     }
 
     #[test]
     fn test_query_liquidity_after_add() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        let reserve = 500_000u128;
+        let reserve = 10_000_000_000u128;
         seed_liquidity(&mut deps, reserve);
 
         let res = query(deps.as_ref(), mock_env(), QueryMsg::Liquidity {}).unwrap();
         let liq: GetLiquidityQueryResponse = from_json(res).unwrap();
-        assert_eq!(liq.token_1_reserve, Uint128::new(reserve));
-        assert_eq!(liq.token_2_reserve, Uint128::new(reserve));
-        assert!(liq.total_lp_tokens > Uint128::zero());
+        assert_eq!(liq.token_1_reserve, Uint256::from(reserve));
+        assert_eq!(liq.token_2_reserve, Uint256::from(reserve));
+        assert!(liq.total_lp_tokens > Uint256::zero());
         assert_eq!(liq.pair, default_pair());
     }
 
@@ -381,7 +381,7 @@ mod tests {
     fn test_query_pool_for_registered_chain() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let res = query(
             deps.as_ref(),
@@ -392,7 +392,7 @@ mod tests {
         )
         .unwrap();
         let pool: StablePoolResponse = from_json(res).unwrap();
-        assert!(pool.lp_shares > Uint128::zero());
+        assert!(pool.lp_shares > Uint256::zero());
     }
 
     #[test]
@@ -425,7 +425,7 @@ mod tests {
     fn test_query_all_pools_returns_registered_pools() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let res = query(deps.as_ref(), mock_env(), QueryMsg::GetAllPools {}).unwrap();
         let all: AllStablePoolsResponse = from_json(res).unwrap();
@@ -437,7 +437,7 @@ mod tests {
     fn test_query_all_pools_multiple_chains() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         register_pool(&mut deps, chain2(), "reg-tx-2");
 
@@ -454,26 +454,26 @@ mod tests {
     fn test_simulate_swap_balanced_pool_minimal_spread() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let res: GetSwapQueryResponse = from_json(
-            query_simulate_swap(deps.as_ref(), token1(), Uint128::new(1_000), vec![]).unwrap(),
+            query_simulate_swap(deps.as_ref(), token1(), Uint256::from(1_000u128), vec![]).unwrap(),
         )
         .unwrap();
 
         assert_eq!(res.asset_out, token2());
-        assert!(res.amount_out > Uint128::zero());
-        assert!(res.amount_out <= Uint128::new(1000));
+        assert!(res.amount_out > Uint256::zero());
+        assert!(res.amount_out <= Uint256::from(1000u128));
     }
 
     #[test]
     fn test_simulate_swap_zero_amount_fails() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let err =
-            query_simulate_swap(deps.as_ref(), token1(), Uint128::zero(), vec![]).unwrap_err();
+            query_simulate_swap(deps.as_ref(), token1(), Uint256::zero(), vec![]).unwrap_err();
         assert_eq!(err, ContractError::ZeroAssetAmount {});
     }
 
@@ -481,12 +481,12 @@ mod tests {
     fn test_simulate_swap_unknown_asset_fails() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let err = query_simulate_swap(
             deps.as_ref(),
             euclid::token::Token::create("xtoken".to_string()).unwrap(),
-            Uint128::new(1_000),
+            Uint256::from(1_000u128),
             vec![],
         )
         .unwrap_err();
@@ -517,7 +517,7 @@ mod tests {
                 },
             },
             last_updated: env.block.time.seconds(),
-            total_lp_tokens: Uint128::new(1000),
+            total_lp_tokens: Uint256::from(1000u128),
         };
 
         let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
@@ -531,25 +531,26 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 pair.token_1.clone(),
-                &Uint128::new(1000),
+                &Uint256::from(1000u128),
             )
             .unwrap();
         BALANCES
             .save(
                 deps.as_mut().storage,
                 pair.token_2.clone(),
-                &Uint128::new(500),
+                &Uint256::from(500u128),
             )
             .unwrap();
 
         let response: GetSwapQueryResponse = from_json(
-            query_simulate_swap(deps.as_ref(), pair.token_1, Uint128::new(100), vec![]).unwrap(),
+            query_simulate_swap(deps.as_ref(), pair.token_1, Uint256::from(100u128), vec![])
+                .unwrap(),
         )
         .unwrap();
 
         assert_eq!(response.asset_out, pair.token_2);
-        assert_eq!(response.amount_out, Uint128::new(90));
-        assert_eq!(response.spread_amount, Uint128::new(10));
+        assert_eq!(response.amount_out, Uint256::from(90u128));
+        assert_eq!(response.spread_amount, Uint256::from(10u128));
     }
 
     #[test]
@@ -576,7 +577,7 @@ mod tests {
                 },
             },
             last_updated: env.block.time.seconds(),
-            total_lp_tokens: Uint128::new(1000),
+            total_lp_tokens: Uint256::from(1000u128),
         };
 
         let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
@@ -590,14 +591,14 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 pair.token_1.clone(),
-                &Uint128::new(9971294131355738400),
+                &Uint256::from(9971294131355738400u128),
             )
             .unwrap();
         BALANCES
             .save(
                 deps.as_mut().storage,
                 pair.token_2.clone(),
-                &Uint128::new(64769345018139098454),
+                &Uint256::from(64769345018139098454u128),
             )
             .unwrap();
 
@@ -605,7 +606,7 @@ mod tests {
             query_simulate_swap(
                 deps.as_ref(),
                 pair.token_1,
-                Uint128::new(10000000000000000),
+                Uint256::from(10000000000000000u128),
                 vec![],
             )
             .unwrap(),
@@ -613,7 +614,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(response.asset_out, pair.token_2);
-        assert_eq!(response.amount_out, Uint128::new(15317895796684530));
-        assert!(response.spread_amount > Uint128::zero());
+        assert_eq!(response.amount_out, Uint256::from(15317895796684530u128));
+        assert!(response.spread_amount > Uint256::zero());
     }
 }

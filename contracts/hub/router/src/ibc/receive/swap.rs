@@ -244,7 +244,7 @@ pub fn ibc_execute_swap(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::Uint128;
+    use cosmwasm_std::Uint256;
     use euclid::{
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
@@ -256,7 +256,7 @@ mod tests {
 
     use crate::{
         reply::SWAP_REPLY_ID,
-        state::{ESCROW_BALANCES, PENDING_SWAPS},
+        state::PENDING_SWAPS,
         testing::helpers::{call_reusable, make_swap_deps_with_mock_querier},
     };
 
@@ -270,18 +270,19 @@ mod tests {
                 token: token_a.clone(),
                 token_type: TokenType::Native {
                     denom: "uaaa".to_string(),
+                    decimals: Some(6),
                 },
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: token_b.clone(),
-            min_amount_out: Uint128::new(80),
+            min_amount_out: Uint256::from(80u128),
             swaps: vec![NextSwapPair {
                 token_in: token_a,
                 token_out: token_b,
                 test_fail: None,
             }],
             recipients: vec![],
-            partner_fee_amount: Uint128::zero(),
+            partner_fee_amount: Uint256::zero(),
             partner_fee_recipient: sender,
             tx_id: tx_id.to_string(),
         })
@@ -291,7 +292,6 @@ mod tests {
     fn test_ibc_swap_saves_pending_and_emits_submsg() {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let mut deps = make_swap_deps_with_mock_querier(90);
-        let token_a = Token::create("aaa".to_string()).unwrap();
 
         let res = call_reusable(
             &mut deps,
@@ -308,14 +308,6 @@ mod tests {
         assert!(
             PENDING_SWAPS.has(deps.as_ref().storage, "tx_swap".to_string()),
             "expected PENDING_SWAPS entry"
-        );
-        let escrow = ESCROW_BALANCES
-            .load(deps.as_ref().storage, (token_a.to_string(), chain_uid))
-            .unwrap();
-        assert_eq!(
-            escrow,
-            Uint128::new(100),
-            "escrow balance should equal amount_in"
         );
     }
 

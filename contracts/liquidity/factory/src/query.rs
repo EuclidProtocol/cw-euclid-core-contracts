@@ -183,7 +183,7 @@ pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError>
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, ContractResult, SystemResult, Uint128, WasmQuery,
+        to_json_binary, Addr, ContractResult, SystemResult, Uint128, Uint256, WasmQuery,
     };
     use euclid::{
         chain::ChainUid,
@@ -305,6 +305,7 @@ mod tests {
                 let resp = AllowedDenomsResponse {
                     denoms: vec![TokenType::Native {
                         denom: "uusdc".to_string(),
+                        decimals: None,
                     }],
                 };
                 SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
@@ -495,7 +496,7 @@ mod tests {
             relayer_contract: Addr::unchecked(TEST_RELAYER),
             rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),
             rate_limit_fee_denom: "uusd".to_string(),
-            rate_limit_free_limit: Uint128::new(100),
+            rate_limit_free_limit: Uint256::from(100u128),
         };
         crate::contract::instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 

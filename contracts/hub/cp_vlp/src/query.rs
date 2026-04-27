@@ -196,7 +196,7 @@ mod tests {
         TEST_VIRTUAL_BALANCE,
     };
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{from_json, Addr, Uint128};
+    use cosmwasm_std::{from_json, Addr, Uint256};
     use euclid::admin::EuclidAdmin;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
@@ -233,7 +233,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(res.pair, default_pair());
-        assert_eq!(res.total_lp_tokens, Uint128::zero());
+        assert_eq!(res.total_lp_tokens, Uint256::zero());
         assert_eq!(res.last_updated, 0);
     }
 
@@ -333,7 +333,7 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: sender.clone(),
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
@@ -346,8 +346,8 @@ mod tests {
                 sender: sender.clone(),
                 tx_id: "swap1".to_string(),
                 asset_in: token1(),
-                amount_in: Uint128::new(10_000),
-                min_token_out: Uint128::zero(),
+                amount_in: Uint256::from(10_000u128),
+                min_token_out: Uint256::zero(),
                 next_swaps: vec![],
                 test_fail: None,
             }),
@@ -368,7 +368,7 @@ mod tests {
             .total_fees
             .lp_fees
             .get_fee(token1().to_string().as_str());
-        assert!(lp_fee.u128() > 0);
+        assert!(!lp_fee.is_zero());
     }
 
     // -----------------------------------------------------------------------
@@ -392,8 +392,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.lp_fees, Uint128::zero());
-        assert_eq!(res.euclid_fees, Uint128::zero());
+        assert_eq!(res.lp_fees, Uint256::zero());
+        assert_eq!(res.euclid_fees, Uint256::zero());
     }
 
     // -----------------------------------------------------------------------
@@ -415,9 +415,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.token_1_reserve, Uint128::zero());
-        assert_eq!(res.token_2_reserve, Uint128::zero());
-        assert_eq!(res.total_lp_tokens, Uint128::zero());
+        assert_eq!(res.token_1_reserve, Uint256::zero());
+        assert_eq!(res.token_2_reserve, Uint256::zero());
+        assert_eq!(res.total_lp_tokens, Uint256::zero());
         assert_eq!(res.pair, default_pair());
     }
 
@@ -450,7 +450,7 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender,
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(500_000, 500_000),
+                liquidity: make_pair_with_amount(5_000_000_000, 5_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
@@ -466,9 +466,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.token_1_reserve, Uint128::new(500_000));
-        assert_eq!(res.token_2_reserve, Uint128::new(500_000));
-        assert!(res.total_lp_tokens.u128() > 0);
+        assert_eq!(res.token_1_reserve, Uint256::from(5_000_000_000u128));
+        assert_eq!(res.token_2_reserve, Uint256::from(5_000_000_000u128));
+        assert!(!res.total_lp_tokens.is_zero());
     }
 
     // -----------------------------------------------------------------------
@@ -504,7 +504,7 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender,
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
@@ -522,9 +522,9 @@ mod tests {
         )
         .unwrap();
 
-        assert!(pool.lp_shares.u128() > 0);
-        assert!(pool.reserve_1.u128() > 0);
-        assert!(pool.reserve_2.u128() > 0);
+        assert!(!pool.lp_shares.is_zero());
+        assert!(!pool.reserve_1.is_zero());
+        assert!(!pool.reserve_2.is_zero());
     }
 
     #[test]
@@ -638,7 +638,7 @@ mod tests {
                 },
             },
             last_updated: env.block.time.seconds(),
-            total_lp_tokens: Uint128::new(1000),
+            total_lp_tokens: Uint256::from(100000u128),
         };
 
         let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
@@ -649,26 +649,26 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 pair.token_1.clone(),
-                &Uint128::new(1000),
+                &Uint256::from(1000u128),
             )
             .unwrap();
         BALANCES
             .save(
                 deps.as_mut().storage,
                 pair.token_2.clone(),
-                &Uint128::new(500),
+                &Uint256::from(500u128),
             )
             .unwrap();
 
-        let swap_amount = Uint128::new(100);
+        let swap_amount = Uint256::from(100u128);
         let response: GetSwapQueryResponse = from_json(
             query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
         )
         .unwrap();
 
         assert_eq!(response.asset_out, pair.token_2);
-        assert_eq!(response.amount_out, Uint128::new(46));
-        assert_eq!(response.spread_amount, Uint128::new(4));
+        assert_eq!(response.amount_out, Uint256::from(46u128));
+        assert_eq!(response.spread_amount, Uint256::from(4u128));
     }
 
     #[test]
@@ -677,7 +677,7 @@ mod tests {
         init(&mut deps);
 
         let err =
-            query_simulate_swap(deps.as_ref(), token1(), Uint128::zero(), vec![]).unwrap_err();
+            query_simulate_swap(deps.as_ref(), token1(), Uint256::zero(), vec![]).unwrap_err();
         assert_eq!(err, ContractError::ZeroAssetAmount {});
     }
 
@@ -687,8 +687,8 @@ mod tests {
         init(&mut deps);
 
         let unknown = Token::create("unknowntoken".to_string()).unwrap();
-        let err =
-            query_simulate_swap(deps.as_ref(), unknown, Uint128::new(100), vec![]).unwrap_err();
+        let err = query_simulate_swap(deps.as_ref(), unknown, Uint256::from(100u128), vec![])
+            .unwrap_err();
         assert_eq!(err, ContractError::AssetDoesNotExist {});
     }
 
@@ -723,7 +723,7 @@ mod tests {
                 },
             },
             last_updated: env.block.time.seconds(),
-            total_lp_tokens: Uint128::new(1000),
+            total_lp_tokens: Uint256::from(1000u128),
         };
 
         let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
@@ -734,18 +734,18 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 pair.token_1.clone(),
-                &Uint128::new(9971294131355738400),
+                &Uint256::from(9971294131355738400u128),
             )
             .unwrap();
         BALANCES
             .save(
                 deps.as_mut().storage,
                 pair.token_2.clone(),
-                &Uint128::new(64769345018139098454),
+                &Uint256::from(64769345018139098454u128),
             )
             .unwrap();
 
-        let swap_amount = Uint128::new(10000000000000000);
+        let swap_amount = Uint256::from(10000000000000000u128);
         let response: GetSwapQueryResponse = from_json(
             query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
         )
@@ -754,12 +754,12 @@ mod tests {
         assert_eq!(response.asset_out, pair.token_2);
         assert_eq!(
             response.amount_out,
-            Uint128::new(64696251029190591),
+            Uint256::from(64696251029190591u128),
             "Amount out is not correct"
         );
         assert_eq!(
             response.spread_amount,
-            Uint128::new(64687854381176),
+            Uint256::from(64687854381176u128),
             "Spread amount is not correct"
         );
     }

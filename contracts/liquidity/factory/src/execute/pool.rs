@@ -452,7 +452,7 @@ pub fn remove_liquidity_request(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128,
+        Uint128, Uint256,
     };
     use euclid::{
         error::ContractError,
@@ -497,15 +497,17 @@ mod tests {
                 token: Token::create("eth".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "ueth".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
             token_2: euclid::token::TokenWithDenomAndAmount {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
         };
         let msg = ExecuteMsg::AddLiquidity {
@@ -551,15 +553,17 @@ mod tests {
                 token: Token::create("eth".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "ueth".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
             token_2: euclid::token::TokenWithDenomAndAmount {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
         };
         let msg = ExecuteMsg::AddLiquidity {
@@ -600,15 +604,17 @@ mod tests {
                 token: Token::create("eth".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "ueth".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::zero(),
+                amount: Uint256::zero(),
             },
             token_2: euclid::token::TokenWithDenomAndAmount {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
         };
         let msg = ExecuteMsg::AddLiquidity {
@@ -650,15 +656,17 @@ mod tests {
                 token: Token::create("eth".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "ueth".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
             token_2: euclid::token::TokenWithDenomAndAmount {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
         };
 
@@ -711,15 +719,17 @@ mod tests {
                 token: Token::create("eth".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "ueth".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
             token_2: euclid::token::TokenWithDenomAndAmount {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
         };
 
@@ -758,15 +768,17 @@ mod tests {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
             token_2: euclid::token::TokenWithDenomAndAmount {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
         };
 
@@ -814,15 +826,17 @@ mod tests {
                 token: Token::create("aaa".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uaaa".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
             token_2: euclid::token::TokenWithDenomAndAmount {
                 token: Token::create("bbb".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "ubbb".to_string(),
+                    decimals: None,
                 },
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
             },
         };
 

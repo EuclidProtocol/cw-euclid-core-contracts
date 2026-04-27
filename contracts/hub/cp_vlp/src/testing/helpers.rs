@@ -1,7 +1,7 @@
 use crate::contract::instantiate;
 use crate::state::{BALANCES, CHAIN_LP_TOKENS, STATE};
 use cosmwasm_std::testing::{message_info, mock_env, MockQuerier};
-use cosmwasm_std::{Addr, Response, Uint128};
+use cosmwasm_std::{Addr, Response, Uint256};
 use euclid::admin::EuclidAdmin;
 use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
@@ -87,12 +87,12 @@ pub fn init(deps: &mut MockDeps) -> Response {
 /// Register a chain pool with zero LP tokens (simulates RegisterPool).
 pub fn seed_pool(deps: &mut MockDeps, chain_uid: &ChainUid) {
     CHAIN_LP_TOKENS
-        .save(deps.as_mut().storage, chain_uid.clone(), &Uint128::zero())
+        .save(deps.as_mut().storage, chain_uid.clone(), &Uint256::zero())
         .unwrap();
 }
 
 /// Set balances for both tokens in the pair.
-pub fn seed_balances(deps: &mut MockDeps, reserve_1: Uint128, reserve_2: Uint128) {
+pub fn seed_balances(deps: &mut MockDeps, reserve_1: Uint256, reserve_2: Uint256) {
     BALANCES
         .save(deps.as_mut().storage, token1(), &reserve_1)
         .unwrap();
@@ -105,9 +105,9 @@ pub fn seed_balances(deps: &mut MockDeps, reserve_1: Uint128, reserve_2: Uint128
 /// liquidity and swap tests that need pre-seeded liquidity.
 pub fn seed_liquidity(
     deps: &mut MockDeps,
-    reserve_1: Uint128,
-    reserve_2: Uint128,
-    total_lp: Uint128,
+    reserve_1: Uint256,
+    reserve_2: Uint256,
+    total_lp: Uint256,
 ) {
     seed_balances(deps, reserve_1, reserve_2);
     let mut state = STATE.load(&deps.storage).unwrap();
@@ -116,7 +116,7 @@ pub fn seed_liquidity(
 }
 
 /// Seed a chain pool with a given LP token amount.
-pub fn seed_chain_lp(deps: &mut MockDeps, chain_uid: &ChainUid, lp_tokens: Uint128) {
+pub fn seed_chain_lp(deps: &mut MockDeps, chain_uid: &ChainUid, lp_tokens: Uint256) {
     CHAIN_LP_TOKENS
         .save(deps.as_mut().storage, chain_uid.clone(), &lp_tokens)
         .unwrap();
@@ -125,8 +125,8 @@ pub fn seed_chain_lp(deps: &mut MockDeps, chain_uid: &ChainUid, lp_tokens: Uint1
 /// Build a simple pair-with-amounts for add_liquidity calls.
 pub fn make_pair_with_amount(amount_1: u128, amount_2: u128) -> PairWithAmount {
     PairWithAmount::new(
-        token1().with_amount(Uint128::new(amount_1)),
-        token2().with_amount(Uint128::new(amount_2)),
+        token1().with_amount(Uint256::from(amount_1)),
+        token2().with_amount(Uint256::from(amount_2)),
     )
     .unwrap()
 }

@@ -5,7 +5,7 @@ use euclid::{
     error::ContractError,
     msgs::virtual_balance::{
         msg::{
-            Allowance, GetAllEscrowBalancesResponse, GetAllEscrowBalancesResponseItem,
+            GetAllEscrowBalancesResponse, GetAllEscrowBalancesResponseItem,
             GetAllTokenMetadataResponse, GetAllowanceResponse, GetBalanceResponse,
             GetEscrowBalanceResponse, GetTokenEscrowsResponse, GetTokenEscrowsResponseItem,
             GetTokenMetadataResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
@@ -45,16 +45,12 @@ pub fn query_balance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, Cont
 }
 
 pub fn query_allowance(deps: Deps, balance_key: BalanceKey) -> Result<Binary, ContractError> {
-    let voucher_allowance = VOUCHER_ALLOWANCES
+    let allowance = VOUCHER_ALLOWANCES
         .may_load(
             deps.storage,
             balance_key.clone().to_serialized_balance_key(),
         )?
         .ok_or(ContractError::NoAllowance {})?;
-    let allowance = Allowance {
-        spender: voucher_allowance.spender,
-        amount: voucher_allowance.amount,
-    };
     Ok(to_json_binary(&GetAllowanceResponse { allowance })?)
 }
 
@@ -415,7 +411,7 @@ mod tests {
         };
         let bin = query_balance(deps.as_ref(), bk).unwrap();
         let resp: GetBalanceResponse = from_json(&bin).unwrap();
-        assert_eq!(resp.amount, cosmwasm_std::Uint128::new(750));
+        assert_eq!(resp.amount, cosmwasm_std::Uint256::from(750u128));
     }
 
     #[test]
@@ -428,7 +424,7 @@ mod tests {
         };
         let bin = query_balance(deps.as_ref(), bk).unwrap();
         let resp: GetBalanceResponse = from_json(&bin).unwrap();
-        assert_eq!(resp.amount, cosmwasm_std::Uint128::zero());
+        assert_eq!(resp.amount, cosmwasm_std::Uint256::zero());
     }
 
     // -----------------------------------------------------------------------
@@ -449,7 +445,7 @@ mod tests {
         };
         let bin = query_allowance(deps.as_ref(), bk).unwrap();
         let resp: GetAllowanceResponse = from_json(&bin).unwrap();
-        assert_eq!(resp.allowance.amount, cosmwasm_std::Uint128::new(300));
+        assert_eq!(resp.allowance.amount, cosmwasm_std::Uint256::from(300u128));
         assert_eq!(resp.allowance.spender, spender);
     }
 
@@ -490,9 +486,15 @@ mod tests {
         assert_eq!(resp.balances.len(), 2);
         // Items are in ascending token_id order ("eucl" < "usdc")
         assert_eq!(resp.balances[0].token_id, "eucl");
-        assert_eq!(resp.balances[0].amount, cosmwasm_std::Uint128::new(100));
+        assert_eq!(
+            resp.balances[0].amount,
+            cosmwasm_std::Uint256::from(100u128)
+        );
         assert_eq!(resp.balances[1].token_id, "usdc");
-        assert_eq!(resp.balances[1].amount, cosmwasm_std::Uint128::new(200));
+        assert_eq!(
+            resp.balances[1].amount,
+            cosmwasm_std::Uint256::from(200u128)
+        );
     }
 
     #[test]
@@ -548,7 +550,7 @@ mod tests {
         let mut deps: MockDeps = mock_dependencies();
         init(&mut deps);
         let pagination = Some(Pagination {
-            min: Some(cosmwasm_std::Uint128::zero()),
+            min: Some(cosmwasm_std::Uint256::zero()),
             max: None,
             skip: None,
             limit: None,
@@ -563,7 +565,7 @@ mod tests {
         init(&mut deps);
         let pagination = Some(Pagination {
             min: None,
-            max: Some(cosmwasm_std::Uint128::new(100)),
+            max: Some(cosmwasm_std::Uint256::from(100u128)),
             skip: None,
             limit: None,
         });
@@ -599,8 +601,8 @@ mod tests {
 
         // Two chains: vsl and 1
         assert_eq!(resp.balances.len(), 2);
-        let total: cosmwasm_std::Uint128 = resp.balances.iter().map(|b| b.balance).sum();
-        assert_eq!(total, cosmwasm_std::Uint128::new(300));
+        let total: cosmwasm_std::Uint256 = resp.balances.iter().map(|b| b.balance).sum();
+        assert_eq!(total, cosmwasm_std::Uint256::from(300u128));
     }
 
     #[test]
@@ -626,7 +628,10 @@ mod tests {
         let resp: GetTokenBalancesResponse = from_json(&bin).unwrap();
         // Only one chain (vsl) with combined balance
         assert_eq!(resp.balances.len(), 1);
-        assert_eq!(resp.balances[0].balance, cosmwasm_std::Uint128::new(500));
+        assert_eq!(
+            resp.balances[0].balance,
+            cosmwasm_std::Uint256::from(500u128)
+        );
     }
 
     #[test]
@@ -634,7 +639,7 @@ mod tests {
         let mut deps: MockDeps = mock_dependencies();
         init(&mut deps);
         let pagination = Some(Pagination {
-            min: Some(cosmwasm_std::Uint128::zero()),
+            min: Some(cosmwasm_std::Uint256::zero()),
             max: None,
             skip: None,
             limit: None,

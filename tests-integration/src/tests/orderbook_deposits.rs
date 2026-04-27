@@ -1,6 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use cosmwasm_std::Addr;
 use cosmwasm_std::{to_json_binary, to_json_string, Binary, Uint256};
+use cw_orch::mock::MockBase;
 use cw_orch::prelude::CallAs;
 use cw_orch::prelude::ContractInstance;
 use cw_orch::prelude::CwOrchExecute;
@@ -96,9 +98,8 @@ fn deposit_and_query_flow() {
         )
         .unwrap();
 
-    virutal_balance_contract.set_sender(&router.address().unwrap());
-    // Register token metadata for the voucher token type before minting
-    virutal_balance_contract
+    virtual_balance_contract.set_sender(&router.address().unwrap());
+    virtual_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
                 token_metadata: TokenMetadata::new(
@@ -110,10 +111,10 @@ fn deposit_and_query_flow() {
             &[],
         )
         .unwrap();
-    virutal_balance_contract
+    virtual_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                amount: deposit_amount.into(),
+                amount: deposit_amount,
                 balance_key: BalanceKey {
                     cross_chain_user: CrossChainUser::new(chain_uid.clone(), depositor.to_string()),
                     token_id: token_id.clone(),
@@ -131,7 +132,7 @@ fn deposit_and_query_flow() {
     virtual_balance_contract
         .execute(
             &VirtualBalanceExecuteMsg::Transfer(euclid::msgs::virtual_balance::ExecuteTransfer {
-                amount: deposit_amount.into(),
+                amount: deposit_amount,
                 token_id: token_id.clone(),
                 sender: None,
                 to: CrossChainUser::new(chain_uid.clone(), orderbook_addr.to_string()),
@@ -185,101 +186,10 @@ fn deposit_and_query_flow() {
 
 #[test]
 fn withdraw_with_merkle_and_permit() {
-    let sender = "sender_for_all_chains";
-    let interchain = setup_interchain(sender, FACTORY_CHAIN_ID_LOCAL);
-    let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
-    let depositor = router_chain.addr_make("depositor");
-    let destination = router_chain.addr_make("destination");
-    let token_id = "token1".to_string();
+    let token_id = "token1";
     let deposit_amount = Uint256::from(500u128);
     let withdraw_amount = Uint256::from(300u128);
-    let chain_uid = ChainUid::vsl_chain_uid().unwrap();
-    let root_id = "root-1".to_string();
-
-    let router = setup_router(&router_chain, vec![FACTORY_CHAIN_ID_LOCAL]).unwrap();
-    let router_address = router.address().unwrap();
-    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
-    let mut virutal_balance_contract = get_virtual_balance(&router_chain, &virtual_balance_address);
-    let mut orderbook_deposits_contract = OrderbookDepositsContract::new(router_chain.clone());
-
-    let (signer_key, signer_pubkey) = get_signer_key();
-    let signer_address = format!("permit_{}", router_chain.chain_id());
-    // Keep this high enough to avoid accidental expiry in tests, but below Timestamp nanosecond overflow.
-    let permit_expiry = 4_102_444_800u64; // 2100-01-01T00:00:00Z
-
-    orderbook_deposits_contract.upload().unwrap();
-    orderbook_deposits_contract
-        .instantiate(
-            &OrderbookInstantiateMsg {
-                virtual_balance: virutal_balance_contract.address().unwrap().to_string(),
-                admin: Some(router_address.to_string()),
-                root_challenge_period: Some(0),
-                permit_signer_pubkey: Some(signer_pubkey.clone()),
-                permit_signer_address: Some(signer_address.clone()),
-                authorized_posters: Some(vec![router_address.to_string()]),
-            },
-            None,
-            &[],
-        )
-        .unwrap();
-    let orderbook_addr = orderbook_deposits_contract.address().unwrap();
-
-    orderbook_deposits_contract.set_sender(&router_address);
-    orderbook_deposits_contract
-        .execute(
-            &OrderbookExecuteMsg::SetWhitelist {
-                token_id: token_id.clone(),
-                whitelisted: true,
-            },
-            &[],
-        )
-        .unwrap();
-
-    virutal_balance_contract.set_sender(&router_address);
-    // Register token metadata for the voucher token type before minting
-    virutal_balance_contract
-        .execute(
-            &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
-                token_metadata: TokenMetadata::new(
-                    Token::create(token_id.clone()).unwrap(),
-                    chain_uid.clone(),
-                    TokenType::Voucher {},
-                ),
-            },
-            &[],
-        )
-        .unwrap();
-    virutal_balance_contract
-        .execute(
-            &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                amount: deposit_amount.into(),
-                balance_key: BalanceKey {
-                    cross_chain_user: CrossChainUser::new(chain_uid.clone(), depositor.to_string()),
-                    token_id: token_id.clone(),
-                },
-                token_type: TokenType::Voucher {},
-                token_source_chain_uid: chain_uid.clone(),
-            }),
-            &[],
-        )
-        .unwrap();
-
-    let hook_msg = to_json_binary(&VoucherReceiveHookMsg::Deposit {}).unwrap();
-    virutal_balance_contract.set_sender(&depositor);
-    virutal_balance_contract
-        .execute(
-            &VirtualBalanceExecuteMsg::Transfer(euclid::msgs::virtual_balance::ExecuteTransfer {
-                amount: deposit_amount.into(),
-                token_id: token_id.clone(),
-                sender: None,
-                to: CrossChainUser::new(chain_uid.clone(), orderbook_addr.to_string()),
-                from: None,
-                msg: Some(hook_msg),
-            }),
-            &[],
-        )
-        .unwrap();
-
+    let root_id = "root-1";
     let nonce = 1u64;
 
     let mut context = setup_withdraw_test_context(0);
@@ -291,14 +201,16 @@ fn withdraw_with_merkle_and_permit() {
         token_id: token_id.to_string(),
         balance: deposit_amount,
     };
-    let sibling = WithdrawalLeaf {
-        user: "other".to_string(),
-        token_id: token_id.clone(),
-        balance: Uint256::zero(),
-    };
-    let leaf_hash = hash_leaf(&leaf);
-    let sibling_hash = hash_leaf(&sibling);
-    let root_hash = hash_pair(&leaf_hash, &sibling_hash);
+    let (root_hash, proof) = build_root_and_proof(&leaf);
+    propose_root(
+        &mut context,
+        root_id,
+        root_hash,
+        vec![AssetTotal {
+            token_id: token_id.to_string(),
+            amount: deposit_amount,
+        }],
+    );
 
     let permit = sign_permit(
         &context.signer_key,
@@ -341,17 +253,7 @@ fn withdraw_with_merkle_and_permit() {
         withdraw_amount
     );
 
-    let destination_balance: GetBalanceResponse = virutal_balance_contract
-        .query(&VirtualBalanceQueryMsg::GetBalance {
-            balance_key: BalanceKey {
-                cross_chain_user: CrossChainUser::new(chain_uid.clone(), destination.to_string()),
-                token_id: token_id.clone(),
-            },
-        })
-        .unwrap();
-    assert_eq!(destination_balance.amount, Uint256::from(withdraw_amount));
-
-    let replay = orderbook_deposits_contract.execute(
+    let replay = context.orderbook_deposits_contract.execute(
         &OrderbookExecuteMsg::Withdraw {
             root_id: root_id.to_string(),
             amount: withdraw_amount,
@@ -383,8 +285,8 @@ fn withdraw_with_merkle_and_permit() {
 #[test]
 fn same_nonce_new_permit_bytes_fails() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(500);
-    let withdraw_amount = Uint128::new(200);
+    let deposit_amount = Uint256::from(500u128);
+    let withdraw_amount = Uint256::from(200u128);
     let root_id = "root-1";
     let nonce = 3u64;
 
@@ -488,8 +390,8 @@ fn same_nonce_new_permit_bytes_fails() {
 #[test]
 fn same_nonce_after_root_rotation_fails() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(1_000);
-    let withdraw_amount = Uint128::new(300);
+    let deposit_amount = Uint256::from(1_000u128);
+    let withdraw_amount = Uint256::from(300u128);
     let nonce = 7u64;
     let root_one = "root-1";
     let root_two = "root-2";
@@ -611,9 +513,9 @@ fn same_nonce_after_root_rotation_fails() {
 #[test]
 fn different_nonce_still_succeeds() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(1_000);
-    let first_amount = Uint128::new(300);
-    let second_amount = Uint128::new(200);
+    let deposit_amount = Uint256::from(1_000u128);
+    let first_amount = Uint256::from(300u128);
+    let second_amount = Uint256::from(200u128);
     let root_id = "root-1";
 
     let mut context = setup_withdraw_test_context(0);
@@ -708,10 +610,10 @@ fn different_nonce_still_succeeds() {
 fn same_nonce_different_token_still_succeeds() {
     let first_token = "token1";
     let second_token = "token2";
-    let first_deposit = Uint128::new(500);
-    let second_deposit = Uint128::new(400);
-    let first_withdrawal = Uint128::new(200);
-    let second_withdrawal = Uint128::new(150);
+    let first_deposit = Uint256::from(500u128);
+    let second_deposit = Uint256::from(400u128);
+    let first_withdrawal = Uint256::from(200u128);
+    let second_withdrawal = Uint256::from(150u128);
     let nonce = 21u64;
 
     let mut context = setup_withdraw_test_context(0);
@@ -844,8 +746,8 @@ fn same_nonce_different_token_still_succeeds() {
 #[test]
 fn amount_above_leaf_balance_fails_without_nullifiers() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(500);
-    let withdraw_amount = Uint128::new(600);
+    let deposit_amount = Uint256::from(500u128);
+    let withdraw_amount = Uint256::from(600u128);
     let root_id = "root-1";
     let nonce = 42u64;
 
@@ -910,107 +812,16 @@ fn amount_above_leaf_balance_fails_without_nullifiers() {
     assert_eq!(query_user_deposit(&context, token_id), deposit_amount);
     assert_eq!(
         query_destination_balance(&context, token_id),
-        Uint128::zero()
+        Uint256::zero()
     );
 }
 
 #[test]
 fn withdraw_rejects_invalid_merkle_proof() {
-    let sender = "sender_for_all_chains";
-    let interchain = setup_interchain(sender, FACTORY_CHAIN_ID_LOCAL);
-    let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
-    let depositor = router_chain.addr_make("depositor");
-    let destination = router_chain.addr_make("destination");
-    let token_id = "token1".to_string();
+    let token_id = "token1";
     let deposit_amount = Uint256::from(500u128);
     let withdraw_amount = Uint256::from(200u128);
-    let chain_uid = ChainUid::vsl_chain_uid().unwrap();
-    let root_id = "root-invalid".to_string();
-
-    let router = setup_router(&router_chain, vec![FACTORY_CHAIN_ID_LOCAL]).unwrap();
-    let router_address = router.address().unwrap();
-    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
-    let mut virutal_balance_contract = get_virtual_balance(&router_chain, &virtual_balance_address);
-    let mut orderbook_deposits_contract = OrderbookDepositsContract::new(router_chain.clone());
-
-    let (signer_key, signer_pubkey) = get_signer_key();
-    let signer_address = format!("permit_{}", router_chain.chain_id());
-    // Keep this high enough to avoid accidental expiry in tests, but below Timestamp nanosecond overflow.
-    let permit_expiry = 4_102_444_800u64; // 2100-01-01T00:00:00Z
-
-    orderbook_deposits_contract.upload().unwrap();
-    orderbook_deposits_contract
-        .instantiate(
-            &OrderbookInstantiateMsg {
-                virtual_balance: virutal_balance_contract.address().unwrap().to_string(),
-                admin: Some(router_address.to_string()),
-                root_challenge_period: Some(0),
-                permit_signer_pubkey: Some(signer_pubkey.clone()),
-                permit_signer_address: Some(signer_address.clone()),
-                authorized_posters: Some(vec![router_address.to_string()]),
-            },
-            None,
-            &[],
-        )
-        .unwrap();
-    let orderbook_addr = orderbook_deposits_contract.address().unwrap();
-
-    orderbook_deposits_contract.set_sender(&router_address);
-    orderbook_deposits_contract
-        .execute(
-            &OrderbookExecuteMsg::SetWhitelist {
-                token_id: token_id.clone(),
-                whitelisted: true,
-            },
-            &[],
-        )
-        .unwrap();
-
-    virutal_balance_contract.set_sender(&router_address);
-    // Register token metadata for the voucher token type before minting
-    virutal_balance_contract
-        .execute(
-            &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
-                token_metadata: TokenMetadata::new(
-                    Token::create(token_id.clone()).unwrap(),
-                    chain_uid.clone(),
-                    TokenType::Voucher {},
-                ),
-            },
-            &[],
-        )
-        .unwrap();
-    virutal_balance_contract
-        .execute(
-            &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                amount: deposit_amount.into(),
-                balance_key: BalanceKey {
-                    cross_chain_user: CrossChainUser::new(chain_uid.clone(), depositor.to_string()),
-                    token_id: token_id.clone(),
-                },
-                token_type: TokenType::Voucher {},
-                token_source_chain_uid: chain_uid.clone(),
-            }),
-            &[],
-        )
-        .unwrap();
-
-    let hook_msg = to_json_binary(&VoucherReceiveHookMsg::Deposit {}).unwrap();
-    virutal_balance_contract.set_sender(&depositor);
-    virutal_balance_contract
-        .execute(
-            &VirtualBalanceExecuteMsg::Transfer(euclid::msgs::virtual_balance::ExecuteTransfer {
-                amount: deposit_amount.into(),
-                token_id: token_id.clone(),
-                sender: None,
-                to: CrossChainUser::new(chain_uid.clone(), orderbook_addr.to_string()),
-                from: None,
-                msg: Some(hook_msg),
-            }),
-            &[],
-        )
-        .unwrap();
-
+    let root_id = "root-invalid";
     let nonce = 7u64;
 
     let mut context = setup_withdraw_test_context(0);
@@ -1024,7 +835,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
     };
     let sibling = WithdrawalLeaf {
         user: "other".to_string(),
-        token_id: token_id.clone(),
+        token_id: token_id.to_string(),
         balance: Uint256::zero(),
     };
     let leaf_hash = hash_leaf(&leaf);
@@ -1173,10 +984,23 @@ fn whitelist_token(context: &mut WithdrawTestContext, token_id: &str) {
         .unwrap();
 }
 
-fn deposit_token(context: &mut WithdrawTestContext, token_id: &str, deposit_amount: Uint128) {
+fn deposit_token(context: &mut WithdrawTestContext, token_id: &str, deposit_amount: Uint256) {
     context
         .virtual_balance_contract
         .set_sender(&context.router_address);
+    context
+        .virtual_balance_contract
+        .execute(
+            &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
+                token_metadata: TokenMetadata::new(
+                    Token::create(token_id.to_string()).unwrap(),
+                    context.chain_uid.clone(),
+                    TokenType::Voucher {},
+                ),
+            },
+            &[],
+        )
+        .unwrap();
     context
         .virtual_balance_contract
         .execute(
@@ -1189,6 +1013,8 @@ fn deposit_token(context: &mut WithdrawTestContext, token_id: &str, deposit_amou
                     ),
                     token_id: token_id.to_string(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: context.chain_uid.clone(),
             }),
             &[],
         )
@@ -1221,7 +1047,7 @@ fn build_permit_data(
     context: &WithdrawTestContext,
     root_id: &str,
     token_id: &str,
-    amount: Uint128,
+    amount: Uint256,
     nonce: u64,
     expiry: u64,
 ) -> PermitData {
@@ -1241,7 +1067,7 @@ fn build_root_and_proof(leaf: &WithdrawalLeaf) -> ([u8; 32], Vec<MerkleProofStep
     let sibling = WithdrawalLeaf {
         user: "other".to_string(),
         token_id: leaf.token_id.clone(),
-        balance: Uint128::zero(),
+        balance: Uint256::zero(),
     };
     let leaf_hash = hash_leaf(leaf);
     let sibling_hash = hash_leaf(&sibling);
@@ -1297,7 +1123,7 @@ fn activate_root(context: &mut WithdrawTestContext, root_id: &str, seconds: u64)
         .unwrap();
 }
 
-fn query_asset_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint128 {
+fn query_asset_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint256 {
     let asset_deposit: AssetDepositResponse = context
         .orderbook_deposits_contract
         .query(&OrderbookQueryMsg::AssetDeposit {
@@ -1307,7 +1133,7 @@ fn query_asset_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint128
     asset_deposit.amount
 }
 
-fn query_user_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint128 {
+fn query_user_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint256 {
     let user_deposit: UserDepositResponse = context
         .orderbook_deposits_contract
         .query(&OrderbookQueryMsg::UserDeposit {
@@ -1318,7 +1144,7 @@ fn query_user_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint128 
     user_deposit.amount
 }
 
-fn query_destination_balance(context: &WithdrawTestContext, token_id: &str) -> Uint128 {
+fn query_destination_balance(context: &WithdrawTestContext, token_id: &str) -> Uint256 {
     let destination_balance: GetBalanceResponse = context
         .virtual_balance_contract
         .query(&VirtualBalanceQueryMsg::GetBalance {

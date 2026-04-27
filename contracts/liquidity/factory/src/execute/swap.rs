@@ -201,7 +201,7 @@ pub fn execute_swap_request(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128,
+        Uint128, Uint256,
     };
     use euclid::{
         error::ContractError,
@@ -218,7 +218,7 @@ mod tests {
         },
     };
 
-    fn make_voucher_swap_msg(amount_in: Uint128, min_amount_out: Uint128) -> ExecuteMsg {
+    fn make_voucher_swap_msg(amount_in: Uint256, min_amount_out: Uint256) -> ExecuteMsg {
         let token_in = Token::create("usdc".to_string()).unwrap();
         let token_out = Token::create("eth".to_string()).unwrap();
 
@@ -252,7 +252,7 @@ mod tests {
 
         let sender = deps.api.addr_make("sender");
         let info = message_info(&sender, &[]);
-        let msg = make_voucher_swap_msg(Uint128::new(100), Uint128::zero());
+        let msg = make_voucher_swap_msg(Uint256::from(100u128), Uint256::zero());
         let res = execute(deps.as_mut(), mock_env(), info, msg);
         assert_eq!(res.unwrap_err(), ContractError::ZeroAssetAmount {});
     }
@@ -269,9 +269,9 @@ mod tests {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Voucher {},
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: Token::create("eth".to_string()).unwrap(),
-            min_amount_out: Uint128::new(1),
+            min_amount_out: Uint256::from(1u128),
             swaps: vec![],
             recipients: vec![],
             partner_fee: None,
@@ -298,9 +298,9 @@ mod tests {
                 token: asset_in_token.clone(),
                 token_type: TokenType::Voucher {},
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: token_out.clone(),
-            min_amount_out: Uint128::new(1),
+            min_amount_out: Uint256::from(1u128),
             swaps: vec![NextSwapPair {
                 token_in: wrong_token_in,
                 token_out: token_out.clone(),
@@ -331,9 +331,9 @@ mod tests {
                 token: asset_in_token.clone(),
                 token_type: TokenType::Voucher {},
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: token_out.clone(),
-            min_amount_out: Uint128::new(1),
+            min_amount_out: Uint256::from(1u128),
             swaps: vec![NextSwapPair {
                 token_in: asset_in_token.clone(),
                 token_out: wrong_token_out,
@@ -354,11 +354,11 @@ mod tests {
 
         let token_in = Token::create("usdc".to_string()).unwrap();
         let token_out = Token::create("eth".to_string()).unwrap();
-        let amount_in = Uint128::new(100);
+        let amount_in = Uint256::from(100u128);
 
         let sender = deps.api.addr_make("sender");
         let info = message_info(&sender, &[]);
-        let msg = make_voucher_swap_msg(amount_in, Uint128::new(1));
+        let msg = make_voucher_swap_msg(amount_in, Uint256::from(1u128));
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         assert!(res
@@ -405,9 +405,9 @@ mod tests {
                 token: token_in.clone(),
                 token_type: TokenType::Voucher {},
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: token_out.clone(),
-            min_amount_out: Uint128::new(1),
+            min_amount_out: Uint256::from(1u128),
             swaps: vec![NextSwapPair {
                 token_in: token_in.clone(),
                 token_out: token_out.clone(),
@@ -450,11 +450,12 @@ mod tests {
                 token: token_in.clone(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: None,
                 },
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: token_out.clone(),
-            min_amount_out: Uint128::new(1),
+            min_amount_out: Uint256::from(1u128),
             swaps: vec![NextSwapPair {
                 token_in: token_in.clone(),
                 token_out: token_out.clone(),
@@ -482,7 +483,7 @@ mod tests {
 
         for sender_addr in [alice.clone(), bob.clone()] {
             let info = message_info(&sender_addr, &[]);
-            let msg = make_voucher_swap_msg(Uint128::new(100), Uint128::new(1));
+            let msg = make_voucher_swap_msg(Uint256::from(100u128), Uint256::from(1u128));
             let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
             let tx_id = res
                 .attributes
@@ -494,7 +495,7 @@ mod tests {
             let pending = crate::state::PENDING_SWAPS
                 .load(&deps.storage, (sender_addr, tx_id))
                 .unwrap();
-            assert_eq!(pending.amount_in, Uint128::new(100));
+            assert_eq!(pending.amount_in, Uint256::from(100u128));
         }
     }
 }

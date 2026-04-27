@@ -282,7 +282,7 @@ pub fn execute_native_receive_callback(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
-        Addr, Binary, Uint128,
+        Addr, Binary, Uint256,
     };
     use euclid::{
         chain::{Chain, ChainType, ChainUid, CosmosChain},
@@ -391,7 +391,7 @@ mod tests {
                 .save(
                     initialized.as_mut().storage,
                     (chain_uid.clone(), 0_u128),
-                    &Uint128::from(1_u64),
+                    &Uint256::from(1_u64),
                 )
                 .unwrap();
         }

@@ -499,7 +499,7 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 "used-nonce".to_string(),
-                &cosmwasm_std::Uint128::from(1u64),
+                &cosmwasm_std::Uint256::from(1u64),
             )
             .unwrap();
 
@@ -663,7 +663,7 @@ mod tests {
         let block_height = NONCES
             .load(&deps.storage, "unique-nonce".to_string())
             .unwrap();
-        assert_eq!(block_height, cosmwasm_std::Uint128::from(env.block.height));
+        assert_eq!(block_height, cosmwasm_std::Uint256::from(env.block.height));
     }
 
     #[test]

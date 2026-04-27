@@ -97,7 +97,7 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 "used-nonce".to_string(),
-                &cosmwasm_std::Uint128::from(100u64),
+                &cosmwasm_std::Uint256::from(100u64),
             )
             .unwrap();
 

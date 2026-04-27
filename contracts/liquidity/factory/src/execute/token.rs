@@ -397,7 +397,7 @@ pub fn execute_transfer_voucher(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128,
+        Uint128, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -463,7 +463,13 @@ mod tests {
 
         set_escrow_token_allowed(&mut deps, false);
 
-        let token_with_denom = native_token("usdc", "uusdc");
+        let token_with_denom = euclid::token::TokenWithDenom {
+            token: Token::create("usdc".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+        };
         let admin = deps.api.addr_make("sender");
         let info = message_info(&admin, &[]);
         let msg = ExecuteMsg::RegisterDenom {
@@ -516,11 +522,11 @@ mod tests {
         let info = message_info(&sender, &[]);
         let msg = ExecuteMsg::TransferVoucher {
             token_id: Token::create("usdc".to_string()).unwrap(),
-            amount: Uint128::zero(),
+            amount: Uint256::zero(),
             from: None,
             recipients: vec![euclid::recipient::Recipient {
                 recipient: recipient_user,
-                amount: euclid::limit::Limit::LessThanOrEqual(Uint128::new(100)),
+                amount: euclid::limit::Limit::LessThanOrEqual(Uint256::from(100u128)),
                 denom: TokenType::Voucher {},
                 forwarding_message: None,
                 unsafe_refund_as_voucher: None,
@@ -537,7 +543,7 @@ mod tests {
         init(&mut deps);
 
         let token_id = Token::create("usdc".to_string()).unwrap();
-        let amount = Uint128::new(500);
+        let amount = Uint256::from(500u128);
 
         let sender = deps.api.addr_make("sender");
         let recipient_user = euclid::cross_chain_user::CrossChainUser::new(

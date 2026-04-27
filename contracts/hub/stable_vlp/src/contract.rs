@@ -219,7 +219,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env},
-        Addr, Uint128, Uint64,
+        Addr, Uint128, Uint256, Uint64,
     };
     use euclid::{
         admin::{AdminType, EuclidAdmin},
@@ -257,7 +257,7 @@ mod tests {
             Addr::unchecked("virtual_balance_contract")
         );
         assert_eq!(state.fee, default_fee());
-        assert_eq!(state.total_lp_tokens, Uint128::zero());
+        assert_eq!(state.total_lp_tokens, Uint256::zero());
         assert_eq!(state.last_updated, 0);
 
         let saved_admin = ADMIN.load(&deps.storage).unwrap();
@@ -274,8 +274,8 @@ mod tests {
 
         let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
         let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
-        assert_eq!(b1, Uint128::zero());
-        assert_eq!(b2, Uint128::zero());
+        assert_eq!(b1, Uint256::zero());
+        assert_eq!(b2, Uint256::zero());
     }
 
     #[test]
@@ -353,7 +353,7 @@ mod tests {
         instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         let lp = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
-        assert_eq!(lp, Uint128::zero());
+        assert_eq!(lp, Uint256::zero());
     }
 
     #[test]
@@ -398,7 +398,7 @@ mod tests {
         assert_eq!(res.messages.len(), 0);
 
         let lp = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
-        assert_eq!(lp, Uint128::zero());
+        assert_eq!(lp, Uint256::zero());
     }
 
     #[test]
@@ -687,15 +687,15 @@ mod tests {
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
-        let reserve = 1_000_000u128;
+        let reserve = 10_000_000_000u128;
         let liquidity = PairWithAmount::new(
             TokenWithAmount {
                 token: token1(),
-                amount: Uint128::new(reserve),
+                amount: Uint256::from(reserve),
             },
             TokenWithAmount {
                 token: token2(),
-                amount: Uint128::new(reserve),
+                amount: Uint256::from(reserve),
             },
         )
         .unwrap();
@@ -710,21 +710,21 @@ mod tests {
 
         let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
         let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
-        assert_eq!(b1, Uint128::new(reserve));
-        assert_eq!(b2, Uint128::new(reserve));
+        assert_eq!(b1, Uint256::from(reserve));
+        assert_eq!(b2, Uint256::from(reserve));
 
         let chain_lp = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
-        assert!(chain_lp > Uint128::zero());
+        assert!(chain_lp > Uint256::zero());
 
         let collateral = COLLATERAL_LP_TOKENS.load(&deps.storage).unwrap();
-        assert_eq!(collateral, Uint128::new(1000));
+        assert_eq!(collateral, Uint256::from(1_000_000_000u128));
     }
 
     #[test]
     fn test_add_liquidity_second_deposit_increases_balances() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        let reserve = 1_000_000u128;
+        let reserve = 10_000_000_000u128;
         seed_liquidity(&mut deps, reserve);
 
         register_pool(&mut deps, chain2(), "reg-tx-2");
@@ -733,11 +733,11 @@ mod tests {
         let liquidity = PairWithAmount::new(
             TokenWithAmount {
                 token: token1(),
-                amount: Uint128::new(reserve),
+                amount: Uint256::from(reserve),
             },
             TokenWithAmount {
                 token: token2(),
-                amount: Uint128::new(reserve),
+                amount: Uint256::from(reserve),
             },
         )
         .unwrap();
@@ -751,8 +751,8 @@ mod tests {
 
         let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
         let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
-        assert_eq!(b1, Uint128::new(reserve * 2));
-        assert_eq!(b2, Uint128::new(reserve * 2));
+        assert_eq!(b1, Uint256::from(reserve * 2u128));
+        assert_eq!(b2, Uint256::from(reserve * 2u128));
     }
 
     #[test]
@@ -766,11 +766,11 @@ mod tests {
         let liquidity = PairWithAmount::new(
             TokenWithAmount {
                 token: token1(),
-                amount: Uint128::new(1_000),
+                amount: Uint256::from(1_000u128),
             },
             TokenWithAmount {
                 token: token2(),
-                amount: Uint128::new(1_000),
+                amount: Uint256::from(1_000u128),
             },
         )
         .unwrap();
@@ -795,11 +795,11 @@ mod tests {
         let liquidity = PairWithAmount::new(
             TokenWithAmount {
                 token: token1(),
-                amount: Uint128::new(1_000),
+                amount: Uint256::from(1_000u128),
             },
             TokenWithAmount {
                 token: token2(),
-                amount: Uint128::new(1_000),
+                amount: Uint256::from(1_000u128),
             },
         )
         .unwrap();
@@ -821,13 +821,13 @@ mod tests {
     fn test_remove_liquidity_happy_path() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        let reserve = 1_000_000u128;
+        let reserve = 10_000_000_000u128;
         seed_liquidity(&mut deps, reserve);
 
         let chain_lp_before = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
-        assert!(chain_lp_before > Uint128::zero());
+        assert!(chain_lp_before > Uint256::zero());
 
-        let remove_amount = chain_lp_before / Uint128::new(2);
+        let remove_amount = chain_lp_before / Uint256::from(2u128);
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
         let msg = ExecuteMsg::RemoveLiquidity(VlpRemoveLiquidityMsg {
@@ -846,7 +846,7 @@ mod tests {
     fn test_remove_liquidity_unauthorized_non_router() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let chain_lp = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
         let non_router = deps.api.addr_make("not_router");
@@ -854,7 +854,7 @@ mod tests {
         let msg = ExecuteMsg::RemoveLiquidity(VlpRemoveLiquidityMsg {
             sender: sender_on_chain1(),
             tx_id: "rem-tx".to_string(),
-            lp_allocation: chain_lp / Uint128::new(2),
+            lp_allocation: chain_lp / Uint256::from(2u128),
         });
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
@@ -864,10 +864,10 @@ mod tests {
     fn test_remove_liquidity_overflow_lp_allocation_fails() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let chain_lp = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
-        let too_much = chain_lp + Uint128::new(1);
+        let too_much = chain_lp + Uint256::from(1u128);
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -891,17 +891,17 @@ mod tests {
     fn test_swap_happy_path_final_swap() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
-        let amount_in = Uint128::new(1_000);
+        let amount_in = Uint256::from(1_000u128);
         let msg = ExecuteMsg::Swap(VlpSwapMsg {
             sender: sender_on_chain1(),
             tx_id: "swap-tx".to_string(),
             asset_in: token1(),
             amount_in,
-            min_token_out: Uint128::new(1),
+            min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -915,15 +915,15 @@ mod tests {
 
         let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
         let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
-        assert!(b1 > Uint128::new(1_000_000));
-        assert!(b2 < Uint128::new(1_000_000));
+        assert!(b1 > Uint256::from(10_000_000_000u128));
+        assert!(b2 < Uint256::from(10_000_000_000u128));
     }
 
     #[test]
     fn test_swap_zero_amount_in_fails() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -931,8 +931,8 @@ mod tests {
             sender: sender_on_chain1(),
             tx_id: "swap-tx".to_string(),
             asset_in: token1(),
-            amount_in: Uint128::zero(),
-            min_token_out: Uint128::new(1),
+            amount_in: Uint256::zero(),
+            min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -945,7 +945,7 @@ mod tests {
     fn test_swap_slippage_exceeded_fails() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -953,8 +953,8 @@ mod tests {
             sender: sender_on_chain1(),
             tx_id: "swap-tx".to_string(),
             asset_in: token1(),
-            amount_in: Uint128::new(1_000),
-            min_token_out: Uint128::new(1_000_000),
+            amount_in: Uint256::from(1_000u128),
+            min_token_out: Uint256::from(1_000_000u128),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -967,7 +967,7 @@ mod tests {
     fn test_swap_unknown_asset_fails() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -975,8 +975,8 @@ mod tests {
             sender: sender_on_chain1(),
             tx_id: "swap-tx".to_string(),
             asset_in: Token::create("unknowntoken".to_string()).unwrap(),
-            amount_in: Uint128::new(1_000),
-            min_token_out: Uint128::new(1),
+            amount_in: Uint256::from(1_000u128),
+            min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -989,7 +989,7 @@ mod tests {
     fn test_swap_test_fail_flag_forces_failure() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let router = deps.api.addr_make("router");
         let info = message_info(&router, &[]);
@@ -997,8 +997,8 @@ mod tests {
             sender: sender_on_chain1(),
             tx_id: "swap-tx".to_string(),
             asset_in: token1(),
-            amount_in: Uint128::new(1_000),
-            min_token_out: Uint128::new(1),
+            amount_in: Uint256::from(1_000u128),
+            min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: Some(true),
         });
@@ -1011,7 +1011,7 @@ mod tests {
     fn test_swap_non_router_sender_accepted_via_voucher_path() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         let other = deps.api.addr_make("other_vlp");
         let info = message_info(&other, &[]);
@@ -1019,8 +1019,8 @@ mod tests {
             sender: sender_on_chain1(),
             tx_id: "swap-tx".to_string(),
             asset_in: token1(),
-            amount_in: Uint128::new(1_000),
-            min_token_out: Uint128::new(1),
+            amount_in: Uint256::from(1_000u128),
+            min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -1036,7 +1036,7 @@ mod tests {
     fn test_invariant_add_then_remove_all_liquidity() {
         let mut deps = mock_dependencies();
         init(&mut deps);
-        let reserve = 1_000_000u128;
+        let reserve = 10_000_000_000u128;
         seed_liquidity(&mut deps, reserve);
 
         let chain_lp = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
@@ -1051,7 +1051,7 @@ mod tests {
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         let chain_lp_after = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
-        assert_eq!(chain_lp_after, Uint128::zero());
+        assert_eq!(chain_lp_after, Uint256::zero());
 
         let state = STATE.load(&deps.storage).unwrap();
         let collateral = COLLATERAL_LP_TOKENS
@@ -1078,7 +1078,7 @@ mod tests {
         };
         let info = message_info(&router_addr, &[]);
         instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-        seed_liquidity(&mut deps, 1_000_000);
+        seed_liquidity(&mut deps, 10_000_000_000);
 
         for i in 0..2u64 {
             let info = message_info(&router_addr, &[]);
@@ -1086,8 +1086,8 @@ mod tests {
                 sender: sender_on_chain1(),
                 tx_id: format!("swap-tx-{i}"),
                 asset_in: token1(),
-                amount_in: Uint128::new(1_000),
-                min_token_out: Uint128::new(1),
+                amount_in: Uint256::from(1_000u128),
+                min_token_out: Uint256::from(1u128),
                 next_swaps: vec![],
                 test_fail: None,
             });
@@ -1096,9 +1096,9 @@ mod tests {
 
         let state = STATE.load(&deps.storage).unwrap();
         let lp_fee_total = state.total_fees_collected.lp_fees.get_fee("token1");
-        assert_eq!(lp_fee_total, Uint128::new(6));
+        assert_eq!(lp_fee_total, Uint256::from(6u128));
         let euclid_fee_total = state.total_fees_collected.euclid_fees.get_fee("token1");
-        assert_eq!(euclid_fee_total, Uint128::new(2));
+        assert_eq!(euclid_fee_total, Uint256::from(2u128));
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{to_json_binary, Addr, Binary, Coin, Uint256, WasmMsg};
+use cosmwasm_std::{to_json_binary, Addr, Binary, Coin, Timestamp, Uint256, WasmMsg};
 
 use crate::{
     admin::{AdminType, EuclidAdmin},
@@ -232,8 +232,18 @@ pub struct Allowance {
 }
 
 #[cw_serde]
+pub struct VoucherAllowance {
+    // The user who is allowed to spend the tokens.
+    pub spender: CrossChainUser,
+    // The amount of tokens that the spender is allowed to spend.
+    pub amount: Uint256,
+    // The allowance expires at the given timestamp. If None, the allowance never expires.
+    pub expires_at: Option<Timestamp>,
+}
+
+#[cw_serde]
 pub struct GetAllowanceResponse {
-    pub allowance: Allowance,
+    pub allowance: VoucherAllowance,
 }
 
 #[cw_serde]

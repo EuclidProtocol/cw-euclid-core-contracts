@@ -12,7 +12,9 @@ use euclid::{
     },
     msgs::{
         hook::VoucherReceive,
-        virtual_balance::msg::{ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer},
+        virtual_balance::msg::{
+            ExecuteApprove, ExecuteBurn, ExecuteMint, ExecuteTransfer, VoucherAllowance,
+        },
     },
     normalize::{normalize_token_to_voucher, normalize_voucher_to_token},
     token::{TokenMetadata, TokenType},
@@ -20,11 +22,9 @@ use euclid::{
 };
 
 use crate::state::{
-    get_escrow_balance_key, get_token_metadata_key, VoucherVoucherAllowance, ADMIN,
-    ESCROW_BALANCES, STATE, VOUCHER_BALANCES, VOUCHER_DECIMAL, VOUCHER_VOUCHER_ALLOWANCES,
+    get_escrow_balance_key, get_token_metadata_key, ADMIN, ESCROW_BALANCES, STATE,
+    VOUCHER_ALLOWANCES, VOUCHER_BALANCES, VOUCHER_DECIMAL,
 };
-#[allow(deprecated)]
-use crate::state::{VoucherAllowance, BALANCES, VOUCHER_ALLOWANCES};
 
 pub fn execute_mint(
     deps: DepsMut,
@@ -319,7 +319,7 @@ fn _deduct_allowance(
         cross_chain_user: from.clone(),
     };
     let serialized_balance_key = sender_balance_key.clone().to_serialized_balance_key();
-    let mut allowance = VOUCHER_VOUCHER_ALLOWANCES
+    let mut allowance = VOUCHER_ALLOWANCES
         .load(deps.storage, serialized_balance_key.clone())
         .map_err(|_| ContractError::new("No allowance set for this spender"))?;
 
@@ -346,9 +346,9 @@ fn _deduct_allowance(
 
     allowance.amount = allowance.amount.checked_sub(amount)?;
     if allowance.amount.is_zero() {
-        VOUCHER_VOUCHER_ALLOWANCES.remove(deps.storage, serialized_balance_key);
+        VOUCHER_ALLOWANCES.remove(deps.storage, serialized_balance_key);
     } else {
-        VOUCHER_VOUCHER_ALLOWANCES.save(deps.storage, serialized_balance_key, &allowance)?;
+        VOUCHER_ALLOWANCES.save(deps.storage, serialized_balance_key, &allowance)?;
     }
 
     Ok(vec![
@@ -444,10 +444,10 @@ pub fn execute_approve(
     };
 
     ensure!(!msg.amount.is_zero(), ContractError::ZeroAssetAmount {});
-    VOUCHER_VOUCHER_ALLOWANCES.save(
+    VOUCHER_ALLOWANCES.save(
         deps.storage,
         key.to_serialized_balance_key(),
-        &VoucherVoucherAllowance {
+        &VoucherAllowance {
             amount: msg.amount,
             spender: spender.clone(),
             expires_at: None,
@@ -477,7 +477,7 @@ pub fn execute_remove_zero_state_values(
     // Remove VoucherAllowances with a value of zero
     let limit = limit.unwrap_or(u32::MAX) as usize;
     let start = start_after.map(Bound::exclusive);
-    let allowance_keys_to_remove: Vec<_> = VOUCHER_VOUCHER_ALLOWANCES
+    let allowance_keys_to_remove: Vec<_> = VOUCHER_ALLOWANCES
         .range(deps.storage, start.clone(), None, Order::Ascending)
         .take(limit)
         .filter_map(|result| {
@@ -492,7 +492,7 @@ pub fn execute_remove_zero_state_values(
 
     let removed_allowances = allowance_keys_to_remove.len();
     for key in allowance_keys_to_remove {
-        VOUCHER_VOUCHER_ALLOWANCES.remove(deps.storage, key);
+        VOUCHER_ALLOWANCES.remove(deps.storage, key);
     }
 
     // Remove Balances with a value of zero
@@ -523,7 +523,7 @@ pub fn execute_remove_zero_state_values(
 /// Migrates mixed-case balance/allowance keys to lowercase.
 /// Call repeatedly with `start_after: None` until both
 /// `normalized_balances` and `normalized_allowances` return "0".
-/// Note: the `start_after` cursor applies independently to both BALANCES
+/// Note: the `start_after` cursor applies independently to both VOUCHER_BALANCES
 /// and VOUCHER_ALLOWANCES ranges, so for simplest usage pass `None` each call.
 pub fn execute_normalize_balance_keys(
     deps: DepsMut,
@@ -547,7 +547,7 @@ pub fn execute_normalize_balance_keys(
     // Collect first to avoid mutating storage while iterating.
     // Deserialization errors are counted (skipped_errors) rather than silently dropped.
     let mut balance_entries: Vec<(SerializedBalanceKey, Uint256)> = Vec::new();
-    for result in BALANCES
+    for result in VOUCHER_BALANCES
         .range(deps.storage, None, None, Order::Ascending)
         .skip(skip)
         .take(limit)
@@ -563,10 +563,10 @@ pub fn execute_normalize_balance_keys(
         let lowercase_address = address.to_lowercase();
         if lowercase_address != address {
             // Remove the mixed-case entry
-            BALANCES.remove(deps.storage, key);
+            VOUCHER_BALANCES.remove(deps.storage, key);
             // Add balance to the lowercase key, combining with any existing balance
             let normalized_key: SerializedBalanceKey = (chain_uid, lowercase_address, token_id);
-            BALANCES.update(deps.storage, normalized_key, |existing| {
+            VOUCHER_BALANCES.update(deps.storage, normalized_key, |existing| {
                 let combined = existing.unwrap_or(Uint256::zero()).checked_add(balance)?;
                 Ok::<_, ContractError>(combined)
             })?;
@@ -600,6 +600,7 @@ pub fn execute_normalize_balance_keys(
                 let merged = VoucherAllowance {
                     amount: existing.amount.max(allowance.amount),
                     spender: existing.spender,
+                    expires_at: None,
                 };
                 VOUCHER_ALLOWANCES.save(deps.storage, normalized_key, &merged)?;
             } else {
@@ -616,11 +617,40 @@ pub fn execute_normalize_balance_keys(
         .add_attribute("skipped_errors", skipped_errors.to_string()))
 }
 
+pub fn execute_deregister_token_metadata(
+    deps: DepsMut,
+    info: MessageInfo,
+    token_id: String,
+    chain_uid: ChainUid,
+    token_type: TokenType,
+) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    ensure!(info.sender == state.router, ContractError::Unauthorized {});
+
+    let token_metadata_key =
+        get_token_metadata_key(token_id.clone(), chain_uid.clone(), token_type.clone());
+
+    let mut token_metadata = token_metadata_key
+        .load(deps.storage)
+        .map_err(|e| ContractError::new(&format!("Failed to load token metadata: {}", e)))?;
+    ensure!(
+        token_metadata.allowed,
+        ContractError::new("Token already deregistered")
+    );
+    token_metadata.allowed = false;
+    token_metadata_key.save(deps.storage, &token_metadata)?;
+
+    Ok(Response::new().add_event(token_metadata_update_event(
+        &token_metadata,
+        "deregister_denom",
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testing::helpers::{
-        init, remote_user, seed_allowance, seed_balance, vsl_user, TEST_ROUTER,
+        init, remote_user, seed_allowance, seed_balance, seed_token_metadata, vsl_user, TEST_ROUTER,
     };
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
     use cosmwasm_std::{attr, Addr};
@@ -654,6 +684,12 @@ mod tests {
         let mut deps = mock_dependencies();
         init(&mut deps);
         let user = remote_user("1", "cosmos1alice");
+        seed_token_metadata(
+            &mut deps,
+            "eucl",
+            ChainUid::create("1".to_string()).unwrap(),
+            TokenType::Voucher {},
+        );
         let router = router_addr_for(&deps);
         let info = message_info(&router, &[]);
         let res = execute_mint(
@@ -665,6 +701,8 @@ mod tests {
                     cross_chain_user: user.clone(),
                     token_id: "eucl".to_string(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap();
@@ -684,7 +722,7 @@ mod tests {
         }
         .to_serialized_balance_key();
         assert_eq!(
-            BALANCES.load(&deps.storage, key).unwrap(),
+            VOUCHER_BALANCES.load(&deps.storage, key).unwrap(),
             Uint256::from(500u128)
         );
     }
@@ -694,6 +732,12 @@ mod tests {
         let mut deps = mock_dependencies();
         init(&mut deps);
         let user = remote_user("1", "cosmos1alice");
+        seed_token_metadata(
+            &mut deps,
+            "eucl",
+            ChainUid::create("1".to_string()).unwrap(),
+            TokenType::Voucher {},
+        );
         let bk = BalanceKey {
             cross_chain_user: user.clone(),
             token_id: "eucl".to_string(),
@@ -708,6 +752,8 @@ mod tests {
                 ExecuteMint {
                     amount: Uint256::from(300u128),
                     balance_key: bk.clone(),
+                    token_type: TokenType::Voucher {},
+                    token_source_chain_uid: ChainUid::create("1".to_string()).unwrap(),
                 },
             )
             .unwrap();
@@ -721,13 +767,15 @@ mod tests {
                 ExecuteMint {
                     amount: Uint256::from(200u128),
                     balance_key: bk.clone(),
+                    token_type: TokenType::Voucher {},
+                    token_source_chain_uid: ChainUid::create("1".to_string()).unwrap(),
                 },
             )
             .unwrap();
         }
 
         assert_eq!(
-            BALANCES
+            VOUCHER_BALANCES
                 .load(&deps.storage, bk.to_serialized_balance_key())
                 .unwrap(),
             Uint256::from(500u128)
@@ -753,6 +801,8 @@ mod tests {
                     cross_chain_user: remote_user("1", "cosmos1alice"),
                     token_id: "eucl".to_string(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap_err();
@@ -774,6 +824,8 @@ mod tests {
                     cross_chain_user: remote_user("1", "cosmos1alice"),
                     token_id: "eucl".to_string(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap_err();
@@ -799,6 +851,8 @@ mod tests {
                     cross_chain_user: mixed,
                     token_id: "eucl".to_string(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap_err();
@@ -814,6 +868,12 @@ mod tests {
         let mut deps = mock_dependencies();
         init(&mut deps);
         let user = remote_user("1", "cosmos1alice");
+        seed_token_metadata(
+            &mut deps,
+            "eucl",
+            ChainUid::create("1".to_string()).unwrap(),
+            TokenType::Voucher {},
+        );
         seed_balance(&mut deps, user.clone(), "eucl", 1000);
 
         let router = router_addr_for(&deps);
@@ -822,11 +882,11 @@ mod tests {
             deps.as_mut(),
             info,
             ExecuteBurn {
-                amount: Uint256::from(400u128),
-                balance_key: BalanceKey {
-                    cross_chain_user: user.clone(),
-                    token_id: "eucl".to_string(),
-                },
+                voucher_amount: Uint256::from(400u128),
+                from_user: user.clone(),
+                token_id: "eucl".to_string(),
+                release_denom: TokenType::Voucher {},
+                release_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap();
@@ -837,7 +897,7 @@ mod tests {
         }
         .to_serialized_balance_key();
         assert_eq!(
-            BALANCES.load(&deps.storage, key).unwrap(),
+            VOUCHER_BALANCES.load(&deps.storage, key).unwrap(),
             Uint256::from(600u128)
         );
     }
@@ -847,10 +907,16 @@ mod tests {
         let mut deps = mock_dependencies();
         init(&mut deps);
         let user = remote_user("1", "cosmos1alice");
+        seed_token_metadata(
+            &mut deps,
+            "eucl",
+            ChainUid::create("1".to_string()).unwrap(),
+            TokenType::Voucher {},
+        );
         seed_balance(&mut deps, user.clone(), "eucl", 500);
 
         let bk = BalanceKey {
-            cross_chain_user: user,
+            cross_chain_user: user.clone(),
             token_id: "eucl".to_string(),
         };
         let router = router_addr_for(&deps);
@@ -859,13 +925,16 @@ mod tests {
             deps.as_mut(),
             info,
             ExecuteBurn {
-                amount: Uint256::from(500u128),
-                balance_key: bk.clone(),
+                voucher_amount: Uint256::from(500u128),
+                from_user: user,
+                token_id: "eucl".to_string(),
+                release_denom: TokenType::Voucher {},
+                release_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap();
 
-        assert!(BALANCES
+        assert!(VOUCHER_BALANCES
             .load(&deps.storage, bk.to_serialized_balance_key())
             .is_err());
     }
@@ -884,11 +953,11 @@ mod tests {
             deps.as_mut(),
             info,
             ExecuteBurn {
-                amount: Uint256::from(100u128),
-                balance_key: BalanceKey {
-                    cross_chain_user: remote_user("1", "cosmos1alice"),
-                    token_id: "eucl".to_string(),
-                },
+                voucher_amount: Uint256::from(100u128),
+                from_user: remote_user("1", "cosmos1alice"),
+                token_id: "eucl".to_string(),
+                release_denom: TokenType::Voucher {},
+                release_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap_err();
@@ -905,11 +974,11 @@ mod tests {
             deps.as_mut(),
             info,
             ExecuteBurn {
-                amount: Uint256::zero(),
-                balance_key: BalanceKey {
-                    cross_chain_user: remote_user("1", "cosmos1alice"),
-                    token_id: "eucl".to_string(),
-                },
+                voucher_amount: Uint256::zero(),
+                from_user: remote_user("1", "cosmos1alice"),
+                token_id: "eucl".to_string(),
+                release_denom: TokenType::Voucher {},
+                release_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap_err();
@@ -926,11 +995,11 @@ mod tests {
             deps.as_mut(),
             info,
             ExecuteBurn {
-                amount: Uint256::from(1u128),
-                balance_key: BalanceKey {
-                    cross_chain_user: remote_user("1", "cosmos1alice"),
-                    token_id: "eucl".to_string(),
-                },
+                voucher_amount: Uint256::from(1u128),
+                from_user: remote_user("1", "cosmos1alice"),
+                token_id: "eucl".to_string(),
+                release_denom: TokenType::Voucher {},
+                release_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap_err();
@@ -950,11 +1019,11 @@ mod tests {
             deps.as_mut(),
             info,
             ExecuteBurn {
-                amount: Uint256::from(200u128),
-                balance_key: BalanceKey {
-                    cross_chain_user: user,
-                    token_id: "eucl".to_string(),
-                },
+                voucher_amount: Uint256::from(200u128),
+                from_user: user,
+                token_id: "eucl".to_string(),
+                release_denom: TokenType::Voucher {},
+                release_chain_uid: ChainUid::create("1".to_string()).unwrap(),
             },
         )
         .unwrap_err();
@@ -979,6 +1048,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::from(300u128),
@@ -1003,11 +1073,11 @@ mod tests {
         .to_serialized_balance_key();
 
         assert_eq!(
-            BALANCES.load(deps_mut.storage, from_key).unwrap(),
+            VOUCHER_BALANCES.load(deps_mut.storage, from_key).unwrap(),
             Uint256::from(500u128)
         );
         assert_eq!(
-            BALANCES.load(deps_mut.storage, to_key).unwrap(),
+            VOUCHER_BALANCES.load(deps_mut.storage, to_key).unwrap(),
             Uint256::from(300u128)
         );
     }
@@ -1025,6 +1095,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::from(100u128),
@@ -1042,7 +1113,7 @@ mod tests {
             token_id: "eucl".to_string(),
         }
         .to_serialized_balance_key();
-        assert!(BALANCES.load(deps_mut.storage, from_key).is_err());
+        assert!(VOUCHER_BALANCES.load(deps_mut.storage, from_key).is_err());
     }
 
     // -----------------------------------------------------------------------
@@ -1062,6 +1133,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         let err = execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::zero(),
@@ -1088,6 +1160,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         let err = execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::from(100u128),
@@ -1114,6 +1187,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         let err = execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::from(100u128),
@@ -1147,6 +1221,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::from(150u128),
@@ -1175,7 +1250,7 @@ mod tests {
         }
         .to_serialized_balance_key();
         assert_eq!(
-            BALANCES.load(deps_mut.storage, owner_key).unwrap(),
+            VOUCHER_BALANCES.load(deps_mut.storage, owner_key).unwrap(),
             Uint256::from(850u128)
         );
     }
@@ -1195,6 +1270,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::from(200u128),
@@ -1232,6 +1308,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         let err = execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::from(100u128),
@@ -1471,10 +1548,10 @@ mod tests {
             token_id: "eucl".to_string(),
         }
         .to_serialized_balance_key();
-        BALANCES
+        VOUCHER_BALANCES
             .save(&mut deps.storage, zero_key.clone(), &Uint256::zero())
             .unwrap();
-        BALANCES
+        VOUCHER_BALANCES
             .save(
                 &mut deps.storage,
                 nonzero_key.clone(),
@@ -1502,6 +1579,7 @@ mod tests {
                 &VoucherAllowance {
                     amount: Uint256::zero(),
                     spender: spender.clone(),
+                    expires_at: None,
                 },
             )
             .unwrap();
@@ -1512,6 +1590,7 @@ mod tests {
                 &VoucherAllowance {
                     amount: Uint256::from(50u128),
                     spender,
+                    expires_at: None,
                 },
             )
             .unwrap();
@@ -1520,8 +1599,8 @@ mod tests {
         let info = message_info(&router, &[]);
         execute_remove_zero_state_values(deps.as_mut(), info, None, None).unwrap();
 
-        assert!(BALANCES.load(&deps.storage, zero_key).is_err());
-        assert!(BALANCES.load(&deps.storage, nonzero_key).is_ok());
+        assert!(VOUCHER_BALANCES.load(&deps.storage, zero_key).is_err());
+        assert!(VOUCHER_BALANCES.load(&deps.storage, nonzero_key).is_ok());
         assert!(VOUCHER_ALLOWANCES
             .load(&deps.storage, allowance_zero_key)
             .is_err());
@@ -1553,7 +1632,7 @@ mod tests {
             "Cosmos1ABC".to_string(),
             "eucl".to_string(),
         );
-        BALANCES
+        VOUCHER_BALANCES
             .save(
                 &mut deps.storage,
                 mixed_key.clone(),
@@ -1575,14 +1654,14 @@ mod tests {
             .unwrap();
         assert_eq!(norm_count, 1);
 
-        assert!(BALANCES.load(&deps.storage, mixed_key).is_err());
+        assert!(VOUCHER_BALANCES.load(&deps.storage, mixed_key).is_err());
         let lower_key: (ChainUid, String, String) = (
             ChainUid::create("cosmos".to_string()).unwrap(),
             "cosmos1abc".to_string(),
             "eucl".to_string(),
         );
         assert_eq!(
-            BALANCES.load(&deps.storage, lower_key).unwrap(),
+            VOUCHER_BALANCES.load(&deps.storage, lower_key).unwrap(),
             Uint256::from(250u128)
         );
     }
@@ -1597,10 +1676,10 @@ mod tests {
         let lower_key: (ChainUid, String, String) =
             (chain, "owner".to_string(), "eucl".to_string());
 
-        BALANCES
+        VOUCHER_BALANCES
             .save(&mut deps.storage, mixed_key, &Uint256::from(100u128))
             .unwrap();
-        BALANCES
+        VOUCHER_BALANCES
             .save(&mut deps.storage, lower_key.clone(), &Uint256::from(50u128))
             .unwrap();
 
@@ -1609,7 +1688,7 @@ mod tests {
         execute_normalize_balance_keys(deps.as_mut(), info, None, None).unwrap();
 
         assert_eq!(
-            BALANCES.load(&deps.storage, lower_key).unwrap(),
+            VOUCHER_BALANCES.load(&deps.storage, lower_key).unwrap(),
             Uint256::from(150u128)
         );
     }
@@ -1623,7 +1702,7 @@ mod tests {
             "alreadylower".to_string(),
             "eucl".to_string(),
         );
-        BALANCES
+        VOUCHER_BALANCES
             .save(&mut deps.storage, key, &Uint256::from(100u128))
             .unwrap();
 
@@ -1669,6 +1748,7 @@ mod tests {
                 &VoucherAllowance {
                     amount: Uint256::from(300u128),
                     spender: spender.clone(),
+                    expires_at: None,
                 },
             )
             .unwrap();
@@ -1679,6 +1759,7 @@ mod tests {
                 &VoucherAllowance {
                     amount: Uint256::from(100u128),
                     spender: spender.clone(),
+                    expires_at: None,
                 },
             )
             .unwrap();
@@ -1713,6 +1794,7 @@ mod tests {
         let mut deps_mut = deps.as_mut();
         let err = execute_transfer(
             &mut deps_mut,
+            mock_env(),
             info,
             ExecuteTransfer {
                 amount: Uint256::from(50u128),
@@ -1762,10 +1844,10 @@ mod tests {
             (chain.clone(), "AAAA".to_string(), "eucl".to_string());
         let key2: (ChainUid, String, String) = (chain, "BBBB".to_string(), "eucl".to_string());
 
-        BALANCES
+        VOUCHER_BALANCES
             .save(&mut deps.storage, key1.clone(), &Uint256::from(10u128))
             .unwrap();
-        BALANCES
+        VOUCHER_BALANCES
             .save(&mut deps.storage, key2.clone(), &Uint256::from(20u128))
             .unwrap();
 
@@ -1784,8 +1866,8 @@ mod tests {
         assert_eq!(norm, 1);
 
         // key1 normalized, key2 still mixed
-        assert!(BALANCES.load(&deps.storage, key1).is_err());
-        assert!(BALANCES.load(&deps.storage, key2.clone()).is_ok());
+        assert!(VOUCHER_BALANCES.load(&deps.storage, key1).is_err());
+        assert!(VOUCHER_BALANCES.load(&deps.storage, key2.clone()).is_ok());
 
         // Process remaining
         let router = router_addr_for(&deps);
@@ -1800,7 +1882,7 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(norm, 1);
-        assert!(BALANCES.load(&deps.storage, key2).is_err());
+        assert!(VOUCHER_BALANCES.load(&deps.storage, key2).is_err());
     }
 }
 
@@ -1862,34 +1944,5 @@ pub fn execute_register_token_metadata(
     Ok(Response::new().add_event(token_metadata_update_event(
         &token_metadata,
         "register_denom",
-    )))
-}
-
-pub fn execute_deregister_token_metadata(
-    deps: DepsMut,
-    info: MessageInfo,
-    token_id: String,
-    chain_uid: ChainUid,
-    token_type: TokenType,
-) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
-    ensure!(info.sender == state.router, ContractError::Unauthorized {});
-
-    let token_metadata_key =
-        get_token_metadata_key(token_id.clone(), chain_uid.clone(), token_type.clone());
-
-    let mut token_metadata = token_metadata_key
-        .load(deps.storage)
-        .map_err(|e| ContractError::new(&format!("Failed to load token metadata: {}", e)))?;
-    ensure!(
-        token_metadata.allowed,
-        ContractError::new("Token already deregistered")
-    );
-    token_metadata.allowed = false;
-    token_metadata_key.save(deps.storage, &token_metadata)?;
-
-    Ok(Response::new().add_event(token_metadata_update_event(
-        &token_metadata,
-        "deregister_denom",
     )))
 }
