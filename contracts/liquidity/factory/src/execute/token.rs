@@ -29,6 +29,7 @@ pub fn execute_request_register_denom(
     token: TokenWithDenom,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Vouchers are not registered
     ensure!(
         !token.token_type.is_voucher(),
@@ -117,6 +118,7 @@ pub fn execute_request_deregister_denom(
     token: TokenWithDenom,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Vouchers are not registered
     ensure!(
         !token.token_type.is_voucher(),
@@ -322,6 +324,7 @@ pub fn execute_transfer_voucher(
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // The transfer amount should be greater than zero
     ensure!(!amount.is_zero(), ContractError::ZeroAssetAmount {});
     let state = STATE.load(deps.storage)?;
