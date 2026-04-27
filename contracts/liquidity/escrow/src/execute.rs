@@ -152,7 +152,7 @@ pub fn execute_deposit_native(
 
     STATE.save(deps.storage, &state)?;
 
-    Ok(Response::new().add_attribute("action", "deposit"))
+    Ok(response.add_attribute("action", "deposit"))
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
