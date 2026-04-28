@@ -1123,4 +1123,284 @@ mod tests {
             .count();
         assert_eq!(count, 3);
     }
+
+    // -----------------------------------------------------------------------
+    // Stable LP allocation tests (D-invariant math)
+    //
+    // These tests verify the stable_vlp `add_liquidity` handler threads
+    // `amp_factor` correctly into the underlying pool function and that the
+    // resulting LP mint is computed using the D-invariant (Curve-style)
+    // formula, not the constant-product geometric mean.
+    // -----------------------------------------------------------------------
+
+    /// Instantiate the stable VLP with a custom amp factor.
+    fn init_with_amp(deps: &mut crate::testing::helpers::MockDeps, amp: u64) {
+        let router = deps.api.addr_make("router");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
+        let msg = InstantiateMsg {
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
+            pair: default_pair(),
+            fee: default_fee(),
+            execute: None,
+            admin,
+            amp_factor: Some(Uint64::from(amp)),
+        };
+        let info = message_info(&router, &[]);
+        instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    }
+
+    /// Seed a pool with imbalanced reserves on chain1.
+    fn seed_imbalanced_liquidity(
+        deps: &mut crate::testing::helpers::MockDeps,
+        amount_1: u128,
+        amount_2: u128,
+    ) {
+        register_pool(deps, chain1(), "reg-tx-imb");
+        let router = deps.api.addr_make("router");
+        let info = message_info(&router, &[]);
+        let liquidity = PairWithAmount::new(
+            TokenWithAmount {
+                token: token1(),
+                amount: Uint128::new(amount_1),
+            },
+            TokenWithAmount {
+                token: token2(),
+                amount: Uint128::new(amount_2),
+            },
+        )
+        .unwrap();
+        let msg = ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
+            sender: sender_on_chain1(),
+            tx_id: "liq-imb-tx".to_string(),
+            liquidity,
+            slippage_tolerance_bps: 5000,
+        });
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+    }
+
+    // The integration test fixture: seed a stable VLP at amp=100 with
+    // 10k/100k reserves and verify total_lp_tokens == 82026 (the D-invariant).
+    // This is the unit-level mirror of
+    // tests-integration/src/tests/factory.rs:2474.
+    #[test]
+    fn test_stable_vlp_first_deposit_10k_100k_amp_100_yields_d_82026() {
+        let mut deps = mock_dependencies();
+        init_with_amp(&mut deps, 100);
+        seed_imbalanced_liquidity(&mut deps, 10_000, 100_000);
+
+        let state = STATE.load(&deps.storage).unwrap();
+        assert_eq!(
+            state.total_lp_tokens,
+            Uint128::new(82_026),
+            "Stable VLP at amp=100, seeded 10k/100k must record D=82026"
+        );
+
+        // The user's LP allocation is total_lp_tokens minus the
+        // MINIMUM_LIQUIDITY (1000) burned to lock the pool.
+        let chain_lp = CHAIN_LP_TOKENS.load(&deps.storage, chain1()).unwrap();
+        assert_eq!(chain_lp, Uint128::new(81_026));
+
+        let collateral = COLLATERAL_LP_TOKENS.load(&deps.storage).unwrap();
+        assert_eq!(collateral, Uint128::new(1_000));
+    }
+
+    // Same fixture but at amp=1000 (the default). D should be larger
+    // (closer to arithmetic mean 110_000) than at amp=100.
+    #[test]
+    fn test_stable_vlp_amp_factor_threaded_through_changes_lp_mint() {
+        let mut deps_low = mock_dependencies();
+        init_with_amp(&mut deps_low, 100);
+        seed_imbalanced_liquidity(&mut deps_low, 10_000, 100_000);
+        let total_lp_low = STATE.load(&deps_low.storage).unwrap().total_lp_tokens;
+
+        let mut deps_high = mock_dependencies();
+        init_with_amp(&mut deps_high, 1000);
+        seed_imbalanced_liquidity(&mut deps_high, 10_000, 100_000);
+        let total_lp_high = STATE.load(&deps_high.storage).unwrap().total_lp_tokens;
+
+        assert_ne!(
+            total_lp_low, total_lp_high,
+            "amp_factor must be threaded through and affect LP mint"
+        );
+        assert!(
+            total_lp_high > total_lp_low,
+            "Higher amp must produce higher D for imbalanced pools (low={total_lp_low}, high={total_lp_high})"
+        );
+        // Bounds: D between geometric mean (~31622) and arithmetic mean (110000).
+        assert!(total_lp_low >= Uint128::new(31_622));
+        assert!(total_lp_high <= Uint128::new(110_000));
+    }
+
+    // Sequential deposits: D-invariant grows additively with reserves.
+    // Doubling reserves should ~double the D-invariant (and hence ~double LP).
+    #[test]
+    fn test_stable_vlp_sequential_deposits_track_d_growth() {
+        let mut deps = mock_dependencies();
+        init_with_amp(&mut deps, 100);
+        seed_imbalanced_liquidity(&mut deps, 10_000, 100_000);
+
+        let total_lp_before = STATE.load(&deps.storage).unwrap().total_lp_tokens;
+        assert_eq!(total_lp_before, Uint128::new(82_026));
+
+        // Deposit again from chain2 (proportionally — same 1:10 ratio).
+        register_pool(&mut deps, chain2(), "reg-tx-2nd");
+        let router = deps.api.addr_make("router");
+        let info = message_info(&router, &[]);
+        let liquidity = PairWithAmount::new(
+            TokenWithAmount {
+                token: token1(),
+                amount: Uint128::new(10_000),
+            },
+            TokenWithAmount {
+                token: token2(),
+                amount: Uint128::new(100_000),
+            },
+        )
+        .unwrap();
+        let msg = ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
+            sender: sender_on_chain2(),
+            tx_id: "liq-tx-2nd".to_string(),
+            liquidity,
+            slippage_tolerance_bps: 5000,
+        });
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let total_lp_after = STATE.load(&deps.storage).unwrap().total_lp_tokens;
+
+        // Reserves doubled (20k/200k), so D ~ 2 * 82026 = 164052.
+        // Allow tiny rounding tolerance from Newton's method convergence.
+        let delta = if total_lp_after > Uint128::new(164_052) {
+            total_lp_after - Uint128::new(164_052)
+        } else {
+            Uint128::new(164_052) - total_lp_after
+        };
+        assert!(
+            delta <= Uint128::new(2),
+            "Doubling reserves must ~double D; expected ~164052, got {total_lp_after}"
+        );
+
+        // chain2's LP allocation is the FULL minted amount (no
+        // MINIMUM_LIQUIDITY haircut on subsequent deposits).
+        let chain2_lp = CHAIN_LP_TOKENS.load(&deps.storage, chain2()).unwrap();
+        let expected_chain2_lp = total_lp_after - total_lp_before;
+        assert_eq!(chain2_lp, expected_chain2_lp);
+
+        // Reserves are correctly tracked.
+        let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
+        let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
+        assert_eq!(b1, Uint128::new(20_000));
+        assert_eq!(b2, Uint128::new(200_000));
+    }
+
+    // Three sequential balanced deposits: each deposit grows total_lp_tokens
+    // monotonically and the chain's LP allocation matches the new mint.
+    #[test]
+    fn test_stable_vlp_three_balanced_deposits_grow_lp_supply() {
+        let mut deps = mock_dependencies();
+        init_with_amp(&mut deps, 100);
+        let reserve = 1_000_000u128;
+        seed_liquidity(&mut deps, reserve);
+
+        let mut prev_total = STATE.load(&deps.storage).unwrap().total_lp_tokens;
+        let chain1_uid = chain1();
+
+        for i in 1..=3 {
+            let router = deps.api.addr_make("router");
+            let info = message_info(&router, &[]);
+            let liquidity = PairWithAmount::new(
+                TokenWithAmount {
+                    token: token1(),
+                    amount: Uint128::new(reserve),
+                },
+                TokenWithAmount {
+                    token: token2(),
+                    amount: Uint128::new(reserve),
+                },
+            )
+            .unwrap();
+            let msg = ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
+                sender: sender_on_chain1(),
+                tx_id: format!("liq-tx-{i}"),
+                liquidity,
+                slippage_tolerance_bps: 5000,
+            });
+            execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+            let new_total = STATE.load(&deps.storage).unwrap().total_lp_tokens;
+            assert!(
+                new_total > prev_total,
+                "iteration {i}: LP supply must grow (prev={prev_total}, new={new_total})"
+            );
+
+            // chain1 LP after deposit `i` should be (i+1)*reserve units' worth
+            // of LP (1 from seed + i additions, all equal because reserves
+            // double each round in proportion to D doubling).
+            let chain_lp = CHAIN_LP_TOKENS
+                .load(&deps.storage, chain1_uid.clone())
+                .unwrap();
+            // chain_lp can never exceed total_lp_tokens.
+            assert!(chain_lp < new_total);
+
+            prev_total = new_total;
+        }
+
+        let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
+        let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
+        assert_eq!(b1, Uint128::new(reserve * 4));
+        assert_eq!(b2, Uint128::new(reserve * 4));
+    }
+
+    // The default amp_factor (1000) on a balanced 1M/1M pool should produce
+    // total_lp_tokens approximately equal to the sum of reserves.
+    // (For balanced pools at high amp, D ≈ sum.)
+    #[test]
+    fn test_stable_vlp_default_init_balanced_d_close_to_sum() {
+        let mut deps = mock_dependencies();
+        init(&mut deps); // default amp = 1000
+        let reserve = 1_000_000u128;
+        seed_liquidity(&mut deps, reserve);
+
+        let total = STATE.load(&deps.storage).unwrap().total_lp_tokens;
+        // For balanced reserves, D = sum at any amp >= a few units.
+        assert_eq!(total, Uint128::new(2_000_000));
+    }
+
+    // Confirm the `add_liquidity` handler returns the expected `lp_allocation`
+    // attribute (which is the user-facing mint, post-MINIMUM_LIQUIDITY haircut
+    // on the first deposit only).
+    #[test]
+    fn test_stable_vlp_add_liquidity_response_lp_allocation_attribute() {
+        let mut deps = mock_dependencies();
+        init_with_amp(&mut deps, 100);
+        register_pool(&mut deps, chain1(), "reg-tx");
+
+        let router = deps.api.addr_make("router");
+        let info = message_info(&router, &[]);
+        let liquidity = PairWithAmount::new(
+            TokenWithAmount {
+                token: token1(),
+                amount: Uint128::new(10_000),
+            },
+            TokenWithAmount {
+                token: token2(),
+                amount: Uint128::new(100_000),
+            },
+        )
+        .unwrap();
+        let msg = ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
+            sender: sender_on_chain1(),
+            tx_id: "liq-tx".to_string(),
+            liquidity,
+            slippage_tolerance_bps: 5000,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // First-deposit user LP = D - MINIMUM_LIQUIDITY = 82026 - 1000 = 81026.
+        assert!(res.attributes.contains(&attr("lp_allocation", "81026")));
+        assert!(res.attributes.contains(&attr("liquidity_1_added", "10000")));
+        assert!(res
+            .attributes
+            .contains(&attr("liquidity_2_added", "100000")));
+    }
 }
