@@ -1878,11 +1878,8 @@ mod tests {
         ) -> MigrationOutcome {
             // Pre-migration LP supply = sqrt(r1 * r2), as CP would have
             // minted on the very first deposit.
-            let prod = Uint512::from(r1)
-                .checked_mul(Uint512::from(r2))
-                .unwrap();
-            let cp_total_lp =
-                Uint128::try_from(Isqrt::isqrt(prod)).unwrap();
+            let prod = Uint512::from(r1).checked_mul(Uint512::from(r2)).unwrap();
+            let cp_total_lp = Uint128::try_from(Isqrt::isqrt(prod)).unwrap();
             assert!(
                 cp_total_lp > Uint128::new(MINIMUM_LIQUIDITY),
                 "test fixture must seed enough liquidity to cover MINIMUM_LIQUIDITY"
@@ -1895,10 +1892,8 @@ mod tests {
 
             let state_storage: Item<State> = Item::new("state");
             let balances_storage: Map<Token, Uint128> = Map::new("balances");
-            let chain_lp_tokens_storage: Map<ChainUid, Uint128> =
-                Map::new("chain_lp_tokens");
-            let collateral_lp_tokens_storage: Item<Uint128> =
-                Item::new("collateral_lp_tokens");
+            let chain_lp_tokens_storage: Map<ChainUid, Uint128> = Map::new("chain_lp_tokens");
+            let collateral_lp_tokens_storage: Item<Uint128> = Item::new("collateral_lp_tokens");
 
             let pair = make_pair();
             let router_addr = deps.api.addr_make("router");
@@ -2140,8 +2135,7 @@ mod tests {
             // But Alice's total value is preserved: released_1 + released_2
             // >= her pre-migration value claim. The excess is the Curve
             // premium accruing to her share.
-            let alice_value =
-                outcome.alice_released_1 + outcome.alice_released_2;
+            let alice_value = outcome.alice_released_1 + outcome.alice_released_2;
             assert!(
                 alice_value >= alice_pre_claim_value,
                 "alice value diluted: {} < pre-migration value {} \
@@ -2155,8 +2149,7 @@ mod tests {
             // Bob's total released value is <= his deposited value — he
             // pays the imbalance premium, not Alice.
             let bob_deposited_value = Uint128::new(2_000) + Uint128::new(3_000);
-            let bob_released_value =
-                outcome.bob_released_1 + outcome.bob_released_2;
+            let bob_released_value = outcome.bob_released_1 + outcome.bob_released_2;
             assert!(
                 bob_released_value <= bob_deposited_value,
                 "bob received more value than deposited: {} > {}",
@@ -2167,15 +2160,11 @@ mod tests {
             // Conservation: Alice's release + Bob's release + locked
             // collateral backing = total reserves after add.
             assert_eq!(
-                outcome.alice_released_1
-                    + outcome.bob_released_1
-                    + outcome.final_reserves_1,
+                outcome.alice_released_1 + outcome.bob_released_1 + outcome.final_reserves_1,
                 outcome.reserves_after_add_1
             );
             assert_eq!(
-                outcome.alice_released_2
-                    + outcome.bob_released_2
-                    + outcome.final_reserves_2,
+                outcome.alice_released_2 + outcome.bob_released_2 + outcome.final_reserves_2,
                 outcome.reserves_after_add_2
             );
         }
@@ -2230,15 +2219,11 @@ mod tests {
 
             // Conservation across the full migration scenario.
             assert_eq!(
-                outcome.alice_released_1
-                    + outcome.bob_released_1
-                    + outcome.final_reserves_1,
+                outcome.alice_released_1 + outcome.bob_released_1 + outcome.final_reserves_1,
                 outcome.reserves_after_add_1
             );
             assert_eq!(
-                outcome.alice_released_2
-                    + outcome.bob_released_2
-                    + outcome.final_reserves_2,
+                outcome.alice_released_2 + outcome.bob_released_2 + outcome.final_reserves_2,
                 outcome.reserves_after_add_2
             );
 
@@ -2253,10 +2238,8 @@ mod tests {
                 Decimal256::checked_from_integer(r1 + Uint128::new(1_000)).unwrap(),
                 Decimal256::checked_from_integer(r2 + Uint128::new(10_000)).unwrap(),
             ];
-            let d_old =
-                compute_d(Uint64::new(100), &pools_old).unwrap();
-            let d_new =
-                compute_d(Uint64::new(100), &pools_new).unwrap();
+            let d_old = compute_d(Uint64::new(100), &pools_old).unwrap();
+            let d_new = compute_d(Uint64::new(100), &pools_new).unwrap();
             let expected_bob_lp = Decimal256::checked_from_integer(outcome.cp_total_lp)
                 .unwrap()
                 .checked_multiply_ratio(d_new - d_old, d_old)
