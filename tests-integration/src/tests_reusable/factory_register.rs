@@ -21,13 +21,25 @@ use crate::helpers::relayer::{
     ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
     relay_router_send_packet,
 };
-use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
+use crate::tests_reusable::constants::{
+    FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum FactorySetupMode {
     Native,
     Ibc,
     Evm,
+}
+
+impl FactorySetupMode {
+    pub fn factory_chain_id(self) -> &'static str {
+        match self {
+            FactorySetupMode::Native => FACTORY_CHAIN_ID_LOCAL,
+            FactorySetupMode::Ibc => FACTORY_CHAIN_ID_IBC,
+            FactorySetupMode::Evm => FACTORY_CHAIN_ID_EVM,
+        }
+    }
 }
 
 pub fn setup_factory(

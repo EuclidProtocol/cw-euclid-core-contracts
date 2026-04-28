@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use super::chains::{get_virtual_balance, migrate_concentrated_vlp, upload_concentrated_vlp_code};
 use crate::helpers::chains::{get_escrow, query_concentrated_migration_status};
 use crate::helpers::relayer::relay_factory_router_factory;
+use crate::tests_reusable::clp::utils::pair_to_tick;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{coin, Addr, StdError, Uint128};
+use cosmwasm_std::{coin, to_json_binary, Addr, StdError, Uint128};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 use cw_orch_interchain::prelude::MockInterchainEnv;
@@ -83,15 +84,32 @@ pub fn deposit_token(
         token.token_type.clone(),
         &mut funds,
     );
-    let tx_response = factory.execute(
-        &euclid::msgs::factory::msg::ExecuteMsg::DepositToken {
-            asset_in: token.clone(),
-            amount_in: amount,
-            recipients,
-            cross_chain_config: CrossChainConfig::default(),
-        },
-        &funds,
-    )?;
+    let tx_response = if let TokenType::Smart { contract_address } = token.token_type.clone() {
+        let cw20 = LpTokenContract::new(factory.environment().clone());
+        cw20.set_address(&Addr::unchecked(contract_address));
+        cw20.execute(
+            &euclid::msgs::lp_token::msg::ExecuteMsg::Send {
+                contract: factory.address()?.to_string(),
+                amount,
+                msg: to_json_binary(&euclid::msgs::factory::cw20::FactoryCw20HookMsg::Deposit {
+                    token: token.token.clone(),
+                    recipients,
+                    cross_chain_config: CrossChainConfig::default(),
+                })?,
+            },
+            &[],
+        )?
+    } else {
+        factory.execute(
+            &euclid::msgs::factory::msg::ExecuteMsg::DepositToken {
+                asset_in: token.clone(),
+                amount_in: amount,
+                recipients,
+                cross_chain_config: CrossChainConfig::default(),
+            },
+            &funds,
+        )?
+    };
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
 
     let new_router_escrow_balance = router.query_token_escrows(
@@ -288,6 +306,10 @@ pub fn create_concentrated_pool(
     tick_spacing: u64,
     slippage_tolerance_bps: u64,
 ) -> Result<PoolKey, CwOrchError> {
+    let initial_tick = pair_to_tick(
+        pair_with_denom.token_1.amount,
+        pair_with_denom.token_2.amount,
+    );
     create_concentrated_pool_with_tick(
         factory,
         router,
@@ -295,7 +317,7 @@ pub fn create_concentrated_pool(
         fee_tier_bps,
         tick_spacing,
         slippage_tolerance_bps,
-        None,
+        Some(initial_tick),
     )
 }
 

@@ -56,7 +56,7 @@ pub enum LegacyLiquidityMode {
 }
 
 #[cw_serde]
-#[derive(QueryResponses)]
+#[derive(cw_orch::QueryFns, QueryResponses)]
 pub enum QueryMsg {
     #[returns(GetStateResponse)]
     State {},
