@@ -186,7 +186,7 @@ pub fn execute_receive_acknowledgement(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
-    msg: Binary,
+    _msg: Binary,
     sequence: u128,
     source_port: String,
     destination_port: String,
@@ -207,12 +207,10 @@ pub fn execute_receive_acknowledgement(
     let existing_request =
         remove_pending_packet_and_decrement_count(deps.storage, &chain_uid, sequence)?;
 
-    ensure!(
-        existing_request.original_msg == msg,
-        ContractError::new("Ack source msg doesn't match with existing request")
-    );
-
-    let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
+    // Decode the locally-stored original message; the bytes returned in the ack
+    // may have been re-encoded by intermediate chains (e.g. EVM) and are not
+    // guaranteed to be byte-identical even when semantically equivalent.
+    let msg: FactoryCrossChainExecuteMsg = from_json(&existing_request.original_msg)?;
 
     // Verify chain uid is registerd and is solana chain if its not a register factory msg
     let chain_type = match msg.clone() {
