@@ -137,7 +137,7 @@ mod tests {
         };
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "instantiate"));
+        assert_eq!(res.attributes[0], attr("action", "instantiate"));
         assert_eq!(res.attributes[1], attr("token_id", TOKEN_ID));
         assert_eq!(
             res.attributes[2],

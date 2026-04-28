@@ -113,7 +113,7 @@ mod tests {
         assert!(res
             .attributes
             .iter()
-            .any(|a| a == &attr("method", "instantiate")));
+            .any(|a| a == &attr("action", "instantiate")));
 
         // State router is the info.sender (addr_make("router"))
         let router = deps.api.addr_make("router");

@@ -362,7 +362,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "add_allowed_denom"));
+        assert_eq!(res.attributes[0], attr("action", "add_allowed_denom"));
         assert_eq!(res.attributes[1], attr("new_denom", new_denom.get_key()));
 
         let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
@@ -474,7 +474,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "add_allowed_denom"));
+        assert_eq!(res.attributes[0], attr("action", "add_allowed_denom"));
 
         let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
         assert!(allowed.contains(&denom));
@@ -499,7 +499,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "disallow_denom"));
+        assert_eq!(res.attributes[0], attr("action", "disallow_denom"));
         assert_eq!(
             res.attributes[1],
             attr("deregistered_denom", native_denom().get_key())
@@ -785,7 +785,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "deposit_cw20"));
+        assert_eq!(res.attributes[0], attr("action", "deposit_cw20"));
 
         let bal = DENOM_TO_AMOUNT
             .load(
@@ -899,7 +899,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "escrow_withdraw"));
+        assert_eq!(res.attributes[0], attr("action", "escrow_withdraw"));
         assert_eq!(res.attributes[1], attr("amount", "400"));
         assert_eq!(res.attributes[2], attr("token", TOKEN_ID));
         assert_eq!(res.attributes[3], attr("denom", native_denom().get_key()));

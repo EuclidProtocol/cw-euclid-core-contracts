@@ -102,7 +102,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let res = init(&mut deps);
 
-        assert_eq!(res.attributes[0], attr("method", "instantiate"));
+        assert_eq!(res.attributes[0], attr("action", "instantiate"));
 
         let (_, pub_key) = get_signer_key();
         let state = STATE.load(&deps.storage).unwrap();
@@ -130,7 +130,7 @@ mod tests {
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         let keys: Vec<&str> = res.attributes.iter().map(|a| a.key.as_str()).collect();
-        assert!(keys.contains(&"method"));
+        assert!(keys.contains(&"action"));
         assert!(keys.contains(&"message_signer_pubkey"));
         assert!(keys.contains(&"message_signer_address"));
         assert!(keys.contains(&"signature_threshold"));

@@ -304,7 +304,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let res = init(&mut deps);
 
-        assert!(res.attributes.contains(&attr("method", "instantiate")));
+        assert!(res.attributes.contains(&attr("action", "instantiate")));
         assert!(res.attributes.iter().any(|a| a.key == "vlp_address"));
         assert!(res.attributes.iter().any(|a| a.key == "owner"));
     }
