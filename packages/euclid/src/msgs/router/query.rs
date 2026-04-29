@@ -47,6 +47,14 @@ pub enum QueryMsg {
     GetReleaseFees {
         pagination: Pagination<(Token, ChainUid)>,
     },
+    #[returns(LockedChainsResponse)]
+    GetLockedChains {},
+    #[returns(FeeStateResponse)]
+    GetFeeState {},
+    #[returns(DefaultReleaseFeeResponse)]
+    GetDefaultReleaseFee {},
+    #[returns(ChainTimeoutResponse)]
+    GetChainTimeout { chain_uid: ChainUid },
 }
 
 #[cw_serde]
@@ -154,4 +162,26 @@ pub struct QueryTokenDenomsResponse {
 #[cw_serde]
 pub struct QueryRelayerAddressesResponse {
     pub relayer_contract: Addr,
+}
+
+#[cw_serde]
+pub struct LockedChainsResponse {
+    pub chains: Vec<ChainUid>,
+}
+
+#[cw_serde]
+pub struct FeeStateResponse {
+    pub release_fee_recipient: Addr,
+    pub default_fee_recipient: Addr,
+}
+
+#[cw_serde]
+pub struct DefaultReleaseFeeResponse {
+    pub fee: Uint128,
+}
+
+#[cw_serde]
+pub struct ChainTimeoutResponse {
+    pub chain_uid: ChainUid,
+    pub timeout_seconds: u64,
 }

@@ -1,11 +1,14 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps};
 use euclid::{
     error::ContractError,
-    msgs::escrow::{AllowedDenomsResponse, AllowedTokenResponse, StateResponse, TokenIdResponse},
+    msgs::escrow::{
+        AllowedDenomsResponse, AllowedTokenResponse, DenomBalanceResponse, StateResponse,
+        TokenIdResponse,
+    },
     token::TokenType,
 };
 
-use crate::state::{ALLOWED_DENOMS, STATE};
+use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
 
 // New escrow query functions
 
@@ -33,6 +36,13 @@ pub fn query_allowed_denoms(deps: Deps) -> Result<Binary, ContractError> {
     let response = AllowedDenomsResponse { denoms };
 
     Ok(to_json_binary(&response)?)
+}
+
+pub fn query_denom_balance(deps: Deps, denom: String) -> Result<Binary, ContractError> {
+    let amount = DENOM_TO_AMOUNT
+        .may_load(deps.storage, denom.clone())?
+        .unwrap_or_default();
+    Ok(to_json_binary(&DenomBalanceResponse { denom, amount })?)
 }
 
 // Returns the allowed denoms

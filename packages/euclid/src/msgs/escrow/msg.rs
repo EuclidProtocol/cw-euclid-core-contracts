@@ -51,6 +51,9 @@ pub enum QueryMsg {
 
     #[returns(AllowedDenomsResponse)]
     AllowedDenoms {},
+
+    #[returns(DenomBalanceResponse)]
+    GetDenomBalance { denom: String },
 }
 
 #[cw_serde]
@@ -76,6 +79,12 @@ pub struct AllowedDenomsResponse {
 #[cw_serde]
 pub struct AllowedTokenResponse {
     pub allowed: bool,
+}
+
+#[cw_serde]
+pub struct DenomBalanceResponse {
+    pub denom: String,
+    pub amount: Uint128,
 }
 
 #[cw_serde]

@@ -181,6 +181,12 @@ pub enum QueryMsg {
 
     #[returns(GetEscrowResponse)]
     GetEscrow { token_id: String },
+
+    #[returns(GetRateLimitStateResponse)]
+    GetRateLimitState {},
+
+    #[returns(GetUserRateLimitResponse)]
+    GetUserRateLimit { user: Addr },
 }
 
 #[cw_serde]
@@ -273,4 +279,23 @@ pub struct GetPendingRemoveLiquidityResponse {
 #[cw_serde]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>, // Assuming pool addresses are strings
+}
+
+#[cw_serde]
+pub struct FeeBracket {
+    pub threshold: u128,
+    pub fee: Uint128,
+}
+
+#[cw_serde]
+pub struct GetRateLimitStateResponse {
+    pub free_limit: u128,
+    pub fee_brackets: Vec<FeeBracket>,
+}
+
+#[cw_serde]
+pub struct GetUserRateLimitResponse {
+    pub user: Addr,
+    pub free_limit: Option<u128>,
+    pub pending_packets: u128,
 }
