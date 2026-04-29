@@ -50,7 +50,6 @@ pub fn ibc_execute_register_denom(
         chain_uid: sender.chain_uid.clone(),
         token_type: token.token_type.clone(),
     });
-    println!("Register Denom Token Key: {:?}", token.token);
     TOKEN_DENOMS.save(deps.storage, token.token.clone(), &token_denoms)?;
 
     let ack: AcknowledgementMsg<RegisterDenomResponse> =
@@ -120,7 +119,7 @@ pub fn ibc_execute_deposit_token(
     env: Env,
     msg: RouterCrossChainDepositTokenExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let sender = msg.clone().sender;
+    let sender = msg.sender.clone();
 
     // Add token 1 in escrow balance
     let token_escrow_key = (msg.asset_in.token.to_string(), sender.chain_uid.clone());
@@ -210,7 +209,7 @@ pub fn ibc_execute_transfer_virtual_balance(
     env: Env,
     msg: RouterCrossChainTransferVoucherExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let sender = msg.clone().sender;
+    let sender = msg.sender.clone();
 
     let response = execute_transfer_voucher(
         deps,
