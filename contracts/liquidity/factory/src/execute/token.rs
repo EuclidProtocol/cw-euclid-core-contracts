@@ -104,8 +104,8 @@ pub fn execute_request_register_denom(
             euclid::events::TxType::RegisterDenom,
         ))
         .add_attribute("action", "register_denom")
-        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_register_denom")
+        .add_attribute("tx_id", tx_id)
         .add_attribute("token", token.token.to_string())
         .add_attribute("token_type", token.token_type.get_key())
         .add_submessage(request_register_denom_msg))
@@ -188,8 +188,8 @@ pub fn execute_request_deregister_denom(
             euclid::events::TxType::DeregisterDenom,
         ))
         .add_attribute("action", "deregister_denom")
-        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "request_deregister_denom")
+        .add_attribute("tx_id", tx_id)
         .add_attribute("token", token.token.to_string())
         .add_attribute("token_type", token.token_type.get_key())
         .add_submessage(request_deregister_denom_msg))
@@ -307,8 +307,8 @@ pub fn execute_deposit_token(
         ))
         .add_event(deposit_token_event(&tx_id, &deposit_token_info))
         .add_attribute("action", "deposit_token")
-        .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_deposit_token")
+        .add_attribute("tx_id", tx_id)
         .add_attribute("asset_in", asset_in_id)
         .add_attribute("amount_in", amount_in)
         .add_submessages(msgs))
@@ -368,8 +368,8 @@ pub fn execute_transfer_voucher(
             TxType::TransferVoucher,
         ))
         .add_attribute("action", "transfer_voucher")
+        .add_attribute("method", "execute_transfer_voucher")
         .add_attribute("tx_id", tx_id)
-        .add_attribute("method", "transfer_voucher")
         .add_submessage(withdraw_msg))
 }
 
@@ -455,7 +455,7 @@ mod tests {
         assert!(res
             .attributes
             .iter()
-            .any(|a| a.key == "method" && a.value == "request_register_denom"));
+            .any(|a| a.key == "action" && a.value == "register_denom"));
 
         let tx_id = get_attribute(&res, "tx_id").to_owned();
         assert!(!tx_id.is_empty());
@@ -545,7 +545,7 @@ mod tests {
         assert!(res
             .attributes
             .iter()
-            .any(|a| a.key == "method" && a.value == "transfer_voucher"));
+            .any(|a| a.key == "action" && a.value == "transfer_voucher"));
 
         assert_attribute(&res, "action", "transfer_voucher");
         assert_eq!(get_attribute(&res, "tx_id"), tx_id);

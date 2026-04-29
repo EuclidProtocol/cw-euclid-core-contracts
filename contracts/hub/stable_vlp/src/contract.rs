@@ -80,7 +80,7 @@ pub fn instantiate(
             })?;
 
     Ok(response
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
         .add_attribute("owner", info.sender)
         .add_attribute("pool_type", "stable")
@@ -304,7 +304,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let res = init(&mut deps);
 
-        assert!(res.attributes.contains(&attr("method", "instantiate")));
+        assert!(res.attributes.contains(&attr("action", "instantiate")));
         assert!(res.attributes.iter().any(|a| a.key == "vlp_address"));
         assert!(res.attributes.iter().any(|a| a.key == "owner"));
     }

@@ -81,7 +81,7 @@ pub fn instantiate(
     );
 
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("router_contract", env.contract.address)
         .add_submessage(virtual_balance_instantiate_msg))
 }
@@ -299,7 +299,7 @@ mod tests {
         let info = message_info(&creator, &[]);
         let res = init(deps.as_mut(), info.clone());
 
-        assert_eq!(res.attributes[0].key, "method");
+        assert_eq!(res.attributes[0].key, "action");
         assert_eq!(res.attributes[0].value, "instantiate");
         assert_eq!(res.messages.len(), 1);
 

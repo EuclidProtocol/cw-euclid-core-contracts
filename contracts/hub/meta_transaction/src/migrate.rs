@@ -48,7 +48,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::new()
-        .add_attribute("method", "migrate")
+        .add_attribute("action", "migrate")
         .add_attribute("admins_migrated", migrated.to_string()))
 }
 
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(
             res.attributes
                 .iter()
-                .find(|a| a.key == "method")
+                .find(|a| a.key == "action")
                 .map(|a| a.value.as_str()),
             Some("migrate"),
             "expected method = migrate attribute"

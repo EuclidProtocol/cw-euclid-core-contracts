@@ -900,7 +900,8 @@ mod tests {
         assert_eq!(
             res.attributes
                 .iter()
-                .find(|a| a.key == "action")
+                .filter(|a| a.key == "action")
+                .last()
                 .unwrap()
                 .value,
             "reply_swap"

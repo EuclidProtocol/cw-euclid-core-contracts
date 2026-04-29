@@ -55,7 +55,7 @@ pub fn execute_add_allowed_denom(
         })?;
 
     Ok(Response::new()
-        .add_attribute("method", "add_allowed_denom")
+        .add_attribute("action", "add_allowed_denom")
         .add_attribute("new_denom", denom.get_key())
         .add_attribute("amount", new_amount))
 }
@@ -92,7 +92,7 @@ pub fn execute_disallow_denom(
 
     //TODO refund the disallowed funds
     Ok(Response::new()
-        .add_attribute("method", "disallow_denom")
+        .add_attribute("action", "disallow_denom")
         .add_attribute("deregistered_denom", denom.get_key()))
 }
 
@@ -152,7 +152,7 @@ pub fn execute_deposit_native(
 
     STATE.save(deps.storage, &state)?;
 
-    Ok(response)
+    Ok(response.add_attribute("action", "deposit"))
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
@@ -227,7 +227,7 @@ pub fn execute_deposit_cw20(
     STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
-        .add_attribute("method", "deposit_cw20")
+        .add_attribute("action", "deposit_cw20")
         .add_attribute("asset", denom.get_key())
         .add_attribute("amount", amount))
 }
@@ -304,7 +304,7 @@ pub fn execute_withdraw(
 
     let response = Response::new()
         .add_message(send_msg)
-        .add_attribute("method", "escrow_withdraw")
+        .add_attribute("action", "escrow_withdraw")
         .add_attribute("amount", amount)
         .add_attribute("token", state.token_id.to_string())
         .add_attribute("denom", denom.get_key())
@@ -362,7 +362,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "add_allowed_denom"));
+        assert_eq!(res.attributes[0], attr("action", "add_allowed_denom"));
         assert_eq!(res.attributes[1], attr("new_denom", new_denom.get_key()));
 
         let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
@@ -474,7 +474,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "add_allowed_denom"));
+        assert_eq!(res.attributes[0], attr("action", "add_allowed_denom"));
 
         let allowed = ALLOWED_DENOMS.load(&initialized.storage).unwrap();
         assert!(allowed.contains(&denom));
@@ -499,7 +499,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "disallow_denom"));
+        assert_eq!(res.attributes[0], attr("action", "disallow_denom"));
         assert_eq!(
             res.attributes[1],
             attr("deregistered_denom", native_denom().get_key())
@@ -785,7 +785,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "deposit_cw20"));
+        assert_eq!(res.attributes[0], attr("action", "deposit_cw20"));
 
         let bal = DENOM_TO_AMOUNT
             .load(
@@ -899,7 +899,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "escrow_withdraw"));
+        assert_eq!(res.attributes[0], attr("action", "escrow_withdraw"));
         assert_eq!(res.attributes[1], attr("amount", "400"));
         assert_eq!(res.attributes[2], attr("token", TOKEN_ID));
         assert_eq!(res.attributes[3], attr("denom", native_denom().get_key()));

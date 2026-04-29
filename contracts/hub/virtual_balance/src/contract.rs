@@ -41,7 +41,7 @@ pub fn instantiate(
     ADMIN.save(deps.storage, &admin)?;
 
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("token_balance_address", env.contract.address)
         .add_attribute("router", state.router)
         .add_attribute("admin", admin.to_string()))
@@ -113,7 +113,7 @@ mod tests {
         assert!(res
             .attributes
             .iter()
-            .any(|a| a == &attr("method", "instantiate")));
+            .any(|a| a == &attr("action", "instantiate")));
 
         // State router is the info.sender (addr_make("router"))
         let router = deps.api.addr_make("router");

@@ -138,7 +138,7 @@ fn ack_pool_creation(
             // Prepare response
             let mut res = Response::new()
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "pool_creation")
+                .add_attribute("action", "pool_creation")
                 .add_attribute("vlp", data.vlp_contract.clone());
             // Collects PairInfo into a vector of Token Info for easy iteration
             let tokens = existing_req.pair_info.get_vec_token_info();
@@ -231,7 +231,7 @@ fn ack_pool_creation(
             }
             Ok(Response::new()
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "reject_pool_request")
+                .add_attribute("action", "reject_pool_request")
                 .add_attribute("error", err.clone())
                 .add_messages(msgs))
         }
@@ -267,7 +267,7 @@ fn ack_register_denom(
 
             let mut response = Response::new()
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "ack_register_denom")
+                .add_attribute("action", "ack_register_denom")
                 .add_attribute("token", token.token.to_string())
                 .add_attribute("token_type", token.token_type.get_key());
 
@@ -314,7 +314,7 @@ fn ack_register_denom(
             }
             Ok(Response::new()
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "reject_denom_register")
+                .add_attribute("action", "reject_denom_register")
                 .add_attribute("error", err.clone()))
         }
     }
@@ -355,7 +355,7 @@ fn ack_deregister_denom(
             Ok(Response::new()
                 .add_message(msg)
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "ack_deregister_denom")
+                .add_attribute("action", "ack_deregister_denom")
                 .add_attribute("token", token.token.to_string())
                 .add_attribute("token_type", token.token_type.get_key()))
         }
@@ -366,7 +366,7 @@ fn ack_deregister_denom(
             }
             Ok(Response::new()
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("method", "reject_denom_deregister")
+                .add_attribute("action", "reject_denom_deregister")
                 .add_attribute("error", err.clone()))
         }
     }
@@ -397,7 +397,7 @@ fn ack_add_liquidity(
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
-            let mut res = Response::new().add_attribute("method", "ack_add_liquidity");
+            let mut res = Response::new().add_attribute("action", "ack_add_liquidity");
 
             // Send tokens back to escrow
             for token_info in liquidity_info.pair_info.get_vec_token_info() {
@@ -456,7 +456,7 @@ fn ack_add_liquidity(
             }
 
             Ok(Response::new()
-                .add_attribute("method", "liquidity_tx_err_refund")
+                .add_attribute("action", "liquidity_tx_err_refund")
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("error", err)
@@ -489,7 +489,7 @@ fn ack_remove_liquidity(
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
-            let res = Response::new().add_attribute("method", "ack_remove_liquidity");
+            let res = Response::new().add_attribute("action", "ack_remove_liquidity");
 
             // Burn cw20 tokens for sender //
             // Get cw20 contract address
@@ -526,7 +526,7 @@ fn ack_remove_liquidity(
             });
             Ok(Response::new()
                 .add_message(lp_send_msg)
-                .add_attribute("method", "liquidity_tx_err_refund")
+                .add_attribute("action", "liquidity_tx_err_refund")
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("error", err))
@@ -555,7 +555,7 @@ fn ack_swap_request(
 
             let mut response = Response::new()
                 .add_event(swap_event(&tx_id, &swap_info))
-                .add_attribute("method", "process_successfull_swap")
+                .add_attribute("action", "process_successfull_swap")
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("amount_out", data.amount_out)
                 .add_attribute("swap_response", format!("{data:?}"))
@@ -599,7 +599,7 @@ fn ack_swap_request(
                 return Err(ContractError::new(&err));
             }
             let mut response = Response::new()
-                .add_attribute("method", "process_failed_swap")
+                .add_attribute("action", "process_failed_swap")
                 .add_attribute("refund_to", &sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("refund_amount", swap_info.amount_in)
@@ -647,7 +647,7 @@ fn ack_deposit_token_request(
             let send_msg = asset_in.create_escrow_msg(data.amount, escrow_address)?;
             let response = Response::new()
                 .add_event(deposit_token_event(&tx_id, &deposit_info))
-                .add_attribute("method", "process_successfull_deposit_token")
+                .add_attribute("action", "process_successfull_deposit_token")
                 .add_message(send_msg)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("deposit_token_response", format!("{data:?}"));
@@ -670,7 +670,7 @@ fn ack_deposit_token_request(
             )?;
 
             Ok(Response::new()
-                .add_attribute("method", "process_failed_deposit_token")
+                .add_attribute("action", "process_failed_deposit_token")
                 .add_attribute("refund_to", sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("refund_amount", deposit_info.amount_in)
@@ -694,7 +694,7 @@ fn ack_transfer_request(
             // Here you will get a response of escrows that router is going to release so it can be used in frontend
 
             Ok(Response::new()
-                .add_attribute("method", "transfer")
+                .add_attribute("action", "transfer")
                 .add_attribute("token", token_id.to_string()))
         }
         AcknowledgementMsg::Error(err) => {
@@ -703,7 +703,7 @@ fn ack_transfer_request(
                 return Err(ContractError::new(&err));
             }
             Ok(Response::new()
-                .add_attribute("method", "transfer_error")
+                .add_attribute("action", "transfer_error")
                 .add_attribute("error", err.clone()))
         }
     }
@@ -927,7 +927,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "reject_pool_request")));
+            .contains(&attr("action", "reject_pool_request")));
     }
 
     // -----------------------------------------------------------------------
@@ -1004,7 +1004,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "reject_denom_register")));
+            .contains(&attr("action", "reject_denom_register")));
     }
 
     #[test]
@@ -1115,7 +1115,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "reject_denom_deregister")));
+            .contains(&attr("action", "reject_denom_deregister")));
     }
 
     #[test]
@@ -1143,7 +1143,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "ack_deregister_denom")));
+            .contains(&attr("action", "ack_deregister_denom")));
         assert_eq!(res.messages.len(), 1);
     }
 
@@ -1254,7 +1254,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "liquidity_tx_err_refund")));
+            .contains(&attr("action", "liquidity_tx_err_refund")));
     }
 
     // -----------------------------------------------------------------------
@@ -1376,7 +1376,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "liquidity_tx_err_refund")));
+            .contains(&attr("action", "liquidity_tx_err_refund")));
         assert_eq!(res.messages.len(), 1);
     }
 
@@ -1516,7 +1516,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "process_failed_swap")));
+            .contains(&attr("action", "process_failed_swap")));
     }
 
     #[test]
@@ -1550,7 +1550,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "process_successfull_swap")));
+            .contains(&attr("action", "process_successfull_swap")));
         // No CosmosMsg because asset_in is a voucher (not escrowed)
         assert!(res.messages.is_empty());
     }
@@ -1641,7 +1641,7 @@ mod tests {
 
         assert!(res
             .attributes
-            .contains(&attr("method", "process_failed_deposit_token")));
+            .contains(&attr("action", "process_failed_deposit_token")));
     }
 
     // -----------------------------------------------------------------------
@@ -1680,7 +1680,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.attributes.contains(&attr("method", "transfer")));
+        assert!(res.attributes.contains(&attr("action", "transfer")));
     }
 
     #[test]
@@ -1703,7 +1703,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.attributes.contains(&attr("method", "transfer_error")));
+        assert!(res.attributes.contains(&attr("action", "transfer_error")));
     }
 
     #[test]

@@ -83,7 +83,7 @@ pub fn instantiate(
             })?;
 
     Ok(response
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("vlp_address", env.contract.address.to_string())
         .add_attribute("owner", info.sender)
         .add_attribute("pool_type", "xyk")
@@ -276,7 +276,7 @@ mod tests {
         let info = message_info(&router, &[]);
         let res = instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
-        let method_attr = res.attributes.iter().find(|a| a.key == "method").unwrap();
+        let method_attr = res.attributes.iter().find(|a| a.key == "action").unwrap();
         assert_eq!(method_attr.value, "instantiate");
 
         let pool_type_attr = res

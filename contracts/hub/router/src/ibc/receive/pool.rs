@@ -49,7 +49,7 @@ pub fn ibc_execute_request_pool_creation(
             TxType::PoolCreation,
         ))
         .add_attribute("tx_id", tx_id.clone())
-        .add_attribute("method", "request_pool_creation");
+        .add_attribute("action", "request_pool_creation");
 
     let mut one_token_already_exists = false;
 

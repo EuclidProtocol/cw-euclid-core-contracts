@@ -186,9 +186,9 @@ pub fn execute_swap_request(
             "meta",
             cross_chain_config.meta.unwrap_or("no_meta".to_string()),
         ))
-        .add_attribute("action", "swap")
-        .add_attribute("tx_id", tx_id)
+        .add_attribute("action", "request_swap")
         .add_attribute("method", "execute_request_swap")
+        .add_attribute("tx_id", tx_id)
         .add_attribute("asset_in", asset_in_id)
         .add_attribute("asset_out", asset_out_id)
         .add_attribute("amount_in", amount_in)
@@ -359,11 +359,6 @@ mod tests {
         let msg = make_voucher_swap_msg(amount_in, Uint128::new(1));
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        assert!(res
-            .attributes
-            .iter()
-            .any(|a| a.key == "method" && a.value == "execute_request_swap"));
-
         let tx_id = get_attribute(&res, "tx_id").to_owned();
 
         let pending = crate::state::PENDING_SWAPS
@@ -372,7 +367,7 @@ mod tests {
         assert_eq!(pending.tx_id, tx_id);
         assert_eq!(pending.amount_in, amount_in);
 
-        assert_attribute(&res, "action", "swap");
+        assert_attribute(&res, "action", "request_swap");
         assert_eq!(get_attribute(&res, "asset_in"), token_in.to_string());
         assert_eq!(get_attribute(&res, "asset_out"), token_out.to_string());
         assert_eq!(get_attribute(&res, "amount_in"), amount_in.to_string());

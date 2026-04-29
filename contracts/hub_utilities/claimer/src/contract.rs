@@ -36,7 +36,7 @@ pub fn instantiate(
     STATE.save(deps.storage, &state)?;
     ADMIN.save(deps.storage, &info.sender)?;
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("vcoin_address", msg.vcoin_address.to_string()))
 }
 

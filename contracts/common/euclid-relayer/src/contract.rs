@@ -35,7 +35,7 @@ pub fn instantiate(
     ADMIN.save(deps.storage, &admin)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::new()
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute(
             "message_signer_pubkey",
             state.message_signer.pubkey.to_string(),
@@ -102,7 +102,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let res = init(&mut deps);
 
-        assert_eq!(res.attributes[0], attr("method", "instantiate"));
+        assert_eq!(res.attributes[0], attr("action", "instantiate"));
 
         let (_, pub_key) = get_signer_key();
         let state = STATE.load(&deps.storage).unwrap();
@@ -130,7 +130,7 @@ mod tests {
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         let keys: Vec<&str> = res.attributes.iter().map(|a| a.key.as_str()).collect();
-        assert!(keys.contains(&"method"));
+        assert!(keys.contains(&"action"));
         assert!(keys.contains(&"message_signer_pubkey"));
         assert!(keys.contains(&"message_signer_address"));
         assert!(keys.contains(&"signature_threshold"));

@@ -49,7 +49,7 @@ pub fn instantiate(
     }
 
     Ok(res
-        .add_attribute("method", "instantiate")
+        .add_attribute("action", "instantiate")
         .add_attribute("token_id", msg.token_id.as_str())
         .add_attribute("factory_address", info.sender)
         .set_data(to_json_binary(&data)?))
@@ -138,7 +138,7 @@ mod tests {
         };
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        assert_eq!(res.attributes[0], attr("method", "instantiate"));
+        assert_eq!(res.attributes[0], attr("action", "instantiate"));
         assert_eq!(res.attributes[1], attr("token_id", TOKEN_ID));
         assert_eq!(
             res.attributes[2],
