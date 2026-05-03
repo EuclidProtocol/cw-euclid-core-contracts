@@ -98,7 +98,7 @@ pub fn ibc_execute_deposit_token(
     env: Env,
     msg: RouterCrossChainDepositTokenExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let sender = msg.clone().sender;
+    let sender = msg.sender.clone();
 
     // Escrow balance is now managed by virtual_balance contract during mint
 
@@ -187,7 +187,7 @@ pub fn ibc_execute_transfer_virtual_balance(
     env: Env,
     msg: RouterCrossChainTransferVoucherExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let sender = msg.clone().sender;
+    let sender = msg.sender.clone();
 
     let response = execute_transfer_voucher(
         deps,

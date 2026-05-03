@@ -23,8 +23,9 @@ use crate::execute::token::{
 };
 use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_native};
 use crate::query::{
-    get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
-    pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
+    get_escrow, get_lp_token_address, get_partner_fees_collected, get_rate_limit_state,
+    get_user_rate_limit, get_vlp, pending_liquidity, pending_remove_liquidity, pending_swaps,
+    query_all_pools, query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
@@ -295,6 +296,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
+        QueryMsg::GetRateLimitState {} => get_rate_limit_state(deps),
+        QueryMsg::GetUserRateLimit { user } => get_user_rate_limit(deps, user),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

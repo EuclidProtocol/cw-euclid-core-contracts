@@ -1,6 +1,6 @@
 use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint256};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -51,6 +51,9 @@ pub enum QueryMsg {
 
     #[returns(AllowedDenomsResponse)]
     AllowedDenoms {},
+
+    #[returns(DenomBalanceResponse)]
+    GetDenomBalance { denom: String },
 }
 
 #[cw_serde]
@@ -76,6 +79,12 @@ pub struct AllowedDenomsResponse {
 #[cw_serde]
 pub struct AllowedTokenResponse {
     pub allowed: bool,
+}
+
+#[cw_serde]
+pub struct DenomBalanceResponse {
+    pub denom: String,
+    pub amount: Uint256,
 }
 
 #[cw_serde]

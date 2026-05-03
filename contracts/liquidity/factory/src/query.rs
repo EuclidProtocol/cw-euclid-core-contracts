@@ -4,18 +4,22 @@ use euclid::{
     chain::{ChainType, CosmosChain},
     error::ContractError,
     msgs::factory::{
-        AllPoolsResponse, AllTokensResponse, GetEscrowResponse, GetLPTokenResponse,
+        AllPoolsResponse, AllTokensResponse, FeeBracket, GetEscrowResponse, GetLPTokenResponse,
         GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse, GetPendingSwapsResponse,
-        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
-        PoolVlpResponse, StateResponse,
+        GetRateLimitStateResponse, GetUserRateLimitResponse, GetVlpResponse,
+        PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse, PoolVlpResponse,
+        StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
 };
 
-use crate::state::{
-    ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-    STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+use crate::{
+    rate_limit::{RATE_LIMIT_STATE, USER_FREE_LIMIT, USER_PENDING_PACKETS_COUNT},
+    state::{
+        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
+        PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+    },
 };
 
 // Returns the VLP address
@@ -165,6 +169,34 @@ pub fn pending_remove_liquidity(
 
     Ok(to_json_binary(&GetPendingRemoveLiquidityResponse {
         pending_remove_liquidity,
+    })?)
+}
+
+pub fn get_rate_limit_state(deps: Deps) -> Result<Binary, ContractError> {
+    let state = RATE_LIMIT_STATE.load(deps.storage)?;
+    let fee_brackets = state
+        .fee_brackets
+        .into_iter()
+        .map(|b| FeeBracket {
+            threshold: b.threshold,
+            fee: b.fee,
+        })
+        .collect();
+    Ok(to_json_binary(&GetRateLimitStateResponse {
+        free_limit: state.free_limit,
+        fee_brackets,
+    })?)
+}
+
+pub fn get_user_rate_limit(deps: Deps, user: Addr) -> Result<Binary, ContractError> {
+    let free_limit = USER_FREE_LIMIT.may_load(deps.storage, user.clone())?;
+    let pending_packets = USER_PENDING_PACKETS_COUNT
+        .may_load(deps.storage, user.clone())?
+        .unwrap_or(0);
+    Ok(to_json_binary(&GetUserRateLimitResponse {
+        user,
+        free_limit,
+        pending_packets,
     })?)
 }
 

@@ -113,7 +113,7 @@ pub fn ibc_ack_release_escrow(
     ));
     let pending_release_voucher = PENDING_RELEASE_VOUCHER.load(deps.storage, tx_id.clone())?;
     PENDING_RELEASE_VOUCHER.remove(deps.storage, tx_id);
-    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?.to_string();
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
     match res {
         AcknowledgementMsg::Ok(data) => {
             let mut response = response

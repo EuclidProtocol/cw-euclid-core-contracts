@@ -64,6 +64,10 @@ impl FactoryCrossChainExecuteMsg {
                 let factory_msg = factory::ExecuteMsg::NativeReceiveCallback {
                     msg: to_json_binary(self)?,
                 };
+                // Clamp the counter to the reserved range (2001–3000); equivalent to
+                // the wrap-around in router_ibc.rs but expressed as a clamp.
+                // The `ensure!` below is the hard guard: if the slot is still occupied
+                // (i.e. all 1 000 slots are in-flight simultaneously), the call errors.
                 let mut count = NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_COUNT
                     .load(deps.storage)
                     .unwrap_or(NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0);

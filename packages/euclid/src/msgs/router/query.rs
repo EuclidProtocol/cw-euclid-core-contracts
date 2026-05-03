@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint256};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 
 use crate::{
     admin::EuclidAdmin,
@@ -37,6 +37,14 @@ pub enum QueryMsg {
     #[deprecated(note = "ESCROW_BALANCES moved to virtual_balance. Used only during migration.")]
     #[returns(AllEscrowsResponse)]
     GetAllEscrows {},
+    #[returns(LockedChainsResponse)]
+    GetLockedChains {},
+    #[returns(FeeStateResponse)]
+    GetFeeState {},
+    #[returns(DefaultReleaseFeeResponse)]
+    GetDefaultReleaseFee {},
+    #[returns(ChainTimeoutResponse)]
+    GetChainTimeout { chain_uid: ChainUid },
 }
 
 #[cw_serde]
@@ -144,4 +152,26 @@ pub struct QueryTokenDenomsResponse {
 #[cw_serde]
 pub struct QueryRelayerAddressesResponse {
     pub relayer_contract: Addr,
+}
+
+#[cw_serde]
+pub struct LockedChainsResponse {
+    pub chains: Vec<ChainUid>,
+}
+
+#[cw_serde]
+pub struct FeeStateResponse {
+    pub release_fee_recipient: Addr,
+    pub default_fee_recipient: Addr,
+}
+
+#[cw_serde]
+pub struct DefaultReleaseFeeResponse {
+    pub fee: Uint256,
+}
+
+#[cw_serde]
+pub struct ChainTimeoutResponse {
+    pub chain_uid: ChainUid,
+    pub timeout_seconds: u64,
 }

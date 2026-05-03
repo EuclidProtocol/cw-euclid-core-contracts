@@ -13,7 +13,7 @@ use crate::execute::{
     self, execute_add_allowed_denom, execute_deposit_native, execute_disallow_denom,
     execute_withdraw, receive_cw20,
 };
-use crate::query::{self, query_token_id};
+use crate::query::{self, query_denom_balance, query_token_id};
 use crate::state::{State, STATE};
 
 use euclid::msgs::escrow::{EscrowInstantiateResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -91,6 +91,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::TokenId {} => query_token_id(deps),
         QueryMsg::TokenAllowed { denom } => query::query_token_allowed(deps, denom),
         QueryMsg::AllowedDenoms {} => query::query_allowed_denoms(deps),
+        QueryMsg::GetDenomBalance { denom } => query_denom_balance(deps, denom),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

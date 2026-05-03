@@ -19,7 +19,8 @@ use crate::execute::token::{execute_transfer_voucher, execute_withdraw_voucher};
 use crate::execute::{execute_manage_router_state, execute_meta_receive, execute_register_factory};
 
 use crate::query::{
-    self, query_all_chains, query_all_vlps, query_chain, query_relayer_addresses,
+    self, query_all_chains, query_all_vlps, query_chain, query_chain_timeout,
+    query_default_release_fee, query_fee_state, query_locked_chains, query_relayer_addresses,
     query_release_fees, query_state, query_vlp,
 };
 use crate::reply::{
@@ -216,6 +217,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetReleaseFees { pagination } => query_release_fees(deps, pagination),
         #[allow(deprecated)]
         QueryMsg::GetAllEscrows {} => query::query_all_escrows(deps),
+        QueryMsg::GetLockedChains {} => query_locked_chains(deps),
+        QueryMsg::GetFeeState {} => query_fee_state(deps),
+        QueryMsg::GetDefaultReleaseFee {} => query_default_release_fee(deps),
+        QueryMsg::GetChainTimeout { chain_uid } => query_chain_timeout(deps, chain_uid),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
