@@ -11,7 +11,6 @@ use euclid::{
     recipient::Recipient,
     token::Token,
     utils::tx::generate_tx,
-    voucher::BalanceKey,
 };
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 
@@ -277,6 +276,11 @@ pub fn _release_voucher(
     let normalized_token_amount =
         normalize_voucher_to_token(voucher_amount, token_metadata.token_type.get_decimals()?)?;
 
+    ensure!(
+        !normalized_token_amount.is_zero() || voucher_amount.is_zero(),
+        ContractError::new("Amount too small to release after normalization")
+    );
+
     // We cannot release more than escrow balance
     let max_release_amount = normalized_token_amount.min(escrow_balance);
 
@@ -369,7 +373,7 @@ pub fn _release_voucher(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
-        Addr, Order, Uint128, Uint256,
+        Addr, Order, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -383,7 +387,7 @@ mod tests {
 
     use crate::{
         contract::execute,
-        state::{ESCROW_BALANCES, LOCKED_CHAINS, PENDING_RELEASE_VOUCHER, RELEASE_FEES},
+        state::{PENDING_RELEASE_VOUCHER, RELEASE_FEES},
         testing::{
             fixtures::{initialized, transfer_deps, voucher_deps},
             helpers::{make_native_recipient, seed_virtual_balance, MockDeps},
@@ -391,6 +395,11 @@ mod tests {
     };
     use euclid::msgs::router::ExecuteMsg;
     use rstest::*;
+
+    /// Converts a raw 6-decimal token amount to 24-decimal voucher units.
+    fn to_voucher_units(raw: u128) -> Uint256 {
+        Uint256::from(raw) * Uint256::from(1_000_000_000_000_000_000u128)
+    }
 
     #[rstest]
     fn test_withdraw_voucher_unregistered_token_fails(mut initialized: MockDeps) {
@@ -432,13 +441,13 @@ mod tests {
             )
             .unwrap();
 
-        execute(
+        let res = execute(
             deps.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
                 token: token.clone(),
-                amount: Uint256::from(200u128),
+                amount: to_voucher_units(200),
                 recipient: make_native_recipient(
                     chain_uid.clone(),
                     "recipientaddr",
@@ -449,6 +458,22 @@ mod tests {
             },
         )
         .unwrap();
+
+        let pending: Vec<_> = PENDING_RELEASE_VOUCHER
+            .range(deps.as_ref().storage, None, None, Order::Ascending)
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(pending[0].1.total_amount, Uint256::from(200u128));
+        assert_eq!(pending[0].1.release_fee_amount, Uint256::from(10u128));
+
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "released_amount")
+                .unwrap()
+                .value,
+            to_voucher_units(200).to_string()
+        );
     }
     // -----------------------------------------------------------------------
     // TransferVoucher
@@ -581,10 +606,10 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// When the requested amount exceeds the escrow balance the release is
-    /// silently capped at the available escrow.
+    /// capped at the available escrow.
     #[test]
     fn test_withdraw_voucher_capped_at_escrow_balance() {
-        let mut deps = voucher_deps(); // escrow = 500
+        let mut deps = voucher_deps(); // escrow = 500 raw tokens (6 decimals)
         let creator = deps.api.addr_make("creator");
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let token = Token::create("usdc".to_string()).unwrap();
@@ -595,7 +620,7 @@ mod tests {
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
                 token: token.clone(),
-                amount: Uint256::from(1_000u128),
+                amount: to_voucher_units(1_000),
                 recipient: make_native_recipient(
                     chain_uid.clone(),
                     "recipientaddr",
@@ -607,40 +632,40 @@ mod tests {
         )
         .unwrap();
 
-        // PENDING_RELEASE records the actual released amount (500), not the requested 1000.
+        // PENDING_RELEASE records the actual released amount in raw token units (500, not 1000).
         let pending: Vec<_> = PENDING_RELEASE_VOUCHER
             .range(deps.as_ref().storage, None, None, Order::Ascending)
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(pending[0].1.total_amount, Uint256::from(500u128));
 
-        // released_amount attribute also reflects the cap.
+        // released_amount attribute is in voucher units (24-decimal).
         assert_eq!(
             res.attributes
                 .iter()
                 .find(|a| a.key == "released_amount")
                 .unwrap()
                 .value,
-            "500"
+            to_voucher_units(500).to_string()
         );
     }
 
     /// GreaterThanOrEqual limit fails when the escrow can't satisfy the minimum.
     #[test]
     fn test_withdraw_voucher_gte_limit_fails_when_escrow_too_low() {
-        let mut deps = voucher_deps(); // escrow = 500
+        let mut deps = voucher_deps(); // escrow = 500 raw tokens
         let creator = deps.api.addr_make("creator");
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let token = Token::create("usdc".to_string()).unwrap();
 
-        // Request 200 but require at least 600 (escrow=500 < 600).
+        // Request 200 raw tokens worth of vouchers but require at least 600 raw (escrow=500 < 600).
         let res = execute(
             deps.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
                 token,
-                amount: Uint256::from(200u128),
+                amount: to_voucher_units(200),
                 recipient: Recipient {
                     recipient: CrossChainUser::new(chain_uid, "recipientaddr".to_string()),
                     amount: Limit::GreaterThanOrEqual(Uint256::from(600u128)),
@@ -716,5 +741,45 @@ mod tests {
         assert_eq!(attrs["transfer_id_0_amount"], "60");
         assert_eq!(attrs["transfer_id_1_amount"], "40");
         assert_eq!(attrs["transferred_amount"], "100");
+    }
+
+    // -----------------------------------------------------------------------
+    // Truncation guard (Bug #4 from review)
+    // -----------------------------------------------------------------------
+
+    /// Voucher amount too small to produce any raw tokens after normalization
+    /// should return an error instead of silently releasing zero.
+    #[test]
+    fn test_withdraw_voucher_dust_amount_errors() {
+        let mut deps = voucher_deps(); // 6-decimal token, escrow = 500
+        let creator = deps.api.addr_make("creator");
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        // 999 voucher units (24-dec). normalize_voucher_to_token(999, 6) = 999 / 10^18 = 0.
+        let dust_amount = Uint256::from(999u128);
+
+        let res = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::WithdrawVoucher {
+                token,
+                amount: dust_amount,
+                recipient: make_native_recipient(
+                    chain_uid,
+                    "recipientaddr",
+                    "uusdc",
+                    Uint256::from(999u128),
+                ),
+                cross_chain_config: CrossChainConfig::default(),
+            },
+        );
+
+        let err = res.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Error - Amount too small to release after normalization"
+        );
     }
 }

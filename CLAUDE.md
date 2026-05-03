@@ -80,7 +80,7 @@ Storage items/maps:
 - `TOKEN_VLPS: Map<Token, Vec<Addr>>` — all VLPs associated with a given token
 - `PENDING_SWAPS: Map<String, RouterCrossChainSwapExecuteMsg>` — in-flight cross-chain swaps (keyed by tx_id)
 - `PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher>` — in-flight voucher releases awaiting IBC ack
-- `ESCROW_BALANCES: Map<(String, ChainUid), Uint128>` — per-chain token balances
+- `ESCROW_BALANCES: Map<(String, ChainUid), Uint128>` — **DEPRECATED** (moved to virtual_balance contract)
 - `LOCKED_CHAINS: Item<Vec<ChainUid>>` — chains paused for emergency stops
 - `DEFAULT_RELEASE_FEE: Item<Uint128>` — fallback release fee when no per-chain fee is set
 - `RELEASE_FEES: Map<(Token, ChainUid), Uint128>` — per-(token, chain) release fee overrides

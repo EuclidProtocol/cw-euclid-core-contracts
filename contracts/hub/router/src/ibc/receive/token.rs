@@ -214,39 +214,3 @@ pub fn ibc_execute_transfer_virtual_balance(
             },
         ))?))
 }
-
-#[cfg(test)]
-mod tests {
-    use cosmwasm_std::Uint128;
-    use euclid::{
-        chain::ChainUid,
-        cross_chain_user::CrossChainUser,
-        error::ContractError,
-        limit::Limit,
-        msgs::router::TokenDenom,
-        recipient::Recipient,
-        token::{Token, TokenType, TokenWithDenom},
-    };
-    use euclid_ibc::router_ibc::{
-        RouterCrossChainDepositTokenExecuteMsg, RouterCrossChainExecuteMsg,
-        RouterCrossChainTransferVoucherExecuteMsg,
-    };
-
-    use crate::{
-        state::{ESCROW_BALANCES, TOKEN_DENOMS},
-        testing::{
-            fixtures::initialized,
-            helpers::{call_reusable, register_denom_msg, seed_virtual_balance, MockDeps},
-        },
-    };
-
-    use rstest::*;
-
-    // -----------------------------------------------------------------------
-    // DepositToken: escrow accumulation
-    // -----------------------------------------------------------------------
-
-    // -----------------------------------------------------------------------
-    // DepositToken dispatch
-    // ------
-}

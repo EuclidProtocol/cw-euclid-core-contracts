@@ -10,3 +10,4 @@ pub mod pending_packets;
 pub mod state_sync;
 
 pub mod constants;
+pub mod voucher_release;

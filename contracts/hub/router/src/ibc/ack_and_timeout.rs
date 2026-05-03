@@ -36,7 +36,6 @@ pub fn reusable_internal_ack_call(
         }
         FactoryCrossChainExecuteMsg::ReleaseEscrow {
             sender,
-            amount,
             token,
             tx_id,
             recipient,
@@ -48,9 +47,7 @@ pub fn reusable_internal_ack_call(
             // Reject mixed-case or empty addresses from IBC packet data
             sender.validate()?;
             recipient.validate()?;
-            ibc_ack_release_escrow(
-                deps, env, sender, amount, token, denom, res, recipient, tx_id,
-            )?
+            ibc_ack_release_escrow(deps, env, sender, token, denom, res, recipient, tx_id)?
         }
     };
     let response = response.add_attribute("tx_id", tx_id);
@@ -103,7 +100,6 @@ pub fn ibc_ack_release_escrow(
     deps: DepsMut,
     _env: Env,
     sender: CrossChainUser,
-    amount: Uint256,
     token: Token,
     token_type: TokenType,
     res: AcknowledgementMsg<ReleaseEscrowResponse>,
@@ -122,7 +118,7 @@ pub fn ibc_ack_release_escrow(
         AcknowledgementMsg::Ok(data) => {
             let mut response = response
                 .add_attribute("method", "release_escrow_success")
-                .add_attribute("amount", amount.to_string())
+                .add_attribute("amount", data.amount.to_string())
                 .add_attribute("recipient", data.to_address)
                 .add_attribute("updated_escrow_balance", data.escrow_balance.to_string())
                 .add_attribute("chain_uid", sender.chain_uid.to_string());
@@ -139,7 +135,7 @@ pub fn ibc_ack_release_escrow(
 
                 // Mint release fee to fee recipient
                 let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                    amount: pending_release_voucher.release_fee_amount.into(),
+                    amount: pending_release_voucher.release_fee_amount,
                     balance_key: balance_key.clone(),
                     token_type: token_type.clone(),
                     token_source_chain_uid: recipient.chain_uid.clone(),
@@ -167,10 +163,10 @@ pub fn ibc_ack_release_escrow(
                 cross_chain_user: refund_recipient.clone(),
                 token_id: token.to_string(),
             };
-            let mint_amount = amount.checked_add(pending_release_voucher.release_fee_amount)?;
+            let mint_amount = pending_release_voucher.total_amount;
             // Escrow release failed, mint tokens again for the original cross chain sender
             let mint_msg = VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-                amount: mint_amount.into(),
+                amount: mint_amount,
                 balance_key: balance_key.clone(),
                 token_type,
                 token_source_chain_uid: recipient.chain_uid.clone(),
@@ -186,8 +182,240 @@ pub fn ibc_ack_release_escrow(
                 .add_message(msg)
                 .add_attribute("method", "escrow_release_ack")
                 .add_attribute("error", err)
-                .add_attribute("mint_amount", amount.to_string())
+                .add_attribute("mint_amount", mint_amount.to_string())
                 .add_attribute("balance_key", format!("{:?}", balance_key)))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::testing::{mock_dependencies, mock_env};
+    use cosmwasm_std::{Addr, CosmosMsg, Uint256, WasmMsg};
+    use euclid::chain::ChainUid;
+    use euclid::cross_chain_user::CrossChainUser;
+    use euclid::msgs::factory::ReleaseEscrowResponse;
+    use euclid::token::{Token, TokenType};
+    use euclid_ibc::ack::AcknowledgementMsg;
+
+    use crate::state::{
+        FeeState, PendingReleaseVoucher, FEE_STATE, PENDING_RELEASE_VOUCHER,
+        VIRTUAL_BALANCE_CONTRACT,
+    };
+
+    fn setup_release_ack_deps(
+        total_amount: Uint256,
+        release_fee_amount: Uint256,
+    ) -> cosmwasm_std::OwnedDeps<
+        cosmwasm_std::MemoryStorage,
+        cosmwasm_std::testing::MockApi,
+        cosmwasm_std::testing::MockQuerier,
+    > {
+        let mut deps = mock_dependencies();
+        let vb_addr = Addr::unchecked("virtual_balance_contract");
+
+        VIRTUAL_BALANCE_CONTRACT
+            .save(deps.as_mut().storage, &vb_addr)
+            .unwrap();
+        FEE_STATE
+            .save(
+                deps.as_mut().storage,
+                &FeeState {
+                    release_fee_recipient: Addr::unchecked("fee_recipient"),
+                    default_fee_recipient: Addr::unchecked("default_fee"),
+                },
+            )
+            .unwrap();
+        PENDING_RELEASE_VOUCHER
+            .save(
+                deps.as_mut().storage,
+                "tx_001".to_string(),
+                &PendingReleaseVoucher {
+                    total_amount,
+                    release_fee_amount,
+                    unsafe_refund_voucher: false,
+                },
+            )
+            .unwrap();
+
+        deps
+    }
+
+    /// Disproves review Bug #1: "unit-space mismatch in release-failure refund".
+    ///
+    /// The review claimed mixed units in refund calculation. In reality,
+    /// `mint_amount = pending_release_voucher.total_amount` which is stored in
+    /// raw token units (set during `_release_voucher`). This is passed to
+    /// virtual_balance's execute_mint which normalizes raw → voucher internally.
+    /// No unit mismatch exists.
+    #[test]
+    fn test_release_error_ack_refund_uses_raw_token_units() {
+        let total_amount = Uint256::from(200u128); // raw token units
+        let release_fee = Uint256::from(10u128); // raw token units
+
+        let mut deps = setup_release_ack_deps(total_amount, release_fee);
+
+        let sender = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "sender_addr".to_string(),
+        );
+        let recipient = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "recipient_addr".to_string(),
+        );
+
+        let res = ibc_ack_release_escrow(
+            deps.as_mut(),
+            mock_env(),
+            sender.clone(),
+            Token::create("usdc".to_string()).unwrap(),
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+            AcknowledgementMsg::<ReleaseEscrowResponse>::Error("factory error".to_string()),
+            recipient.clone(),
+            "tx_001".to_string(),
+        )
+        .unwrap();
+
+        // Extract the mint message sent to virtual_balance
+        assert_eq!(res.messages.len(), 1);
+        let mint_msg = match &res.messages[0].msg {
+            CosmosMsg::Wasm(WasmMsg::Execute { msg, .. }) => {
+                let parsed: euclid::msgs::virtual_balance::msg::ExecuteMsg =
+                    cosmwasm_std::from_json(msg).unwrap();
+                match parsed {
+                    euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(m) => m,
+                    _ => panic!("expected Mint message"),
+                }
+            }
+            _ => panic!("expected WasmMsg::Execute"),
+        };
+
+        // mint_amount = total_amount from PendingReleaseVoucher = 200 (raw token units)
+        assert_eq!(mint_msg.amount, total_amount);
+        assert_eq!(mint_msg.amount, Uint256::from(200u128));
+
+        // token_type carries decimals info for virtual_balance to normalize
+        assert_eq!(
+            mint_msg.token_type,
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            }
+        );
+    }
+
+    /// Disproves review Bug #2: "double-normalization on ack-error re-mint path".
+    ///
+    /// The review claimed execute_mint normalizes an already-normalized amount.
+    /// This test proves PendingReleaseVoucher.total_amount is stored in raw token
+    /// units (not voucher units), so execute_mint's single normalization is correct.
+    #[test]
+    fn test_pending_release_stores_raw_amounts_not_voucher_units() {
+        let total_amount = Uint256::from(500u128); // raw 6-decimal token units
+        let release_fee = Uint256::from(0u128);
+
+        let mut deps = setup_release_ack_deps(total_amount, release_fee);
+
+        let sender = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "sender_addr".to_string(),
+        );
+        let recipient = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "recipient_addr".to_string(),
+        );
+
+        let res = ibc_ack_release_escrow(
+            deps.as_mut(),
+            mock_env(),
+            sender,
+            Token::create("usdc".to_string()).unwrap(),
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+            AcknowledgementMsg::<ReleaseEscrowResponse>::Error("timeout".to_string()),
+            recipient,
+            "tx_001".to_string(),
+        )
+        .unwrap();
+
+        let mint_msg = match &res.messages[0].msg {
+            CosmosMsg::Wasm(WasmMsg::Execute { msg, .. }) => {
+                let parsed: euclid::msgs::virtual_balance::msg::ExecuteMsg =
+                    cosmwasm_std::from_json(msg).unwrap();
+                match parsed {
+                    euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(m) => m,
+                    _ => panic!("expected Mint message"),
+                }
+            }
+            _ => panic!("expected WasmMsg::Execute"),
+        };
+
+        // Amount passed to mint is 500 raw token units (NOT 500 * 10^18 voucher units).
+        // If this were already in voucher units, the value would be 500_000_000_000_000_000_000.
+        assert_eq!(mint_msg.amount, Uint256::from(500u128));
+
+        // execute_mint will normalize: 500 raw * 10^18 = 500_000_000_000_000_000_000 voucher units.
+        // Only ONE normalization happens (inside execute_mint), not two.
+    }
+
+    /// On success ack, release fee is minted to fee recipient in raw token units.
+    #[test]
+    fn test_release_success_ack_mints_fee_in_raw_units() {
+        let total_amount = Uint256::from(200u128);
+        let release_fee = Uint256::from(15u128);
+
+        let mut deps = setup_release_ack_deps(total_amount, release_fee);
+
+        let sender = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "sender_addr".to_string(),
+        );
+        let recipient = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "recipient_addr".to_string(),
+        );
+
+        let res = ibc_ack_release_escrow(
+            deps.as_mut(),
+            mock_env(),
+            sender,
+            Token::create("usdc".to_string()).unwrap(),
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+            AcknowledgementMsg::Ok(ReleaseEscrowResponse {
+                amount: Uint256::from(185u128),
+                to_address: "recipient_addr".to_string(),
+                escrow_balance: Uint256::from(300u128),
+            }),
+            recipient,
+            "tx_001".to_string(),
+        )
+        .unwrap();
+
+        // On success, fee is minted to fee_recipient
+        assert_eq!(res.messages.len(), 1);
+        let mint_msg = match &res.messages[0].msg {
+            CosmosMsg::Wasm(WasmMsg::Execute { msg, .. }) => {
+                let parsed: euclid::msgs::virtual_balance::msg::ExecuteMsg =
+                    cosmwasm_std::from_json(msg).unwrap();
+                match parsed {
+                    euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(m) => m,
+                    _ => panic!("expected Mint message"),
+                }
+            }
+            _ => panic!("expected WasmMsg::Execute"),
+        };
+
+        // Fee minted in raw token units (15), not voucher units
+        assert_eq!(mint_msg.amount, Uint256::from(15u128));
+        assert_eq!(mint_msg.balance_key.token_id, "usdc");
     }
 }

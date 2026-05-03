@@ -307,7 +307,7 @@ mod tests {
 
     use crate::{
         contract::query,
-        state::{ESCROW_BALANCES, RELEASE_FEES, VLPS},
+        state::{RELEASE_FEES, VLPS},
     };
     use euclid::msgs::router::QueryMsg;
     // -----------------------------------------------------------------------

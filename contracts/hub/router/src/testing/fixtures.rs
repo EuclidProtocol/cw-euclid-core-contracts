@@ -1,10 +1,8 @@
-use crate::state::{
-    CHAIN_UID_TO_CHAIN, ESCROW_BALANCES, LOCKED_CHAINS, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
-};
+use crate::state::{CHAIN_UID_TO_CHAIN, LOCKED_CHAINS, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT};
 use crate::testing::helpers::{init, seed_virtual_balance, MockDeps, TEST_VIRTUAL_BALANCE};
 use cosmwasm_std::testing::{message_info, mock_dependencies};
 use cosmwasm_std::{
-    from_json, to_json_binary, Addr, ContractResult, SystemResult, Uint128, Uint256, WasmQuery,
+    from_json, to_json_binary, Addr, ContractResult, SystemResult, Uint256, WasmQuery,
 };
 use euclid::chain::{Chain, ChainType, ChainUid};
 use euclid::msgs::router::TokenDenom;
@@ -24,8 +22,8 @@ pub fn initialized() -> MockDeps {
 
 /// Fixture: deps ready for WithdrawVoucher / TransferVoucher tests.
 /// Pre-seeds VIRTUAL_BALANCE_CONTRACT, CHAIN_UID_TO_CHAIN (Native),
-/// LOCKED_CHAINS (empty), TOKEN_DENOMS (usdc → uusdc on chain1),
-/// and ESCROW_BALANCES (usdc on chain1 = 500).
+/// LOCKED_CHAINS (empty), TOKEN_DENOMS (usdc → uusdc on chain1).
+/// Virtual balance mock returns escrow balance of 500 for chain1/usdc.
 #[fixture]
 pub(crate) fn voucher_deps() -> MockDeps {
     let mut deps = mock_dependencies();
@@ -66,14 +64,6 @@ pub(crate) fn voucher_deps() -> MockDeps {
             }],
         )
         .unwrap();
-    ESCROW_BALANCES
-        .save(
-            deps.as_mut().storage,
-            (token.to_string(), chain_uid),
-            &Uint256::from(500u128),
-        )
-        .unwrap();
-
     deps.querier.update_wasm(move |q| match q {
         WasmQuery::Smart { contract_addr, msg } if contract_addr == TEST_VIRTUAL_BALANCE => {
             let parsed: VirtualBalanceQueryMsg = from_json(msg).unwrap();
@@ -92,7 +82,7 @@ pub(crate) fn voucher_deps() -> MockDeps {
                     let token_type_with_decimals = match token_type {
                         TokenType::Native { denom, .. } => TokenType::Native {
                             denom,
-                            decimals: Some(24),
+                            decimals: Some(6),
                         },
                         other => other,
                     };
