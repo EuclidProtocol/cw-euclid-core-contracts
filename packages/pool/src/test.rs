@@ -1151,4 +1151,670 @@ mod tests {
             );
         }
     }
+
+    mod voucher_lp_tests {
+        use super::*;
+        use crate::{calculate_amount_from_shares, calculate_lp_allocation, MINIMUM_LIQUIDITY};
+        use euclid::normalize::{normalize_token_to_voucher, normalize_voucher_to_token};
+
+        fn voucher(count: u128) -> Uint256 {
+            Uint256::from(count)
+                .checked_mul(Uint256::from(10u128.pow(24)))
+                .unwrap()
+        }
+
+        // =====================================================================
+        // 1. Normalization: raw → voucher
+        // =====================================================================
+
+        #[rstest]
+        #[case::one_usdc(1_000_000u128, 6, 1_000_000_000_000_000_000_000_000u128)]
+        #[case::one_eth(
+            1_000_000_000_000_000_000u128,
+            18,
+            1_000_000_000_000_000_000_000_000u128
+        )]
+        #[case::one_btc(100_000_000u128, 8, 1_000_000_000_000_000_000_000_000u128)]
+        #[case::smallest_usdc_unit(1u128, 6, 1_000_000_000_000_000_000u128)]
+        #[case::one_wei(1u128, 18, 1_000_000u128)]
+        #[case::already_24dec(1u128, 24, 1u128)]
+        #[case::zero(0u128, 6, 0u128)]
+        fn test_normalize_to_voucher(
+            #[case] raw: u128,
+            #[case] decimals: u32,
+            #[case] expected: u128,
+        ) {
+            let result = normalize_token_to_voucher(Uint256::from(raw), decimals).unwrap();
+            assert_eq!(result, Uint256::from(expected));
+        }
+
+        // =====================================================================
+        // 2. Normalization: voucher → raw (including truncation)
+        // =====================================================================
+
+        #[rstest]
+        #[case::one_usdc(1_000_000_000_000_000_000_000_000u128, 6, 1_000_000u128)]
+        #[case::one_eth(
+            1_000_000_000_000_000_000_000_000u128,
+            18,
+            1_000_000_000_000_000_000u128
+        )]
+        #[case::one_btc(1_000_000_000_000_000_000_000_000u128, 8, 100_000_000u128)]
+        #[case::sub_unit_truncates(999u128, 6, 0u128)]
+        #[case::just_below_one_usdc(999_999_999_999_999_999u128, 6, 0u128)]
+        #[case::already_24dec(1u128, 24, 1u128)]
+        fn test_normalize_from_voucher(
+            #[case] voucher_amount: u128,
+            #[case] decimals: u32,
+            #[case] expected: u128,
+        ) {
+            let result =
+                normalize_voucher_to_token(Uint256::from(voucher_amount), decimals).unwrap();
+            assert_eq!(result, Uint256::from(expected));
+        }
+
+        // =====================================================================
+        // 3. Normalization round-trip: raw → voucher → raw
+        // =====================================================================
+
+        #[rstest]
+        #[case::dec_6(6u32)]
+        #[case::dec_8(8u32)]
+        #[case::dec_12(12u32)]
+        #[case::dec_18(18u32)]
+        #[case::dec_24(24u32)]
+        fn test_normalize_roundtrip(#[case] decimals: u32) {
+            let raw = Uint256::from(10u128.pow(decimals));
+            let voucher_amount = normalize_token_to_voucher(raw, decimals).unwrap();
+            assert_eq!(
+                voucher_amount,
+                Uint256::from(10u128.pow(24)),
+                "1 token should always normalize to 1e24"
+            );
+            let back = normalize_voucher_to_token(voucher_amount, decimals).unwrap();
+            assert_eq!(back, raw);
+        }
+
+        // =====================================================================
+        // 4. LP allocation: empty pool (isqrt)
+        // =====================================================================
+
+        #[rstest]
+        #[case::equal_1_token(
+            1_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000u128
+        )]
+        #[case::equal_1000_tokens(
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128
+        )]
+        #[case::unequal_1000_and_1(
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000u128,
+            31_622_776_601_683_793_319_988_935u128
+        )]
+        #[case::unequal_5000_and_2(
+            5_000_000_000_000_000_000_000_000_000u128,
+            2_000_000_000_000_000_000_000_000u128,
+            100_000_000_000_000_000_000_000_000u128
+        )]
+        fn test_lp_allocation_empty_pool(
+            #[case] amount_1: u128,
+            #[case] amount_2: u128,
+            #[case] expected_lp: u128,
+        ) {
+            let lp = calculate_lp_allocation(
+                Uint256::from(amount_1),
+                Uint256::from(amount_2),
+                Uint256::zero(),
+                Uint256::zero(),
+                Uint256::zero(),
+            )
+            .unwrap();
+            assert_eq!(lp, Uint256::from(expected_lp));
+        }
+
+        // =====================================================================
+        // 5. LP allocation: existing pool (min of proportional)
+        // =====================================================================
+
+        #[rstest]
+        #[case::proportional_half(
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            500_000_000_000_000_000_000_000_000u128,
+            500_000_000_000_000_000_000_000_000u128,
+            500_000_000_000_000_000_000_000_000u128
+        )]
+        #[case::excess_token1_uses_min(
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            2_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128
+        )]
+        fn test_lp_allocation_existing_pool(
+            #[case] reserve_1: u128,
+            #[case] reserve_2: u128,
+            #[case] total_lp: u128,
+            #[case] deposit_1: u128,
+            #[case] deposit_2: u128,
+            #[case] expected_lp: u128,
+        ) {
+            let lp = calculate_lp_allocation(
+                Uint256::from(deposit_1),
+                Uint256::from(deposit_2),
+                Uint256::from(reserve_1),
+                Uint256::from(reserve_2),
+                Uint256::from(total_lp),
+            )
+            .unwrap();
+            assert_eq!(lp, Uint256::from(expected_lp));
+        }
+
+        // =====================================================================
+        // 6. Round-trip: deposit → LP → withdraw == deposit
+        // =====================================================================
+
+        #[rstest]
+        #[case::equal_into_equal(
+            100_000_000_000_000_000_000_000_000u128,
+            100_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128
+        )]
+        #[case::proportional_2_to_1(
+            200_000_000_000_000_000_000_000_000u128,
+            100_000_000_000_000_000_000_000_000u128,
+            2_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_414_213_562_373_095_048_801_688_724u128
+        )]
+        fn test_lp_roundtrip_deposit_withdraw(
+            #[case] deposit_1: u128,
+            #[case] deposit_2: u128,
+            #[case] reserve_1: u128,
+            #[case] reserve_2: u128,
+            #[case] total_lp: u128,
+        ) {
+            let dep_1 = Uint256::from(deposit_1);
+            let dep_2 = Uint256::from(deposit_2);
+            let res_1 = Uint256::from(reserve_1);
+            let res_2 = Uint256::from(reserve_2);
+            let total = Uint256::from(total_lp);
+
+            let lp = calculate_lp_allocation(dep_1, dep_2, res_1, res_2, total).unwrap();
+
+            let new_res_1 = res_1.checked_add(dep_1).unwrap();
+            let new_res_2 = res_2.checked_add(dep_2).unwrap();
+            let new_total = total.checked_add(lp).unwrap();
+
+            let back_1 = calculate_amount_from_shares(new_res_1, lp, new_total).unwrap();
+            let back_2 = calculate_amount_from_shares(new_res_2, lp, new_total).unwrap();
+
+            // Integer division in checked_multiply_ratio can lose at most 1 unit
+            assert!(back_1 <= dep_1, "Token 1 returned more than deposited");
+            assert!(back_2 <= dep_2, "Token 2 returned more than deposited");
+            assert_eq!(dep_1 - back_1, Uint256::from(deposit_1) - back_1);
+            assert!(
+                dep_1 - back_1 <= Uint256::from(1u128),
+                "Token 1 rounding loss > 1: {}",
+                dep_1 - back_1
+            );
+            assert!(
+                dep_2 - back_2 <= Uint256::from(1u128),
+                "Token 2 rounding loss > 1: {}",
+                dep_2 - back_2
+            );
+        }
+
+        // =====================================================================
+        // 7. First deposit: MINIMUM_LIQUIDITY deduction
+        // =====================================================================
+
+        #[rstest]
+        #[case::normal_1000_tokens(
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            999_999_999_999_999_999_000_000_000u128,
+            1_000_000_000u128
+        )]
+        #[case::equals_minimum_user_gets_zero(
+            1_000_000_000u128,
+            1_000_000_000u128,
+            1_000_000_000u128,
+            0u128,
+            1_000_000_000u128
+        )]
+        #[case::just_above_minimum(
+            1_000_000_001u128,
+            1_000_000_001u128,
+            1_000_000_001u128,
+            1u128,
+            1_000_000_000u128
+        )]
+        #[case::small_deposit_significant_loss(
+            1_000_000_000_000u128,
+            1_000_000_000_000u128,
+            1_000_000_000_000u128,
+            999_000_000_000u128,
+            1_000_000_000u128
+        )]
+        fn test_first_deposit_minimum_liquidity(
+            #[case] deposit_1: u128,
+            #[case] deposit_2: u128,
+            #[case] expected_raw_lp: u128,
+            #[case] expected_user_lp: u128,
+            #[case] expected_collateral: u128,
+        ) {
+            let raw_lp = calculate_lp_allocation(
+                Uint256::from(deposit_1),
+                Uint256::from(deposit_2),
+                Uint256::zero(),
+                Uint256::zero(),
+                Uint256::zero(),
+            )
+            .unwrap();
+            assert_eq!(raw_lp, Uint256::from(expected_raw_lp));
+
+            let min_liq = Uint256::from(MINIMUM_LIQUIDITY);
+            let user_lp = raw_lp.checked_sub(min_liq).unwrap();
+            assert_eq!(user_lp, Uint256::from(expected_user_lp));
+            assert_eq!(min_liq, Uint256::from(expected_collateral));
+        }
+
+        // =====================================================================
+        // 8. End-to-end: normalize raw → allocate LP → denormalize
+        // =====================================================================
+
+        #[rstest]
+        #[case::usdc_6(1000u128, 6u32)]
+        #[case::btc_8(1000u128, 8u32)]
+        #[case::eth_18(1000u128, 18u32)]
+        fn test_normalize_then_allocate(#[case] token_count: u128, #[case] decimals: u32) {
+            let raw = Uint256::from(token_count * 10u128.pow(decimals));
+            let voucher_amount = normalize_token_to_voucher(raw, decimals).unwrap();
+            assert_eq!(voucher_amount, voucher(token_count));
+
+            let lp = calculate_lp_allocation(
+                voucher_amount,
+                voucher_amount,
+                Uint256::zero(),
+                Uint256::zero(),
+                Uint256::zero(),
+            )
+            .unwrap();
+            assert_eq!(lp, voucher(token_count));
+
+            let back = normalize_voucher_to_token(voucher_amount, decimals).unwrap();
+            assert_eq!(back, raw);
+        }
+
+        // =====================================================================
+        // 9. Asymmetric decimal pair: USDC (6-dec) + ETH (18-dec)
+        // =====================================================================
+
+        #[test]
+        fn test_asymmetric_decimal_pair() {
+            let usdc_raw = Uint256::from(1_000_000_000u128); // 1000 USDC
+            let eth_raw = Uint256::from(1_000_000_000_000_000_000u128); // 1 ETH
+
+            let usdc_voucher = normalize_token_to_voucher(usdc_raw, 6).unwrap();
+            let eth_voucher = normalize_token_to_voucher(eth_raw, 18).unwrap();
+            assert_eq!(usdc_voucher, voucher(1000));
+            assert_eq!(eth_voucher, voucher(1));
+
+            // Empty pool: LP = isqrt(1000e24 * 1e24)
+            let lp_total = calculate_lp_allocation(
+                usdc_voucher,
+                eth_voucher,
+                Uint256::zero(),
+                Uint256::zero(),
+                Uint256::zero(),
+            )
+            .unwrap();
+            assert_eq!(
+                lp_total,
+                Uint256::from(31_622_776_601_683_793_319_988_935u128)
+            );
+
+            // Second deposit: 500 USDC + 0.5 ETH (proportional)
+            let usdc_2 = voucher(500);
+            let eth_2 = Uint256::from(500_000_000_000_000_000_000_000u128); // 0.5e24
+            let lp_2 = calculate_lp_allocation(usdc_2, eth_2, usdc_voucher, eth_voucher, lp_total)
+                .unwrap();
+            assert_eq!(lp_2, Uint256::from(15_811_388_300_841_896_659_994_467u128));
+
+            // Roundtrip: withdraw second deposit
+            let new_total_lp = lp_total.checked_add(lp_2).unwrap();
+            let new_usdc_res = usdc_voucher.checked_add(usdc_2).unwrap();
+            let new_eth_res = eth_voucher.checked_add(eth_2).unwrap();
+
+            let back_usdc = calculate_amount_from_shares(new_usdc_res, lp_2, new_total_lp).unwrap();
+            let back_eth = calculate_amount_from_shares(new_eth_res, lp_2, new_total_lp).unwrap();
+
+            // Irrational sqrt causes integer rounding loss on withdraw.
+            // Loss is bounded by lp_total/lp_2 units (here ~11 voucher units for USDC, ~1 for ETH).
+            assert!(back_usdc <= usdc_2, "USDC returned more than deposited");
+            assert!(back_eth <= eth_2, "ETH returned more than deposited");
+            assert!(
+                usdc_2 - back_usdc <= Uint256::from(20u128),
+                "USDC rounding loss too large: {}",
+                usdc_2 - back_usdc
+            );
+            assert!(
+                eth_2 - back_eth <= Uint256::from(1u128),
+                "ETH rounding loss too large: {}",
+                eth_2 - back_eth
+            );
+        }
+
+        // =====================================================================
+        // 10. Migration: reserves scale up, LP supply unchanged
+        // =====================================================================
+
+        #[rstest]
+        #[case::usdc_6dec(1_000_000u128, 6u32)]
+        #[case::eth_18dec(1_000_000_000_000_000_000u128, 18u32)]
+        fn test_migration_lp_value(#[case] raw_reserve: u128, #[case] decimals: u32) {
+            let raw = Uint256::from(raw_reserve);
+            let lp_supply = raw; // LP supply = raw reserve (from isqrt(raw*raw))
+
+            // Pre-migration: holder claims 100%
+            let pre_claim = calculate_amount_from_shares(raw, lp_supply, lp_supply).unwrap();
+            assert_eq!(pre_claim, raw);
+
+            // Post-migration: reserves normalized, LP supply unchanged
+            let voucher_reserve = normalize_token_to_voucher(raw, decimals).unwrap();
+            let post_claim =
+                calculate_amount_from_shares(voucher_reserve, lp_supply, lp_supply).unwrap();
+            assert_eq!(
+                post_claim, voucher_reserve,
+                "100% holder should claim entire voucher reserve"
+            );
+
+            // New depositor adds equal voucher amount, gets equal LP
+            let new_lp = calculate_lp_allocation(
+                voucher_reserve,
+                voucher_reserve,
+                voucher_reserve,
+                voucher_reserve,
+                lp_supply,
+            )
+            .unwrap();
+            assert_eq!(new_lp, lp_supply, "Equal deposit should yield equal LP");
+
+            // Both now hold 50%
+            let total_lp = lp_supply.checked_add(new_lp).unwrap();
+            let total_reserve = voucher_reserve.checked_add(voucher_reserve).unwrap();
+            let half_claim =
+                calculate_amount_from_shares(total_reserve, lp_supply, total_lp).unwrap();
+            assert_eq!(half_claim, voucher_reserve, "Each holder should claim 50%");
+        }
+
+        // =====================================================================
+        // 10b. Migration: multi-user pool, all holders preserve exact claims
+        // =====================================================================
+
+        #[test]
+        fn test_migration_multi_user_proportional_ownership() {
+            // 1M USDC + 1M ATOM pool (6-dec), LP = isqrt(1e12 * 1e12) = 1e12
+            let raw_reserve = Uint256::from(1_000_000_000_000u128); // 1e12
+            let old_lp_supply = Uint256::from(1_000_000_000_000u128);
+
+            let user_a_lp = Uint256::from(500_000_000_000u128); // 50%
+            let user_b_lp = Uint256::from(300_000_000_000u128); // 30%
+            let user_c_lp = Uint256::from(200_000_000_000u128); // 20%
+
+            // Pre-migration claims
+            let pre_a = calculate_amount_from_shares(raw_reserve, user_a_lp, old_lp_supply).unwrap();
+            let pre_b = calculate_amount_from_shares(raw_reserve, user_b_lp, old_lp_supply).unwrap();
+            let pre_c = calculate_amount_from_shares(raw_reserve, user_c_lp, old_lp_supply).unwrap();
+            assert_eq!(pre_a, Uint256::from(500_000_000_000u128));
+            assert_eq!(pre_b, Uint256::from(300_000_000_000u128));
+            assert_eq!(pre_c, Uint256::from(200_000_000_000u128));
+
+            // Post-migration: reserves *= 10^18 (6-dec -> 24-dec), LP unchanged
+            let voucher_reserve = Uint256::from(1_000_000_000_000_000_000_000_000_000_000u128);
+
+            let post_a =
+                calculate_amount_from_shares(voucher_reserve, user_a_lp, old_lp_supply).unwrap();
+            let post_b =
+                calculate_amount_from_shares(voucher_reserve, user_b_lp, old_lp_supply).unwrap();
+            let post_c =
+                calculate_amount_from_shares(voucher_reserve, user_c_lp, old_lp_supply).unwrap();
+
+            // Denormalize back: divide by 10^18
+            let factor = Uint256::from(1_000_000_000_000_000_000u128);
+            assert_eq!(post_a / factor, pre_a, "User A claim changed after migration");
+            assert_eq!(post_b / factor, pre_b, "User B claim changed after migration");
+            assert_eq!(post_c / factor, pre_c, "User C claim changed after migration");
+
+            // Sum of claims = total reserve
+            assert_eq!(post_a + post_b + post_c, voucher_reserve);
+        }
+
+        // =====================================================================
+        // 10c. Migration: asymmetric decimal pair (ETH 18-dec + BTC 8-dec)
+        // =====================================================================
+
+        #[test]
+        fn test_migration_asymmetric_decimal_pair() {
+            // Pre-migration: 100 ETH (18-dec) + 10 BTC (8-dec)
+            let raw_eth = Uint256::from(100_000_000_000_000_000_000u128); // 100e18
+            let raw_btc = Uint256::from(1_000_000_000u128); // 10e8
+            let old_lp = Uint256::from(316_227_766_016_837u128); // isqrt(100e18 * 10e8)
+
+            // Post-migration: normalize both to 24-dec
+            let v_eth = normalize_token_to_voucher(raw_eth, 18).unwrap();
+            let v_btc = normalize_token_to_voucher(raw_btc, 8).unwrap();
+            assert_eq!(v_eth, Uint256::from(100_000_000_000_000_000_000_000_000u128));
+            assert_eq!(v_btc, Uint256::from(10_000_000_000_000_000_000_000_000u128));
+
+            // Full holder withdrawal: still gets everything
+            let post_eth = calculate_amount_from_shares(v_eth, old_lp, old_lp).unwrap();
+            let post_btc = calculate_amount_from_shares(v_btc, old_lp, old_lp).unwrap();
+            assert_eq!(post_eth, v_eth);
+            assert_eq!(post_btc, v_btc);
+
+            // Denormalize back to raw: exact match
+            let back_eth = normalize_voucher_to_token(post_eth, 18).unwrap();
+            let back_btc = normalize_voucher_to_token(post_btc, 8).unwrap();
+            assert_eq!(back_eth, raw_eth);
+            assert_eq!(back_btc, raw_btc);
+
+            // New depositor: 50 ETH + 5 BTC (50% of pool, same ratio)
+            let new_eth_v = normalize_token_to_voucher(Uint256::from(50_000_000_000_000_000_000u128), 18).unwrap();
+            let new_btc_v = normalize_token_to_voucher(Uint256::from(500_000_000u128), 8).unwrap();
+            let new_lp = calculate_lp_allocation(new_eth_v, new_btc_v, v_eth, v_btc, old_lp).unwrap();
+            assert_eq!(new_lp, Uint256::from(158_113_883_008_418u128)); // old_lp / 2
+        }
+
+        // =====================================================================
+        // 10d. Migration: value-per-LP scaling factor
+        // =====================================================================
+
+        #[rstest]
+        #[case::dec_6(6u32, 1_000_000_000_000_000_000u128)]
+        #[case::dec_8(8u32, 10_000_000_000_000_000u128)]
+        #[case::dec_18(18u32, 1_000_000u128)]
+        fn test_migration_value_per_lp_scales(
+            #[case] decimals: u32,
+            #[case] expected_voucher_per_lp: u128,
+        ) {
+            let raw = Uint256::from(10u128.pow(decimals)); // 1 token raw
+            let lp_supply = raw; // isqrt(raw * raw)
+
+            // Pre-migration: 1 LP claims 1 raw unit
+            let pre_value = calculate_amount_from_shares(raw, Uint256::from(1u128), lp_supply).unwrap();
+            assert_eq!(pre_value, Uint256::from(1u128));
+
+            // Post-migration: 1 LP claims 10^(24-decimals) voucher units
+            let voucher_reserve = normalize_token_to_voucher(raw, decimals).unwrap();
+            let post_value =
+                calculate_amount_from_shares(voucher_reserve, Uint256::from(1u128), lp_supply).unwrap();
+            assert_eq!(post_value, Uint256::from(expected_voucher_per_lp));
+
+            // Denormalized back = same 1 raw unit
+            let back = normalize_voucher_to_token(post_value, decimals).unwrap();
+            assert_eq!(back, Uint256::from(1u128));
+        }
+
+        // =====================================================================
+        // 10e. Decimal256 remove_liquidity precision: migrated vs new pools
+        // =====================================================================
+
+        #[test]
+        fn test_decimal256_precision_migrated_pools_safe() {
+            // Migrated 6-dec pool: LP=1e12, reserve=1e30 (voucher)
+            let lp_supply = Uint256::from(1_000_000_000_000u128); // 1e12
+            let reserve = Uint256::from(1_000_000_000_000_000_000_000_000_000_000u128); // 1e30
+
+            // Smallest LP holder (1 LP) can still withdraw
+            let ratio = Decimal256::checked_from_ratio(1u128, lp_supply).unwrap();
+            let decimal_result = reserve.checked_mul_floor(ratio).unwrap();
+            let exact_result =
+                calculate_amount_from_shares(reserve, Uint256::from(1u128), lp_supply).unwrap();
+
+            // Both should return non-zero (ratio = 1e-12 > 1e-18 precision floor)
+            assert_eq!(decimal_result, Uint256::from(1_000_000_000_000_000_000u128)); // 1e18
+            assert_eq!(exact_result, Uint256::from(1_000_000_000_000_000_000u128));
+            assert_eq!(decimal_result, exact_result, "Migrated pool: both paths agree");
+        }
+
+        #[test]
+        fn test_decimal256_precision_migrated_18dec_boundary() {
+            // Migrated 18-dec pool: LP=1e18, reserve=1e24 (voucher)
+            // ratio = 1/1e18 = exactly 1e-18 = Decimal256 precision boundary
+            let lp_supply = Uint256::from(1_000_000_000_000_000_000u128); // 1e18
+            let reserve = Uint256::from(1_000_000_000_000_000_000_000_000u128); // 1e24
+
+            let ratio = Decimal256::checked_from_ratio(1u128, lp_supply).unwrap();
+            let decimal_result = reserve.checked_mul_floor(ratio).unwrap();
+            let exact_result =
+                calculate_amount_from_shares(reserve, Uint256::from(1u128), lp_supply).unwrap();
+
+            // At exact boundary: both agree
+            assert_eq!(decimal_result, Uint256::from(1_000_000u128)); // 1e6
+            assert_eq!(exact_result, Uint256::from(1_000_000u128));
+        }
+
+        #[test]
+        fn test_decimal256_precision_new_voucher_pool_floor() {
+            // New pool created post-migration: LP=1e24 (from isqrt of voucher amounts)
+            let lp_supply = Uint256::from(1_000_000_000_000_000_000_000_000u128); // 1e24
+            let reserve = Uint256::from(1_000_000_000_000_000_000_000_000u128); // 1e24
+
+            // 1 LP: ratio = 1e-24 < 1e-18 -> Decimal256 returns 0
+            let ratio_1 = Decimal256::checked_from_ratio(1u128, lp_supply).unwrap();
+            let decimal_1 = reserve.checked_mul_floor(ratio_1).unwrap();
+            let exact_1 =
+                calculate_amount_from_shares(reserve, Uint256::from(1u128), lp_supply).unwrap();
+            assert_eq!(decimal_1, Uint256::zero(), "Decimal256 truncates below 1e-18");
+            assert_eq!(exact_1, Uint256::from(1u128), "checked_multiply_ratio is exact");
+
+            // 1e6 LP: ratio = 1e-18 = boundary, Decimal256 works
+            let min_lp = Uint256::from(1_000_000u128);
+            let ratio_min = Decimal256::checked_from_ratio(min_lp, lp_supply).unwrap();
+            let decimal_min = reserve.checked_mul_floor(ratio_min).unwrap();
+            let exact_min = calculate_amount_from_shares(reserve, min_lp, lp_supply).unwrap();
+            assert_eq!(decimal_min, exact_min, "Both agree at 1e-18 boundary");
+            assert_eq!(exact_min, Uint256::from(1_000_000u128));
+
+            // Below 1e6 LP: Decimal256 gives 0, exact gives non-zero
+            let sub_min = Uint256::from(999_999u128);
+            let ratio_sub = Decimal256::checked_from_ratio(sub_min, lp_supply).unwrap();
+            let decimal_sub = reserve.checked_mul_floor(ratio_sub).unwrap();
+            let exact_sub = calculate_amount_from_shares(reserve, sub_min, lp_supply).unwrap();
+            assert_eq!(decimal_sub, Uint256::zero(), "Decimal256 truncates below threshold");
+            assert_eq!(exact_sub, Uint256::from(999_999u128), "Exact path preserves value");
+        }
+
+        // =====================================================================
+        // 11. Precision edge cases: calculate_amount_from_shares at 24-dec
+        // =====================================================================
+
+        #[rstest]
+        #[case::single_unit(
+            1_000_000_000_000_000_000_000_000u128,
+            1u128,
+            1_000_000_000_000_000_000_000_000u128,
+            1u128
+        )]
+        #[case::small_share(
+            1_000_000_000_000_000_000_000_000u128,
+            1_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000u128
+        )]
+        #[case::almost_all(
+            1_000_000_000_000_000_000_000_000u128,
+            999_999_999_999_999_999_999_999u128,
+            1_000_000_000_000_000_000_000_000u128,
+            999_999_999_999_999_999_999_999u128
+        )]
+        #[case::large_reserve_small_share(
+            1_000_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000u128,
+            1_000_000_000_000_000_000_000_000_000u128,
+            1_000_000_000_000_000_000u128
+        )]
+        fn test_precision_edge_cases(
+            #[case] reserve: u128,
+            #[case] shares: u128,
+            #[case] total_shares: u128,
+            #[case] expected: u128,
+        ) {
+            let result = calculate_amount_from_shares(
+                Uint256::from(reserve),
+                Uint256::from(shares),
+                Uint256::from(total_shares),
+            )
+            .unwrap();
+            assert_eq!(result, Uint256::from(expected));
+        }
+
+        // =====================================================================
+        // 12. Decimal256 precision floor vs checked_multiply_ratio
+        // =====================================================================
+
+        #[test]
+        fn test_decimal256_vs_multiply_ratio_precision() {
+            let reserve = Uint256::from(1_000_000_000_000_000_000_000_000_000u128); // 1e27
+
+            // Case 1: lp=1, total=1e27 — below Decimal256 precision floor
+            let exact =
+                calculate_amount_from_shares(reserve, Uint256::from(1u128), reserve).unwrap();
+            assert_eq!(
+                exact,
+                Uint256::from(1u128),
+                "checked_multiply_ratio is exact"
+            );
+
+            let ratio = Decimal256::checked_from_ratio(1u128, reserve).unwrap();
+            let decimal_result = reserve.checked_mul_floor(ratio).unwrap();
+            assert_eq!(
+                decimal_result,
+                Uint256::zero(),
+                "Decimal256 truncates to 0 below 1e-18"
+            );
+
+            // Case 2: lp=1e9, total=1e27 — exactly at Decimal256 precision (1e-18)
+            let lp = Uint256::from(1_000_000_000u128);
+            let exact_boundary = calculate_amount_from_shares(reserve, lp, reserve).unwrap();
+            let ratio_boundary = Decimal256::checked_from_ratio(lp, reserve).unwrap();
+            let decimal_boundary = reserve.checked_mul_floor(ratio_boundary).unwrap();
+            assert_eq!(
+                exact_boundary, decimal_boundary,
+                "Both agree at 1e-18 boundary"
+            );
+            assert_eq!(exact_boundary, Uint256::from(1_000_000_000u128));
+        }
+    }
 }

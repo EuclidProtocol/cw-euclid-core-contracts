@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint256;
+use cosmwasm_std::{Uint128, Uint256};
 use cw_storage_plus::{Item, Map, Path};
 use euclid::{
     admin::EuclidAdmin,
@@ -15,7 +15,7 @@ pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
 pub const VOUCHER_DECIMAL: u32 = 24;
 #[deprecated(note = "BALANCES has been moved to VOUCHER_BALANCES")]
-pub const BALANCES: Map<SerializedBalanceKey, Uint256> = Map::new("balances");
+pub const BALANCES: Map<SerializedBalanceKey, Uint128> = Map::new("balances");
 
 // Voucher balances are stored as Uint256 to avoid precision loss.
 pub const VOUCHER_BALANCES: Map<SerializedBalanceKey, Uint256> = Map::new("voucher_balances");
@@ -24,7 +24,7 @@ pub const VOUCHER_BALANCES: Map<SerializedBalanceKey, Uint256> = Map::new("vouch
 #[cw_serde]
 pub struct Allowance {
     pub spender: CrossChainUser,
-    pub amount: Uint256,
+    pub amount: Uint128,
 }
 
 // Allowance is stored as a map of balance key to allowance. It allows another user to spend on behalf of the owner.
