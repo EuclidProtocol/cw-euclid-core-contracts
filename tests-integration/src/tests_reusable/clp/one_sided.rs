@@ -302,10 +302,9 @@ mod tests {
 
         remove_concentrated_liquidity(&factory, &router, pool_key, pos_id, pos.liquidity).unwrap();
 
-        let pos_result: Result<PositionResponse, _> =
-            vlp.query(&ConcentratedQueryMsg::Position {
-                position_id: pos_id,
-            });
+        let pos_result: Result<PositionResponse, _> = vlp.query(&ConcentratedQueryMsg::Position {
+            position_id: pos_id,
+        });
         assert!(
             pos_result.is_err(),
             "one-sided position should be deleted after full removal",
