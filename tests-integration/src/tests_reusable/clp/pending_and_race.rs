@@ -29,12 +29,7 @@ use crate::tests_reusable::factory_register::FactorySetupMode;
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn first_position_id(factory: &factory::FactoryContract<cw_orch::mock::MockBase>) -> Uint128 {
-        let ids = list_position_ids(factory).unwrap();
-        assert!(!ids.is_empty(), "expected at least one position");
-        Uint128::new(ids[0].parse::<u128>().unwrap())
-    }
+    use crate::tests_reusable::clp::utils::first_position_id;
 
     fn position_liquidity_from_vlp(
         _factory: &factory::FactoryContract<cw_orch::mock::MockBase>,

@@ -8,6 +8,7 @@ use euclid::msgs::vlp::concentrated::msg::{
 };
 use rstest::rstest;
 
+use super::utils::last_position_id;
 use crate::helpers::chains::get_concentrated_vlp;
 use crate::helpers::factory::{
     add_concentrated_liquidity, create_concentrated_pool, list_position_ids,
@@ -15,12 +16,6 @@ use crate::helpers::factory::{
 };
 use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::factory_register::FactorySetupMode;
-
-fn last_position_id(factory: &factory::FactoryContract<cw_orch::mock::MockBase>) -> Uint128 {
-    let ids = list_position_ids(factory).unwrap();
-    assert!(!ids.is_empty(), "expected at least one position");
-    Uint128::new(ids.last().unwrap().parse::<u128>().unwrap())
-}
 
 #[cfg(test)]
 mod tests {

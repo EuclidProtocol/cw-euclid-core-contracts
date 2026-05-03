@@ -2,17 +2,14 @@
 
 use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::prelude::*;
-use euclid::cross_chain_user::CrossChainUser;
-use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
-use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::concentrated::msg::{
     PositionResponse, QueryMsg as ConcentratedQueryMsg, Slot0Response,
 };
-use euclid::voucher::BalanceKey;
 use rstest::rstest;
 
-use crate::helpers::chains::{get_concentrated_vlp, get_virtual_balance};
+use super::utils::{last_position_id, sender, voucher_balance};
+use crate::helpers::chains::get_concentrated_vlp;
 use crate::helpers::factory::{
     add_concentrated_liquidity, collect_concentrated_fees, create_concentrated_pool,
     list_position_ids, remove_concentrated_liquidity,
@@ -21,42 +18,7 @@ use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_c
 use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
 use crate::tests_reusable::factory_register::FactorySetupMode;
 
-fn first_position_id(factory: &factory::FactoryContract<cw_orch::mock::MockBase>) -> Uint128 {
-    let ids = list_position_ids(factory).unwrap();
-    assert!(!ids.is_empty(), "expected at least one position");
-    Uint128::new(ids[0].parse::<u128>().unwrap())
-}
-
-fn last_position_id(factory: &factory::FactoryContract<cw_orch::mock::MockBase>) -> Uint128 {
-    let ids = list_position_ids(factory).unwrap();
-    assert!(!ids.is_empty(), "expected at least one position");
-    Uint128::new(ids.last().unwrap().parse::<u128>().unwrap())
-}
-
-fn sender(factory: &factory::FactoryContract<cw_orch::mock::MockBase>) -> CrossChainUser {
-    CrossChainUser::new(
-        factory.get_state().unwrap().chain_uid,
-        factory.environment().sender.to_string(),
-    )
-}
-
-fn voucher_balance(
-    factory: &factory::FactoryContract<cw_orch::mock::MockBase>,
-    router: &router::RouterContract<cw_orch::mock::MockBase>,
-    token_id: &str,
-) -> Uint128 {
-    let virtual_balance = get_virtual_balance(
-        router.environment(),
-        &router.get_state().unwrap().virtual_balance_address,
-    );
-    virtual_balance
-        .get_balance(BalanceKey {
-            cross_chain_user: sender(factory),
-            token_id: token_id.to_string(),
-        })
-        .unwrap()
-        .amount
-}
+const TICK_SPACING: i64 = 10;
 
 #[cfg(test)]
 mod tests {
@@ -78,8 +40,8 @@ mod tests {
         let slot0_before: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
 
         // Position entirely below current tick
-        let lower = ((slot0_before.tick - 300) / 10) * 10;
-        let upper = ((slot0_before.tick - 100) / 10) * 10;
+        let lower = ((slot0_before.tick - 300) / TICK_SPACING) * TICK_SPACING;
+        let upper = ((slot0_before.tick - 100) / TICK_SPACING) * TICK_SPACING;
         assert!(
             upper <= slot0_before.tick,
             "position must be below current tick"
@@ -120,8 +82,8 @@ mod tests {
         let slot0_before: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
 
         // Position entirely above current tick
-        let lower = ((slot0_before.tick + 100) / 10) * 10;
-        let upper = ((slot0_before.tick + 300) / 10) * 10;
+        let lower = ((slot0_before.tick + 100) / TICK_SPACING) * TICK_SPACING;
+        let upper = ((slot0_before.tick + 300) / TICK_SPACING) * TICK_SPACING;
         assert!(
             lower > slot0_before.tick,
             "position must be above current tick"
@@ -162,8 +124,8 @@ mod tests {
         let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
 
         // Add position far below current tick
-        let lower = ((slot0.tick - 500) / 10) * 10;
-        let upper = ((slot0.tick - 300) / 10) * 10;
+        let lower = ((slot0.tick - 500) / TICK_SPACING) * TICK_SPACING;
+        let upper = ((slot0.tick - 300) / TICK_SPACING) * TICK_SPACING;
 
         add_concentrated_liquidity(
             &factory,
@@ -242,8 +204,8 @@ mod tests {
         let active_liq_before = slot0.liquidity;
 
         // Wide OOR position below current tick so a moderate swap lands inside
-        let lower = ((slot0.tick - 10_000) / 10) * 10;
-        let upper = ((slot0.tick - 10) / 10) * 10;
+        let lower = ((slot0.tick - 10_000) / TICK_SPACING) * TICK_SPACING;
+        let upper = ((slot0.tick - 10) / TICK_SPACING) * TICK_SPACING;
 
         let add_resp = add_concentrated_liquidity(
             &factory,
@@ -311,8 +273,8 @@ mod tests {
         let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
 
         // Add position above current tick
-        let lower = ((slot0.tick + 100) / 10) * 10;
-        let upper = ((slot0.tick + 300) / 10) * 10;
+        let lower = ((slot0.tick + 100) / TICK_SPACING) * TICK_SPACING;
+        let upper = ((slot0.tick + 300) / TICK_SPACING) * TICK_SPACING;
 
         add_concentrated_liquidity(
             &factory,
@@ -387,8 +349,8 @@ mod tests {
         let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
 
         // Create out-of-range position below
-        let lower = ((slot0.tick - 400) / 10) * 10;
-        let upper = ((slot0.tick - 200) / 10) * 10;
+        let lower = ((slot0.tick - 400) / TICK_SPACING) * TICK_SPACING;
+        let upper = ((slot0.tick - 200) / TICK_SPACING) * TICK_SPACING;
 
         add_concentrated_liquidity(
             &factory,
@@ -464,8 +426,8 @@ mod tests {
         let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
 
         // Add position far above current tick
-        let lower = ((slot0.tick + 200) / 10) * 10;
-        let upper = ((slot0.tick + 400) / 10) * 10;
+        let lower = ((slot0.tick + 200) / TICK_SPACING) * TICK_SPACING;
+        let upper = ((slot0.tick + 400) / TICK_SPACING) * TICK_SPACING;
 
         add_concentrated_liquidity(
             &factory,
@@ -535,8 +497,8 @@ mod tests {
         let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
 
         // Wide OOR position below current tick
-        let lower = ((slot0.tick - 10_000) / 10) * 10;
-        let upper = ((slot0.tick - 10) / 10) * 10;
+        let lower = ((slot0.tick - 10_000) / TICK_SPACING) * TICK_SPACING;
+        let upper = ((slot0.tick - 10) / TICK_SPACING) * TICK_SPACING;
 
         add_concentrated_liquidity(
             &factory,
