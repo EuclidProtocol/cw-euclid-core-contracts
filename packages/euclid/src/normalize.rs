@@ -24,10 +24,10 @@ pub fn normalize(
         return Ok(amount);
     }
     if to_decimals > from_decimals {
-        let factor = Uint256::from(10u128).checked_pow((to_decimals - from_decimals) as u32)?;
+        let factor = Uint256::from(10u128).checked_pow(to_decimals - from_decimals)?;
         Ok(amount.checked_mul(factor)?)
     } else {
-        let factor = Uint256::from(10u128).checked_pow((from_decimals - to_decimals) as u32)?;
+        let factor = Uint256::from(10u128).checked_pow(from_decimals - to_decimals)?;
         Ok(amount.checked_div(factor)?)
     }
 }

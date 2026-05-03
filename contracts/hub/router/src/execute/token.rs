@@ -276,10 +276,9 @@ pub fn _release_voucher(
     let normalized_token_amount =
         normalize_voucher_to_token(voucher_amount, token_metadata.token_type.get_decimals()?)?;
 
-    ensure!(
-        !normalized_token_amount.is_zero() || voucher_amount.is_zero(),
-        ContractError::new("Amount too small to release after normalization")
-    );
+    if normalized_token_amount.is_zero() && !voucher_amount.is_zero() {
+        return Ok((vec![], Uint256::zero()));
+    }
 
     // We cannot release more than escrow balance
     let max_release_amount = normalized_token_amount.min(escrow_balance);
@@ -748,9 +747,9 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Voucher amount too small to produce any raw tokens after normalization
-    /// should return an error instead of silently releasing zero.
+    /// Dust amounts that normalize to zero are skipped gracefully, not errored.
     #[test]
-    fn test_withdraw_voucher_dust_amount_errors() {
+    fn test_withdraw_voucher_dust_amount_skips() {
         let mut deps = voucher_deps(); // 6-decimal token, escrow = 500
         let creator = deps.api.addr_make("creator");
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
@@ -774,12 +773,15 @@ mod tests {
                 ),
                 cross_chain_config: CrossChainConfig::default(),
             },
-        );
+        )
+        .unwrap();
 
-        let err = res.unwrap_err();
         assert_eq!(
-            err.to_string(),
-            "Error - Amount too small to release after normalization"
+            res.attributes
+                .iter()
+                .find(|a| a.key == "released_amount")
+                .map(|a| a.value.as_str()),
+            Some("0")
         );
     }
 }

@@ -25,6 +25,7 @@ pub fn execute_swap_request(
     asset_in: TokenWithDenom,
     amount_in: Uint256,
     asset_out: Token,
+    // min_amount_out must be in 24-decimal voucher units, not native token decimals
     min_amount_out: Uint256,
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,

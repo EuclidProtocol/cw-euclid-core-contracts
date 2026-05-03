@@ -152,10 +152,7 @@ pub fn ibc_execute_swap(
             user_voucher_balance_res.amount.ge(&normalized_amount_in),
             ContractError::InsufficientAmount {
                 min_amount: msg.amount_in,
-                amount: user_voucher_balance_res
-                    .amount
-                    .try_into()
-                    .unwrap_or(Uint256::MAX),
+                amount: user_voucher_balance_res.amount,
             }
         );
     }
@@ -180,22 +177,13 @@ pub fn ibc_execute_swap(
     // Should reject full execution if failed
     response = response.add_message(approve_voucher_msg);
 
+    // Voucher partner fees handled here; native-asset partner fees handled at factory in ack_swap_request
     if msg.asset_in.token_type.is_voucher()
         && !msg.partner_fee_amount.is_zero()
         && msg.partner_fee_recipient != sender
     {
-        let metadata = query_token_metadata_by_denom(
-            deps.as_ref(),
-            &virtual_balance_address,
-            &msg.asset_in.token,
-            &sender.chain_uid,
-            &msg.asset_in.token_type,
-        )?;
-        // Normalize partner fee amount using same normalization as amount_in
-        let normalized_partner_fee = normalize_token_to_voucher(
-            msg.partner_fee_amount,
-            metadata.token_type.get_decimals()?,
-        )?;
+        // Voucher partner fees are already in 24-decimal units
+        let normalized_partner_fee = msg.partner_fee_amount;
 
         let transfer_voucher_msg =
             euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(ExecuteTransfer {

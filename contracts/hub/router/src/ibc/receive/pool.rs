@@ -7,7 +7,6 @@ use euclid::{
     fee::Fee,
     msgs::{
         self,
-        router::TokenDenom,
         virtual_balance::msg::{ExecuteApprove, ExecuteMint, ExecuteMsg as VirtualBalanceMsg},
         vlp::base::{PoolConfig, VlpAddLiquidityMsg, VlpRegisterPoolMsg, VlpRemoveLiquidityMsg},
     },
@@ -79,16 +78,6 @@ pub fn ibc_execute_request_pool_creation(
             );
             match token_registered_on_sender_chain {
                 Ok(token_metadata) => {
-                    ensure!(
-                        token_registered,
-                        ContractError::new(
-                            format!(
-                                "Token: {}:: Cannot use already existing token without register on sender chain first",
-                                token.token
-                            )
-                            .as_str()
-                        )
-                    );
                     let token_decimals = token.token_type.get_decimals()?;
                     let metadata_decimals = token_metadata.token_type.get_decimals()?;
                     ensure!(

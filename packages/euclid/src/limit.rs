@@ -23,7 +23,10 @@ impl Limit {
                 ContractError::ZeroAssetAmount {}
             ),
             Limit::GreaterThanOrEqual(_amount) => {}
-            Limit::Dynamic(amount) => ensure!(amount.is_zero(), ContractError::ZeroAssetAmount {}),
+            Limit::Dynamic(amount) => ensure!(
+                amount.is_zero(),
+                ContractError::new("Dynamic limit must have zero amount")
+            ),
         };
         Ok(())
     }

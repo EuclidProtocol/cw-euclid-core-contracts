@@ -4,7 +4,7 @@ use crate::state::{
     get_escrow_balance_key, get_token_metadata_key, BALANCES, STATE, TOKEN_METADATA,
     VOUCHER_BALANCES,
 };
-use cosmwasm_std::{entry_point, DepsMut, Env, Order, Response, Uint256};
+use cosmwasm_std::{ensure, entry_point, DepsMut, Env, Order, Response, Uint256};
 use cw2::set_contract_version;
 use euclid::{
     error::ContractError,
@@ -52,14 +52,26 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
             .range(deps.storage, None, None, Order::Ascending)
             .collect::<Result<Vec<_>, _>>()?;
 
-        let (_token_type_key, metadata) = metadata_entries.first().ok_or_else(|| {
+        ensure!(
+            !metadata_entries.is_empty(),
             ContractError::new(&format!(
                 "No TOKEN_METADATA for token '{}' on chain '{:?}'. Ensure token_metadata covers all escrow entries.",
                 token_id, chain_uid
             ))
-        })?;
+        );
+        ensure!(
+            metadata_entries.len() == 1,
+            ContractError::new(&format!(
+                "Multiple TOKEN_METADATA for token '{}' on chain '{:?}' (found {}). Cannot determine which token_type owns the escrow balance.",
+                token_id, chain_uid, metadata_entries.len()
+            ))
+        );
+        let (_token_type_key, metadata) = &metadata_entries[0];
 
         let key = get_escrow_balance_key(token_id, chain_uid, metadata.token_type.clone());
+        if key.may_load(deps.storage)?.is_some() {
+            continue;
+        }
         key.save(deps.storage, &escrow.balance)?;
         escrow_count += 1;
     }

@@ -187,7 +187,8 @@ fn ack_pool_creation(
                     symbol: lp_token_instantiate_data.symbol,
                     decimals: lp_token_instantiate_data.decimals,
                     initial_balances: vec![Cw20Coin {
-                        amount: cosmwasm_std::Uint128::try_from(data.mint_lp_tokens).unwrap(),
+                        amount: cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                            .map_err(|e| ContractError::Std(e.into()))?,
                         address: data.sender.address,
                     }],
                     mint: lp_token_instantiate_data.mint,
@@ -203,7 +204,10 @@ fn ack_pool_creation(
             VLP_TO_LP_SHARES.save(
                 deps.storage,
                 data.vlp_contract,
-                &Int256::from(cosmwasm_std::Uint128::try_from(data.mint_lp_tokens).unwrap()),
+                &Int256::from(
+                    cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                        .map_err(|e| ContractError::Std(e.into()))?,
+                ),
             )?;
 
             Ok(res.add_submessage(SubMsg {
@@ -398,7 +402,8 @@ fn ack_add_liquidity(
                 .may_load(deps.storage, data.vlp_address.clone())?
                 .unwrap_or(Int256::zero());
             let shares = shares.checked_add(Int256::from(
-                cosmwasm_std::Uint128::try_from(data.mint_lp_tokens).unwrap(),
+                cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                    .map_err(|e| ContractError::Std(e.into()))?,
             ))?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
@@ -492,7 +497,8 @@ fn ack_remove_liquidity(
                 .may_load(deps.storage, data.vlp_address.clone())?
                 .unwrap_or(Int256::zero());
             let shares = shares.checked_sub(Int256::from(
-                cosmwasm_std::Uint128::try_from(data.burn_lp_tokens).unwrap(),
+                cosmwasm_std::Uint128::try_from(data.burn_lp_tokens)
+                    .map_err(|e| ContractError::Std(e.into()))?,
             ))?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;

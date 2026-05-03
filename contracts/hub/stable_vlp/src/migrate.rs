@@ -19,7 +19,7 @@ pub fn migrate(deps: DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response, Co
 
     let mut reserves_normalized = 0u64;
     for token in &pair_tokens {
-        if let Ok(old_balance) = BALANCES.load(deps.storage, token.clone()) {
+        if let Some(old_balance) = BALANCES.may_load(deps.storage, token.clone())? {
             let decimals = query_token_decimals(&deps, &vb_addr, token)?;
             let normalized = normalize_token_to_voucher(old_balance, decimals)?;
 
