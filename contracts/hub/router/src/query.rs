@@ -257,6 +257,23 @@ pub fn query_token_registered(deps: Deps, token_id: &Token) -> Result<bool, Cont
     Ok(response.token_registered)
 }
 
+#[allow(deprecated)]
+pub fn query_all_escrows(deps: Deps) -> Result<Binary, ContractError> {
+    use crate::state::ESCROW_BALANCES;
+    let escrows: Vec<EscrowResponse> = ESCROW_BALANCES
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|item| {
+            let ((token_id, chain_uid), balance) = item?;
+            Ok(EscrowResponse {
+                token: Token::create(token_id)?,
+                chain_uid,
+                balance,
+            })
+        })
+        .collect::<Result<_, ContractError>>()?;
+    Ok(to_json_binary(&AllEscrowsResponse { escrows })?)
+}
+
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{

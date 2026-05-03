@@ -112,7 +112,9 @@ pub struct ExecuteApprove {
 }
 
 #[cw_serde]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub token_metadata: Vec<TokenMetadata>,
+}
 
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]

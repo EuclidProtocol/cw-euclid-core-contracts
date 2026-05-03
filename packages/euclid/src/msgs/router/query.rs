@@ -33,6 +33,10 @@ pub enum QueryMsg {
     GetReleaseFees {
         pagination: Pagination<(Token, ChainUid)>,
     },
+
+    #[deprecated(note = "ESCROW_BALANCES moved to virtual_balance. Used only during migration.")]
+    #[returns(AllEscrowsResponse)]
+    GetAllEscrows {},
 }
 
 #[cw_serde]

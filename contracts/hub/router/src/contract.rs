@@ -214,6 +214,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
         QueryMsg::QueryRelayerAddresses {} => query_relayer_addresses(deps),
         QueryMsg::GetReleaseFees { pagination } => query_release_fees(deps, pagination),
+        #[allow(deprecated)]
+        QueryMsg::GetAllEscrows {} => query::query_all_escrows(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

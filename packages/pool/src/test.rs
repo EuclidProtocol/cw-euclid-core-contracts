@@ -1573,9 +1573,12 @@ mod tests {
             let user_c_lp = Uint256::from(200_000_000_000u128); // 20%
 
             // Pre-migration claims
-            let pre_a = calculate_amount_from_shares(raw_reserve, user_a_lp, old_lp_supply).unwrap();
-            let pre_b = calculate_amount_from_shares(raw_reserve, user_b_lp, old_lp_supply).unwrap();
-            let pre_c = calculate_amount_from_shares(raw_reserve, user_c_lp, old_lp_supply).unwrap();
+            let pre_a =
+                calculate_amount_from_shares(raw_reserve, user_a_lp, old_lp_supply).unwrap();
+            let pre_b =
+                calculate_amount_from_shares(raw_reserve, user_b_lp, old_lp_supply).unwrap();
+            let pre_c =
+                calculate_amount_from_shares(raw_reserve, user_c_lp, old_lp_supply).unwrap();
             assert_eq!(pre_a, Uint256::from(500_000_000_000u128));
             assert_eq!(pre_b, Uint256::from(300_000_000_000u128));
             assert_eq!(pre_c, Uint256::from(200_000_000_000u128));
@@ -1592,9 +1595,21 @@ mod tests {
 
             // Denormalize back: divide by 10^18
             let factor = Uint256::from(1_000_000_000_000_000_000u128);
-            assert_eq!(post_a / factor, pre_a, "User A claim changed after migration");
-            assert_eq!(post_b / factor, pre_b, "User B claim changed after migration");
-            assert_eq!(post_c / factor, pre_c, "User C claim changed after migration");
+            assert_eq!(
+                post_a / factor,
+                pre_a,
+                "User A claim changed after migration"
+            );
+            assert_eq!(
+                post_b / factor,
+                pre_b,
+                "User B claim changed after migration"
+            );
+            assert_eq!(
+                post_c / factor,
+                pre_c,
+                "User C claim changed after migration"
+            );
 
             // Sum of claims = total reserve
             assert_eq!(post_a + post_b + post_c, voucher_reserve);
@@ -1614,7 +1629,10 @@ mod tests {
             // Post-migration: normalize both to 24-dec
             let v_eth = normalize_token_to_voucher(raw_eth, 18).unwrap();
             let v_btc = normalize_token_to_voucher(raw_btc, 8).unwrap();
-            assert_eq!(v_eth, Uint256::from(100_000_000_000_000_000_000_000_000u128));
+            assert_eq!(
+                v_eth,
+                Uint256::from(100_000_000_000_000_000_000_000_000u128)
+            );
             assert_eq!(v_btc, Uint256::from(10_000_000_000_000_000_000_000_000u128));
 
             // Full holder withdrawal: still gets everything
@@ -1630,9 +1648,12 @@ mod tests {
             assert_eq!(back_btc, raw_btc);
 
             // New depositor: 50 ETH + 5 BTC (50% of pool, same ratio)
-            let new_eth_v = normalize_token_to_voucher(Uint256::from(50_000_000_000_000_000_000u128), 18).unwrap();
+            let new_eth_v =
+                normalize_token_to_voucher(Uint256::from(50_000_000_000_000_000_000u128), 18)
+                    .unwrap();
             let new_btc_v = normalize_token_to_voucher(Uint256::from(500_000_000u128), 8).unwrap();
-            let new_lp = calculate_lp_allocation(new_eth_v, new_btc_v, v_eth, v_btc, old_lp).unwrap();
+            let new_lp =
+                calculate_lp_allocation(new_eth_v, new_btc_v, v_eth, v_btc, old_lp).unwrap();
             assert_eq!(new_lp, Uint256::from(158_113_883_008_418u128)); // old_lp / 2
         }
 
@@ -1652,13 +1673,15 @@ mod tests {
             let lp_supply = raw; // isqrt(raw * raw)
 
             // Pre-migration: 1 LP claims 1 raw unit
-            let pre_value = calculate_amount_from_shares(raw, Uint256::from(1u128), lp_supply).unwrap();
+            let pre_value =
+                calculate_amount_from_shares(raw, Uint256::from(1u128), lp_supply).unwrap();
             assert_eq!(pre_value, Uint256::from(1u128));
 
             // Post-migration: 1 LP claims 10^(24-decimals) voucher units
             let voucher_reserve = normalize_token_to_voucher(raw, decimals).unwrap();
             let post_value =
-                calculate_amount_from_shares(voucher_reserve, Uint256::from(1u128), lp_supply).unwrap();
+                calculate_amount_from_shares(voucher_reserve, Uint256::from(1u128), lp_supply)
+                    .unwrap();
             assert_eq!(post_value, Uint256::from(expected_voucher_per_lp));
 
             // Denormalized back = same 1 raw unit
@@ -1685,7 +1708,10 @@ mod tests {
             // Both should return non-zero (ratio = 1e-12 > 1e-18 precision floor)
             assert_eq!(decimal_result, Uint256::from(1_000_000_000_000_000_000u128)); // 1e18
             assert_eq!(exact_result, Uint256::from(1_000_000_000_000_000_000u128));
-            assert_eq!(decimal_result, exact_result, "Migrated pool: both paths agree");
+            assert_eq!(
+                decimal_result, exact_result,
+                "Migrated pool: both paths agree"
+            );
         }
 
         #[test]
@@ -1716,8 +1742,16 @@ mod tests {
             let decimal_1 = reserve.checked_mul_floor(ratio_1).unwrap();
             let exact_1 =
                 calculate_amount_from_shares(reserve, Uint256::from(1u128), lp_supply).unwrap();
-            assert_eq!(decimal_1, Uint256::zero(), "Decimal256 truncates below 1e-18");
-            assert_eq!(exact_1, Uint256::from(1u128), "checked_multiply_ratio is exact");
+            assert_eq!(
+                decimal_1,
+                Uint256::zero(),
+                "Decimal256 truncates below 1e-18"
+            );
+            assert_eq!(
+                exact_1,
+                Uint256::from(1u128),
+                "checked_multiply_ratio is exact"
+            );
 
             // 1e6 LP: ratio = 1e-18 = boundary, Decimal256 works
             let min_lp = Uint256::from(1_000_000u128);
@@ -1732,8 +1766,16 @@ mod tests {
             let ratio_sub = Decimal256::checked_from_ratio(sub_min, lp_supply).unwrap();
             let decimal_sub = reserve.checked_mul_floor(ratio_sub).unwrap();
             let exact_sub = calculate_amount_from_shares(reserve, sub_min, lp_supply).unwrap();
-            assert_eq!(decimal_sub, Uint256::zero(), "Decimal256 truncates below threshold");
-            assert_eq!(exact_sub, Uint256::from(999_999u128), "Exact path preserves value");
+            assert_eq!(
+                decimal_sub,
+                Uint256::zero(),
+                "Decimal256 truncates below threshold"
+            );
+            assert_eq!(
+                exact_sub,
+                Uint256::from(999_999u128),
+                "Exact path preserves value"
+            );
         }
 
         // =====================================================================
