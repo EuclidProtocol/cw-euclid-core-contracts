@@ -9,6 +9,7 @@ use euclid::msgs::vlp::concentrated::msg::{
 use rstest::rstest;
 use std::collections::HashSet;
 
+use super::utils::{first_position_id, last_position_id};
 use crate::helpers::chains::get_concentrated_vlp;
 use crate::helpers::factory::{
     add_concentrated_liquidity, create_concentrated_pool, get_position_token, list_position_ids,
@@ -20,12 +21,6 @@ use crate::tests_reusable::constants::{
     FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
 };
 use crate::tests_reusable::factory_register::FactorySetupMode;
-
-fn first_position_id(factory: &factory::FactoryContract<cw_orch::mock::MockBase>) -> Uint128 {
-    let ids = list_position_ids(factory).unwrap();
-    assert!(!ids.is_empty(), "expected at least one position");
-    Uint128::new(ids[0].parse::<u128>().unwrap())
-}
 
 #[cfg(test)]
 mod tests {
@@ -269,10 +264,7 @@ mod tests {
         )
         .unwrap();
 
-        let position_id = {
-            let ids = list_position_ids(&factory).unwrap();
-            Uint128::new(ids.last().unwrap().parse::<u128>().unwrap())
-        };
+        let position_id = last_position_id(&factory);
         let pos: PositionResponse = vlp
             .query(&ConcentratedQueryMsg::Position { position_id })
             .unwrap();
