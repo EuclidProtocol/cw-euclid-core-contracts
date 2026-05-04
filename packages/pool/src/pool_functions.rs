@@ -22,7 +22,8 @@ use cosmwasm_std::{
 use cw_storage_plus::{Item, Map};
 use euclid::msgs::vlp::base::PoolCreationResponse;
 
-use crate::stable_math::compute_stable_swap;
+use crate::stable_math::{compute_d, compute_stable_swap};
+use euclid::utils::math::Decimal256Ext;
 
 pub const MINIMUM_LIQUIDITY: u128 = 1000;
 
@@ -101,6 +102,41 @@ pub fn calculate_lp_allocation(
         );
 
     Uint128::try_from(lp_allocation).map_err(|_| ContractError::new("Overflow lp allocation"))
+}
+
+fn calculate_stable_lp_allocation(
+    amount_1: Uint128,
+    amount_2: Uint128,
+    reserve_1: Uint128,
+    reserve_2: Uint128,
+    total_lp_supply: Uint128,
+    amp: Uint64,
+) -> Result<Uint128, ContractError> {
+    let pools_new = [
+        Decimal256::checked_from_integer(reserve_1.checked_add(amount_1)?)?,
+        Decimal256::checked_from_integer(reserve_2.checked_add(amount_2)?)?,
+    ];
+    if total_lp_supply.is_zero() {
+        let d = compute_d(amp, &pools_new).map_err(|e| ContractError::new(&e.to_string()))?;
+        return Ok(d.to_uint128_with_precision(0u32)?);
+    }
+    let pools_old = [
+        Decimal256::checked_from_integer(reserve_1)?,
+        Decimal256::checked_from_integer(reserve_2)?,
+    ];
+    let d_old = compute_d(amp, &pools_old).map_err(|e| ContractError::new(&e.to_string()))?;
+    let d_new = compute_d(amp, &pools_new).map_err(|e| ContractError::new(&e.to_string()))?;
+    ensure!(
+        d_new > d_old,
+        ContractError::new("D invariant did not increase")
+    );
+    let lp_supply_dec = Decimal256::checked_from_integer(total_lp_supply)?;
+    let increase = d_new.checked_sub(d_old)?;
+    let lp_allocation = lp_supply_dec
+        .checked_multiply_ratio(increase, d_old)
+        .map_err(|e| ContractError::new(&e.to_string()))?
+        .to_uint128_with_precision(0u32)?;
+    Ok(lp_allocation)
 }
 
 // Function to assert slippage is tolerated during transaction
@@ -371,6 +407,7 @@ pub fn add_liquidity(
     sender: CrossChainUser,
     liquidity: PairWithAmount,
     slippage_tolerance_bps: u64,
+    amp_factor: Option<Uint64>,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
@@ -435,15 +472,23 @@ pub fn add_liquidity(
 
     assert_slippage_tolerance(ratio, lq_ratio, slippage_tolerance_bps)?;
 
-    //TODO Change calculate_lp_allocation to use stable swap formula
-    // Calculate liquidity added share for LP provider from total liquidity
-    let lp_allocation = calculate_lp_allocation(
-        token_1_liquidity,
-        token_2_liquidity,
-        total_reserve_1,
-        total_reserve_2,
-        state.total_lp_tokens,
-    )?;
+    let lp_allocation = match amp_factor {
+        Some(amp) => calculate_stable_lp_allocation(
+            token_1_liquidity,
+            token_2_liquidity,
+            total_reserve_1,
+            total_reserve_2,
+            state.total_lp_tokens,
+            amp,
+        )?,
+        None => calculate_lp_allocation(
+            token_1_liquidity,
+            token_2_liquidity,
+            total_reserve_1,
+            total_reserve_2,
+            state.total_lp_tokens,
+        )?,
+    };
 
     let is_new_pool = state.total_lp_tokens.is_zero();
     state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;

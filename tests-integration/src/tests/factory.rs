@@ -2471,7 +2471,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
             },
             token_1_reserve: Uint128::new(10_000),
             token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(31622),
+            total_lp_tokens: Uint128::new(82026),
         }
     );
 

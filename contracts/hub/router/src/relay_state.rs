@@ -75,10 +75,9 @@ pub(crate) fn remove_pending_packet_and_decrement_count(
     storage: &mut dyn Storage,
     chain_uid: &ChainUid,
     sequence: u128,
-) -> Result<(), ContractError> {
-    let _existing_request =
+) -> Result<PendingPacket, ContractError> {
+    let existing_request =
         CROSS_CHAIN_PENDING_SEND_PACKETS.load(storage, (chain_uid.clone(), sequence))?;
-    let _sender = CROSS_CHAIN_PENDING_PACKET_SENDER.load(storage, (chain_uid.clone(), sequence))?;
 
     // Remove the existing request as its already relayed now
     CROSS_CHAIN_PENDING_SEND_PACKETS.remove(storage, (chain_uid.clone(), sequence));
@@ -96,5 +95,5 @@ pub(crate) fn remove_pending_packet_and_decrement_count(
         &count.checked_sub(1).ok_or(ContractError::new("Overflow"))?,
     )?;
 
-    Ok(())
+    Ok(existing_request)
 }

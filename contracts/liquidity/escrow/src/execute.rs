@@ -1,6 +1,7 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, DepsMut, Env, MessageInfo, Response, Uint128,
 };
+use cw_utils::nonpayable;
 
 use cw20::Cw20ReceiveMsg;
 use euclid::{
@@ -19,11 +20,11 @@ pub fn execute_add_allowed_denom(
     info: MessageInfo,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
-    cw_utils::nonpayable(&info)?;
+    nonpayable(&info)?;
+
     // Vouchers are not escrowed
     ensure!(!denom.is_voucher(), ContractError::CannotEscrowVoucher {});
 
-    // TODO nonpayable to this function? would be better to limit depositing funds through the deposit functions
     // Only the factory can call this function
     let factory_address = STATE.load(deps.storage)?.factory_address;
     ensure!(
@@ -60,6 +61,7 @@ pub fn execute_add_allowed_denom(
         .add_attribute("amount", new_amount))
 }
 
+// Disallowed denoms can still be withdrawn, but not deposited into the escrow.
 pub fn execute_disallow_denom(
     deps: DepsMut,
     _env: Env,
@@ -90,7 +92,6 @@ pub fn execute_disallow_denom(
     disallowed_denoms.push(denom.clone());
     DISALLOWED_DENOMS.save(deps.storage, &disallowed_denoms)?;
 
-    //TODO refund the disallowed funds
     Ok(Response::new()
         .add_attribute("method", "disallow_denom")
         .add_attribute("deregistered_denom", denom.get_key()))
@@ -176,7 +177,6 @@ pub fn receive_cw20(
             );
 
             let amount_sent = cw20_msg.amount;
-            // TODO should this check be on the factory level? Or even before the factory
             ensure!(
                 !amount_sent.is_zero(),
                 ContractError::InsufficientDeposit {}
