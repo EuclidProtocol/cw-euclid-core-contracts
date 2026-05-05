@@ -20,9 +20,9 @@ mod tests {
     use std::collections::HashMap;
 
     #[rstest]
-    #[case(1000u128, 1000u128, 0u128, 0u128, 0u128, 1000u128)]
-    #[case(100u128, 100u128, 1000u128, 1000u128, 1000u128, 100u128)]
-    #[case(200u128, 100u128, 2000u128, 1000u128, 1990u128, 199u128)]
+    #[case::first_deposit_equal(1000u128, 1000u128, 0u128, 0u128, 0u128, 1000u128)]
+    #[case::proportional_existing_pool(100u128, 100u128, 1000u128, 1000u128, 1000u128, 100u128)]
+    #[case::imbalanced_uses_min(200u128, 100u128, 2000u128, 1000u128, 1990u128, 199u128)]
     fn test_calculate_lp_allocation(
         #[case] token_1_amount: u128,
         #[case] token_2_amount: u128,
@@ -72,7 +72,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case(
+    #[case::first_deposit_5e24(
         5_000_000_000_000_000_000_000_000u128,
         5_000_000_000_000_000_000_000_000u128,
         0u128,
@@ -80,7 +80,7 @@ mod tests {
         0u128,
         5_000_000_000_000_000_000_000_000u128
     )]
-    #[case(
+    #[case::proportional_5e24(
         5_000_000_000_000_000_000_000_000u128,
         5_000_000_000_000_000_000_000_000u128,
         5_000_000_000_000_000_000_000_000u128,
@@ -115,8 +115,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case(
-        "equal_pools",
+    #[case::equal_pools(
         Uint256::from(100u128),
         Uint256::from(1000u128),
         Uint256::from(1000u128),
@@ -124,8 +123,7 @@ mod tests {
         Uint256::from(99u128),
         Uint256::from(1u128)
     )]
-    #[case(
-        "imbalanced_pools",
+    #[case::imbalanced_pools(
         Uint256::from(100u128),
         Uint256::from(2000u128),
         Uint256::from(1000u128),
@@ -133,8 +131,7 @@ mod tests {
         Uint256::from(67u128),
         Uint256::from(33u128)
     )]
-    #[case(
-        "small_amount",
+    #[case::small_amount(
         Uint256::from(1u128),
         Uint256::from(1000000u128),
         Uint256::from(1000000u128),
@@ -142,8 +139,7 @@ mod tests {
         Uint256::from(1u128),
         Uint256::from(0u128)
     )]
-    #[case(
-        "large_amount",
+    #[case::large_amount(
         Uint256::from(1000u128),
         Uint256::from(2000u128),
         Uint256::from(2000u128),
@@ -151,8 +147,7 @@ mod tests {
         Uint256::from(946u128),
         Uint256::from(54u128)
     )]
-    #[case(
-        "extreme_imbalance",
+    #[case::extreme_imbalance(
         Uint256::from(100u128),
         Uint256::from(10000u128),
         Uint256::from(1000u128),
@@ -160,8 +155,7 @@ mod tests {
         Uint256::from(47u128),
         Uint256::from(53u128)
     )]
-    #[case(
-        "large_values large spread",
+    #[case::large_values_large_spread(
         Uint256::from(1000000000000000000u128),
         Uint256::from(1000000000000000000u128),
         Uint256::from(1000000000000000000u128),
@@ -169,8 +163,7 @@ mod tests {
         Uint256::from(820871215252207999u128),
         Uint256::from(179128784747792001u128)
     )]
-    #[case(
-        "large_values small spread",
+    #[case::large_values_small_spread(
         Uint256::from(1000u128),
         Uint256::from(1000000000000000000u128),
         Uint256::from(1000000000000000000u128),
@@ -179,8 +172,7 @@ mod tests {
         Uint256::from(0u128)
     )]
     // Cases where ask_pool > offer_pool: return_amount exceeds offer_amount
-    #[case(
-        "ask_pool_2x_offer_pool",
+    #[case::ask_pool_2x_offer_pool(
         Uint256::from(100u128),
         Uint256::from(1000u128),
         Uint256::from(2000u128),
@@ -188,8 +180,7 @@ mod tests {
         Uint256::from(106u128),
         Uint256::from(6u128)
     )]
-    #[case(
-        "ask_pool_10x_offer_pool",
+    #[case::ask_pool_10x_offer_pool(
         Uint256::from(100u128),
         Uint256::from(1000u128),
         Uint256::from(10000u128),
@@ -197,8 +188,7 @@ mod tests {
         Uint256::from(196u128),
         Uint256::from(96u128)
     )]
-    #[case(
-        "ask_pool_2x_low_amp",
+    #[case::ask_pool_2x_low_amp(
         Uint256::from(500u128),
         Uint256::from(5000u128),
         Uint256::from(10000u128),
@@ -206,8 +196,7 @@ mod tests {
         Uint256::from(685u128),
         Uint256::from(185u128)
     )]
-    #[case(
-        "ask_pool_4x_offer_pool",
+    #[case::ask_pool_4x_offer_pool(
         Uint256::from(1000u128),
         Uint256::from(2000u128),
         Uint256::from(8000u128),
@@ -215,8 +204,7 @@ mod tests {
         Uint256::from(1160u128),
         Uint256::from(160u128)
     )]
-    #[case(
-        "large_values_ask_pool_5x",
+    #[case::large_values_ask_pool_5x(
         Uint256::from(1000000000000000000u128),
         Uint256::from(1000000000000000000u128),
         Uint256::from(5000000000000000000u128),
@@ -225,7 +213,6 @@ mod tests {
         Uint256::from(169582311873333606u128)
     )]
     fn test_compute_stable_swap(
-        #[case] case_name: &str,
         #[case] offer_asset: Uint256,
         #[case] offer_pool: Uint256,
         #[case] ask_pool: Uint256,
@@ -235,25 +222,16 @@ mod tests {
     ) {
         let result = compute_stable_swap(offer_asset, offer_pool, ask_pool, swap_amount).unwrap();
 
-        assert_eq!(
-            result.return_amount, expected_return_amount,
-            "case_name={case_name}"
-        );
-        assert_eq!(
-            result.spread_amount, expected_spread_amount,
-            "case_name={case_name}"
-        );
+        assert_eq!(result.return_amount, expected_return_amount);
+        assert_eq!(result.spread_amount, expected_spread_amount);
     }
 
     #[rstest]
-    #[case(true, 10000u128, 5000u128, 100u64, 50u64, 1000u128)]
-    #[case(false, 8000u128, 20000u128, 30u64, 20u64, 500u128)]
-    // Very small amount, very small spread
-    #[case(true, 1000u128, 1000u128, 10u64, 1u64, 1u128)]
-    // Very small amount, very large spread (high fee bps)
-    #[case(false, 1000u128, 1000u128, 9999u64, 0u64, 1u128)]
-    // Very large amount, very small spread
-    #[case(
+    #[case::token1_in_normal(true, 10000u128, 5000u128, 100u64, 50u64, 1000u128)]
+    #[case::token2_in_normal(false, 8000u128, 20000u128, 30u64, 20u64, 500u128)]
+    #[case::small_amount_small_fee(true, 1000u128, 1000u128, 10u64, 1u64, 1u128)]
+    #[case::small_amount_max_fee(false, 1000u128, 1000u128, 9999u64, 0u64, 1u128)]
+    #[case::large_amount_small_fee(
         true,
         1000000000000000000u128,
         1000000000000000000u128,
@@ -261,8 +239,7 @@ mod tests {
         1u64,
         1000000000000000000u128
     )]
-    // Very large amount, very large spread (high fee bps)
-    #[case(
+    #[case::large_amount_max_fee(
         false,
         1000000000000000000u128,
         1000000000000000000u128,
@@ -270,10 +247,9 @@ mod tests {
         0u64,
         1000000000000000000u128
     )]
-    // ask_pool > offer_pool: return_amount > offer_amount
-    #[case(true, 5000u128, 10000u128, 100u64, 50u64, 1000u128)]
-    #[case(false, 20000u128, 8000u128, 30u64, 20u64, 500u128)]
-    #[case(true, 1000u128, 5000u128, 10u64, 1u64, 100u128)]
+    #[case::ask_pool_larger_token1(true, 5000u128, 10000u128, 100u64, 50u64, 1000u128)]
+    #[case::ask_pool_larger_token2(false, 20000u128, 8000u128, 30u64, 20u64, 500u128)]
+    #[case::deep_ask_pool_small_swap(true, 1000u128, 5000u128, 10u64, 1u64, 100u128)]
     fn test_pre_swap_regular_calculates_fees_and_cp_swap(
         #[case] asset_in_is_token_1: bool,
         #[case] reserve_token_1: u128,
@@ -410,14 +386,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case(true, 10000u128, 5000u128, 100u64, 50u64, 1000u64, 1000u128)]
-    #[case(false, 8000u128, 20000u128, 30u64, 20u64, 1000u64, 500u128)]
-    // Very small amount, very small spread
-    #[case(true, 1000u128, 1000u128, 10u64, 1u64, 1000u64, 1u128)]
-    // Very small amount, very large spread (high fee bps)
-    #[case(false, 1000u128, 1000u128, 9999u64, 0u64, 1000u64, 1u128)]
-    // Very large amount, very small spread
-    #[case(
+    #[case::token1_in_normal(true, 10000u128, 5000u128, 100u64, 50u64, 1000u64, 1000u128)]
+    #[case::token2_in_normal(false, 8000u128, 20000u128, 30u64, 20u64, 1000u64, 500u128)]
+    #[case::small_amount_small_fee(true, 1000u128, 1000u128, 10u64, 1u64, 1000u64, 1u128)]
+    #[case::small_amount_max_fee(false, 1000u128, 1000u128, 9999u64, 0u64, 1000u64, 1u128)]
+    #[case::large_amount_small_fee(
         true,
         1000000000000000000u128,
         1000000000000000000u128,
@@ -426,8 +399,7 @@ mod tests {
         1000u64,
         1000000000000000000u128
     )]
-    // Very large amount, very large spread (high fee bps)
-    #[case(
+    #[case::large_amount_max_fee(
         false,
         1000000000000000000u128,
         1000000000000000000u128,
@@ -436,10 +408,9 @@ mod tests {
         1000u64,
         1000000000000000000u128
     )]
-    // ask_pool > offer_pool: return_amount > offer_amount
-    #[case(true, 5000u128, 10000u128, 100u64, 50u64, 1000u64, 1000u128)]
-    #[case(false, 20000u128, 8000u128, 30u64, 20u64, 1000u64, 500u128)]
-    #[case(true, 1000u128, 5000u128, 10u64, 1u64, 1000u64, 100u128)]
+    #[case::ask_pool_larger_token1(true, 5000u128, 10000u128, 100u64, 50u64, 1000u64, 1000u128)]
+    #[case::ask_pool_larger_token2(false, 20000u128, 8000u128, 30u64, 20u64, 1000u64, 500u128)]
+    #[case::deep_ask_pool_small_swap(true, 1000u128, 5000u128, 10u64, 1u64, 1000u64, 100u128)]
     fn test_pre_swap_stable_calculates_fees_and_stable_swap(
         #[case] asset_in_is_token_1: bool,
         #[case] reserve_token_1: u128,
