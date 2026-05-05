@@ -121,6 +121,7 @@ pub fn execute(
             add_liquidity_msg.sender,
             add_liquidity_msg.liquidity,
             add_liquidity_msg.slippage_tolerance_bps,
+            None,
             add_liquidity_msg.tx_id,
         ),
         ExecuteMsg::RemoveLiquidity(remove_liquidity_msg) => remove_liquidity(

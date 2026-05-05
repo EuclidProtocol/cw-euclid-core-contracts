@@ -179,7 +179,7 @@ pub fn execute_receive_acknowledgement(
     deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
-    msg: Binary,
+    _msg: Binary,
     sequence: u128,
     source_port: String,
     destination_port: String,
@@ -202,13 +202,10 @@ pub fn execute_receive_acknowledgement(
     let (existing_request, sender) =
         remove_pending_packet_and_decrement_count(deps.storage, sequence)?;
 
-    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
-    // ensure!(
-    //     existing_request == msg,
-    //     ContractError::new("Ack source msg doesn't match with existing request")
-    // );
-
-    let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
+    // Decode the locally-stored original message; the bytes returned in the ack
+    // may have been re-encoded by intermediate chains (e.g. EVM) and are not
+    // guaranteed to be byte-identical even when semantically equivalent.
+    let msg: RouterCrossChainExecuteMsg = from_json(&existing_request.original_msg)?;
 
     let response =
         ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack.clone(), state.is_native)?;

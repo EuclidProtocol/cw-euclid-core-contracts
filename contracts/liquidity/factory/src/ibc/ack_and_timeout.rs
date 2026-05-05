@@ -549,7 +549,6 @@ fn ack_remove_liquidity(
 }
 
 // Function to process swap acknowledgment
-// TODO this needs to be changed, callback msgs should probably sent to escrow
 fn ack_swap_request(
     deps: DepsMut,
     res: AcknowledgementMsg<SwapResponse>,
