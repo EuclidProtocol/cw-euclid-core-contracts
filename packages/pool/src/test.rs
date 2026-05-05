@@ -1128,9 +1128,9 @@ mod audit_tests {
 mod voucher_lp_tests {
     use euclid::normalize::{normalize_token_to_voucher, normalize_voucher_to_token};
 
-use crate::MINIMUM_LIQUIDITY;
+    use crate::MINIMUM_LIQUIDITY;
 
-use super::*;
+    use super::*;
 
     fn voucher(count: u128) -> Uint256 {
         Uint256::from(count)
@@ -2530,8 +2530,8 @@ use super::*;
             // ----------------------------------------------------------------
 
             use crate::remove_liquidity;
-            use cosmwasm_std::{Decimal256, Isqrt, Uint64, Uint256};
             use cosmwasm_std::Uint512;
+            use cosmwasm_std::{Decimal256, Isqrt, Uint256, Uint64};
 
             struct MigrationOutcome {
                 alice_released_1: Uint256,

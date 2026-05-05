@@ -65,6 +65,19 @@ fn lp_tokens(r1: Uint256, r2: Uint256) -> Uint256 {
     Uint256::try_from(lp_tokens).unwrap()
 }
 
+fn stable_lp_tokens(r1: Uint256, r2: Uint256, amp: Uint64) -> Uint256 {
+    use cosmwasm_std::Decimal256;
+    use euclid::utils::math::Decimal256Ext;
+    let pools = [
+        Decimal256::checked_from_integer(r1).unwrap(),
+        Decimal256::checked_from_integer(r2).unwrap(),
+    ];
+    euclid_pool::stable_math::compute_d(amp, &pools)
+        .unwrap()
+        .to_uint256_with_precision(0u32)
+        .unwrap()
+}
+
 #[test]
 fn test_proper_instantiation() {
     let mut factory = mock_app(None);
@@ -2699,7 +2712,11 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
             },
             token_1_reserve,
             token_2_reserve,
-            total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
+            total_lp_tokens: stable_lp_tokens(
+                token_1_reserve,
+                token_2_reserve,
+                Uint64::from(100u64)
+            ),
         }
     );
 
