@@ -40,10 +40,6 @@ pub enum ExecuteMsg {
         start_after: Option<SerializedBalanceKey>,
         limit: Option<u32>,
     },
-    NormalizeBalanceKeys {
-        skip: Option<u32>,
-        limit: Option<u32>,
-    },
     Approve(ExecuteApprove),
     RegisterTokenMetadata {
         token_metadata: TokenMetadata,
@@ -178,8 +174,8 @@ pub enum QueryMsg {
     GetAllTokenMetadata {
         pagination: Option<Pagination<(String, ChainUid, String)>>,
     },
-    #[returns(GetTokenRegisteredResponse)]
-    GetTokenRegistered { token_id: String },
+    #[returns(GetTokenStatusResponse)]
+    GetTokenStatus { token_id: String },
 }
 
 #[cw_serde]
@@ -289,6 +285,6 @@ pub struct GetEscrowBalanceResponse {
 }
 
 #[cw_serde]
-pub struct GetTokenRegisteredResponse {
-    pub token_registered: bool,
+pub struct GetTokenStatusResponse {
+    pub registered: bool,
 }

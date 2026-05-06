@@ -35,7 +35,7 @@ pub const ALLOWANCES: Map<SerializedBalanceKey, Allowance> = Map::new("allowance
 pub const VOUCHER_ALLOWANCES: Map<SerializedBalanceKey, VoucherAllowance> =
     Map::new("voucher_allowances");
 
-// Token Metadata is stored as a map of token id to token metadata.
+// Token Metadata: map of (token_id, chain_uid, token_type_key) to TokenMetadata.
 pub const TOKEN_METADATA: Map<(String, ChainUid, String), TokenMetadata> =
     Map::new("token_metadata");
 
@@ -47,7 +47,6 @@ pub fn get_token_metadata_key(
     TOKEN_METADATA.key((token, chain_uid, token_type.get_key()))
 }
 
-// Escrow balances are stored as Uint256 to avoid precision loss.
 pub const ESCROW_BALANCES: Map<(String, ChainUid, String), Uint256> = Map::new("escrow_balances");
 
 pub fn get_escrow_balance_key(

@@ -17,7 +17,7 @@ use euclid::{
 use euclid_ibc::router_ibc::RouterCrossChainRemoveLiquidityExecuteMsg;
 
 use crate::{
-    query::{query_token_metadata_by_denom, query_token_registered},
+    query::{query_token_metadata_by_denom, query_token_status},
     reply::{
         ADD_LIQUIDITY_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
         VLP_POOL_REGISTER_REPLY_ID,
@@ -56,7 +56,7 @@ pub fn ibc_execute_request_pool_creation(
     let mut one_token_already_exists = false;
 
     for token in pair_with_denom.get_vec_token_info() {
-        let token_registered = query_token_registered(deps.as_ref(), &token.token)?;
+        let token_registered = query_token_status(deps.as_ref(), &token.token)?;
 
         one_token_already_exists = one_token_already_exists || token_registered;
 
@@ -89,7 +89,11 @@ pub fn ibc_execute_request_pool_creation(
                     );
                 }
                 Err(_) => {
-                    // We don't have this token registered on sender chain, so we need to register it
+                    // We don't have this token registered on sender chain, so we need to register it. However we prevent new tokens if already the token id is registered on any chain
+                    ensure!(
+                        !token_registered,
+                        ContractError::new("Token already registered on another chain")
+                    );
                     let register_metadata_msg = VirtualBalanceMsg::RegisterTokenMetadata {
                         token_metadata: TokenMetadata::new(
                             token.token.clone(),
@@ -459,7 +463,7 @@ mod tests {
             from_json, to_json_binary, ContractResult, SystemError, SystemResult, WasmQuery,
         };
         use euclid::msgs::virtual_balance::msg::{
-            GetTokenRegisteredResponse, QueryMsg as VirtualBalanceQueryMsg,
+            GetTokenStatusResponse, QueryMsg as VirtualBalanceQueryMsg,
         };
 
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
@@ -470,10 +474,8 @@ mod tests {
             WasmQuery::Smart { msg, .. } => {
                 let parsed: VirtualBalanceQueryMsg = from_json(msg).unwrap();
                 match parsed {
-                    VirtualBalanceQueryMsg::GetTokenRegistered { .. } => {
-                        let resp = GetTokenRegisteredResponse {
-                            token_registered: false,
-                        };
+                    VirtualBalanceQueryMsg::GetTokenStatus { .. } => {
+                        let resp = GetTokenStatusResponse { registered: false };
                         SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
                     }
                     VirtualBalanceQueryMsg::GetTokenMetadataByDenom { .. } => {
@@ -502,6 +504,55 @@ mod tests {
                 .to_string()
                 .contains("Cannot create pool with two new tokens"),
             "expected two-new-tokens error"
+        );
+    }
+
+    #[rstest]
+    fn test_ibc_request_pool_creation_token_registered_on_other_chain_fails(
+        mut initialized: MockDeps,
+    ) {
+        use cosmwasm_std::{
+            from_json, to_json_binary, ContractResult, SystemError, SystemResult, WasmQuery,
+        };
+        use euclid::msgs::virtual_balance::msg::{
+            GetTokenStatusResponse, QueryMsg as VirtualBalanceQueryMsg,
+        };
+
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        seed_virtual_balance(&mut initialized);
+
+        // Token "aaa" is registered globally but NOT on sender chain
+        initialized.querier.update_wasm(|q| match q {
+            WasmQuery::Smart { msg, .. } => {
+                let parsed: VirtualBalanceQueryMsg = from_json(msg).unwrap();
+                match parsed {
+                    VirtualBalanceQueryMsg::GetTokenStatus { .. } => {
+                        let resp = GetTokenStatusResponse { registered: true };
+                        SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
+                    }
+                    VirtualBalanceQueryMsg::GetTokenMetadataByDenom { .. } => {
+                        SystemResult::Err(SystemError::InvalidRequest {
+                            error: "metadata not found".to_string(),
+                            request: Default::default(),
+                        })
+                    }
+                    other => panic!("unexpected virtual_balance query: {other:?}"),
+                }
+            }
+            _ => panic!("unexpected wasm query"),
+        });
+
+        let msg = RouterCrossChainExecuteMsg::RequestPoolCreation {
+            sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+            tx_id: "tx1".to_string(),
+            pair: make_pool_pair(100, 100),
+            pool_config: PoolConfig::ConstantProduct {},
+            slippage_tolerance_bps: 100,
+        };
+        let result = call_reusable(&mut initialized, msg, chain_uid);
+        assert_eq!(
+            result.unwrap_err(),
+            ContractError::new("Token already registered on another chain")
         );
     }
 }

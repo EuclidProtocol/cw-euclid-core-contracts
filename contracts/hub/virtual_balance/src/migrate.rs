@@ -1,8 +1,7 @@
 use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 #[allow(deprecated)]
 use crate::state::{
-    get_escrow_balance_key, get_token_metadata_key, BALANCES, STATE, TOKEN_METADATA,
-    VOUCHER_BALANCES,
+    get_escrow_balance_key, get_token_metadata_key, BALANCES, STATE, VOUCHER_BALANCES,
 };
 use cosmwasm_std::{ensure, entry_point, DepsMut, Env, Order, Response, Uint256};
 use cw2::set_contract_version;
@@ -13,6 +12,7 @@ use euclid::{
         virtual_balance::msg::{MigrateMsg, State},
     },
     normalize::normalize_token_to_voucher,
+    token::TokenMetadata,
 };
 use std::collections::HashMap;
 
@@ -30,10 +30,33 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
             metadata.token_type.clone(),
         );
         key.save(deps.storage, metadata)?;
-        decimals_map
-            .entry(metadata.token.to_string())
-            .or_insert(metadata.token_type.get_decimals()?);
+        let decimals = metadata.token_type.get_decimals()?;
+        match decimals_map.entry(metadata.token.to_string()) {
+            std::collections::hash_map::Entry::Occupied(e) => {
+                ensure!(
+                    *e.get() == decimals,
+                    ContractError::new(&format!(
+                        "Token '{}' has conflicting decimals: {} vs {}",
+                        metadata.token,
+                        e.get(),
+                        decimals
+                    ))
+                );
+            }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(decimals);
+            }
+        }
         metadata_count += 1;
+    }
+
+    // Build in-memory lookup from Phase 1 data to avoid repeated storage range scans
+    let mut metadata_lookup: HashMap<(String, String), Vec<TokenMetadata>> = HashMap::new();
+    for metadata in &msg.token_metadata {
+        metadata_lookup
+            .entry((metadata.token.to_string(), metadata.chain_uid.to_string()))
+            .or_default()
+            .push(metadata.clone());
     }
 
     // Phase 2: Query router for escrow balances and seed ESCROW_BALANCES
@@ -47,26 +70,28 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
         let token_id = escrow.token.to_string();
         let chain_uid = escrow.chain_uid.clone();
 
-        let metadata_entries: Vec<_> = TOKEN_METADATA
-            .prefix((token_id.clone(), chain_uid.clone()))
-            .range(deps.storage, None, None, Order::Ascending)
-            .collect::<Result<Vec<_>, _>>()?;
+        let lookup_key = (token_id.clone(), chain_uid.to_string());
+        let metadata_entries = metadata_lookup.get(&lookup_key);
+
+        let entries = metadata_entries.ok_or(ContractError::new(
+            "No TOKEN_METADATA for token '{}' on chain '{:?}'",
+        ))?;
 
         ensure!(
-            !metadata_entries.is_empty(),
+            !entries.is_empty(),
             ContractError::new(&format!(
-                "No TOKEN_METADATA for token '{}' on chain '{:?}'. Ensure token_metadata covers all escrow entries.",
+                "Metadata entries empty for token '{}' on chain '{:?}'",
                 token_id, chain_uid
             ))
         );
         ensure!(
-            metadata_entries.len() == 1,
+            entries.len() == 1,
             ContractError::new(&format!(
                 "Multiple TOKEN_METADATA for token '{}' on chain '{:?}' (found {}). Cannot determine which token_type owns the escrow balance.",
-                token_id, chain_uid, metadata_entries.len()
+                token_id, chain_uid, entries.len()
             ))
         );
-        let (_token_type_key, metadata) = &metadata_entries[0];
+        let metadata = &entries[0];
 
         let key = get_escrow_balance_key(token_id, chain_uid, metadata.token_type.clone());
         if key.may_load(deps.storage)?.is_some() {
@@ -392,5 +417,33 @@ mod tests {
                 .unwrap(),
             Uint256::from(1_000_000_000_000_000_000_000_000u128)
         );
+    }
+
+    #[test]
+    fn test_migrate_fails_conflicting_decimals() {
+        let mut deps = make_deps(vec![]);
+
+        let msg = MigrateMsg {
+            token_metadata: vec![
+                TokenMetadata::new(
+                    Token::create("usdc".to_string()).unwrap(),
+                    ChainUid::create("osmosis".to_string()).unwrap(),
+                    TokenType::Native {
+                        denom: "uusdc".to_string(),
+                        decimals: Some(6),
+                    },
+                ),
+                TokenMetadata::new(
+                    Token::create("usdc".to_string()).unwrap(),
+                    ChainUid::create("ethereum".to_string()).unwrap(),
+                    TokenType::Native {
+                        denom: "usdc".to_string(),
+                        decimals: Some(18),
+                    },
+                ),
+            ],
+        };
+        let err = migrate(deps.as_mut(), mock_env(), msg).unwrap_err();
+        assert!(err.to_string().contains("conflicting decimals"));
     }
 }

@@ -12,7 +12,7 @@ use euclid::{
             QueryTokenDenomsResponse, ReleaseFee, ReleaseFeesQueryResponse, SimulateSwapResponse,
             StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
         },
-        virtual_balance::{GetTokenMetadataByDenomResponse, GetTokenRegisteredResponse},
+        virtual_balance::{GetTokenMetadataByDenomResponse, GetTokenStatusResponse},
         vlp::base::VlpSimulateSwapMsg,
     },
     swap::{NextSwapPair, NextSwapVlp},
@@ -249,14 +249,14 @@ pub fn query_token_metadata_by_denom(
     Ok(response.metadata)
 }
 
-pub fn query_token_registered(deps: Deps, token_id: &Token) -> Result<bool, ContractError> {
-    let response: GetTokenRegisteredResponse = deps.querier.query_wasm_smart(
+pub fn query_token_status(deps: Deps, token_id: &Token) -> Result<bool, ContractError> {
+    let response: GetTokenStatusResponse = deps.querier.query_wasm_smart(
         VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?,
-        &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenRegistered {
+        &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenStatus {
             token_id: token_id.to_string(),
         },
     )?;
-    Ok(response.token_registered)
+    Ok(response.registered)
 }
 
 #[allow(deprecated)]

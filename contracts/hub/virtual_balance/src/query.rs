@@ -11,7 +11,7 @@ use euclid::{
             GetTokenMetadataResponse, GetUserBalancesResponse, GetUserBalancesResponseItem,
         },
         GetAllBalancesResponse, GetAllBalancesResponseItem, GetTokenBalancesResponse,
-        GetTokenBalancesResponseItem, GetTokenMetadataByDenomResponse, GetTokenRegisteredResponse,
+        GetTokenBalancesResponseItem, GetTokenMetadataByDenomResponse, GetTokenStatusResponse,
     },
     token::TokenType,
     utils::pagination::Pagination,
@@ -343,14 +343,14 @@ pub fn query_all_token_metadata(
     })?)
 }
 
-pub fn query_token_registered(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
+pub fn query_token_status(deps: Deps, token_id: String) -> Result<Binary, ContractError> {
     let token_metadatas: Result<Vec<_>, StdError> = TOKEN_METADATA
         .sub_prefix(token_id)
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .take(1)
         .collect();
-    Ok(to_json_binary(&GetTokenRegisteredResponse {
-        token_registered: !token_metadatas?.is_empty(),
+    Ok(to_json_binary(&GetTokenStatusResponse {
+        registered: !token_metadatas?.is_empty(),
     })?)
 }
 #[cfg(test)]

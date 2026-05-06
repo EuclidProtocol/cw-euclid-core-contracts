@@ -19,6 +19,7 @@ use euclid::voucher::BalanceKey;
 use factory::FactoryContract;
 use router::RouterContract;
 
+/// Deposit native token via factory, relay IBC round-trip, credit voucher balance on hub.
 pub fn deposit_native_token(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
@@ -47,6 +48,7 @@ pub fn deposit_native_token(
     Ok(())
 }
 
+/// Withdraw voucher balance: burn vouchers, release escrow on target chain via IBC.
 pub fn withdraw_voucher(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
