@@ -97,6 +97,7 @@ mod tests {
     use crate::tests_reusable::factory_register_denom::setup_smart_denom_token;
     use crate::tests_reusable::state_sync::sync_state;
     use crate::tests_reusable::state_sync::UserFundsQuery;
+    use crate::tests_reusable::test_macros::{decimal_pair, decimal_pair_full};
     use cosmwasm_std::Uint64;
     use cw_orch::prelude::ContractInstance as _;
     use cw_orch::prelude::Environment;
@@ -110,45 +111,48 @@ mod tests {
     use euclid::msgs::virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns;
     use euclid::utils::pagination::Pagination;
     use euclid::voucher::BalanceKey;
+    use rstest_reuse::apply;
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "single_voucher", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "two_voucher", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "empty", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "single_voucher", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "two_voucher", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "empty", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "single_voucher", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM,  "two_voucher", PoolConfig::ConstantProduct {}, false)]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, false)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC,  "single_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, false)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM, "two_voucher", PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, false)]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL,  "empty", PoolConfig::ConstantProduct {}, true)]
+    #[cfg_attr(not(feature = "full_decimals"), apply(decimal_pair))]
+    #[cfg_attr(feature = "full_decimals", apply(decimal_pair_full))]
     fn factory_full_flow_register_denom_and_deposit(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
-        #[case] recipient_case: &str,
-        #[case] pool_type: PoolConfig,
-        #[case] use_smart_asset_in: bool,
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+        mode: FactorySetupMode,
+        #[values(false, true)] use_smart_asset_in: bool,
+        #[values("empty", "single_voucher", "two_voucher")] recipient_case: &str,
+        #[values(PoolConfig::ConstantProduct {}, PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
+        pool_type: PoolConfig,
+        decimals_a: u32,
+        decimals_b: u32,
     ) {
+        let factory_chain_id = match mode {
+            FactorySetupMode::Native => FACTORY_CHAIN_ID_LOCAL,
+            FactorySetupMode::Ibc => FACTORY_CHAIN_ID_IBC,
+            FactorySetupMode::Evm => FACTORY_CHAIN_ID_EVM,
+        };
         let sender = "sender_for_all_chains";
         let token_1 = TokenWithDenom {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
-                decimals: Some(18),
+                decimals: Some(decimals_a),
             },
         };
-        let amount_1 = Uint256::from(10_000u128);
+        let decimal_a_multiplier = Uint256::from(10u128).pow(decimals_a);
+        let decimal_b_multiplier = Uint256::from(10u128).pow(decimals_b);
+        let amount_1 = Uint256::from(10_000u128)
+            .checked_mul(decimal_a_multiplier)
+            .unwrap();
         let token_2 = TokenWithDenom {
             token: Token::create("andr".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "andr".to_string(),
-                decimals: Some(18),
+                decimals: Some(decimals_b),
             },
         };
-        let amount_2 = Uint256::from(10_000u128);
+        let amount_2 = Uint256::from(10_000u128)
+            .checked_mul(decimal_b_multiplier)
+            .unwrap();
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
         let recipients = match recipient_case {
             "empty" => vec![],
@@ -226,17 +230,16 @@ mod tests {
         let escrow_state = initial_state
             .escrow_balance(&chain_uid, &token_1.token)
             .expect("Escrow state for token should exist");
+        let expected_token_1_escrow = Uint256::from(2u128) * amount_1;
         assert_eq!(
-            escrow_state.factory_escrow_balance,
-            amount_1 + amount_2,
-            "Escrow total amount should equal deposited amount",
+            escrow_state.factory_escrow_balance, expected_token_1_escrow,
+            "Escrow total = deposit + pool creation, both contribute amount_1",
         );
 
         // Assert router tracks correct escrow balance for this chain
         assert_eq!(
-            escrow_state.router_escrow_balance,
-            Uint256::from(amount_1 + amount_2),
-            "Router escrow balance should match deposited amount",
+            escrow_state.router_escrow_balance, expected_token_1_escrow,
+            "Router escrow balance should match factory escrow",
         );
 
         let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
@@ -325,11 +328,16 @@ mod tests {
 
         // --- Swap with partner fee ---
 
-        let swap_amount = Uint256::from(1_000u128);
+        let swap_amount = Uint256::from(1_000u128)
+            .checked_mul(decimal_a_multiplier)
+            .unwrap();
         let partner_fee_bps: u64 = 30;
         let sender_addr = factory.environment().sender.to_string();
         let swap_asset_in = if use_smart_asset_in {
             let token_1_decimals = token_1.token_type.get_decimals().unwrap();
+            if token_1_decimals > 18 {
+                return; // CW20 tokens only support up to 18 decimals
+            }
             let smart_asset_in = setup_smart_denom_token(
                 &factory.environment(),
                 token_1.token.clone(),
@@ -489,12 +497,16 @@ mod tests {
             "Sender should have received output tokens as virtual balance, got 0"
         );
 
-        // 4. Output amount should be less than net input (AMM pricing with equal reserves)
+        // 4. Output amount should be less than net input (in normalized 24-dec units)
+        let normalized_received =
+            euclid::normalize::normalize_token_to_voucher(amount_received, decimals_b).unwrap();
+        let normalized_input =
+            euclid::normalize::normalize_token_to_voucher(net_swap_amount, decimals_a).unwrap();
         assert!(
-            amount_received < net_swap_amount.into(),
-            "Amount received ({}) should be less than net input ({}) for equal-reserve pools",
-            amount_received,
-            net_swap_amount
+            normalized_received < normalized_input,
+            "Normalized output ({}) should be less than normalized input ({}) for equal-reserve pools",
+            normalized_received,
+            normalized_input
         );
 
         // 5. Partner fee recipient receives fee in the input token type.

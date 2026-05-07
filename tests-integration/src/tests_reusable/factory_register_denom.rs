@@ -30,7 +30,7 @@ pub fn setup_smart_denom_token(chain: &MockBase, token: Token, decimals: u32) ->
             decimals: decimals.try_into().unwrap(),
             initial_balances: vec![Cw20Coin {
                 address: sender.clone(),
-                amount: Uint128::from(1_000_000_000u128),
+                amount: Uint128::from(10u128.pow(decimals) * 1_000_000_000u128),
             }],
             mint: Some(MinterResponse {
                 minter: sender,
@@ -94,6 +94,7 @@ mod tests {
     use super::*;
     use crate::helpers::chains::setup_interchain;
     use crate::tests_reusable::factory_register::setup_factory;
+    use crate::tests_reusable::factory_register::FactorySetupMode;
     use crate::{
         helpers::chains::setup_router,
         tests_reusable::constants::{
@@ -104,13 +105,14 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    #[case("native", FACTORY_CHAIN_ID_LOCAL)]
-    #[case("smart", FACTORY_CHAIN_ID_LOCAL)]
-    #[case("native", FACTORY_CHAIN_ID_IBC)]
-    #[case("smart", FACTORY_CHAIN_ID_IBC)]
-    #[case("native", FACTORY_CHAIN_ID_EVM)]
-    #[case("smart", FACTORY_CHAIN_ID_EVM)]
-    fn test_register_denom(#[case] token_type_case: &str, #[case] factory_chain_id: &str) {
+    #[case("native")]
+    #[case("smart")]
+    fn test_register_denom(
+        #[case] token_type_case: &str,
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+        mode: FactorySetupMode,
+    ) {
+        let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
         let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
@@ -150,13 +152,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case(FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FACTORY_CHAIN_ID_IBC)]
-    #[case(FACTORY_CHAIN_ID_IBC)]
-    #[case(FACTORY_CHAIN_ID_EVM)]
-    #[case(FACTORY_CHAIN_ID_EVM)]
-    fn test_deregister_denom(#[case] factory_chain_id: &str) {
+    fn test_deregister_denom(
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+        mode: FactorySetupMode,
+    ) {
+        let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
         let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();

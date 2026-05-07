@@ -25,7 +25,7 @@ use euclid::msgs::vlp::base::PoolCreationResponse;
 use crate::stable_math::{compute_d, compute_stable_swap};
 use euclid::utils::math::Decimal256Ext;
 
-pub const MINIMUM_LIQUIDITY: u128 = 1_000_000_000;
+pub const MINIMUM_LIQUIDITY: u128 = 1_000_000_000; // 10^9
 
 #[cw_serde]
 pub struct SwapResult {
@@ -501,7 +501,13 @@ pub fn add_liquidity(
 
     let lp_allocation = if is_new_pool {
         collateral_lp_tokens_storage.save(deps.storage, &Uint256::from(MINIMUM_LIQUIDITY))?;
-        lp_allocation.checked_sub(Uint256::from(MINIMUM_LIQUIDITY))?
+        lp_allocation
+            .checked_sub(Uint256::from(MINIMUM_LIQUIDITY))
+            .map_err(|e: cosmwasm_std::OverflowError| {
+                ContractError::Generic {
+                    err: format!("Min liquidity check failed with error: {}. Got {lp_allocation} LP but minimum is {MINIMUM_LIQUIDITY} LP.", e),
+                }
+            })?
     } else {
         lp_allocation
     };

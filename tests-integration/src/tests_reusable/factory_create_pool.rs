@@ -62,19 +62,24 @@ mod tests {
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
-    use crate::tests_reusable::factory_register::setup_factory;
+    use crate::tests_reusable::factory_register::{setup_factory, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
+    use crate::tests_reusable::test_macros::{decimal_pair, decimal_pair_full};
     use cosmwasm_std::Uint64;
     use cw_orch_interchain::prelude::InterchainEnv;
+    use rstest_reuse::apply;
 
-    #[rstest]
-    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_LOCAL)]
-    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_LOCAL)]
-    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_IBC)]
-    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_IBC)]
-    #[case::stable(PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) }, FACTORY_CHAIN_ID_EVM)]
-    #[case::constant_product(PoolConfig::ConstantProduct {}, FACTORY_CHAIN_ID_EVM)]
-    fn test_create_pool(#[case] pool_config: PoolConfig, #[case] factory_chain_id: &str) {
+    #[cfg_attr(not(feature = "full_decimals"), apply(decimal_pair))]
+    #[cfg_attr(feature = "full_decimals", apply(decimal_pair_full))]
+    fn test_create_pool(
+        #[values(PoolConfig::ConstantProduct {}, PoolConfig::Stable { amp_factor: Some(Uint64::new(100)) })]
+        pool_config: PoolConfig,
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+        mode: FactorySetupMode,
+        decimals_a: u32,
+        decimals_b: u32,
+    ) {
+        let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
         let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
@@ -85,30 +90,37 @@ mod tests {
             token: Token::create("tokena".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokena".to_string(),
-                decimals: Some(18),
+                decimals: Some(decimals_a),
             },
         };
         let token_b = TokenWithDenom {
             token: Token::create("tokenb".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokenb".to_string(),
-                decimals: Some(18),
+                decimals: Some(decimals_b),
             },
         };
 
         register_denom(&factory, &router, token_a.clone()).unwrap();
         register_denom(&factory, &router, token_b.clone()).unwrap();
 
+        let decimal_a_multiplier = Uint256::from(10u128).pow(decimals_a);
+        let decimal_b_multiplier = Uint256::from(10u128).pow(decimals_b);
+
         let pair_with_denom = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token,
                 token_type: token_a.token_type.clone(),
-                amount: Uint256::from(10_000u128),
+                amount: Uint256::from(10_000u128)
+                    .checked_mul(decimal_a_multiplier)
+                    .unwrap(),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token,
                 token_type: token_b.token_type.clone(),
-                amount: Uint256::from(10_000u128),
+                amount: Uint256::from(10_000u128)
+                    .checked_mul(decimal_b_multiplier)
+                    .unwrap(),
             },
         };
 

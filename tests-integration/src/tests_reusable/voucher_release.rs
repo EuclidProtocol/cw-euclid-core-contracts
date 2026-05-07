@@ -92,11 +92,14 @@ mod tests {
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
+    use crate::tests_reusable::factory_register::FactorySetupMode;
     use crate::tests_reusable::factory_register::{setup_factory, setup_factory_evm};
     use crate::tests_reusable::factory_register_denom::register_denom;
+    use crate::tests_reusable::test_macros::factory_modes;
     use cw_orch_interchain::prelude::InterchainEnv;
     use euclid::chain::ChainUid;
     use rstest::rstest;
+    use rstest_reuse::apply;
 
     fn setup_env(
         factory_chain_id: &str,
@@ -120,15 +123,15 @@ mod tests {
 
     /// End-to-end: deposit tokens with various decimals, verify voucher balance is
     /// normalized to 24-dec, then withdraw and verify escrow decreases by raw amount.
-    #[rstest]
+    #[apply(factory_modes)]
     #[case::six_decimals("uusdc", 6)]
     #[case::eighteen_decimals("uweth", 18)]
     fn test_deposit_and_withdraw_normalization(
-        #[values(FACTORY_CHAIN_ID_LOCAL, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_EVM)]
-        factory_chain_id: &str,
+        mode: FactorySetupMode,
         #[case] denom: &str,
         #[case] decimals: u32,
     ) {
+        let factory_chain_id = mode.chain_id();
         let (_interchain, router, factory) = setup_env(factory_chain_id);
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
 
@@ -220,11 +223,9 @@ mod tests {
     /// Dust amount (too small to normalize to any raw tokens) should not release.
     /// Native: factory.execute fails synchronously.
     /// IBC/EVM: router writes error ack, factory handles gracefully (no state change).
-    #[rstest]
-    fn test_withdraw_dust_amount_fails(
-        #[values(FACTORY_CHAIN_ID_LOCAL, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_EVM)]
-        factory_chain_id: &str,
-    ) {
+    #[apply(factory_modes)]
+    fn test_withdraw_dust_amount_fails(mode: FactorySetupMode) {
+        let factory_chain_id = mode.chain_id();
         let (_interchain, router, factory) = setup_env(factory_chain_id);
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
 
@@ -297,11 +298,9 @@ mod tests {
 
     /// Verify end-to-end that escrow accounting uses raw token units,
     /// proving no unit mismatch (disproves review Bug #1/#2).
-    #[rstest]
-    fn test_escrow_accounting_raw_units_end_to_end(
-        #[values(FACTORY_CHAIN_ID_LOCAL, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_EVM)]
-        factory_chain_id: &str,
-    ) {
+    #[apply(factory_modes)]
+    fn test_escrow_accounting_raw_units_end_to_end(mode: FactorySetupMode) {
+        let factory_chain_id = mode.chain_id();
         let (_interchain, router, factory) = setup_env(factory_chain_id);
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
 

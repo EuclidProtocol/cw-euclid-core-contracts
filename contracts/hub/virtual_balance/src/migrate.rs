@@ -73,17 +73,13 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
         let lookup_key = (token_id.clone(), chain_uid.to_string());
         let metadata_entries = metadata_lookup.get(&lookup_key);
 
-        let entries = metadata_entries.ok_or(ContractError::new(
-            "No TOKEN_METADATA for token '{}' on chain '{:?}'",
-        ))?;
-
-        ensure!(
-            !entries.is_empty(),
+        let entries = metadata_entries.ok_or_else(|| {
             ContractError::new(&format!(
-                "Metadata entries empty for token '{}' on chain '{:?}'",
+                "No TOKEN_METADATA for token '{}' on chain '{:?}'",
                 token_id, chain_uid
             ))
-        );
+        })?;
+
         ensure!(
             entries.len() == 1,
             ContractError::new(&format!(

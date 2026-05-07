@@ -20,13 +20,25 @@ use crate::helpers::relayer::{
     ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
     relay_router_send_packet,
 };
-use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
+use crate::tests_reusable::constants::{
+    FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum FactorySetupMode {
     Native,
     Ibc,
     Evm,
+}
+
+impl FactorySetupMode {
+    pub fn chain_id(&self) -> &'static str {
+        match self {
+            Self::Native => FACTORY_CHAIN_ID_LOCAL,
+            Self::Ibc => FACTORY_CHAIN_ID_IBC,
+            Self::Evm => FACTORY_CHAIN_ID_EVM,
+        }
+    }
 }
 
 pub fn setup_factory(
@@ -151,16 +163,13 @@ mod tests {
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
     };
+    use crate::tests_reusable::test_macros::factory_modes;
     use rstest::rstest;
+    use rstest_reuse::apply;
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
-    fn setup_factory_registers_chain(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
-    ) {
+    #[apply(factory_modes)]
+    fn setup_factory_registers_chain(mode: FactorySetupMode) {
+        let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
         let mut chains = vec![(ROUTER_CHAIN_ID, sender)];
         if ROUTER_CHAIN_ID != factory_chain_id {

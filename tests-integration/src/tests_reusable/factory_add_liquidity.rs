@@ -88,30 +88,35 @@ mod tests {
         FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
     use crate::tests_reusable::factory_create_pool::create_pool;
-    use crate::tests_reusable::factory_register::setup_factory;
+    use crate::tests_reusable::factory_register::{setup_factory, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
     use crate::tests_reusable::state_sync::sync_state;
+    use crate::tests_reusable::test_macros::{
+        decimal_pair, decimal_pair_full, single_decimal, single_decimal_full,
+    };
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
     use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
     use euclid::msgs::vlp::base::PoolConfig;
     use euclid::token::{Token, TokenType, TokenWithDenomAndAmount};
     use rstest::rstest;
+    use rstest_reuse::apply;
 
-    #[rstest]
-    #[case("empty", FACTORY_CHAIN_ID_LOCAL)]
-    #[case("single_voucher", FACTORY_CHAIN_ID_LOCAL)]
-    #[case("two_voucher", FACTORY_CHAIN_ID_LOCAL)]
-    #[case("empty", FACTORY_CHAIN_ID_IBC)]
-    #[case("single_voucher", FACTORY_CHAIN_ID_IBC)]
-    #[case("two_voucher", FACTORY_CHAIN_ID_IBC)]
+    #[cfg_attr(not(feature = "full_decimals"), apply(single_decimal))]
+    #[cfg_attr(feature = "full_decimals", apply(single_decimal_full))]
+    #[case("empty")]
+    #[case("single_voucher")]
+    #[case("two_voucher")]
     fn deposit_token_updates_router_and_escrow_balances(
         #[case] recipient_case: &str,
-        #[case] factory_chain_id: &str,
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+        mode: FactorySetupMode,
+        decimals: u32,
     ) {
         use crate::helpers::chains::setup_interchain;
         use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
+        let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
         let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
@@ -122,7 +127,7 @@ mod tests {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
-                decimals: Some(18),
+                decimals: Some(decimals),
             },
         };
         register_denom(&factory, &router, token.clone()).unwrap();
@@ -143,7 +148,10 @@ mod tests {
             .map(|c| c.balance)
             .unwrap_or(Uint256::zero());
 
-        let amount = Uint256::from(10_000u128);
+        let decimal_multiplier = Uint256::from(10u128).pow(decimals);
+        let amount = Uint256::from(10_000u128)
+            .checked_mul(decimal_multiplier)
+            .unwrap();
         let recipient_one = CrossChainUser::new(
             factory_chain_uid.clone(),
             factory.environment().addr_make("recipient_one").to_string(),
@@ -219,9 +227,15 @@ mod tests {
         }
     }
 
-    #[rstest]
-    #[case(FACTORY_CHAIN_ID_IBC)]
-    fn add_liquidity_fails_when_slippage_exceeded(#[case] factory_chain_id: &str) {
+    #[cfg_attr(not(feature = "full_decimals"), apply(decimal_pair))]
+    #[cfg_attr(feature = "full_decimals", apply(decimal_pair_full))]
+    fn add_liquidity_fails_when_slippage_exceeded(
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+        mode: FactorySetupMode,
+        decimals_a: u32,
+        decimals_b: u32,
+    ) {
+        let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
         let interchain = setup_interchain(sender, factory_chain_id);
         let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
@@ -232,30 +246,37 @@ mod tests {
             token: Token::create("tokena".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokena".to_string(),
-                decimals: Some(18),
+                decimals: Some(decimals_a),
             },
         };
         let token_b = TokenWithDenom {
             token: Token::create("tokenb".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokenb".to_string(),
-                decimals: Some(18),
+                decimals: Some(decimals_b),
             },
         };
 
         register_denom(&factory, &router, token_a.clone()).unwrap();
         register_denom(&factory, &router, token_b.clone()).unwrap();
 
+        let decimal_a_multiplier = Uint256::from(10u128).pow(decimals_a);
+        let decimal_b_multiplier = Uint256::from(10u128).pow(decimals_b);
+
         let pool_pair = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
                 token_type: token_a.token_type.clone(),
-                amount: Uint256::from(10_000u128),
+                amount: Uint256::from(10_000u128)
+                    .checked_mul(decimal_a_multiplier)
+                    .unwrap(),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token.clone(),
                 token_type: token_b.token_type.clone(),
-                amount: Uint256::from(10_000u128),
+                amount: Uint256::from(10_000u128)
+                    .checked_mul(decimal_b_multiplier)
+                    .unwrap(),
             },
         };
         create_pool(
@@ -267,26 +288,29 @@ mod tests {
         )
         .unwrap();
 
-        // Attempt add liquidity with a 1:5 ratio against the 1:1 pool,
-        // using a 1% (100 bps) slippage tolerance that should be exceeded.
         let skewed_pair = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
                 token_type: token_a.token_type.clone(),
-                amount: Uint256::from(1_000u128),
+                amount: Uint256::from(1_000u128)
+                    .checked_mul(decimal_a_multiplier)
+                    .unwrap(),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token.clone(),
                 token_type: token_b.token_type.clone(),
-                amount: Uint256::from(5_000u128),
+                amount: Uint256::from(5_000u128)
+                    .checked_mul(decimal_b_multiplier)
+                    .unwrap(),
             },
         };
 
         let result = add_liquidity(&factory, &router, skewed_pair, 100);
         if let Err(err) = result {
+            let root_err = err.root().to_string();
             assert!(
-                err.to_string().contains("Slippage has been exceeded"),
-                "Error should mention slippage exceeded, got: {err}"
+                root_err.contains("Slippage has been exceeded when providing liquidity"),
+                "Error should mention slippage exceeded, got: {root_err}"
             );
         } else {
             let events = result.unwrap();

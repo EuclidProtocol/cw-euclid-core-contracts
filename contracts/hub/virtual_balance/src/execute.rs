@@ -1596,7 +1596,7 @@ pub fn execute_register_token_metadata(
     let chain_uid = token_metadata.chain_uid.validate()?;
     let decimals = token_metadata.token_type.get_decimals()?;
     ensure!(
-        decimals >= 6 && decimals <= VOUCHER_DECIMAL,
+        decimals <= VOUCHER_DECIMAL,
         ContractError::InvalidDecimals { decimals }
     );
 
