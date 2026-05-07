@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint256};
+use cosmwasm_std::{ensure, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint256};
 use cw2::set_contract_version;
 use euclid::fee::{DenomFees, TotalFees};
 
@@ -60,6 +60,13 @@ pub fn instantiate(
     BALANCES.save(deps.storage, state.pair.token_2, &Uint256::zero())?;
 
     let amp_factor = msg.amp_factor.unwrap_or(DEFAULT_AMP_FACTOR);
+    ensure!(
+        amp_factor.u64() >= euclid_pool::stable_math::MIN_AMP,
+        ContractError::new(&format!(
+            "Amp factor must be at least {}",
+            euclid_pool::stable_math::MIN_AMP
+        ))
+    );
     AMP_FACTOR.save(deps.storage, &amp_factor)?;
 
     let response =
@@ -379,6 +386,48 @@ mod tests {
         let info = message_info(&router, &[]);
         let err = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_init_rejects_amp_below_min() {
+        let mut deps = mock_dependencies();
+        let router = deps.api.addr_make("router");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
+        let msg = InstantiateMsg {
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
+            pair: default_pair(),
+            fee: default_fee(),
+            execute: None,
+            admin,
+            amp_factor: Some(Uint64::from(49u64)),
+        };
+        let info = message_info(&router, &[]);
+        let err = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert!(
+            err.to_string().contains("Amp factor must be at least"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_init_accepts_amp_at_min() {
+        let mut deps = mock_dependencies();
+        let router = deps.api.addr_make("router");
+        let admin = EuclidAdmin::default(deps.api.addr_make("admin"));
+        let msg = InstantiateMsg {
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("virtual_balance_contract"),
+            pair: default_pair(),
+            fee: default_fee(),
+            execute: None,
+            admin,
+            amp_factor: Some(Uint64::from(euclid_pool::stable_math::MIN_AMP)),
+        };
+        let info = message_info(&router, &[]);
+        instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+        let amp = AMP_FACTOR.load(&deps.storage).unwrap();
+        assert_eq!(amp.u64(), euclid_pool::stable_math::MIN_AMP);
     }
 
     // -----------------------------------------------------------------------

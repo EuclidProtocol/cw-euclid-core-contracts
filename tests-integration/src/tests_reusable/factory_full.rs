@@ -333,6 +333,10 @@ mod tests {
             .unwrap();
         let partner_fee_bps: u64 = 30;
         let sender_addr = factory.environment().sender.to_string();
+        let partner_fee_recipient = factory
+            .environment()
+            .addr_make("partner_fee_recipient")
+            .into_string();
         let swap_asset_in = if use_smart_asset_in {
             let token_1_decimals = token_1.token_type.get_decimals().unwrap();
             if token_1_decimals > 18 {
@@ -388,6 +392,8 @@ mod tests {
             .fold(Uint256::zero(), |acc, b| acc + b);
 
         let sender_user = CrossChainUser::new(chain_uid.clone(), sender_addr.clone());
+        let partner_fee_recipient_user =
+            CrossChainUser::new(chain_uid.clone(), partner_fee_recipient.clone());
         let vb_out_before_raw = virtual_balance_contract
             .get_balance(BalanceKey {
                 cross_chain_user: sender_user.clone(),
@@ -410,20 +416,6 @@ mod tests {
             vb_out_before_raw
         };
 
-        let partner_native_balance_before = if swap_asset_in.token_type.is_native() {
-            Some(
-                factory
-                    .environment()
-                    .query_balance(
-                        &cosmwasm_std::Addr::unchecked(sender_addr.clone()),
-                        token_1.token.to_string().as_str(),
-                    )
-                    .unwrap(),
-            )
-        } else {
-            None
-        };
-
         // Execute the swap
         swap_request(
             &factory,
@@ -440,18 +432,26 @@ mod tests {
             vec![],
             Some(PartnerFee {
                 partner_fee_bps,
-                recipient: sender_addr.clone(),
+                recipient: partner_fee_recipient.clone(),
             }),
         )
         .unwrap();
 
         let user_funds_queries = if swap_asset_in.token_type.is_native() {
-            vec![UserFundsQuery {
-                chain_uid: chain_uid.clone(),
-                chain: factory.environment().clone(),
-                user_addr: sender_addr.clone(),
-                denom: token_1.token.to_string(),
-            }]
+            vec![
+                UserFundsQuery {
+                    chain_uid: chain_uid.clone(),
+                    chain: factory.environment().clone(),
+                    user_addr: sender_addr.clone(),
+                    denom: token_1.token.to_string(),
+                },
+                UserFundsQuery {
+                    chain_uid: chain_uid.clone(),
+                    chain: factory.environment().clone(),
+                    user_addr: partner_fee_recipient.clone(),
+                    denom: token_1.token.to_string(),
+                },
+            ]
         } else {
             vec![]
         };
@@ -461,10 +461,16 @@ mod tests {
         let post_swap_state = sync_state(
             &factory,
             &router,
-            vec![Recipient::default_voucher_recipient(
-                sender_user.clone(),
-                Limit::Dynamic(Uint256::zero()),
-            )],
+            vec![
+                Recipient::default_voucher_recipient(
+                    sender_user.clone(),
+                    Limit::Dynamic(Uint256::zero()),
+                ),
+                Recipient::default_voucher_recipient(
+                    partner_fee_recipient_user.clone(),
+                    Limit::Dynamic(Uint256::zero()),
+                ),
+            ],
             vec![token_2.token.clone()],
             user_funds_queries,
             vec![token_1.token.clone()],
@@ -510,17 +516,42 @@ mod tests {
         );
 
         // 5. Partner fee recipient receives fee in the input token type.
-        if let Some(native_before) = partner_native_balance_before {
-            let partner_native_balance_after = post_swap_state
-                .user_funds(&chain_uid, &sender_addr, token_1.token.to_string().as_str())
-                .expect("Partner fee recipient native balance should exist");
-            assert_eq!(
-                partner_native_balance_after,
-                Uint256::from(native_before) + partner_fee_amount,
-                "Partner fee recipient should have received {} native input tokens as fee",
-                partner_fee_amount
-            );
-        }
+        match &swap_asset_in.token_type {
+            TokenType::Native { denom, .. } => {
+                let partner_native_balance_after = post_swap_state
+                    .user_funds(&chain_uid, &partner_fee_recipient, denom)
+                    .expect("Partner fee recipient native balance should exist");
+                assert_eq!(
+                    partner_native_balance_after, partner_fee_amount,
+                    "Partner fee recipient should have received {} native input tokens as fee",
+                    partner_fee_amount
+                );
+            }
+            TokenType::Smart {
+                contract_address, ..
+            } => {
+                let cw20 = get_lp_token(
+                    factory.environment(),
+                    &cosmwasm_std::Addr::unchecked(contract_address.clone()),
+                );
+                let partner_fee_recipient_balance_after =
+                    cw20.balance(partner_fee_recipient).unwrap().balance;
+                assert_eq!(
+                    Uint256::from(partner_fee_recipient_balance_after),
+                    partner_fee_amount,
+                    "Partner fee recipient should have received {} smart input tokens as fee",
+                    partner_fee_amount
+                );
+            }
+            TokenType::Voucher { .. } => {
+                let partner_fee_recipient_user =
+                    CrossChainUser::new(chain_uid.clone(), partner_fee_recipient.clone());
+                let partner_voucher_balance_after = post_swap_state
+                    .voucher_balance(&partner_fee_recipient_user, &swap_asset_in.token)
+                    .expect("Partner fee recipient voucher balance should exist");
+                assert_eq!(partner_voucher_balance_after, partner_fee_amount,);
+            }
+        };
         if let (Some(cw20), Some(sender_before), Some(factory_before)) = (
             smart_cw20_contract.as_ref(),
             cw20_sender_balance_before,
@@ -533,8 +564,8 @@ mod tests {
                 .balance;
             assert_eq!(
                 sender_after,
-                sender_before - Uint128::try_from(net_swap_amount).unwrap(),
-                "Sender CW20 balance should decrease by net swap amount when partner fee recipient is sender"
+                sender_before - Uint128::try_from(swap_amount).unwrap(),
+                "Sender CW20 balance should decrease by full swap amount (CW20 hook sends entire amount to factory)"
             );
             assert_eq!(
                 factory_after, factory_before,

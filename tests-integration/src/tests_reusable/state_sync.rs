@@ -144,7 +144,10 @@ pub(crate) fn sync_state(
                     normalize_voucher_to_token(amount, metadata.token_type.get_decimals().unwrap())
                         .unwrap()
                 } else {
-                    amount
+                    panic!(
+                        "No metadata found for token {:?} on chain {:?} — sync_state cannot de-normalize",
+                        token, recipient.recipient.chain_uid
+                    );
                 };
 
                 VoucherBalanceState {

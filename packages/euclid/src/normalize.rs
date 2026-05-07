@@ -172,7 +172,10 @@ mod tests {
         if to > from {
             assert_eq!(back, amount);
         } else {
-            assert!(back <= amount);
+            let factor = Uint256::from(10u128).pow(from - to);
+            let expected_truncation = (amount / factor) * factor;
+            assert_eq!(back, expected_truncation);
+            assert!(back <= amount, "back must be less than or equal to amount");
         }
     }
 

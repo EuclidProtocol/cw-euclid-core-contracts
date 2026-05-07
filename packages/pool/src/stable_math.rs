@@ -6,6 +6,10 @@ use crate::SwapResult;
 /// N = 2
 pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
 pub const AMP_PRECISION: u64 = 100;
+/// Minimum amp factor: leverage = amp / AMP_PRECISION * N_COINS must be >= 1.
+/// With N_COINS=2, amp >= AMP_PRECISION / 2 = 50.
+/// We use AMP_PRECISION (100) for a safety margin (leverage >= 2).
+pub const MIN_AMP: u64 = AMP_PRECISION;
 /// The maximum number of calculation steps for Newton's method.
 const ITERATIONS: u8 = 64;
 /// 1e-6
@@ -27,8 +31,10 @@ pub fn compute_stable_swap(
     amp_factor: Uint64,
 ) -> Result<SwapResult, ContractError> {
     // Validate inputs
-    if amp_factor.is_zero() {
-        return Err(ContractError::new("Amp factor must be greater than zero"));
+    if amp_factor.u64() < MIN_AMP {
+        return Err(ContractError::new(&format!(
+            "Amp factor must be at least {MIN_AMP}"
+        )));
     }
     if offer_pool.is_zero() || ask_pool.is_zero() {
         return Err(ContractError::new("Pool reserves must be non-zero"));

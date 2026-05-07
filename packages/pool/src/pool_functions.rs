@@ -216,6 +216,11 @@ pub fn update_amp_factor(
         info.sender == admin.general_admin,
         ContractError::Unauthorized {}
     );
+    use crate::stable_math::MIN_AMP;
+    ensure!(
+        amp_factor.u64() >= MIN_AMP,
+        ContractError::new(&format!("Amp factor must be at least {MIN_AMP}"))
+    );
     amp_factor_storage.save(deps.storage, &amp_factor)?;
     Ok(Response::new()
         .add_attribute("action", "update_amp_factor")

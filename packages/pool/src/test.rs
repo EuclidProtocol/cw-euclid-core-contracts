@@ -974,10 +974,18 @@ mod audit_tests {
         let relative_diff = diff / d_before;
 
         assert!(
-                relative_diff < Decimal256::from_ratio(1u128, 1000u128), // < 0.1% deviation
-                "Invariant D should be approximately preserved. D_before: {}, D_after: {}, relative_diff: {}",
-                d_before, d_after, relative_diff
-            );
+            d_after >= d_before,
+            "D must not decrease after swap (truncation favors pool). D_before: {}, D_after: {}",
+            d_before,
+            d_after,
+        );
+        assert!(
+            relative_diff < Decimal256::from_ratio(1u128, 10_000u128), // < 0.01%
+            "D drift too large. D_before: {}, D_after: {}, relative_diff: {}",
+            d_before,
+            d_after,
+            relative_diff
+        );
     }
 
     // Uint256::MIN (zero) boundary: all zero inputs should return clean errors
@@ -1077,8 +1085,14 @@ mod audit_tests {
         let relative_diff = diff / d_before;
 
         assert!(
-            relative_diff < Decimal256::from_ratio(1u128, 1000u128),
-            "Invariant D should be preserved. D_before: {}, D_after: {}, relative_diff: {}",
+            d_after >= d_before,
+            "D must not decrease after swap (truncation favors pool). D_before: {}, D_after: {}",
+            d_before,
+            d_after,
+        );
+        assert!(
+            relative_diff < Decimal256::from_ratio(1u128, 10_000u128), // < 0.01%
+            "D drift too large. D_before: {}, D_after: {}, relative_diff: {}",
             d_before,
             d_after,
             relative_diff
@@ -2483,7 +2497,7 @@ mod voucher_lp_tests {
             #[test]
             fn test_minimum_liquidity_constant_is_1000() {
                 // Sanity: keep this test in sync with the production constant.
-                assert_eq!(MINIMUM_LIQUIDITY, 1000);
+                assert_eq!(MINIMUM_LIQUIDITY, 1_000_000_000);
             }
 
             // FINDING: `compute_d` underflows for amp=1 even on small balanced
@@ -2519,6 +2533,39 @@ mod voucher_lp_tests {
                     "amp=1 balanced pool: compute_d expected to underflow, got {:?}",
                     res.ok()
                 );
+            }
+
+            #[test]
+            fn test_amp_below_50_causes_compute_d_underflow() {
+                // leverage = amp / AMP_PRECISION * N_COINS = 49 / 100 * 2 = 0.98
+                // Newton step does (leverage - 1) which underflows unsigned Decimal256.
+                // This is WHY MIN_AMP exists.
+                let pools = [
+                    Decimal256::checked_from_integer(Uint256::from(1_000u128)).unwrap(),
+                    Decimal256::checked_from_integer(Uint256::from(1_000u128)).unwrap(),
+                ];
+                assert!(compute_d(Uint64::new(49), &pools).is_err());
+                assert!(compute_d(Uint64::new(25), &pools).is_err());
+                assert!(compute_d(Uint64::new(10), &pools).is_err());
+                // amp=50 is the mathematical minimum (leverage=1.0). It works.
+                assert!(compute_d(Uint64::new(50), &pools).is_ok());
+                assert!(compute_d(Uint64::new(100), &pools).is_ok());
+            }
+
+            #[test]
+            fn test_compute_stable_swap_rejects_amp_below_min() {
+                use crate::stable_math::MIN_AMP;
+                let result = compute_stable_swap(
+                    Uint256::from(100u128),
+                    Uint256::from(1_000u128),
+                    Uint256::from(1_000u128),
+                    Uint64::new(MIN_AMP - 1),
+                );
+                assert!(result.is_err());
+                assert!(result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Amp factor must be at least"));
             }
 
             // ----------------------------------------------------------------
@@ -2962,6 +3009,371 @@ mod voucher_lp_tests {
                     "At least one amp in the scan should produce a valid D"
                 );
             }
+        }
+    }
+}
+
+// ========================================================================
+// INVARIANT TESTS: k-invariant, fee conservation, golden values, reserve
+// accounting
+// ========================================================================
+
+mod invariant_tests {
+    use super::*;
+    use cosmwasm_std::Uint512;
+
+    /// Helper: set up mock storage with the given reserves and fee config,
+    /// then call `pre_swap` with `SwapCalculationMethod::Regular`.
+    fn setup_and_pre_swap(
+        reserve_in: u128,
+        reserve_out: u128,
+        lp_fee_bps: u64,
+        euclid_fee_bps: u64,
+        amount_in: u128,
+    ) -> crate::PreSwapResponse {
+        use cosmwasm_std::testing::mock_dependencies;
+        use cosmwasm_std::Addr;
+        use cw_storage_plus::{Item, Map};
+        use euclid::{
+            chain::ChainUid,
+            cross_chain_user::CrossChainUser,
+            fee::{DenomFees, Fee, TotalFees},
+            msgs::vlp::base::State,
+            token::{Pair, Token},
+        };
+        use std::collections::HashMap;
+
+        let mut deps = mock_dependencies();
+        let state_storage: Item<State> = Item::new("state");
+        let balances_storage: Map<Token, Uint256> = Map::new("balances");
+
+        let token_1 = Token::create("token1".to_string()).unwrap();
+        let token_2 = Token::create("token2".to_string()).unwrap();
+        let pair = Pair::new(token_1.clone(), token_2.clone()).unwrap();
+
+        balances_storage
+            .save(
+                deps.as_mut().storage,
+                token_1.clone(),
+                &Uint256::from(reserve_in),
+            )
+            .unwrap();
+        balances_storage
+            .save(
+                deps.as_mut().storage,
+                token_2.clone(),
+                &Uint256::from(reserve_out),
+            )
+            .unwrap();
+
+        let fee = Fee::new(
+            lp_fee_bps,
+            euclid_fee_bps,
+            CrossChainUser::new(
+                ChainUid::create("1".to_string()).unwrap(),
+                "recipient".to_string(),
+            ),
+        );
+
+        let state = State {
+            pair,
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("vbc"),
+            fee,
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+            },
+            last_updated: 0,
+            total_lp_tokens: Uint256::zero(),
+        };
+        state_storage.save(deps.as_mut().storage, &state).unwrap();
+
+        pre_swap(
+            &deps.as_ref(),
+            &state_storage,
+            &balances_storage,
+            &token_1,
+            Uint256::from(amount_in),
+            SwapCalculationMethod::Regular,
+            None,
+        )
+        .unwrap()
+    }
+
+    // ====================================================================
+    // 1. CP k-invariant: k_after >= k_before after a swap with fees
+    // ====================================================================
+
+    #[rstest]
+    // Note: the k-invariant k_after >= k_before requires lp_fee > 0,
+    // because the lp_fee is added to the input reserve. When fees are
+    // too small (amount_in * lp_fee_bps / 10000 rounds to 0), integer
+    // division in the CP formula can cause k to decrease slightly.
+    // All test cases below are sized so lp_fee >= 1.
+    #[case::small_swap(10_000u128, 5_000u128, 100u64, 10u64, 100u128)]
+    #[case::medium_swap(10_000u128, 5_000u128, 30u64, 10u64, 1_000u128)]
+    #[case::large_swap(10_000u128, 5_000u128, 30u64, 10u64, 5_000u128)]
+    #[case::balanced_pools(100_000u128, 100_000u128, 50u64, 20u64, 10_000u128)]
+    #[case::imbalanced_pools(1_000u128, 1_000_000u128, 100u64, 50u64, 500u128)]
+    #[case::minimal_amount_high_fee(10_000u128, 5_000u128, 5_000u64, 10u64, 1u128)]
+    #[case::zero_euclid_fee(10_000u128, 5_000u128, 100u64, 0u64, 1_000u128)]
+    #[case::large_reserves(
+        1_000_000_000_000_000_000u128,
+        500_000_000_000_000_000u128,
+        30u64,
+        10u64,
+        100_000_000_000_000u128
+    )]
+    fn test_cp_k_invariant_holds_after_swap(
+        #[case] reserve_in: u128,
+        #[case] reserve_out: u128,
+        #[case] lp_fee_bps: u64,
+        #[case] euclid_fee_bps: u64,
+        #[case] amount_in: u128,
+    ) {
+        let res = setup_and_pre_swap(
+            reserve_in,
+            reserve_out,
+            lp_fee_bps,
+            euclid_fee_bps,
+            amount_in,
+        );
+
+        // k_before = reserve_in * reserve_out
+        let k_before = Uint512::from(Uint256::from(reserve_in))
+            .checked_mul(Uint512::from(Uint256::from(reserve_out)))
+            .unwrap();
+
+        // After execute_swap, reserves update as:
+        //   new_reserve_in  = reserve_in + swap_amount + lp_fee
+        //   new_reserve_out = reserve_out - receive_amount
+        let new_reserve_in = Uint512::from(
+            Uint256::from(reserve_in)
+                .checked_add(res.swap_amount)
+                .unwrap()
+                .checked_add(res.lp_fee)
+                .unwrap(),
+        );
+        let new_reserve_out = Uint512::from(
+            Uint256::from(reserve_out)
+                .checked_sub(res.receive_amount)
+                .unwrap(),
+        );
+        let k_after = new_reserve_in.checked_mul(new_reserve_out).unwrap();
+
+        assert!(
+            k_after >= k_before,
+            "k-invariant violated: k_before={}, k_after={}, reserve_in={}, reserve_out={}, amount_in={}",
+            k_before, k_after, reserve_in, reserve_out, amount_in
+        );
+    }
+
+    // ====================================================================
+    // 2. Fee conservation: swap_amount + lp_fee + euclid_fee == amount_in
+    // ====================================================================
+
+    #[rstest]
+    #[case::normal_fees(10_000u128, 5_000u128, 30u64, 10u64, 1_000u128)]
+    #[case::zero_fees(10_000u128, 5_000u128, 0u64, 0u64, 1_000u128)]
+    #[case::zero_lp_fee(10_000u128, 5_000u128, 0u64, 50u64, 1_000u128)]
+    #[case::zero_euclid_fee(10_000u128, 5_000u128, 100u64, 0u64, 1_000u128)]
+    #[case::large_fees(10_000u128, 5_000u128, 500u64, 300u64, 1_000u128)]
+    #[case::amount_one(10_000u128, 5_000u128, 30u64, 10u64, 1u128)]
+    #[case::large_amount(10_000u128, 5_000u128, 30u64, 10u64, 9_000u128)]
+    #[case::max_fee_bps(10_000u128, 5_000u128, 9_999u64, 0u64, 1_000u128)]
+    fn test_fee_conservation(
+        #[case] reserve_in: u128,
+        #[case] reserve_out: u128,
+        #[case] lp_fee_bps: u64,
+        #[case] euclid_fee_bps: u64,
+        #[case] amount_in: u128,
+    ) {
+        let res = setup_and_pre_swap(
+            reserve_in,
+            reserve_out,
+            lp_fee_bps,
+            euclid_fee_bps,
+            amount_in,
+        );
+
+        let reconstructed = res
+            .swap_amount
+            .checked_add(res.lp_fee)
+            .unwrap()
+            .checked_add(res.euclid_fee)
+            .unwrap();
+
+        assert_eq!(
+            reconstructed,
+            Uint256::from(amount_in),
+            "Fee conservation violated: swap_amount({}) + lp_fee({}) + euclid_fee({}) = {}, expected {}",
+            res.swap_amount, res.lp_fee, res.euclid_fee, reconstructed, amount_in
+        );
+    }
+
+    // ====================================================================
+    // 3. Independent pre-swap golden values (break circularity)
+    // ====================================================================
+    //
+    // These expected values are computed by hand, not by calling the
+    // production functions.
+    //
+    // For reserve_in=10000, reserve_out=5000, amount_in=1000,
+    //     lp_fee_bps=30, euclid_fee_bps=10:
+    //   lp_fee       = floor(1000 * 30/10000) = 3
+    //   euclid_fee   = floor(1000 * 10/10000) = 1
+    //   swap_amount  = 1000 - 3 - 1 = 996
+    //   new_res_in   = 10000 + 996 = 10996
+    //   k            = 10000 * 5000 = 50_000_000
+    //   new_res_out  = floor(50_000_000 / 10996) = 4547
+    //   receive_amt  = 5000 - 4547 = 453
+    //   ideal_return = floor(5000 * 996 / 10000) = 498
+    //   spread       = 498 - 453 = 45
+
+    #[test]
+    fn test_pre_swap_golden_values_case_1() {
+        let res = setup_and_pre_swap(10_000, 5_000, 30, 10, 1_000);
+
+        assert_eq!(res.lp_fee, Uint256::from(3u128), "lp_fee mismatch");
+        assert_eq!(res.euclid_fee, Uint256::from(1u128), "euclid_fee mismatch");
+        assert_eq!(
+            res.swap_amount,
+            Uint256::from(996u128),
+            "swap_amount mismatch"
+        );
+        assert_eq!(
+            res.receive_amount,
+            Uint256::from(453u128),
+            "receive_amount mismatch"
+        );
+        assert_eq!(
+            res.spread_amount,
+            Uint256::from(45u128),
+            "spread_amount mismatch"
+        );
+    }
+
+    // Second golden value case: balanced pool, no fees.
+    // reserve_in=1000, reserve_out=1000, amount_in=100, lp_fee=0, euclid_fee=0
+    //   swap_amount  = 100
+    //   new_res_in   = 1100
+    //   k            = 1_000_000
+    //   new_res_out  = floor(1_000_000 / 1100) = 909
+    //   receive_amt  = 1000 - 909 = 91
+    //   ideal_return = floor(1000 * 100 / 1000) = 100
+    //   spread       = 100 - 91 = 9
+    #[test]
+    fn test_pre_swap_golden_values_case_2_no_fees() {
+        let res = setup_and_pre_swap(1_000, 1_000, 0, 0, 100);
+
+        assert_eq!(res.lp_fee, Uint256::zero(), "lp_fee mismatch");
+        assert_eq!(res.euclid_fee, Uint256::zero(), "euclid_fee mismatch");
+        assert_eq!(
+            res.swap_amount,
+            Uint256::from(100u128),
+            "swap_amount mismatch"
+        );
+        assert_eq!(
+            res.receive_amount,
+            Uint256::from(91u128),
+            "receive_amount mismatch"
+        );
+        assert_eq!(
+            res.spread_amount,
+            Uint256::from(9u128),
+            "spread_amount mismatch"
+        );
+    }
+
+    // Third golden value case: high fees.
+    // reserve_in=5000, reserve_out=5000, amount_in=500, lp_fee_bps=500, euclid_fee_bps=200
+    //   lp_fee       = floor(500 * 500/10000) = floor(25.0) = 25
+    //   euclid_fee   = floor(500 * 200/10000) = floor(10.0) = 10
+    //   swap_amount  = 500 - 25 - 10 = 465
+    //   new_res_in   = 5000 + 465 = 5465
+    //   k            = 25_000_000
+    //   new_res_out  = floor(25_000_000 / 5465) = 4574
+    //   receive_amt  = 5000 - 4574 = 426
+    //   ideal_return = floor(5000 * 465 / 5000) = 465
+    //   spread       = 465 - 426 = 39
+    #[test]
+    fn test_pre_swap_golden_values_case_3_high_fees() {
+        let res = setup_and_pre_swap(5_000, 5_000, 500, 200, 500);
+
+        assert_eq!(res.lp_fee, Uint256::from(25u128), "lp_fee mismatch");
+        assert_eq!(res.euclid_fee, Uint256::from(10u128), "euclid_fee mismatch");
+        assert_eq!(
+            res.swap_amount,
+            Uint256::from(465u128),
+            "swap_amount mismatch"
+        );
+        assert_eq!(
+            res.receive_amount,
+            Uint256::from(426u128),
+            "receive_amount mismatch"
+        );
+        assert_eq!(
+            res.spread_amount,
+            Uint256::from(39u128),
+            "spread_amount mismatch"
+        );
+    }
+
+    // ====================================================================
+    // 4. Euclid fee exclusion from reserves: only swap_amount + lp_fee
+    //    go into reserves, NOT euclid_fee
+    // ====================================================================
+
+    #[rstest]
+    #[case::normal(10_000u128, 5_000u128, 30u64, 10u64, 1_000u128)]
+    #[case::high_euclid_fee(10_000u128, 5_000u128, 30u64, 500u64, 1_000u128)]
+    #[case::zero_euclid_fee(10_000u128, 5_000u128, 100u64, 0u64, 1_000u128)]
+    #[case::large_amount(100_000u128, 50_000u128, 50u64, 25u64, 50_000u128)]
+    fn test_euclid_fee_excluded_from_reserves(
+        #[case] reserve_in: u128,
+        #[case] reserve_out: u128,
+        #[case] lp_fee_bps: u64,
+        #[case] euclid_fee_bps: u64,
+        #[case] amount_in: u128,
+    ) {
+        let res = setup_and_pre_swap(
+            reserve_in,
+            reserve_out,
+            lp_fee_bps,
+            euclid_fee_bps,
+            amount_in,
+        );
+
+        // The execute_swap function updates reserves as:
+        //   new_token_in_reserve  = old_reserve_in + swap_amount + lp_fee
+        //   new_token_out_reserve = old_reserve_out - receive_amount
+        //
+        // This means new_token_in_reserve == old_reserve_in + amount_in - euclid_fee
+        // (because swap_amount + lp_fee = amount_in - euclid_fee)
+        let reserve_increase = res.swap_amount.checked_add(res.lp_fee).unwrap();
+        let expected_increase = Uint256::from(amount_in)
+            .checked_sub(res.euclid_fee)
+            .unwrap();
+
+        assert_eq!(
+            reserve_increase, expected_increase,
+            "Reserve increase should be amount_in - euclid_fee. \
+             swap_amount + lp_fee = {}, amount_in - euclid_fee = {}",
+            reserve_increase, expected_increase
+        );
+
+        // Verify it is NOT amount_in (unless euclid_fee is zero)
+        if !res.euclid_fee.is_zero() {
+            assert_ne!(
+                reserve_increase,
+                Uint256::from(amount_in),
+                "Reserve increase must NOT equal full amount_in when euclid_fee > 0"
+            );
         }
     }
 }

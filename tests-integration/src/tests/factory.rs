@@ -1716,6 +1716,33 @@ pub fn run_test_swap_request_reusable(
 
     relay_factory_router_factory(swap_request_msg.events, factory, router, &factory_chain_uid)?;
 
+    // --- Post-swap assertions: VLP liquidity state ---
+    let post_swap_liquidity: GetLiquidityQueryResponse =
+        vlp_contract.query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})?;
+
+    // LP tokens should be unchanged (swaps do not mint or burn LP tokens)
+    let pre_swap_lp_tokens = lp_tokens(token_1_reserve, token_2_reserve);
+    assert_eq!(
+        post_swap_liquidity.total_lp_tokens, pre_swap_lp_tokens,
+        "total_lp_tokens should be unchanged after swap (no minting/burning)"
+    );
+
+    // token_1 (input) reserve should increase
+    assert!(
+        post_swap_liquidity.token_1_reserve > token_1_reserve,
+        "token_1_reserve should increase after swapping token_a in: before={}, after={}",
+        token_1_reserve,
+        post_swap_liquidity.token_1_reserve
+    );
+
+    // token_2 (output) reserve should decrease
+    assert!(
+        post_swap_liquidity.token_2_reserve < token_2_reserve,
+        "token_2_reserve should decrease after swapping token_b out: before={}, after={}",
+        token_2_reserve,
+        post_swap_liquidity.token_2_reserve
+    );
+
     Ok(SwapTestReusableOutput {
         // token_in: token_a,
         token_out: token_b,
@@ -1893,8 +1920,8 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         )
         .unwrap();
     assert!(
-        random_user_balance > Uint128::zero(),
-        "Random user balance is {}",
+        random_user_balance >= Uint128::from(50u128),
+        "Random user balance ({}) should be at least min_amount_out (50)",
         random_user_balance
     );
 }
