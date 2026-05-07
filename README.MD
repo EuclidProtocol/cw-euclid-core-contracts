@@ -36,11 +36,32 @@ To build the contracts, you can run the provided build script:
 
 ## Running Tests
 
-To run the integration tests for the contracts, use:
+To run all tests:
 ```bash
 cargo test
 ```
-Note: Make sure all necessary dependencies are installed before running the tests.
+
+To run tests for a specific package:
+```bash
+cargo test -p router
+cargo test -p factory
+```
+
+### Full Decimal Coverage
+
+Integration tests are parameterized over token decimal combinations using `rstest_reuse` templates. By default, tests run against a representative subset of decimal values (0, 6, 8, 18, 24), producing ~1,700 parameterized test cases across all test modules.
+
+To run the exhaustive matrix covering every decimal from 0 to 24, enable the `full_decimals` feature flag:
+```bash
+cargo test -p tests-integration --features full_decimals
+```
+
+This expands `decimal_pair` from 25 combinations (5x5) to 625 (25x25) and `single_decimal` from 5 to 25 values, generating ~41,000 test cases total. Expect significantly longer run times.
+
+| Template | Default | `full_decimals` |
+|---|---|---|
+| `decimal_pair` | 5x5 = 25 | 25x25 = 625 |
+| `single_decimal` | 5 | 25 |
 
 ## Docs
 Documentation for each Euclid smart contract can be found in our [docs website](https://docs.euclidprotocol.io/docs/Euclid%20Smart%20Contracts/CosmWasm/overview).
