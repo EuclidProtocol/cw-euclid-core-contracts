@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
-    Response, StdError, SubMsg, Uint128, WasmMsg,
+    Response, StdError, SubMsg, Uint256, WasmMsg,
 };
 use euclid::{
     error::ContractError,
@@ -112,7 +112,7 @@ pub fn execute_receive_packet(
         }
     );
     // Save the processed sequence to avoid duplicate events
-    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+    processed_sequence_key.save(deps.storage, &Uint256::from(env.block.height))?;
 
     let receive_packet_event = receive_packet_event(sequence, &source_port, &destination_port);
 

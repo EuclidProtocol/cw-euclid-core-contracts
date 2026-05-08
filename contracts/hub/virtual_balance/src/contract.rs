@@ -5,13 +5,15 @@ use cw2::set_contract_version;
 use euclid::admin::EuclidAdmin;
 
 use crate::execute::{
-    execute_approve, execute_burn, execute_mint, execute_normalize_balance_keys,
-    execute_remove_zero_state_values, execute_transfer, execute_update_admin,
-    execute_update_router,
+    execute_approve, execute_burn, execute_deregister_token_metadata, execute_mint,
+    execute_register_token_metadata, execute_remove_zero_state_values, execute_transfer,
+    execute_update_admin, execute_update_router,
 };
 use crate::query::{
-    query_admin, query_all_balances, query_allowance, query_balance, query_state,
-    query_token_balances, query_user_balances,
+    query_admin, query_all_balances, query_all_escrow_balances, query_all_token_metadata,
+    query_allowance, query_balance, query_escrow_balance, query_state, query_token_balances,
+    query_token_escrows, query_token_metadata, query_token_metadata_by_denom, query_token_status,
+    query_user_balances,
 };
 use crate::state::{ADMIN, STATE};
 use euclid::error::ContractError;
@@ -57,7 +59,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::Mint(msg) => execute_mint(deps, info, msg),
         ExecuteMsg::Burn(msg) => execute_burn(deps, info, msg),
-        ExecuteMsg::Transfer(msg) => execute_transfer(&mut deps, info, msg),
+        ExecuteMsg::Transfer(msg) => execute_transfer(&mut deps, env, info, msg),
         ExecuteMsg::UpdateAdmin {
             new_admin,
             admin_type,
@@ -67,9 +69,14 @@ pub fn execute(
         ExecuteMsg::RemoveZeroStateValues { start_after, limit } => {
             execute_remove_zero_state_values(deps, info, start_after, limit)
         }
-        ExecuteMsg::NormalizeBalanceKeys { skip, limit } => {
-            execute_normalize_balance_keys(deps, info, skip, limit)
+        ExecuteMsg::RegisterTokenMetadata { token_metadata } => {
+            execute_register_token_metadata(deps, info, token_metadata)
         }
+        ExecuteMsg::DeregisterTokenMetadata {
+            token_id,
+            chain_uid,
+            token_type,
+        } => execute_deregister_token_metadata(deps, info, token_id, chain_uid, token_type),
     }
 }
 
@@ -88,6 +95,29 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             token_id,
             pagination,
         } => query_token_balances(deps, token_id, pagination),
+        QueryMsg::GetEscrowBalance {
+            token_id,
+            chain_uid,
+            token_type,
+        } => query_escrow_balance(deps, token_id, chain_uid, token_type),
+        QueryMsg::GetTokenEscrows {
+            token_id,
+            pagination,
+        } => query_token_escrows(deps, token_id, pagination),
+        QueryMsg::GetAllEscrowBalances { pagination } => {
+            query_all_escrow_balances(deps, pagination)
+        }
+        QueryMsg::GetTokenMetadataByDenom {
+            token_id,
+            chain_uid,
+            token_type,
+        } => query_token_metadata_by_denom(deps, token_id, chain_uid, token_type),
+        QueryMsg::GetTokenMetadata {
+            token_id,
+            pagination,
+        } => query_token_metadata(deps, token_id, pagination),
+        QueryMsg::GetAllTokenMetadata { pagination } => query_all_token_metadata(deps, pagination),
+        QueryMsg::GetTokenStatus { token_id } => query_token_status(deps, token_id),
     }
 }
 

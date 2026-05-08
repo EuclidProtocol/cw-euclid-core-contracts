@@ -80,7 +80,7 @@ Storage items/maps:
 - `TOKEN_VLPS: Map<Token, Vec<Addr>>` — all VLPs associated with a given token
 - `PENDING_SWAPS: Map<String, RouterCrossChainSwapExecuteMsg>` — in-flight cross-chain swaps (keyed by tx_id)
 - `PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher>` — in-flight voucher releases awaiting IBC ack
-- `ESCROW_BALANCES: Map<(String, ChainUid), Uint128>` — per-chain token balances
+- `ESCROW_BALANCES: Map<(String, ChainUid), Uint128>` — **DEPRECATED** (moved to virtual_balance contract)
 - `LOCKED_CHAINS: Item<Vec<ChainUid>>` — chains paused for emergency stops
 - `DEFAULT_RELEASE_FEE: Item<Uint128>` — fallback release fee when no per-chain fee is set
 - `RELEASE_FEES: Map<(Token, ChainUid), Uint128>` — per-(token, chain) release fee overrides
@@ -115,3 +115,7 @@ pub struct EuclidAdmin {
 The `tests-integration` package includes all contracts as dev-dependencies and sets up multi-contract and multi-chain scenarios.
 
 When writing unit tests for a contract, use the `unit-test-writer` agent. It understands the project's test conventions (rstest parameterization, `MockDeps` fixtures, `init` helpers, state assertions). Invoke it via the `/write-tests <contract-path>` skill.
+
+### Changelog
+
+The project maintains a `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/) format. Each release is named after a star with a status (in progress, freezed, released). When making contract or package changes (not test only), add an entry under the current "in progress" section in the appropriate category (Added, Changed, Fixed, Deprecated, Removed, Security). Prefix entries with the contract or package name in brackets, e.g. `[router]`, `[euclid]`. One line per logical change. Event changes are especially important to track as they affect backend indexing.

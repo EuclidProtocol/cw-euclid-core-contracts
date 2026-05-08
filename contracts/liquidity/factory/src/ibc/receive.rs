@@ -1,4 +1,4 @@
-use cosmwasm_std::Uint128;
+use cosmwasm_std::Uint256;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{ensure, to_json_binary, CosmosMsg, DepsMut, Env, Response, SubMsg, WasmMsg};
 use euclid::{
@@ -116,7 +116,7 @@ fn execute_release_escrow(
     _env: Env,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     denom: TokenType,
     forwarding_message: Option<String>,
     tx_id: String,
@@ -172,7 +172,7 @@ mod tests {
     };
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env},
-        CosmosMsg, ReplyOn, Uint128, WasmMsg,
+        CosmosMsg, ReplyOn, Uint128, Uint256, WasmMsg,
     };
     use euclid::{
         chain::ChainUid,
@@ -239,9 +239,10 @@ mod tests {
             },
             token: Token::create(token_id.to_string()).unwrap(),
             recipient: recipient.to_string(),
-            amount: Uint128::new(amount),
+            amount: Uint256::from(amount),
             denom: TokenType::Native {
                 denom: "uusdc".to_string(),
+                decimals: None,
             },
             forwarding_message: None,
             tx_id: "tx-release-1".to_string(),
@@ -498,9 +499,10 @@ mod tests {
             },
             token: Token::create("atom".to_string()).unwrap(),
             recipient: recipient.to_string(),
-            amount: Uint128::new(250),
+            amount: Uint256::from(250u128),
             denom: TokenType::Native {
                 denom: "uatom".to_string(),
+                decimals: None,
             },
             forwarding_message: None,
             tx_id: "tx-sender-attr-1".to_string(),

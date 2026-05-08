@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use cosmwasm_std::coin;
 use cosmwasm_std::Addr;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::Uint256;
 use cp_vlp::mock::mock_cp_vlp;
 use cp_vlp::mock::MockCpVlp;
 use euclid::admin::EuclidAdmin;
@@ -111,7 +111,7 @@ fn test_proper_instantiation() {
             },
         },
         last_updated: 0,
-        total_lp_tokens: Uint128::zero(),
+        total_lp_tokens: Uint256::zero(),
         pool_config: PoolConfig::ConstantProduct {},
     };
     assert_eq!(token_id_response, expected_token_id);

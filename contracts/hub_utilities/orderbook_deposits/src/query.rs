@@ -1,5 +1,5 @@
 use crate::error::ContractError;
-use cosmwasm_std::{to_json_binary, Binary, Deps, Uint128};
+use cosmwasm_std::{to_json_binary, Binary, Deps, Uint256};
 use cw_storage_plus::Bound;
 use euclid::msgs::orderbook_deposits::OrderbookDepositsStatus;
 
@@ -51,7 +51,7 @@ fn query_asset_deposit(
 ) -> Result<AssetDepositResponse, ContractError> {
     let amount = ASSET_DEPOSITS
         .may_load(deps.storage, token_id.clone())?
-        .unwrap_or_else(Uint128::zero);
+        .unwrap_or_else(Uint256::zero);
     Ok(AssetDepositResponse { token_id, amount })
 }
 
@@ -62,7 +62,7 @@ fn query_user_deposit(
 ) -> Result<UserDepositResponse, ContractError> {
     let amount = USER_DEPOSITS
         .may_load(deps.storage, (user.clone(), token_id.clone()))?
-        .unwrap_or_else(Uint128::zero);
+        .unwrap_or_else(Uint256::zero);
 
     Ok(UserDepositResponse {
         user: user.clone(),

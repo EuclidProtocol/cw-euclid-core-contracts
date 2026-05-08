@@ -59,7 +59,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{from_json, testing::mock_env, Uint128};
+    use cosmwasm_std::{from_json, testing::mock_env, Uint128, Uint256};
     use euclid::{
         msgs::escrow::{
             AllowedDenomsResponse, AllowedTokenResponse, ExecuteMsg, QueryMsg, StateResponse,
@@ -88,7 +88,7 @@ mod tests {
 
         assert_eq!(res.token, token());
         assert_eq!(res.factory_address, factory);
-        assert_eq!(res.total_amount, Uint128::zero());
+        assert_eq!(res.total_amount, Uint256::zero());
     }
 
     #[rstest]
@@ -96,7 +96,7 @@ mod tests {
         let res: StateResponse =
             from_json(query(with_deposit.as_ref(), mock_env(), QueryMsg::State {}).unwrap())
                 .unwrap();
-        assert_eq!(res.total_amount, Uint128::new(1_000));
+        assert_eq!(res.total_amount, Uint256::from(1_000u128));
     }
 
     #[rstest]
@@ -132,6 +132,7 @@ mod tests {
                 QueryMsg::TokenAllowed {
                     denom: TokenType::Native {
                         denom: "never_added".to_string(),
+                        decimals: None,
                     },
                 },
             )
@@ -186,6 +187,7 @@ mod tests {
         let info = message_info(&factory, &[]);
         let denom2 = TokenType::Native {
             denom: "uatom".to_string(),
+            decimals: None,
         };
         execute(
             initialized.as_mut(),

@@ -30,12 +30,14 @@ pub fn token() -> Token {
 pub fn native_denom() -> TokenType {
     TokenType::Native {
         denom: NATIVE_DENOM.to_string(),
+        decimals: None,
     }
 }
 
 pub fn smart_denom(addr: &str) -> TokenType {
     TokenType::Smart {
         contract_address: addr.to_string(),
+        decimals: None,
     }
 }
 

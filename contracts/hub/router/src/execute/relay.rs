@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response,
-    StdError, SubMsg, Uint128, WasmMsg,
+    StdError, SubMsg, Uint256, WasmMsg,
 };
 use euclid::{
     chain::{Chain, ChainUid},
@@ -119,7 +119,7 @@ pub fn execute_receive_packet(
             err: "Processed sequence already exists".to_string()
         }
     );
-    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+    processed_sequence_key.save(deps.storage, &Uint256::from(env.block.height))?;
     let receive_packet_event = receive_packet_event(sequence, &source_port, &destination_port);
 
     let write_acknowledge_event = write_acknowledgement_event(
@@ -280,7 +280,7 @@ pub fn execute_native_receive_callback(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
-        Addr, Binary, Uint128,
+        Addr, Binary, Uint256,
     };
     use euclid::{
         chain::{Chain, ChainType, ChainUid, CosmosChain},
@@ -389,7 +389,7 @@ mod tests {
                 .save(
                     initialized.as_mut().storage,
                     (chain_uid.clone(), 0_u128),
-                    &Uint128::from(1_u64),
+                    &Uint256::from(1_u64),
                 )
                 .unwrap();
         }

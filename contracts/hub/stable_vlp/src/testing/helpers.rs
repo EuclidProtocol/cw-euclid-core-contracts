@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     testing::{message_info, mock_env, MockQuerier},
-    Addr, Response, Uint128, Uint64,
+    Addr, Response, Uint128, Uint256, Uint64,
 };
 use euclid::{
     admin::EuclidAdmin,
@@ -99,11 +99,11 @@ pub fn seed_liquidity(deps: &mut MockDeps, reserve: u128) {
     let liquidity = PairWithAmount::new(
         TokenWithAmount {
             token: token1(),
-            amount: Uint128::new(reserve),
+            amount: Uint256::from(reserve),
         },
         TokenWithAmount {
             token: token2(),
-            amount: Uint128::new(reserve),
+            amount: Uint256::from(reserve),
         },
     )
     .unwrap();

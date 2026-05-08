@@ -45,6 +45,7 @@ fn test_escrow() {
 
     let native_denom = TokenType::Native {
         denom: "native".to_string(),
+        decimals: Some(18),
     };
 
     escrow_contract

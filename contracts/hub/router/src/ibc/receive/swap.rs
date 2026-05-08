@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint256, WasmMsg};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
@@ -9,14 +9,15 @@ use euclid::{
         virtual_balance::msg::{ExecuteApprove, ExecuteMint, ExecuteTransfer},
         vlp::base::{VlpSimulateSwapMsg, VlpSwapMsg},
     },
+    normalize::normalize_token_to_voucher,
     voucher::BalanceKey,
 };
 use euclid_ibc::router_ibc::RouterCrossChainSwapExecuteMsg;
 
 use crate::{
-    query::validate_swap_pairs,
+    query::{query_token_metadata_by_denom, validate_swap_pairs},
     reply::SWAP_REPLY_ID,
-    state::{ESCROW_BALANCES, PENDING_SWAPS, VIRTUAL_BALANCE_CONTRACT},
+    state::{PENDING_SWAPS, VIRTUAL_BALANCE_CONTRACT},
 };
 
 pub fn ibc_execute_swap(
@@ -58,7 +59,7 @@ pub fn ibc_execute_swap(
 
     let sender = msg.sender;
 
-    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?.to_string();
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     let swap_vlps = validate_swap_pairs(deps.as_ref(), &msg.swaps);
     ensure!(
@@ -73,10 +74,27 @@ pub fn ibc_execute_swap(
         err: "Swaps cannot be empty".to_string(),
     })?;
 
+    // Normalize amount_in to voucher decimals
+    let normalized_amount_in = if msg.asset_in.token_type.is_voucher() {
+        msg.amount_in
+    } else {
+        let metadata_in = query_token_metadata_by_denom(
+            deps.as_ref(),
+            &virtual_balance_address,
+            &msg.asset_in.token,
+            &sender.chain_uid,
+            &msg.asset_in.token_type,
+        )?;
+        normalize_token_to_voucher(msg.amount_in, metadata_in.token_type.get_decimals()?)?
+    };
+
+    // min_amount_out is already in voucher units (24 decimals)
+    let normalized_min_amount_out = msg.min_amount_out;
+
     // Simulation increases gas, ideally this can be resolved but we are still getting codespace wasm errors so this is added as a temporary fix for better error messages
     let simulate_swap_msg = euclid::msgs::vlp::base::QueryMsg::SimulateSwap(VlpSimulateSwapMsg {
         asset: msg.asset_in.token.clone(),
-        asset_amount: msg.amount_in,
+        asset_amount: normalized_amount_in,
         swaps: next_swaps.to_vec(),
     });
 
@@ -85,34 +103,25 @@ pub fn ibc_execute_swap(
         .query_wasm_smart(first_swap.vlp_address.clone(), &simulate_swap_msg)?;
 
     ensure!(
-        simulate_swap_res.amount_out.ge(&msg.min_amount_out),
+        simulate_swap_res.amount_out.ge(&normalized_min_amount_out),
         ContractError::SlippageExceeded {
             amount: simulate_swap_res.amount_out,
-            min_amount_out: msg.min_amount_out,
+            min_amount_out: normalized_min_amount_out,
         }
     );
 
-    // Mint voucher token in escrow balance if it is not a voucher token
+    // Mint voucher token if it is not a voucher token (escrow managed by virtual_balance)
     if !msg.asset_in.token_type.is_voucher() {
-        let token_escrow_key = (msg.asset_in.token.to_string(), sender.chain_uid.clone());
-        let token_escrow_balance = ESCROW_BALANCES
-            .may_load(deps.storage, token_escrow_key.clone())?
-            .unwrap_or(Uint128::zero());
-
-        ESCROW_BALANCES.save(
-            deps.storage,
-            token_escrow_key,
-            &token_escrow_balance.checked_add(msg.amount_in)?,
-        )?;
-
         // Mint virtual balance for the first swap vlp so it can start processing tx
         let mint_virtual_balance_msg =
             euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(ExecuteMint {
-                amount: msg.amount_in,
+                amount: msg.amount_in.into(),
                 balance_key: BalanceKey {
                     cross_chain_user: sender.clone(),
                     token_id: msg.asset_in.token.to_string(),
                 },
+                token_type: msg.asset_in.token_type.clone(),
+                token_source_chain_uid: sender.chain_uid.clone(),
             });
 
         let mint_virtual_balance_msg = WasmMsg::Execute {
@@ -140,7 +149,7 @@ pub fn ibc_execute_swap(
             )?;
 
         ensure!(
-            user_voucher_balance_res.amount.ge(&msg.amount_in),
+            user_voucher_balance_res.amount.ge(&normalized_amount_in),
             ContractError::InsufficientAmount {
                 min_amount: msg.amount_in,
                 amount: user_voucher_balance_res.amount,
@@ -150,7 +159,7 @@ pub fn ibc_execute_swap(
 
     let approve_voucher_msg =
         euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(ExecuteApprove {
-            amount: msg.amount_in,
+            amount: normalized_amount_in,
             token_id: msg.asset_in.token.to_string(),
             spender: CrossChainUser::new(
                 ChainUid::vsl_chain_uid()?,
@@ -168,13 +177,17 @@ pub fn ibc_execute_swap(
     // Should reject full execution if failed
     response = response.add_message(approve_voucher_msg);
 
+    // Voucher partner fees handled here; native-asset partner fees handled at factory in ack_swap_request
     if msg.asset_in.token_type.is_voucher()
         && !msg.partner_fee_amount.is_zero()
         && msg.partner_fee_recipient != sender
     {
+        // Voucher partner fees are already in 24-decimal units
+        let normalized_partner_fee = msg.partner_fee_amount;
+
         let transfer_voucher_msg =
             euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(ExecuteTransfer {
-                amount: msg.partner_fee_amount,
+                amount: normalized_partner_fee,
                 token_id: msg.asset_in.token.to_string(),
                 sender: Some(sender.clone()),
                 to: msg.partner_fee_recipient.clone(),
@@ -198,25 +211,12 @@ pub fn ibc_execute_swap(
             )
             .add_attribute("partner_fee_amount", msg.partner_fee_amount.to_string());
     }
-    //     let liquidity_response: GetLiquidityResponse = deps.querier.query(
-    //         &cosmwasm_std::QueryRequest::Wasm(cosmwasm_std::WasmQuery::Smart {
-    //             contract_addr: first_swap.vlp_address.clone(),
-    //             msg: to_json_binary(&euclid::msgs::stable_vlp::QueryMsg::Liquidity {})?,
-    //         }),
-    //     )?;
-    //    let swap_msg =  if liquidity_response.token_1_reserve == liquidity_response.token_2_reserve {
-    //         return Err(ContractError::Generic {
-    //             err: "Liquidity is not enough".to_string(),
-    //         });
-    //     } else {
-
-    //     }
 
     let swap_msg = msgs::vlp::base::ExecuteMsg::Swap(VlpSwapMsg {
         sender: sender.clone(),
         asset_in: msg.asset_in.token.clone(),
-        amount_in: msg.amount_in,
-        min_token_out: msg.min_amount_out,
+        amount_in: normalized_amount_in,
+        min_token_out: normalized_min_amount_out,
         next_swaps: next_swaps.to_vec(),
         tx_id: msg.tx_id.clone(),
         test_fail: first_swap.test_fail,
@@ -232,7 +232,7 @@ pub fn ibc_execute_swap(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::Uint128;
+    use cosmwasm_std::Uint256;
     use euclid::{
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
@@ -244,7 +244,7 @@ mod tests {
 
     use crate::{
         reply::SWAP_REPLY_ID,
-        state::{ESCROW_BALANCES, PENDING_SWAPS},
+        state::PENDING_SWAPS,
         testing::helpers::{call_reusable, make_swap_deps_with_mock_querier},
     };
 
@@ -258,18 +258,19 @@ mod tests {
                 token: token_a.clone(),
                 token_type: TokenType::Native {
                     denom: "uaaa".to_string(),
+                    decimals: Some(6),
                 },
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: token_b.clone(),
-            min_amount_out: Uint128::new(80),
+            min_amount_out: Uint256::from(80u128),
             swaps: vec![NextSwapPair {
                 token_in: token_a,
                 token_out: token_b,
                 test_fail: None,
             }],
             recipients: vec![],
-            partner_fee_amount: Uint128::zero(),
+            partner_fee_amount: Uint256::zero(),
             partner_fee_recipient: sender,
             tx_id: tx_id.to_string(),
         })
@@ -279,7 +280,6 @@ mod tests {
     fn test_ibc_swap_saves_pending_and_emits_submsg() {
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let mut deps = make_swap_deps_with_mock_querier(90);
-        let token_a = Token::create("aaa".to_string()).unwrap();
 
         let res = call_reusable(
             &mut deps,
@@ -296,14 +296,6 @@ mod tests {
         assert!(
             PENDING_SWAPS.has(deps.as_ref().storage, "tx_swap".to_string()),
             "expected PENDING_SWAPS entry"
-        );
-        let escrow = ESCROW_BALANCES
-            .load(deps.as_ref().storage, (token_a.to_string(), chain_uid))
-            .unwrap();
-        assert_eq!(
-            escrow,
-            Uint128::new(100),
-            "escrow balance should equal amount_in"
         );
     }
 

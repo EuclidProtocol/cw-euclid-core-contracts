@@ -4,12 +4,14 @@ use std::ops::Deref;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     coin, ensure, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, StdError,
-    StdResult, Uint128, WasmMsg,
+    StdResult, Uint128, Uint256, WasmMsg,
 };
 use cw_storage_plus::{Key, KeyDeserialize, Prefixer, PrimaryKey};
 
+use crate::chain::ChainUid;
 use crate::cross_chain_user::CrossChainUser;
 use crate::error::ContractError;
+use crate::voucher::VOUCHER_DECIMAL;
 
 // Token asset that represents an identifier for a token
 #[cw_serde]
@@ -67,7 +69,7 @@ impl Token {
     pub fn create_voucher_transfer_msg(
         &self,
         virtual_balance_address: String,
-        amount: Uint128,
+        amount: Uint256,
         // Only router should be able to set the sender
         sender: Option<CrossChainUser>,
         to: CrossChainUser,
@@ -95,7 +97,7 @@ impl Token {
         Ok(transfer_msg)
     }
 
-    pub fn with_amount(&self, amount: Uint128) -> TokenWithAmount {
+    pub fn with_amount(&self, amount: Uint256) -> TokenWithAmount {
         TokenWithAmount {
             token: self.clone(),
             amount,
@@ -231,8 +233,8 @@ impl Pair {
 
     pub fn get_pair_with_amount(
         &self,
-        reserve_1: Uint128,
-        reserve_2: Uint128,
+        reserve_1: Uint256,
+        reserve_2: Uint256,
     ) -> Result<PairWithAmount, ContractError> {
         PairWithAmount::new(
             self.token_1.with_amount(reserve_1),
@@ -296,8 +298,14 @@ impl KeyDeserialize for Pair {
 }
 #[cw_serde]
 pub enum TokenType {
-    Native { denom: String },
-    Smart { contract_address: String },
+    Native {
+        denom: String,
+        decimals: Option<u32>,
+    },
+    Smart {
+        contract_address: String,
+        decimals: Option<u32>,
+    },
     Voucher {},
 }
 
@@ -313,8 +321,22 @@ impl TokenType {
 
     pub fn get_smart_contract_address(&self) -> Result<String, ContractError> {
         match self {
-            TokenType::Smart { contract_address } => Ok(contract_address.clone()),
+            TokenType::Smart {
+                contract_address, ..
+            } => Ok(contract_address.clone()),
             _ => Err(ContractError::new("Token is not smart")),
+        }
+    }
+
+    pub fn get_decimals(&self) -> Result<u32, ContractError> {
+        match self {
+            TokenType::Smart { decimals, .. } => Ok(decimals.ok_or(ContractError::new(
+                "Decimal field is required for smart tokens",
+            ))?),
+            TokenType::Native { decimals, .. } => Ok(decimals.ok_or(ContractError::new(
+                "Decimal field is required for native tokens",
+            ))?),
+            TokenType::Voucher { .. } => Ok(VOUCHER_DECIMAL),
         }
     }
 
@@ -322,9 +344,34 @@ impl TokenType {
         matches!(self, TokenType::Voucher { .. })
     }
 
+    pub fn query_decimals(&self, deps: &Deps) -> Result<u32, ContractError> {
+        match self {
+            TokenType::Native { .. } => {
+                // let denom_metadata = deps.querier.query_denom_metadata(denom.clone())?;
+                // let matched_unit = denom_metadata
+                //     .denom_units
+                //     .iter()
+                //     .find(|unit| unit.denom == denom.clone())
+                //     .ok_or(ContractError::new("Denom metadata not found"))?;
+                // Ok(matched_unit.exponent)
+                Err(ContractError::new("Native tokens are not supported"))
+            }
+            TokenType::Smart {
+                contract_address, ..
+            } => {
+                let token_info: cw20::TokenInfoResponse = deps.querier.query_wasm_smart(
+                    contract_address.clone(),
+                    &cw20_base::msg::QueryMsg::TokenInfo {},
+                )?;
+                Ok(token_info.decimals.into())
+            }
+            TokenType::Voucher { .. } => Ok(VOUCHER_DECIMAL),
+        }
+    }
+
     /// Validates smart contract addresses, checks against empty denom and zero supply
     pub fn validate(&self, deps: &Deps) -> Result<(), ContractError> {
-        if let Self::Native { denom } = &self {
+        if let Self::Native { denom, .. } = &self {
             let potential_supply = deps.querier.query_supply(denom.clone())?;
             let non_zero_supply = !potential_supply.amount.is_zero();
             ensure!(
@@ -333,7 +380,10 @@ impl TokenType {
                     asset: denom.clone()
                 }
             );
-        } else if let Self::Smart { contract_address } = &self {
+        } else if let Self::Smart {
+            contract_address, ..
+        } = &self
+        {
             let contract = deps
                 .querier
                 .query_wasm_contract_info(contract_address.clone());
@@ -349,20 +399,22 @@ impl TokenType {
         Ok(())
     }
 
-    pub fn get_balance(&self, deps: Deps, address: String) -> Result<Uint128, ContractError> {
+    pub fn get_balance(&self, deps: Deps, address: String) -> Result<Uint256, ContractError> {
         match self.clone() {
-            TokenType::Native { denom } => {
+            TokenType::Native { denom, .. } => {
                 let balance = deps.querier.query_balance(address, denom)?;
-                Ok(balance.amount)
+                Ok(Uint256::from(balance.amount))
             }
-            TokenType::Smart { contract_address } => {
+            TokenType::Smart {
+                contract_address, ..
+            } => {
                 let balance_msg = cw20::Cw20QueryMsg::Balance {
                     address: address.clone(),
                 };
                 let balance: cw20::BalanceResponse = deps
                     .querier
                     .query_wasm_smart(contract_address, &balance_msg)?;
-                Ok(balance.balance)
+                Ok(Uint256::from(balance.balance))
             }
             TokenType::Voucher { .. } => Err(ContractError::new(
                 "Cannot get balance of voucher using this function",
@@ -372,16 +424,47 @@ impl TokenType {
 
     pub fn get_key(&self) -> String {
         match self.clone() {
-            TokenType::Native { denom } => format!("native:{denom}"),
-            TokenType::Smart { contract_address } => format!("smart:{contract_address}"),
+            TokenType::Native { denom, .. } => format!("native:{denom}"),
+            TokenType::Smart {
+                contract_address, ..
+            } => format!("smart:{contract_address}"),
             TokenType::Voucher { .. } => "voucher".to_string(),
+        }
+    }
+
+    pub fn get_type(&self) -> &str {
+        match self {
+            TokenType::Native { .. } => "native",
+            TokenType::Smart { .. } => "smart",
+            TokenType::Voucher { .. } => "voucher",
+        }
+    }
+
+    pub fn is_same_type(&self, other: &TokenType) -> bool {
+        self.get_type() == other.get_type()
+    }
+
+    pub fn from_key(key: String) -> Result<Self, ContractError> {
+        match key.split(":").collect::<Vec<&str>>().as_slice() {
+            ["native", denom] => Ok(TokenType::Native {
+                denom: denom.to_string(),
+                decimals: None,
+            }),
+            ["smart", contract_address] => Ok(TokenType::Smart {
+                contract_address: contract_address.to_string(),
+                decimals: None,
+            }),
+            ["voucher"] => Ok(TokenType::Voucher {}),
+            _ => Err(ContractError::new("Invalid token type key")),
         }
     }
 
     pub fn get_denom(&self) -> Result<String, ContractError> {
         match self.clone() {
-            TokenType::Native { denom } => Ok(denom),
-            TokenType::Smart { contract_address } => Ok(contract_address),
+            TokenType::Native { denom, .. } => Ok(denom),
+            TokenType::Smart {
+                contract_address, ..
+            } => Ok(contract_address),
             TokenType::Voucher { .. } => Err(ContractError::new("Voucher has no denom")),
         }
     }
@@ -389,44 +472,50 @@ impl TokenType {
     // Create Cosmos Msg depending on type of token
     pub fn create_transfer_msg(
         &self,
-        amount: Uint128,
+        amount: Uint256,
         recipient: String,
         allowance: Option<String>,
         forwarding_message: Option<Binary>,
     ) -> Result<CosmosMsg, ContractError> {
         let msg = match self.clone() {
-            TokenType::Native { denom } => {
+            TokenType::Native { denom, .. } => {
+                let amount_u128 = Uint128::try_from(amount)
+                    .map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))?;
                 if let Some(forwarding_message) = forwarding_message {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: recipient.to_string(),
                         msg: forwarding_message.clone(),
-                        funds: vec![coin(amount.u128(), denom.clone())],
+                        funds: vec![coin(amount_u128.u128(), denom.clone())],
                     })
                 } else {
                     CosmosMsg::Bank(BankMsg::Send {
                         to_address: recipient,
                         amount: vec![Coin {
                             denom: denom.to_string(),
-                            amount,
+                            amount: amount_u128,
                         }],
                     })
                 }
             }
-            TokenType::Smart { contract_address } => {
+            TokenType::Smart {
+                contract_address, ..
+            } => {
+                let amount_u128 = Uint128::try_from(amount)
+                    .map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))?;
                 if let Some(forwarding_message) = forwarding_message {
                     CosmosMsg::Wasm(WasmMsg::Execute {
                         contract_addr: contract_address.to_string(),
                         msg: match allowance {
                             Some(owner) => to_json_binary(&cw20_base::msg::ExecuteMsg::SendFrom {
                                 owner,
-                                amount,
+                                amount: amount_u128,
                                 contract: recipient.to_string(),
                                 msg: forwarding_message.clone(),
                             })?,
                             None => to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
                                 contract: recipient.to_string(),
                                 msg: forwarding_message.clone(),
-                                amount,
+                                amount: amount_u128,
                             })?,
                         },
                         funds: vec![],
@@ -439,12 +528,12 @@ impl TokenType {
                                 to_json_binary(&cw20_base::msg::ExecuteMsg::TransferFrom {
                                     owner,
                                     recipient,
-                                    amount,
+                                    amount: amount_u128,
                                 })?
                             }
                             None => to_json_binary(&cw20_base::msg::ExecuteMsg::Transfer {
                                 recipient,
-                                amount,
+                                amount: amount_u128,
                             })?,
                         },
                         funds: vec![],
@@ -460,20 +549,24 @@ impl TokenType {
 
     pub fn create_escrow_msg(
         &self,
-        amount: Uint128,
+        amount: Uint256,
         escrow_contract: Addr,
     ) -> Result<CosmosMsg, ContractError> {
+        let amount_u128 = Uint128::try_from(amount)
+            .map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))?;
         let msg: CosmosMsg = match self {
-            Self::Native { denom } => CosmosMsg::Wasm(WasmMsg::Execute {
+            Self::Native { denom, .. } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: escrow_contract.into_string(),
                 msg: to_json_binary(&crate::msgs::escrow::ExecuteMsg::DepositNative {})?,
-                funds: vec![coin(amount.u128(), denom)],
+                funds: vec![coin(amount_u128.u128(), denom)],
             }),
-            Self::Smart { contract_address } => CosmosMsg::Wasm(WasmMsg::Execute {
+            Self::Smart {
+                contract_address, ..
+            } => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_address.clone(),
                 msg: to_json_binary(&cw20_base::msg::ExecuteMsg::Send {
                     contract: escrow_contract.to_string(),
-                    amount,
+                    amount: amount_u128,
                     msg: to_json_binary(&crate::msgs::escrow::cw20::EscrowCw20HookMsg::Deposit {})?,
                 })?,
                 funds: vec![],
@@ -489,13 +582,13 @@ impl TokenType {
 #[cw_serde]
 pub struct TokenWithAmount {
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
 pub struct TokenWithDenomAndAmount {
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub token_type: TokenType,
 }
 
@@ -524,7 +617,7 @@ pub struct TokenWithDenom {
 impl TokenWithDenom {
     pub fn create_transfer_msg(
         &self,
-        amount: Uint128,
+        amount: Uint256,
         recipient: String,
         allowance: Option<String>,
         forwarding_message: Option<Binary>,
@@ -535,13 +628,13 @@ impl TokenWithDenom {
 
     pub fn create_escrow_msg(
         &self,
-        amount: Uint128,
+        amount: Uint256,
         escrow_contract: Addr,
     ) -> Result<CosmosMsg, ContractError> {
         self.token_type.create_escrow_msg(amount, escrow_contract)
     }
 
-    pub fn with_amount(&self, amount: Uint128) -> TokenWithDenomAndAmount {
+    pub fn with_amount(&self, amount: Uint256) -> TokenWithDenomAndAmount {
         TokenWithDenomAndAmount {
             token: self.token.clone(),
             amount,
@@ -593,8 +686,8 @@ impl PairWithDenom {
 
     pub fn get_pair_with_amount(
         &self,
-        token_1_amount: Uint128,
-        token_2_amount: Uint128,
+        token_1_amount: Uint256,
+        token_2_amount: Uint256,
     ) -> Result<PairWithAmount, ContractError> {
         PairWithAmount::new(
             self.token_1.token.with_amount(token_1_amount),
@@ -604,8 +697,8 @@ impl PairWithDenom {
 
     pub fn with_amount(
         &self,
-        token_1_amount: Uint128,
-        token_2_amount: Uint128,
+        token_1_amount: Uint256,
+        token_2_amount: Uint256,
     ) -> Result<PairWithDenomAndAmount, ContractError> {
         Ok(PairWithDenomAndAmount {
             token_1: self.token_1.with_amount(token_1_amount),
@@ -650,12 +743,33 @@ impl PairWithDenomAndAmount {
     }
 }
 
+#[cw_serde]
+pub struct TokenMetadata {
+    pub token: Token,
+    pub chain_uid: ChainUid,
+    pub token_type: TokenType,
+    // If false, the token is not allowed to be used in the contract
+    pub allowed: bool,
+}
+
+impl TokenMetadata {
+    pub fn new(token: Token, chain_uid: ChainUid, token_type: TokenType) -> Self {
+        Self {
+            token,
+            chain_uid,
+            token_type,
+            allowed: true,
+        }
+    }
+}
+
 #[cfg(test)]
 use cosmwasm_std::testing::mock_dependencies;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     struct TestToken {
         name: &'static str,
@@ -781,16 +895,18 @@ mod tests {
                 pair_with_denom: PairWithDenomAndAmount {
                     token_1: TokenWithDenomAndAmount {
                         token: Token("ABC".to_string()),
-                        amount: Uint128::from(100u128),
+                        amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom1".to_string(),
+                            decimals: None,
                         },
                     },
                     token_2: TokenWithDenomAndAmount {
                         token: Token("ABC".to_string()),
-                        amount: Uint128::from(100u128),
+                        amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom2".to_string(),
+                            decimals: None,
                         },
                     },
                 },
@@ -801,16 +917,18 @@ mod tests {
                 pair_with_denom: PairWithDenomAndAmount {
                     token_1: TokenWithDenomAndAmount {
                         token: Token("ABC".to_string()),
-                        amount: Uint128::from(100u128),
+                        amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom1".to_string(),
+                            decimals: None,
                         },
                     },
                     token_2: TokenWithDenomAndAmount {
                         token: Token("DEF".to_string()),
-                        amount: Uint128::from(100u128),
+                        amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom2".to_string(),
+                            decimals: None,
                         },
                     },
                 },
@@ -821,16 +939,18 @@ mod tests {
                 pair_with_denom: PairWithDenomAndAmount {
                     token_1: TokenWithDenomAndAmount {
                         token: Token("ABC".to_string()),
-                        amount: Uint128::from(100u128),
+                        amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom1".to_string(),
+                            decimals: None,
                         },
                     },
                     token_2: TokenWithDenomAndAmount {
                         token: Token("AbC".to_string()),
-                        amount: Uint128::from(100u128),
+                        amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom2".to_string(),
+                            decimals: None,
                         },
                     },
                 },
@@ -841,16 +961,18 @@ mod tests {
                 pair_with_denom: PairWithDenomAndAmount {
                     token_1: TokenWithDenomAndAmount {
                         token: Token("ABC".to_string()),
-                        amount: Uint128::from(100u128),
+                        amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom1".to_string(),
+                            decimals: None,
                         },
                     },
                     token_2: TokenWithDenomAndAmount {
                         token: Token("".to_string()),
-                        amount: Uint128::from(100u128),
+                        amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom2".to_string(),
+                            decimals: None,
                         },
                     },
                 },
@@ -867,5 +989,38 @@ mod tests {
                 assert!(res.is_ok())
             }
         }
+    }
+
+    #[rstest]
+    #[case(TokenType::Native { denom: "uatom".to_string(), decimals: None }, "native:uatom")]
+    #[case(TokenType::Native { denom: "ibc/abc123".to_string(), decimals: None }, "native:ibc/abc123")]
+    #[case(TokenType::Smart { contract_address: "cosmos1abc".to_string(), decimals: None }, "smart:cosmos1abc")]
+    #[case(TokenType::Voucher {}, "voucher")]
+    fn test_token_type_get_key(#[case] token_type: TokenType, #[case] expected: &str) {
+        assert_eq!(token_type.get_key(), expected);
+    }
+
+    #[rstest]
+    #[case("native:uatom", Ok(TokenType::Native { denom: "uatom".to_string(), decimals: None }))]
+    #[case("native:ibc/abc123", Ok(TokenType::Native { denom: "ibc/abc123".to_string(), decimals: None }))]
+    #[case("smart:cosmos1abc", Ok(TokenType::Smart { contract_address: "cosmos1abc".to_string(), decimals: None  }))]
+    #[case("voucher", Ok(TokenType::Voucher {}))]
+    #[case("invalid", Err(ContractError::new("Invalid token type key")))]
+    #[case("", Err(ContractError::new("Invalid token type key")))]
+    #[case("unknown:value", Err(ContractError::new("Invalid token type key")))]
+    fn test_token_type_from_key(
+        #[case] key: &str,
+        #[case] expected: Result<TokenType, ContractError>,
+    ) {
+        assert_eq!(TokenType::from_key(key.to_string()), expected);
+    }
+
+    #[rstest]
+    #[case(TokenType::Native { denom: "uosmo".to_string(), decimals: None })]
+    #[case(TokenType::Smart { contract_address: "cosmos1xyz".to_string(), decimals: None })]
+    #[case(TokenType::Voucher {})]
+    fn test_token_type_key_roundtrip(#[case] original: TokenType) {
+        let recovered = TokenType::from_key(original.get_key()).unwrap();
+        assert_eq!(recovered, original);
     }
 }

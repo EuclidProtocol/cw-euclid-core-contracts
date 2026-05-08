@@ -10,7 +10,7 @@ use crate::{
     token::Pair,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Decimal256, Uint128, Uint64};
+use cosmwasm_std::{Addr, Decimal256, Uint256, Uint64};
 use cw_asset::AssetInfo;
 // The amplification factor for the stableswap invariant, default is 1000
 pub const DEFAULT_AMP_FACTOR: Uint64 = Uint64::new(1000);
@@ -89,7 +89,7 @@ pub struct GetStateResponse {
     pub fee: Fee,
     pub total_fees_collected: TotalFees,
     pub last_updated: u64,
-    pub total_lp_tokens: Uint128,
+    pub total_lp_tokens: Uint256,
     pub pool_config: PoolConfig,
 }
 
@@ -105,15 +105,15 @@ pub struct TotalFeesResponse {
 
 #[cw_serde]
 pub struct TotalFeesPerDenomResponse {
-    pub lp_fees: Uint128,
-    pub euclid_fees: Uint128,
+    pub lp_fees: Uint256,
+    pub euclid_fees: Uint256,
 }
 
 #[cw_serde]
 pub struct StablePoolResponse {
-    pub lp_shares: Uint128,
-    pub reserve_1: Uint128,
-    pub reserve_2: Uint128,
+    pub lp_shares: Uint256,
+    pub reserve_1: Uint256,
+    pub reserve_2: Uint256,
 }
 
 #[cw_serde]

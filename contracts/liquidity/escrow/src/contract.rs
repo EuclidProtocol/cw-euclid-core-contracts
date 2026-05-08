@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128,
+    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint256,
 };
 
 use cw2::set_contract_version;
@@ -33,7 +33,7 @@ pub fn instantiate(
         token_id: msg.token_id.clone(),
         // Set the sender as the factory address, since we want the factory to instantiate the escrow.
         factory_address: info.sender.clone(),
-        total_amount: Uint128::zero(),
+        total_amount: Uint256::zero(),
     };
     STATE.save(deps.storage, &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -108,7 +108,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env},
-        Addr, Uint128,
+        Addr, Uint128, Uint256,
     };
     use euclid::{
         error::ContractError,
@@ -148,7 +148,7 @@ mod tests {
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state.token_id, token());
         assert_eq!(state.factory_address, factory);
-        assert_eq!(state.total_amount, Uint128::zero());
+        assert_eq!(state.total_amount, Uint256::zero());
     }
 
     #[test]
@@ -163,7 +163,7 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&deps.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::zero());
+        assert_eq!(bal, Uint256::zero());
     }
 
     #[test]
@@ -227,7 +227,7 @@ mod tests {
         }
 
         let state = STATE.load(&deps.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(600));
+        assert_eq!(state.total_amount, Uint256::from(600u128));
 
         let info = message_info(&factory, &[]);
         execute(
@@ -236,7 +236,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::new(150),
+                amount: Uint256::from(150u128),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -244,12 +244,12 @@ mod tests {
         .unwrap();
 
         let state = STATE.load(&deps.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(450));
+        assert_eq!(state.total_amount, Uint256::from(450u128));
 
         let bal = DENOM_TO_AMOUNT
             .load(&deps.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::new(450));
+        assert_eq!(bal, Uint256::from(450u128));
     }
 
     #[test]
@@ -295,7 +295,7 @@ mod tests {
             finfo.clone(),
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::new(500),
+                amount: Uint256::from(500u128),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -305,9 +305,9 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&deps.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::zero());
+        assert_eq!(bal, Uint256::zero());
 
         let state = STATE.load(&deps.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::zero());
+        assert_eq!(state.total_amount, Uint256::zero());
     }
 }

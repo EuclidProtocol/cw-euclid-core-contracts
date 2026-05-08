@@ -72,7 +72,9 @@ pub fn instantiate(
     RATE_LIMIT_STATE.save(
         deps.storage,
         &RateLimitState {
-            free_limit: msg.rate_limit_free_limit.u128(),
+            free_limit: cosmwasm_std::Uint128::try_from(msg.rate_limit_free_limit)
+                .unwrap()
+                .u128(),
             fee_brackets: vec![],
         },
     )?;
@@ -194,13 +196,14 @@ pub fn execute(
 
             let mut amount_in = msg.amount_in;
             // If this asset is native, lets get the actual amount of funds sent because these amount can vary depending on forwarding contract swaps
-            if let TokenType::Native { denom } = &msg.asset_in.token_type {
+            if let TokenType::Native { denom, .. } = &msg.asset_in.token_type {
                 amount_in = info
                     .funds
                     .iter()
                     .find(|fund| fund.denom == *denom)
                     .ok_or(ContractError::InsufficientFunds {})?
-                    .amount;
+                    .amount
+                    .into();
             }
             ensure!(
                 amount_in.ge(&msg.amount_in),
@@ -324,7 +327,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, Uint128,
+        to_json_binary, Addr, Uint128, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -424,7 +427,7 @@ mod tests {
             relayer_contract: Addr::unchecked(TEST_RELAYER),
             rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),
             rate_limit_fee_denom: "uusd".to_string(),
-            rate_limit_free_limit: Uint128::new(100),
+            rate_limit_free_limit: Uint256::from(100u128),
         };
         assert!(instantiate(deps.as_mut(), mock_env(), info, msg).is_ok());
     }

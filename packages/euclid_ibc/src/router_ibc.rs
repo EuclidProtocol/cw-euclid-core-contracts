@@ -1,7 +1,7 @@
 use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, DepsMut, Env, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, DepsMut, Env, SubMsg, Uint256, WasmMsg};
 use euclid::{
     chain::{ChainType, ChainUid},
     cross_chain_user::CrossChainUser,
@@ -177,7 +177,7 @@ impl RouterCrossChainExecuteMsg {
 pub struct RouterCrossChainRemoveLiquidityExecuteMsg {
     // Factory will set this using info.sender
     pub sender: CrossChainUser,
-    pub lp_allocation: Uint128,
+    pub lp_allocation: Uint256,
     pub pair: Pair,
     pub recipient: CrossChainUser,
     // Unique per tx
@@ -191,14 +191,14 @@ pub struct RouterCrossChainSwapExecuteMsg {
 
     // User will provide this
     pub asset_in: TokenWithDenom,
-    pub amount_in: Uint128,
+    pub amount_in: Uint256,
     pub asset_out: Token,
-    pub min_amount_out: Uint128,
+    pub min_amount_out: Uint256,
     pub swaps: Vec<NextSwapPair>,
 
     // First element in array has highest priority
     pub recipients: Vec<Recipient>,
-    pub partner_fee_amount: Uint128,
+    pub partner_fee_amount: Uint256,
     pub partner_fee_recipient: CrossChainUser,
 
     // Unique per tx
@@ -210,7 +210,7 @@ pub struct RouterCrossChainTransferVoucherExecuteMsg {
     pub sender: CrossChainUser,
     // User will provide this
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub from: Option<CrossChainUser>,
     pub recipients: Vec<Recipient>,
     // Unique per tx
@@ -223,7 +223,7 @@ pub struct RouterCrossChainDepositTokenExecuteMsg {
     pub sender: CrossChainUser,
     // User will provide this
     pub asset_in: TokenWithDenom,
-    pub amount_in: Uint128,
+    pub amount_in: Uint256,
     pub recipients: Vec<Recipient>,
     // Unique per tx
     pub tx_id: String,

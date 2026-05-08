@@ -187,7 +187,8 @@ fn ack_pool_creation(
                     symbol: lp_token_instantiate_data.symbol,
                     decimals: lp_token_instantiate_data.decimals,
                     initial_balances: vec![Cw20Coin {
-                        amount: data.mint_lp_tokens,
+                        amount: cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                            .map_err(|e| ContractError::Std(e.into()))?,
                         address: data.sender.address,
                     }],
                     mint: lp_token_instantiate_data.mint,
@@ -200,7 +201,14 @@ fn ack_pool_creation(
                 label: "cw20".to_string(),
             });
             // Save lp shares against vlp address
-            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_contract, &data.mint_lp_tokens.into())?;
+            VLP_TO_LP_SHARES.save(
+                deps.storage,
+                data.vlp_contract,
+                &Int256::from(
+                    cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                        .map_err(|e| ContractError::Std(e.into()))?,
+                ),
+            )?;
 
             Ok(res.add_submessage(SubMsg {
                 id: LP_INSTANTIATE_REPLY_ID,
@@ -393,7 +401,10 @@ fn ack_add_liquidity(
             let shares = VLP_TO_LP_SHARES
                 .may_load(deps.storage, data.vlp_address.clone())?
                 .unwrap_or(Int256::zero());
-            let shares = shares.checked_add(data.mint_lp_tokens.into())?;
+            let shares = shares.checked_add(Int256::from(
+                cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                    .map_err(|e| ContractError::Std(e.into()))?,
+            ))?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
@@ -485,7 +496,10 @@ fn ack_remove_liquidity(
             let shares = VLP_TO_LP_SHARES
                 .may_load(deps.storage, data.vlp_address.clone())?
                 .unwrap_or(Int256::zero());
-            let shares = shares.checked_sub(data.burn_lp_tokens.into())?;
+            let shares = shares.checked_sub(Int256::from(
+                cosmwasm_std::Uint128::try_from(data.burn_lp_tokens)
+                    .map_err(|e| ContractError::Std(e.into()))?,
+            ))?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
@@ -712,7 +726,9 @@ fn ack_transfer_request(
 mod tests {
     use super::*;
     use cosmwasm_std::{
-        attr, testing::mock_dependencies, testing::mock_env, to_json_binary, Addr, Uint128,
+        attr,
+        testing::{mock_dependencies, mock_env},
+        to_json_binary, Addr, Uint128, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -775,16 +791,18 @@ mod tests {
         PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: Token::create(t1.to_string()).unwrap(),
-                amount: Uint128::new(a1),
+                amount: Uint256::from(a1),
                 token_type: TokenType::Native {
                     denom: d1.to_string(),
+                    decimals: None,
                 },
             },
             token_2: TokenWithDenomAndAmount {
                 token: Token::create(t2.to_string()).unwrap(),
-                amount: Uint128::new(a2),
+                amount: Uint256::from(a2),
                 token_type: TokenType::Native {
                     denom: d2.to_string(),
+                    decimals: None,
                 },
             },
         }
@@ -819,7 +837,7 @@ mod tests {
         let ack = to_json_binary(&AcknowledgementMsg::Ok(PoolCreationResponse {
             vlp_contract: "vlp1".to_string(),
             tx_id: "tx1".to_string(),
-            mint_lp_tokens: Uint128::new(100),
+            mint_lp_tokens: Uint256::from(100u128),
             sender: cross_chain_user(sender.as_str()),
         }))
         .unwrap();
@@ -1185,7 +1203,7 @@ mod tests {
             add_liquidity_msg(sender.as_str(), "no_tx"),
             to_json_binary(&AcknowledgementMsg::Ok(
                 euclid::liquidity::AddLiquidityResponse {
-                    mint_lp_tokens: Uint128::new(0),
+                    mint_lp_tokens: Uint256::zero(),
                     vlp_address: "vlp".to_string(),
                     tx_id: "no_tx".to_string(),
                     sender: cross_chain_user(sender.as_str()),
@@ -1268,7 +1286,7 @@ mod tests {
         .unwrap();
         RouterCrossChainExecuteMsg::RemoveLiquidity(RouterCrossChainRemoveLiquidityExecuteMsg {
             sender: cross_chain_user(sender_addr),
-            lp_allocation: Uint128::new(50),
+            lp_allocation: Uint256::from(50u128),
             pair,
             recipient: cross_chain_user(sender_addr),
             tx_id: tx_id.to_string(),
@@ -1296,7 +1314,7 @@ mod tests {
                 &RemoveLiquidityRequest {
                     sender: sender.to_string(),
                     tx_id: tx_id.to_string(),
-                    lp_allocation: Uint128::new(50),
+                    lp_allocation: Uint256::from(50u128),
                     pair,
                     lp_token: Addr::unchecked("lp_token_addr"),
                 },
@@ -1387,12 +1405,12 @@ mod tests {
         RouterCrossChainExecuteMsg::Swap(RouterCrossChainSwapExecuteMsg {
             sender: cross_chain_user(sender_addr),
             asset_in: native_token("aaa", "uaaa"),
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: Token::create("bbb".to_string()).unwrap(),
-            min_amount_out: Uint128::new(90),
+            min_amount_out: Uint256::from(90u128),
             swaps: vec![],
             recipients: vec![],
-            partner_fee_amount: Uint128::zero(),
+            partner_fee_amount: Uint256::zero(),
             partner_fee_recipient: cross_chain_user(sender_addr),
             tx_id: tx_id.to_string(),
         })
@@ -1402,12 +1420,12 @@ mod tests {
         RouterCrossChainExecuteMsg::Swap(RouterCrossChainSwapExecuteMsg {
             sender: cross_chain_user(sender_addr),
             asset_in: crate::testing::helpers::voucher_token("aaa"),
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: Token::create("bbb".to_string()).unwrap(),
-            min_amount_out: Uint128::new(90),
+            min_amount_out: Uint256::from(90u128),
             swaps: vec![],
             recipients: vec![],
-            partner_fee_amount: Uint128::zero(),
+            partner_fee_amount: Uint256::zero(),
             partner_fee_recipient: cross_chain_user(sender_addr),
             tx_id: tx_id.to_string(),
         })
@@ -1431,12 +1449,12 @@ mod tests {
                     sender: sender.to_string(),
                     tx_id: tx_id.to_string(),
                     asset_in,
-                    amount_in: Uint128::new(100),
+                    amount_in: Uint256::from(100u128),
                     asset_out: Token::create("bbb".to_string()).unwrap(),
-                    min_amount_out: Uint128::new(90),
+                    min_amount_out: Uint256::from(90u128),
                     swaps: vec![],
                     recipients: vec![],
-                    partner_fee_amount: Uint128::zero(),
+                    partner_fee_amount: Uint256::zero(),
                     partner_fee_recipient: Addr::unchecked(sender.as_str()),
                 },
             )
@@ -1454,7 +1472,7 @@ mod tests {
             mock_env(),
             swap_msg(sender.as_str(), "no_tx"),
             to_json_binary(&AcknowledgementMsg::Ok(euclid::swap::SwapResponse {
-                amount_out: Uint128::new(90),
+                amount_out: Uint256::from(90u128),
                 tx_id: "no_tx".to_string(),
             }))
             .unwrap(),
@@ -1533,7 +1551,7 @@ mod tests {
         );
 
         let ack = to_json_binary(&AcknowledgementMsg::Ok(euclid::swap::SwapResponse {
-            amount_out: Uint128::new(90),
+            amount_out: Uint256::from(90u128),
             tx_id: tx_id.to_string(),
         }))
         .unwrap();
@@ -1562,7 +1580,7 @@ mod tests {
         RouterCrossChainExecuteMsg::DepositToken(RouterCrossChainDepositTokenExecuteMsg {
             sender: cross_chain_user(sender_addr),
             asset_in: native_token("aaa", "uaaa"),
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             recipients: vec![],
             tx_id: tx_id.to_string(),
         })
@@ -1585,7 +1603,7 @@ mod tests {
                     sender: sender.to_string(),
                     tx_id: tx_id.to_string(),
                     asset_in: native_token("aaa", "uaaa"),
-                    amount_in: Uint128::new(100),
+                    amount_in: Uint256::from(100u128),
                 },
             )
             .unwrap();
@@ -1603,7 +1621,7 @@ mod tests {
             deposit_msg(sender.as_str(), "no_tx"),
             to_json_binary(&AcknowledgementMsg::Ok(
                 euclid::deposit::DepositTokenResponse {
-                    amount: Uint128::new(100),
+                    amount: Uint256::from(100u128),
                     token: Token::create("aaa".to_string()).unwrap(),
                     sender: cross_chain_user(sender.as_str()),
                 },
@@ -1651,7 +1669,7 @@ mod tests {
         RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
             sender: cross_chain_user(sender_addr),
             token: Token::create("aaa".to_string()).unwrap(),
-            amount: Uint128::new(50),
+            amount: Uint256::from(50u128),
             from: None,
             recipients: vec![],
             tx_id: tx_id.to_string(),

@@ -176,6 +176,25 @@ impl RunStats {
             format_duration(total_time),
         );
     }
+
+    /// Merge another `RunStats` into this one.
+    pub fn merge(&mut self, other: &RunStats) {
+        self.success_count += other.success_count;
+        self.error_count += other.error_count;
+        self.total_ops += other.total_ops;
+        for (name, count) in &other.op_counts {
+            *self.op_counts.entry(name).or_default() += count;
+        }
+        for (name, timing) in &other.timings {
+            let entry = self.timings.entry(name).or_insert_with(OpTiming::new);
+            entry.count += timing.count;
+            entry.failures += timing.failures;
+            entry.total += timing.total;
+            entry.min = entry.min.min(timing.min);
+            entry.max = entry.max.max(timing.max);
+            entry.sum_sq_us += timing.sum_sq_us;
+        }
+    }
 }
 
 /// Format a Duration as a human-readable string (e.g., "1h 23m 45s").

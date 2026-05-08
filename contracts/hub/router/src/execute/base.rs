@@ -402,7 +402,7 @@ fn process_transfer_voucher_meta_transaction(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
-        to_json_binary, Addr, Uint128,
+        to_json_binary, Addr, Uint256,
     };
     use euclid::{
         admin::AdminType,
@@ -651,7 +651,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateReleaseFee {
                 token: token.clone(),
                 chain_uid: chain_uid.clone(),
-                release_fee: Uint128::new(50),
+                release_fee: Uint256::from(50u128),
             }),
         )
         .unwrap();
@@ -659,7 +659,7 @@ mod tests {
             RELEASE_FEES
                 .load(initialized.as_ref().storage, (token, chain_uid))
                 .unwrap(),
-            Uint128::new(50)
+            Uint256::from(50u128)
         );
     }
 
@@ -674,7 +674,7 @@ mod tests {
             env.clone(),
             info.clone(),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateDefaultReleaseFee {
-                default_release_fee: Uint128::new(100),
+                default_release_fee: Uint256::from(100u128),
             }),
         )
         .unwrap();
@@ -967,7 +967,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateReleaseFee {
                 token: Token::create("usdc".to_string()).unwrap(),
                 chain_uid: ChainUid::create("chain1".to_string()).unwrap(),
-                release_fee: Uint128::new(20),
+                release_fee: Uint256::from(20u128),
             }),
         )
         .unwrap();
@@ -986,7 +986,7 @@ mod tests {
             mock_env(),
             message_info(&random, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateDefaultReleaseFee {
-                default_release_fee: Uint128::new(42),
+                default_release_fee: Uint256::from(42u128),
             }),
         )
         .unwrap_err();
@@ -997,7 +997,7 @@ mod tests {
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateDefaultReleaseFee {
-                default_release_fee: Uint128::new(42),
+                default_release_fee: Uint256::from(42u128),
             }),
         )
         .unwrap();
@@ -1300,6 +1300,7 @@ mod tests {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: Some(6),
                 },
             },
             tx_id: "tx1".to_string(),
@@ -1330,18 +1331,19 @@ mod tests {
                 token: token_a.clone(),
                 token_type: TokenType::Native {
                     denom: "uaaa".to_string(),
+                    decimals: Some(6),
                 },
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: token_b,
-            min_amount_out: Uint128::new(80),
+            min_amount_out: Uint256::from(80u128),
             swaps: vec![NextSwapPair {
                 token_in: token_a,
                 token_out: Token::create("bbb".to_string()).unwrap(),
                 test_fail: None,
             }],
             recipients: vec![],
-            partner_fee_amount: Uint128::zero(),
+            partner_fee_amount: Uint256::zero(),
             partner_fee_recipient: sender.clone(),
             tx_id: "tx_meta_swap".to_string(),
         };
@@ -1375,16 +1377,16 @@ mod tests {
                 token: token_a.clone(),
                 token_type: TokenType::Voucher {},
             },
-            amount_in: Uint128::new(100),
+            amount_in: Uint256::from(100u128),
             asset_out: token_b,
-            min_amount_out: Uint128::new(80),
+            min_amount_out: Uint256::from(80u128),
             swaps: vec![NextSwapPair {
                 token_in: token_a,
                 token_out: Token::create("bbb".to_string()).unwrap(),
                 test_fail: None,
             }],
             recipients: vec![],
-            partner_fee_amount: Uint128::zero(),
+            partner_fee_amount: Uint256::zero(),
             partner_fee_recipient: real_sender.clone(),
             tx_id: "tx_mismatch".to_string(),
         };

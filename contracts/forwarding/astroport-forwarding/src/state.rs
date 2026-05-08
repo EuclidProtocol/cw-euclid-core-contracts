@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 use cw_storage_plus::Item;
 use forwarding::msgs::astroport::SwapMsg;
 use forwarding::msgs::common_old::TokenType;
@@ -13,8 +13,8 @@ pub const STATE: Item<State> = Item::new("state");
 #[cw_serde]
 pub struct ForwardingState {
     pub from_token: TokenType,
-    pub from_amount: Uint128,
-    pub previous_balance: Uint128,
+    pub from_amount: Uint256,
+    pub previous_balance: Uint256,
     pub swap_msg: SwapMsg,
 }
 

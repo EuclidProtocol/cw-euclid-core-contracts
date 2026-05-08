@@ -17,7 +17,7 @@ use euclid::{
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     ensure, to_json_binary, Decimal, Decimal256, Deps, DepsMut, Env, Isqrt, MessageInfo, Response,
-    SubMsg, Uint128, Uint512, Uint64, WasmMsg,
+    SubMsg, Uint256, Uint512, Uint64, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use euclid::msgs::vlp::base::PoolCreationResponse;
@@ -25,19 +25,19 @@ use euclid::msgs::vlp::base::PoolCreationResponse;
 use crate::stable_math::{compute_d, compute_stable_swap};
 use euclid::utils::math::Decimal256Ext;
 
-pub const MINIMUM_LIQUIDITY: u128 = 1000;
+pub const MINIMUM_LIQUIDITY: u128 = 1_000_000_000; // 10^9
 
 #[cw_serde]
 pub struct SwapResult {
-    pub return_amount: Uint128,
-    pub spread_amount: Uint128,
+    pub return_amount: Uint256,
+    pub spread_amount: Uint256,
 }
 
 // Function to calculate the asset to be recieved after a swap
 pub fn calculate_cp_swap(
-    swap_amount: Uint128,
-    reserve_in: Uint128,
-    reserve_out: Uint128,
+    swap_amount: Uint256,
+    reserve_in: Uint256,
+    reserve_out: Uint256,
 ) -> Result<SwapResult, ContractError> {
     let reserve_in = Uint512::from(reserve_in);
     let reserve_out = Uint512::from(reserve_out);
@@ -51,13 +51,13 @@ pub fn calculate_cp_swap(
     // Calculate the amount of token 2 to be recieved
     let token_2_recieved = reserve_out.checked_sub(new_reserve_out)?;
     let mut token_2_recieved =
-        Uint128::try_from(token_2_recieved).map_err(|_| ContractError::new("Overflow"))?;
+        Uint256::try_from(token_2_recieved).map_err(|_| ContractError::new("Overflow"))?;
 
     let ideal_return_amount = reserve_out
         .checked_mul(swap_amount.into())?
         .checked_div(reserve_in)?;
     let ideal_return_amount =
-        Uint128::try_from(ideal_return_amount).map_err(|_| ContractError::new("Overflow"))?;
+        Uint256::try_from(ideal_return_amount).map_err(|_| ContractError::new("Overflow"))?;
 
     if ideal_return_amount < token_2_recieved {
         // If ideal return amount is less than actual return amount, then set the spread amount to 0 and return the ideal return amount as the return amount
@@ -73,12 +73,12 @@ pub fn calculate_cp_swap(
 }
 
 pub fn calculate_lp_allocation(
-    token_1_amount: Uint128,
-    token_2_amount: Uint128,
-    total_liquidity_1: Uint128,
-    total_liquidity_2: Uint128,
-    total_lp_supply: Uint128,
-) -> Result<Uint128, ContractError> {
+    token_1_amount: Uint256,
+    token_2_amount: Uint256,
+    total_liquidity_1: Uint256,
+    total_liquidity_2: Uint256,
+    total_lp_supply: Uint256,
+) -> Result<Uint256, ContractError> {
     let token_1_amount = Uint512::from(token_1_amount);
     let token_2_amount = Uint512::from(token_2_amount);
     let total_liquidity_1 = Uint512::from(total_liquidity_1);
@@ -87,38 +87,44 @@ pub fn calculate_lp_allocation(
 
     // IF LP supply is 0 use original function
     if total_lp_supply.is_zero() {
-        let sq_root = Uint128::try_from(Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?))
+        let sq_root = Uint256::try_from(Isqrt::isqrt(token_1_amount.checked_mul(token_2_amount)?))
             .map_err(|_| ContractError::new("Overflow total supply"))?;
         return Ok(sq_root);
     }
+    let lp_alloc_1 = safe_lp_math(token_1_amount, total_liquidity_1, total_lp_supply)?;
+    let lp_alloc_2 = safe_lp_math(token_2_amount, total_liquidity_2, total_lp_supply)?;
 
-    let lp_allocation = token_1_amount
+    let lp_allocation = lp_alloc_1.min(lp_alloc_2);
+
+    Uint256::try_from(lp_allocation).map_err(|_| ContractError::new("Overflow lp allocation"))
+}
+
+fn safe_lp_math(
+    amount: Uint512,
+    liquidity: Uint512,
+    total_lp_supply: Uint512,
+) -> Result<Uint512, ContractError> {
+    let lp_allocation = amount
         .checked_mul(total_lp_supply)?
-        .checked_div(total_liquidity_1)?
-        .min(
-            token_2_amount
-                .checked_mul(total_lp_supply)?
-                .checked_div(total_liquidity_2)?,
-        );
-
-    Uint128::try_from(lp_allocation).map_err(|_| ContractError::new("Overflow lp allocation"))
+        .checked_div(liquidity)?;
+    Ok(lp_allocation)
 }
 
 fn calculate_stable_lp_allocation(
-    amount_1: Uint128,
-    amount_2: Uint128,
-    reserve_1: Uint128,
-    reserve_2: Uint128,
-    total_lp_supply: Uint128,
+    amount_1: Uint256,
+    amount_2: Uint256,
+    reserve_1: Uint256,
+    reserve_2: Uint256,
+    total_lp_supply: Uint256,
     amp: Uint64,
-) -> Result<Uint128, ContractError> {
+) -> Result<Uint256, ContractError> {
     let pools_new = [
         Decimal256::checked_from_integer(reserve_1.checked_add(amount_1)?)?,
         Decimal256::checked_from_integer(reserve_2.checked_add(amount_2)?)?,
     ];
     if total_lp_supply.is_zero() {
         let d = compute_d(amp, &pools_new).map_err(|e| ContractError::new(&e.to_string()))?;
-        return Ok(d.to_uint128_with_precision(0u32)?);
+        return Ok(d.to_uint256_with_precision(0u32)?);
     }
     let pools_old = [
         Decimal256::checked_from_integer(reserve_1)?,
@@ -135,7 +141,7 @@ fn calculate_stable_lp_allocation(
     let lp_allocation = lp_supply_dec
         .checked_multiply_ratio(increase, d_old)
         .map_err(|e| ContractError::new(&e.to_string()))?
-        .to_uint128_with_precision(0u32)?;
+        .to_uint256_with_precision(0u32)?;
     Ok(lp_allocation)
 }
 
@@ -210,6 +216,11 @@ pub fn update_amp_factor(
         info.sender == admin.general_admin,
         ContractError::Unauthorized {}
     );
+    use crate::stable_math::MIN_AMP;
+    ensure!(
+        amp_factor.u64() >= MIN_AMP,
+        ContractError::new(&format!("Amp factor must be at least {MIN_AMP}"))
+    );
     amp_factor_storage.save(deps.storage, &amp_factor)?;
     Ok(Response::new()
         .add_attribute("action", "update_amp_factor")
@@ -240,7 +251,7 @@ pub fn register_pool(
     env: Env,
     info: MessageInfo,
     state_storage: &Item<State>,
-    chain_lp_tokens: &Map<ChainUid, Uint128>,
+    chain_lp_tokens: &Map<ChainUid, Uint256>,
     amp_factor: Option<Uint64>,
     sender: CrossChainUser,
     pair: Pair,
@@ -263,12 +274,12 @@ pub fn register_pool(
     );
 
     // Store the pool in the map
-    chain_lp_tokens.save(deps.storage, sender.chain_uid.clone(), &Uint128::zero())?;
+    chain_lp_tokens.save(deps.storage, sender.chain_uid.clone(), &Uint256::zero())?;
 
     let ack = PoolCreationResponse {
         vlp_contract: env.contract.address.to_string(),
         tx_id: tx_id.clone(),
-        mint_lp_tokens: Uint128::zero(),
+        mint_lp_tokens: Uint256::zero(),
         sender: sender.clone(),
     };
     let pool_type = if amp_factor.is_some() {
@@ -301,10 +312,10 @@ pub fn remove_liquidity(
     env: Env,
     info: MessageInfo,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
-    chain_lp_tokens_storage: &Map<ChainUid, Uint128>,
+    balances_storage: &Map<Token, Uint256>,
+    chain_lp_tokens_storage: &Map<ChainUid, Uint256>,
     sender: CrossChainUser,
-    lp_allocation: Uint128,
+    lp_allocation: Uint256,
     tx_id: String,
 ) -> Result<Response, ContractError> {
     // Get the pool for the chain_id provided
@@ -323,13 +334,13 @@ pub fn remove_liquidity(
 
     // Fetch allocated liquidity to LP tokens
     let lp_tokens = state.total_lp_tokens;
-    let lp_share = Decimal::checked_from_ratio(lp_allocation, lp_tokens)
+    let lp_share = Decimal256::checked_from_ratio(lp_allocation, lp_tokens)
         .map_err(|err| ContractError::new(&err.to_string()))?;
 
     // Calculate tokens_1 to send
-    let token_1_liquidity = total_reserve_1.checked_mul_ceil(lp_share)?;
+    let token_1_liquidity = total_reserve_1.checked_mul_floor(lp_share)?;
     // Calculate tokens_2 to send
-    let token_2_liquidity = total_reserve_2.checked_mul_ceil(lp_share)?;
+    let token_2_liquidity = total_reserve_2.checked_mul_floor(lp_share)?;
 
     let liquidity_released = pair.get_pair_with_amount(token_1_liquidity, token_2_liquidity)?;
 
@@ -356,7 +367,7 @@ pub fn remove_liquidity(
 
     let token_1_transfer_msg = pair.token_1.create_voucher_transfer_msg(
         state.virtual_balance_contract.to_string(),
-        token_1_liquidity,
+        token_1_liquidity.into(),
         None,
         sender.clone(),
         None,
@@ -365,7 +376,7 @@ pub fn remove_liquidity(
 
     let token_2_transfer_msg = pair.token_2.create_voucher_transfer_msg(
         state.virtual_balance_contract.to_string(),
-        token_2_liquidity,
+        token_2_liquidity.into(),
         None,
         sender.clone(),
         None,
@@ -401,9 +412,9 @@ pub fn add_liquidity(
     env: Env,
     info: MessageInfo,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
-    chain_lp_tokens_storage: &Map<ChainUid, Uint128>,
-    collateral_lp_tokens_storage: &Item<Uint128>,
+    balances_storage: &Map<Token, Uint256>,
+    chain_lp_tokens_storage: &Map<ChainUid, Uint256>,
+    collateral_lp_tokens_storage: &Item<Uint256>,
     sender: CrossChainUser,
     liquidity: PairWithAmount,
     slippage_tolerance_bps: u64,
@@ -419,7 +430,7 @@ pub fn add_liquidity(
         // Contract should have approval to use voucher tokens on behalf of sender
         let virtual_balance_transfer_msg = token.token.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            token.amount,
+            token.amount.into(),
             None,
             CrossChainUser {
                 address: env.contract.address.to_string(),
@@ -494,8 +505,14 @@ pub fn add_liquidity(
     state.total_lp_tokens = state.total_lp_tokens.checked_add(lp_allocation)?;
 
     let lp_allocation = if is_new_pool {
-        collateral_lp_tokens_storage.save(deps.storage, &Uint128::from(MINIMUM_LIQUIDITY))?;
-        lp_allocation.checked_sub(Uint128::from(MINIMUM_LIQUIDITY))?
+        collateral_lp_tokens_storage.save(deps.storage, &Uint256::from(MINIMUM_LIQUIDITY))?;
+        lp_allocation
+            .checked_sub(Uint256::from(MINIMUM_LIQUIDITY))
+            .map_err(|e: cosmwasm_std::OverflowError| {
+                ContractError::Generic {
+                    err: format!("Min liquidity check failed with error: {}. Got {lp_allocation} LP but minimum is {MINIMUM_LIQUIDITY} LP.", e),
+                }
+            })?
     } else {
         lp_allocation
     };
@@ -561,21 +578,21 @@ pub enum SwapCalculationMethod {
 
 #[cw_serde]
 pub struct PreSwapResponse {
-    pub lp_fee: Uint128,
-    pub euclid_fee: Uint128,
-    pub swap_amount: Uint128,
-    pub receive_amount: Uint128,
+    pub lp_fee: Uint256,
+    pub euclid_fee: Uint256,
+    pub swap_amount: Uint256,
+    pub receive_amount: Uint256,
     pub asset_out: Token,
-    pub spread_amount: Uint128,
+    pub spread_amount: Uint256,
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn pre_swap(
     deps: &Deps,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
+    balances_storage: &Map<Token, Uint256>,
     asset_in: &Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     calculation_method: SwapCalculationMethod,
     test_fail: Option<bool>,
 ) -> Result<PreSwapResponse, ContractError> {
@@ -632,11 +649,11 @@ pub fn execute_swap(
     env: Env,
     info: MessageInfo,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
+    balances_storage: &Map<Token, Uint256>,
     sender: CrossChainUser,
     asset_in: Token,
-    amount_in: Uint128,
-    min_token_out: Uint128,
+    amount_in: Uint256,
+    min_token_out: Uint256,
     tx_id: String,
     next_swaps: Vec<NextSwapVlp>,
     calculation_method: SwapCalculationMethod,
@@ -658,7 +675,7 @@ pub fn execute_swap(
     // Swap needs approval to use voucher tokens
     let transfer_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
         euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-            amount: amount_in,
+            amount: amount_in.into(),
             token_id: asset_in.to_string(),
             from: Some(voucher_sender.clone()),
             to: CrossChainUser {
@@ -753,7 +770,7 @@ pub fn execute_swap(
 
         let euclid_fee_transfer_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
             euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-                amount: euclid_fee,
+                amount: euclid_fee.into(),
                 token_id: asset_in.to_string(),
                 to: fee.recipient,
                 from: None,
@@ -777,7 +794,7 @@ pub fn execute_swap(
             let virtual_balance_approve_msg =
                 euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(
                     euclid::msgs::virtual_balance::msg::ExecuteApprove {
-                        amount: swap_response.amount_out,
+                        amount: swap_response.amount_out.into(),
                         token_id: swap_response.asset_out.to_string(),
 
                         owner: CrossChainUser {
@@ -836,7 +853,7 @@ pub fn execute_swap(
             let virtual_balance_transfer_msg =
                 euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
                     euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-                        amount: swap_response.amount_out,
+                        amount: swap_response.amount_out.into(),
                         token_id: swap_response.asset_out.to_string(),
 
                         // Destination Address
@@ -892,9 +909,9 @@ pub fn execute_swap(
 pub fn simulate_swap(
     deps: Deps,
     state_storage: &Item<State>,
-    balances_storage: &Map<Token, Uint128>,
+    balances_storage: &Map<Token, Uint256>,
     asset_in: Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     calculation_method: SwapCalculationMethod,
 ) -> Result<GetSwapQueryResponse, ContractError> {
     let pre_swap_response = pre_swap(
@@ -917,10 +934,10 @@ pub fn simulate_swap(
 }
 
 pub fn calculate_amount_from_shares(
-    reserve: Uint128,
-    shares: Uint128,
-    total_shares: Uint128,
-) -> Result<Uint128, ContractError> {
+    reserve: Uint256,
+    shares: Uint256,
+    total_shares: Uint256,
+) -> Result<Uint256, ContractError> {
     let amount = reserve.checked_multiply_ratio(shares, total_shares)?;
     Ok(amount)
 }

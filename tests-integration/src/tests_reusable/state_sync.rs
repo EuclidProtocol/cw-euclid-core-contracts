@@ -2,7 +2,7 @@
 
 use crate::helpers::chains::{get_escrow, get_virtual_balance, get_vlp};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::{CwOrchQuery, Environment};
 use euclid::chain::ChainUid;
@@ -11,6 +11,7 @@ use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::base::GetLiquidityQueryResponse;
+use euclid::normalize::normalize_voucher_to_token;
 use euclid::recipient::Recipient;
 use euclid::token::{Pair, Token};
 use euclid::utils::pagination::Pagination;
@@ -22,7 +23,7 @@ use router::RouterContract;
 pub struct VoucherBalanceState {
     pub recipient: CrossChainUser,
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
@@ -30,24 +31,24 @@ pub struct UserFundsState {
     pub chain_uid: ChainUid,
     pub user_addr: String,
     pub denom: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
 pub struct EscrowBalanceState {
     pub chain_uid: ChainUid,
     pub token: Token,
-    pub factory_escrow_balance: Uint128,
-    pub router_escrow_balance: Uint128,
+    pub factory_escrow_balance: Uint256,
+    pub router_escrow_balance: Uint256,
 }
 
 #[cw_serde]
 pub struct VlpBalanceState {
     pub pair: Pair,
     pub vlp_address: String,
-    pub token_1_reserve: Uint128,
-    pub token_2_reserve: Uint128,
-    pub total_lp_tokens: Uint128,
+    pub token_1_reserve: Uint256,
+    pub token_2_reserve: Uint256,
+    pub total_lp_tokens: Uint256,
 }
 
 #[cw_serde]
@@ -67,7 +68,7 @@ pub struct UserFundsQuery {
 }
 
 impl StateSync {
-    pub fn voucher_balance(&self, recipient: &CrossChainUser, token: &Token) -> Option<Uint128> {
+    pub fn voucher_balance(&self, recipient: &CrossChainUser, token: &Token) -> Option<Uint256> {
         self.voucher_balances
             .iter()
             .find(|entry| &entry.recipient == recipient && &entry.token == token)
@@ -79,7 +80,7 @@ impl StateSync {
         chain_uid: &ChainUid,
         user_addr: &str,
         denom: &str,
-    ) -> Option<Uint128> {
+    ) -> Option<Uint256> {
         self.user_funds
             .iter()
             .find(|entry| {
@@ -99,10 +100,6 @@ impl StateSync {
             .iter()
             .find(|entry| &entry.chain_uid == chain_uid && &entry.token == token)
     }
-
-    // pub fn vlp_balance(&self, pair: &Pair) -> Option<&VlpBalanceState> {
-    //     self.vlp_balances.iter().find(|entry| &entry.pair == pair)
-    // }
 }
 
 pub(crate) fn sync_state(
@@ -120,20 +117,44 @@ pub(crate) fn sync_state(
         &router.get_state().unwrap().virtual_balance_address,
     );
 
+    let all_metadata = virtual_balance_contract
+        .get_all_token_metadata(None)
+        .unwrap()
+        .metadata;
+
     let voucher_balances = recipients
         .iter()
         .filter(|recipient| recipient.denom.is_voucher())
         .flat_map(|recipient| {
-            voucher_tokens.iter().map(|token| VoucherBalanceState {
-                recipient: recipient.recipient.clone(),
-                token: token.clone(),
-                amount: virtual_balance_contract
+            voucher_tokens.iter().map(|token| {
+                let amount = virtual_balance_contract
                     .get_balance(BalanceKey {
                         cross_chain_user: recipient.recipient.clone(),
                         token_id: token.to_string(),
                     })
                     .unwrap()
-                    .amount,
+                    .amount;
+
+                // De-normalize amount to token's original decimals for easier testing
+                let metadata = all_metadata
+                    .iter()
+                    .find(|m| m.token == *token && m.chain_uid == recipient.recipient.chain_uid);
+
+                let de_normalized_amount = if let Some(metadata) = metadata {
+                    normalize_voucher_to_token(amount, metadata.token_type.get_decimals().unwrap())
+                        .unwrap()
+                } else {
+                    panic!(
+                        "No metadata found for token {:?} on chain {:?} — sync_state cannot de-normalize",
+                        token, recipient.recipient.chain_uid
+                    );
+                };
+
+                VoucherBalanceState {
+                    recipient: recipient.recipient.clone(),
+                    token: token.clone(),
+                    amount: de_normalized_amount,
+                }
             })
         })
         .collect();
@@ -144,13 +165,15 @@ pub(crate) fn sync_state(
             chain_uid: query.chain_uid.clone(),
             user_addr: query.user_addr.clone(),
             denom: query.denom.clone(),
-            amount: query
-                .chain
-                .query_balance(
-                    &Addr::unchecked(query.user_addr.clone()),
-                    query.denom.as_str(),
-                )
-                .unwrap(),
+            amount: Uint256::from(
+                query
+                    .chain
+                    .query_balance(
+                        &Addr::unchecked(query.user_addr.clone()),
+                        query.denom.as_str(),
+                    )
+                    .unwrap(),
+            ),
         })
         .collect();
 
@@ -161,17 +184,14 @@ pub(crate) fn sync_state(
                 .state()
                 .unwrap()
                 .total_amount;
-            let router_escrow_balance = router
-                .query_token_escrows(
-                    Pagination::new(Some(escrow_chain_uid.clone()), None, None, Some(1)),
-                    token.clone(),
-                )
+            let router_escrow_balance: Uint256 = virtual_balance_contract
+                .get_token_escrows(token.to_string(), None)
                 .unwrap()
-                .chains
+                .escrows
                 .iter()
-                .find(|chain| chain.chain_uid == escrow_chain_uid)
+                .filter(|chain| chain.chain_uid == escrow_chain_uid)
                 .map(|chain| chain.balance)
-                .unwrap_or(Uint128::zero());
+                .fold(Uint256::zero(), |acc, b| acc + b);
 
             EscrowBalanceState {
                 chain_uid: escrow_chain_uid.clone(),

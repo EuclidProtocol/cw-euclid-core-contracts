@@ -97,7 +97,7 @@ ActivateRoot { root_id: String }
 ```
 Withdraw {
   root_id: String,
-  amount: Uint128,
+  amount: Uint256,
   nonce: u64,
   leaf: WithdrawalLeaf,
   proof: Vec<MerkleProofStep>,
@@ -204,12 +204,12 @@ Notes:
 ## Message Types
 
 ```
-AssetTotal { token_id: String, amount: Uint128 }
+AssetTotal { token_id: String, amount: Uint256 }
 
 WithdrawalLeaf {
   user: String,
   token_id: String,
-  balance: Uint128,
+  balance: Uint256,
 }
 
 MerkleProofStep {
@@ -223,7 +223,7 @@ PermitData {
   root_id: String,
   user: String,
   token_id: String,
-  amount: Uint128,
+  amount: Uint256,
   nonce: u64,
   destination_chain_uid: String,
   destination: String,

@@ -1574,6 +1574,7 @@ dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
  "quote",
+ "rstest",
  "schemars",
  "serde",
  "syn 1.0.109",
@@ -2973,6 +2974,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rstest_reuse"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88530b681abe67924d42cca181d070e3ac20e0740569441a9e35a7cedd2b34a4"
+dependencies = [
+ "quote",
+ "rand",
+ "rustc_version",
+ "syn 2.0.98",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3580,6 +3593,7 @@ dependencies = [
  "escrow",
  "euclid",
  "euclid-ibc",
+ "euclid-pool",
  "euclid-relayer",
  "factory",
  "ibc-relayer-types 0.32.2",
@@ -3592,6 +3606,7 @@ dependencies = [
  "relayer",
  "router",
  "rstest",
+ "rstest_reuse",
  "sha2 0.10.8",
  "sha3",
  "stable_vlp",

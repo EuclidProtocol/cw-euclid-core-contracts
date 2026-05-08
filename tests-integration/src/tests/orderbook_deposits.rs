@@ -1,6 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, Uint128};
+use cosmwasm_std::Addr;
+use cosmwasm_std::{to_json_binary, to_json_string, Binary, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::CallAs;
 use cw_orch::prelude::ContractInstance;
@@ -24,6 +25,7 @@ use euclid::{
         ExecuteMint, ExecuteMsg as VirtualBalanceExecuteMsg, GetBalanceResponse,
         QueryMsg as VirtualBalanceQueryMsg,
     },
+    token::{Token, TokenMetadata, TokenType},
     voucher::BalanceKey,
 };
 use k256::ecdsa::SigningKey;
@@ -55,7 +57,7 @@ struct WithdrawTestContext {
 #[test]
 fn deposit_and_query_flow() {
     let token_id = "token1".to_string();
-    let deposit_amount = Uint128::new(500);
+    let deposit_amount = Uint256::from(500u128);
     let chain_uid = ChainUid::vsl_chain_uid().unwrap();
 
     let sender = "sender_for_all_chains";
@@ -99,12 +101,26 @@ fn deposit_and_query_flow() {
     virtual_balance_contract.set_sender(&router.address().unwrap());
     virtual_balance_contract
         .execute(
+            &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
+                token_metadata: TokenMetadata::new(
+                    Token::create(token_id.clone()).unwrap(),
+                    chain_uid.clone(),
+                    TokenType::Voucher {},
+                ),
+            },
+            &[],
+        )
+        .unwrap();
+    virtual_balance_contract
+        .execute(
             &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
                 amount: deposit_amount,
                 balance_key: BalanceKey {
                     cross_chain_user: CrossChainUser::new(chain_uid.clone(), depositor.to_string()),
                     token_id: token_id.clone(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: chain_uid.clone(),
             }),
             &[],
         )
@@ -171,8 +187,8 @@ fn deposit_and_query_flow() {
 #[test]
 fn withdraw_with_merkle_and_permit() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(500);
-    let withdraw_amount = Uint128::new(300);
+    let deposit_amount = Uint256::from(500u128);
+    let withdraw_amount = Uint256::from(300u128);
     let root_id = "root-1";
     let nonce = 1u64;
 
@@ -269,8 +285,8 @@ fn withdraw_with_merkle_and_permit() {
 #[test]
 fn same_nonce_new_permit_bytes_fails() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(500);
-    let withdraw_amount = Uint128::new(200);
+    let deposit_amount = Uint256::from(500u128);
+    let withdraw_amount = Uint256::from(200u128);
     let root_id = "root-1";
     let nonce = 3u64;
 
@@ -374,8 +390,8 @@ fn same_nonce_new_permit_bytes_fails() {
 #[test]
 fn same_nonce_after_root_rotation_fails() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(1_000);
-    let withdraw_amount = Uint128::new(300);
+    let deposit_amount = Uint256::from(1_000u128);
+    let withdraw_amount = Uint256::from(300u128);
     let nonce = 7u64;
     let root_one = "root-1";
     let root_two = "root-2";
@@ -497,9 +513,9 @@ fn same_nonce_after_root_rotation_fails() {
 #[test]
 fn different_nonce_still_succeeds() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(1_000);
-    let first_amount = Uint128::new(300);
-    let second_amount = Uint128::new(200);
+    let deposit_amount = Uint256::from(1_000u128);
+    let first_amount = Uint256::from(300u128);
+    let second_amount = Uint256::from(200u128);
     let root_id = "root-1";
 
     let mut context = setup_withdraw_test_context(0);
@@ -594,10 +610,10 @@ fn different_nonce_still_succeeds() {
 fn same_nonce_different_token_still_succeeds() {
     let first_token = "token1";
     let second_token = "token2";
-    let first_deposit = Uint128::new(500);
-    let second_deposit = Uint128::new(400);
-    let first_withdrawal = Uint128::new(200);
-    let second_withdrawal = Uint128::new(150);
+    let first_deposit = Uint256::from(500u128);
+    let second_deposit = Uint256::from(400u128);
+    let first_withdrawal = Uint256::from(200u128);
+    let second_withdrawal = Uint256::from(150u128);
     let nonce = 21u64;
 
     let mut context = setup_withdraw_test_context(0);
@@ -730,8 +746,8 @@ fn same_nonce_different_token_still_succeeds() {
 #[test]
 fn amount_above_leaf_balance_fails_without_nullifiers() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(500);
-    let withdraw_amount = Uint128::new(600);
+    let deposit_amount = Uint256::from(500u128);
+    let withdraw_amount = Uint256::from(600u128);
     let root_id = "root-1";
     let nonce = 42u64;
 
@@ -796,15 +812,15 @@ fn amount_above_leaf_balance_fails_without_nullifiers() {
     assert_eq!(query_user_deposit(&context, token_id), deposit_amount);
     assert_eq!(
         query_destination_balance(&context, token_id),
-        Uint128::zero()
+        Uint256::zero()
     );
 }
 
 #[test]
 fn withdraw_rejects_invalid_merkle_proof() {
     let token_id = "token1";
-    let deposit_amount = Uint128::new(500);
-    let withdraw_amount = Uint128::new(200);
+    let deposit_amount = Uint256::from(500u128);
+    let withdraw_amount = Uint256::from(200u128);
     let root_id = "root-invalid";
     let nonce = 7u64;
 
@@ -820,7 +836,7 @@ fn withdraw_rejects_invalid_merkle_proof() {
     let sibling = WithdrawalLeaf {
         user: "other".to_string(),
         token_id: token_id.to_string(),
-        balance: Uint128::zero(),
+        balance: Uint256::zero(),
     };
     let leaf_hash = hash_leaf(&leaf);
     let sibling_hash = hash_leaf(&sibling);
@@ -968,10 +984,23 @@ fn whitelist_token(context: &mut WithdrawTestContext, token_id: &str) {
         .unwrap();
 }
 
-fn deposit_token(context: &mut WithdrawTestContext, token_id: &str, deposit_amount: Uint128) {
+fn deposit_token(context: &mut WithdrawTestContext, token_id: &str, deposit_amount: Uint256) {
     context
         .virtual_balance_contract
         .set_sender(&context.router_address);
+    context
+        .virtual_balance_contract
+        .execute(
+            &VirtualBalanceExecuteMsg::RegisterTokenMetadata {
+                token_metadata: TokenMetadata::new(
+                    Token::create(token_id.to_string()).unwrap(),
+                    context.chain_uid.clone(),
+                    TokenType::Voucher {},
+                ),
+            },
+            &[],
+        )
+        .unwrap();
     context
         .virtual_balance_contract
         .execute(
@@ -984,6 +1013,8 @@ fn deposit_token(context: &mut WithdrawTestContext, token_id: &str, deposit_amou
                     ),
                     token_id: token_id.to_string(),
                 },
+                token_type: TokenType::Voucher {},
+                token_source_chain_uid: context.chain_uid.clone(),
             }),
             &[],
         )
@@ -1016,7 +1047,7 @@ fn build_permit_data(
     context: &WithdrawTestContext,
     root_id: &str,
     token_id: &str,
-    amount: Uint128,
+    amount: Uint256,
     nonce: u64,
     expiry: u64,
 ) -> PermitData {
@@ -1036,7 +1067,7 @@ fn build_root_and_proof(leaf: &WithdrawalLeaf) -> ([u8; 32], Vec<MerkleProofStep
     let sibling = WithdrawalLeaf {
         user: "other".to_string(),
         token_id: leaf.token_id.clone(),
-        balance: Uint128::zero(),
+        balance: Uint256::zero(),
     };
     let leaf_hash = hash_leaf(leaf);
     let sibling_hash = hash_leaf(&sibling);
@@ -1092,7 +1123,7 @@ fn activate_root(context: &mut WithdrawTestContext, root_id: &str, seconds: u64)
         .unwrap();
 }
 
-fn query_asset_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint128 {
+fn query_asset_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint256 {
     let asset_deposit: AssetDepositResponse = context
         .orderbook_deposits_contract
         .query(&OrderbookQueryMsg::AssetDeposit {
@@ -1102,7 +1133,7 @@ fn query_asset_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint128
     asset_deposit.amount
 }
 
-fn query_user_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint128 {
+fn query_user_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint256 {
     let user_deposit: UserDepositResponse = context
         .orderbook_deposits_contract
         .query(&OrderbookQueryMsg::UserDeposit {
@@ -1113,7 +1144,7 @@ fn query_user_deposit(context: &WithdrawTestContext, token_id: &str) -> Uint128 
     user_deposit.amount
 }
 
-fn query_destination_balance(context: &WithdrawTestContext, token_id: &str) -> Uint128 {
+fn query_destination_balance(context: &WithdrawTestContext, token_id: &str) -> Uint256 {
     let destination_balance: GetBalanceResponse = context
         .virtual_balance_contract
         .query(&VirtualBalanceQueryMsg::GetBalance {

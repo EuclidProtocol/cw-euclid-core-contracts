@@ -1,6 +1,6 @@
 use crate::msgs::hook::VoucherReceive;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Binary, Uint128};
+use cosmwasm_std::{Binary, Uint256};
 
 #[cw_serde]
 pub enum ExecuteMsg {
@@ -29,7 +29,7 @@ pub enum ExecuteMsg {
     },
     Withdraw {
         root_id: String,
-        amount: Uint128,
+        amount: Uint256,
         nonce: u64,
         leaf: WithdrawalLeaf,
         proof: Vec<MerkleProofStep>,
@@ -49,14 +49,14 @@ pub enum OrderbookDepositsStatus {
 #[cw_serde]
 pub struct AssetTotal {
     pub token_id: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
 pub struct WithdrawalLeaf {
     pub user: String,
     pub token_id: String,
-    pub balance: Uint128,
+    pub balance: Uint256,
 }
 
 #[cw_serde]
@@ -82,7 +82,7 @@ pub struct PermitData {
     pub root_id: String,
     pub user: String,
     pub token_id: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub nonce: u64,
     pub destination_chain_uid: String,
     pub destination: String,

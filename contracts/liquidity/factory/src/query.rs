@@ -1,4 +1,4 @@
-use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Env, Order, Uint128};
+use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Env, Order, Uint256};
 use cw_storage_plus::Bound;
 use euclid::{
     chain::{ChainType, CosmosChain},
@@ -111,7 +111,7 @@ pub fn query_all_tokens(deps: Deps) -> Result<Binary, ContractError> {
 pub fn pending_swaps(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);
@@ -132,7 +132,7 @@ pub fn pending_swaps(
 pub fn pending_liquidity(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);
@@ -154,7 +154,7 @@ pub fn pending_liquidity(
 pub fn pending_remove_liquidity(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);
@@ -215,7 +215,7 @@ pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError>
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, ContractResult, SystemResult, Uint128, WasmQuery,
+        to_json_binary, Addr, ContractResult, SystemResult, Uint128, Uint256, WasmQuery,
     };
     use euclid::{
         chain::ChainUid,
@@ -337,6 +337,7 @@ mod tests {
                 let resp = AllowedDenomsResponse {
                     denoms: vec![TokenType::Native {
                         denom: "uusdc".to_string(),
+                        decimals: None,
                     }],
                 };
                 SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
@@ -527,7 +528,7 @@ mod tests {
             relayer_contract: Addr::unchecked(TEST_RELAYER),
             rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),
             rate_limit_fee_denom: "uusd".to_string(),
-            rate_limit_free_limit: Uint128::new(100),
+            rate_limit_free_limit: Uint256::from(100u128),
         };
         crate::contract::instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 

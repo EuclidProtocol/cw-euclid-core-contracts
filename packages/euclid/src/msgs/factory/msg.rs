@@ -11,7 +11,7 @@ use crate::{
     utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128, Uint256};
 use cw20::Cw20ReceiveMsg;
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -24,7 +24,7 @@ pub struct InstantiateMsg {
     pub relayer_contract: Addr,
     pub rate_limit_fee_recipient: Addr,
     pub rate_limit_fee_denom: String,
-    pub rate_limit_free_limit: Uint128,
+    pub rate_limit_free_limit: Uint256,
 }
 
 #[cw_serde]
@@ -42,13 +42,13 @@ pub enum ExecuteMsg {
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     DepositToken {
         asset_in: TokenWithDenom,
-        amount_in: Uint128,
+        amount_in: Uint256,
         recipients: Vec<Recipient>,
         cross_chain_config: CrossChainConfig,
     },
     TransferVoucher {
         token_id: Token,
-        amount: Uint128,
+        amount: Uint256,
         // If user has approval for transfer, they can set the address to transfer from (Behaves like cw20 allowance)
         from: Option<CrossChainUser>,
         recipients: Vec<Recipient>,
@@ -130,9 +130,9 @@ pub enum ManageFactoryState {
 #[cw_serde]
 pub struct ExecuteSwapRequest {
     pub asset_in: TokenWithDenom,
-    pub amount_in: Uint128,
+    pub amount_in: Uint256,
     pub asset_out: Token,
-    pub min_amount_out: Uint128,
+    pub min_amount_out: Uint256,
     pub swaps: Vec<NextSwapPair>,
     pub recipients: Vec<Recipient>,
     pub partner_fee: Option<PartnerFee>,
@@ -166,17 +166,17 @@ pub enum QueryMsg {
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
         user: Addr,
-        pagination: Pagination<Uint128>,
+        pagination: Pagination<Uint256>,
     },
     #[returns(GetPendingLiquidityResponse)]
     PendingLiquidity {
         user: Addr,
-        pagination: Pagination<Uint128>,
+        pagination: Pagination<Uint256>,
     },
     #[returns(GetPendingRemoveLiquidityResponse)]
     PendingRemoveLiquidity {
         user: Addr,
-        pagination: Pagination<Uint128>,
+        pagination: Pagination<Uint256>,
     },
 
     #[returns(GetEscrowResponse)]
@@ -225,7 +225,7 @@ pub struct PartnerFeesCollectedResponse {
 
 #[cw_serde]
 pub struct PartnerFeesCollectedPerDenomResponse {
-    pub total: Uint128,
+    pub total: Uint256,
 }
 
 #[cw_serde]
@@ -251,15 +251,15 @@ pub struct RegisterFactoryResponse {
 #[cw_serde]
 pub struct ReleaseEscrowDenomsResponse {
     pub token_type: TokenType,
-    pub amount: Uint128,
-    pub new_balance: Uint128,
+    pub amount: Uint256,
+    pub new_balance: Uint256,
 }
 
 #[cw_serde]
 pub struct ReleaseEscrowResponse {
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub to_address: String,
-    pub escrow_balance: Uint128,
+    pub escrow_balance: Uint256,
 }
 
 #[cw_serde]
@@ -284,7 +284,7 @@ pub struct AllTokensResponse {
 #[cw_serde]
 pub struct FeeBracket {
     pub threshold: u128,
-    pub fee: Uint128,
+    pub fee: Uint256,
 }
 
 #[cw_serde]
