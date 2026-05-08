@@ -24,6 +24,13 @@ Steps to test:
 2. [Step 2]
 3. [Step 3]
 
+## Pre-PR Checklist
+
+- [ ] `cargo test` passes
+- [ ] `cargo test --features full_decimals` passes
+- [ ] `cargo fmt --check` passes
+- [ ] `cargo test -p tests-fuzz` passes
+
 ## Checklist
 
 - [ ] Self-review completed
