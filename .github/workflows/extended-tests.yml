@@ -20,6 +20,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: 1.86.0
           cache: true
 
       - name: Run fuzz tests
@@ -35,6 +36,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: 1.86.0
           cache: true
 
       - name: Run full decimals tests
