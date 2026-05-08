@@ -1,0 +1,43 @@
+name: Extended Tests
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  workflow_dispatch:
+
+concurrency:
+  group: extended-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: true
+
+      - name: Run fuzz tests
+        run: cargo test -p tests-fuzz --locked
+        env:
+          RUST_BACKTRACE: 1
+
+  full-decimals:
+    name: Full Decimals Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: true
+
+      - name: Run full decimals tests
+        run: cargo test -p tests-integration --features full_decimals --locked
+        env:
+          RUST_BACKTRACE: 1
