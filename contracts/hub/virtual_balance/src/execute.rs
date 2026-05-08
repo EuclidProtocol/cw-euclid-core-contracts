@@ -65,14 +65,27 @@ pub fn execute_mint(
     // Increment escrow balance (stores raw token amounts, not normalized)
     let escrow_key = get_escrow_balance_key(
         msg.balance_key.token_id.clone(),
-        msg.token_source_chain_uid,
-        msg.token_type,
+        msg.token_source_chain_uid.clone(),
+        msg.token_type.clone(),
     );
     let old_escrow = escrow_key.may_load(deps.storage)?.unwrap_or_default();
     let new_escrow = old_escrow.checked_add(msg.amount)?;
     escrow_key.save(deps.storage, &new_escrow)?;
 
     let response = Response::new()
+        .add_event(virtual_balance_change_event(
+            "voucher_mint",
+            &normalized_voucher_amount,
+            &msg.balance_key.cross_chain_user,
+            &msg.balance_key.token_id,
+        ))
+        .add_event(escrow_balance_change_event(
+            "voucher_mint",
+            &new_escrow,
+            &msg.balance_key.token_id,
+            &msg.token_source_chain_uid,
+            &msg.token_type,
+        ))
         .add_attribute("action", "execute_mint")
         .add_attribute("mint_amount", msg.amount)
         .add_attribute("normalized_amount", normalized_voucher_amount)

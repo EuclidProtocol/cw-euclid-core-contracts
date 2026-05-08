@@ -8,6 +8,7 @@ use crate::{
         GetBalanceResponse, GetTokenMetadataResponse, QueryMsg as VirtualBalanceQueryMsg,
     },
     token::Token,
+    utils::pagination::Pagination,
     voucher::BalanceKey,
 };
 
@@ -20,7 +21,7 @@ pub fn query_token_decimals(
         virtual_balance_addr,
         &VirtualBalanceQueryMsg::GetTokenMetadata {
             token_id: token.to_string(),
-            pagination: None,
+            pagination: Some(Pagination::new(None, None, None, Some(u64::MAX))),
         },
     )?;
     let first = resp.metadata.first().ok_or_else(|| {
