@@ -36,6 +36,7 @@ Steps to test:
 - [ ] Self-review completed
 - [ ] Tests added/updated (if applicable)
 - [ ] Documentation updated (if applicable)
+- [ ] CHANGELOG.md updated (if contracts or packages changed)
 
 ## Screenshots (if applicable)
 

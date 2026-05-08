@@ -73,7 +73,8 @@ If you'd like to contribute, please follow these steps:
 1. Create a new branch for your feature or bug fix
 2. Make your changes
 3. Test your changes thoroughly
-4. Create a pull request
+4. Update `CHANGELOG.md` under the current in progress release if your changes affect contracts or packages
+5. Create a pull request
 
 When creating a pull request, please use our pull [request template](https://github.com/EuclidProtocol/euclid-core-contracts/blob/add-readme/.github/PULL_REQUEST_TEMPLATE.md). This template will guide you through providing necessary information about your changes.
 

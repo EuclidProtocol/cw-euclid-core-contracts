@@ -115,3 +115,7 @@ pub struct EuclidAdmin {
 The `tests-integration` package includes all contracts as dev-dependencies and sets up multi-contract and multi-chain scenarios.
 
 When writing unit tests for a contract, use the `unit-test-writer` agent. It understands the project's test conventions (rstest parameterization, `MockDeps` fixtures, `init` helpers, state assertions). Invoke it via the `/write-tests <contract-path>` skill.
+
+### Changelog
+
+The project maintains a `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/) format. Each release is named after a star with a status (in progress, freezed, released). When making contract or package changes (not test only), add an entry under the current "in progress" section in the appropriate category (Added, Changed, Fixed, Deprecated, Removed, Security). Prefix entries with the contract or package name in brackets, e.g. `[router]`, `[euclid]`. One line per logical change. Event changes are especially important to track as they affect backend indexing.
