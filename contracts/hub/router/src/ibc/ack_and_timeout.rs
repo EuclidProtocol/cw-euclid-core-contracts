@@ -207,6 +207,7 @@ mod tests {
     fn setup_release_ack_deps(
         total_amount: Uint256,
         release_fee_amount: Uint256,
+        unsafe_refund_voucher: bool,
     ) -> cosmwasm_std::OwnedDeps<
         cosmwasm_std::MemoryStorage,
         cosmwasm_std::testing::MockApi,
@@ -234,7 +235,7 @@ mod tests {
                 &PendingReleaseVoucher {
                     total_amount,
                     release_fee_amount,
-                    unsafe_refund_voucher: false,
+                    unsafe_refund_voucher,
                 },
             )
             .unwrap();
@@ -254,7 +255,7 @@ mod tests {
         let total_amount = Uint256::from(200u128); // raw token units
         let release_fee = Uint256::from(10u128); // raw token units
 
-        let mut deps = setup_release_ack_deps(total_amount, release_fee);
+        let mut deps = setup_release_ack_deps(total_amount, release_fee, false);
 
         let sender = CrossChainUser::new(
             ChainUid::create("chain1".to_string()).unwrap(),
@@ -318,7 +319,7 @@ mod tests {
         let total_amount = Uint256::from(500u128); // raw 6-decimal token units
         let release_fee = Uint256::from(0u128);
 
-        let mut deps = setup_release_ack_deps(total_amount, release_fee);
+        let mut deps = setup_release_ack_deps(total_amount, release_fee, false);
 
         let sender = CrossChainUser::new(
             ChainUid::create("chain1".to_string()).unwrap(),
@@ -370,7 +371,7 @@ mod tests {
         let total_amount = Uint256::from(200u128);
         let release_fee = Uint256::from(15u128);
 
-        let mut deps = setup_release_ack_deps(total_amount, release_fee);
+        let mut deps = setup_release_ack_deps(total_amount, release_fee, false);
 
         let sender = CrossChainUser::new(
             ChainUid::create("chain1".to_string()).unwrap(),
@@ -417,5 +418,53 @@ mod tests {
         // Fee minted in raw token units (15), not voucher units
         assert_eq!(mint_msg.amount, Uint256::from(15u128));
         assert_eq!(mint_msg.balance_key.token_id, "usdc");
+    }
+
+    #[test]
+    fn test_unsafe_refund_voucher_mints_to_recipient() {
+        let total_amount = Uint256::from(100u128);
+        let release_fee = Uint256::from(5u128);
+
+        let mut deps = setup_release_ack_deps(total_amount, release_fee, true);
+
+        let sender = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "sender_addr".to_string(),
+        );
+        let recipient = CrossChainUser::new(
+            ChainUid::create("chain2".to_string()).unwrap(),
+            "recipient_addr".to_string(),
+        );
+
+        let res = ibc_ack_release_escrow(
+            deps.as_mut(),
+            mock_env(),
+            sender,
+            Token::create("usdc".to_string()).unwrap(),
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+            AcknowledgementMsg::<ReleaseEscrowResponse>::Error("escrow failed".to_string()),
+            recipient.clone(),
+            "tx_001".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(res.messages.len(), 1);
+        let mint_msg = match &res.messages[0].msg {
+            CosmosMsg::Wasm(WasmMsg::Execute { msg, .. }) => {
+                let parsed: euclid::msgs::virtual_balance::msg::ExecuteMsg =
+                    cosmwasm_std::from_json(msg).unwrap();
+                match parsed {
+                    euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(m) => m,
+                    _ => panic!("expected Mint message"),
+                }
+            }
+            _ => panic!("expected WasmMsg::Execute"),
+        };
+
+        assert_eq!(mint_msg.balance_key.cross_chain_user, recipient);
+        assert_eq!(mint_msg.amount, total_amount);
     }
 }

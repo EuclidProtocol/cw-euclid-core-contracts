@@ -1,7 +1,8 @@
 use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 #[allow(deprecated)]
 use crate::state::{
-    get_escrow_balance_key, get_token_metadata_key, BALANCES, STATE, VOUCHER_BALANCES,
+    get_escrow_balance_key, get_token_metadata_key, ALLOWANCES, BALANCES, STATE,
+    VOUCHER_ALLOWANCES, VOUCHER_BALANCES,
 };
 use cosmwasm_std::{ensure, entry_point, DepsMut, Env, Order, Response, Uint256};
 use cw2::set_contract_version;
@@ -9,7 +10,7 @@ use euclid::{
     error::ContractError,
     msgs::{
         router::{AllEscrowsResponse, QueryMsg as RouterQueryMsg},
-        virtual_balance::msg::{MigrateMsg, State},
+        virtual_balance::msg::{MigrateMsg, VoucherAllowance},
     },
     normalize::normalize_token_to_voucher,
     token::TokenMetadata,
@@ -119,19 +120,51 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
         balances_migrated += 1;
     }
 
+    // Phase 4: Migrate ALLOWANCES → VOUCHER_ALLOWANCES (normalize + remove old)
+    #[allow(deprecated)]
+    let old_allowances: Vec<_> = ALLOWANCES
+        .range(deps.storage, None, None, Order::Ascending)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut allowances_migrated = 0u64;
+    for (key, old_allowance) in old_allowances {
+        let token_id = &key.2;
+        let decimals = decimals_map.get(token_id).ok_or_else(|| {
+            ContractError::new(&format!(
+                "Missing decimals for token '{}' in token_metadata (allowance migration)",
+                token_id
+            ))
+        })?;
+        let normalized_amount =
+            normalize_token_to_voucher(Uint256::from(old_allowance.amount), *decimals)?;
+        VOUCHER_ALLOWANCES.save(
+            deps.storage,
+            key.clone(),
+            &VoucherAllowance {
+                spender: old_allowance.spender,
+                amount: normalized_amount,
+                expires_at: None,
+            },
+        )?;
+        #[allow(deprecated)]
+        ALLOWANCES.remove(deps.storage, key);
+        allowances_migrated += 1;
+    }
+
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::new()
         .add_attribute("method", "migrate")
         .add_attribute("metadata_seeded", metadata_count.to_string())
         .add_attribute("escrow_seeded", escrow_count.to_string())
-        .add_attribute("balances_migrated", balances_migrated.to_string()))
+        .add_attribute("balances_migrated", balances_migrated.to_string())
+        .add_attribute("allowances_migrated", allowances_migrated.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[allow(deprecated)]
-    use crate::state::{get_escrow_balance_key, ADMIN, BALANCES};
+    use crate::state::{get_escrow_balance_key, Allowance, ADMIN, ALLOWANCES, BALANCES};
     use cosmwasm_std::testing::{mock_env, MockQuerier};
     use cosmwasm_std::{
         from_json, to_json_binary, Addr, ContractResult, QuerierResult, SystemResult, Uint128,
@@ -142,7 +175,10 @@ mod tests {
         admin::EuclidAdmin,
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
-        msgs::router::{AllEscrowsResponse, EscrowResponse, QueryMsg as RouterQueryMsg},
+        msgs::{
+            router::{AllEscrowsResponse, EscrowResponse, QueryMsg as RouterQueryMsg},
+            virtual_balance::msg::State,
+        },
         token::{Token, TokenMetadata, TokenType},
         voucher::BalanceKey,
     };
@@ -441,5 +477,65 @@ mod tests {
         };
         let err = migrate(deps.as_mut(), mock_env(), msg).unwrap_err();
         assert!(err.to_string().contains("conflicting decimals"));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_migrate_normalizes_allowances_and_removes_old() {
+        let mut deps = make_deps(vec![]);
+
+        let chain = ChainUid::create("osmosis".to_string()).unwrap();
+        let owner = CrossChainUser::new(chain.clone(), "owner1".to_string());
+        let spender = CrossChainUser::new(chain, "spender1".to_string());
+        let balance_key = BalanceKey {
+            cross_chain_user: owner,
+            token_id: "usdc".to_string(),
+        }
+        .to_serialized_balance_key();
+
+        ALLOWANCES
+            .save(
+                deps.as_mut().storage,
+                balance_key.clone(),
+                &Allowance {
+                    spender: spender.clone(),
+                    amount: Uint128::from(500_000u128),
+                },
+            )
+            .unwrap();
+
+        let msg = MigrateMsg {
+            token_metadata: vec![TokenMetadata::new(
+                Token::create("usdc".to_string()).unwrap(),
+                ChainUid::create("osmosis".to_string()).unwrap(),
+                TokenType::Native {
+                    denom: "uusdc".to_string(),
+                    decimals: Some(6),
+                },
+            )],
+        };
+        let res = migrate(deps.as_mut(), mock_env(), msg).unwrap();
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "allowances_migrated")
+                .map(|a| a.value.as_str()),
+            Some("1")
+        );
+
+        assert!(ALLOWANCES
+            .may_load(deps.as_ref().storage, balance_key.clone())
+            .unwrap()
+            .is_none());
+
+        let voucher_allowance = VOUCHER_ALLOWANCES
+            .load(deps.as_ref().storage, balance_key)
+            .unwrap();
+        assert_eq!(
+            voucher_allowance.amount,
+            Uint256::from(500_000_000_000_000_000_000_000u128)
+        );
+        assert_eq!(voucher_allowance.spender, spender);
+        assert_eq!(voucher_allowance.expires_at, None);
     }
 }

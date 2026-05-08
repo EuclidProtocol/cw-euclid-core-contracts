@@ -125,6 +125,46 @@ pub fn seed_token_metadata(
         .unwrap();
 }
 
+/// Like `seed_token_metadata` but uses the provided `decimals` instead of
+/// hardcoding 24, so tests can exercise real normalization paths.
+/// Escrow is pre-seeded to zero (caller controls initial escrow).
+pub fn seed_token_metadata_with_decimals(
+    deps: &mut MockDeps,
+    token_id: &str,
+    chain_uid: ChainUid,
+    token_type: TokenType,
+    decimals: u32,
+) {
+    let token_type_with_decimals = match token_type {
+        TokenType::Native { denom, .. } => TokenType::Native {
+            denom,
+            decimals: Some(decimals),
+        },
+        other => other,
+    };
+    let metadata_key = get_token_metadata_key(
+        token_id.to_string(),
+        chain_uid.clone(),
+        token_type_with_decimals.clone(),
+    );
+    metadata_key
+        .save(
+            deps.as_mut().storage,
+            &TokenMetadata {
+                token: Token::create(token_id.to_string()).unwrap(),
+                chain_uid: chain_uid.clone(),
+                token_type: token_type_with_decimals.clone(),
+                allowed: true,
+            },
+        )
+        .unwrap();
+    let escrow_key =
+        get_escrow_balance_key(token_id.to_string(), chain_uid, token_type_with_decimals);
+    escrow_key
+        .save(deps.as_mut().storage, &Uint256::zero())
+        .unwrap();
+}
+
 /// Build a `CrossChainUser` on the VSL chain.
 pub fn vsl_user(address: &str) -> CrossChainUser {
     CrossChainUser::new(ChainUid::vsl_chain_uid().unwrap(), address.to_string())

@@ -46,7 +46,7 @@ pub fn migrate(deps: DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response, Co
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::ADMIN;
+    use crate::state::{ADMIN, CHAIN_LP_TOKENS};
     use cosmwasm_std::testing::{mock_env, MockQuerier};
     use cosmwasm_std::{
         from_json, to_json_binary, Addr, ContractResult, QuerierResult, SystemResult, Uint256,
@@ -260,5 +260,80 @@ mod tests {
             .unwrap();
 
         assert!(migrate(deps.as_mut(), mock_env(), empty_msg()).is_err());
+    }
+
+    #[test]
+    fn test_migrate_lp_supply_unchanged() {
+        let expected = Uint256::from(1_000_000_000_000_000_000_000_000u128);
+        let mut deps = make_deps(6, 6, expected, expected);
+
+        let chain = ChainUid::create("osmosis".to_string()).unwrap();
+        CHAIN_LP_TOKENS
+            .save(
+                deps.as_mut().storage,
+                chain.clone(),
+                &Uint256::from(500_000u128),
+            )
+            .unwrap();
+        BALANCES
+            .save(
+                deps.as_mut().storage,
+                token1(),
+                &Uint256::from(1_000_000u128),
+            )
+            .unwrap();
+        BALANCES
+            .save(
+                deps.as_mut().storage,
+                token2(),
+                &Uint256::from(1_000_000u128),
+            )
+            .unwrap();
+
+        migrate(deps.as_mut(), mock_env(), empty_msg()).unwrap();
+
+        let state = STATE.load(deps.as_ref().storage).unwrap();
+        assert_eq!(state.total_lp_tokens, Uint256::from(1_000_000u128));
+        assert_eq!(
+            CHAIN_LP_TOKENS.load(deps.as_ref().storage, chain).unwrap(),
+            Uint256::from(500_000u128)
+        );
+    }
+
+    #[test]
+    fn test_migrate_different_decimals_per_token() {
+        let expected_1 = Uint256::from(1_000_000_000_000_000_000_000_000u128);
+        let expected_2 = Uint256::from(1_000_000_000_000_000_000_000_000u128);
+        let mut deps = make_deps(6, 18, expected_1, expected_2);
+
+        BALANCES
+            .save(
+                deps.as_mut().storage,
+                token1(),
+                &Uint256::from(1_u128)
+                    .checked_mul(10u128.pow(6).into())
+                    .unwrap(),
+            )
+            .unwrap();
+        BALANCES
+            .save(
+                deps.as_mut().storage,
+                token2(),
+                &Uint256::from(1_u128)
+                    .checked_mul(10u128.pow(18).into())
+                    .unwrap(),
+            )
+            .unwrap();
+
+        migrate(deps.as_mut(), mock_env(), empty_msg()).unwrap();
+
+        assert_eq!(
+            BALANCES.load(deps.as_ref().storage, token1()).unwrap(),
+            expected_1
+        );
+        assert_eq!(
+            BALANCES.load(deps.as_ref().storage, token2()).unwrap(),
+            expected_2
+        );
     }
 }

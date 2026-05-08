@@ -565,8 +565,10 @@ pub fn execute_deregister_token_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::get_escrow_balance_key;
     use crate::testing::helpers::{
-        init, remote_user, seed_allowance, seed_balance, seed_token_metadata, vsl_user, TEST_ROUTER,
+        init, remote_user, seed_allowance, seed_balance, seed_token_metadata,
+        seed_token_metadata_with_decimals, vsl_user, TEST_ROUTER,
     };
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
     use cosmwasm_std::{attr, Addr};
@@ -1594,6 +1596,272 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("Address must be lowercase"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Mint/burn with real normalization (decimals != 24) + escrow assertions
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_mint_with_6_decimal_normalization() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let user = remote_user("1", "cosmos1alice");
+        let chain = ChainUid::create("1".to_string()).unwrap();
+        let token_type = TokenType::Native {
+            denom: "uusdc".to_string(),
+            decimals: None,
+        };
+        seed_token_metadata_with_decimals(&mut deps, "usdc", chain.clone(), token_type.clone(), 6);
+
+        let router = router_addr_for(&deps);
+        let info = message_info(&router, &[]);
+        let raw_amount = Uint256::from(1_000_000u128);
+        execute_mint(
+            deps.as_mut(),
+            info,
+            ExecuteMint {
+                amount: raw_amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: user.clone(),
+                    token_id: "usdc".to_string(),
+                },
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                    decimals: Some(6),
+                },
+                token_source_chain_uid: chain.clone(),
+            },
+        )
+        .unwrap();
+
+        let balance_key = BalanceKey {
+            cross_chain_user: user,
+            token_id: "usdc".to_string(),
+        }
+        .to_serialized_balance_key();
+        let expected_normalized = Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
+        assert_eq!(
+            VOUCHER_BALANCES
+                .load(deps.as_ref().storage, balance_key)
+                .unwrap(),
+            expected_normalized
+        );
+
+        let escrow_key = get_escrow_balance_key(
+            "usdc".to_string(),
+            chain,
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+        );
+        assert_eq!(escrow_key.load(deps.as_ref().storage).unwrap(), raw_amount);
+    }
+
+    #[test]
+    fn test_burn_with_6_decimal_normalization() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let user = remote_user("1", "cosmos1alice");
+        let chain = ChainUid::create("1".to_string()).unwrap();
+        let token_type = TokenType::Native {
+            denom: "uusdc".to_string(),
+            decimals: None,
+        };
+        seed_token_metadata_with_decimals(&mut deps, "usdc", chain.clone(), token_type.clone(), 6);
+
+        let router = router_addr_for(&deps);
+
+        // Mint first to populate both balances
+        let info = message_info(&router, &[]);
+        let raw_amount = Uint256::from(2_000_000u128);
+        execute_mint(
+            deps.as_mut(),
+            info,
+            ExecuteMint {
+                amount: raw_amount,
+                balance_key: BalanceKey {
+                    cross_chain_user: user.clone(),
+                    token_id: "usdc".to_string(),
+                },
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                    decimals: Some(6),
+                },
+                token_source_chain_uid: chain.clone(),
+            },
+        )
+        .unwrap();
+
+        // Burn half (in voucher units = 1_000_000 * 10^18)
+        let voucher_burn = Uint256::from(1_000_000u128) * Uint256::from(10u128).pow(18);
+        let info = message_info(&router, &[]);
+        execute_burn(
+            deps.as_mut(),
+            info,
+            ExecuteBurn {
+                voucher_amount: voucher_burn,
+                from_user: user.clone(),
+                token_id: "usdc".to_string(),
+                release_denom: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                    decimals: Some(6),
+                },
+                release_chain_uid: chain.clone(),
+            },
+        )
+        .unwrap();
+
+        let balance_key = BalanceKey {
+            cross_chain_user: user,
+            token_id: "usdc".to_string(),
+        }
+        .to_serialized_balance_key();
+        assert_eq!(
+            VOUCHER_BALANCES
+                .load(deps.as_ref().storage, balance_key)
+                .unwrap(),
+            voucher_burn
+        );
+
+        let escrow_key = get_escrow_balance_key(
+            "usdc".to_string(),
+            chain,
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+        );
+        assert_eq!(
+            escrow_key.load(deps.as_ref().storage).unwrap(),
+            Uint256::from(1_000_000u128)
+        );
+    }
+
+    #[test]
+    fn test_mint_escrow_tracks_raw_not_normalized() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let user = remote_user("1", "cosmos1alice");
+        let chain = ChainUid::create("1".to_string()).unwrap();
+        let token_type = TokenType::Native {
+            denom: "uusdc".to_string(),
+            decimals: None,
+        };
+        seed_token_metadata_with_decimals(&mut deps, "usdc", chain.clone(), token_type.clone(), 6);
+
+        let router = router_addr_for(&deps);
+        let mint_type = TokenType::Native {
+            denom: "uusdc".to_string(),
+            decimals: Some(6),
+        };
+
+        // Mint 300 raw
+        let info = message_info(&router, &[]);
+        execute_mint(
+            deps.as_mut(),
+            info,
+            ExecuteMint {
+                amount: Uint256::from(300u128),
+                balance_key: BalanceKey {
+                    cross_chain_user: user.clone(),
+                    token_id: "usdc".to_string(),
+                },
+                token_type: mint_type.clone(),
+                token_source_chain_uid: chain.clone(),
+            },
+        )
+        .unwrap();
+
+        // Mint 700 raw
+        let info = message_info(&router, &[]);
+        execute_mint(
+            deps.as_mut(),
+            info,
+            ExecuteMint {
+                amount: Uint256::from(700u128),
+                balance_key: BalanceKey {
+                    cross_chain_user: user.clone(),
+                    token_id: "usdc".to_string(),
+                },
+                token_type: mint_type.clone(),
+                token_source_chain_uid: chain.clone(),
+            },
+        )
+        .unwrap();
+
+        let escrow_key = get_escrow_balance_key("usdc".to_string(), chain, mint_type);
+        assert_eq!(
+            escrow_key.load(deps.as_ref().storage).unwrap(),
+            Uint256::from(1000u128)
+        );
+
+        let balance_key = BalanceKey {
+            cross_chain_user: user,
+            token_id: "usdc".to_string(),
+        }
+        .to_serialized_balance_key();
+        let expected = Uint256::from(1000u128) * Uint256::from(10u128).pow(18);
+        assert_eq!(
+            VOUCHER_BALANCES
+                .load(deps.as_ref().storage, balance_key)
+                .unwrap(),
+            expected
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Deregistered token mint rejection
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_mint_rejects_deregistered_token() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let chain = ChainUid::create("1".to_string()).unwrap();
+        let token_type = TokenType::Native {
+            denom: "uusdc".to_string(),
+            decimals: None,
+        };
+        seed_token_metadata(&mut deps, "usdc", chain.clone(), token_type.clone());
+
+        let router = router_addr_for(&deps);
+
+        // Deregister the token
+        let info = message_info(&router, &[]);
+        execute_deregister_token_metadata(
+            deps.as_mut(),
+            info,
+            "usdc".to_string(),
+            chain.clone(),
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(24),
+            },
+        )
+        .unwrap();
+
+        // Attempt to mint — should fail
+        let info = message_info(&router, &[]);
+        let err = execute_mint(
+            deps.as_mut(),
+            info,
+            ExecuteMint {
+                amount: Uint256::from(100u128),
+                balance_key: BalanceKey {
+                    cross_chain_user: remote_user("1", "cosmos1alice"),
+                    token_id: "usdc".to_string(),
+                },
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                    decimals: Some(24),
+                },
+                token_source_chain_uid: chain,
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("deregistered"));
     }
 }
 

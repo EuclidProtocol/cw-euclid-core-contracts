@@ -626,6 +626,11 @@ mod tests {
     #[rstest]
     #[case::authorized_admin("admin", 500u64, None)]
     #[case::unauthorized_non_admin("not_admin", 500u64, Some(ContractError::Unauthorized {}))]
+    #[case::below_min_amp(
+        "admin",
+        50u64,
+        Some(ContractError::new("Amp factor must be at least 100"))
+    )]
     fn test_update_amp_factor(
         #[case] sender: &str,
         #[case] amp_factor: u64,
