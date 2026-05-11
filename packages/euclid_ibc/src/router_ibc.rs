@@ -66,6 +66,10 @@ pub enum RouterCrossChainExecuteMsg {
 
     // Swap tokens on VLP
     Swap(RouterCrossChainSwapExecuteMsg),
+
+    // Single-sided add liquidity: deposit one token, hub atomically swaps a portion
+    // and adds liquidity on the same VLP
+    SingleSidedAddLiquidity(RouterCrossChainSingleSidedAddLiquidityMsg),
 }
 
 impl RouterCrossChainExecuteMsg {
@@ -79,6 +83,7 @@ impl RouterCrossChainExecuteMsg {
             Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
+            Self::SingleSidedAddLiquidity(msg) => msg.tx_id.clone(),
         }
     }
 
@@ -93,6 +98,7 @@ impl RouterCrossChainExecuteMsg {
             Self::AddLiquidity { sender, .. } => sender,
             Self::RemoveLiquidity(msg) => &msg.sender,
             Self::Swap(msg) => &msg.sender,
+            Self::SingleSidedAddLiquidity(msg) => &msg.sender,
         }
     }
 
@@ -213,6 +219,26 @@ pub struct RouterCrossChainTransferVoucherExecuteMsg {
     pub amount: Uint256,
     pub from: Option<CrossChainUser>,
     pub recipients: Vec<Recipient>,
+    // Unique per tx
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainSingleSidedAddLiquidityMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+    // The single token the user is depositing
+    pub asset_in: TokenWithDenom,
+    // Total raw amount of asset_in (post any factory-side fee deduction)
+    pub amount_in: Uint256,
+    // Raw amount of asset_in to swap into asset_out (backend-computed)
+    pub swap_amount: Uint256,
+    // The other token in the target pool
+    pub asset_out: Token,
+    // Swap route. v1: must be length 1; kept Vec for forward-compat.
+    pub swaps: Vec<NextSwapPair>,
+    // Minimum LP tokens to receive — sole user-facing slippage guard
+    pub min_lp_out: Uint256,
     // Unique per tx
     pub tx_id: String,
 }

@@ -71,6 +71,16 @@ pub enum ExecuteMsg {
         cross_chain_config: CrossChainConfig,
     },
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
+    AddSingleSidedLiquidity {
+        asset_in: TokenWithDenom,
+        amount_in: Uint256,
+        asset_out: Token,
+        swap_amount: Uint256,
+        swap_route: Vec<NextSwapPair>,
+        min_lp_out: Uint256,
+        cross_chain_config: CrossChainConfig,
+    },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
     ExecuteSwapRequest(ExecuteSwapRequest),
 
     // Recieve CW20 TOKENS structure

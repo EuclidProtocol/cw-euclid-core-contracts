@@ -11,7 +11,10 @@ use euclid::fee::DenomFees;
 use euclid::token::TokenType;
 use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 
-use crate::execute::pool::{add_liquidity_request, execute_request_pool_creation};
+use crate::execute::pool::{
+    add_liquidity_request, execute_request_pool_creation,
+    execute_single_sided_add_liquidity_request,
+};
 use crate::execute::relay::{
     execute_native_receive_callback, execute_receive_acknowledgement, execute_receive_packet,
     execute_receive_packet_internal_callback, execute_send_packet,
@@ -188,6 +191,26 @@ pub fn execute(
             env,
             pair_with_denom_and_amount,
             slippage_tolerance_bps,
+            cross_chain_config,
+        ),
+        ExecuteMsg::AddSingleSidedLiquidity {
+            asset_in,
+            amount_in,
+            asset_out,
+            swap_amount,
+            swap_route,
+            min_lp_out,
+            cross_chain_config,
+        } => execute_single_sided_add_liquidity_request(
+            &mut deps,
+            env,
+            info,
+            asset_in,
+            amount_in,
+            asset_out,
+            swap_amount,
+            swap_route,
+            min_lp_out,
             cross_chain_config,
         ),
         ExecuteMsg::ExecuteSwapRequest(msg) => {

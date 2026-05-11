@@ -6,7 +6,7 @@ use euclid::{
     chain::ChainUid,
     deposit::DepositTokenRequest,
     fee::DenomFees,
-    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest, SingleSidedLiquidityRequest},
     swap::SwapRequest,
     token::{PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
 };
@@ -90,6 +90,10 @@ pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
 // Map for PENDING liquidity transactions
 pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> =
     Map::new("pending_remove_liquidity");
+
+// Map for PENDING single-sided add-liquidity transactions
+pub const PENDING_SINGLE_SIDED_LIQUIDITY: Map<(Addr, String), SingleSidedLiquidityRequest> =
+    Map::new("pending_single_sided_liquidity");
 
 pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
     Map::new("pending_deposit_token");

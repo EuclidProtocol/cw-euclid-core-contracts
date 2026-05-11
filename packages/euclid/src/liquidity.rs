@@ -3,7 +3,7 @@ use cosmwasm_std::{Addr, Uint256};
 
 use crate::{
     cross_chain_user::CrossChainUser,
-    token::{Pair, PairWithAmount, PairWithDenomAndAmount},
+    token::{Pair, PairWithAmount, PairWithDenomAndAmount, TokenWithDenom},
 };
 
 #[cw_serde]
@@ -20,6 +20,14 @@ pub struct AddLiquidityResponse {
     pub vlp_address: String,
     pub tx_id: String,
     pub sender: CrossChainUser,
+}
+
+#[cw_serde]
+pub struct SingleSidedLiquidityRequest {
+    pub sender: String,
+    pub tx_id: String,
+    pub asset_in: TokenWithDenom,
+    pub amount_in: Uint256,
 }
 
 #[cw_serde]
