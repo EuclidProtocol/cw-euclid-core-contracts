@@ -78,6 +78,7 @@ pub enum ExecuteMsg {
         swap_amount: Uint256,
         swap_route: Vec<NextSwapPair>,
         min_lp_out: Uint256,
+        partner_fee: Option<PartnerFee>,
         cross_chain_config: CrossChainConfig,
     },
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]

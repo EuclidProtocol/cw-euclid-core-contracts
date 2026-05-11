@@ -200,6 +200,7 @@ pub fn execute(
             swap_amount,
             swap_route,
             min_lp_out,
+            partner_fee,
             cross_chain_config,
         } => execute_single_sided_add_liquidity_request(
             &mut deps,
@@ -211,6 +212,7 @@ pub fn execute(
             swap_amount,
             swap_route,
             min_lp_out,
+            partner_fee,
             cross_chain_config,
         ),
         ExecuteMsg::ExecuteSwapRequest(msg) => {

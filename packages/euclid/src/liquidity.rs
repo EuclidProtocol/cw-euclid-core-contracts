@@ -27,7 +27,12 @@ pub struct SingleSidedLiquidityRequest {
     pub sender: String,
     pub tx_id: String,
     pub asset_in: TokenWithDenom,
+    // Post-partner-fee deposit amount: the actual amount that crosses IBC
+    // and ends up in escrow on success.
     pub amount_in: Uint256,
+    // Partner fee retained at the factory until the ack resolves.
+    pub partner_fee_amount: Uint256,
+    pub partner_fee_recipient: Addr,
 }
 
 #[cw_serde]

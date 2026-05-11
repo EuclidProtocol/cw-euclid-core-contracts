@@ -793,13 +793,15 @@ mod tests {
         ) -> RouterCrossChainSingleSidedAddLiquidityMsg {
             let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
             RouterCrossChainSingleSidedAddLiquidityMsg {
-                sender: CrossChainUser::new(chain_uid, "user".to_string()),
+                sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
                 asset_in,
                 amount_in: Uint256::from(amount_in),
                 swap_amount: Uint256::from(swap_amount),
                 asset_out,
                 swaps,
                 min_lp_out: Uint256::from(min_lp_out),
+                partner_fee_amount: Uint256::zero(),
+                partner_fee_recipient: CrossChainUser::new(chain_uid, "user".to_string()),
                 tx_id: tx_id.to_string(),
             }
         }

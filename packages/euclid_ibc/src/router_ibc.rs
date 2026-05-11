@@ -229,7 +229,8 @@ pub struct RouterCrossChainSingleSidedAddLiquidityMsg {
     pub sender: CrossChainUser,
     // The single token the user is depositing
     pub asset_in: TokenWithDenom,
-    // Total raw amount of asset_in (post any factory-side fee deduction)
+    // Total raw amount of asset_in AFTER partner-fee deduction.
+    // This is the amount the hub operates on; the partner-fee portion never crosses IBC.
     pub amount_in: Uint256,
     // Raw amount of asset_in to swap into asset_out (backend-computed)
     pub swap_amount: Uint256,
@@ -239,6 +240,9 @@ pub struct RouterCrossChainSingleSidedAddLiquidityMsg {
     pub swaps: Vec<NextSwapPair>,
     // Minimum LP tokens to receive — sole user-facing slippage guard
     pub min_lp_out: Uint256,
+    // Partner-fee accounting (used only by the factory ack handler).
+    pub partner_fee_amount: Uint256,
+    pub partner_fee_recipient: CrossChainUser,
     // Unique per tx
     pub tx_id: String,
 }

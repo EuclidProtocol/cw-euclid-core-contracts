@@ -733,8 +733,9 @@ fn ack_transfer_request(
 }
 
 // Process single-sided add-liquidity acknowledgment.
-// Success: increment VLP_TO_LP_SHARES, send asset_in to escrow, mint LP CW20.
-// Failure: refund amount_in to user (or return Err on native).
+// Success: increment VLP_TO_LP_SHARES, send asset_in to escrow, transfer
+// partner fee (if any) to its recipient, mint LP CW20.
+// Failure: refund amount_in + partner_fee_amount to user (or return Err on native).
 fn ack_single_sided_add_liquidity(
     deps: DepsMut,
     res: AcknowledgementMsg<AddLiquidityResponse>,
@@ -761,7 +762,12 @@ fn ack_single_sided_add_liquidity(
             let mut res = Response::new()
                 .add_attribute("method", "ack_single_sided_add_liquidity")
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("sender", sender.to_string());
+                .add_attribute("sender", sender.to_string())
+                .add_attribute("partner_fee_amount", pending.partner_fee_amount)
+                .add_attribute(
+                    "partner_fee_recipient",
+                    pending.partner_fee_recipient.to_string(),
+                );
 
             // Escrow asset_in. Vouchers never reach this path (factory rejects them).
             if !pending.asset_in.token_type.is_voucher() {
@@ -772,6 +778,17 @@ fn ack_single_sided_add_liquidity(
                     .token_type
                     .create_escrow_msg(pending.amount_in, escrow_address)?;
                 res = res.add_message(send_msg);
+
+                // Transfer partner fee from factory to recipient (if non-zero).
+                if !pending.partner_fee_amount.is_zero() {
+                    let partner_msg = pending.asset_in.token_type.create_transfer_msg(
+                        pending.partner_fee_amount,
+                        pending.partner_fee_recipient.to_string(),
+                        None,
+                        None,
+                    )?;
+                    res = res.add_message(partner_msg);
+                }
             }
 
             // Mint LP CW20 to user.
@@ -791,16 +808,18 @@ fn ack_single_sided_add_liquidity(
             if is_native {
                 return Err(ContractError::new(&err));
             }
+            // Full refund: amount_in + partner_fee_amount (the original deposit total).
+            let refund_amount = pending.amount_in.checked_add(pending.partner_fee_amount)?;
             let mut response = Response::new()
                 .add_attribute("method", "single_sided_add_liquidity_err_refund")
                 .add_attribute("refund_to", &sender)
                 .add_attribute("tx_id", tx_id)
-                .add_attribute("refund_amount", pending.amount_in)
+                .add_attribute("refund_amount", refund_amount)
                 .add_attribute("error", err);
 
             if !pending.asset_in.token_type.is_voucher() {
                 let refund_msg = pending.asset_in.token_type.create_transfer_msg(
-                    pending.amount_in,
+                    refund_amount,
                     sender.to_string(),
                     None,
                     None,
@@ -1851,6 +1870,8 @@ mod tests {
                 asset_out: Token::create("bbb".to_string()).unwrap(),
                 swaps: vec![],
                 min_lp_out: Uint256::from(1u128),
+                partner_fee_amount: Uint256::zero(),
+                partner_fee_recipient: cross_chain_user(sender_addr),
                 tx_id: tx_id.to_string(),
             },
         )
@@ -1867,6 +1888,32 @@ mod tests {
         asset_in: TokenWithDenom,
         amount_in: Uint256,
     ) {
+        seed_pending_single_sided_with_partner_fee(
+            deps,
+            sender,
+            tx_id,
+            asset_in,
+            amount_in,
+            Uint256::zero(),
+            sender.clone(),
+        );
+    }
+
+    /// Variant of `seed_pending_single_sided` that lets partner fee fields be
+    /// set explicitly. Used by the partner-fee ack tests.
+    fn seed_pending_single_sided_with_partner_fee(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        sender: &Addr,
+        tx_id: &str,
+        asset_in: TokenWithDenom,
+        amount_in: Uint256,
+        partner_fee_amount: Uint256,
+        partner_fee_recipient: Addr,
+    ) {
         PENDING_SINGLE_SIDED_LIQUIDITY
             .save(
                 deps.as_mut().storage,
@@ -1876,6 +1923,8 @@ mod tests {
                     tx_id: tx_id.to_string(),
                     asset_in,
                     amount_in,
+                    partner_fee_amount,
+                    partner_fee_recipient,
                 },
             )
             .unwrap();
@@ -2095,5 +2144,146 @@ mod tests {
 
         // Exactly one refund transfer message back to the sender.
         assert_eq!(res.messages.len(), 1);
+    }
+
+    /// Ok path with non-zero partner fee:
+    /// - Three messages: escrow send + partner transfer + LP mint.
+    /// - The partner transfer is a BankMsg::Send for the fee amount to the recipient.
+    /// - Pending entry cleared.
+    #[test]
+    fn test_ack_single_sided_ok_with_partner_fee_emits_partner_transfer() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user_partner_ok");
+        let partner_recipient = deps.api.addr_make("partner_recipient");
+        let tx_id = "tx_ss_partner_ok";
+        let asset_in = native_token("aaa", "uaaa");
+        // Post-fee amount_in = 997, partner_fee_amount = 3
+        seed_pending_single_sided_with_partner_fee(
+            &mut deps,
+            &sender,
+            tx_id,
+            asset_in.clone(),
+            Uint256::from(997u128),
+            Uint256::from(3u128),
+            partner_recipient.clone(),
+        );
+
+        seed_escrow(&mut deps, "aaa", "escrow_aaa");
+        let vlp_address = "vlp_partner_ok".to_string();
+        VLP_TO_LP_TOKEN
+            .save(
+                deps.as_mut().storage,
+                vlp_address.clone(),
+                &Addr::unchecked("lp_token_partner_ok"),
+            )
+            .unwrap();
+
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            mint_lp_tokens: Uint256::from(100u128),
+            vlp_address: vlp_address.clone(),
+            tx_id: tx_id.to_string(),
+            sender: cross_chain_user(sender.as_str()),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Pending entry removed.
+        assert!(
+            !PENDING_SINGLE_SIDED_LIQUIDITY.has(&deps.storage, (sender.clone(), tx_id.to_string()))
+        );
+
+        // Three messages now: escrow send + partner transfer + LP mint.
+        assert_eq!(res.messages.len(), 3);
+
+        // Find and validate the partner transfer message (a BankMsg::Send for "uaaa" amount 3 to partner_recipient).
+        let partner_send_found = res.messages.iter().any(|sm| match &sm.msg {
+            cosmwasm_std::CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) => {
+                to_address == partner_recipient.as_str()
+                    && amount.len() == 1
+                    && amount[0].denom == "uaaa"
+                    && amount[0].amount == Uint128::from(3u128)
+            }
+            _ => false,
+        });
+        assert!(
+            partner_send_found,
+            "expected BankMsg::Send to partner_recipient for 3 uaaa"
+        );
+
+        // Attributes carry the partner_fee_amount and recipient.
+        assert!(res.attributes.contains(&attr("partner_fee_amount", "3")));
+        assert!(res.attributes.contains(&attr(
+            "partner_fee_recipient",
+            partner_recipient.to_string()
+        )));
+    }
+
+    /// Error ack on a non-native chain with a non-zero partner fee:
+    /// - Refund amount = amount_in + partner_fee_amount (the original deposit total).
+    /// - Single refund transfer message (BankMsg::Send) to the sender for that full amount.
+    #[test]
+    fn test_ack_single_sided_error_refund_includes_partner_fee() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user_partner_err");
+        let partner_recipient = deps.api.addr_make("partner_recipient_err");
+        let tx_id = "tx_ss_partner_err";
+        seed_pending_single_sided_with_partner_fee(
+            &mut deps,
+            &sender,
+            tx_id,
+            native_token("aaa", "uaaa"),
+            Uint256::from(997u128),
+            Uint256::from(3u128),
+            partner_recipient,
+        );
+
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
+            "fail_partner".to_string(),
+        ))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Pending cleared.
+        assert!(
+            !PENDING_SINGLE_SIDED_LIQUIDITY.has(&deps.storage, (sender.clone(), tx_id.to_string()))
+        );
+
+        // refund_amount attribute reflects amount_in + partner_fee_amount = 1000.
+        assert!(res.attributes.contains(&attr("refund_amount", "1000")));
+        assert!(res
+            .attributes
+            .contains(&attr("method", "single_sided_add_liquidity_err_refund")));
+
+        // Single refund transfer message: 1000 uaaa back to the sender.
+        assert_eq!(res.messages.len(), 1);
+        match &res.messages[0].msg {
+            cosmwasm_std::CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) => {
+                assert_eq!(to_address, sender.as_str());
+                assert_eq!(amount.len(), 1);
+                assert_eq!(amount[0].denom, "uaaa");
+                assert_eq!(amount[0].amount, Uint128::from(1000u128));
+            }
+            other => panic!("expected BankMsg::Send refund, got {other:?}"),
+        }
     }
 }
