@@ -146,6 +146,17 @@ pub fn native_token(token_id: &str, denom: &str) -> euclid::token::TokenWithDeno
     }
 }
 
+/// Build a TokenWithDenom with a Smart (CW20) token type.
+pub fn smart_token(token_id: &str, contract_address: &str) -> euclid::token::TokenWithDenom {
+    euclid::token::TokenWithDenom {
+        token: Token::create(token_id.to_string()).unwrap(),
+        token_type: TokenType::Smart {
+            contract_address: contract_address.to_string(),
+            decimals: Some(6),
+        },
+    }
+}
+
 /// Build a TokenWithDenom with a voucher type.
 pub fn voucher_token(token_id: &str) -> euclid::token::TokenWithDenom {
     euclid::token::TokenWithDenom {

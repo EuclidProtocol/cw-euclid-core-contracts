@@ -866,7 +866,7 @@ mod tests {
             PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
             PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT,
         },
-        testing::helpers::{init, native_token, seed_escrow, TEST_CHAIN_UID},
+        testing::helpers::{init, native_token, seed_escrow, smart_token, TEST_CHAIN_UID},
     };
 
     // -----------------------------------------------------------------------
@@ -2284,6 +2284,152 @@ mod tests {
                 assert_eq!(amount[0].amount, Uint128::from(1000u128));
             }
             other => panic!("expected BankMsg::Send refund, got {other:?}"),
+        }
+    }
+
+    /// Smart (CW20) asset_in on the success path: escrow message must be a
+    /// cw20-base Send to the escrow contract carrying the `EscrowCw20HookMsg::Deposit`
+    /// hook, and the LP mint message must follow.
+    #[test]
+    fn test_ack_single_sided_ok_smart_escrows_via_cw20_send() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user_smart_ok");
+        let tx_id = "tx_ss_smart_ok";
+        let cw20_addr = deps.api.addr_make("cw20").to_string();
+        let asset_in = smart_token("aaa", &cw20_addr);
+        let amount_in = Uint256::from(1000u128);
+        seed_pending_single_sided(&mut deps, &sender, tx_id, asset_in, amount_in);
+
+        seed_escrow(&mut deps, "aaa", "escrow_aaa");
+        let vlp_address = "vlp_smart_ok".to_string();
+        VLP_TO_LP_TOKEN
+            .save(
+                deps.as_mut().storage,
+                vlp_address.clone(),
+                &Addr::unchecked("lp_token_smart_ok"),
+            )
+            .unwrap();
+
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            mint_lp_tokens: Uint256::from(100u128),
+            vlp_address: vlp_address.clone(),
+            tx_id: tx_id.to_string(),
+            sender: cross_chain_user(sender.as_str()),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Two messages: cw20 Send (escrow) + LP mint.
+        assert_eq!(res.messages.len(), 2);
+
+        // Find the cw20 Send to the cw20 contract carrying the escrow Deposit hook.
+        let escrow_send_found = res.messages.iter().any(|sm| {
+            if let cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr,
+                msg,
+                funds,
+            }) = &sm.msg
+            {
+                if contract_addr != &cw20_addr || !funds.is_empty() {
+                    return false;
+                }
+                if let Ok(cw20_base::msg::ExecuteMsg::Send {
+                    contract,
+                    amount,
+                    msg: hook_msg,
+                }) = cosmwasm_std::from_json::<cw20_base::msg::ExecuteMsg>(msg.as_slice())
+                {
+                    let hook: Result<
+                        euclid::msgs::escrow::cw20::EscrowCw20HookMsg,
+                        _,
+                    > = cosmwasm_std::from_json(hook_msg.as_slice());
+                    return contract == "escrow_aaa"
+                        && amount == Uint128::from(1000u128)
+                        && matches!(
+                            hook,
+                            Ok(euclid::msgs::escrow::cw20::EscrowCw20HookMsg::Deposit {})
+                        );
+                }
+                false
+            } else {
+                false
+            }
+        });
+        assert!(
+            escrow_send_found,
+            "expected cw20 Send to cw20_addr with escrow Deposit hook"
+        );
+    }
+
+    /// Smart (CW20) asset_in on the failure path: refund must be a cw20-base
+    /// Transfer back to the user for amount_in + partner_fee_amount.
+    #[test]
+    fn test_ack_single_sided_error_smart_refunds_via_cw20_transfer() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user_smart_err");
+        let partner_recipient = deps.api.addr_make("partner_smart_err");
+        let tx_id = "tx_ss_smart_err";
+        let cw20_addr = deps.api.addr_make("cw20").to_string();
+        // Post-fee amount_in = 997, partner_fee_amount = 3 → refund 1000.
+        seed_pending_single_sided_with_partner_fee(
+            &mut deps,
+            &sender,
+            tx_id,
+            smart_token("aaa", &cw20_addr),
+            Uint256::from(997u128),
+            Uint256::from(3u128),
+            partner_recipient,
+        );
+
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
+            "smart_fail".to_string(),
+        ))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // refund_amount attribute reflects the full 1000.
+        assert!(res.attributes.contains(&attr("refund_amount", "1000")));
+
+        // Single cw20 Transfer message back to the sender for 1000.
+        assert_eq!(res.messages.len(), 1);
+        match &res.messages[0].msg {
+            cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr,
+                msg,
+                funds,
+            }) => {
+                assert_eq!(contract_addr, &cw20_addr);
+                assert!(funds.is_empty());
+                match cosmwasm_std::from_json::<cw20_base::msg::ExecuteMsg>(msg.as_slice()).unwrap()
+                {
+                    cw20_base::msg::ExecuteMsg::Transfer { recipient, amount } => {
+                        assert_eq!(recipient, sender.to_string());
+                        assert_eq!(amount, Uint128::from(1000u128));
+                    }
+                    other => panic!("expected cw20 Transfer, got {other:?}"),
+                }
+            }
+            other => panic!("expected WasmMsg::Execute refund, got {other:?}"),
         }
     }
 }

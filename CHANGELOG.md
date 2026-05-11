@@ -23,6 +23,10 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [stable_vlp] `MIN_AMP = 100` constant with validation in `compute_stable_swap`, `update_amp_factor`, and `instantiate`
 - [router] `GetAllEscrows` query (deprecated on arrival, exists only to support virtual_balance migration)
 - [orderbook_deposits] `NULLIFIERS` map tracking withdrawn amounts by hashed key
+- [factory] `AddSingleSidedLiquidity` execute entry point: user deposits a single token, the hub atomically swaps a backend-computed portion and adds liquidity on the target VLP in one IBC roundtrip
+- [factory] `AddSingleSidedLiquidity` supports `TokenType::Smart` (CW20) `asset_in` via the `IncreaseAllowance` + `TransferFrom` pattern (mirrors `add_liquidity_request`); `TokenType::Voucher` rejected as `UnreachableCode`
+- [factory] `AddSingleSidedLiquidity` accepts an optional `partner_fee` (bounded by `MAX_PARTNER_FEE_BPS`); fee retained at the factory and routed to the recipient on ack success, refunded with `amount_in` on ack failure
+- [factory] `PENDING_SINGLE_SIDED_LIQUIDITY` map and `SingleSidedLiquidityRequest` pending-state struct carry `partner_fee_amount` and `partner_fee_recipient` for the ack handler
 
 #### Packages
 

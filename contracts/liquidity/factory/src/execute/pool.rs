@@ -545,19 +545,24 @@ pub fn execute_single_sided_add_liquidity_request(
         ContractError::UnsupportedDenomination {}
     );
 
-    // Handle funds. v1: Native only. Smart support layered on in a follow-up issue;
-    // Voucher is structurally impossible from a remote-chain factory.
-    // Note: native funds must cover the FULL deposit including partner_fee_amount.
+    // Handle funds. Native: bank funds; Smart: TransferFrom into the factory;
+    // Voucher: structurally impossible from a remote-chain factory.
+    // Funds must cover the FULL deposit (amount_in + partner_fee_amount).
     let full_amount = amount_in.checked_add(partner_fee_amount)?;
     let mut fund_manager = FundManager::new(&info.funds);
+    let mut pre_submsgs: Vec<SubMsg> = Vec::new();
     match &asset_in.token_type {
         TokenType::Native { denom, .. } => {
             fund_manager.use_fund(full_amount, denom)?;
         }
         TokenType::Smart { .. } => {
-            return Err(ContractError::new(
-                "Smart (CW20) asset_in not supported in this version",
-            ));
+            let transfer_msg = asset_in.token_type.create_transfer_msg(
+                full_amount,
+                env.contract.address.to_string(),
+                Some(sender.address.clone()),
+                None,
+            )?;
+            pre_submsgs.push(SubMsg::new(transfer_msg));
         }
         TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
     }
@@ -630,6 +635,7 @@ pub fn execute_single_sided_add_liquidity_request(
         .add_attribute("asset_out", asset_out.to_string())
         .add_attribute("amount_in", amount_in)
         .add_attribute("swap_amount", swap_amount)
+        .add_submessages(pre_submsgs)
         .add_submessage(ibc_msg))
 }
 
@@ -1051,6 +1057,7 @@ mod tests {
     };
 
     use crate::state::PENDING_SINGLE_SIDED_LIQUIDITY;
+    use crate::testing::helpers::get_attribute;
 
     fn native_token_with_denom(token_id: &str, denom: &str) -> TokenWithDenom {
         TokenWithDenom {
@@ -1471,14 +1478,23 @@ mod tests {
         assert_eq!(err, ContractError::new("Extra funds are not allowed"));
     }
 
-    /// Smart (CW20) asset_in → explicit "not supported" error.
+    /// Smart (CW20) asset_in happy path:
+    /// - No native funds attached (CW20 TransferFrom model).
+    /// - Response carries a TransferFrom submessage pulling `amount_in` (full
+    ///   deposit, BEFORE partner-fee deduction) from the user into the factory.
+    /// - Pending entry is saved with post-fee `amount_in` and the partner-fee
+    ///   fields.
+    ///
     /// Mocks both ContractInfo (for token_type.validate) and Smart queries.
     #[test]
-    fn test_single_sided_smart_asset_in_rejected() {
+    fn test_single_sided_smart_asset_in_happy_path() {
         let mut deps = mock_dependencies();
         init(&mut deps);
         seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
         seed_escrow(&mut deps, "eth", "escrow_eth");
+
+        let cw20_addr = deps.api.addr_make("cw20").to_string();
+        let cw20_for_querier = cw20_addr.clone();
 
         // Mock all wasm queries: ContractInfo always succeeds; TokenAllowed always true.
         deps.querier.update_wasm(move |q| match q {
@@ -1499,24 +1515,25 @@ mod tests {
                         to_json_binary(&AllowedTokenResponse { allowed: true }).unwrap(),
                     ))
                 } else {
-                    panic!("unexpected smart query")
+                    panic!("unexpected smart query to {cw20_for_querier}")
                 }
             }
             _ => panic!("unexpected query"),
         });
 
         let user = deps.api.addr_make("user");
+        // No native funds attached — Smart tokens flow via TransferFrom.
         let info = message_info(&user, &[]);
 
-        let smart_token = TokenWithDenom {
+        let asset_in = TokenWithDenom {
             token: Token::create("eth".to_string()).unwrap(),
             token_type: TokenType::Smart {
-                contract_address: deps.api.addr_make("cw20").to_string(),
+                contract_address: cw20_addr.clone(),
                 decimals: Some(6),
             },
         };
         let msg = ExecuteMsg::AddSingleSidedLiquidity {
-            asset_in: smart_token,
+            asset_in,
             amount_in: Uint256::from(1000u128),
             asset_out: Token::create("usdc".to_string()).unwrap(),
             swap_amount: Uint256::from(500u128),
@@ -1525,11 +1542,154 @@ mod tests {
             partner_fee: None,
             cross_chain_config: default_cross_chain_config(),
         };
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(
-            err,
-            ContractError::new("Smart (CW20) asset_in not supported in this version")
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // Expect at least one TransferFrom submessage targeting the CW20
+        // contract, owned by the user, recipient = the factory contract.
+        let env = mock_env();
+        let factory_addr = env.contract.address.to_string();
+        let user_str = user.to_string();
+        let mut found_transfer_from = false;
+        for sm in &res.messages {
+            if let cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr,
+                msg,
+                funds,
+            }) = &sm.msg
+            {
+                if contract_addr != &cw20_addr {
+                    continue;
+                }
+                assert!(funds.is_empty(), "CW20 TransferFrom must carry no funds");
+                let parsed: cw20_base::msg::ExecuteMsg =
+                    cosmwasm_std::from_json(msg.as_slice()).unwrap();
+                if let cw20_base::msg::ExecuteMsg::TransferFrom {
+                    owner,
+                    recipient,
+                    amount,
+                } = parsed
+                {
+                    assert_eq!(owner, user_str);
+                    assert_eq!(recipient, factory_addr);
+                    // No partner fee → full deposit equals amount_in (1000).
+                    assert_eq!(amount, cosmwasm_std::Uint128::from(1000u128));
+                    found_transfer_from = true;
+                    break;
+                }
+            }
+        }
+        assert!(
+            found_transfer_from,
+            "expected a CW20 TransferFrom submessage targeting the factory"
         );
+
+        // Pending entry persists post-fee amount_in (= 1000 with no fee) and
+        // zero partner_fee_amount.
+        let tx_id = get_attribute(&res, "tx_id").to_string();
+        let pending = PENDING_SINGLE_SIDED_LIQUIDITY
+            .load(deps.as_ref().storage, (user.clone(), tx_id))
+            .unwrap();
+        assert_eq!(pending.amount_in, Uint256::from(1000u128));
+        assert_eq!(pending.partner_fee_amount, Uint256::zero());
+    }
+
+    /// Smart (CW20) asset_in with a partner fee: the TransferFrom must pull the
+    /// FULL deposit (amount_in + partner_fee_amount) — pre-deduction — from the
+    /// user, mirroring the native invariant that funds must cover the full
+    /// deposit.
+    #[test]
+    fn test_single_sided_smart_asset_in_partner_fee_transfers_full_deposit() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+
+        let cw20_addr = deps.api.addr_make("cw20").to_string();
+        let cw20_for_querier = cw20_addr.clone();
+
+        deps.querier.update_wasm(move |q| match q {
+            WasmQuery::ContractInfo { .. } => SystemResult::Ok(ContractResult::Ok(
+                to_json_binary(&cosmwasm_std::ContractInfoResponse::new(
+                    1,
+                    cosmwasm_std::Addr::unchecked("creator"),
+                    Some(cosmwasm_std::Addr::unchecked("admin")),
+                    false,
+                    None,
+                ))
+                .unwrap(),
+            )),
+            WasmQuery::Smart { msg, .. } => {
+                let query: serde_json::Value = serde_json::from_slice(msg.as_slice()).unwrap();
+                if query.get("token_allowed").is_some() {
+                    SystemResult::Ok(ContractResult::Ok(
+                        to_json_binary(&AllowedTokenResponse { allowed: true }).unwrap(),
+                    ))
+                } else {
+                    panic!("unexpected smart query to {cw20_for_querier}")
+                }
+            }
+            _ => panic!("unexpected query"),
+        });
+
+        let user = deps.api.addr_make("user");
+        let partner = deps.api.addr_make("partner");
+        let info = message_info(&user, &[]);
+
+        // amount_in=1000, bps=30 → partner_fee_amount = ceil(1000 * 30/10000) = 3.
+        // Full deposit pulled via TransferFrom must equal 1000.
+        // After deduction, pending.amount_in = 997.
+        let asset_in = TokenWithDenom {
+            token: Token::create("eth".to_string()).unwrap(),
+            token_type: TokenType::Smart {
+                contract_address: cw20_addr.clone(),
+                decimals: Some(6),
+            },
+        };
+        let msg = ExecuteMsg::AddSingleSidedLiquidity {
+            asset_in,
+            amount_in: Uint256::from(1000u128),
+            asset_out: Token::create("usdc".to_string()).unwrap(),
+            swap_amount: Uint256::from(500u128),
+            swap_route: single_hop("eth", "usdc"),
+            min_lp_out: Uint256::from(1u128),
+            partner_fee: Some(PartnerFee {
+                partner_fee_bps: 30,
+                recipient: partner.to_string(),
+            }),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // Find the TransferFrom submessage and assert it pulls the full 1000.
+        let mut found_amount: Option<cosmwasm_std::Uint128> = None;
+        for sm in &res.messages {
+            if let cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr,
+                msg,
+                ..
+            }) = &sm.msg
+            {
+                if contract_addr != &cw20_addr {
+                    continue;
+                }
+                if let cw20_base::msg::ExecuteMsg::TransferFrom { amount, .. } =
+                    cosmwasm_std::from_json(msg.as_slice()).unwrap()
+                {
+                    found_amount = Some(amount);
+                    break;
+                }
+            }
+        }
+        assert_eq!(found_amount, Some(cosmwasm_std::Uint128::from(1000u128)));
+
+        // Pending state holds the post-fee amount_in and the partner fee.
+        let tx_id = get_attribute(&res, "tx_id").to_string();
+        let pending = PENDING_SINGLE_SIDED_LIQUIDITY
+            .load(deps.as_ref().storage, (user.clone(), tx_id))
+            .unwrap();
+        assert_eq!(pending.amount_in, Uint256::from(997u128));
+        assert_eq!(pending.partner_fee_amount, Uint256::from(3u128));
+        assert_eq!(pending.partner_fee_recipient, partner);
     }
 
     /// Voucher asset_in → UnreachableCode (Voucher is structurally impossible from a remote factory).
