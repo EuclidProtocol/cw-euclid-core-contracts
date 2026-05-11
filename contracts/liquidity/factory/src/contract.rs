@@ -27,8 +27,8 @@ use crate::execute::token::{
 use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_native};
 use crate::query::{
     get_escrow, get_lp_token_address, get_partner_fees_collected, get_rate_limit_state,
-    get_user_rate_limit, get_vlp, pending_liquidity, pending_remove_liquidity, pending_swaps,
-    query_all_pools, query_all_tokens, query_state,
+    get_user_rate_limit, get_vlp, pending_liquidity, pending_remove_liquidity,
+    pending_single_sided_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
@@ -318,6 +318,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::PendingRemoveLiquidity { user, pagination } => {
             pending_remove_liquidity(deps, user, pagination)
+        }
+        QueryMsg::PendingSingleSidedLiquidity { user, pagination } => {
+            pending_single_sided_liquidity(deps, user, pagination)
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),

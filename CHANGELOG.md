@@ -27,6 +27,8 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [factory] `AddSingleSidedLiquidity` supports `TokenType::Smart` (CW20) `asset_in` via the `IncreaseAllowance` + `TransferFrom` pattern (mirrors `add_liquidity_request`); `TokenType::Voucher` rejected as `UnreachableCode`
 - [factory] `AddSingleSidedLiquidity` accepts an optional `partner_fee` (bounded by `MAX_PARTNER_FEE_BPS`); fee retained at the factory and routed to the recipient on ack success, refunded with `amount_in` on ack failure
 - [factory] `PENDING_SINGLE_SIDED_LIQUIDITY` map and `SingleSidedLiquidityRequest` pending-state struct carry `partner_fee_amount` and `partner_fee_recipient` for the ack handler
+- [factory] `PendingSingleSidedLiquidity { user, pagination }` query returning in-flight single-sided requests for a user
+- [euclid] `GetPendingSingleSidedLiquidityResponse { pending_single_sided_liquidity }` for the new query
 
 #### Packages
 
