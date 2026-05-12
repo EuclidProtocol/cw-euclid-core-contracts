@@ -168,8 +168,8 @@ mod tests {
             token,
             token_type: TokenType::Smart {
                 contract_address: lp_addr.to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
         }
     }
 
@@ -206,16 +206,16 @@ mod tests {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
         };
         let amount_1 = Uint256::from(10_000u128);
         let token_2 = TokenWithDenom {
             token: Token::create("andr".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "andr".to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
         };
         let amount_2 = Uint256::from(10_000u128);
         let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
@@ -429,9 +429,9 @@ mod tests {
         let net_swap_amount = swap_amount - partner_fee_amount;
 
         let cw20_lp_addr = match &swap_asset_in.token_type {
-            TokenType::Smart { contract_address, .. } => {
-                Some(Addr::unchecked(contract_address.clone()))
-            }
+            TokenType::Smart {
+                contract_address, ..
+            } => Some(Addr::unchecked(contract_address.clone())),
             _ => None,
         };
         let cw20_sender_balance_before = cw20_lp_addr
@@ -498,7 +498,10 @@ mod tests {
                 swap_asset_in.token_type.clone(),
                 &mut vec![],
             );
-            vec![cosmwasm_std::coin(Uint128::try_from(swap_amount).unwrap().u128(), native_denom)]
+            vec![cosmwasm_std::coin(
+                Uint128::try_from(swap_amount).unwrap().u128(),
+                native_denom,
+            )]
         } else {
             vec![]
         };

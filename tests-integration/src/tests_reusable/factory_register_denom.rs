@@ -104,11 +104,11 @@ pub fn deregister_denom(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::helpers::chains::lp_token_code;
     use crate::helpers::chains::{setup_interchain, setup_router};
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
-    use crate::helpers::chains::lp_token_code;
     use crate::tests_reusable::factory_register::{setup_factory_with_mode, FactorySetupMode};
     use cosmwasm_std::Uint128;
     use euclid::cw20_types::{Cw20Coin, MinterResponse};
@@ -116,11 +116,7 @@ mod tests {
     use euclid::token::{Pair, Token, TokenType};
     use rstest::rstest;
 
-    fn deploy_lp_token(
-        env: &mut MultiChainEnv,
-        factory_chain_id: &str,
-        token: &Token,
-    ) -> Addr {
+    fn deploy_lp_token(env: &mut MultiChainEnv, factory_chain_id: &str, token: &Token) -> Addr {
         let app = env.chain_mut(factory_chain_id);
         let sender = app.sender();
         let code_id = lp_token_code(app);
@@ -185,8 +181,8 @@ mod tests {
         let token_type = match token_type_case {
             "native" => TokenType::Native {
                 denom: "eucl".to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
             "smart" => {
                 let token = Token::create("eucl".to_string()).unwrap();
                 let lp_addr = deploy_lp_token(&mut env, factory_chain_id, &token);
@@ -247,8 +243,8 @@ mod tests {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
         };
 
         register_denom(

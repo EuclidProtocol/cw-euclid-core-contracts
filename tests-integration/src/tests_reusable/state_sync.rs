@@ -159,8 +159,8 @@ pub(crate) fn sync_state(
                 factory_app.query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
             let factory_escrow_balance = escrow_state.total_amount;
 
-            let router_state: euclid::msgs::router::StateResponse = router_app
-                .query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
+            let router_state: euclid::msgs::router::StateResponse =
+                router_app.query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
             let vb_escrows: euclid::msgs::virtual_balance::GetTokenEscrowsResponse = router_app
                 .query(
                     &router_state.virtual_balance_address,

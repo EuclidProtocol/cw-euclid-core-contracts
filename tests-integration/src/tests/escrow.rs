@@ -63,12 +63,12 @@ fn test_escrow_add_remove_denom() {
 
     let native_denom = TokenType::Native {
         denom: "native".to_string(),
-            decimals: Some(6),
-        };
+        decimals: Some(6),
+    };
     let ibc_denom = TokenType::Native {
         denom: "ibc/denom1".to_string(),
-            decimals: Some(6),
-        };
+        decimals: Some(6),
+    };
 
     app.execute(
         &sender,

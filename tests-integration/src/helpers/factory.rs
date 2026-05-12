@@ -264,7 +264,9 @@ pub fn faucet(
             app.add_balance(address, vec![coin(amount, denom.clone())]);
             funds.push(coin(amount, denom));
         }
-        TokenType::Smart { contract_address, .. } => {
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             let lp_addr = Addr::unchecked(contract_address);
             let sender = app.sender();
             app.execute(

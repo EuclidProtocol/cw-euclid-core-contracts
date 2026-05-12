@@ -360,10 +360,9 @@ impl TokenType {
             TokenType::Smart {
                 contract_address, ..
             } => {
-                let token_info: TokenInfoResponse = deps.querier.query_wasm_smart(
-                    contract_address.clone(),
-                    &Cw20QueryMsg::TokenInfo {},
-                )?;
+                let token_info: TokenInfoResponse = deps
+                    .querier
+                    .query_wasm_smart(contract_address.clone(), &Cw20QueryMsg::TokenInfo {})?;
                 Ok(token_info.decimals.into())
             }
             TokenType::Voucher { .. } => Ok(VOUCHER_DECIMAL),

@@ -76,15 +76,15 @@ mod tests {
             token: Token::create("tokena".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokena".to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
         };
         let token_b = TokenWithDenom {
             token: Token::create("tokenb".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokenb".to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
         };
 
         register_denom(

@@ -44,7 +44,9 @@ pub fn swap_request(
 
     let tx_response = if asset_in.token_type.is_smart() {
         let smart_contract = match &asset_in.token_type {
-            TokenType::Smart { contract_address, .. } => Addr::unchecked(contract_address.clone()),
+            TokenType::Smart {
+                contract_address, ..
+            } => Addr::unchecked(contract_address.clone()),
             _ => unreachable!(),
         };
         env.chain_mut(factory_chain_id).execute(
@@ -136,8 +138,8 @@ mod tests {
             token: Token::create(name.to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: name.to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
         }
     }
 
@@ -174,8 +176,8 @@ mod tests {
             token,
             token_type: TokenType::Smart {
                 contract_address: lp_addr.to_string(),
-            decimals: Some(6),
-        },
+                decimals: Some(6),
+            },
         }
     }
 
@@ -311,9 +313,9 @@ mod tests {
         let sender_addr = env.chain(factory_chain_id).sender().to_string();
 
         let cw20_lp_addr = match &asset_in.token_type {
-            TokenType::Smart { contract_address, .. } => {
-                Some(Addr::unchecked(contract_address.clone()))
-            }
+            TokenType::Smart {
+                contract_address, ..
+            } => Some(Addr::unchecked(contract_address.clone())),
             _ => None,
         };
         let cw20_sender_balance_before = cw20_lp_addr

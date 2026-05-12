@@ -131,11 +131,7 @@ impl EuclidApp {
     }
 
     pub fn query_balance(&self, addr: &Addr, denom: &str) -> Uint256 {
-        self.inner
-            .wrap()
-            .query_balance(addr, denom)
-            .unwrap()
-            .amount
+        self.inner.wrap().query_balance(addr, denom).unwrap().amount
     }
 
     pub fn block_info(&self) -> BlockInfo {
