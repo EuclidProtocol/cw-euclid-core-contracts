@@ -367,7 +367,7 @@ pub fn remove_liquidity(
 
     let token_1_transfer_msg = pair.token_1.create_voucher_transfer_msg(
         state.virtual_balance_contract.to_string(),
-        token_1_liquidity.into(),
+        token_1_liquidity,
         None,
         sender.clone(),
         None,
@@ -376,7 +376,7 @@ pub fn remove_liquidity(
 
     let token_2_transfer_msg = pair.token_2.create_voucher_transfer_msg(
         state.virtual_balance_contract.to_string(),
-        token_2_liquidity.into(),
+        token_2_liquidity,
         None,
         sender.clone(),
         None,
@@ -430,7 +430,7 @@ pub fn add_liquidity(
         // Contract should have approval to use voucher tokens on behalf of sender
         let virtual_balance_transfer_msg = token.token.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            token.amount.into(),
+            token.amount,
             None,
             CrossChainUser {
                 address: env.contract.address.to_string(),
@@ -510,7 +510,7 @@ pub fn add_liquidity(
             .checked_sub(Uint256::from(MINIMUM_LIQUIDITY))
             .map_err(|e: cosmwasm_std::OverflowError| {
                 ContractError::Generic {
-                    err: format!("Min liquidity check failed with error: {}. Got {lp_allocation} LP but minimum is {MINIMUM_LIQUIDITY} LP.", e),
+                    err: format!("Min liquidity check failed with error: {e}. Got {lp_allocation} LP but minimum is {MINIMUM_LIQUIDITY} LP."),
                 }
             })?
     } else {
@@ -675,7 +675,7 @@ pub fn execute_swap(
     // Swap needs approval to use voucher tokens
     let transfer_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
         euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-            amount: amount_in.into(),
+            amount: amount_in,
             token_id: asset_in.to_string(),
             from: Some(voucher_sender.clone()),
             to: CrossChainUser {
@@ -770,7 +770,7 @@ pub fn execute_swap(
 
         let euclid_fee_transfer_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
             euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-                amount: euclid_fee.into(),
+                amount: euclid_fee,
                 token_id: asset_in.to_string(),
                 to: fee.recipient,
                 from: None,
@@ -788,95 +788,90 @@ pub fn execute_swap(
         response = response.add_message(euclid_fee_transfer_msg);
     }
 
-    match next_swaps.split_first() {
-        Some((next_swap, forward_swaps)) => {
-            // There are more swaps
-            let virtual_balance_approve_msg =
-                euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(
-                    euclid::msgs::virtual_balance::msg::ExecuteApprove {
-                        amount: swap_response.amount_out.into(),
-                        token_id: swap_response.asset_out.to_string(),
+    if let Some((next_swap, forward_swaps)) = next_swaps.split_first() {
+        // There are more swaps
+        let virtual_balance_approve_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Approve(
+            euclid::msgs::virtual_balance::msg::ExecuteApprove {
+                amount: swap_response.amount_out,
+                token_id: swap_response.asset_out.to_string(),
 
-                        owner: CrossChainUser {
-                            address: env.contract.address.to_string(),
-                            chain_uid: ChainUid::vsl_chain_uid()?,
-                        },
+                owner: CrossChainUser {
+                    address: env.contract.address.to_string(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
 
-                        spender: CrossChainUser {
-                            address: next_swap.vlp_address.clone(),
-                            chain_uid: ChainUid::vsl_chain_uid()?,
-                        },
-                    },
-                );
+                spender: CrossChainUser {
+                    address: next_swap.vlp_address.clone(),
+                    chain_uid: ChainUid::vsl_chain_uid()?,
+                },
+            },
+        );
 
-            let virtual_balance_approve_msg = WasmMsg::Execute {
-                contract_addr: state.virtual_balance_contract.to_string(),
-                msg: to_json_binary(&virtual_balance_approve_msg)?,
-                funds: vec![],
-            };
+        let virtual_balance_approve_msg = WasmMsg::Execute {
+            contract_addr: state.virtual_balance_contract.to_string(),
+            msg: to_json_binary(&virtual_balance_approve_msg)?,
+            funds: vec![],
+        };
 
-            let next_swap_msg = euclid::msgs::vlp::cp::msg::ExecuteMsg::Swap(VlpSwapMsg {
-                sender: sender.clone(),
-                tx_id: tx_id.clone(),
-                asset_in: swap_response.asset_out,
-                amount_in: swap_response.amount_out,
-                min_token_out,
-                next_swaps: forward_swaps.to_vec(),
-                test_fail: next_swap.test_fail,
-            });
-            let next_swap_msg = WasmMsg::Execute {
-                contract_addr: next_swap.vlp_address.clone(),
-                msg: to_json_binary(&next_swap_msg)?,
-                funds: vec![],
-            };
+        let next_swap_msg = euclid::msgs::vlp::cp::msg::ExecuteMsg::Swap(VlpSwapMsg {
+            sender: sender.clone(),
+            tx_id: tx_id.clone(),
+            asset_in: swap_response.asset_out,
+            amount_in: swap_response.amount_out,
+            min_token_out,
+            next_swaps: forward_swaps.to_vec(),
+            test_fail: next_swap.test_fail,
+        });
+        let next_swap_msg = WasmMsg::Execute {
+            contract_addr: next_swap.vlp_address.clone(),
+            msg: to_json_binary(&next_swap_msg)?,
+            funds: vec![],
+        };
 
-            let next_swap_msg = SubMsg::reply_always(next_swap_msg, NEXT_SWAP_REPLY_ID);
+        let next_swap_msg = SubMsg::reply_always(next_swap_msg, NEXT_SWAP_REPLY_ID);
 
-            response = response
-                .add_attribute("swap_type", "forward_swap")
-                .add_attribute("forward_to", next_swap.vlp_address.clone())
-                .add_message(virtual_balance_approve_msg)
-                .add_submessage(next_swap_msg);
-        }
-        None => {
-            //Its the last swap
+        response = response
+            .add_attribute("swap_type", "forward_swap")
+            .add_attribute("forward_to", next_swap.vlp_address.clone())
+            .add_message(virtual_balance_approve_msg)
+            .add_submessage(next_swap_msg);
+    } else {
+        //Its the last swap
 
-            // Verify that the receive amount is >= min amount as its last swap
-            ensure!(
-                receive_amount.ge(&min_token_out),
-                ContractError::SlippageExceeded {
-                    amount: receive_amount,
-                    min_amount_out: min_token_out,
-                }
-            );
+        // Verify that the receive amount is >= min amount as its last swap
+        ensure!(
+            receive_amount.ge(&min_token_out),
+            ContractError::SlippageExceeded {
+                amount: receive_amount,
+                min_amount_out: min_token_out,
+            }
+        );
 
-            let virtual_balance_transfer_msg =
-                euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
-                    euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-                        amount: swap_response.amount_out.into(),
-                        token_id: swap_response.asset_out.to_string(),
+        let virtual_balance_transfer_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
+            euclid::msgs::virtual_balance::msg::ExecuteTransfer {
+                amount: swap_response.amount_out,
+                token_id: swap_response.asset_out.to_string(),
 
-                        // Destination Address
-                        to: sender.clone(),
-                        sender: None,
-                        from: None,
-                        msg: None,
-                    },
-                );
+                // Destination Address
+                to: sender.clone(),
+                sender: None,
+                from: None,
+                msg: None,
+            },
+        );
 
-            let virtual_balance_transfer_msg = WasmMsg::Execute {
-                contract_addr: state.virtual_balance_contract.to_string(),
-                msg: to_json_binary(&virtual_balance_transfer_msg)?,
-                funds: vec![],
-            };
+        let virtual_balance_transfer_msg = WasmMsg::Execute {
+            contract_addr: state.virtual_balance_contract.to_string(),
+            msg: to_json_binary(&virtual_balance_transfer_msg)?,
+            funds: vec![],
+        };
 
-            response = response
-                .add_attribute("swap_type", "final_swap")
-                .add_attribute("receiver_address", sender.address.clone())
-                .add_attribute("receiver_chain_id", sender.chain_uid.to_string())
-                .add_message(virtual_balance_transfer_msg);
-        }
-    };
+        response = response
+            .add_attribute("swap_type", "final_swap")
+            .add_attribute("receiver_address", sender.address.clone())
+            .add_attribute("receiver_chain_id", sender.chain_uid.to_string())
+            .add_message(virtual_balance_transfer_msg);
+    }
 
     // Save changes to total fees in state
     state_storage.save(deps.storage, &state)?;

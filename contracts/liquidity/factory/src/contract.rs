@@ -202,8 +202,7 @@ pub fn execute(
                     .iter()
                     .find(|fund| fund.denom == *denom)
                     .ok_or(ContractError::InsufficientFunds {})?
-                    .amount
-                    .into();
+                    .amount;
             }
             ensure!(
                 amount_in.ge(&msg.amount_in),
@@ -316,9 +315,8 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         RELEASE_ESCROW_REPLY_ID => on_release_escrow_reply(deps.branch(), msg),
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps.branch(), msg),
 
-        id => Err(ContractError::Std(StdError::generic_err(format!(
-            "Unknown reply id: {}",
-            id
+        id => Err(ContractError::Std(StdError::msg(format!(
+            "Unknown reply id: {id}"
         )))),
     }
 }
@@ -327,7 +325,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, Uint128, Uint256,
+        to_json_binary, Addr, Uint256,
     };
     use euclid::{
         chain::ChainUid,

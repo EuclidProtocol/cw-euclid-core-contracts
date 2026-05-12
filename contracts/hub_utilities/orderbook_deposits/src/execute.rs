@@ -123,7 +123,7 @@ fn execute_voucher_receive(
             let amount: Uint256 = transfer
                 .amount
                 .try_into()
-                .map_err(|_| StdError::generic_err("Amount overflow"))?;
+                .map_err(|_| StdError::msg("Amount overflow"))?;
             execute_deposit(deps, transfer.token_id, amount, transfer.sender)
         }
     }
@@ -462,7 +462,7 @@ fn execute_withdraw(
     // Reject mixed-case or empty addresses before sending to virtual_balance
     destination_user.validate()?;
     let transfer_msg = VirtualBalanceExecuteMsg::Transfer(ExecuteTransfer {
-        amount: amount.into(),
+        amount,
         token_id: permit_data.token_id.clone(),
         sender: None,
         to: destination_user,

@@ -1,22 +1,13 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use super::chains::get_virtual_balance;
-use crate::helpers::chains::get_escrow;
+use crate::helpers::chains::get_escrow_addr;
+use crate::helpers::multi_chain::MultiChainEnv;
 use crate::helpers::relayer::relay_factory_router_factory;
-use cosmwasm_std::{coin, Uint128, Uint256};
-use cw_orch::mock::MockBase;
-use cw_orch::prelude::*;
-use cw_orch_interchain::prelude::MockInterchainEnv;
+use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint256};
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
-use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
-use euclid::msgs::factory::msg::ExecuteMsgFns as FactoryExecuteMsgFns;
-use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::factory::ExecuteSwapRequest;
-use euclid::msgs::lp_token::msg::ExecuteMsgFns as LpTokenExecuteMsgFns;
-use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
-use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::recipient::Recipient;
 use euclid::swap::NextSwapPair;
@@ -24,21 +15,53 @@ use euclid::token::PairWithDenomAndAmount;
 use euclid::token::Token;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
-
 use euclid::voucher::BalanceKey;
-use factory::FactoryContract;
-use lp_token::LpTokenContract;
-use router::RouterContract;
+
+use super::app::EuclidApp;
 
 pub fn register_token(
-    factory: &FactoryContract<MockBase>,
-    router: &RouterContract<MockBase>,
+    factory_addr: &Addr,
+    factory_chain_id: &str,
+    router_addr: &Addr,
+    router_chain_id: &str,
+    env: &mut MultiChainEnv,
     token: TokenWithDenom,
-) -> Result<(), CwOrchError> {
-    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    let tx_response = factory.register_denom(CrossChainConfig::default(), token.clone())?;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-    let escrow_response = factory.get_escrow(token.token.to_string())?;
+) -> Result<(), anyhow::Error> {
+    let factory_chain_uid = {
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        factory_state.chain_uid
+    };
+
+    let sender = env.chain(factory_chain_id).sender();
+    let tx_response = env.chain_mut(factory_chain_id).execute(
+        &sender,
+        factory_addr,
+        &euclid::msgs::factory::ExecuteMsg::RegisterDenom {
+            token_with_denom: token.clone(),
+            cross_chain_config: CrossChainConfig::default(),
+        },
+        &[],
+    );
+
+    relay_factory_router_factory(
+        tx_response.events,
+        factory_chain_id,
+        factory_addr,
+        &factory_chain_uid,
+        router_chain_id,
+        router_addr,
+        env,
+    )?;
+
+    let escrow_response: euclid::msgs::factory::GetEscrowResponse =
+        env.chain(factory_chain_id).query(
+            factory_addr,
+            &euclid::msgs::factory::QueryMsg::GetEscrow {
+                token_id: token.token.to_string(),
+            },
+        );
     assert!(
         escrow_response
             .denoms
@@ -51,22 +74,60 @@ pub fn register_token(
 }
 
 pub fn deposit_token(
-    factory: &FactoryContract<MockBase>,
-    router: &RouterContract<MockBase>,
+    factory_addr: &Addr,
+    factory_chain_id: &str,
+    router_addr: &Addr,
+    router_chain_id: &str,
+    env: &mut MultiChainEnv,
     token: TokenWithDenom,
     amount: Uint256,
     recipients: Vec<Recipient>,
-) -> Result<(), CwOrchError> {
-    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+) -> Result<(), anyhow::Error> {
+    let factory_chain_uid = {
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        factory_state.chain_uid
+    };
+
+    let sender = env.chain(factory_chain_id).sender();
     let mut funds = vec![];
     faucet(
-        factory.environment(),
-        factory.environment().sender.as_str(),
+        env.chain_mut(factory_chain_id),
+        &sender,
         Uint128::try_from(amount).unwrap().u128(),
         token.token_type.clone(),
         &mut funds,
     );
-    let tx_response = factory.execute(
+
+    let escrow_addr = get_escrow_addr(
+        env.chain(factory_chain_id),
+        factory_addr,
+        token.token.as_str(),
+    );
+    let old_escrow_state: euclid::msgs::escrow::StateResponse = env
+        .chain(factory_chain_id)
+        .query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
+
+    let router_state: euclid::msgs::router::StateResponse = env
+        .chain(router_chain_id)
+        .query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
+    let virtual_balance_address = router_state.virtual_balance_address;
+
+    let old_vb_escrow: euclid::msgs::virtual_balance::GetEscrowBalanceResponse =
+        env.chain(router_chain_id).query(
+            &virtual_balance_address,
+            &euclid::msgs::virtual_balance::QueryMsg::GetEscrowBalance {
+                token_id: token.token.to_string(),
+                chain_uid: factory_chain_uid.clone(),
+                token_type: token.token_type.clone(),
+            },
+        );
+    let old_balance = old_vb_escrow.balance;
+
+    let tx_response = env.chain_mut(factory_chain_id).execute(
+        &sender,
+        factory_addr,
         &euclid::msgs::factory::msg::ExecuteMsg::DepositToken {
             asset_in: token.clone(),
             amount_in: amount,
@@ -74,35 +135,40 @@ pub fn deposit_token(
             cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
-    )?;
-    let escrow_contract = get_escrow(factory, token.token.as_str());
-    let old_escrow_balance = escrow_contract.state().unwrap();
+    );
 
-    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
-    let virtual_balance_contract =
-        get_virtual_balance(router.environment(), &virtual_balance_address);
-    let old_router_escrow_balance =
-        virtual_balance_contract.get_token_escrows(token.token.to_string(), None)?;
-    let old_balance = match old_router_escrow_balance.escrows.first() {
-        Some(chain) => chain.balance,
-        None => Uint256::zero(),
-    };
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-    let new_router_escrow_balance =
-        virtual_balance_contract.get_token_escrows(token.token.to_string(), None)?;
-    let new_balance = match new_router_escrow_balance.escrows.first() {
-        Some(chain) => chain.balance,
-        None => Uint256::zero(),
-    };
+    relay_factory_router_factory(
+        tx_response.events,
+        factory_chain_id,
+        factory_addr,
+        &factory_chain_uid,
+        router_chain_id,
+        router_addr,
+        env,
+    )?;
+
+    let new_vb_escrow: euclid::msgs::virtual_balance::GetEscrowBalanceResponse =
+        env.chain(router_chain_id).query(
+            &virtual_balance_address,
+            &euclid::msgs::virtual_balance::QueryMsg::GetEscrowBalance {
+                token_id: token.token.to_string(),
+                chain_uid: factory_chain_uid.clone(),
+                token_type: token.token_type.clone(),
+            },
+        );
+    let new_balance = new_vb_escrow.balance;
     assert_eq!(
         new_balance,
-        old_balance + Uint256::from(amount),
-        "Router escrow balance not updated properly"
+        old_balance + amount,
+        "Virtual balance escrow not updated properly"
     );
-    let new_escrow_balance = escrow_contract.state().unwrap();
+
+    let new_escrow_state: euclid::msgs::escrow::StateResponse = env
+        .chain(factory_chain_id)
+        .query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
     assert_eq!(
-        new_escrow_balance.total_amount,
-        old_escrow_balance.total_amount + amount,
+        new_escrow_state.total_amount,
+        old_escrow_state.total_amount + amount,
         "Escrow balance not updated properly"
     );
 
@@ -110,28 +176,42 @@ pub fn deposit_token(
 }
 
 pub fn transfer_token_vcoin(
-    factory: &FactoryContract<MockBase>,
-    router: &RouterContract<MockBase>,
+    factory_addr: &Addr,
+    factory_chain_id: &str,
+    router_addr: &Addr,
+    router_chain_id: &str,
+    env: &mut MultiChainEnv,
     token: Token,
     amount: Uint256,
     recipients: Vec<Recipient>,
-) -> Result<(), CwOrchError> {
-    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
-    let virtual_balance_contract =
-        get_virtual_balance(router.environment(), &virtual_balance_address);
+) -> Result<(), anyhow::Error> {
+    let router_state: euclid::msgs::router::StateResponse = env
+        .chain(router_chain_id)
+        .query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
+    let virtual_balance_address = router_state.virtual_balance_address;
 
-    let sender = CrossChainUser::new(
-        factory.get_state().unwrap().chain_uid,
-        factory.environment().sender.to_string(),
-    );
+    let factory_state: euclid::msgs::factory::StateResponse = env
+        .chain(factory_chain_id)
+        .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+    let factory_sender = env.chain(factory_chain_id).sender();
+    let sender_user =
+        CrossChainUser::new(factory_state.chain_uid.clone(), factory_sender.to_string());
+    let factory_chain_uid = factory_state.chain_uid;
 
-    let old_balance = virtual_balance_contract.get_balance(BalanceKey {
-        cross_chain_user: sender.clone(),
-        token_id: token.to_string(),
-    })?;
-    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    let old_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
+        env.chain(router_chain_id).query(
+            &virtual_balance_address,
+            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+                balance_key: BalanceKey {
+                    cross_chain_user: sender_user.clone(),
+                    token_id: token.to_string(),
+                },
+            },
+        );
 
-    let tx_response = factory.execute(
+    let tx_response = env.chain_mut(factory_chain_id).execute(
+        &factory_sender,
+        factory_addr,
         &euclid::msgs::factory::ExecuteMsg::TransferVoucher {
             token_id: token.clone(),
             amount,
@@ -140,71 +220,94 @@ pub fn transfer_token_vcoin(
             cross_chain_config: CrossChainConfig::default(),
         },
         &[],
-    )?;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+    );
 
-    let new_balance = virtual_balance_contract.get_balance(BalanceKey {
-        cross_chain_user: sender.clone(),
-        token_id: token.to_string(),
-    })?;
+    relay_factory_router_factory(
+        tx_response.events,
+        factory_chain_id,
+        factory_addr,
+        &factory_chain_uid,
+        router_chain_id,
+        router_addr,
+        env,
+    )?;
+
+    let new_balance: euclid::msgs::virtual_balance::GetBalanceResponse =
+        env.chain(router_chain_id).query(
+            &virtual_balance_address,
+            &euclid::msgs::virtual_balance::QueryMsg::GetBalance {
+                balance_key: BalanceKey {
+                    cross_chain_user: sender_user.clone(),
+                    token_id: token.to_string(),
+                },
+            },
+        );
 
     assert_eq!(
-        new_balance.amount + Uint256::from(amount),
+        new_balance.amount + amount,
         old_balance.amount,
-        "Virtual balance not transferred properly, old balance: {}, new balance: {}, amount: {}",
-        old_balance.amount,
-        new_balance.amount,
-        amount
+        "Virtual balance not transferred properly"
     );
     Ok(())
 }
 
 pub fn faucet(
-    chain: &MockBase,
-    address: &str,
+    app: &mut EuclidApp,
+    address: &Addr,
     amount: u128,
     token_type: TokenType,
     funds: &mut Vec<Coin>,
 ) {
     match token_type {
         TokenType::Native { denom, .. } => {
-            chain
-                .add_balance(&Addr::unchecked(address), vec![coin(amount, denom.clone())])
-                .unwrap();
-            // attach native token to the message
+            app.add_balance(address, vec![coin(amount, denom.clone())]);
             funds.push(coin(amount, denom));
         }
         TokenType::Smart {
             contract_address, ..
         } => {
-            let cw20 = LpTokenContract::new(chain.clone());
-            cw20.set_address(&Addr::unchecked(contract_address));
-            // Increase allowance
-            cw20.increase_allowance(amount, address, None).unwrap();
+            let lp_addr = Addr::unchecked(contract_address);
+            let sender = app.sender();
+            app.execute(
+                &sender,
+                &lp_addr,
+                &euclid::msgs::lp_token::msg::ExecuteMsg::IncreaseAllowance {
+                    spender: address.to_string(),
+                    amount: Uint256::from(amount),
+                    expires: None,
+                },
+                &[],
+            );
         }
         _ => {}
-    };
+    }
 }
 
 pub fn create_pool(
-    factory: &FactoryContract<MockBase>,
-    router: &RouterContract<MockBase>,
+    factory_addr: &Addr,
+    factory_chain_id: &str,
+    router_addr: &Addr,
+    router_chain_id: &str,
+    env: &mut MultiChainEnv,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
     pool_config: PoolConfig,
-) -> Result<(), CwOrchError> {
-    let chain = factory.environment();
+) -> Result<(), anyhow::Error> {
+    let sender = env.chain(factory_chain_id).sender();
     let mut funds = vec![];
     for token in pair_with_denom.get_vec_token_info() {
         faucet(
-            &chain,
-            chain.sender.as_str(),
+            env.chain_mut(factory_chain_id),
+            &sender,
             Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
     }
-    let tx_response = factory.execute(
+
+    let tx_response = env.chain_mut(factory_chain_id).execute(
+        &sender,
+        factory_addr,
         &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
             pair_with_denom_and_amount: pair_with_denom.clone(),
             slippage_tolerance_bps,
@@ -216,42 +319,84 @@ pub fn create_pool(
             cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
-    )?;
-    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+    );
 
-    let registered_pool = factory.get_vlp(pair_with_denom.get_pair().unwrap());
+    let factory_chain_uid = {
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        factory_state.chain_uid
+    };
+
+    relay_factory_router_factory(
+        tx_response.events,
+        factory_chain_id,
+        factory_addr,
+        &factory_chain_uid,
+        router_chain_id,
+        router_addr,
+        env,
+    )?;
+
+    let registered_pool: Result<euclid::msgs::factory::GetVlpResponse, _> =
+        env.chain(factory_chain_id).try_query(
+            factory_addr,
+            &euclid::msgs::factory::QueryMsg::GetVlp {
+                pair: pair_with_denom.get_pair().unwrap(),
+            },
+        );
     assert!(registered_pool.is_ok(), "Pool not registered");
     Ok(())
 }
 
 pub fn add_liquidity(
-    _interchain: &MockInterchainEnv,
-    factory: &FactoryContract<MockBase>,
-    router: &RouterContract<MockBase>,
+    factory_addr: &Addr,
+    factory_chain_id: &str,
+    router_addr: &Addr,
+    router_chain_id: &str,
+    env: &mut MultiChainEnv,
     pair_with_denom: PairWithDenomAndAmount,
     slippage_tolerance_bps: u64,
     funds: Vec<Coin>,
-) -> Result<(), CwOrchError> {
-    let tx_response = factory.execute(
+) -> Result<(), anyhow::Error> {
+    let sender = env.chain(factory_chain_id).sender();
+    let tx_response = env.chain_mut(factory_chain_id).execute(
+        &sender,
+        factory_addr,
         &euclid::msgs::factory::ExecuteMsg::AddLiquidity {
             pair_with_denom_and_amount: pair_with_denom.clone(),
             slippage_tolerance_bps,
             cross_chain_config: CrossChainConfig::default(),
         },
         &funds,
-    )?;
+    );
 
-    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+    let factory_chain_uid = {
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        factory_state.chain_uid
+    };
+
+    relay_factory_router_factory(
+        tx_response.events,
+        factory_chain_id,
+        factory_addr,
+        &factory_chain_uid,
+        router_chain_id,
+        router_addr,
+        env,
+    )?;
 
     Ok(())
 }
 
 pub fn swap_request(
-    _interchain: &MockInterchainEnv,
-    factory: &FactoryContract<MockBase>,
-    router: &RouterContract<MockBase>,
+    factory_addr: &Addr,
+    factory_chain_id: &str,
+    router_addr: &Addr,
+    router_chain_id: &str,
+    env: &mut MultiChainEnv,
     asset_in: TokenWithDenom,
     amount_in: Uint256,
     asset_out: Token,
@@ -260,8 +405,11 @@ pub fn swap_request(
     recipients: Vec<Recipient>,
     partner_fee: Option<PartnerFee>,
     funds: Vec<Coin>,
-) -> Result<(), CwOrchError> {
-    let tx_response = factory.execute(
+) -> Result<(), anyhow::Error> {
+    let sender = env.chain(factory_chain_id).sender();
+    let tx_response = env.chain_mut(factory_chain_id).execute(
+        &sender,
+        factory_addr,
         &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
             amount_in,
             recipients,
@@ -273,10 +421,24 @@ pub fn swap_request(
             cross_chain_config: CrossChainConfig::default(),
         }),
         &funds,
-    )?;
+    );
 
-    let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
-    relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
+    let factory_chain_uid = {
+        let factory_state: euclid::msgs::factory::StateResponse = env
+            .chain(factory_chain_id)
+            .query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+        factory_state.chain_uid
+    };
+
+    relay_factory_router_factory(
+        tx_response.events,
+        factory_chain_id,
+        factory_addr,
+        &factory_chain_uid,
+        router_chain_id,
+        router_addr,
+        env,
+    )?;
 
     Ok(())
 }

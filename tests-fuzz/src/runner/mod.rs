@@ -175,7 +175,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
 
     /// Phased run: seed positions → random ops → drain all → assert clean state.
     pub fn run_linear(&mut self, num_positions: usize, num_ops: u64) {
-        println!("Phase 1: Seeding {} positions...", num_positions);
+        println!("Phase 1: Seeding {num_positions} positions...");
         self.seed(num_positions);
         println!("  Created positions");
 
@@ -184,7 +184,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
         self.coverage.record(&result);
         result.assert_all_pass();
 
-        println!("Phase 2: Executing {} ops...", num_ops);
+        println!("Phase 2: Executing {num_ops} ops...");
         for i in 0..num_ops {
             let op = self.pool.random_op(&mut self.rng);
             let before = self.pool.snapshot();

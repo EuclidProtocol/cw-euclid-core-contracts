@@ -97,8 +97,8 @@ pub fn execute_transfer_voucher(
             .next()
             .ok_or(ContractError::new("Recipient Iter Failed"))?;
 
-        let release_amount_event_key = format!("release_id_{}_amount", index);
-        let transfer_amount_event_key = format!("transfer_id_{}_amount", index);
+        let release_amount_event_key = format!("release_id_{index}_amount");
+        let transfer_amount_event_key = format!("transfer_id_{index}_amount");
 
         // We will transfer vouchers to the recipient
         if recipient.denom.is_voucher() {
@@ -217,7 +217,7 @@ pub fn _transfer_voucher_as_voucher(
     }
     let transfer_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
         euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-            amount: amount.into(),
+            amount,
             token_id: token.to_string(),
             sender: Some(sender.clone()),
             to: recipient.recipient.clone(),
@@ -284,11 +284,11 @@ pub fn _release_voucher(
     let max_release_amount = normalized_token_amount.min(escrow_balance);
 
     let release_amount = match recipient.amount {
-        Limit::LessThanOrEqual(limit) => max_release_amount.min(limit.into()),
-        Limit::Equal(limit) => max_release_amount.min(limit.into()),
+        Limit::LessThanOrEqual(limit) => max_release_amount.min(limit),
+        Limit::Equal(limit) => max_release_amount.min(limit),
         Limit::GreaterThanOrEqual(limit) => {
             ensure!(
-                max_release_amount.ge(&limit.into()),
+                max_release_amount.ge(&limit),
                 ContractError::InsufficientAmount {
                     min_amount: limit,
                     amount: max_release_amount,
@@ -649,7 +649,7 @@ mod tests {
         );
     }
 
-    /// GreaterThanOrEqual limit fails when the escrow can't satisfy the minimum.
+    /// `GreaterThanOrEqual` limit fails when the escrow can't satisfy the minimum.
     #[test]
     fn test_withdraw_voucher_gte_limit_fails_when_escrow_too_low() {
         let mut deps = voucher_deps(); // escrow = 500 raw tokens

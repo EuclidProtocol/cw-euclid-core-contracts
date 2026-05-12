@@ -75,9 +75,8 @@ mod tests {
             if let Some(err) = test.expected_error {
                 assert_eq!(res.unwrap_err(), err, "{}", test.name);
                 continue;
-            } else {
-                assert_eq!(res.unwrap(), test.expected_result.unwrap())
             }
+            assert_eq!(res.unwrap(), test.expected_result.unwrap());
         }
     }
 }

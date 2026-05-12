@@ -22,6 +22,7 @@ impl MockEscrow {
         Self(res.unwrap())
     }
 
+    #[must_use]
     pub fn query_multi_queries(
         &self,
         app: &MockApp,
@@ -41,10 +42,12 @@ pub fn mock_cw_multi_call() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
+#[must_use]
 pub fn mock_cw_multi_call_msg() -> InstantiateMsg {
     InstantiateMsg {}
 }
 
+#[must_use]
 pub fn mock_query_multi_query(queries: Vec<MultiQuery>) -> QueryMsg {
     QueryMsg::MultiQuery { queries }
 }

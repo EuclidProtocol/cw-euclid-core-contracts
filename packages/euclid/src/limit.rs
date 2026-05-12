@@ -27,7 +27,7 @@ impl Limit {
                 amount.is_zero(),
                 ContractError::new("Dynamic limit must have zero amount")
             ),
-        };
+        }
         Ok(())
     }
 

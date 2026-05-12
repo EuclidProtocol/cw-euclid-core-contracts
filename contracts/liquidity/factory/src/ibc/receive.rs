@@ -172,7 +172,7 @@ mod tests {
     };
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env},
-        CosmosMsg, ReplyOn, Uint128, Uint256, WasmMsg,
+        CosmosMsg, ReplyOn, Uint256, WasmMsg,
     };
     use euclid::{
         chain::ChainUid,

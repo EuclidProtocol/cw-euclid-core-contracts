@@ -43,10 +43,7 @@ pub fn execute_swap_request(
 
     let tx_id = generate_tx(deps, &env, &sender)?;
 
-    let partner_fee_bps = partner_fee
-        .clone()
-        .map(|fee| fee.partner_fee_bps)
-        .unwrap_or(0);
+    let partner_fee_bps = partner_fee.clone().map_or(0, |fee| fee.partner_fee_bps);
 
     ensure!(
         partner_fee_bps <= MAX_PARTNER_FEE_BPS,
@@ -202,7 +199,7 @@ pub fn execute_swap_request(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128, Uint256,
+        Uint256,
     };
     use euclid::{
         error::ContractError,

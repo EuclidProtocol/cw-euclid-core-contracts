@@ -23,7 +23,7 @@ pub fn get_validators(deps: &Deps) -> Result<ValidatorsResponse, ContractError> 
     let iter = VALIDATORS.range(deps.storage, None, None, Order::Ascending);
     for v in iter {
         let (chain_uid, chain_validators) = v?;
-        for validator in chain_validators.iter() {
+        for validator in &chain_validators {
             validators.push(ValidatorsResponseItem {
                 validator: validator.clone(),
                 chain_uid: chain_uid.clone(),

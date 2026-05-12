@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cosmwasm_std::{ensure, Coin, Uint128, Uint256};
+use cosmwasm_std::{ensure, Coin, Uint256};
 
 use crate::error::ContractError;
 
@@ -10,6 +10,7 @@ pub struct FundManager {
 
 impl FundManager {
     /// Create a new fund manager
+    #[must_use]
     pub fn new(funds: &[Coin]) -> Self {
         let mut fund_manager = FundManager {
             funds: HashMap::new(),
@@ -21,19 +22,20 @@ impl FundManager {
     }
 
     /// Get the amount of funds in the manager for a given denom
+    #[must_use]
     pub fn get(&self, denom: &str) -> Uint256 {
-        self.funds.get(denom).cloned().unwrap_or(Uint256::zero())
+        self.funds.get(denom).copied().unwrap_or(Uint256::zero())
     }
 
     /// Add funds to the manager
     pub fn add(&mut self, fund: &Coin) {
         *self
             .funds
-            .entry(fund.denom.to_string())
-            .or_insert(Uint256::zero()) += Uint256::from(fund.amount);
+            .entry(fund.denom.clone())
+            .or_insert(Uint256::zero()) += fund.amount;
     }
 
-    //   Use funds from the manager
+    /// Use funds from the manager
     pub fn use_fund(&mut self, amount: Uint256, denom: &str) -> Result<(), ContractError> {
         ensure!(
             !amount.is_zero(),
@@ -55,10 +57,11 @@ impl FundManager {
         Ok(())
     }
 
+    #[must_use]
     pub fn get_funds(&self) -> Vec<Coin> {
         self.funds
             .iter()
-            .map(|(denom, amount)| Coin::new(Uint128::try_from(*amount).unwrap().u128(), denom))
+            .map(|(denom, amount)| Coin::new(*amount, denom))
             .collect()
     }
 

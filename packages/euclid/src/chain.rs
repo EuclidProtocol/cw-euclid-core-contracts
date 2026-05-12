@@ -73,8 +73,8 @@ impl KeyDeserialize for ChainUid {
     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
         String::from_utf8(value)
             .map(Self::create)
-            .map_err(|e| StdError::generic_err(format!("Invalid UTF-8 sequence: {}", e)))?
-            .map_err(|err| StdError::generic_err(err.to_string()))
+            .map_err(|e| StdError::msg(format!("Invalid UTF-8 sequence: {e}")))?
+            .map_err(|err| StdError::msg(err.to_string()))
     }
 }
 
@@ -103,14 +103,17 @@ pub enum ChainType {
 }
 
 impl Chain {
+    #[must_use]
     pub fn is_native(&self) -> bool {
         matches!(self.chain_type, ChainType::Native {})
     }
 
+    #[must_use]
     pub fn is_evm(&self) -> bool {
         matches!(self.chain_type, ChainType::Evm(_))
     }
 
+    #[must_use]
     pub fn is_cosmos(&self) -> bool {
         matches!(self.chain_type, ChainType::Cosmos(_))
     }
@@ -122,6 +125,7 @@ impl Chain {
         }
     }
 
+    #[must_use]
     pub fn get_chain_type_str(&self) -> String {
         match self.chain_type {
             ChainType::Cosmos(_) => "cosmos".to_string(),

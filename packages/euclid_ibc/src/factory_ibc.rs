@@ -42,6 +42,7 @@ pub enum FactoryCrossChainExecuteMsg {
 }
 
 impl FactoryCrossChainExecuteMsg {
+    #[must_use]
     pub fn get_tx_id(&self) -> String {
         match self {
             Self::RegisterFactory { tx_id, .. } => tx_id.clone(),
@@ -59,68 +60,65 @@ impl FactoryCrossChainExecuteMsg {
         timeout: Option<u64>,
         ack_response: Option<Binary>,
     ) -> Result<SubMsg, ContractError> {
-        match chain.chain_type {
-            euclid::chain::ChainType::Native {} => {
-                let factory_msg = factory::ExecuteMsg::NativeReceiveCallback {
-                    msg: to_json_binary(self)?,
-                };
-                // Clamp the counter to the reserved range (2001–3000); equivalent to
-                // the wrap-around in router_ibc.rs but expressed as a clamp.
-                // The `ensure!` below is the hard guard: if the slot is still occupied
-                // (i.e. all 1 000 slots are in-flight simultaneously), the call errors.
-                let mut count = NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_COUNT
-                    .load(deps.storage)
-                    .unwrap_or(NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0);
+        if let euclid::chain::ChainType::Native {} = chain.chain_type {
+            let factory_msg = factory::ExecuteMsg::NativeReceiveCallback {
+                msg: to_json_binary(self)?,
+            };
+            // Clamp the counter to the reserved range (2001–3000); equivalent to
+            // the wrap-around in router_ibc.rs but expressed as a clamp.
+            // The `ensure!` below is the hard guard: if the slot is still occupied
+            // (i.e. all 1 000 slots are in-flight simultaneously), the call errors.
+            let mut count = NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_COUNT
+                .load(deps.storage)
+                .unwrap_or(NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0);
 
-                count = count
-                    .min(NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.1)
-                    .max(NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0);
+            count = count
+                .min(NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.1)
+                .max(NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE.0);
 
-                ensure!(
-                    !NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.has(deps.storage, count),
-                    ContractError::new("Msg Queue is full")
-                );
-                NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.save(
-                    deps.storage,
-                    count,
-                    &PendingPacket {
-                        chain_uid: chain.chain_uid.clone(),
-                        original_msg: to_json_binary(self)?,
-                        ack_response,
-                    },
-                )?;
-                NATIVE_CROSS_CHAIN_PENDING_PACKET_SENDER.save(
-                    deps.storage,
-                    count,
-                    &Addr::unchecked(sender),
-                )?;
-
-                NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_COUNT.save(deps.storage, &count.add(1))?;
-
-                Ok(SubMsg::reply_always(
-                    WasmMsg::Execute {
-                        contract_addr: chain.factory_address.clone(),
-                        msg: to_json_binary(&factory_msg)?,
-                        funds: vec![],
-                    },
-                    count,
-                ))
-            }
-            _ => {
-                let router_internal_msg = router::execute::ExecuteMsg::SendPacket {
-                    msg: to_json_binary(self)?,
-                    chain,
-                    timeout,
+            ensure!(
+                !NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.has(deps.storage, count),
+                ContractError::new("Msg Queue is full")
+            );
+            NATIVE_CROSS_CHAIN_ORIGINAL_MSG_REPLY_QUEUE.save(
+                deps.storage,
+                count,
+                &PendingPacket {
+                    chain_uid: chain.chain_uid.clone(),
+                    original_msg: to_json_binary(self)?,
                     ack_response,
-                    sender,
-                };
-                // Trigger a Send Packet execute call to the same contract
-                Ok(SubMsg::new(WasmMsg::Execute {
-                    contract_addr: env.contract.address.to_string(),
-                    msg: to_json_binary(&router_internal_msg)?,
+                },
+            )?;
+            NATIVE_CROSS_CHAIN_PENDING_PACKET_SENDER.save(
+                deps.storage,
+                count,
+                &Addr::unchecked(sender),
+            )?;
+
+            NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_COUNT.save(deps.storage, &count.add(1))?;
+
+            Ok(SubMsg::reply_always(
+                WasmMsg::Execute {
+                    contract_addr: chain.factory_address.clone(),
+                    msg: to_json_binary(&factory_msg)?,
                     funds: vec![],
-                }))
-            }
+                },
+                count,
+            ))
+        } else {
+            let router_internal_msg = router::execute::ExecuteMsg::SendPacket {
+                msg: to_json_binary(self)?,
+                chain,
+                timeout,
+                ack_response,
+                sender,
+            };
+            // Trigger a Send Packet execute call to the same contract
+            Ok(SubMsg::new(WasmMsg::Execute {
+                contract_addr: env.contract.address.to_string(),
+                msg: to_json_binary(&router_internal_msg)?,
+                funds: vec![],
+            }))
         }
     }
 }

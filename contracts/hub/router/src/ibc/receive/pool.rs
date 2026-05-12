@@ -11,7 +11,7 @@ use euclid::{
         vlp::base::{PoolConfig, VlpAddLiquidityMsg, VlpRegisterPoolMsg, VlpRemoveLiquidityMsg},
     },
     normalize::normalize_token_to_voucher,
-    token::{PairWithDenomAndAmount, TokenMetadata, TokenType},
+    token::{PairWithDenomAndAmount, TokenMetadata},
     voucher::BalanceKey,
 };
 use euclid_ibc::router_ibc::RouterCrossChainRemoveLiquidityExecuteMsg;
@@ -76,47 +76,44 @@ pub fn ibc_execute_request_pool_creation(
                 &sender.chain_uid,
                 &token.token_type,
             );
-            match token_registered_on_sender_chain {
-                Ok(token_metadata) => {
-                    let token_decimals = token.token_type.get_decimals()?;
-                    let metadata_decimals = token_metadata.token_type.get_decimals()?;
-                    ensure!(
-                        metadata_decimals == token_decimals,
-                        ContractError::DecimalsMismatch {
-                            expected: metadata_decimals,
-                            received: token_decimals,
-                        }
-                    );
-                }
-                Err(_) => {
-                    // We don't have this token registered on sender chain, so we need to register it. However we prevent new tokens if already the token id is registered on any chain
-                    ensure!(
-                        !token_registered,
-                        ContractError::new("Token already registered on another chain")
-                    );
-                    let register_metadata_msg = VirtualBalanceMsg::RegisterTokenMetadata {
-                        token_metadata: TokenMetadata::new(
-                            token.token.clone(),
-                            sender.chain_uid.clone(),
-                            token.token_type.clone(),
-                        ),
-                    };
-                    let register_metadata_wasm_msg = WasmMsg::Execute {
-                        contract_addr: virtual_balance_address.to_string(),
-                        msg: to_json_binary(&register_metadata_msg)?,
-                        funds: vec![],
-                    };
-                    response = response.add_message(register_metadata_wasm_msg);
+            if let Ok(token_metadata) = token_registered_on_sender_chain {
+                let token_decimals = token.token_type.get_decimals()?;
+                let metadata_decimals = token_metadata.token_type.get_decimals()?;
+                ensure!(
+                    metadata_decimals == token_decimals,
+                    ContractError::DecimalsMismatch {
+                        expected: metadata_decimals,
+                        received: token_decimals,
+                    }
+                );
+            } else {
+                // We don't have this token registered on sender chain, so we need to register it. However we prevent new tokens if already the token id is registered on any chain
+                ensure!(
+                    !token_registered,
+                    ContractError::new("Token already registered on another chain")
+                );
+                let register_metadata_msg = VirtualBalanceMsg::RegisterTokenMetadata {
+                    token_metadata: TokenMetadata::new(
+                        token.token.clone(),
+                        sender.chain_uid.clone(),
+                        token.token_type.clone(),
+                    ),
+                };
+                let register_metadata_wasm_msg = WasmMsg::Execute {
+                    contract_addr: virtual_balance_address.to_string(),
+                    msg: to_json_binary(&register_metadata_msg)?,
+                    funds: vec![],
+                };
+                response = response.add_message(register_metadata_wasm_msg);
 
-                    response = response.add_event(
-                        simple_event()
-                            .add_attribute("action", "register_denom")
-                            .add_attribute("token", token.token.to_string())
-                            .add_attribute("chain_uid", sender.chain_uid.to_string())
-                            .add_attribute("token_type", token.token_type.get_key()),
-                    );
-                }
-            };
+                response = response.add_event(
+                    simple_event()
+                        .add_attribute("action", "register_denom")
+                        .add_attribute("token", token.token.to_string())
+                        .add_attribute("chain_uid", sender.chain_uid.to_string())
+                        .add_attribute("token_type", token.token_type.get_key()),
+                );
+            }
         }
     }
 
@@ -242,7 +239,7 @@ pub fn ibc_execute_add_liquidity(
             // Mint virtual balance for the token
             let mint_virtual_balance_msg =
                 euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(ExecuteMint {
-                    amount: token.amount.into(),
+                    amount: token.amount,
                     balance_key: BalanceKey {
                         cross_chain_user: sender.clone(),
                         token_id: token.token.to_string(),
@@ -339,21 +336,21 @@ pub fn ibc_execute_remove_liquidity(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{Addr, Uint128, Uint256};
+    use cosmwasm_std::Uint256;
     use euclid::{
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         error::ContractError,
-        msgs::{router::TokenDenom, vlp::base::PoolConfig},
-        token::{Pair, Token, TokenType},
+        msgs::vlp::base::PoolConfig,
+        token::{Pair, Token},
     };
     use euclid_ibc::router_ibc::{
         RouterCrossChainExecuteMsg, RouterCrossChainRemoveLiquidityExecuteMsg,
     };
 
     use crate::{
-        reply::{REMOVE_LIQUIDITY_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID},
-        state::{PENDING_REMOVE_LIQUIDITY, VLPS},
+        reply::REMOVE_LIQUIDITY_REPLY_ID,
+        state::PENDING_REMOVE_LIQUIDITY,
         testing::{
             fixtures::initialized,
             helpers::{

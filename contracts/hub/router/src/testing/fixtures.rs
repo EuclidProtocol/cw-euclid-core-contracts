@@ -20,9 +20,9 @@ pub fn initialized() -> MockDeps {
     deps
 }
 
-/// Fixture: deps ready for WithdrawVoucher / TransferVoucher tests.
-/// Pre-seeds VIRTUAL_BALANCE_CONTRACT, CHAIN_UID_TO_CHAIN (Native),
-/// LOCKED_CHAINS (empty), TOKEN_DENOMS (usdc → uusdc on chain1).
+/// Fixture: deps ready for `WithdrawVoucher` / `TransferVoucher` tests.
+/// Pre-seeds `VIRTUAL_BALANCE_CONTRACT`, `CHAIN_UID_TO_CHAIN` (Native),
+/// `LOCKED_CHAINS` (empty), `TOKEN_DENOMS` (usdc → uusdc on chain1).
 /// Virtual balance mock returns escrow balance of 500 for chain1/usdc.
 #[fixture]
 pub(crate) fn voucher_deps() -> MockDeps {
@@ -105,8 +105,8 @@ pub(crate) fn voucher_deps() -> MockDeps {
     deps
 }
 
-/// Fixture: deps for TransferVoucher tests.
-/// Pre-seeds VIRTUAL_BALANCE_CONTRACT and TOKEN_DENOMS (usdc → empty denoms list).
+/// Fixture: deps for `TransferVoucher` tests.
+/// Pre-seeds `VIRTUAL_BALANCE_CONTRACT` and `TOKEN_DENOMS` (usdc → empty denoms list).
 #[fixture]
 pub(crate) fn transfer_deps() -> MockDeps {
     let mut deps = initialized();

@@ -4,16 +4,16 @@ use euclid::utils::math::Decimal256Ext;
 
 use crate::SwapResult;
 /// N = 2
-pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
+pub const N_COINS: Decimal256 = Decimal256::new(Uint256::new(2_000_000_000_000_000_000u128));
 pub const AMP_PRECISION: u64 = 100;
-/// Minimum amp factor: leverage = amp / AMP_PRECISION * N_COINS must be >= 1.
-/// With N_COINS=2, amp >= AMP_PRECISION / 2 = 50.
-/// We use AMP_PRECISION (100) for a safety margin (leverage >= 2).
+/// Minimum amp factor: leverage = amp / `AMP_PRECISION` * `N_COINS` must be >= 1.
+/// With `N_COINS=2`, amp >= `AMP_PRECISION` / 2 = 50.
+/// We use `AMP_PRECISION` (100) for a safety margin (leverage >= 2).
 pub const MIN_AMP: u64 = AMP_PRECISION;
 /// The maximum number of calculation steps for Newton's method.
 const ITERATIONS: u8 = 64;
 /// 1e-6
-pub const TOL: Decimal256 = Decimal256::raw(1000000000000);
+pub const TOL: Decimal256 = Decimal256::new(Uint256::new(1_000_000_000_000u128));
 
 /// Computes a stable swap result given integer token amounts.
 ///
@@ -71,7 +71,7 @@ pub fn compute_stable_swap(
     let return_amount = ask_pool_amount
         .checked_sub(new_ask_pool_amount)
         .map_err(|_| ContractError::new("Negative return amount"))?
-        .checked_div(Uint256::from(10u128.pow(TOKEN_PRECISION as u32)))?;
+        .checked_div(Uint256::from(10u128.pow(u32::from(TOKEN_PRECISION))))?;
 
     // Calculate offer amount for spread calculation
     let offer_amount = offer_amount_dec.to_uint256_with_precision(0_u32)?;
@@ -94,12 +94,12 @@ pub fn compute_stable_swap(
 ///
 /// * **Equation**
 ///
-/// A * sum(x_i) * n**n + D = A * D * n**n + D**(n+1) / (n**n * prod(x_i))
+/// A * `sum(x_i)` * n**n + D = A * D * n**n + D**(n+1) / (n**n * `prod(x_i)`)
 /// Helper function used to calculate the D invariant as a last step in the `compute_d` public function.
 ///
 /// * **Equation**:
 ///
-/// d = (leverage * sum_x + d_product * n_coins) * initial_d / ((leverage - 1) * initial_d + (n_coins + 1) * d_product)
+/// d = (leverage * `sum_x` + `d_product` * `n_coins`) * `initial_d` / ((leverage - 1) * `initial_d` + (`n_coins` + 1) * `d_product`)
 fn calculate_step(
     initial_d: Decimal256,
     leverage: Decimal256,
@@ -147,9 +147,7 @@ pub fn compute_d(amp: Uint64, pools: &[Decimal256]) -> StdResult<Decimal256> {
             }
         }
 
-        Err(StdError::generic_err(
-            "Newton method for D failed to converge",
-        ))
+        Err(StdError::msg("Newton method for D failed to converge"))
     }
 }
 
@@ -182,7 +180,7 @@ pub(crate) fn calc_y(
 
     let b = new_amount.checked_add(
         d.checked_div(leverage)
-            .map_err(|e| StdError::generic_err(e.to_string()))?,
+            .map_err(|e| StdError::msg(e.to_string()))?,
     )?;
 
     // Solve for y by approximating: y**2 + b*y = c
@@ -196,7 +194,7 @@ pub(crate) fn calc_y(
             .checked_mul(N_COINS)?
             .checked_add(b)?
             .checked_sub(d)
-            .map_err(|e| StdError::generic_err(e.to_string()))?;
+            .map_err(|e| StdError::msg(e.to_string()))?;
 
         // y^2 / denom (Uint512 intermediate via checked_multiply_ratio)
         let y_sq_over_denom = y.checked_multiply_ratio(y, denom)?;
@@ -217,5 +215,5 @@ pub(crate) fn calc_y(
     }
 
     // Should definitely converge in 64 iterations.
-    Err(StdError::generic_err("y is not converging"))
+    Err(StdError::msg("y is not converging"))
 }

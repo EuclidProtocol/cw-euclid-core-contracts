@@ -13,7 +13,7 @@ use euclid::token::{Pair, PairWithAmount, Token};
 // -----------------------------------------------------------------------
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
-    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     MockQuerier,
 >;
@@ -84,7 +84,7 @@ pub fn init(deps: &mut MockDeps) -> Response {
 // Seed helpers
 // -----------------------------------------------------------------------
 
-/// Register a chain pool with zero LP tokens (simulates RegisterPool).
+/// Register a chain pool with zero LP tokens (simulates `RegisterPool`).
 pub fn seed_pool(deps: &mut MockDeps, chain_uid: &ChainUid) {
     CHAIN_LP_TOKENS
         .save(deps.as_mut().storage, chain_uid.clone(), &Uint256::zero())
@@ -101,7 +101,7 @@ pub fn seed_balances(deps: &mut MockDeps, reserve_1: Uint256, reserve_2: Uint256
         .unwrap();
 }
 
-/// Seed state with custom total_lp_tokens and balances — used for add/remove
+/// Seed state with custom `total_lp_tokens` and balances — used for add/remove
 /// liquidity and swap tests that need pre-seeded liquidity.
 pub fn seed_liquidity(
     deps: &mut MockDeps,
@@ -122,7 +122,7 @@ pub fn seed_chain_lp(deps: &mut MockDeps, chain_uid: &ChainUid, lp_tokens: Uint2
         .unwrap();
 }
 
-/// Build a simple pair-with-amounts for add_liquidity calls.
+/// Build a simple pair-with-amounts for `add_liquidity` calls.
 pub fn make_pair_with_amount(amount_1: u128, amount_2: u128) -> PairWithAmount {
     PairWithAmount::new(
         token1().with_amount(Uint256::from(amount_1)),
@@ -131,7 +131,7 @@ pub fn make_pair_with_amount(amount_1: u128, amount_2: u128) -> PairWithAmount {
     .unwrap()
 }
 
-/// Build a CrossChainUser with a given chain_uid string and address.
+/// Build a `CrossChainUser` with a given `chain_uid` string and address.
 pub fn cross_chain_user(chain_uid_str: &str, address: &str) -> CrossChainUser {
     CrossChainUser::new(
         ChainUid::create(chain_uid_str.to_string()).unwrap(),

@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     testing::{message_info, mock_env, MockQuerier},
-    Addr, Response, Uint128, Uint256, Uint64,
+    Addr, Response, Uint256, Uint64,
 };
 use euclid::{
     admin::EuclidAdmin,
@@ -17,7 +17,7 @@ use euclid::{
 use crate::contract::{execute, instantiate};
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
-    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     MockQuerier,
 >;

@@ -30,6 +30,7 @@ pub enum AdminType {
 
 impl EuclidAdmin {
     /// Creates a `EuclidAdmin` where all admin roles use the same address/value.
+    #[must_use]
     pub fn default(admin: Addr) -> Self {
         Self {
             general_admin: admin.clone(),
@@ -39,6 +40,7 @@ impl EuclidAdmin {
     }
 
     /// Creates a `EuclidAdmin` with distinct values for each admin role.
+    #[must_use]
     pub fn new(general_admin: Addr, fee_admin: Addr, migration_admin: Addr) -> Self {
         Self {
             general_admin,
@@ -124,15 +126,13 @@ pub fn update_admin(
 mod tests {
     use super::*;
     use cosmwasm_std::{
+        testing::MockStorage,
         testing::{mock_dependencies, mock_env},
-        CosmosMsg, MemoryStorage, OwnedDeps,
+        CosmosMsg, OwnedDeps,
     };
 
-    type TestDeps = OwnedDeps<
-        MemoryStorage,
-        cosmwasm_std::testing::MockApi,
-        cosmwasm_std::testing::MockQuerier,
-    >;
+    type TestDeps =
+        OwnedDeps<MockStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>;
 
     fn sample_admins(deps: &TestDeps) -> EuclidAdmin {
         EuclidAdmin::new(
@@ -180,7 +180,7 @@ mod tests {
 
         match err {
             ContractError::UnauthorizedWithMsg { msg } => {
-                assert!(msg.contains(&format!("only {} can update fee admin", admins.fee_admin)))
+                assert!(msg.contains(&format!("only {} can update fee admin", admins.fee_admin)));
             }
             _ => panic!("unexpected error variant"),
         }

@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128, Uint256};
+use cosmwasm_std::{Addr, Uint256};
 
 use crate::{
     admin::EuclidAdmin,
@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(StateResponse)]
     GetState {},
@@ -26,6 +26,20 @@ pub enum QueryMsg {
     },
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
+
+    #[returns(TokenEscrowsResponse)]
+    QueryTokenEscrows {
+        token: Token,
+        pagination: Pagination<ChainUid>,
+    },
+    #[returns(AllEscrowsResponse)]
+    QueryAllEscrows { pagination: Pagination<String> },
+
+    #[returns(AllTokensResponse)]
+    QueryAllTokens { pagination: Pagination<Token> },
+
+    #[returns(QueryTokenDenomsResponse)]
+    QueryTokenDenoms { token: Token },
 
     #[returns(QueryRelayerAddressesResponse)]
     QueryRelayerAddresses {},

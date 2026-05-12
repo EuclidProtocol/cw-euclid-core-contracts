@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod chain;
 pub mod cross_chain_user;
+pub mod cw20_types;
 pub mod deposit;
 pub mod error;
 pub mod escrow;

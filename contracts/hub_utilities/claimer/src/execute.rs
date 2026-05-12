@@ -141,7 +141,7 @@ pub fn execute_claim_voucher(
         .add_attribute("execute_claim", claim_msg.claim_id.to_string())
         .add_attribute("claim_msg_sender", info.sender.to_string());
 
-    for recipient in claim_msg.recipients.iter() {
+    for recipient in &claim_msg.recipients {
         let unsafe_allowed = recipient.unsafe_refund_as_voucher.unwrap_or(false);
         ensure!(
             unsafe_allowed,

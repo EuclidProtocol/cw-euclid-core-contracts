@@ -3,7 +3,7 @@ use cosmwasm_std::{
 };
 use cw_utils::nonpayable;
 
-use cw20::Cw20ReceiveMsg;
+use euclid::cw20_types::Cw20ReceiveMsg;
 use euclid::{
     error::ContractError,
     msgs::{escrow::cw20::EscrowCw20HookMsg, factory::ReleaseEscrowResponse, hook::EuclidReceive},
@@ -146,11 +146,9 @@ pub fn execute_deposit_native(
         DENOM_TO_AMOUNT.save(
             deps.storage,
             token_type.get_key(),
-            &current_balance.checked_add(Uint256::from(token.amount))?,
+            &current_balance.checked_add(token.amount)?,
         )?;
-        state.total_amount = state
-            .total_amount
-            .checked_add(Uint256::from(token.amount))?;
+        state.total_amount = state.total_amount.checked_add(token.amount)?;
 
         response = response
             .add_attribute("denom", token_type.get_key())
@@ -164,7 +162,7 @@ pub fn execute_deposit_native(
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
 ///
-/// * **cw20_msg** is the CW20 message that has to be processed.
+/// * **`cw20_msg`** is the CW20 message that has to be processed.
 pub fn receive_cw20(
     deps: DepsMut,
     env: Env,
@@ -328,7 +326,7 @@ mod tests {
     use cosmwasm_std::{
         attr, coin, from_json,
         testing::{message_info, mock_env},
-        Addr, BankMsg, Binary, CosmosMsg, Uint128, Uint256, WasmMsg,
+        Addr, BankMsg, Binary, CosmosMsg, Uint256, WasmMsg,
     };
     use euclid::{
         error::ContractError,
@@ -921,7 +919,7 @@ mod tests {
         if let CosmosMsg::Bank(BankMsg::Send { to_address, amount }) = &res.messages[0].msg {
             assert_eq!(to_address, recipient.as_str());
             assert_eq!(amount[0].denom, NATIVE_DENOM);
-            assert_eq!(amount[0].amount, Uint128::new(400));
+            assert_eq!(amount[0].amount, cosmwasm_std::Uint256::from(400u128));
         } else {
             panic!("expected BankMsg::Send");
         }
@@ -1148,9 +1146,9 @@ mod tests {
             }) => {
                 assert_eq!(contract_addr, recipient.as_str());
                 assert_eq!(funds[0].denom, NATIVE_DENOM);
-                assert_eq!(funds[0].amount, Uint128::new(100));
+                assert_eq!(funds[0].amount, cosmwasm_std::Uint256::from(100u128));
             }
-            other => panic!("unexpected message type: {:?}", other),
+            other => panic!("unexpected message type: {other:?}"),
         }
     }
 

@@ -11,7 +11,6 @@ use crate::{
 };
 
 #[cw_serde]
-#[cfg_attr(not(target_arch = "wasm32"), derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
     ManageRouterState(ManageRouterState),
     RegisterFactory {
@@ -134,6 +133,7 @@ impl RegisterFactoryChainType {
         }
     }
 
+    #[must_use]
     pub fn factory_address(&self) -> String {
         match self {
             RegisterFactoryChainType::Native(native_info) => native_info.factory_address.clone(),

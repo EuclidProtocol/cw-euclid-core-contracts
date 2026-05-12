@@ -17,7 +17,7 @@ use euclid::msgs::vlp::base::{State, NEXT_SWAP_REPLY_ID};
 use euclid::msgs::vlp::stable::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
 use euclid_pool::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_admin, update_amp_factor,
-    update_fee, SwapCalculationMethod, MINIMUM_LIQUIDITY,
+    update_fee, SwapCalculationMethod,
 };
 // version info for migration info
 pub(crate) const CONTRACT_NAME: &str = "crates.io:stable_vlp";
@@ -230,7 +230,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env},
-        Addr, Uint128, Uint256, Uint64,
+        Addr, Uint256, Uint64,
     };
     use euclid::{
         admin::{AdminType, EuclidAdmin},
@@ -566,14 +566,13 @@ mod tests {
         };
 
         let res = execute(deps.as_mut(), env, info, msg);
-        match expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err),
-            None => {
-                res.unwrap();
-                let fee = STATE.load(&deps.storage).unwrap().fee;
-                assert_eq!(fee.lp_fee_bps, lp_fee_bps.unwrap());
-                assert_eq!(fee.euclid_fee_bps, euclid_fee_bps.unwrap());
-            }
+        if let Some(err) = expected_error {
+            assert_eq!(res.unwrap_err(), err)
+        } else {
+            res.unwrap();
+            let fee = STATE.load(&deps.storage).unwrap().fee;
+            assert_eq!(fee.lp_fee_bps, lp_fee_bps.unwrap());
+            assert_eq!(fee.euclid_fee_bps, euclid_fee_bps.unwrap());
         }
     }
 
@@ -647,13 +646,12 @@ mod tests {
         };
 
         let res = execute(deps.as_mut(), env, info, msg);
-        match expected_error {
-            Some(err) => assert_eq!(res.unwrap_err(), err),
-            None => {
-                res.unwrap();
-                let saved = AMP_FACTOR.load(&deps.storage).unwrap();
-                assert_eq!(saved, Uint64::from(amp_factor));
-            }
+        if let Some(err) = expected_error {
+            assert_eq!(res.unwrap_err(), err)
+        } else {
+            res.unwrap();
+            let saved = AMP_FACTOR.load(&deps.storage).unwrap();
+            assert_eq!(saved, Uint64::from(amp_factor));
         }
     }
 
@@ -1367,11 +1365,11 @@ mod tests {
             let liquidity = PairWithAmount::new(
                 TokenWithAmount {
                     token: token1(),
-                    amount: Uint256::from(reserve as u128),
+                    amount: Uint256::from(reserve),
                 },
                 TokenWithAmount {
                     token: token2(),
-                    amount: Uint256::from(reserve as u128),
+                    amount: Uint256::from(reserve),
                 },
             )
             .unwrap();

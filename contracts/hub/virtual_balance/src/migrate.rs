@@ -209,13 +209,13 @@ mod tests {
     fn make_deps(
         escrows: Vec<EscrowResponse>,
     ) -> cosmwasm_std::OwnedDeps<
-        cosmwasm_std::MemoryStorage,
+        cosmwasm_std::testing::MockStorage,
         cosmwasm_std::testing::MockApi,
         MockQuerier,
     > {
         let querier = mock_querier_with_escrows(escrows);
         let mut deps = cosmwasm_std::OwnedDeps {
-            storage: cosmwasm_std::MemoryStorage::default(),
+            storage: cosmwasm_std::testing::MockStorage::default(),
             api: cosmwasm_std::testing::MockApi::default(),
             querier,
             custom_query_type: std::marker::PhantomData,

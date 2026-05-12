@@ -30,12 +30,11 @@ impl Decimal256Ext for Decimal256 {
 
         value
             .checked_div(10u128.pow(self.decimal_places() - precision).into())
-            .map_err(|_| StdError::generic_err("DivideByZeroError"))
+            .map_err(|_| StdError::msg("DivideByZeroError"))
     }
 
     fn checked_from_integer(i: impl Into<Uint256>) -> StdResult<Decimal256> {
-        Decimal256::checked_from_ratio(i.into(), 1u8)
-            .map_err(|e| StdError::generic_err(e.to_string()))
+        Decimal256::checked_from_ratio(i.into(), 1u8).map_err(|e| StdError::msg(e.to_string()))
     }
 
     fn checked_multiply_ratio(
@@ -46,7 +45,7 @@ impl Decimal256Ext for Decimal256 {
         Ok(Decimal256::new(
             self.atomics()
                 .checked_multiply_ratio(numerator.atomics(), denominator.atomics())
-                .map_err(|_| StdError::generic_err("CheckedMultiplyRatioError"))?,
+                .map_err(|_| StdError::msg("CheckedMultiplyRatioError"))?,
         ))
     }
 
@@ -55,6 +54,6 @@ impl Decimal256Ext for Decimal256 {
         precision: impl Into<u32>,
     ) -> StdResult<Decimal256> {
         Decimal256::from_atomics(value, precision.into())
-            .map_err(|_| StdError::generic_err("Decimal256 range exceeded"))
+            .map_err(|_| StdError::msg("Decimal256 range exceeded"))
     }
 }

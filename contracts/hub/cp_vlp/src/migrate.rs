@@ -29,8 +29,7 @@ pub fn migrate(deps: DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response, Co
             ensure!(
                 normalized == voucher_balance,
                 ContractError::new(&format!(
-                    "Reserve/voucher mismatch for '{}': normalized_reserve={}, voucher_balance={}",
-                    token, normalized, voucher_balance
+                    "Reserve/voucher mismatch for '{token}': normalized_reserve={normalized}, voucher_balance={voucher_balance}"
                 ))
             );
 
@@ -107,9 +106,9 @@ mod tests {
                     let query_msg: VirtualBalanceQueryMsg = from_json(msg).unwrap();
                     match query_msg {
                         VirtualBalanceQueryMsg::GetTokenMetadata { token_id, .. } => {
-                            let decimals = if token_id == t1.to_string() {
+                            let decimals = if token_id == t1 {
                                 decimals_1
-                            } else if token_id == t2.to_string() {
+                            } else if token_id == t2 {
                                 decimals_2
                             } else {
                                 return SystemResult::Ok(ContractResult::Err(
@@ -117,7 +116,7 @@ mod tests {
                                 ));
                             };
                             let token_type = TokenType::Native {
-                                denom: format!("u{}", token_id),
+                                denom: format!("u{token_id}"),
                                 decimals: Some(decimals),
                             };
                             let metadata = TokenMetadata::new(
@@ -131,9 +130,9 @@ mod tests {
                             SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
                         }
                         VirtualBalanceQueryMsg::GetBalance { balance_key } => {
-                            let amount = if balance_key.token_id == t1.to_string() {
+                            let amount = if balance_key.token_id == t1 {
                                 vb_balance_1
-                            } else if balance_key.token_id == t2.to_string() {
+                            } else if balance_key.token_id == t2 {
                                 vb_balance_2
                             } else {
                                 Uint256::zero()
@@ -156,13 +155,13 @@ mod tests {
         vb_balance_1: Uint256,
         vb_balance_2: Uint256,
     ) -> cosmwasm_std::OwnedDeps<
-        cosmwasm_std::MemoryStorage,
+        cosmwasm_std::testing::MockStorage,
         cosmwasm_std::testing::MockApi,
         MockQuerier,
     > {
         let querier = mock_querier(decimals_1, decimals_2, vb_balance_1, vb_balance_2);
         let mut deps = cosmwasm_std::OwnedDeps {
-            storage: cosmwasm_std::MemoryStorage::default(),
+            storage: cosmwasm_std::testing::MockStorage::default(),
             api: cosmwasm_std::testing::MockApi::default(),
             querier,
             custom_query_type: std::marker::PhantomData,

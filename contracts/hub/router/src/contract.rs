@@ -94,112 +94,100 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     // If the contract is locked and the message isn't UpdateLock, return error
 
-    match msg {
-        ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, env, info, msg),
-        _ => {
-            // Only allow these messages if the contract is not locked
-            ensure!(
-                !STATE.load(deps.storage)?.locked,
-                ContractError::ContractLocked {}
-            );
-            match msg {
-                ExecuteMsg::ManageRouterState(msg) => {
-                    execute_manage_router_state(deps, env, info, msg)
-                }
-                ExecuteMsg::RegisterFactory {
-                    chain_uid,
-                    chain_info,
-                } => execute_register_factory(&mut deps, env, info, chain_uid, chain_info),
-                ExecuteMsg::WithdrawVoucher {
+    if let ExecuteMsg::ManageRouterState(msg) = msg {
+        execute_manage_router_state(deps, env, info, msg)
+    } else {
+        // Only allow these messages if the contract is not locked
+        ensure!(
+            !STATE.load(deps.storage)?.locked,
+            ContractError::ContractLocked {}
+        );
+        match msg {
+            ExecuteMsg::ManageRouterState(msg) => execute_manage_router_state(deps, env, info, msg),
+            ExecuteMsg::RegisterFactory {
+                chain_uid,
+                chain_info,
+            } => execute_register_factory(&mut deps, env, info, chain_uid, chain_info),
+            ExecuteMsg::WithdrawVoucher {
+                token,
+                amount,
+                recipient,
+                cross_chain_config,
+            } => {
+                cw_utils::nonpayable(&info)?;
+                let verified_sender =
+                    CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
+                execute_withdraw_voucher(
+                    &mut deps,
+                    env,
+                    verified_sender,
                     token,
                     amount,
                     recipient,
                     cross_chain_config,
-                } => {
-                    cw_utils::nonpayable(&info)?;
-                    let verified_sender =
-                        CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
-                    execute_withdraw_voucher(
-                        &mut deps,
-                        env,
-                        verified_sender,
-                        token,
-                        amount,
-                        recipient,
-                        cross_chain_config,
-                    )
-                }
-                ExecuteMsg::TransferVoucher {
-                    token,
-                    amount,
-                    recipient,
-                } => {
-                    cw_utils::nonpayable(&info)?;
-                    let verified_sender =
-                        CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
-                    execute_transfer_voucher(
-                        &mut deps,
-                        env,
-                        verified_sender,
-                        token,
-                        amount,
-                        recipient,
-                    )
-                }
-                ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
-                    execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
-                }
-                ExecuteMsg::SendPacket {
-                    msg,
-                    chain,
-                    sender,
-                    timeout,
-                    ack_response,
-                } => {
-                    execute_send_packet(deps, info, env, chain, msg, timeout, ack_response, sender)
-                }
-                ExecuteMsg::ReceivePacket {
-                    source_port,
-                    destination_port,
-                    msg,
-                    sequence,
-                    timeout,
-                } => execute_receive_packet(
-                    deps,
-                    info,
-                    env,
-                    msg,
-                    sequence,
-                    source_port,
-                    destination_port,
-                    timeout,
-                ),
-                ExecuteMsg::ReceivePacketInternalCallback {
-                    msg,
-                    chain_uid,
-                    timeout,
-                } => execute_receive_packet_internal_callback(
-                    &mut deps, env, info, msg, chain_uid, timeout,
-                ),
-                ExecuteMsg::AcknowledgePacket {
-                    source_port,
-                    destination_port,
-                    msg,
-                    sequence,
-                    ack,
-                } => execute_receive_acknowledgement(
-                    deps,
-                    info,
-                    env,
-                    msg,
-                    sequence,
-                    source_port,
-                    destination_port,
-                    ack,
-                ),
-
-                ExecuteMsg::MetaReceive(msg) => execute_meta_receive(&mut deps, env, info, msg),
+                )
             }
+            ExecuteMsg::TransferVoucher {
+                token,
+                amount,
+                recipient,
+            } => {
+                cw_utils::nonpayable(&info)?;
+                let verified_sender =
+                    CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
+                execute_transfer_voucher(&mut deps, env, verified_sender, token, amount, recipient)
+            }
+            ExecuteMsg::NativeReceiveCallback { msg, chain_uid } => {
+                execute_native_receive_callback(&mut deps, env, info, chain_uid, msg)
+            }
+            ExecuteMsg::SendPacket {
+                msg,
+                chain,
+                sender,
+                timeout,
+                ack_response,
+            } => execute_send_packet(deps, info, env, chain, msg, timeout, ack_response, sender),
+            ExecuteMsg::ReceivePacket {
+                source_port,
+                destination_port,
+                msg,
+                sequence,
+                timeout,
+            } => execute_receive_packet(
+                deps,
+                info,
+                env,
+                msg,
+                sequence,
+                source_port,
+                destination_port,
+                timeout,
+            ),
+            ExecuteMsg::ReceivePacketInternalCallback {
+                msg,
+                chain_uid,
+                timeout,
+            } => execute_receive_packet_internal_callback(
+                &mut deps, env, info, msg, chain_uid, timeout,
+            ),
+            ExecuteMsg::AcknowledgePacket {
+                source_port,
+                destination_port,
+                msg,
+                sequence,
+                ack,
+            } => execute_receive_acknowledgement(
+                deps,
+                info,
+                env,
+                msg,
+                sequence,
+                source_port,
+                destination_port,
+                ack,
+            ),
+
+            ExecuteMsg::MetaReceive(msg) => execute_meta_receive(&mut deps, env, info, msg),
         }
     }
 }
@@ -213,6 +201,14 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetVlp { pair } => query_vlp(deps, pair),
         QueryMsg::GetAllVlps { pagination } => query_all_vlps(deps, pagination),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
+        QueryMsg::QueryTokenEscrows { token, pagination } => {
+            query::query_token_escrows(deps, token, pagination)
+        }
+        QueryMsg::QueryAllEscrows { pagination } => {
+            query::query_all_escrows_paginated(deps, pagination)
+        }
+        QueryMsg::QueryAllTokens { pagination } => query::query_all_tokens(deps, pagination),
+        QueryMsg::QueryTokenDenoms { token } => query::query_token_denoms(deps, token),
         QueryMsg::QueryRelayerAddresses {} => query_relayer_addresses(deps),
         QueryMsg::GetReleaseFees { pagination } => query_release_fees(deps, pagination),
         #[allow(deprecated)]
@@ -244,9 +240,8 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         }
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps, msg),
 
-        id => Err(ContractError::Std(StdError::generic_err(format!(
-            "Unknown reply id: {}",
-            id
+        id => Err(ContractError::Std(StdError::msg(format!(
+            "Unknown reply id: {id}"
         )))),
     }
 }

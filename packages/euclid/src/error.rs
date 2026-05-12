@@ -4,10 +4,12 @@ use cosmwasm_std::{
     Addr, CheckedFromRatioError, CheckedMultiplyFractionError, CheckedMultiplyRatioError,
     Decimal256, DivideByZeroError, OverflowError, StdError, Uint256,
 };
-use cw20_base::ContractError as Cw20ContractError;
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug)]
+pub enum Never {}
+
+#[derive(Error, Debug)]
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
@@ -286,7 +288,14 @@ pub enum ContractError {
     DecimalsMismatch { expected: u32, received: u32 },
 }
 
+impl PartialEq for ContractError {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_string() == other.to_string()
+    }
+}
+
 impl ContractError {
+    #[must_use]
     pub fn new(err: &str) -> Self {
         ContractError::Generic {
             err: err.to_string(),
@@ -296,27 +305,6 @@ impl ContractError {
 
 impl From<cw_utils::PaymentError> for ContractError {
     fn from(err: cw_utils::PaymentError) -> Self {
-        ContractError::Std(StdError::generic_err(err.to_string()))
-    }
-}
-
-impl From<Cw20ContractError> for ContractError {
-    fn from(err: Cw20ContractError) -> Self {
-        match err {
-            Cw20ContractError::Std(std) => ContractError::Std(std),
-            Cw20ContractError::Expired {} => ContractError::Expired {},
-            Cw20ContractError::LogoTooBig {} => ContractError::LogoTooBig {},
-            Cw20ContractError::NoAllowance {} => ContractError::NoAllowance {},
-            Cw20ContractError::Unauthorized {} => ContractError::Unauthorized {},
-            Cw20ContractError::CannotExceedCap {} => ContractError::CannotExceedCap {},
-            Cw20ContractError::InvalidPngHeader {} => ContractError::InvalidPngHeader {},
-            Cw20ContractError::InvalidXmlPreamble {} => ContractError::InvalidXmlPreamble {},
-            Cw20ContractError::CannotSetOwnAccount {} => ContractError::CannotSetOwnAccount {},
-            Cw20ContractError::DuplicateInitialBalanceAddresses {} => {
-                ContractError::DuplicateInitialBalanceAddresses {}
-            }
-            Cw20ContractError::InvalidExpiration {} => ContractError::InvalidExpiration {},
-            _ => panic!("Unsupported cw20 error: {err:?}"),
-        }
+        ContractError::Std(StdError::msg(err.to_string()))
     }
 }

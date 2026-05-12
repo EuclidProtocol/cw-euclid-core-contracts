@@ -60,7 +60,7 @@ pub struct PoolCreateRequest {
     pub tx_id: String,
     pub sender: Addr,
     pub pair_info: PairWithDenomAndAmount,
-    pub lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg,
+    pub lp_token_instantiate_msg: euclid::cw20_types::Cw20InstantiateMsg,
 }
 // Map for pending pool requests for user
 pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =

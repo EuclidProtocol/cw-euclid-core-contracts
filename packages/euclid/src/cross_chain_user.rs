@@ -10,10 +10,12 @@ pub struct CrossChainUser {
 }
 
 impl CrossChainUser {
+    #[must_use]
     pub fn new(chain_uid: ChainUid, address: String) -> Self {
         Self { chain_uid, address }
     }
 
+    #[must_use]
     pub fn to_sender_string(&self) -> String {
         format!(
             "{chain}:{address}",
@@ -65,7 +67,7 @@ mod cross_chain_user_test {
     fn test_empty_address_validate_rejects() {
         let user = CrossChainUser::new(
             ChainUid::create("cosmos".to_string()).unwrap(),
-            "".to_string(),
+            String::new(),
         );
         let err = user.validate().unwrap_err();
         assert!(err.to_string().contains("Address cannot be empty"));

@@ -32,8 +32,5 @@ pub fn execute_update_state(
             "factory_address",
             factory_address.map_or("unchanged".to_string(), |x| x.to_string()),
         )
-        .add_attribute(
-            "vlp",
-            vlp.map_or("unchanged".to_string(), |x| x.to_string()),
-        ))
+        .add_attribute("vlp", vlp.map_or("unchanged".to_string(), |x| x.clone())))
 }

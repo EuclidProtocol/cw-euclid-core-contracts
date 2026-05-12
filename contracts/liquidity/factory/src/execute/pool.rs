@@ -1,5 +1,5 @@
 use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, SubMsg, Uint256};
-use cw20::Logo;
+use euclid::cw20_types::{Cw20InstantiateMsg, InstantiateMarketingInfo, Logo, MinterResponse};
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
@@ -34,7 +34,7 @@ pub fn execute_request_pool_creation(
     lp_token_name: String,
     lp_token_symbol: String,
     lp_token_decimal: u8,
-    lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+    lp_token_marketing: Option<InstantiateMarketingInfo>,
     slippage_tolerance_bps: u64,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
@@ -68,7 +68,10 @@ pub fn execute_request_pool_creation(
         token.token.validate()?;
 
         // Vouchers are not escrowed
-        if !token.token_type.is_voucher() {
+        if token.token_type.is_voucher() {
+            // If its a voucher token, then we can assume that one token already exists
+            one_token_already_exists = true;
+        } else {
             match token.token_type.clone() {
                 TokenType::Native { denom, .. } => {
                     // Use funds, if its not present this will throw error.
@@ -112,8 +115,8 @@ pub fn execute_request_pool_creation(
                         ensure!(
                             decimals == provided_decimals,
                             ContractError::DecimalsMismatch {
-                                expected: decimals as u32,
-                                received: provided_decimals as u32,
+                                expected: decimals,
+                                received: provided_decimals,
                             }
                         );
                     }
@@ -123,9 +126,6 @@ pub fn execute_request_pool_creation(
                     TokenType::Voucher { .. } => {}
                 }
             }
-        } else {
-            // If its a voucher token, then we can assume that one token already exists
-            one_token_already_exists = true;
         }
     }
 
@@ -168,18 +168,17 @@ pub fn execute_request_pool_creation(
         }
     }
 
-    let lp_token_instantiate_msg = cw20_base::msg::InstantiateMsg {
+    let lp_token_instantiate_msg = Cw20InstantiateMsg {
         name: lp_token_name,
         symbol: lp_token_symbol,
         decimals: lp_token_decimal,
         initial_balances: vec![],
-        mint: Some(cw20::MinterResponse {
+        mint: Some(MinterResponse {
             minter: env.contract.address.clone().into_string(),
             cap: None,
         }),
         marketing: lp_token_marketing,
     };
-    lp_token_instantiate_msg.validate()?;
 
     let req = PoolCreateRequest {
         tx_id: tx_id.clone(),
@@ -451,7 +450,7 @@ pub fn remove_liquidity_request(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128, Uint256,
+        Uint256,
     };
     use euclid::{
         error::ContractError,

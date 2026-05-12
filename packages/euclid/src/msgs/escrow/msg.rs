@@ -1,7 +1,7 @@
+use crate::cw20_types::Cw20ReceiveMsg;
 use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128, Uint256};
-use cw20::Cw20ReceiveMsg;
+use cosmwasm_std::{Addr, Uint256};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -12,7 +12,6 @@ pub struct InstantiateMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     // Updates allowed denoms
     AddAllowedDenom {
@@ -36,7 +35,7 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(StateResponse)]
     State {},

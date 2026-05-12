@@ -21,7 +21,7 @@ use crate::{
 // -----------------------------------------------------------------------
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
-    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     MockQuerier,
 >;
@@ -65,7 +65,7 @@ pub fn init(deps: &mut MockDeps) -> Response {
 // Querier mock helpers
 // -----------------------------------------------------------------------
 
-/// Configure the mock querier so that every WasmQuery::Smart returns
+/// Configure the mock querier so that every `WasmQuery::Smart` returns
 /// `AllowedTokenResponse { allowed }` for the given escrow address
 /// and `AllowedDenomsResponse { denoms: vec![] }` for the denoms query.
 pub fn set_escrow_token_allowed(deps: &mut MockDeps, allowed: bool) {
@@ -93,7 +93,7 @@ pub fn set_escrow_token_allowed(deps: &mut MockDeps, allowed: bool) {
 // State seeding helpers
 // -----------------------------------------------------------------------
 
-/// Seed TOKEN_TO_ESCROW so that `token` maps to `escrow_addr`.
+/// Seed `TOKEN_TO_ESCROW` so that `token` maps to `escrow_addr`.
 pub fn seed_escrow(deps: &mut MockDeps, token_id: &str, escrow_addr: &str) {
     let token = Token::create(token_id.to_string()).unwrap();
     TOKEN_TO_ESCROW
@@ -101,7 +101,7 @@ pub fn seed_escrow(deps: &mut MockDeps, token_id: &str, escrow_addr: &str) {
         .unwrap();
 }
 
-/// Seed PAIR_TO_VLP so that pair (token_a, token_b) maps to `vlp`.
+/// Seed `PAIR_TO_VLP` so that pair (`token_a`, `token_b`) maps to `vlp`.
 /// Tokens are sorted lexicographically as required by `Pair`.
 pub fn seed_vlp(deps: &mut MockDeps, token_a: &str, token_b: &str, vlp: &str) {
     use euclid::token::Pair;
@@ -116,26 +116,31 @@ pub fn seed_vlp(deps: &mut MockDeps, token_a: &str, token_b: &str, vlp: &str) {
 }
 
 /// Build a minimal `CrossChainConfig` for use in tests.
+#[must_use]
 pub fn default_cross_chain_config() -> euclid::msgs::cross_chain_config::CrossChainConfig {
     euclid::msgs::cross_chain_config::CrossChainConfig::default()
 }
 
 /// Helper: return the stored STATE.
+#[must_use]
 pub fn load_state(deps: &MockDeps) -> State {
     STATE.load(&deps.storage).unwrap()
 }
 
-/// Helper: return the stored FEE_STATE.
+/// Helper: return the stored `FEE_STATE`.
+#[must_use]
 pub fn load_fee_state(deps: &MockDeps) -> FeeState {
     FEE_STATE.load(&deps.storage).unwrap()
 }
 
-/// Helper: read current general_admin from storage.
+/// Helper: read current `general_admin` from storage.
+#[must_use]
 pub fn load_general_admin(deps: &MockDeps) -> Addr {
     ADMIN.load(&deps.storage).unwrap().general_admin
 }
 
-/// Build a TokenWithDenom with a native denom.
+/// Build a `TokenWithDenom` with a native denom.
+#[must_use]
 pub fn native_token(token_id: &str, denom: &str) -> euclid::token::TokenWithDenom {
     euclid::token::TokenWithDenom {
         token: Token::create(token_id.to_string()).unwrap(),
@@ -146,7 +151,8 @@ pub fn native_token(token_id: &str, denom: &str) -> euclid::token::TokenWithDeno
     }
 }
 
-/// Build a TokenWithDenom with a voucher type.
+/// Build a `TokenWithDenom` with a voucher type.
+#[must_use]
 pub fn voucher_token(token_id: &str) -> euclid::token::TokenWithDenom {
     euclid::token::TokenWithDenom {
         token: Token::create(token_id.to_string()).unwrap(),
@@ -170,6 +176,7 @@ pub fn assert_attribute(res: &Response, key: &str, value: &str) {
 
 /// Parse a named attribute from `res.attributes` and return its value as `&str`.
 /// Panics with a descriptive message if the attribute is absent.
+#[must_use]
 pub fn get_attribute<'a>(res: &'a Response, key: &str) -> &'a str {
     res.attributes
         .iter()
@@ -196,7 +203,7 @@ pub fn assert_tx_event(res: &Response, tx_type: &str) {
     );
 }
 
-/// Assert that `res.events` contains a `tx_event` with the exact type, tx_id, and sender.
+/// Assert that `res.events` contains a `tx_event` with the exact type, `tx_id`, and sender.
 pub fn assert_tx_event_full(res: &Response, tx_type: &str, tx_id: &str, sender: &str) {
     assert!(
         res.events.iter().any(|e| {

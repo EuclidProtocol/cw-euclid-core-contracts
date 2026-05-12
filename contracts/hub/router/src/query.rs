@@ -1,5 +1,5 @@
-use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order, Uint256};
-use cw_storage_plus::Bound;
+use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order};
+use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
@@ -71,7 +71,7 @@ pub fn query_all_vlps(
 
 pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let key = pair.get_tupple();
-    let vlp = VLPS.load(deps.storage, (key.0.to_string(), key.1.to_string()))?;
+    let vlp = VLPS.load(deps.storage, (key.0.clone(), key.1.clone()))?;
 
     Ok(to_json_binary(&VlpResponse {
         vlp: vlp.to_string(),
@@ -175,7 +175,7 @@ pub fn verify_cross_chain_addresses(
     deps: Deps,
     users: Vec<CrossChainUser>,
 ) -> Result<(), ContractError> {
-    for user in users.iter() {
+    for user in &users {
         ensure!(
             !user.address.is_empty(),
             ContractError::Generic {
@@ -260,6 +260,106 @@ pub fn query_token_status(deps: Deps, token_id: &Token) -> Result<bool, Contract
 }
 
 #[allow(deprecated)]
+pub fn query_token_escrows(
+    deps: Deps,
+    token: Token,
+    pagination: Pagination<ChainUid>,
+) -> Result<Binary, ContractError> {
+    let Pagination {
+        min: start,
+        max: end,
+        skip,
+        limit,
+    } = pagination;
+
+    let start = start.map(Bound::inclusive);
+    let end = end.map(Bound::exclusive);
+
+    let chains: Result<_, ContractError> = ESCROW_BALANCES
+        .prefix(token.to_string())
+        .range(deps.storage, start, end, Order::Ascending)
+        .skip(skip.unwrap_or(0) as usize)
+        .take(limit.unwrap_or(10) as usize)
+        .map(|v| {
+            let v = v?;
+            Ok(TokenEscrowChainResponse {
+                balance: v.1,
+                chain_uid: v.0,
+            })
+        })
+        .collect();
+
+    Ok(to_json_binary(&TokenEscrowsResponse { chains: chains? })?)
+}
+
+#[allow(deprecated)]
+pub fn query_all_escrows_paginated(
+    deps: Deps,
+    pagination: Pagination<String>,
+) -> Result<Binary, ContractError> {
+    let Pagination {
+        min: start,
+        max: end,
+        skip,
+        limit,
+    } = pagination;
+    let start = start.map(PrefixBound::inclusive);
+    let end = end.map(PrefixBound::exclusive);
+
+    let escrows: Result<_, ContractError> = ESCROW_BALANCES
+        .prefix_range(deps.storage, start, end, Order::Ascending)
+        .skip(skip.unwrap_or(DEFAULT_PAGINATION_SKIP) as usize)
+        .take(limit.unwrap_or(DEFAULT_PAGINATION_LIMIT) as usize)
+        .map(|v| {
+            let v = v?;
+            Ok(EscrowResponse {
+                token: Token::create(v.0 .0)?,
+                chain_uid: v.0 .1,
+                balance: v.1,
+            })
+        })
+        .collect();
+
+    Ok(to_json_binary(&AllEscrowsResponse { escrows: escrows? })?)
+}
+
+#[allow(deprecated)]
+pub fn query_all_tokens(
+    deps: Deps,
+    pagination: Pagination<Token>,
+) -> Result<Binary, ContractError> {
+    let Pagination {
+        min: start,
+        max: end,
+        skip,
+        limit,
+    } = pagination;
+
+    let start = start.map(Bound::inclusive);
+    let end = end.map(Bound::exclusive);
+    let tokens = TOKEN_DENOMS
+        .keys(deps.storage, start, end, Order::Ascending)
+        .skip(skip.unwrap_or(DEFAULT_PAGINATION_SKIP) as usize)
+        .take(limit.unwrap_or(DEFAULT_PAGINATION_LIMIT) as usize)
+        .flatten()
+        .collect();
+
+    Ok(to_json_binary(&AllTokensResponse { tokens })?)
+}
+
+#[allow(deprecated)]
+pub fn query_token_denoms(deps: Deps, token: Token) -> Result<Binary, ContractError> {
+    ensure!(
+        !TOKEN_DENOMS.is_empty(deps.storage),
+        ContractError::Generic {
+            err: "Token denoms are not registered".to_string()
+        }
+    );
+    let denoms = TOKEN_DENOMS.load(deps.storage, token)?;
+    Ok(to_json_binary(&QueryTokenDenomsResponse { denoms })?)
+}
+
+#[allow(deprecated)]
 pub fn query_all_escrows(deps: Deps) -> Result<Binary, ContractError> {
     use crate::state::ESCROW_BALANCES;
     let escrows: Vec<EscrowResponse> = ESCROW_BALANCES
@@ -309,12 +409,11 @@ mod tests {
     use cosmwasm_std::{
         from_json,
         testing::{message_info, mock_env},
-        Addr, Uint128, Uint256,
+        Addr, Uint256,
     };
 
     use crate::{
         contract::execute,
-        state::TOKEN_DENOMS,
         testing::{
             fixtures::initialized,
             helpers::{
@@ -326,11 +425,10 @@ mod tests {
     use euclid::{
         chain::ChainUid,
         msgs::router::{
-            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-            ExecuteMsg, ManageRouterState, QueryRelayerAddressesResponse, QueryTokenDenomsResponse,
-            ReleaseFeesQueryResponse, StateResponse, TokenDenom, TokenEscrowsResponse, VlpResponse,
+            AllChainResponse, AllVlpResponse, ChainResponse, ExecuteMsg, ManageRouterState,
+            QueryRelayerAddressesResponse, ReleaseFeesQueryResponse, StateResponse, VlpResponse,
         },
-        token::{Pair, Token, TokenType},
+        token::{Pair, Token},
         utils::pagination::Pagination,
     };
     use rstest::*;

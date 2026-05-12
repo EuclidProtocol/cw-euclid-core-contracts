@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::str::FromStr;
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
-    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     MockQuerier,
 >;
@@ -41,18 +41,13 @@ pub fn sign_message(msg: &str) -> (Binary, Binary) {
     let digest = Sha256::new().chain_update(msg.as_bytes());
     let (secret_key, pub_key) = get_signer_key();
     let (sig, _) = secret_key.sign_digest_recoverable(digest).unwrap();
-    (Binary::from(sig.to_bytes().as_slice()), pub_key)
+    (Binary::from(&sig.to_bytes()[..]), pub_key)
 }
 
 /// Produce the string that the relayer hashes/signs:
 ///   `{data},{expiry},{chain_uid}`
 pub fn expiry_call_data(data: &str, expiry: u64, chain_uid: &str) -> String {
-    format!(
-        "{data},{expiry},{chain_uid}",
-        data = data,
-        expiry = expiry,
-        chain_uid = chain_uid
-    )
+    format!("{data},{expiry},{chain_uid}")
 }
 
 // -------------------------------------------------------------------
@@ -118,7 +113,7 @@ pub fn sign_validator_message(
     );
     ValidatorSignature {
         pubkey: pub_key,
-        signature: Binary::from(sig.to_bytes().as_slice()),
+        signature: Binary::from(&sig.to_bytes()[..]),
         expiry,
     }
 }

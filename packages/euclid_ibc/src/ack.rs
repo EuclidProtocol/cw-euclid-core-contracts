@@ -3,7 +3,7 @@ use cosmwasm_std::{to_json_binary, Binary};
 use euclid::error::ContractError;
 
 /// A custom acknowledgement type.
-/// The success type `T` depends on the PacketMsg variant.
+/// The success type `T` depends on the `PacketMsg` variant.
 ///
 /// This could be refactored to use [StdAck] at some point. However,
 /// it has a different success variant name ("ok" vs. "result") and

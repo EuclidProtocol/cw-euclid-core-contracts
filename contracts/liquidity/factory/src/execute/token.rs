@@ -76,8 +76,8 @@ pub fn execute_request_register_denom(
             ensure!(
                 validated_decimals == token_decimals,
                 ContractError::DecimalsMismatch {
-                    expected: token_decimals as u32,
-                    received: validated_decimals as u32,
+                    expected: token_decimals,
+                    received: validated_decimals,
                 }
             );
         }
@@ -85,7 +85,7 @@ pub fn execute_request_register_denom(
             // We don't have a stable check yet for native tokens decimals as their metadata might not be stored on chain
         }
         TokenType::Voucher { .. } => {}
-    };
+    }
 
     let request_register_denom_msg = RouterCrossChainExecuteMsg::RegisterDenom {
         token: token.clone(),
@@ -232,7 +232,7 @@ pub fn execute_deposit_token(
         ContractError::UnsupportedDenomination {}
     );
 
-    for recipient in recipients.iter() {
+    for recipient in &recipients {
         recipient.validate()?;
     }
 
@@ -283,7 +283,7 @@ pub fn execute_deposit_token(
     );
 
     let deposit_token_info = DepositTokenRequest {
-        sender: sender.address.to_string(),
+        sender: sender.address.clone(),
         asset_in: asset_in.clone(),
         amount_in,
         tx_id: tx_id.clone(),
@@ -348,7 +348,7 @@ pub fn execute_transfer_voucher(
     // The transfer amount should be greater than zero
     ensure!(!amount.is_zero(), ContractError::ZeroAssetAmount {});
     let state = STATE.load(deps.storage)?;
-    for recipient in recipients.iter() {
+    for recipient in &recipients {
         recipient.validate()?;
     }
 
@@ -397,7 +397,7 @@ pub fn execute_transfer_voucher(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128, Uint256,
+        Uint256,
     };
     use euclid::{
         chain::ChainUid,

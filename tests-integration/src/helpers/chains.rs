@@ -1,63 +1,266 @@
 #![cfg(not(target_arch = "wasm32"))]
-use claimer::ClaimerContract;
-use cosmwasm_std::{from_json, Uint256};
-use cp_vlp::VlpContract;
-use cw_orch::{mock::MockBase, prelude::*};
-use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
-use cw_orch_interchain::mock::MockInterchainEnv;
-use escrow::EscrowContract;
-use euclid::chain::{CosmosChain, EvmChain};
+
+use cosmwasm_std::{Addr, Uint256};
+use cw_multi_test::ContractWrapper;
+use euclid::chain::{ChainType, ChainUid, CosmosChain, EvmChain};
 use euclid::msgs::router::{
     ManageRouterState, RegisterFactoryChainCosmos, RegisterFactoryChainNative,
+    RegisterFactoryChainType,
 };
-use euclid::{
-    chain::{ChainType, ChainUid},
-    msgs::router::RegisterFactoryChainEvm,
-};
-use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
-use euclid_relayer::RelayerContract;
-use factory::FactoryContract;
-use lp_token::LpTokenContract;
-use meta_transaction::MetaTransactionContract;
 use relayer::verify::cosmos_address_from_pubkey;
-use relayer::ExecuteMsgFns as RelayerExecuteMsgFns;
 use relayer::Validator;
-use router::RouterContract;
-use stable_vlp::StableVlpContract;
-use virtual_balance::VirtualBalanceContract;
 
-use euclid::msgs::router::execute::ExecuteMsgFns as RouterExecuteMsgFns;
-use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
-
-use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
-
+use crate::helpers::app::EuclidApp;
+use crate::helpers::multi_chain::MultiChainEnv;
 use crate::helpers::relayer::{
-    ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
+    ack_register_factory_evm, extract_send_packet_events, get_signer_key, relay_router_ack_packet,
     relay_router_send_packet,
 };
 use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
 
-use super::relayer::get_signer_key;
+// ---------------------------------------------------------------------------
+// Contract code-store helpers
+// ---------------------------------------------------------------------------
 
-pub fn setup_interchain(sender: &str, factory_chain_id: &str) -> MockInterchainEnv {
+pub fn router_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(
+        ContractWrapper::new_with_empty(
+            router::contract::execute,
+            router::contract::instantiate,
+            router::contract::query,
+        )
+        .with_reply(router::contract::reply),
+    ))
+}
+
+pub fn virtual_balance_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(ContractWrapper::new_with_empty(
+        virtual_balance::contract::execute,
+        virtual_balance::contract::instantiate,
+        virtual_balance::contract::query,
+    )))
+}
+
+pub fn cp_vlp_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(
+        ContractWrapper::new_with_empty(
+            cp_vlp::contract::execute,
+            cp_vlp::contract::instantiate,
+            cp_vlp::contract::query,
+        )
+        .with_reply(cp_vlp::contract::reply),
+    ))
+}
+
+pub fn stable_vlp_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(
+        ContractWrapper::new_with_empty(
+            stable_vlp::contract::execute,
+            stable_vlp::contract::instantiate,
+            stable_vlp::contract::query,
+        )
+        .with_reply(stable_vlp::contract::reply),
+    ))
+}
+
+pub fn relayer_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(ContractWrapper::new_with_empty(
+        euclid_relayer::contract::execute,
+        euclid_relayer::contract::instantiate,
+        euclid_relayer::contract::query,
+    )))
+}
+
+pub fn meta_transaction_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(ContractWrapper::new_with_empty(
+        meta_transaction::contract::execute,
+        meta_transaction::contract::instantiate,
+        meta_transaction::contract::query,
+    )))
+}
+
+pub fn factory_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(
+        ContractWrapper::new_with_empty(
+            factory::contract::execute,
+            factory::contract::instantiate,
+            factory::contract::query,
+        )
+        .with_reply(factory::contract::reply),
+    ))
+}
+
+pub fn escrow_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(
+        ContractWrapper::new_with_empty(
+            escrow::contract::execute,
+            escrow::contract::instantiate,
+            escrow::contract::query,
+        )
+        .with_reply(escrow::contract::reply),
+    ))
+}
+
+pub fn lp_token_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(ContractWrapper::new_with_empty(
+        lp_token::contract::execute,
+        lp_token::contract::instantiate,
+        lp_token::contract::query,
+    )))
+}
+
+pub fn claimer_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(ContractWrapper::new_with_empty(
+        claimer::contract::execute,
+        claimer::contract::instantiate,
+        claimer::contract::query,
+    )))
+}
+
+pub fn orderbook_deposits_code(app: &mut EuclidApp) -> u64 {
+    app.store_code(Box::new(ContractWrapper::new_with_empty(
+        orderbook_deposits::contract::execute,
+        orderbook_deposits::contract::instantiate,
+        orderbook_deposits::contract::query,
+    )))
+}
+
+// ---------------------------------------------------------------------------
+// Setup helpers
+// ---------------------------------------------------------------------------
+
+pub fn setup_interchain(sender: &str, factory_chain_id: &str) -> MultiChainEnv {
     let mut chains = vec![(ROUTER_CHAIN_ID, sender)];
     if ROUTER_CHAIN_ID != factory_chain_id {
         chains.push((factory_chain_id, sender));
     }
-    MockInterchainEnv::new(chains)
+    MultiChainEnv::new(chains)
+}
+
+pub fn setup_router(app: &mut EuclidApp, factory_chains: Vec<&str>) -> Result<Addr, anyhow::Error> {
+    let vlp_code_id = cp_vlp_code(app);
+    let stable_vlp_code_id = stable_vlp_code(app);
+    let vb_code_id = virtual_balance_code(app);
+    let router_code_id = router_code(app);
+    let relayer_addr = setup_relayer(app, factory_chains)?;
+
+    let sender = app.sender();
+    let router_addr = app.instantiate(
+        router_code_id,
+        &sender,
+        &euclid::msgs::router::InstantiateMsg {
+            constant_product_vlp_code_id: vlp_code_id,
+            stable_vlp_code_id,
+            virtual_balance_code_id: vb_code_id,
+            relayer_contract: relayer_addr,
+            release_fee_recipient: app.addr_make("release_fee_recipient"),
+            default_fee_recipient: app.addr_make("default_fee_recipient"),
+        },
+        &[],
+        "router",
+    );
+
+    let meta_tx_addr = setup_meta_transaction_contract(app, &router_addr)?;
+    app.execute(
+        &sender,
+        &router_addr,
+        &euclid::msgs::router::ExecuteMsg::ManageRouterState(
+            ManageRouterState::MetaTransactionContract {
+                meta_transaction_contract: meta_tx_addr,
+            },
+        ),
+        &[],
+    );
+
+    Ok(router_addr)
+}
+
+pub fn setup_relayer(app: &mut EuclidApp, chain_uids: Vec<&str>) -> Result<Addr, anyhow::Error> {
+    let code_id = relayer_code(app);
+    let (_, pubkey_binary) = get_signer_key();
+
+    let validator_address = cosmos_address_from_pubkey(&pubkey_binary, "cosmos").unwrap();
+
+    let validator = Validator {
+        pubkey: pubkey_binary,
+        address: validator_address,
+    };
+
+    let sender = app.sender();
+    let relayer_addr = app.instantiate(
+        code_id,
+        &sender,
+        &relayer::msgs::InstantiateMsg {
+            message_signer: validator.clone(),
+            signature_threshold: 1,
+        },
+        &[],
+        "relayer",
+    );
+
+    for chain_uid in chain_uids {
+        app.execute(
+            &sender,
+            &relayer_addr,
+            &relayer::ExecuteMsg::AddValidator {
+                chain_uid: ChainUid::create(chain_uid.to_string()).unwrap(),
+                validator: validator.clone(),
+            },
+            &[],
+        );
+    }
+    Ok(relayer_addr)
+}
+
+pub fn setup_meta_transaction_contract(
+    app: &mut EuclidApp,
+    router_addr: &Addr,
+) -> Result<Addr, anyhow::Error> {
+    let code_id = meta_transaction_code(app);
+    let sender = app.sender();
+    let addr = app.instantiate(
+        code_id,
+        &sender,
+        &euclid::msgs::meta_transaction::msg::InstantiateMsg {
+            router_contract: router_addr.clone(),
+        },
+        &[],
+        "meta_transaction",
+    );
+    Ok(addr)
+}
+
+pub fn setup_claimer(
+    app: &mut EuclidApp,
+    router_addr: &Addr,
+    vcoin_address: &Addr,
+) -> Result<Addr, anyhow::Error> {
+    let code_id = claimer_code(app);
+    let sender = app.sender();
+    let addr = app.instantiate(
+        code_id,
+        &sender,
+        &euclid::msgs::claimer::msg::InstantiateMsg {
+            router_contract: router_addr.clone(),
+            vcoin_address: vcoin_address.clone(),
+        },
+        &[],
+        "claimer",
+    );
+    Ok(addr)
 }
 
 pub fn setup_factory(
-    interchain: &MockInterchainEnv,
+    env: &mut MultiChainEnv,
     factory_chain_id: &str,
     router_chain_id: &str,
-    router: &RouterContract<MockBase>,
-) -> Result<FactoryContract<MockBase>, CwOrchError> {
+    router_addr: &Addr,
+) -> Result<Addr, anyhow::Error> {
     setup_factory_inner(
-        interchain,
+        env,
         factory_chain_id,
         router_chain_id,
-        router,
+        router_addr,
         ChainType::Cosmos(CosmosChain {
             chain_id: factory_chain_id.to_string(),
         }),
@@ -65,16 +268,16 @@ pub fn setup_factory(
 }
 
 pub fn setup_factory_evm(
-    interchain: &MockInterchainEnv,
+    env: &mut MultiChainEnv,
     factory_chain_id: &str,
     router_chain_id: &str,
-    router: &RouterContract<MockBase>,
-) -> Result<FactoryContract<MockBase>, CwOrchError> {
+    router_addr: &Addr,
+) -> Result<Addr, anyhow::Error> {
     setup_factory_inner(
-        interchain,
+        env,
         factory_chain_id,
         router_chain_id,
-        router,
+        router_addr,
         ChainType::Evm(EvmChain {
             chain_id: factory_chain_id.to_string(),
         }),
@@ -82,83 +285,128 @@ pub fn setup_factory_evm(
 }
 
 fn setup_factory_inner(
-    interchain: &MockInterchainEnv,
+    env: &mut MultiChainEnv,
     factory_chain_id: &str,
     router_chain_id: &str,
-    router: &RouterContract<MockBase>,
+    router_addr: &Addr,
     chain_type: ChainType,
-) -> Result<FactoryContract<MockBase>, CwOrchError> {
+) -> Result<Addr, anyhow::Error> {
     let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
     let vsl_chain_uid = ChainUid::vsl_chain_uid().unwrap();
-    let chain = interchain.get_chain(factory_chain_id).unwrap();
-    let _router_chain = interchain.get_chain(router_chain_id).unwrap();
-    let factory = FactoryContract::new(chain.clone());
-    let escrow = EscrowContract::new(chain.clone());
-    let lp_token = LpTokenContract::new(chain.clone());
-    let relayer = setup_relayer(&chain, vec![vsl_chain_uid.as_str(), chain_uid.as_str()])?;
 
-    let string_length = factory_chain_id.len();
-
-    factory.upload().unwrap();
-    escrow.upload().unwrap();
-    lp_token.upload().unwrap();
+    // Store codes on the factory chain
+    let factory_chain = env.chain_mut(factory_chain_id);
+    let factory_code_id = factory_code(factory_chain);
+    let escrow_code_id = escrow_code(factory_chain);
+    let lp_code_id = lp_token_code(factory_chain);
+    let relayer_addr_factory = setup_relayer(
+        factory_chain,
+        vec![vsl_chain_uid.as_str(), chain_uid.as_str()],
+    )?;
 
     let is_native = router_chain_id == factory_chain_id;
+    let rate_limit_fee_recipient = factory_chain.addr_make("rate_limit_fee_recipient");
 
+    // Instantiate factory multiple times to randomize its address (mirrors old cw-orch behaviour).
+    let string_length = factory_chain_id.len();
+    let factory_sender = factory_chain.sender();
+    let router_addr_str = router_addr.to_string();
+
+    let mut factory_addr = Addr::unchecked("");
     for _ in 0..string_length {
-        // Do this in order to randomly generate the factory address
-        factory.instantiate(
+        factory_addr = factory_chain.instantiate(
+            factory_code_id,
+            &factory_sender,
             &euclid::msgs::factory::InstantiateMsg {
-                router_contract: router.address().unwrap().to_string(),
+                router_contract: router_addr_str.clone(),
                 chain_uid: chain_uid.clone(),
-                escrow_code_id: escrow.code_id().unwrap(),
-                lp_code_id: lp_token.code_id().unwrap(),
-                relayer_contract: relayer.address().unwrap(),
-                rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
+                escrow_code_id,
+                lp_code_id,
+                relayer_contract: relayer_addr_factory.clone(),
+                rate_limit_fee_recipient: rate_limit_fee_recipient.clone(),
                 rate_limit_fee_denom: "ufee".to_string(),
                 rate_limit_free_limit: Uint256::from(10u128),
                 is_native,
             },
-            None,
             &[],
-        )?;
+            "factory",
+        );
     }
 
-    if !is_native {
+    if is_native {
+        let chain_info = RegisterFactoryChainType::Native(RegisterFactoryChainNative {
+            factory_address: factory_addr.to_string(),
+            factory_chain_id: factory_chain_id.to_string(),
+        });
+        let router_sender = env.chain(router_chain_id).sender();
+        env.chain_mut(router_chain_id).execute(
+            &router_sender,
+            router_addr,
+            &euclid::msgs::router::ExecuteMsg::RegisterFactory {
+                chain_info,
+                chain_uid: chain_uid.clone(),
+            },
+            &[],
+        );
+    } else {
         match chain_type {
             ChainType::Cosmos(_) => {
-                let chain_info = euclid::msgs::router::RegisterFactoryChainType::Cosmos(
-                    RegisterFactoryChainCosmos {
-                        factory_address: factory.address().unwrap().to_string(),
-                        factory_chain_id: factory.environment().chain_id(),
+                let chain_info = RegisterFactoryChainType::Cosmos(RegisterFactoryChainCosmos {
+                    factory_address: factory_addr.to_string(),
+                    factory_chain_id: factory_chain_id.to_string(),
+                });
+                // Execute register_factory on the router chain
+                let router_sender = env.chain(router_chain_id).sender();
+                let register_response = env.chain_mut(router_chain_id).execute(
+                    &router_sender,
+                    router_addr,
+                    &euclid::msgs::router::ExecuteMsg::RegisterFactory {
+                        chain_info,
+                        chain_uid: chain_uid.clone(),
                     },
+                    &[],
                 );
-                let register_request = router
-                    .register_factory(chain_info, chain_uid.clone())
-                    .unwrap();
-                let ack_events =
-                    relay_router_send_packet(register_request.events, &factory, &chain_uid)?;
-                relay_router_ack_packet(router, &chain_uid, ack_events)?;
+                let ack_events = relay_router_send_packet(
+                    register_response.events,
+                    &factory_addr,
+                    &chain_uid,
+                    env.chain_mut(factory_chain_id),
+                )?;
+                relay_router_ack_packet(
+                    router_addr,
+                    &chain_uid,
+                    ack_events,
+                    env.chain_mut(router_chain_id),
+                )?;
             }
             ChainType::Evm(_) => {
                 let chain_info =
-                    euclid::msgs::router::RegisterFactoryChainType::Evm(RegisterFactoryChainEvm {
-                        factory_address: factory.address().unwrap().to_string(),
-                        factory_chain_id: factory.environment().chain_id(),
+                    RegisterFactoryChainType::Evm(euclid::msgs::router::RegisterFactoryChainEvm {
+                        factory_address: factory_addr.to_string(),
+                        factory_chain_id: factory_chain_id.to_string(),
                     });
-                let register_request = router
-                    .register_factory(chain_info, chain_uid.clone())
-                    .unwrap();
-                let send_packet_events = extract_send_packet_events(&register_request.events);
+                let router_sender = env.chain(router_chain_id).sender();
+                let register_response = env.chain_mut(router_chain_id).execute(
+                    &router_sender,
+                    router_addr,
+                    &euclid::msgs::router::ExecuteMsg::RegisterFactory {
+                        chain_info,
+                        chain_uid: chain_uid.clone(),
+                    },
+                    &[],
+                );
+                let send_packet_events = extract_send_packet_events(&register_response.events);
                 let packet = send_packet_events.first().unwrap();
-                let msg: FactoryCrossChainExecuteMsg = from_json(&packet.msg).unwrap();
+                let msg: euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg =
+                    cosmwasm_std::from_json(&packet.msg).unwrap();
                 let tx_id = msg.get_tx_id();
 
-                let _relay_ack_events = ack_register_factory_evm(
-                    router,
+                ack_register_factory_evm(
+                    router_addr,
+                    env.chain_mut(router_chain_id),
                     &chain_uid,
-                    factory.address().unwrap().as_str(),
-                    &factory.environment().chain_id(),
+                    factory_addr.as_ref(),
+                    factory_chain_id,
                     &tx_id,
                     packet.sequence,
                 )?;
@@ -167,197 +415,66 @@ fn setup_factory_inner(
                 unreachable!("native chains are handled by is_native branch")
             }
         }
-    } else {
-        let chain_info =
-            euclid::msgs::router::RegisterFactoryChainType::Native(RegisterFactoryChainNative {
-                factory_address: factory.address().unwrap().to_string(),
-                factory_chain_id: factory.environment().chain_id(),
-            });
-        router.register_factory(chain_info, chain_uid.clone())?;
     }
-    let all_chains = router.get_all_chains().unwrap();
-    // Assert that this chain is registered
+
+    // Assert the chain was registered
+    let all_chains: euclid::msgs::router::AllChainResponse = env.chain(router_chain_id).query(
+        router_addr,
+        &euclid::msgs::router::QueryMsg::GetAllChains {},
+    );
     assert!(
-        all_chains
-            .chains
-            .iter()
-            .any(|c| c.chain_uid == chain_uid.clone()),
-        "Factory chain not registered",
+        all_chains.chains.iter().any(|c| c.chain_uid == chain_uid),
+        "Factory chain not registered"
     );
 
-    Ok(factory)
+    Ok(factory_addr)
 }
 
-pub fn setup_router(
-    chain: &MockBase,
-    factory_chains: Vec<&str>,
-) -> Result<RouterContract<MockBase>, CwOrchError> {
-    let router = RouterContract::new(chain.clone());
-    let virtual_balance = VirtualBalanceContract::new(chain.clone());
-    let vlp = VlpContract::new(chain.clone());
-    let stable_vlp = StableVlpContract::new(chain.clone());
-    let relayer = setup_relayer(chain, factory_chains)?;
+// ---------------------------------------------------------------------------
+// Address-only handle helpers (replaces get_* with MockBase)
+// ---------------------------------------------------------------------------
 
-    router.upload().unwrap();
-    virtual_balance.upload().unwrap();
-    vlp.upload().unwrap();
-    stable_vlp.upload().unwrap();
-
-    router.instantiate(
-        &euclid::msgs::router::InstantiateMsg {
-            constant_product_vlp_code_id: vlp.code_id().unwrap(),
-            stable_vlp_code_id: stable_vlp.code_id().unwrap(),
-            virtual_balance_code_id: virtual_balance.code_id().unwrap(),
-            relayer_contract: relayer.address().unwrap(),
-            release_fee_recipient: chain.addr_make("release_fee_recipient"),
-            default_fee_recipient: chain.addr_make("default_fee_recipient"),
+pub fn get_escrow_addr(app: &EuclidApp, factory_addr: &Addr, token: &str) -> Addr {
+    let response: euclid::msgs::factory::GetEscrowResponse = app.query(
+        factory_addr,
+        &euclid::msgs::factory::QueryMsg::GetEscrow {
+            token_id: token.to_string(),
         },
-        None,
-        &[],
-    )?;
-
-    let meta_transaction_contract = setup_meta_transaction_contract(&router)?;
-    router.manage_router_state(ManageRouterState::MetaTransactionContract {
-        meta_transaction_contract: meta_transaction_contract.address().unwrap(),
-    })?;
-
-    Ok(router)
+    );
+    let escrow_address = response.escrow_address.expect("escrow not found");
+    println!("Token: {token:?} Escrow address: {escrow_address:?}");
+    escrow_address
 }
 
-pub fn setup_relayer(
-    chain: &MockBase,
-    chain_uids: Vec<&str>,
-) -> Result<RelayerContract<MockBase>, CwOrchError> {
-    let relayer = RelayerContract::new(chain.clone());
-    let (_, pubkey_binary) = get_signer_key();
-
-    let validator_address = cosmos_address_from_pubkey(&pubkey_binary, "cosmos").unwrap();
-
-    relayer.upload().unwrap();
-
-    let validator = Validator {
-        pubkey: pubkey_binary,
-        address: validator_address,
-    };
-
-    relayer.instantiate(
-        &relayer::msgs::InstantiateMsg {
-            message_signer: validator.clone(),
-            signature_threshold: 1,
-        },
-        Some(&chain.sender),
-        &[],
-    )?;
-    // Add validators to all chains
-    for chain_uid in chain_uids {
-        relayer.add_validator(
-            ChainUid::create(chain_uid.to_string()).unwrap(),
-            validator.clone(),
-        )?;
-    }
-    Ok(relayer)
+pub fn get_relayer_addr(app: &EuclidApp, router_or_factory_addr: &Addr) -> Addr {
+    // Try router query first, fall back to factory query
+    // This is used from relayer.rs — caller passes the correct contract type
+    // We expose separate helpers per contract type for clarity.
+    router_or_factory_addr.clone() // placeholder — use typed helpers below
 }
 
-pub fn setup_claimer(
-    router: &RouterContract<MockBase>,
-    vcoin_address: &VirtualBalanceContract<MockBase>,
-) -> Result<ClaimerContract<MockBase>, CwOrchError> {
-    let chain = router.environment().clone();
-    let claimer = ClaimerContract::new(chain.clone());
-    claimer.upload().unwrap();
-    claimer.instantiate(
-        &euclid::msgs::claimer::msg::InstantiateMsg {
-            router_contract: router.address().unwrap(),
-            vcoin_address: vcoin_address.address().unwrap(),
-        },
-        None,
-        &[],
-    )?;
-    Ok(claimer)
+pub fn get_router_relayer_addr(app: &EuclidApp, router_addr: &Addr) -> Addr {
+    let resp: euclid::msgs::router::QueryRelayerAddressesResponse = app.query(
+        router_addr,
+        &euclid::msgs::router::QueryMsg::QueryRelayerAddresses {},
+    );
+    resp.relayer_contract
 }
 
-pub fn setup_meta_transaction_contract(
-    router: &RouterContract<MockBase>,
-) -> Result<MetaTransactionContract<MockBase>, CwOrchError> {
-    let chain = router.environment().clone();
-    let meta_transaction_contract = MetaTransactionContract::new(chain.clone());
-    meta_transaction_contract.upload().unwrap();
-    meta_transaction_contract.instantiate(
-        &euclid::msgs::meta_transaction::msg::InstantiateMsg {
-            router_contract: router.address().unwrap(),
-        },
-        None,
-        &[],
-    )?;
-    Ok(meta_transaction_contract)
+pub fn get_factory_relayer_addr(app: &EuclidApp, factory_addr: &Addr) -> Addr {
+    let resp: euclid::msgs::factory::StateResponse =
+        app.query(factory_addr, &euclid::msgs::factory::QueryMsg::GetState {});
+    resp.relayer_contract
 }
 
-pub fn get_vlp(chain: &MockBase, address: &Addr) -> VlpContract<MockBase> {
-    let mut vlp = VlpContract::new(chain.clone());
-    vlp.as_instance_mut().id = format!("vlp_{}", address);
-    vlp.set_address(address);
-    vlp
+pub fn get_virtual_balance_addr(app: &EuclidApp, router_addr: &Addr) -> Addr {
+    let resp: euclid::msgs::router::StateResponse =
+        app.query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
+    resp.virtual_balance_address
 }
 
-#[allow(dead_code)]
-pub fn get_stable_vlp(chain: &MockBase, address: &Addr) -> StableVlpContract<MockBase> {
-    let mut stable_vlp = StableVlpContract::new(chain.clone());
-    stable_vlp.as_instance_mut().id = format!("stable_vlp_{}", address);
-    stable_vlp.set_address(address);
-    stable_vlp
-}
-
-pub fn get_virtual_balance(chain: &MockBase, address: &Addr) -> VirtualBalanceContract<MockBase> {
-    let mut virtual_balance = VirtualBalanceContract::new(chain.clone());
-    virtual_balance.as_instance_mut().id = format!("virtual_balance_{}", address);
-    virtual_balance.set_address(address);
-    virtual_balance
-}
-
-pub fn get_lp_token(chain: &MockBase, address: &Addr) -> LpTokenContract<MockBase> {
-    let mut lp_token = LpTokenContract::new(chain.clone());
-    lp_token.as_instance_mut().id = format!("lp_token_{}", address);
-    lp_token.set_address(address);
-    lp_token
-}
-
-pub fn get_escrow(factory: &FactoryContract<MockBase>, token: &str) -> EscrowContract<MockBase> {
-    let escrow_address = factory.get_escrow(token).unwrap();
-    let escrow_address = escrow_address.escrow_address.unwrap();
-    println!("Token: {:?} Escrow address: {:?}", token, escrow_address);
-    // Create a new escrow contract instance
-    let mut escrow = EscrowContract::new(factory.environment().clone());
-    escrow.as_instance_mut().id = format!("escrow_{}", escrow_address);
-    escrow.set_address(&escrow_address);
-    escrow
-}
-
-#[allow(dead_code)]
-pub fn get_factory(chain: &MockBase, address: &Addr) -> FactoryContract<MockBase> {
-    let mut factory = FactoryContract::new(chain.clone());
-    factory.as_instance_mut().id = format!("factory_{}", address);
-    factory.set_address(address);
-    factory
-}
-
-#[allow(dead_code)]
-pub fn get_router(chain: &MockBase, address: &Addr) -> RouterContract<MockBase> {
-    let mut router = RouterContract::new(chain.clone());
-    router.as_instance_mut().id = format!("router_{}", address);
-    router.set_address(address);
-    router
-}
-
-pub fn get_relayer(chain: &MockBase, address: &Addr) -> RelayerContract<MockBase> {
-    let mut relayer = RelayerContract::new(chain.clone());
-    relayer.as_instance_mut().id = format!("relayer_{}", address);
-    relayer.set_address(address);
-    relayer
-}
-
-pub fn _get_claimer(chain: &MockBase, address: &Addr) -> ClaimerContract<MockBase> {
-    let mut claimer = ClaimerContract::new(chain.clone());
-    claimer.as_instance_mut().id = format!("claimer_{}", address);
-    claimer.set_address(address);
-    claimer
+pub fn get_meta_tx_addr(app: &EuclidApp, router_addr: &Addr) -> Addr {
+    router::state::META_TRANSACTION_CONTRACT
+        .query(&app.app().wrap(), router_addr.clone())
+        .expect("meta_transaction_contract not set")
 }

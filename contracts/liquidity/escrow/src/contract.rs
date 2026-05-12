@@ -97,9 +97,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     let id = msg.id;
-    Err(ContractError::Std(StdError::generic_err(format!(
-        "Unknown reply id: {}",
-        id
+    Err(ContractError::Std(StdError::msg(format!(
+        "Unknown reply id: {id}"
     ))))
 }
 
@@ -108,7 +107,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env},
-        Addr, Uint128, Uint256,
+        Addr, Uint256,
     };
     use euclid::{
         error::ContractError,

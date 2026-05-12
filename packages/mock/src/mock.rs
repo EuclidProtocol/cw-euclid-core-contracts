@@ -15,6 +15,7 @@ pub use anyhow::Result as AnyResult;
 
 pub type ExecuteResult = AnyResult<AppResponse>;
 
+#[must_use]
 pub fn mock_app(denoms: Option<Vec<&str>>) -> MockApp {
     let denoms = denoms.unwrap_or(vec!["eucl", "uusd"]);
     AppBuilder::new()
@@ -117,6 +118,7 @@ impl MockEuclid {
         addr
     }
 
+    #[must_use]
     pub fn get_wallet(&self, name: &str) -> &Addr {
         self.wallets.get(name).unwrap()
     }

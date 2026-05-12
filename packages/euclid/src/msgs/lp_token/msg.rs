@@ -1,12 +1,12 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Uint128, Uint256};
-use cw20::{Cw20Coin, Logo, MinterResponse};
-use cw20_base::msg::{
-    ExecuteMsg as Cw20ExecuteMsg, InstantiateMarketingInfo, InstantiateMsg as Cw20InstantiateMsg,
-    QueryMsg as Cw20QueryMsg,
-};
 use cw_utils::Expiration;
 
+use crate::cw20_types::{
+    AllAccountsResponse, AllAllowancesResponse, AllowanceResponse, BalanceResponse, Cw20Coin,
+    Cw20ExecuteMsg, Cw20InstantiateMsg, Cw20QueryMsg, DownloadLogoResponse,
+    InstantiateMarketingInfo, Logo, MarketingInfoResponse, MinterResponse, TokenInfoResponse,
+};
 use crate::token::Pair;
 
 #[cw_serde]
@@ -37,7 +37,6 @@ impl From<InstantiateMsg> for Cw20InstantiateMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::ExecuteFns)]
 pub enum ExecuteMsg {
     UpdateState {
         token_pair: Option<Pair>,
@@ -56,7 +55,7 @@ pub enum ExecuteMsg {
         msg: Binary,
     },
     /// Only with "approval" extension. Allows spender to access an additional amount tokens
-    /// from the owner's (env.sender) account. If expires is Some(), overwrites current allowance
+    /// from the owner's (env.sender) account. If expires is `Some()`, overwrites current allowance
     /// expiration with this one.
     IncreaseAllowance {
         spender: String,
@@ -64,7 +63,7 @@ pub enum ExecuteMsg {
         expires: Option<Expiration>,
     },
     /// Only with "approval" extension. Lowers the spender's access of tokens
-    /// from the owner's (env.sender) account by amount. If expires is Some(), overwrites current
+    /// from the owner's (env.sender) account by amount. If expires is `Some()`, overwrites current
     /// allowance expiration with this one.
     DecreaseAllowance {
         spender: String,
@@ -110,7 +109,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
     fn from(msg: ExecuteMsg) -> Self {
         match msg {
             ExecuteMsg::Transfer { recipient, amount } => Cw20ExecuteMsg::Transfer {
-                recipient: recipient.to_string(),
+                recipient: recipient.clone(),
                 amount: Uint128::try_from(amount).unwrap(),
             },
             ExecuteMsg::Burn { amount } => Cw20ExecuteMsg::Burn {
@@ -121,7 +120,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
                 amount,
                 msg,
             } => Cw20ExecuteMsg::Send {
-                contract: contract.to_string(),
+                contract: contract.clone(),
                 amount: Uint128::try_from(amount).unwrap(),
                 msg,
             },
@@ -149,7 +148,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
                 amount,
             } => Cw20ExecuteMsg::TransferFrom {
                 owner,
-                recipient: recipient.to_string(),
+                recipient: recipient.clone(),
                 amount: Uint128::try_from(amount).unwrap(),
             },
             ExecuteMsg::SendFrom {
@@ -159,7 +158,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
                 msg,
             } => Cw20ExecuteMsg::SendFrom {
                 owner,
-                contract: contract.to_string(),
+                contract: contract.clone(),
                 amount: Uint128::try_from(amount).unwrap(),
                 msg,
             },
@@ -186,31 +185,26 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
 }
 
 #[cw_serde]
-#[derive(cw_orch::QueryFns, QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
-    //NOTE: Balance is included in andr_query
-    /// Returns the current balance of the given address, 0 if unset.
-    /// Return type: BalanceResponse.
-    // #[returns(BalanceResponse)]
-    // Balance { address: AndrAddr },
     /// Returns metadata on the contract - name, decimals, supply, etc.
-    /// Return type: TokenInfoResponse.
-    #[returns(cw20::TokenInfoResponse)]
+    /// Return type: `TokenInfoResponse`.
+    #[returns(TokenInfoResponse)]
     TokenInfo {},
     /// Only with "mintable" extension.
     /// Returns who can mint and the hard cap on maximum tokens after minting.
-    /// Return type: MinterResponse.
-    #[returns(cw20::MinterResponse)]
+    /// Return type: `MinterResponse`.
+    #[returns(MinterResponse)]
     Minter {},
     /// Only with "allowance" extension.
     /// Returns how much spender can use from owner account, 0 if unset.
-    /// Return type: AllowanceResponse.
-    #[returns(cw20::AllowanceResponse)]
+    /// Return type: `AllowanceResponse`.
+    #[returns(AllowanceResponse)]
     Allowance { owner: String, spender: String },
     /// Only with "enumerable" extension (and "allowances")
     /// Returns all allowances this owner has approved. Supports pagination.
-    /// Return type: AllAllowancesResponse.
-    #[returns(cw20::AllAllowancesResponse)]
+    /// Return type: `AllAllowancesResponse`.
+    #[returns(AllAllowancesResponse)]
     AllAllowances {
         owner: String,
         start_after: Option<String>,
@@ -218,8 +212,8 @@ pub enum QueryMsg {
     },
     /// Only with "enumerable" extension
     /// Returns all accounts that have balances. Supports pagination.
-    /// Return type: AllAccountsResponse.
-    #[returns(cw20::AllAccountsResponse)]
+    /// Return type: `AllAccountsResponse`.
+    #[returns(AllAccountsResponse)]
     AllAccounts {
         start_after: Option<String>,
         limit: Option<u32>,
@@ -227,16 +221,16 @@ pub enum QueryMsg {
     /// Only with "marketing" extension
     /// Returns more metadata on the contract to display in the client:
     /// - description, logo, project url, etc.
-    /// Return type: MarketingInfoResponse
-    #[returns(cw20::MarketingInfoResponse)]
+    /// Return type: `MarketingInfoResponse`
+    #[returns(MarketingInfoResponse)]
     MarketingInfo {},
     /// Only with "marketing" extension
     /// Downloads the mbeded logo data (if stored on chain). Errors if no logo data ftored for this
     /// contract.
-    /// Return type: DownloadLogoResponse.
-    #[returns(cw20::DownloadLogoResponse)]
+    /// Return type: `DownloadLogoResponse`.
+    #[returns(DownloadLogoResponse)]
     DownloadLogo {},
-    #[returns(cw20::BalanceResponse)]
+    #[returns(BalanceResponse)]
     Balance { address: String },
     /// Returns the current state of the contract
     #[returns(StateResponse)]

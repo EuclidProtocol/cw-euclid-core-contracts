@@ -10,7 +10,7 @@ use crate::contract::{instantiate, query};
 fn init_cw_multicall(deps: DepsMut, env: Env, info: MessageInfo) {
     let msg = InstantiateMsg {};
     let res = instantiate(deps, env, info, msg);
-    assert!(res.is_ok())
+    assert!(res.is_ok());
 }
 
 #[test]
@@ -19,7 +19,7 @@ fn test_instantiation() {
     let env = mock_env();
     let creator = deps.api.addr_make("creator");
     let info = message_info(&creator, &[]);
-    init_cw_multicall(deps.as_mut(), env, info)
+    init_cw_multicall(deps.as_mut(), env, info);
 }
 
 #[test]

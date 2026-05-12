@@ -48,6 +48,7 @@ impl MockEscrow {
         .unwrap()
     }
 
+    #[must_use]
     pub fn query_token_id(&self, app: &MockApp) -> TokenIdResponse {
         app.wrap()
             .query_wasm_smart::<TokenIdResponse>(
@@ -63,6 +64,7 @@ pub fn mock_escrow() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
+#[must_use]
 pub fn mock_escrow_instantiate_msg(
     token_id: Token,
     allowed_denom: Option<TokenType>,
@@ -73,10 +75,12 @@ pub fn mock_escrow_instantiate_msg(
     }
 }
 
+#[must_use]
 pub fn mock_escrow_deposit_native() -> ExecuteMsg {
     ExecuteMsg::DepositNative {}
 }
 
+#[must_use]
 pub fn mock_query_token_id() -> QueryMsg {
     QueryMsg::TokenId {}
 }

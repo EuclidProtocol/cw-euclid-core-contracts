@@ -24,6 +24,7 @@ pub struct Fee {
 }
 
 impl Fee {
+    #[must_use]
     pub fn new(lp_fee_bps: u64, euclid_fee_bps: u64, recipient: CrossChainUser) -> Self {
         Self {
             lp_fee_bps,
@@ -56,8 +57,9 @@ impl DenomFees {
             .or_insert(amount);
     }
     // Get the total for a given denomination
+    #[must_use]
     pub fn get_fee(&self, token: &str) -> Uint256 {
-        self.totals.get(token).cloned().unwrap_or_default()
+        self.totals.get(token).copied().unwrap_or_default()
     }
 }
 // Set maximum fee as 0.3%

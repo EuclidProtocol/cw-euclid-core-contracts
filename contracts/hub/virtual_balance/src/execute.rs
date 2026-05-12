@@ -585,7 +585,7 @@ mod tests {
     /// Return the router address as an owned `Addr`.
     fn router_addr_for(
         deps: &cosmwasm_std::OwnedDeps<
-            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockStorage,
             cosmwasm_std::testing::MockApi,
             cosmwasm_std::testing::MockQuerier,
         >,

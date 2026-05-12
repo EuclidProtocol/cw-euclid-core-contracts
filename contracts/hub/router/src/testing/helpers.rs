@@ -5,8 +5,8 @@ use crate::state::{CHAIN_UID_TO_CHAIN, VIRTUAL_BALANCE_CONTRACT, VLPS};
 
 use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
 use cosmwasm_std::{
-    to_json_binary, Addr, ContractResult, DepsMut, MessageInfo, Response, SystemResult, Uint128,
-    Uint256, WasmQuery,
+    to_json_binary, Addr, ContractResult, DepsMut, MessageInfo, Response, SystemResult, Uint256,
+    WasmQuery,
 };
 
 use euclid::chain::{Chain, ChainType, ChainUid};
@@ -27,7 +27,7 @@ use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
 // -----------------------------------------------------------------------
 
 pub type MockDeps = cosmwasm_std::OwnedDeps<
-    cosmwasm_std::MemoryStorage,
+    cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     MockQuerier,
 >;
@@ -52,7 +52,7 @@ pub(crate) fn init(deps: DepsMut, info: MessageInfo) -> Response {
     instantiate(deps, mock_env(), info, msg).unwrap()
 }
 
-/// Helper: seed VIRTUAL_BALANCE_CONTRACT with address "virtual_balance".
+/// Helper: seed `VIRTUAL_BALANCE_CONTRACT` with address "`virtual_balance`".
 pub fn seed_virtual_balance(deps: &mut MockDeps) {
     VIRTUAL_BALANCE_CONTRACT
         .save(
@@ -62,7 +62,7 @@ pub fn seed_virtual_balance(deps: &mut MockDeps) {
         .unwrap();
 }
 
-/// Helper: seed CHAIN_UID_TO_CHAIN with chain_uid="chain1", factory="factory1", Native.
+/// Helper: seed `CHAIN_UID_TO_CHAIN` with `chain_uid="chain1`", factory="factory1", Native.
 pub fn seed_chain1_native(deps: &mut MockDeps) {
     let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
     CHAIN_UID_TO_CHAIN
