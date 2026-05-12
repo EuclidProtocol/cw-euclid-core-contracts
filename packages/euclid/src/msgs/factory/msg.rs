@@ -241,7 +241,6 @@ pub enum QueryMsg {
     #[returns(GetPositionTokenContractResponse)]
     GetPositionTokenContract {},
 
-
     #[returns(GetRateLimitStateResponse)]
     GetRateLimitState {},
 
