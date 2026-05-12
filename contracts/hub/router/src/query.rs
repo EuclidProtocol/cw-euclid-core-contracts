@@ -1,5 +1,5 @@
 use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order, Uint128, Uint256};
-use cw_storage_plus::{Bound, PrefixBound};
+use cw_storage_plus::Bound;
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,

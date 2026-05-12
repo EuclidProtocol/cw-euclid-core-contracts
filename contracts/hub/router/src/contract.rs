@@ -19,7 +19,7 @@ use crate::execute::token::{execute_transfer_voucher, execute_withdraw_voucher};
 use crate::execute::{execute_manage_router_state, execute_meta_receive, execute_register_factory};
 
 use crate::query::{
-    self, query_all_chains, query_all_escrows, query_all_vlps, query_chain, query_chain_timeout,
+    self, query_all_chains, query_all_vlps, query_chain, query_chain_timeout,
     query_clp_position_info, query_default_release_fee, query_fee_state, query_locked_chains,
     query_relayer_addresses, query_release_fees, query_state, query_vlp, query_vlp_by_pool_key,
 };

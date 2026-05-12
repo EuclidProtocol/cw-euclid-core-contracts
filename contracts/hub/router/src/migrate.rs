@@ -35,3 +35,38 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
         .add_attribute("method", "migrate")
         .add_attribute("state_migrated", migrated.to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::testing::{mock_dependencies, mock_env};
+    use cw2::get_contract_version;
+
+    #[test]
+    fn test_migrate_sets_contract_version() {
+        let mut deps = mock_dependencies();
+        // Seed current State so migrate takes the non-legacy path
+        STATE
+            .save(
+                deps.as_mut().storage,
+                &State {
+                    constant_product_vlp_code_id: 1,
+                    stable_vlp_code_id: 2,
+                    concentrated_vlp_code_id: 3,
+                    locked: false,
+                },
+            )
+            .unwrap();
+        migrate(
+            deps.as_mut(),
+            mock_env(),
+            MigrateMsg {
+                concentrated_vlp_code_id: None,
+            },
+        )
+        .unwrap();
+        let version = get_contract_version(deps.as_ref().storage).unwrap();
+        assert_eq!(version.contract, CONTRACT_NAME);
+        assert_eq!(version.version, CONTRACT_VERSION);
+    }
+}

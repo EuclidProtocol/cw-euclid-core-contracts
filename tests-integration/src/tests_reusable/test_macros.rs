@@ -50,6 +50,7 @@ pub fn factory_modes(
 ) {
 }
 
+
 #[template]
 #[rstest]
 pub fn clp_matrix(

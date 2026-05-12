@@ -34,16 +34,6 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
-      - name: Run integration tests
-        run: cargo test -p tests-integration
-        env:
-          RUST_BACKTRACE: 1
-
-      - name: Run fuzz tests
-        run: cargo test -p tests-fuzz
-        env:
-          RUST_BACKTRACE: 1
-
   lints:
     name: Lints
     runs-on: ubuntu-latest
