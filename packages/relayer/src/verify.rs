@@ -19,12 +19,13 @@ pub struct MsgSignData {
 }
 
 impl MsgSignData {
+    #[must_use]
     pub fn new(msgs: Vec<MsgSignDataMsg>) -> Self {
         Self {
             account_number: Uint256::zero(),
-            chain_id: "".to_string(),
+            chain_id: String::new(),
             fee: MsgSignDataFee::new(),
-            memo: "".to_string(),
+            memo: String::new(),
             msgs,
             sequence: Uint256::zero(),
         }
@@ -44,6 +45,7 @@ impl Default for MsgSignDataFee {
 }
 
 impl MsgSignDataFee {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             amount: vec![],
@@ -59,6 +61,7 @@ pub struct MsgSignDataMsg {
 }
 
 impl MsgSignDataMsg {
+    #[must_use]
     pub fn new(value: MsgSignDataValue) -> Self {
         Self {
             r#type: "sign/MsgSignData".to_string(),
@@ -74,11 +77,13 @@ pub struct MsgSignDataValue {
 }
 
 impl MsgSignDataValue {
+    #[must_use]
     pub fn new(data: Binary, signer: String) -> Self {
         Self { data, signer }
     }
 }
 
+#[must_use]
 pub fn msg_to_sign_data(msg: Binary, signer: String) -> MsgSignData {
     let msg_sign_data_msg = MsgSignDataMsg::new(MsgSignDataValue::new(msg, signer));
     MsgSignData::new(vec![msg_sign_data_msg])
@@ -112,6 +117,7 @@ pub fn verify_keccak256_signature(
         .map_err(|err| ContractError::new(&err.to_string()))
 }
 
+#[must_use]
 pub fn add_eth_prefix(message: &str) -> String {
     format!("\x19Ethereum Signed Message:\n{}{}", message.len(), message)
 }
@@ -173,7 +179,7 @@ pub fn cosmos_address_from_pubkey(pubkey: &[u8], prefix: &str) -> Result<String,
 
     // bech32 encode
     let bech = encode(prefix, rip.to_base32(), Variant::Bech32)
-        .map_err(|e| format!("bech32 encode failed: {}", e))?;
+        .map_err(|e| format!("bech32 encode failed: {e}"))?;
     Ok(bech)
 }
 
@@ -263,7 +269,7 @@ mod tests {
         for test in tests {
             let msg_str = test.msg_str;
             let combined_msg = add_eth_prefix(&msg_str);
-            println!("combined_msg: {:?}", combined_msg);
+            println!("combined_msg: {combined_msg:?}");
             let signature = test.signature;
             let signature = HexBinary::from_hex(signature.as_str()).unwrap();
             println!("signature length: {:?}", signature.len());

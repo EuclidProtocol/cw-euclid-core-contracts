@@ -7,8 +7,7 @@ pub fn normalize_token_to_voucher(
 ) -> Result<Uint256, ContractError> {
     if decimals > VOUCHER_DECIMAL {
         return Err(ContractError::new(&format!(
-            "Token decimals {} exceeds voucher precision {}",
-            decimals, VOUCHER_DECIMAL
+            "Token decimals {decimals} exceeds voucher precision {VOUCHER_DECIMAL}"
         )));
     }
     normalize(token_amount, decimals, VOUCHER_DECIMAL)
@@ -20,8 +19,7 @@ pub fn normalize_voucher_to_token(
 ) -> Result<Uint256, ContractError> {
     if decimals > VOUCHER_DECIMAL {
         return Err(ContractError::new(&format!(
-            "Token decimals {} exceeds voucher precision {}",
-            decimals, VOUCHER_DECIMAL
+            "Token decimals {decimals} exceeds voucher precision {VOUCHER_DECIMAL}"
         )));
     }
     normalize(voucher_amount, VOUCHER_DECIMAL, decimals)
@@ -143,8 +141,7 @@ mod tests {
         let err = normalize_token_to_voucher(huge, 6).expect_err("should overflow");
         assert!(
             matches!(err, ContractError::Overflow(_)),
-            "expected overflow error, got {:?}",
-            err
+            "expected overflow error, got {err:?}"
         );
     }
 
@@ -188,8 +185,7 @@ mod tests {
             .expect_err("should reject decimals > 24");
         assert!(
             err.to_string().contains("exceeds voucher precision"),
-            "unexpected error: {:?}",
-            err
+            "unexpected error: {err:?}"
         );
     }
 
@@ -202,8 +198,7 @@ mod tests {
             .expect_err("should reject decimals > 24");
         assert!(
             err.to_string().contains("exceeds voucher precision"),
-            "unexpected error: {:?}",
-            err
+            "unexpected error: {err:?}"
         );
     }
 
@@ -351,8 +346,7 @@ mod tests {
         // Direct Uint128 conversion of voucher amount must fail (exceeds u128::MAX)
         assert!(
             Uint128::try_from(voucher).is_err(),
-            "voucher {} should exceed Uint128::MAX but didn't",
-            voucher
+            "voucher {voucher} should exceed Uint128::MAX but didn't"
         );
 
         // Correct path: denormalize first, then convert

@@ -9,6 +9,7 @@ use mock::mock::MockApp;
 
 pub struct MockRouter(Addr);
 impl MockRouter {
+    #[must_use]
     pub fn addr(&self) -> &Addr {
         &self.0
     }
@@ -52,6 +53,7 @@ impl MockRouter {
     //     Addr::unchecked(self.query::<StateResponse>(app, mock_query_state()).owner)
     // }
 
+    #[must_use]
     pub fn query_state(&self, app: &MockApp) -> StateResponse {
         app.wrap()
             .query_wasm_smart::<StateResponse>(
@@ -67,6 +69,7 @@ pub fn mock_router() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
+#[must_use]
 pub fn mock_router_instantiate_msg(
     constant_product_vlp_code_id: u64,
     stable_vlp_code_id: u64,
@@ -89,6 +92,7 @@ pub fn mock_router_instantiate_msg(
 
 // }
 
+#[must_use]
 pub fn mock_query_state() -> QueryMsg {
     QueryMsg::GetState {}
 }

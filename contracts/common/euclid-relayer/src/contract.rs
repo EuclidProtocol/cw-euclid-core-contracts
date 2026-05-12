@@ -42,7 +42,7 @@ pub fn instantiate(
         )
         .add_attribute(
             "message_signer_address",
-            state.message_signer.address.to_string(),
+            state.message_signer.address.clone(),
         )
         .add_attribute("signature_threshold", msg.signature_threshold.to_string()))
 }

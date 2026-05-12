@@ -71,7 +71,7 @@ pub fn execute_manage_factory_state(
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
 ///
-/// * **cw20_msg** is the CW20 message that has to be processed.
+/// * **`cw20_msg`** is the CW20 message that has to be processed.
 pub fn receive_cw20(
     mut deps: DepsMut,
     env: Env,
@@ -297,13 +297,12 @@ mod tests {
         });
         let res = execute(deps.as_mut(), mock_env(), info, msg);
 
-        match expected_err {
-            Some(err) => assert_eq!(res.unwrap_err(), err),
-            None => {
-                assert!(res.is_ok());
-                let state = load_state(&deps);
-                assert_eq!(state.escrow_code_id, new_id);
-            }
+        if let Some(err) = expected_err {
+            assert_eq!(res.unwrap_err(), err)
+        } else {
+            assert!(res.is_ok());
+            let state = load_state(&deps);
+            assert_eq!(state.escrow_code_id, new_id);
         }
     }
 
@@ -329,12 +328,11 @@ mod tests {
         });
         let res = execute(deps.as_mut(), mock_env(), info, msg);
 
-        match expected_err {
-            Some(err) => assert_eq!(res.unwrap_err(), err),
-            None => {
-                assert!(res.is_ok());
-                assert_eq!(load_state(&deps).lp_code_id, new_id);
-            }
+        if let Some(err) = expected_err {
+            assert_eq!(res.unwrap_err(), err)
+        } else {
+            assert!(res.is_ok());
+            assert_eq!(load_state(&deps).lp_code_id, new_id);
         }
     }
 
@@ -360,12 +358,11 @@ mod tests {
         });
         let res = execute(deps.as_mut(), mock_env(), info, msg);
 
-        match expected_err {
-            Some(err) => assert_eq!(res.unwrap_err(), err),
-            None => {
-                assert!(res.is_ok());
-                assert_eq!(load_state(&deps).relayer_contract, new_relayer);
-            }
+        if let Some(err) = expected_err {
+            assert_eq!(res.unwrap_err(), err)
+        } else {
+            assert!(res.is_ok());
+            assert_eq!(load_state(&deps).relayer_contract, new_relayer);
         }
     }
 

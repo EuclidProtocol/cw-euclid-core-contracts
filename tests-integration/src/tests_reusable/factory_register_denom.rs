@@ -22,7 +22,7 @@ pub fn register_denom(
         factory_state.chain_uid
     };
 
-    println!("Execute Register Denom {:?}", token);
+    println!("Execute Register Denom {token:?}");
     let sender = env.chain(factory_chain_id).sender();
     let tx_response = env.chain_mut(factory_chain_id).execute(
         &sender,
@@ -59,7 +59,7 @@ pub fn register_denom(
             .any(|d| d == &token.token_type),
         "Escrow found but denom not registered"
     );
-    println!("Register Denom Success {:?}", escrow_response);
+    println!("Register Denom Success {escrow_response:?}");
     Ok(())
 }
 
@@ -120,13 +120,13 @@ mod tests {
         let app = env.chain_mut(factory_chain_id);
         let sender = app.sender();
         let code_id = lp_token_code(app);
-        let aux_token = Token::create(format!("{}.aux", token)).unwrap();
+        let aux_token = Token::create(format!("{token}.aux")).unwrap();
         let token_pair = Pair::new(token.clone(), aux_token).unwrap();
         app.instantiate(
             code_id,
             &sender,
             &LpTokenInstantiateMsg {
-                name: format!("{}_cw20", token),
+                name: format!("{token}_cw20"),
                 symbol: "TEST".to_string(),
                 decimals: 6,
                 initial_balances: vec![Cw20Coin {

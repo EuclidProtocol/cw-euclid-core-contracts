@@ -19,6 +19,7 @@ pub struct BalanceKey {
 }
 
 impl BalanceKey {
+    #[must_use]
     pub fn to_serialized_balance_key(self) -> SerializedBalanceKey {
         (
             self.cross_chain_user.chain_uid,

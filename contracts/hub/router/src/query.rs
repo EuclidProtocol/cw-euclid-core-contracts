@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order, Uint256};
+use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order};
 use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
     chain::ChainUid,
@@ -71,7 +71,7 @@ pub fn query_all_vlps(
 
 pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
     let key = pair.get_tupple();
-    let vlp = VLPS.load(deps.storage, (key.0.to_string(), key.1.to_string()))?;
+    let vlp = VLPS.load(deps.storage, (key.0.clone(), key.1.clone()))?;
 
     Ok(to_json_binary(&VlpResponse {
         vlp: vlp.to_string(),
@@ -175,7 +175,7 @@ pub fn verify_cross_chain_addresses(
     deps: Deps,
     users: Vec<CrossChainUser>,
 ) -> Result<(), ContractError> {
-    for user in users.iter() {
+    for user in &users {
         ensure!(
             !user.address.is_empty(),
             ContractError::Generic {
@@ -409,12 +409,11 @@ mod tests {
     use cosmwasm_std::{
         from_json,
         testing::{message_info, mock_env},
-        Addr, Uint128, Uint256,
+        Addr, Uint256,
     };
 
     use crate::{
         contract::execute,
-        state::TOKEN_DENOMS,
         testing::{
             fixtures::initialized,
             helpers::{
@@ -426,11 +425,10 @@ mod tests {
     use euclid::{
         chain::ChainUid,
         msgs::router::{
-            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-            ExecuteMsg, ManageRouterState, QueryRelayerAddressesResponse, QueryTokenDenomsResponse,
-            ReleaseFeesQueryResponse, StateResponse, TokenDenom, TokenEscrowsResponse, VlpResponse,
+            AllChainResponse, AllVlpResponse, ChainResponse, ExecuteMsg, ManageRouterState,
+            QueryRelayerAddressesResponse, ReleaseFeesQueryResponse, StateResponse, VlpResponse,
         },
-        token::{Pair, Token, TokenType},
+        token::{Pair, Token},
         utils::pagination::Pagination,
     };
     use rstest::*;

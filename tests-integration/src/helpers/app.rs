@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, BlockInfo, Coin, Empty, Uint128, Uint256};
+use cosmwasm_std::{Addr, BlockInfo, Coin, Empty, Uint256};
 use cw_multi_test::{AppBuilder, AppResponse, BankSudo, BasicApp, Contract, Executor, SudoMsg};
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -84,7 +84,7 @@ impl EuclidApp {
     ) -> Result<AppResponse, anyhow::Error> {
         self.inner
             .execute_contract(sender.clone(), addr.clone(), msg, funds)
-            .map_err(|e| anyhow::anyhow!("{}", e))
+            .map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     pub fn execute_err<M: Serialize + std::fmt::Debug>(
@@ -96,7 +96,7 @@ impl EuclidApp {
     ) -> anyhow::Error {
         self.inner
             .execute_contract(sender.clone(), addr.clone(), msg, funds)
-            .map_err(|e| anyhow::anyhow!("{}", e))
+            .map_err(|e| anyhow::anyhow!("{e}"))
             .unwrap_err()
     }
 
@@ -112,7 +112,7 @@ impl EuclidApp {
         self.inner
             .wrap()
             .query_wasm_smart(addr, msg)
-            .map_err(|e| anyhow::anyhow!("{}", e))
+            .map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     pub fn set_balance(&mut self, addr: &Addr, coins: Vec<Coin>) {

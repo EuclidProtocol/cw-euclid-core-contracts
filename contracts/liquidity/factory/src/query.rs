@@ -215,7 +215,7 @@ pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError>
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, ContractResult, SystemResult, Uint128, Uint256, WasmQuery,
+        to_json_binary, Addr, ContractResult, SystemResult, Uint256, WasmQuery,
     };
     use euclid::{
         chain::ChainUid,

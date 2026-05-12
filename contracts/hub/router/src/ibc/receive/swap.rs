@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint256, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, WasmMsg};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
@@ -115,7 +115,7 @@ pub fn ibc_execute_swap(
         // Mint virtual balance for the first swap vlp so it can start processing tx
         let mint_virtual_balance_msg =
             euclid::msgs::virtual_balance::msg::ExecuteMsg::Mint(ExecuteMint {
-                amount: msg.amount_in.into(),
+                amount: msg.amount_in,
                 balance_key: BalanceKey {
                     cross_chain_user: sender.clone(),
                     token_id: msg.asset_in.token.to_string(),

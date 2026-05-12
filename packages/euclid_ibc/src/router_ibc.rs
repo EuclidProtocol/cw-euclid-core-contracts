@@ -69,6 +69,7 @@ pub enum RouterCrossChainExecuteMsg {
 }
 
 impl RouterCrossChainExecuteMsg {
+    #[must_use]
     pub fn get_tx_id(&self) -> String {
         match self {
             Self::RegisterDenom { tx_id, .. } => tx_id.clone(),
@@ -82,7 +83,8 @@ impl RouterCrossChainExecuteMsg {
         }
     }
 
-    /// Returns a reference to the sender CrossChainUser from any variant.
+    /// Returns a reference to the sender `CrossChainUser` from any variant.
+    #[must_use]
     pub fn get_sender(&self) -> &CrossChainUser {
         match self {
             Self::RegisterDenom { sender, .. } => sender,

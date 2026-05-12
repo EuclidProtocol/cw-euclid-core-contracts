@@ -10,6 +10,7 @@ pub struct FundManager {
 
 impl FundManager {
     /// Create a new fund manager
+    #[must_use]
     pub fn new(funds: &[Coin]) -> Self {
         let mut fund_manager = FundManager {
             funds: HashMap::new(),
@@ -21,15 +22,16 @@ impl FundManager {
     }
 
     /// Get the amount of funds in the manager for a given denom
+    #[must_use]
     pub fn get(&self, denom: &str) -> Uint256 {
-        self.funds.get(denom).cloned().unwrap_or(Uint256::zero())
+        self.funds.get(denom).copied().unwrap_or(Uint256::zero())
     }
 
     /// Add funds to the manager
     pub fn add(&mut self, fund: &Coin) {
         *self
             .funds
-            .entry(fund.denom.to_string())
+            .entry(fund.denom.clone())
             .or_insert(Uint256::zero()) += fund.amount;
     }
 
@@ -55,6 +57,7 @@ impl FundManager {
         Ok(())
     }
 
+    #[must_use]
     pub fn get_funds(&self) -> Vec<Coin> {
         self.funds
             .iter()

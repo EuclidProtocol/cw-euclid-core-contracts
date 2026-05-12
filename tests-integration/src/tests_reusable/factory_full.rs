@@ -127,7 +127,7 @@ mod tests {
     use euclid::msgs::lp_token::msg::{
         InstantiateMsg as LpTokenInstantiateMsg, QueryMsg as LpTokenQueryMsg,
     };
-    use euclid::utils::pagination::Pagination;
+
     use euclid::voucher::BalanceKey;
 
     fn setup_smart_denom_token(
@@ -138,13 +138,13 @@ mod tests {
         let app = env.chain_mut(factory_chain_id);
         let sender = app.sender();
         let code_id = lp_token_code(app);
-        let aux_token = Token::create(format!("{}.aux", token)).unwrap();
+        let aux_token = Token::create(format!("{token}.aux")).unwrap();
         let token_pair = Pair::new(token.clone(), aux_token).unwrap();
         let lp_addr = app.instantiate(
             code_id,
             &sender,
             &LpTokenInstantiateMsg {
-                name: format!("{}_cw20", token),
+                name: format!("{token}_cw20"),
                 symbol: "SWAPIN".to_string(),
                 decimals: 6,
                 initial_balances: vec![Cw20Coin {
@@ -463,8 +463,7 @@ mod tests {
             .escrows
             .iter()
             .find(|e| e.chain_uid == chain_uid)
-            .map(|e| e.balance)
-            .unwrap_or(Uint256::zero());
+            .map_or(Uint256::zero(), |e| e.balance);
 
         let sender_user = CrossChainUser::new(chain_uid.clone(), sender_addr.clone());
         let vb_out_before: euclid::msgs::virtual_balance::GetBalanceResponse =
@@ -587,9 +586,7 @@ mod tests {
             euclid::normalize::normalize_token_to_voucher(net_swap_amount, 6).unwrap();
         assert!(
             amount_received < net_swap_amount_normalized,
-            "Amount received ({}) should be less than net input ({}) for equal-reserve pools",
-            amount_received,
-            net_swap_amount_normalized
+            "Amount received ({amount_received}) should be less than net input ({net_swap_amount_normalized}) for equal-reserve pools"
         );
 
         if let Some(native_before) = partner_native_balance_before {
@@ -599,8 +596,7 @@ mod tests {
             assert_eq!(
                 partner_native_balance_after,
                 native_before + partner_fee_amount,
-                "Partner fee recipient should have received {} native input tokens as fee",
-                partner_fee_amount
+                "Partner fee recipient should have received {partner_fee_amount} native input tokens as fee"
             );
         }
         if let (Some(lp_addr), Some(sender_before), Some(factory_before)) = (

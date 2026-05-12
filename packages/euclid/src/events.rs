@@ -8,9 +8,10 @@ use crate::{
     cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
     swap::SwapRequest,
-    token::{Token, TokenMetadata, TokenType, TokenWithAmount},
+    token::{TokenMetadata, TokenType, TokenWithAmount},
 };
 
+#[must_use]
 pub fn liquidity_event(
     pool: &[TokenWithAmount],
     liquidity_change: &[TokenWithAmount],
@@ -35,6 +36,7 @@ pub fn liquidity_event(
     event
 }
 
+#[must_use]
 pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
     simple_event()
         .add_attribute("action", "swap")
@@ -47,6 +49,7 @@ pub fn swap_event(tx_id: &str, swap: &SwapRequest) -> Event {
         .add_attribute("swaps", format!("{swaps:?}", swaps = swap.swaps))
 }
 
+#[must_use]
 pub fn deposit_token_event(tx_id: &str, deposit: &DepositTokenRequest) -> Event {
     simple_event()
         .add_attribute("action", "deposit_token")
@@ -56,6 +59,7 @@ pub fn deposit_token_event(tx_id: &str, deposit: &DepositTokenRequest) -> Event 
         .add_attribute("amount_in", deposit.amount_in)
 }
 
+#[must_use]
 pub fn register_factory_event(
     tx_id: &str,
     factory_address: &str,
@@ -106,10 +110,11 @@ impl fmt::Display for TxType {
             TxType::WithdrawVirtualBalance => "withdraw_virtual_balance",
             TxType::WithdrawVoucher => "withdraw_voucher",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
+#[must_use]
 pub fn tx_event(tx_id: &str, sender: &str, tx_type: TxType) -> Event {
     let tx_type = tx_type.to_string();
     simple_event()
@@ -119,6 +124,7 @@ pub fn tx_event(tx_id: &str, sender: &str, tx_type: TxType) -> Event {
         .add_attribute("type", tx_type)
 }
 
+#[must_use]
 pub fn simple_event() -> Event {
     Event::new("euclid").add_attribute("version", "1.0.0")
 }
@@ -128,6 +134,7 @@ pub const EUCLID_RECEIVE_PACKET_EVENT: &str = "euclid-receive-packet";
 pub const EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT: &str = "euclid-write-acknowledgement";
 pub const EUCLID_RECEIVE_ACKNOWLEDGEMENT_EVENT: &str = "euclid-receive-acknowledgement";
 
+#[must_use]
 pub fn send_packet_event(
     source_port: &str,
     destination_port: &str,
@@ -145,6 +152,7 @@ pub fn send_packet_event(
         .add_attribute("destination_chain_type", destination_chain_type)
 }
 
+#[must_use]
 pub fn receive_packet_event(sequence: u128, source_port: &str, destination_port: &str) -> Event {
     Event::new(EUCLID_RECEIVE_PACKET_EVENT)
         .add_attribute("sequence", sequence.to_string())
@@ -153,6 +161,7 @@ pub fn receive_packet_event(sequence: u128, source_port: &str, destination_port:
 }
 
 // Write acknowledgement event is triggered by the contract itself after receiving a packet. This will also have ack msg but its not present at the time this event is released and hence will be added later.
+#[must_use]
 pub fn write_acknowledgement_event(
     sequence: u128,
     source_port: &str,
@@ -168,6 +177,7 @@ pub fn write_acknowledgement_event(
         .add_attribute("msg", msg)
 }
 
+#[must_use]
 pub fn receive_acknowledgement_event(
     sequence: u128,
     source_port: &str,
@@ -180,6 +190,7 @@ pub fn receive_acknowledgement_event(
 }
 
 pub const EUCLID_TOKEN_METADATA_UPDATE_EVENT: &str = "euclid-token-metadata-update";
+#[must_use]
 pub fn token_metadata_update_event(token_metadata: &TokenMetadata, action: &str) -> Event {
     Event::new(EUCLID_TOKEN_METADATA_UPDATE_EVENT)
         .add_attribute("action", action)
@@ -198,6 +209,7 @@ pub fn token_metadata_update_event(token_metadata: &TokenMetadata, action: &str)
 }
 
 pub const EUCLID_VIRTUAL_BALANCE_CHANGE_EVENT: &str = "euclid-virtual-balance-change";
+#[must_use]
 pub fn virtual_balance_change_event(
     action: &str,
     amount: &Uint256,
@@ -212,6 +224,7 @@ pub fn virtual_balance_change_event(
 }
 
 pub const EUCLID_ESCROW_BALANCE_CHANGE_EVENT: &str = "euclid-escrow-balance-change";
+#[must_use]
 pub fn escrow_balance_change_event(
     action: &str,
     amount: &Uint256,

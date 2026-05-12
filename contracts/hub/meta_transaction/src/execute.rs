@@ -82,9 +82,8 @@ pub fn execute_meta_transaction(
             )?;
             ensure!(verified, ContractError::new("Invalid signature"));
 
-            cosmos_address_from_pubkey(&pubkey, &bech32).map_err(|e| {
-                ContractError::new(&format!("Failed to derive cosmos address: {}", e))
-            })?
+            cosmos_address_from_pubkey(&pubkey, &bech32)
+                .map_err(|e| ContractError::new(&format!("Failed to derive cosmos address: {e}")))?
         }
         ChainType::Evm(_) => {
             let pubkey = HexBinary::from_hex(meta_transaction.signer_pubkey.as_str())?;
@@ -99,7 +98,7 @@ pub fn execute_meta_transaction(
             ensure!(verified, ContractError::new("Invalid signature"));
 
             eth_address_from_pubkey(&pubkey)
-                .map_err(|e| ContractError::new(&format!("Failed to derive EVM address: {}", e)))?
+                .map_err(|e| ContractError::new(&format!("Failed to derive EVM address: {e}")))?
         }
     };
 
@@ -226,7 +225,7 @@ mod tests {
     }
 
     /// Sign `MetaTransactionData` using the same algorithm that the contract verifies.
-    /// Returns (signature_base64, pubkey_base64).
+    /// Returns (`signature_base64`, `pubkey_base64`).
     fn sign_cosmos_meta_tx(data: &MetaTransactionData) -> (String, String) {
         let sk = get_signing_key();
         let pubkey = get_pubkey_binary();
@@ -1146,7 +1145,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(res.messages.len(), 1);
-        let sender_key = format!("somnia:{}", evm_address);
+        let sender_key = format!("somnia:{evm_address}");
         assert_eq!(res.attributes[0], attr("meta_sender_key", &sender_key));
 
         let height = NONCES
@@ -1327,7 +1326,7 @@ mod tests {
             "mixed-case EVM signer_address should be rejected"
         );
         // Confirm no nonce entry was written for the mixed-case sender_key.
-        let sender_key = format!("evmchain:{}", mixed_case_address);
+        let sender_key = format!("evmchain:{mixed_case_address}");
         let nonce_entry = NONCES
             .may_load(
                 &with_evm_chain.storage,

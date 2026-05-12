@@ -7,9 +7,9 @@ use cosmwasm_std::{
 use cw_storage_plus::Map;
 use euclid::error::ContractError;
 
-/// (channel_id) -> count. Reset on channel closure.
+/// (`channel_id`) -> count. Reset on channel closure.
 pub const CONNECTION_COUNTS: Map<String, u32> = Map::new("connection_counts");
-/// (channel_id) -> timeout_count. Reset on channel closure.
+/// (`channel_id`) -> `timeout_count`. Reset on channel closure.
 pub const TIMEOUT_COUNTS: Map<String, u32> = Map::new("timeout_count");
 
 pub const IBC_VERSION: &str = "counter-1";
@@ -69,7 +69,7 @@ pub fn validate_order_and_version(
 
     if channel.version != IBC_VERSION {
         return Err(ContractError::InvalidVersion {
-            actual: channel.version.to_string(),
+            actual: channel.version.clone(),
             expected: IBC_VERSION.to_string(),
         });
     }

@@ -22,10 +22,12 @@ impl MockEuclidBuilder {
         }
     }
 
+    #[must_use]
     pub fn with_wallets(self, wallets: Vec<(&'static str, Vec<Coin>)>) -> Self {
         Self { wallets, ..self }
     }
 
+    #[must_use]
     pub fn with_balances(self, raw_balances: &[(Addr, Vec<Coin>)]) -> Self {
         Self {
             raw_balances: raw_balances.to_vec(),
@@ -33,6 +35,7 @@ impl MockEuclidBuilder {
         }
     }
 
+    #[must_use]
     pub fn with_contracts(self, contracts: Vec<(&'static str, Box<dyn Contract<Empty>>)>) -> Self {
         Self { contracts, ..self }
     }

@@ -240,8 +240,8 @@ mod tests {
     }
 
     /// Build the raw bytes that `parse_instantiate_response_data` expects:
-    ///   field 1: string  = contract_address
-    ///   field 2: bytes   = inner_data (optional; skipped when empty)
+    ///   field 1: string  = `contract_address`
+    ///   field 2: bytes   = `inner_data` (optional; skipped when empty)
     fn encode_instantiate_response(contract_address: &str, inner_data: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
         encode_length_delimited_field(1, contract_address.as_bytes(), &mut out);
@@ -252,7 +252,7 @@ mod tests {
     }
 
     /// Build the raw bytes that `parse_execute_response_data` expects:
-    ///   field 1: bytes = inner_data (optional; skipped when empty)
+    ///   field 1: bytes = `inner_data` (optional; skipped when empty)
     fn encode_execute_response(inner_data: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
         if !inner_data.is_empty() {

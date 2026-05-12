@@ -59,7 +59,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{from_json, testing::mock_env, Uint128, Uint256};
+    use cosmwasm_std::{from_json, testing::mock_env, Uint256};
     use euclid::{
         msgs::escrow::{
             AllowedDenomsResponse, AllowedTokenResponse, ExecuteMsg, QueryMsg, StateResponse,

@@ -13,6 +13,7 @@ use mock::mock::MockApp;
 pub struct MockStableVlp(Addr);
 
 impl MockStableVlp {
+    #[must_use]
     pub fn addr(&self) -> &Addr {
         &self.0
     }
@@ -49,6 +50,7 @@ impl MockStableVlp {
     //     self.execute(app, &msg, sender, funds)
     // }
 
+    #[must_use]
     pub fn query_state(&self, app: &MockApp) -> GetStateResponse {
         app.wrap()
             .query_wasm_smart::<GetStateResponse>(
@@ -58,6 +60,7 @@ impl MockStableVlp {
             .unwrap()
     }
 
+    #[must_use]
     pub fn query_admin(&self, app: &MockApp) -> EuclidAdmin {
         app.wrap()
             .query_wasm_smart::<EuclidAdmin>(
@@ -73,6 +76,7 @@ pub fn mock_stable_vlp() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
+#[must_use]
 pub fn mock_stable_vlp_instantiate_msg(
     router: Addr,
     virtual_balance_contract: Addr,
@@ -93,6 +97,7 @@ pub fn mock_stable_vlp_instantiate_msg(
     }
 }
 
+#[must_use]
 pub fn mock_query_get_state() -> QueryMsg {
     QueryMsg::State {}
 }

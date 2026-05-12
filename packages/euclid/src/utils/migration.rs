@@ -26,8 +26,7 @@ pub fn query_token_decimals(
     )?;
     let first = resp.metadata.first().ok_or_else(|| {
         ContractError::new(&format!(
-            "No token metadata found for '{}' in virtual_balance. Migrate virtual_balance first.",
-            token
+            "No token metadata found for '{token}' in virtual_balance. Migrate virtual_balance first."
         ))
     })?;
     let decimals = first.token_type.get_decimals()?;
@@ -35,8 +34,7 @@ pub fn query_token_decimals(
         let entry_decimals = entry.token_type.get_decimals()?;
         if entry_decimals != decimals {
             return Err(ContractError::new(&format!(
-                "Token '{}' has inconsistent decimals across chains: {} vs {}",
-                token, decimals, entry_decimals
+                "Token '{token}' has inconsistent decimals across chains: {decimals} vs {entry_decimals}"
             )));
         }
     }

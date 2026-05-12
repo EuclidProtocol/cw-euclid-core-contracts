@@ -58,7 +58,7 @@ pub fn add_liquidity(
         factory_state.chain_uid
     };
 
-    println!("Execute Add Liquidity {:?}", pair_with_denom);
+    println!("Execute Add Liquidity {pair_with_denom:?}");
     let tx_response = env.chain_mut(factory_chain_id).execute(
         &sender,
         factory_addr,
@@ -363,8 +363,7 @@ mod tests {
                 || result
                     .as_ref()
                     .err()
-                    .map(|e| e.to_string().contains("Slippage has been exceeded"))
-                    .unwrap_or(false),
+                    .is_some_and(|e| e.to_string().contains("Slippage has been exceeded")),
             "Expected slippage error"
         );
     }

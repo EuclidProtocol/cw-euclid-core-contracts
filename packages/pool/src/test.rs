@@ -975,16 +975,11 @@ mod audit_tests {
 
         assert!(
             d_after >= d_before,
-            "D must not decrease after swap (truncation favors pool). D_before: {}, D_after: {}",
-            d_before,
-            d_after,
+            "D must not decrease after swap (truncation favors pool). D_before: {d_before}, D_after: {d_after}",
         );
         assert!(
             relative_diff < Decimal256::from_ratio(1u128, 10_000u128), // < 0.01%
-            "D drift too large. D_before: {}, D_after: {}, relative_diff: {}",
-            d_before,
-            d_after,
-            relative_diff
+            "D drift too large. D_before: {d_before}, D_after: {d_after}, relative_diff: {relative_diff}"
         );
     }
 
@@ -1086,16 +1081,11 @@ mod audit_tests {
 
         assert!(
             d_after >= d_before,
-            "D must not decrease after swap (truncation favors pool). D_before: {}, D_after: {}",
-            d_before,
-            d_after,
+            "D must not decrease after swap (truncation favors pool). D_before: {d_before}, D_after: {d_after}",
         );
         assert!(
             relative_diff < Decimal256::from_ratio(1u128, 10_000u128), // < 0.01%
-            "D drift too large. D_before: {}, D_after: {}, relative_diff: {}",
-            d_before,
-            d_after,
-            relative_diff
+            "D drift too large. D_before: {d_before}, D_after: {d_after}, relative_diff: {relative_diff}"
         );
     }
 
@@ -2593,10 +2583,10 @@ mod voucher_lp_tests {
                 final_reserves_2: Uint256,
             }
 
-            /// Build a pool whose existing total_lp_tokens was minted via the
+            /// Build a pool whose existing `total_lp_tokens` was minted via the
             /// CP geometric-mean formula (sqrt(r1*r2)) — this models the
             /// pre-migration on-chain state. Then run a post-migration
-            /// stable add_liquidity for Bob and remove_liquidity for both
+            /// stable `add_liquidity` for Bob and `remove_liquidity` for both
             /// the pre-migration holder (Alice) and the post-migration
             /// holder (Bob), returning the released amounts so the test can
             /// assert proportional-ownership preservation.
@@ -2884,9 +2874,7 @@ mod voucher_lp_tests {
                 let bob_released_value = outcome.bob_released_1 + outcome.bob_released_2;
                 assert!(
                     bob_released_value <= bob_deposited_value,
-                    "bob received more value than deposited: {} > {}",
-                    bob_released_value,
-                    bob_deposited_value
+                    "bob received more value than deposited: {bob_released_value} > {bob_deposited_value}"
                 );
 
                 // Conservation: Alice's release + Bob's release + locked
@@ -3168,8 +3156,7 @@ mod invariant_tests {
 
         assert!(
             k_after >= k_before,
-            "k-invariant violated: k_before={}, k_after={}, reserve_in={}, reserve_out={}, amount_in={}",
-            k_before, k_after, reserve_in, reserve_out, amount_in
+            "k-invariant violated: k_before={k_before}, k_after={k_after}, reserve_in={reserve_in}, reserve_out={reserve_out}, amount_in={amount_in}"
         );
     }
 
@@ -3363,8 +3350,7 @@ mod invariant_tests {
         assert_eq!(
             reserve_increase, expected_increase,
             "Reserve increase should be amount_in - euclid_fee. \
-             swap_amount + lp_fee = {}, amount_in - euclid_fee = {}",
-            reserve_increase, expected_increase
+             swap_amount + lp_fee = {reserve_increase}, amount_in - euclid_fee = {expected_increase}"
         );
 
         // Verify it is NOT amount_in (unless euclid_fee is zero)

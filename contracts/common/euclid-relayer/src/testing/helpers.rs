@@ -47,12 +47,7 @@ pub fn sign_message(msg: &str) -> (Binary, Binary) {
 /// Produce the string that the relayer hashes/signs:
 ///   `{data},{expiry},{chain_uid}`
 pub fn expiry_call_data(data: &str, expiry: u64, chain_uid: &str) -> String {
-    format!(
-        "{data},{expiry},{chain_uid}",
-        data = data,
-        expiry = expiry,
-        chain_uid = chain_uid
-    )
+    format!("{data},{expiry},{chain_uid}")
 }
 
 // -------------------------------------------------------------------

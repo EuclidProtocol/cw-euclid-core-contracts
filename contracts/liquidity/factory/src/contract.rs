@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint128, Uint512,
-};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint512};
 use cw2::set_contract_version;
 use euclid::admin::EuclidAdmin;
 use euclid::cross_chain_user::CrossChainUser;
@@ -318,8 +316,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps.branch(), msg),
 
         id => Err(ContractError::Std(StdError::msg(format!(
-            "Unknown reply id: {}",
-            id
+            "Unknown reply id: {id}"
         )))),
     }
 }
@@ -328,7 +325,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, Uint128, Uint256,
+        to_json_binary, Addr, Uint256,
     };
     use euclid::{
         chain::ChainUid,

@@ -5,7 +5,6 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
-        router::TokenDenom,
         virtual_balance::{
             msg::{
                 ExecuteMint, ExecuteMsg as VirtualBalanceMsg, QueryMsg as VirtualBalanceQueryMsg,
@@ -125,7 +124,7 @@ pub fn ibc_execute_deposit_token(
 
     // Send mint msg to virtual balance
     let mint_msg = VirtualBalanceMsg::Mint(ExecuteMint {
-        amount: msg.amount_in.into(),
+        amount: msg.amount_in,
         balance_key: BalanceKey {
             cross_chain_user: msg.sender.clone(),
             token_id: msg.asset_in.token.to_string(),
@@ -161,7 +160,7 @@ pub fn ibc_execute_deposit_token(
         );
 
     let expected_voucher = normalize_token_to_voucher(
-        msg.amount_in.into(),
+        msg.amount_in,
         token_metadata.metadata.token_type.get_decimals()?,
     )?;
 

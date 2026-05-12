@@ -155,24 +155,21 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
 
             let mut res = Response::new();
             let funds = FUNDS_INFO.may_load(deps.storage)?;
-            match funds {
-                Some(_) => {
-                    let pool_response = PoolCreationResponse {
-                        mint_lp_tokens: liquidity_response.mint_lp_tokens,
-                        vlp_contract: liquidity_response.vlp_address.clone(),
-                        tx_id: liquidity_response.tx_id.clone(),
-                        sender: liquidity_response.sender.clone(),
-                    };
-                    FUNDS_INFO.remove(deps.storage);
+            if funds.is_some() {
+                let pool_response = PoolCreationResponse {
+                    mint_lp_tokens: liquidity_response.mint_lp_tokens,
+                    vlp_contract: liquidity_response.vlp_address.clone(),
+                    tx_id: liquidity_response.tx_id.clone(),
+                    sender: liquidity_response.sender.clone(),
+                };
+                FUNDS_INFO.remove(deps.storage);
 
-                    let ack = AcknowledgementMsg::Ok(pool_response);
-                    res = res.set_data(to_json_binary(&ack)?);
-                }
-                None => {
-                    let ack: AcknowledgementMsg<AddLiquidityResponse> =
-                        AcknowledgementMsg::Ok(liquidity_response.clone());
-                    res = res.set_data(to_json_binary(&ack)?);
-                }
+                let ack = AcknowledgementMsg::Ok(pool_response);
+                res = res.set_data(to_json_binary(&ack)?);
+            } else {
+                let ack: AcknowledgementMsg<AddLiquidityResponse> =
+                    AcknowledgementMsg::Ok(liquidity_response.clone());
+                res = res.set_data(to_json_binary(&ack)?);
             }
 
             Ok(res
@@ -421,7 +418,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env, MockQuerier},
-        Addr, Binary, Reply, SubMsgResponse, SubMsgResult, Uint128, Uint256,
+        Addr, Binary, Reply, SubMsgResponse, SubMsgResult, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -505,8 +502,8 @@ mod tests {
     }
 
     /// Build the raw bytes that `parse_instantiate_response_data` expects:
-    ///   field 1: string  = contract_address
-    ///   field 2: bytes   = inner_data  (optional; skipped when empty)
+    ///   field 1: string  = `contract_address`
+    ///   field 2: bytes   = `inner_data`  (optional; skipped when empty)
     fn encode_instantiate_response(contract_address: &str, inner_data: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
         encode_length_delimited_field(1, contract_address.as_bytes(), &mut out);
@@ -517,7 +514,7 @@ mod tests {
     }
 
     /// Build the raw bytes that `parse_execute_response_data` expects:
-    ///   field 1: bytes = inner_data  (optional; skipped when empty)
+    ///   field 1: bytes = `inner_data`  (optional; skipped when empty)
     fn encode_execute_response(inner_data: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
         if !inner_data.is_empty() {

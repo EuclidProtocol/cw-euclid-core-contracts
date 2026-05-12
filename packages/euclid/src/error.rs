@@ -295,6 +295,7 @@ impl PartialEq for ContractError {
 }
 
 impl ContractError {
+    #[must_use]
     pub fn new(err: &str) -> Self {
         ContractError::Generic {
             err: err.to_string(),

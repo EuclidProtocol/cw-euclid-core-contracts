@@ -119,7 +119,7 @@ mod tests {
     use euclid::limit::Limit;
     use euclid::msgs::lp_token::msg::QueryMsg as LpTokenQueryMsg;
     use euclid::msgs::vlp::base::PoolConfig;
-    use euclid::utils::pagination::Pagination;
+
     use euclid::voucher::BalanceKey;
     use rstest::rstest;
 
@@ -146,13 +146,13 @@ mod tests {
     fn setup_smart_denom_token(app: &mut EuclidApp, token: Token) -> TokenWithDenom {
         let sender = app.sender();
         let code_id = lp_token_code(app);
-        let aux_token = Token::create(format!("{}.aux", token)).unwrap();
+        let aux_token = Token::create(format!("{token}.aux")).unwrap();
         let token_pair = Pair::new(token.clone(), aux_token).unwrap();
         let lp_addr = app.instantiate(
             code_id,
             &sender,
             &LpTokenInstantiateMsg {
-                name: format!("{}_cw20", token),
+                name: format!("{token}_cw20"),
                 symbol: "SWAPIN".to_string(),
                 decimals: 6,
                 initial_balances: vec![Cw20Coin {
@@ -349,8 +349,7 @@ mod tests {
             .escrows
             .iter()
             .find(|e| e.chain_uid == chain_uid)
-            .map(|e| e.balance)
-            .unwrap_or(Uint256::zero());
+            .map_or(Uint256::zero(), |e| e.balance);
 
         let virtual_balance_addr =
             get_virtual_balance_addr(env.chain(ROUTER_CHAIN_ID), &router_addr);
@@ -453,9 +452,7 @@ mod tests {
             euclid::normalize::normalize_token_to_voucher(Uint256::new(swap_amount), 6).unwrap();
         assert!(
             amount_received < swap_amount_normalized,
-            "Amount received ({}) should be less than amount in ({}) for equal-reserve pools",
-            amount_received,
-            swap_amount
+            "Amount received ({amount_received}) should be less than amount in ({swap_amount}) for equal-reserve pools"
         );
 
         if let (Some(lp_addr), Some(sender_before), Some(factory_before)) = (

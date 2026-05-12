@@ -599,7 +599,7 @@ fn ack_swap_request(
                         None,
                         None,
                     )?;
-                    response = response.add_message(partner_send_msg)
+                    response = response.add_message(partner_send_msg);
                 }
             }
 
@@ -728,7 +728,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{mock_dependencies, mock_env},
-        to_json_binary, Addr, Uint128, Uint256,
+        to_json_binary, Addr, Uint256,
     };
     use euclid::{
         chain::ChainUid,

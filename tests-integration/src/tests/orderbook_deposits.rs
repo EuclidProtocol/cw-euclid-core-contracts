@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, Uint128, Uint256};
+use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, Uint256};
 use euclid::msgs::orderbook_deposits::{
     AssetDepositResponse, AssetTotal, ExecuteMsg as OrderbookExecuteMsg,
     InstantiateMsg as OrderbookInstantiateMsg, MerkleProofStep, Permit, PermitData, ProofPosition,
@@ -910,7 +910,7 @@ fn setup_withdraw_test_context(root_challenge_period: u64) -> WithdrawTestContex
 
     let (signer_key, signer_pubkey) = get_signer_key();
     let chain_id = app.chain_id().to_string();
-    let signer_address = format!("permit_{}", chain_id);
+    let signer_address = format!("permit_{chain_id}");
 
     let ob_code_id = orderbook_deposits_code(&mut app);
     let sender = app.sender();

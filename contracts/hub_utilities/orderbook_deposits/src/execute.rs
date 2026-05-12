@@ -462,7 +462,7 @@ fn execute_withdraw(
     // Reject mixed-case or empty addresses before sending to virtual_balance
     destination_user.validate()?;
     let transfer_msg = VirtualBalanceExecuteMsg::Transfer(ExecuteTransfer {
-        amount: amount.into(),
+        amount,
         token_id: permit_data.token_id.clone(),
         sender: None,
         to: destination_user,

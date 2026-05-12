@@ -3,13 +3,12 @@
 use crate::helpers::chains::get_escrow_addr;
 use crate::helpers::multi_chain::MultiChainEnv;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128, Uint256};
+use cosmwasm_std::{Addr, Uint256};
 use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::vlp::base::GetLiquidityQueryResponse;
 use euclid::recipient::Recipient;
 use euclid::token::{Pair, Token};
-use euclid::utils::pagination::Pagination;
 use euclid::voucher::BalanceKey;
 
 #[cw_serde]
@@ -64,7 +63,7 @@ impl StateSync {
     pub fn voucher_balance(&self, recipient: &CrossChainUser, token: &Token) -> Option<Uint256> {
         self.voucher_balances
             .iter()
-            .find(|entry| &entry.recipient == recipient && &entry.token == token)
+            .find(|entry| &entry.recipient == recipient && entry.token == token)
             .map(|entry| entry.amount)
     }
 
@@ -91,7 +90,7 @@ impl StateSync {
     ) -> Option<&EscrowBalanceState> {
         self.escrow_balances
             .iter()
-            .find(|entry| &entry.chain_uid == chain_uid && &entry.token == token)
+            .find(|entry| &entry.chain_uid == chain_uid && entry.token == token)
     }
 }
 
@@ -173,8 +172,7 @@ pub(crate) fn sync_state(
                 .escrows
                 .iter()
                 .find(|entry| entry.chain_uid == escrow_chain_uid)
-                .map(|entry| entry.balance)
-                .unwrap_or(Uint256::zero());
+                .map_or(Uint256::zero(), |entry| entry.balance);
 
             EscrowBalanceState {
                 chain_uid: escrow_chain_uid.clone(),

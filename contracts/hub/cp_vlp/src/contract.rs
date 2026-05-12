@@ -489,7 +489,7 @@ mod tests {
             slippage_tolerance_bps: 0,
         });
         let res = execute(deps.as_mut(), env.clone(), info.clone(), add_msg).unwrap();
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
         let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
@@ -1075,7 +1075,7 @@ mod tests {
             ("chain1", 10_000_000_000u128, 10_000_000_000u128),
             ("chain2", 5_000_000_000u128, 5_000_000_000u128),
         ] {
-            let chain_uid = ChainUid::create(chain_name.to_string()).unwrap();
+            let chain_uid = ChainUid::create((*chain_name).to_string()).unwrap();
             let sender = CrossChainUser::new(chain_uid.clone(), "user".to_string());
             execute(
                 deps.as_mut(),

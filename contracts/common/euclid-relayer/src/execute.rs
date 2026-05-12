@@ -36,11 +36,11 @@ pub fn execute_update_state(
             )
             .add_attribute(
                 "message_signer_address_old_value",
-                state.message_signer.address.to_string(),
+                state.message_signer.address.clone(),
             )
             .add_attribute(
                 "message_signer_address_new_value",
-                message_signer.address.to_string(),
+                message_signer.address.clone(),
             );
     }
 
@@ -80,7 +80,7 @@ pub fn execute_update_admin(
     ADMIN.save(deps.storage, &updated_admins)?;
     Ok(response
         .add_attribute("old_admin", current_admin.to_string())
-        .add_attribute("new_admin", msg.new_admin.to_string()))
+        .add_attribute("new_admin", msg.new_admin.clone()))
 }
 
 pub fn execute_meta_transaction(
@@ -169,13 +169,59 @@ pub fn execute_meta_transaction(
 }
 
 fn expiry_call_data(data: &str, expiry: u64, chain_uid: &str) -> String {
-    let expiry_call_data = format!(
-        "{data},{expiry},{chain_uid}",
-        data = data,
-        expiry = expiry,
-        chain_uid = chain_uid
-    );
+    let expiry_call_data = format!("{data},{expiry},{chain_uid}");
     expiry_call_data
+}
+
+pub fn execute_add_validator(
+    deps: &mut DepsMut,
+    info: &MessageInfo,
+    validator: Validator,
+    chain_uid: ChainUid,
+) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
+    let admin = ADMIN.load(deps.storage)?;
+    ensure!(
+        info.sender == admin.general_admin,
+        ContractError::Unauthorized {}
+    );
+    let mut validators = VALIDATORS
+        .load(deps.storage, chain_uid.clone())
+        .unwrap_or_default();
+    ensure!(
+        !validators.contains(&validator),
+        ContractError::new("Validator already exists")
+    );
+    validators.push(validator.clone());
+    VALIDATORS.save(deps.storage, chain_uid, &validators)?;
+    Ok(Response::new().add_attribute("validator_added", validator.address.clone()))
+}
+
+pub fn execute_remove_validator(
+    deps: &mut DepsMut,
+    info: &MessageInfo,
+    validator: Validator,
+    chain_uid: ChainUid,
+) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
+    let admin = ADMIN.load(deps.storage)?;
+    ensure!(
+        info.sender == admin.general_admin,
+        ContractError::Unauthorized {}
+    );
+    let mut validators = VALIDATORS
+        .load(deps.storage, chain_uid.clone())
+        .unwrap_or_default();
+    let index = validators
+        .iter()
+        .position(|v| v.address == validator.address);
+    if let Some(index) = index {
+        validators.remove(index);
+    } else {
+        return Err(ContractError::new("Validator does not exist"));
+    }
+    VALIDATORS.save(deps.storage, chain_uid, &validators)?;
+    Ok(Response::new().add_attribute("validator_removed", validator.address.clone()))
 }
 
 #[cfg(test)]
@@ -563,7 +609,7 @@ mod tests {
         init(&mut deps);
 
         // Use the same signing key as the admin signer (set in init)
-        let (_, validator_sk) = {
+        let ((), validator_sk) = {
             use k256::ecdsa::SigningKey;
             use k256::elliptic_curve::NonZeroScalar;
             use std::str::FromStr;
@@ -631,7 +677,7 @@ mod tests {
         let mut deps = mock_dependencies();
         init(&mut deps);
 
-        let (_, validator_sk) = {
+        let ((), validator_sk) = {
             use k256::ecdsa::SigningKey;
             use k256::elliptic_curve::NonZeroScalar;
             use std::str::FromStr;
@@ -684,7 +730,7 @@ mod tests {
             .save(deps.as_mut().storage, &EuclidAdmin::default(sender.clone()))
             .unwrap();
 
-        let (_, validator_sk) = {
+        let ((), validator_sk) = {
             use k256::ecdsa::SigningKey;
             use k256::elliptic_curve::NonZeroScalar;
             use std::str::FromStr;
@@ -746,55 +792,4 @@ mod tests {
         let err = execute_meta_transaction(&mut deps.as_mut(), &env, &info, msg).unwrap_err();
         assert!(matches!(err, ContractError::Generic { .. }));
     }
-}
-
-pub fn execute_add_validator(
-    deps: &mut DepsMut,
-    info: &MessageInfo,
-    validator: Validator,
-    chain_uid: ChainUid,
-) -> Result<Response, ContractError> {
-    cw_utils::nonpayable(info)?;
-    let admin = ADMIN.load(deps.storage)?;
-    ensure!(
-        info.sender == admin.general_admin,
-        ContractError::Unauthorized {}
-    );
-    let mut validators = VALIDATORS
-        .load(deps.storage, chain_uid.clone())
-        .unwrap_or_default();
-    ensure!(
-        !validators.contains(&validator),
-        ContractError::new("Validator already exists")
-    );
-    validators.push(validator.clone());
-    VALIDATORS.save(deps.storage, chain_uid, &validators)?;
-    Ok(Response::new().add_attribute("validator_added", validator.address.to_string()))
-}
-
-pub fn execute_remove_validator(
-    deps: &mut DepsMut,
-    info: &MessageInfo,
-    validator: Validator,
-    chain_uid: ChainUid,
-) -> Result<Response, ContractError> {
-    cw_utils::nonpayable(info)?;
-    let admin = ADMIN.load(deps.storage)?;
-    ensure!(
-        info.sender == admin.general_admin,
-        ContractError::Unauthorized {}
-    );
-    let mut validators = VALIDATORS
-        .load(deps.storage, chain_uid.clone())
-        .unwrap_or_default();
-    let index = validators
-        .iter()
-        .position(|v| v.address == validator.address);
-    if let Some(index) = index {
-        validators.remove(index);
-    } else {
-        return Err(ContractError::new("Validator does not exist"));
-    }
-    VALIDATORS.save(deps.storage, chain_uid, &validators)?;
-    Ok(Response::new().add_attribute("validator_removed", validator.address.clone()))
 }

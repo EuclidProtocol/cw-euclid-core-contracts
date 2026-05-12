@@ -170,6 +170,7 @@ fn get_pool(
 
 /// Extracts the token amount for a given token from a pair with amounts
 /// by matching it against a reference token
+#[must_use]
 pub fn extract_token_amount(liquidity: &PairWithAmount, pair: &Pair) -> (Uint256, Uint256) {
     let token_1_liquidity = if liquidity.token_1.token == pair.token_1 {
         liquidity.token_1.amount
@@ -575,7 +576,7 @@ mod tests {
         let info = message_info(&router, &[]);
 
         for chain_name in &["chain1", "chain2", "chain3"] {
-            let chain_uid = ChainUid::create(chain_name.to_string()).unwrap();
+            let chain_uid = ChainUid::create((*chain_name).to_string()).unwrap();
             let sender = CrossChainUser::new(chain_uid.clone(), "user".to_string());
             execute(
                 deps.as_mut(),

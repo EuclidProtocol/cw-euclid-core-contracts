@@ -13,6 +13,7 @@ pub struct CrossChainConfig {
 }
 
 impl CrossChainConfig {
+    #[must_use]
     pub fn new(timeout: Option<u64>, ack_response: Option<Binary>, meta: Option<String>) -> Self {
         Self {
             timeout,

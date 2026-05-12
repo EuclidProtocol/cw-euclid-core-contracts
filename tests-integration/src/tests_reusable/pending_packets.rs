@@ -40,8 +40,7 @@ mod tests {
             )
             .unwrap();
 
-        raw.map(|value| from_json::<u128>(value).unwrap())
-            .unwrap_or(0)
+        raw.map_or(0, |value| from_json::<u128>(value).unwrap())
     }
 
     fn query_router_pending_count(

@@ -28,7 +28,7 @@ mod inner {
     }
 
     /// Fixture: VLP instantiated with pool registered and liquidity seeded.
-    /// Reserves: token1 = 1_000_000, token2 = 1_000_000, total_lp = 1_000_000.
+    /// Reserves: token1 = `1_000_000`, token2 = `1_000_000`, `total_lp` = `1_000_000`.
     #[fixture]
     pub fn with_liquidity() -> MockDeps {
         let mut deps = with_pool();

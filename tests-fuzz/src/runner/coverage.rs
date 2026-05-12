@@ -43,7 +43,7 @@ impl InvariantCoverage {
         println!("  {:<42} {:>7}", "invariant", "checked");
         println!("  {}", "-".repeat(51));
         for (name, count) in &entries {
-            println!("  {:<42} {:>7}", name, count);
+            println!("  {name:<42} {count:>7}");
         }
     }
 }

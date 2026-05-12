@@ -22,12 +22,12 @@ impl MultiChainEnv {
     pub fn chain(&self, chain_id: &str) -> &EuclidApp {
         self.chains
             .get(chain_id)
-            .unwrap_or_else(|| panic!("chain '{}' not found in MultiChainEnv", chain_id))
+            .unwrap_or_else(|| panic!("chain '{chain_id}' not found in MultiChainEnv"))
     }
 
     pub fn chain_mut(&mut self, chain_id: &str) -> &mut EuclidApp {
         self.chains
             .get_mut(chain_id)
-            .unwrap_or_else(|| panic!("chain '{}' not found in MultiChainEnv", chain_id))
+            .unwrap_or_else(|| panic!("chain '{chain_id}' not found in MultiChainEnv"))
     }
 }

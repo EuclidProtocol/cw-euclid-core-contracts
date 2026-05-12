@@ -1,5 +1,5 @@
 use cosmwasm_std::to_json_binary;
-use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, Uint256, WasmMsg};
+use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, WasmMsg};
 use euclid::chain::{Chain, ChainType, ChainUid};
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
@@ -43,7 +43,7 @@ pub fn reusable_internal_ack_call(
             ..
         } => {
             let res = from_json(ack)?;
-            let recipient = CrossChainUser::new(chain_uid, recipient.to_string());
+            let recipient = CrossChainUser::new(chain_uid, recipient.clone());
             // Reject mixed-case or empty addresses from IBC packet data
             sender.validate()?;
             recipient.validate()?;
@@ -145,8 +145,8 @@ pub fn ibc_ack_release_escrow(
                     msg: to_json_binary(&mint_msg)?,
                     funds: vec![],
                 });
-                response = response.add_message(msg)
-            };
+                response = response.add_message(msg);
+            }
 
             Ok(response)
         }
@@ -183,7 +183,7 @@ pub fn ibc_ack_release_escrow(
                 .add_attribute("method", "escrow_release_ack")
                 .add_attribute("error", err)
                 .add_attribute("mint_amount", mint_amount.to_string())
-                .add_attribute("balance_key", format!("{:?}", balance_key)))
+                .add_attribute("balance_key", format!("{balance_key:?}")))
         }
     }
 }
@@ -248,7 +248,7 @@ mod tests {
     /// The review claimed mixed units in refund calculation. In reality,
     /// `mint_amount = pending_release_voucher.total_amount` which is stored in
     /// raw token units (set during `_release_voucher`). This is passed to
-    /// virtual_balance's execute_mint which normalizes raw → voucher internally.
+    /// `virtual_balance`'s `execute_mint` which normalizes raw → voucher internally.
     /// No unit mismatch exists.
     #[test]
     fn test_release_error_ack_refund_uses_raw_token_units() {
@@ -311,9 +311,9 @@ mod tests {
 
     /// Disproves review Bug #2: "double-normalization on ack-error re-mint path".
     ///
-    /// The review claimed execute_mint normalizes an already-normalized amount.
-    /// This test proves PendingReleaseVoucher.total_amount is stored in raw token
-    /// units (not voucher units), so execute_mint's single normalization is correct.
+    /// The review claimed `execute_mint` normalizes an already-normalized amount.
+    /// This test proves `PendingReleaseVoucher.total_amount` is stored in raw token
+    /// units (not voucher units), so `execute_mint`'s single normalization is correct.
     #[test]
     fn test_pending_release_stores_raw_amounts_not_voucher_units() {
         let total_amount = Uint256::from(500u128); // raw 6-decimal token units

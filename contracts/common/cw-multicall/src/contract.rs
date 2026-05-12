@@ -50,7 +50,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     let id = msg.id;
     Err(ContractError::Std(StdError::msg(format!(
-        "Unknown reply id: {}",
-        id
+        "Unknown reply id: {id}"
     ))))
 }

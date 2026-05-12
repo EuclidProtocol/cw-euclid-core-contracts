@@ -3,6 +3,36 @@ use cw_utils::parse_execute_response_data;
 use euclid::{error::ContractError, msgs::vlp::base::VlpSwapResponse};
 use function_name::named;
 
+#[named]
+pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
+        SubMsgResult::Ok(..) => {
+            let msg_clone = msg.clone();
+            let result = msg_clone.result.unwrap();
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
+            let execute_data =
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+            let swap_response: VlpSwapResponse = from_json(execute_data.data.unwrap_or_default())?;
+
+            Ok(Response::new()
+                .add_attribute("action", "reply_next_swap")
+                .add_attribute("swap_id", swap_response.tx_id.clone())
+                .add_attribute("asset_out", swap_response.asset_out.to_string())
+                .add_attribute("amount_out", swap_response.amount_out)
+                .add_attribute("sender", swap_response.sender.to_sender_string())
+                .set_data(to_json_binary(&swap_response)?))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,35 +128,5 @@ mod tests {
                 .value,
             "chain1:user1"
         );
-    }
-}
-
-#[named]
-pub fn on_next_swap_reply(_deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
-        SubMsgResult::Err(err) => Err(ContractError::Reply {
-            action: function_name!().to_string(),
-            err,
-        }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
-            #[allow(deprecated)]
-            let data = result.data.unwrap_or_default();
-
-            let execute_data =
-                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
-                    err: res.to_string(),
-                })?;
-            let swap_response: VlpSwapResponse = from_json(execute_data.data.unwrap_or_default())?;
-
-            Ok(Response::new()
-                .add_attribute("action", "reply_next_swap")
-                .add_attribute("swap_id", swap_response.tx_id.clone())
-                .add_attribute("asset_out", swap_response.asset_out.to_string())
-                .add_attribute("amount_out", swap_response.amount_out)
-                .add_attribute("sender", swap_response.sender.to_sender_string())
-                .set_data(to_json_binary(&swap_response)?))
-        }
     }
 }

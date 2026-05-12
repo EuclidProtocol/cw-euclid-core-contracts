@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{coin, Addr, Uint128, Uint256};
+use cosmwasm_std::{coin, Addr, Uint256};
 use escrow::mock::mock_escrow;
 use euclid::{admin::EuclidAdmin, chain::ChainUid, msgs::factory::StateResponse};
 use factory::mock::{mock_factory, MockFactory};

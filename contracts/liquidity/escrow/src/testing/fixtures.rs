@@ -11,7 +11,7 @@ pub fn initialized() -> MockDeps {
     initialized_deps()
 }
 
-/// Fixture: contract instantiated with 1_000 ueucl deposited.
+/// Fixture: contract instantiated with `1_000` ueucl deposited.
 #[cfg(test)]
 #[fixture]
 pub fn with_deposit() -> MockDeps {

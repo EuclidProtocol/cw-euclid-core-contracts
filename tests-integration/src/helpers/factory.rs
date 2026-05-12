@@ -15,7 +15,6 @@ use euclid::token::PairWithDenomAndAmount;
 use euclid::token::Token;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
-use euclid::utils::pagination::Pagination;
 use euclid::voucher::BalanceKey;
 
 use super::app::EuclidApp;
@@ -281,7 +280,7 @@ pub fn faucet(
             );
         }
         _ => {}
-    };
+    }
 }
 
 pub fn create_pool(

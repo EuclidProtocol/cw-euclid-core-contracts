@@ -41,7 +41,7 @@ pub fn smart_denom(addr: &str) -> TokenType {
     }
 }
 
-/// Standard init: factory = deps.api.addr_make("factory"), token = eucl, allowed denom = ueucl.
+/// Standard init: factory = `deps.api.addr_make("factory`"), token = eucl, allowed denom = ueucl.
 pub fn init(deps: &mut MockDeps) -> Response {
     let msg = InstantiateMsg {
         token_id: token(),
@@ -84,14 +84,14 @@ pub fn make_cw20_receive_msg(sender: &str, amount: u128) -> Cw20ReceiveMsg {
     }
 }
 
-/// Returns a fresh initialized MockDeps (factory = "factory", allowed denom = ueucl, no deposits).
+/// Returns a fresh initialized `MockDeps` (factory = "factory", allowed denom = ueucl, no deposits).
 pub fn initialized_deps() -> MockDeps {
     let mut deps = mock_dependencies();
     init(&mut deps);
     deps
 }
 
-/// Returns a fresh MockDeps with 1_000 ueucl deposited.
+/// Returns a fresh `MockDeps` with `1_000` ueucl deposited.
 pub fn with_deposit_deps() -> MockDeps {
     let mut deps = mock_dependencies();
     init(&mut deps);

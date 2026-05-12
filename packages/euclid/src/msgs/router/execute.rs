@@ -133,6 +133,7 @@ impl RegisterFactoryChainType {
         }
     }
 
+    #[must_use]
     pub fn factory_address(&self) -> String {
         match self {
             RegisterFactoryChainType::Native(native_info) => native_info.factory_address.clone(),

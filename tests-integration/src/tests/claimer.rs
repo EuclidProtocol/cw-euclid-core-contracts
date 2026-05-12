@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{to_json_binary, Addr, Uint128, Uint256};
+use cosmwasm_std::{to_json_binary, Addr, Uint256};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,

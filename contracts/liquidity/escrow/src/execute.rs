@@ -162,7 +162,7 @@ pub fn execute_deposit_native(
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
 ///
-/// * **cw20_msg** is the CW20 message that has to be processed.
+/// * **`cw20_msg`** is the CW20 message that has to be processed.
 pub fn receive_cw20(
     deps: DepsMut,
     env: Env,
@@ -326,7 +326,7 @@ mod tests {
     use cosmwasm_std::{
         attr, coin, from_json,
         testing::{message_info, mock_env},
-        Addr, BankMsg, Binary, CosmosMsg, Uint128, Uint256, WasmMsg,
+        Addr, BankMsg, Binary, CosmosMsg, Uint256, WasmMsg,
     };
     use euclid::{
         error::ContractError,
@@ -1148,7 +1148,7 @@ mod tests {
                 assert_eq!(funds[0].denom, NATIVE_DENOM);
                 assert_eq!(funds[0].amount, cosmwasm_std::Uint256::from(100u128));
             }
-            other => panic!("unexpected message type: {:?}", other),
+            other => panic!("unexpected message type: {other:?}"),
         }
     }
 

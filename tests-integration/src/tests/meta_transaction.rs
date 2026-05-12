@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, HexBinary, Uint128, Uint256};
+use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, HexBinary, Uint256};
 use cw_multi_test::BasicApp;
 use euclid::{
     admin::{AdminType, EuclidAdmin},
@@ -299,7 +299,7 @@ fn test_execute_meta_transaction_withdraw_voucher() {
     let unauthorized_withdraw =
         RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
             sender: user.clone(),
-            tx_id: "".to_string(),
+            tx_id: String::new(),
             token: token_a.token.clone(),
             amount: normalized_1000,
             from: None,
@@ -337,7 +337,7 @@ fn test_execute_meta_transaction_withdraw_voucher() {
     let withdraw_msg =
         RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
             sender: user.clone(),
-            tx_id: "".to_string(),
+            tx_id: String::new(),
             token: token_a.token.clone(),
             amount: normalized_1000,
             from: None,
@@ -451,7 +451,7 @@ fn test_execute_meta_transaction_transfer_voucher() {
     let transfer_msg =
         RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
             sender: user.clone(),
-            tx_id: "".to_string(),
+            tx_id: String::new(),
             token: token_a.token.clone(),
             amount: normalized_1000,
             from: None,
@@ -596,7 +596,7 @@ fn test_execute_meta_transaction_swap() {
     };
     let swap_msg = RouterCrossChainExecuteMsg::Swap(RouterCrossChainSwapExecuteMsg {
         sender: user.clone(),
-        tx_id: "".to_string(),
+        tx_id: String::new(),
         asset_in: token_a_voucher.clone(),
         amount_in: normalized_1000,
         asset_out: token_b.token.clone(),

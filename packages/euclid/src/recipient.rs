@@ -37,6 +37,7 @@ impl Recipient {
         Ok(())
     }
 
+    #[must_use]
     pub fn default_voucher_recipient(user: CrossChainUser, limit: Limit) -> Self {
         Self {
             recipient: user,

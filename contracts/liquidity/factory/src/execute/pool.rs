@@ -68,12 +68,15 @@ pub fn execute_request_pool_creation(
         token.token.validate()?;
 
         // Vouchers are not escrowed
-        if !token.token_type.is_voucher() {
+        if token.token_type.is_voucher() {
+            // If its a voucher token, then we can assume that one token already exists
+            one_token_already_exists = true;
+        } else {
             match token.token_type.clone() {
                 TokenType::Native { denom, .. } => {
                     // Use funds, if its not present this will throw error.
                     // This will make sure enough funds are provided with the message
-                    fund_manager.use_fund(token.amount.into(), &denom)?;
+                    fund_manager.use_fund(token.amount, &denom)?;
                 }
                 TokenType::Smart { .. } => {
                     let msg = token.token_type.create_transfer_msg(
@@ -112,8 +115,8 @@ pub fn execute_request_pool_creation(
                         ensure!(
                             decimals == provided_decimals,
                             ContractError::DecimalsMismatch {
-                                expected: decimals as u32,
-                                received: provided_decimals as u32,
+                                expected: decimals,
+                                received: provided_decimals,
                             }
                         );
                     }
@@ -123,9 +126,6 @@ pub fn execute_request_pool_creation(
                     TokenType::Voucher { .. } => {}
                 }
             }
-        } else {
-            // If its a voucher token, then we can assume that one token already exists
-            one_token_already_exists = true;
         }
     }
 
@@ -291,7 +291,7 @@ pub fn add_liquidity_request(
                     );
                     // Use funds, if its not present this will throw error.
                     // This will make sure enough funds are provided with the message
-                    fund_manager.use_fund(token.amount.into(), &denom)?;
+                    fund_manager.use_fund(token.amount, &denom)?;
                 }
                 TokenType::Smart { .. } => {
                     let msg = token.token_type.create_transfer_msg(
@@ -450,7 +450,7 @@ pub fn remove_liquidity_request(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128, Uint256,
+        Uint256,
     };
     use euclid::{
         error::ContractError,

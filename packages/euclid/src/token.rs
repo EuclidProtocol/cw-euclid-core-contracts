@@ -50,6 +50,7 @@ impl Token {
         Ok(token)
     }
 
+    #[must_use]
     pub fn exists(&self, pair: Pair) -> bool {
         self == pair.token_1 || self == pair.token_2
     }
@@ -98,6 +99,7 @@ impl Token {
         Ok(transfer_msg)
     }
 
+    #[must_use]
     pub fn with_amount(&self, amount: Uint256) -> TokenWithAmount {
         TokenWithAmount {
             token: self.clone(),
@@ -105,6 +107,7 @@ impl Token {
         }
     }
 
+    #[must_use]
     pub fn with_type(&self, token_type: TokenType) -> TokenWithDenom {
         TokenWithDenom {
             token: self.clone(),
@@ -139,7 +142,7 @@ impl KeyDeserialize for Token {
     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
         String::from_utf8(value)
             .map(Token)
-            .map_err(|e| StdError::msg(format!("Invalid UTF-8 sequence: {}", e)))
+            .map_err(|e| StdError::msg(format!("Invalid UTF-8 sequence: {e}")))
     }
 }
 
@@ -211,6 +214,7 @@ impl Pair {
         );
         Ok(())
     }
+    #[must_use]
     pub fn get_other_token(&self, token: Token) -> Token {
         if token == self.token_1 {
             self.token_2.clone()
@@ -219,6 +223,7 @@ impl Pair {
         }
     }
 
+    #[must_use]
     pub fn get_tupple(&self) -> (String, String) {
         if self.token_1.le(&self.token_2.to_string()) {
             (self.token_1.to_string(), self.token_2.to_string())
@@ -227,6 +232,7 @@ impl Pair {
         }
     }
 
+    #[must_use]
     pub fn get_vec_token(&self) -> Vec<Token> {
         let tokens: Vec<Token> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
@@ -254,7 +260,7 @@ impl PrimaryKey<'_> for Pair {
     fn key(&self) -> Vec<Key<'_>> {
         let token_1_key_size = self.token_1.joined_key().len();
         assert!(
-            token_1_key_size <= u16::MAX as usize,
+            u16::try_from(token_1_key_size).is_ok(),
             "Key size exceeds u8 limit"
         );
         let mut res = vec![];
@@ -292,7 +298,7 @@ impl KeyDeserialize for Pair {
         let token_1 = Token::from_vec(token_1_key_bytes[2..].to_vec())?;
 
         // Deserialize token_2
-        let token_2 = Token::from_vec(token_2_key_bytes.to_vec())?;
+        let token_2 = Token::from_vec(token_2_key_bytes.clone())?;
 
         Ok(Pair { token_1, token_2 })
     }
@@ -312,10 +318,12 @@ pub enum TokenType {
 
 // Helper to Check if Token is Native or Smart
 impl TokenType {
+    #[must_use]
     pub fn is_native(&self) -> bool {
         matches!(self, TokenType::Native { .. })
     }
 
+    #[must_use]
     pub fn is_smart(&self) -> bool {
         matches!(self, TokenType::Smart { .. })
     }
@@ -341,6 +349,7 @@ impl TokenType {
         }
     }
 
+    #[must_use]
     pub fn is_voucher(&self) -> bool {
         matches!(self, TokenType::Voucher { .. })
     }
@@ -403,7 +412,7 @@ impl TokenType {
         match self.clone() {
             TokenType::Native { denom, .. } => {
                 let balance = deps.querier.query_balance(address, denom)?;
-                Ok(Uint256::from(balance.amount))
+                Ok(balance.amount)
             }
             TokenType::Smart {
                 contract_address, ..
@@ -422,6 +431,7 @@ impl TokenType {
         }
     }
 
+    #[must_use]
     pub fn get_key(&self) -> String {
         match self.clone() {
             TokenType::Native { denom, .. } => format!("native:{denom}"),
@@ -432,6 +442,7 @@ impl TokenType {
         }
     }
 
+    #[must_use]
     pub fn get_type(&self) -> &str {
         match self {
             TokenType::Native { .. } => "native",
@@ -440,18 +451,19 @@ impl TokenType {
         }
     }
 
+    #[must_use]
     pub fn is_same_type(&self, other: &TokenType) -> bool {
         self.get_type() == other.get_type()
     }
 
     pub fn from_key(key: String) -> Result<Self, ContractError> {
-        match key.split(":").collect::<Vec<&str>>().as_slice() {
+        match key.split(':').collect::<Vec<&str>>().as_slice() {
             ["native", denom] => Ok(TokenType::Native {
-                denom: denom.to_string(),
+                denom: (*denom).to_string(),
                 decimals: None,
             }),
             ["smart", contract_address] => Ok(TokenType::Smart {
-                contract_address: contract_address.to_string(),
+                contract_address: (*contract_address).to_string(),
                 decimals: None,
             }),
             ["voucher"] => Ok(TokenType::Voucher {}),
@@ -483,7 +495,7 @@ impl TokenType {
                     .map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))?;
                 if let Some(forwarding_message) = forwarding_message {
                     CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: recipient.to_string(),
+                        contract_addr: recipient.clone(),
                         msg: forwarding_message.clone(),
                         funds: vec![coin(amount_u128.u128(), denom.clone())],
                     })
@@ -491,7 +503,7 @@ impl TokenType {
                     CosmosMsg::Bank(BankMsg::Send {
                         to_address: recipient,
                         amount: vec![Coin {
-                            denom: denom.to_string(),
+                            denom: denom.clone(),
                             amount,
                         }],
                     })
@@ -504,16 +516,16 @@ impl TokenType {
                     .map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))?;
                 if let Some(forwarding_message) = forwarding_message {
                     CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: contract_address.to_string(),
+                        contract_addr: contract_address.clone(),
                         msg: match allowance {
                             Some(owner) => to_json_binary(&Cw20ExecuteMsg::SendFrom {
                                 owner,
                                 amount: amount_u128,
-                                contract: recipient.to_string(),
+                                contract: recipient.clone(),
                                 msg: forwarding_message.clone(),
                             })?,
                             None => to_json_binary(&Cw20ExecuteMsg::Send {
-                                contract: recipient.to_string(),
+                                contract: recipient.clone(),
                                 msg: forwarding_message.clone(),
                                 amount: amount_u128,
                             })?,
@@ -522,7 +534,7 @@ impl TokenType {
                     })
                 } else {
                     CosmosMsg::Wasm(WasmMsg::Execute {
-                        contract_addr: contract_address.to_string(),
+                        contract_addr: contract_address.clone(),
                         msg: match allowance {
                             Some(owner) => to_json_binary(&Cw20ExecuteMsg::TransferFrom {
                                 owner,
@@ -591,6 +603,7 @@ pub struct TokenWithDenomAndAmount {
 }
 
 impl TokenWithDenomAndAmount {
+    #[must_use]
     pub fn to_token_with_amount(&self) -> TokenWithAmount {
         TokenWithAmount {
             token: self.token.clone(),
@@ -598,6 +611,7 @@ impl TokenWithDenomAndAmount {
         }
     }
 
+    #[must_use]
     pub fn to_token_with_denom(&self) -> TokenWithDenom {
         TokenWithDenom {
             token: self.token.clone(),
@@ -632,6 +646,7 @@ impl TokenWithDenom {
         self.token_type.create_escrow_msg(amount, escrow_contract)
     }
 
+    #[must_use]
     pub fn with_amount(&self, amount: Uint256) -> TokenWithDenomAndAmount {
         TokenWithDenomAndAmount {
             token: self.token.clone(),
@@ -665,6 +680,7 @@ impl PairWithAmount {
         Pair::new(self.token_1.token.clone(), self.token_2.token.clone())
     }
 
+    #[must_use]
     pub fn get_vec_token(&self) -> Vec<TokenWithAmount> {
         let tokens: Vec<TokenWithAmount> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
@@ -704,6 +720,7 @@ impl PairWithDenom {
         })
     }
 
+    #[must_use]
     pub fn get_vec_token_info(&self) -> Vec<TokenWithDenom> {
         let tokens = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
@@ -735,6 +752,7 @@ impl PairWithDenomAndAmount {
         )
     }
 
+    #[must_use]
     pub fn get_vec_token_info(&self) -> Vec<TokenWithDenomAndAmount> {
         let tokens: Vec<TokenWithDenomAndAmount> = vec![self.token_1.clone(), self.token_2.clone()];
         tokens
@@ -751,6 +769,7 @@ pub struct TokenMetadata {
 }
 
 impl TokenMetadata {
+    #[must_use]
     pub fn new(token: Token, chain_uid: ChainUid, token_type: TokenType) -> Self {
         Self {
             token,
@@ -814,7 +833,7 @@ mod tests {
         let test_cases = vec![
             TestToken {
                 name: "Empty token ID",
-                token: Token("".to_string()),
+                token: Token(String::new()),
                 expected_error: Some(ContractError::InvalidTokenID {}),
             },
             TestToken {
@@ -830,9 +849,8 @@ mod tests {
             if let Some(err) = test.expected_error {
                 assert_eq!(res.unwrap_err(), err, "{}", test.name);
                 continue;
-            } else {
-                assert!(res.is_ok())
             }
+            assert!(res.is_ok());
         }
     }
 
@@ -867,7 +885,7 @@ mod tests {
                 name: "One invalid token",
                 pair: Pair {
                     token_1: Token("ABC".to_string()),
-                    token_2: Token("".to_string()),
+                    token_2: Token(String::new()),
                 },
                 expected_error: Some(ContractError::InvalidTokenID {}),
             },
@@ -879,9 +897,8 @@ mod tests {
             if let Some(err) = test.expected_error {
                 assert_eq!(res.unwrap_err(), err, "{}", test.name);
                 continue;
-            } else {
-                assert!(res.is_ok())
             }
+            assert!(res.is_ok());
         }
     }
 
@@ -966,7 +983,7 @@ mod tests {
                         },
                     },
                     token_2: TokenWithDenomAndAmount {
-                        token: Token("".to_string()),
+                        token: Token(String::new()),
                         amount: Uint256::from(100u128),
                         token_type: TokenType::Native {
                             denom: "denom2".to_string(),
@@ -983,9 +1000,8 @@ mod tests {
             if let Some(err) = test.expected_error {
                 assert_eq!(res.unwrap_err(), err, "{}", test.name);
                 continue;
-            } else {
-                assert!(res.is_ok())
             }
+            assert!(res.is_ok());
         }
     }
 

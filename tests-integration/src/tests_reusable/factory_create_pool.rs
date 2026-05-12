@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{Uint128, Uint256};
+use cosmwasm_std::Uint256;
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::token::PairWithDenomAndAmount;
 

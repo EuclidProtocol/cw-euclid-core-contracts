@@ -6,9 +6,9 @@ use crate::SwapResult;
 /// N = 2
 pub const N_COINS: Decimal256 = Decimal256::new(Uint256::new(2_000_000_000_000_000_000u128));
 pub const AMP_PRECISION: u64 = 100;
-/// Minimum amp factor: leverage = amp / AMP_PRECISION * N_COINS must be >= 1.
-/// With N_COINS=2, amp >= AMP_PRECISION / 2 = 50.
-/// We use AMP_PRECISION (100) for a safety margin (leverage >= 2).
+/// Minimum amp factor: leverage = amp / `AMP_PRECISION` * `N_COINS` must be >= 1.
+/// With `N_COINS=2`, amp >= `AMP_PRECISION` / 2 = 50.
+/// We use `AMP_PRECISION` (100) for a safety margin (leverage >= 2).
 pub const MIN_AMP: u64 = AMP_PRECISION;
 /// The maximum number of calculation steps for Newton's method.
 const ITERATIONS: u8 = 64;
@@ -71,7 +71,7 @@ pub fn compute_stable_swap(
     let return_amount = ask_pool_amount
         .checked_sub(new_ask_pool_amount)
         .map_err(|_| ContractError::new("Negative return amount"))?
-        .checked_div(Uint256::from(10u128.pow(TOKEN_PRECISION as u32)))?;
+        .checked_div(Uint256::from(10u128.pow(u32::from(TOKEN_PRECISION))))?;
 
     // Calculate offer amount for spread calculation
     let offer_amount = offer_amount_dec.to_uint256_with_precision(0_u32)?;
@@ -94,12 +94,12 @@ pub fn compute_stable_swap(
 ///
 /// * **Equation**
 ///
-/// A * sum(x_i) * n**n + D = A * D * n**n + D**(n+1) / (n**n * prod(x_i))
+/// A * `sum(x_i)` * n**n + D = A * D * n**n + D**(n+1) / (n**n * `prod(x_i)`)
 /// Helper function used to calculate the D invariant as a last step in the `compute_d` public function.
 ///
 /// * **Equation**:
 ///
-/// d = (leverage * sum_x + d_product * n_coins) * initial_d / ((leverage - 1) * initial_d + (n_coins + 1) * d_product)
+/// d = (leverage * `sum_x` + `d_product` * `n_coins`) * `initial_d` / ((leverage - 1) * `initial_d` + (`n_coins` + 1) * `d_product`)
 fn calculate_step(
     initial_d: Decimal256,
     leverage: Decimal256,

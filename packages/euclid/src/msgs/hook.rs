@@ -21,6 +21,7 @@ impl EuclidReceive {
         ))?)
     }
 
+    #[must_use]
     pub fn from_msg(binary: Binary) -> Self {
         Self { msg: binary }
     }

@@ -333,7 +333,22 @@ fn setup_factory_inner(
         );
     }
 
-    if !is_native {
+    if is_native {
+        let chain_info = RegisterFactoryChainType::Native(RegisterFactoryChainNative {
+            factory_address: factory_addr.to_string(),
+            factory_chain_id: factory_chain_id.to_string(),
+        });
+        let router_sender = env.chain(router_chain_id).sender();
+        env.chain_mut(router_chain_id).execute(
+            &router_sender,
+            router_addr,
+            &euclid::msgs::router::ExecuteMsg::RegisterFactory {
+                chain_info,
+                chain_uid: chain_uid.clone(),
+            },
+            &[],
+        );
+    } else {
         match chain_type {
             ChainType::Cosmos(_) => {
                 let chain_info = RegisterFactoryChainType::Cosmos(RegisterFactoryChainCosmos {
@@ -390,7 +405,7 @@ fn setup_factory_inner(
                     router_addr,
                     env.chain_mut(router_chain_id),
                     &chain_uid,
-                    &factory_addr.to_string(),
+                    factory_addr.as_ref(),
                     factory_chain_id,
                     &tx_id,
                     packet.sequence,
@@ -400,21 +415,6 @@ fn setup_factory_inner(
                 unreachable!("native chains are handled by is_native branch")
             }
         }
-    } else {
-        let chain_info = RegisterFactoryChainType::Native(RegisterFactoryChainNative {
-            factory_address: factory_addr.to_string(),
-            factory_chain_id: factory_chain_id.to_string(),
-        });
-        let router_sender = env.chain(router_chain_id).sender();
-        env.chain_mut(router_chain_id).execute(
-            &router_sender,
-            router_addr,
-            &euclid::msgs::router::ExecuteMsg::RegisterFactory {
-                chain_info,
-                chain_uid: chain_uid.clone(),
-            },
-            &[],
-        );
     }
 
     // Assert the chain was registered
@@ -442,7 +442,7 @@ pub fn get_escrow_addr(app: &EuclidApp, factory_addr: &Addr, token: &str) -> Add
         },
     );
     let escrow_address = response.escrow_address.expect("escrow not found");
-    println!("Token: {:?} Escrow address: {:?}", token, escrow_address);
+    println!("Token: {token:?} Escrow address: {escrow_address:?}");
     escrow_address
 }
 

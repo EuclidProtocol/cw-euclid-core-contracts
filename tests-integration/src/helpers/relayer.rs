@@ -205,7 +205,7 @@ pub fn relay_factory_ack_packet(
     }
 
     if let Some(err) = error_ack {
-        return Err(anyhow::anyhow!("{}", err));
+        return Err(anyhow::anyhow!("{err}"));
     }
 
     Ok(responses)
@@ -298,7 +298,7 @@ pub fn ack_register_factory_evm(
     let relayer_addr = relayer_state.relayer_contract;
 
     let evm_port = format!("{}.{}", chain_uid.as_str(), factory_address);
-    let vsl_port = format!("vsl.{}", router_addr);
+    let vsl_port = format!("vsl.{router_addr}");
 
     let call_data = euclid::msgs::router::ExecuteMsg::AcknowledgePacket {
         source_port: evm_port.clone(),
@@ -445,12 +445,7 @@ pub fn sign_relay_messsage(
     };
     let expiry = app.block_info().time.plus_seconds(60).seconds();
     let msg = to_json_string(&meta_tx_data).unwrap();
-    let expiry_call_data = format!(
-        "{msg},{expiry},{source_chain_uid}",
-        msg = msg,
-        expiry = expiry,
-        source_chain_uid = source_chain_uid
-    );
+    let expiry_call_data = format!("{msg},{expiry},{source_chain_uid}");
     let message_digest = Sha256::new().chain(expiry_call_data.as_bytes());
 
     let (secret_key, pubkey) = get_signer_key();
@@ -486,7 +481,7 @@ pub struct SendPacketEvent {
 
 pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
     let mut send_packet_events = vec![];
-    let send_packet_event_type = format!("wasm-{}", EUCLID_SEND_PACKET_EVENT);
+    let send_packet_event_type = format!("wasm-{EUCLID_SEND_PACKET_EVENT}");
 
     for event in events.iter().filter(|e| e.ty == send_packet_event_type) {
         let msg = event.attributes.iter().find(|a| a.key == "msg").unwrap();
@@ -534,7 +529,7 @@ pub struct AckPacketEvent {
 
 pub fn extract_ack_packet_events(events: &[Event]) -> Vec<AckPacketEvent> {
     let mut ack_packet_events = vec![];
-    let ack_packet_event_type = format!("wasm-{}", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT);
+    let ack_packet_event_type = format!("wasm-{EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT}");
 
     let related_events: Vec<_> = events
         .iter()

@@ -12,6 +12,7 @@ use mock::mock::MockApp;
 
 pub struct MockFactory(Addr);
 impl MockFactory {
+    #[must_use]
     pub fn addr(&self) -> &Addr {
         &self.0
     }
@@ -54,6 +55,7 @@ impl MockFactory {
     //     self.execute(app, &msg, sender, funds)
     // }
 
+    #[must_use]
     pub fn query_token_id(&self, app: &MockApp, token_id: String) -> GetEscrowResponse {
         app.wrap()
             .query_wasm_smart::<GetEscrowResponse>(
@@ -63,6 +65,7 @@ impl MockFactory {
             .unwrap()
     }
 
+    #[must_use]
     pub fn query_state(&self, app: &MockApp) -> StateResponse {
         app.wrap()
             .query_wasm_smart::<StateResponse>(
@@ -78,6 +81,7 @@ pub fn mock_factory() -> Box<dyn Contract<Empty>> {
     Box::new(contract)
 }
 
+#[must_use]
 pub fn mock_factory_instantiate_msg(
     router_contract: String,
     chain_uid: ChainUid,
@@ -106,10 +110,12 @@ pub fn mock_factory_instantiate_msg(
 
 // }
 
+#[must_use]
 pub fn mock_query_get_escrow(token_id: String) -> QueryMsg {
     QueryMsg::GetEscrow { token_id }
 }
 
+#[must_use]
 pub fn mock_query_get_state() -> QueryMsg {
     QueryMsg::GetState {}
 }

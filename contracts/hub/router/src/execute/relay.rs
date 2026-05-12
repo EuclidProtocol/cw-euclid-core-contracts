@@ -213,36 +213,34 @@ pub fn execute_receive_acknowledgement(
     let msg: FactoryCrossChainExecuteMsg = from_json(&existing_request.original_msg)?;
 
     // Verify chain uid is registerd and is solana chain if its not a register factory msg
-    let chain_type = match msg.clone() {
-        FactoryCrossChainExecuteMsg::RegisterFactory {
-            chain_type,
-            chain_uid,
-            ..
-        } => {
-            ensure!(
-                source_port
-                    == format!(
-                        "{chain_uid}.{factory_address}",
-                        chain_uid = chain_uid.as_str(),
-                        factory_address = chain_type.factory_address()
-                    ),
-                ContractError::new("Invalid source port")
-            );
-            chain_type.tmp_chain_type()?
-        }
-        _ => {
-            let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
-            ensure!(
-                source_port
-                    == format!(
-                        "{chain_uid}.{factory_address}",
-                        chain_uid = chain_uid.as_str(),
-                        factory_address = chain.factory_address
-                    ),
-                ContractError::new("Invalid source port")
-            );
-            chain.chain_type.clone()
-        }
+    let chain_type = if let FactoryCrossChainExecuteMsg::RegisterFactory {
+        chain_type,
+        chain_uid,
+        ..
+    } = msg.clone()
+    {
+        ensure!(
+            source_port
+                == format!(
+                    "{chain_uid}.{factory_address}",
+                    chain_uid = chain_uid.as_str(),
+                    factory_address = chain_type.factory_address()
+                ),
+            ContractError::new("Invalid source port")
+        );
+        chain_type.tmp_chain_type()?
+    } else {
+        let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
+        ensure!(
+            source_port
+                == format!(
+                    "{chain_uid}.{factory_address}",
+                    chain_uid = chain_uid.as_str(),
+                    factory_address = chain.factory_address
+                ),
+            ContractError::new("Invalid source port")
+        );
+        chain.chain_type.clone()
     };
 
     let response =
