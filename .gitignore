@@ -2,4 +2,6 @@
 /artifacts
 .DS_Store
 /schema
+/.claude
+/plans
 /proto

@@ -1009,6 +1009,7 @@ dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
  "quote",
+ "rstest",
  "schemars 0.8.22",
  "serde",
  "syn 1.0.109",
@@ -1030,7 +1031,7 @@ dependencies = [
 
 [[package]]
 name = "euclid-pool"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -2198,6 +2199,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rstest_reuse"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88530b681abe67924d42cca181d070e3ac20e0740569441a9e35a7cedd2b34a4"
+dependencies = [
+ "quote",
+ "rand",
+ "rustc_version",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2487,7 +2500,7 @@ dependencies = [
 
 [[package]]
 name = "stable_vlp"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -2664,6 +2677,7 @@ dependencies = [
  "escrow",
  "euclid",
  "euclid-ibc",
+ "euclid-pool",
  "euclid-relayer",
  "factory",
  "ibc-relayer-types",
@@ -2676,6 +2690,7 @@ dependencies = [
  "relayer",
  "router",
  "rstest",
+ "rstest_reuse",
  "serde",
  "sha2 0.10.9",
  "sha3",

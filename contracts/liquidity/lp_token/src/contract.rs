@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128, Uint256};
 use cw2::set_contract_version;
 use euclid::msgs::escrow::Cw20InstantiateResponse;
 
@@ -19,6 +19,10 @@ use euclid::msgs::lp_token::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, StateRes
 // version info for migration info
 pub(crate) const CONTRACT_NAME: &str = "crates.io:lp_token";
 pub(crate) const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn to_u128(amount: Uint256) -> Result<Uint128, ContractError> {
+    Uint128::try_from(amount).map_err(|_| ContractError::new("Amount exceeds Uint128 maximum"))
+}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -60,37 +64,41 @@ pub fn execute(
             vlp,
         } => execute_update_state(deps, env, info, token_pair, factory_address, vlp),
         ExecuteMsg::Transfer { recipient, amount } => {
-            execute_transfer(deps, env, info, recipient, amount)
+            execute_transfer(deps, env, info, recipient, to_u128(amount)?)
         }
-        ExecuteMsg::Burn { amount } => execute_burn(deps, env, info, amount),
+        ExecuteMsg::Burn { amount } => execute_burn(deps, env, info, to_u128(amount)?),
         ExecuteMsg::Send {
             contract,
             amount,
             msg,
-        } => execute_send(deps, env, info, contract, amount, msg),
+        } => execute_send(deps, env, info, contract, to_u128(amount)?, msg),
         ExecuteMsg::IncreaseAllowance {
             spender,
             amount,
             expires,
-        } => execute_increase_allowance(deps, env, info, spender, amount, expires),
+        } => execute_increase_allowance(deps, env, info, spender, to_u128(amount)?, expires),
         ExecuteMsg::DecreaseAllowance {
             spender,
             amount,
             expires,
-        } => execute_decrease_allowance(deps, env, info, spender, amount, expires),
+        } => execute_decrease_allowance(deps, env, info, spender, to_u128(amount)?, expires),
         ExecuteMsg::TransferFrom {
             owner,
             recipient,
             amount,
-        } => execute_transfer_from(deps, env, info, owner, recipient, amount),
+        } => execute_transfer_from(deps, env, info, owner, recipient, to_u128(amount)?),
         ExecuteMsg::SendFrom {
             owner,
             contract,
             amount,
             msg,
-        } => execute_send_from(deps, env, info, owner, contract, amount, msg),
-        ExecuteMsg::BurnFrom { owner, amount } => execute_burn_from(deps, env, info, owner, amount),
-        ExecuteMsg::Mint { recipient, amount } => execute_mint(deps, env, info, recipient, amount),
+        } => execute_send_from(deps, env, info, owner, contract, to_u128(amount)?, msg),
+        ExecuteMsg::BurnFrom { owner, amount } => {
+            execute_burn_from(deps, env, info, owner, to_u128(amount)?)
+        }
+        ExecuteMsg::Mint { recipient, amount } => {
+            execute_mint(deps, env, info, recipient, to_u128(amount)?)
+        }
         ExecuteMsg::UpdateMarketing {
             project,
             description,

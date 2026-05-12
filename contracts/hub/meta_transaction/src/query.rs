@@ -24,7 +24,7 @@ mod tests {
     use crate::contract::instantiate;
     use crate::state::NONCES;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{Addr, Uint128};
+    use cosmwasm_std::{Addr, Uint256};
     use euclid::msgs::meta_transaction::msg::InstantiateMsg;
 
     type MockDeps = cosmwasm_std::OwnedDeps<
@@ -71,12 +71,12 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 (nonce_key.clone(), nonce_key.clone()),
-                &Uint128::new(42),
+                &Uint256::from(42u128),
             )
             .unwrap();
 
         let resp = get_nonce(&deps.as_ref(), nonce_key).unwrap();
-        assert_eq!(resp.height, Uint128::new(42));
+        assert_eq!(resp.height, Uint256::from(42u128));
     }
 
     // -------------------------------------------------------------------------
@@ -146,7 +146,7 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 (nonce_key.clone(), nonce_key.clone()),
-                &Uint128::new(99),
+                &Uint256::from(99u128),
             )
             .unwrap();
 
@@ -157,6 +157,6 @@ mod tests {
         )
         .unwrap();
         let resp: NonceRelayedResponse = from_json(&bin).unwrap();
-        assert_eq!(resp.height, Uint128::new(99));
+        assert_eq!(resp.height, Uint256::from(99u128));
     }
 }

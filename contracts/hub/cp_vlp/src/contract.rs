@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
-    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
+    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint256,
 };
 use cw2::set_contract_version;
 use euclid::{
@@ -56,14 +56,14 @@ pub fn instantiate(
             },
         },
         last_updated: 0,
-        total_lp_tokens: Uint128::zero(),
+        total_lp_tokens: Uint256::zero(),
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
     ADMIN.save(deps.storage, &msg.admin)?;
 
-    BALANCES.save(deps.storage, state.pair.token_1, &Uint128::zero())?;
-    BALANCES.save(deps.storage, state.pair.token_2, &Uint128::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_1, &Uint256::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_2, &Uint256::zero())?;
 
     let response =
         msg.execute
@@ -121,6 +121,7 @@ pub fn execute(
             add_liquidity_msg.sender,
             add_liquidity_msg.liquidity,
             add_liquidity_msg.slippage_tolerance_bps,
+            None,
             add_liquidity_msg.tx_id,
         ),
         ExecuteMsg::RemoveLiquidity(remove_liquidity_msg) => remove_liquidity(
@@ -206,7 +207,7 @@ mod tests {
         token1, token2, TEST_VIRTUAL_BALANCE,
     };
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{coins, Addr, Uint128};
+    use cosmwasm_std::{coins, Addr, Uint256};
     use euclid::admin::AdminType;
     use euclid::chain::ChainUid;
     use euclid::cross_chain_user::CrossChainUser;
@@ -245,7 +246,7 @@ mod tests {
                 },
             },
             last_updated: 0,
-            total_lp_tokens: Uint128::zero(),
+            total_lp_tokens: Uint256::zero(),
         };
         let state = STATE.load(&deps.storage).unwrap();
         assert_eq!(state, expected_state);
@@ -253,10 +254,10 @@ mod tests {
         assert_eq!(saved_admin, admin);
 
         let balance_1 = BALANCES.load(&deps.storage, token1()).unwrap();
-        assert_eq!(balance_1, Uint128::zero());
+        assert_eq!(balance_1, Uint256::zero());
 
         let balance_2 = BALANCES.load(&deps.storage, token2()).unwrap();
-        assert_eq!(balance_2, Uint128::zero());
+        assert_eq!(balance_2, Uint256::zero());
     }
 
     #[test]
@@ -345,7 +346,7 @@ mod tests {
 
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let lp = CHAIN_LP_TOKENS.load(&deps.storage, chain_uid).unwrap();
-        assert_eq!(lp, Uint128::zero());
+        assert_eq!(lp, Uint256::zero());
     }
 
     #[test]
@@ -396,7 +397,7 @@ mod tests {
         let lp = CHAIN_LP_TOKENS
             .load(&deps.storage, ChainUid::create("1".to_string()).unwrap())
             .unwrap();
-        assert_eq!(lp, Uint128::zero());
+        assert_eq!(lp, Uint256::zero());
     }
 
     #[test]
@@ -480,7 +481,7 @@ mod tests {
         let info = message_info(&router, &[]);
         execute(deps.as_mut(), env.clone(), info.clone(), reg_msg).unwrap();
 
-        let liquidity = make_pair_with_amount(1_000_000, 1_000_000);
+        let liquidity = make_pair_with_amount(10_000_000_000, 10_000_000_000);
         let add_msg = ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
             sender: sender.clone(),
             tx_id: "add_tx1".to_string(),
@@ -492,16 +493,16 @@ mod tests {
 
         let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
         let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
-        assert_eq!(b1, Uint128::new(1_000_000));
-        assert_eq!(b2, Uint128::new(1_000_000));
+        assert_eq!(b1, Uint256::from(10_000_000_000u128));
+        assert_eq!(b2, Uint256::from(10_000_000_000u128));
 
         let chain_lp = CHAIN_LP_TOKENS
             .load(&deps.storage, chain_uid.clone())
             .unwrap();
-        assert!(chain_lp.u128() > 0);
+        assert!(!chain_lp.is_zero());
 
         let state = STATE.load(&deps.storage).unwrap();
-        assert!(state.total_lp_tokens.u128() > 0);
+        assert!(!state.total_lp_tokens.is_zero());
     }
 
     #[test]
@@ -542,7 +543,7 @@ mod tests {
         let info = message_info(&router, &[]);
         execute(deps.as_mut(), env.clone(), info.clone(), reg_msg).unwrap();
 
-        let liq1 = make_pair_with_amount(1_000_000, 1_000_000);
+        let liq1 = make_pair_with_amount(10_000_000_000, 10_000_000_000);
         let add1 = ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
             sender: sender.clone(),
             tx_id: "add1".to_string(),
@@ -551,7 +552,7 @@ mod tests {
         });
         execute(deps.as_mut(), env.clone(), info.clone(), add1).unwrap();
 
-        let liq2 = make_pair_with_amount(100_000, 200_000);
+        let liq2 = make_pair_with_amount(1_000_000_000, 2_000_000_000);
         let add2 = ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
             sender: sender.clone(),
             tx_id: "add2".to_string(),
@@ -583,7 +584,7 @@ mod tests {
         let info = message_info(&router, &[]);
         execute(deps.as_mut(), env.clone(), info.clone(), reg_msg).unwrap();
 
-        let liq = make_pair_with_amount(1_000_000, 1_000_000);
+        let liq = make_pair_with_amount(10_000_000_000, 10_000_000_000);
         let add_msg = ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
             sender: sender.clone(),
             tx_id: "add".to_string(),
@@ -621,7 +622,7 @@ mod tests {
         )
         .unwrap();
 
-        let liq = make_pair_with_amount(2_000_000, 2_000_000);
+        let liq = make_pair_with_amount(20_000_000_000, 20_000_000_000);
         execute(
             deps.as_mut(),
             env.clone(),
@@ -640,7 +641,7 @@ mod tests {
             .unwrap();
         let total_lp_before = STATE.load(&deps.storage).unwrap().total_lp_tokens;
 
-        let remove_amount = chain_lp_before / Uint128::new(2);
+        let remove_amount = chain_lp_before / Uint256::from(2u128);
         let remove_msg = ExecuteMsg::RemoveLiquidity(VlpRemoveLiquidityMsg {
             sender: sender.clone(),
             lp_allocation: remove_amount,
@@ -667,7 +668,7 @@ mod tests {
         let sender = cross_chain_user("chain1", "user1");
         let remove_msg = ExecuteMsg::RemoveLiquidity(VlpRemoveLiquidityMsg {
             sender,
-            lp_allocation: Uint128::new(100),
+            lp_allocation: Uint256::from(100u128),
             tx_id: "tx1".to_string(),
         });
         let not_router = deps.api.addr_make("not_router");
@@ -709,19 +710,19 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: sender.clone(),
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
         .unwrap();
 
-        let swap_amount = Uint128::new(10_000);
+        let swap_amount = Uint256::from(10_000u128);
         let swap_msg = ExecuteMsg::Swap(VlpSwapMsg {
             sender: sender.clone(),
             tx_id: "swap1".to_string(),
             asset_in: token1(),
             amount_in: swap_amount,
-            min_token_out: Uint128::zero(),
+            min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -729,10 +730,10 @@ mod tests {
         assert!(res.messages.len() >= 2);
 
         let b1 = BALANCES.load(&deps.storage, token1()).unwrap();
-        assert!(b1.u128() > 1_000_000);
+        assert!(b1 > Uint256::from(10_000_000_000u128));
 
         let b2 = BALANCES.load(&deps.storage, token2()).unwrap();
-        assert!(b2.u128() < 1_000_000);
+        assert!(b2 < Uint256::from(10_000_000_000u128));
     }
 
     #[test]
@@ -765,7 +766,7 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: sender.clone(),
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
@@ -775,8 +776,8 @@ mod tests {
             sender: sender.clone(),
             tx_id: "swap_zero".to_string(),
             asset_in: token1(),
-            amount_in: Uint128::zero(),
-            min_token_out: Uint128::zero(),
+            amount_in: Uint256::zero(),
+            min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -813,7 +814,7 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: sender.clone(),
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
@@ -823,8 +824,8 @@ mod tests {
             sender: sender.clone(),
             tx_id: "swap_slip".to_string(),
             asset_in: token1(),
-            amount_in: Uint128::new(10_000),
-            min_token_out: Uint128::new(999_999_999),
+            amount_in: Uint256::from(10_000u128),
+            min_token_out: Uint256::from(999_999_999u128),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -859,8 +860,8 @@ mod tests {
             sender: sender.clone(),
             tx_id: "swap_bad_asset".to_string(),
             asset_in: Token::create("unknown".to_string()).unwrap(),
-            amount_in: Uint128::new(1_000),
-            min_token_out: Uint128::zero(),
+            amount_in: Uint256::from(1_000u128),
+            min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
         });
@@ -898,7 +899,7 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: sender.clone(),
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
@@ -908,8 +909,8 @@ mod tests {
             sender: sender.clone(),
             tx_id: "swap_fail".to_string(),
             asset_in: token1(),
-            amount_in: Uint128::new(10_000),
-            min_token_out: Uint128::zero(),
+            amount_in: Uint256::from(10_000u128),
+            min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: Some(true),
         });
@@ -1071,8 +1072,8 @@ mod tests {
         let info = message_info(&router, &[]);
 
         for (chain_name, a1, a2) in &[
-            ("chain1", 1_000_000u128, 1_000_000u128),
-            ("chain2", 500_000u128, 500_000u128),
+            ("chain1", 10_000_000_000u128, 10_000_000_000u128),
+            ("chain2", 5_000_000_000u128, 5_000_000_000u128),
         ] {
             let chain_uid = ChainUid::create(chain_name.to_string()).unwrap();
             let sender = CrossChainUser::new(chain_uid.clone(), "user".to_string());
@@ -1160,7 +1161,7 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender,
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(200_000, 200_000),
+                liquidity: make_pair_with_amount(2_000_000_000, 2_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
@@ -1202,7 +1203,7 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: sender.clone(),
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
@@ -1218,7 +1219,7 @@ mod tests {
             info,
             ExecuteMsg::RemoveLiquidity(VlpRemoveLiquidityMsg {
                 sender,
-                lp_allocation: chain_lp / Uint128::new(4),
+                lp_allocation: chain_lp / Uint256::from(4u128),
                 tx_id: "remove".to_string(),
             }),
         )
@@ -1260,14 +1261,14 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: sender.clone(),
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
         .unwrap();
 
-        let b1_before = BALANCES.load(&deps.storage, token1()).unwrap().u128();
-        let b2_before = BALANCES.load(&deps.storage, token2()).unwrap().u128();
+        let b1_before = BALANCES.load(&deps.storage, token1()).unwrap();
+        let b2_before = BALANCES.load(&deps.storage, token2()).unwrap();
         let k_before = b1_before * b2_before;
 
         execute(
@@ -1278,16 +1279,16 @@ mod tests {
                 sender,
                 tx_id: "swap_k".to_string(),
                 asset_in: token1(),
-                amount_in: Uint128::new(50_000),
-                min_token_out: Uint128::zero(),
+                amount_in: Uint256::from(50_000u128),
+                min_token_out: Uint256::zero(),
                 next_swaps: vec![],
                 test_fail: None,
             }),
         )
         .unwrap();
 
-        let b1_after = BALANCES.load(&deps.storage, token1()).unwrap().u128();
-        let b2_after = BALANCES.load(&deps.storage, token2()).unwrap().u128();
+        let b1_after = BALANCES.load(&deps.storage, token1()).unwrap();
+        let b2_after = BALANCES.load(&deps.storage, token2()).unwrap();
         let k_after = b1_after * b2_after;
 
         assert!(
@@ -1325,13 +1326,13 @@ mod tests {
             ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: sender.clone(),
                 tx_id: "add".to_string(),
-                liquidity: make_pair_with_amount(1_000_000, 1_000_000),
+                liquidity: make_pair_with_amount(10_000_000_000, 10_000_000_000),
                 slippage_tolerance_bps: 0,
             }),
         )
         .unwrap();
 
-        let mut last_fee = Uint128::zero();
+        let mut last_fee = Uint256::zero();
         for i in 0..3 {
             execute(
                 deps.as_mut(),
@@ -1341,8 +1342,8 @@ mod tests {
                     sender: sender.clone(),
                     tx_id: format!("swap_{i}"),
                     asset_in: token1(),
-                    amount_in: Uint128::new(5_000),
-                    min_token_out: Uint128::zero(),
+                    amount_in: Uint256::from(5_000u128),
+                    min_token_out: Uint256::zero(),
                     next_swaps: vec![],
                     test_fail: None,
                 }),

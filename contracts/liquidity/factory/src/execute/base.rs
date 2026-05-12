@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, Uint256};
 use euclid::cw20_types::Cw20ReceiveMsg;
 use euclid::{
     admin,
@@ -93,8 +93,9 @@ pub fn receive_cw20(
 
             let asset_in = token.with_type(TokenType::Smart {
                 contract_address: contract_adr.to_string(),
+                decimals: None,
             });
-            let amount_in = cw20_msg.amount;
+            let amount_in = Uint256::from(cw20_msg.amount);
 
             // ensure that the contract address is the same as the asset contract address
             execute_deposit_token(
@@ -118,7 +119,7 @@ pub fn receive_cw20(
             env,
             sender,
             pair,
-            cw20_msg.amount,
+            Uint256::from(cw20_msg.amount),
             recipient,
             cross_chain_config,
         ),
@@ -140,7 +141,7 @@ pub fn receive_cw20(
                 ContractError::AssetDoesNotExist {}
             );
 
-            let amount_in = cw20_msg.amount;
+            let amount_in = Uint256::from(cw20_msg.amount);
 
             // ensure that the contract address is the same as the asset contract address
             execute_swap_request(
@@ -159,9 +160,14 @@ pub fn receive_cw20(
             )
         }
 
-        FactoryCw20HookMsg::EuclidReceive(euclid_receive) => {
-            receive_euclid_cw20(deps, env, info, sender, cw20_msg.amount, euclid_receive)
-        }
+        FactoryCw20HookMsg::EuclidReceive(euclid_receive) => receive_euclid_cw20(
+            deps,
+            env,
+            info,
+            sender,
+            Uint256::from(cw20_msg.amount),
+            euclid_receive,
+        ),
     }
 }
 
@@ -181,15 +187,12 @@ pub fn receive_euclid_native(
             cross_chain_config,
             partner_fee,
         } => {
-            let amount_in = if let TokenType::Native { denom } = &asset_in.token_type {
-                let coin_amount = info
-                    .funds
+            let amount_in: Uint256 = if let TokenType::Native { denom, .. } = &asset_in.token_type {
+                info.funds
                     .iter()
                     .find(|fund| fund.denom == *denom)
                     .ok_or(ContractError::InsufficientFunds {})?
-                    .amount;
-                Uint128::try_from(coin_amount)
-                    .map_err(|_| ContractError::new("Coin amount exceeds Uint128 max"))?
+                    .amount
             } else {
                 return Err(ContractError::InvalidAsset {
                     asset: asset_in.token.to_string(),
@@ -221,7 +224,7 @@ pub fn receive_euclid_cw20(
     env: Env,
     info: MessageInfo,
     sender: CrossChainUser,
-    amount: Uint128,
+    amount: Uint256,
     euclid_msg: EuclidReceive,
 ) -> Result<Response, ContractError> {
     match from_json::<FactoryEuclidReceiveHook>(euclid_msg.msg.clone())? {

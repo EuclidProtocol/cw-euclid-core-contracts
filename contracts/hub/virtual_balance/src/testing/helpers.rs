@@ -1,11 +1,15 @@
 use crate::contract::instantiate;
-use crate::state::{ADMIN, ALLOWANCES, BALANCES, STATE};
+use crate::state::{
+    get_escrow_balance_key, get_token_metadata_key, ADMIN, STATE, VOUCHER_ALLOWANCES,
+    VOUCHER_BALANCES,
+};
 use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
-use cosmwasm_std::{Addr, Response, Uint128};
+use cosmwasm_std::{Addr, Response, Uint256};
 use euclid::admin::EuclidAdmin;
 use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
-use euclid::msgs::virtual_balance::msg::{Allowance, InstantiateMsg, State};
+use euclid::msgs::virtual_balance::msg::{InstantiateMsg, State, VoucherAllowance};
+use euclid::token::{Token, TokenMetadata, TokenType};
 use euclid::voucher::BalanceKey;
 
 // ---------------------------------------------------------------------------
@@ -50,8 +54,8 @@ pub fn seed_balance(deps: &mut MockDeps, user: CrossChainUser, token_id: &str, a
         token_id: token_id.to_string(),
     }
     .to_serialized_balance_key();
-    BALANCES
-        .save(deps.as_mut().storage, key, &Uint128::new(amount))
+    VOUCHER_BALANCES
+        .save(deps.as_mut().storage, key, &Uint256::from(amount))
         .unwrap();
 }
 
@@ -68,15 +72,96 @@ pub fn seed_allowance(
         token_id: token_id.to_string(),
     }
     .to_serialized_balance_key();
-    ALLOWANCES
+    VOUCHER_ALLOWANCES
         .save(
             deps.as_mut().storage,
             key,
-            &Allowance {
+            &VoucherAllowance {
                 spender,
-                amount: Uint128::new(amount),
+                amount: Uint256::from(amount),
+                expires_at: None,
             },
         )
+        .unwrap();
+}
+
+/// Register `TokenMetadata` for `(token_id, chain_uid, token_type)` with `allowed = true`,
+/// and pre-seed a generous `ESCROW_BALANCES` entry for the same key so that `execute_burn`
+/// can decrement it without underflowing. Voucher token decimals are set to 24 so that
+/// `normalize_token_to_voucher` / `normalize_voucher_to_token` are identity in tests.
+pub fn seed_token_metadata(
+    deps: &mut MockDeps,
+    token_id: &str,
+    chain_uid: ChainUid,
+    token_type: TokenType,
+) {
+    let token_type_with_decimals = match token_type {
+        TokenType::Native { denom, .. } => TokenType::Native {
+            denom,
+            decimals: Some(24),
+        },
+        other => other,
+    };
+    let metadata_key = get_token_metadata_key(
+        token_id.to_string(),
+        chain_uid.clone(),
+        token_type_with_decimals.clone(),
+    );
+    metadata_key
+        .save(
+            deps.as_mut().storage,
+            &TokenMetadata {
+                token: Token::create(token_id.to_string()).unwrap(),
+                chain_uid: chain_uid.clone(),
+                token_type: token_type_with_decimals.clone(),
+                allowed: true,
+            },
+        )
+        .unwrap();
+    let escrow_key =
+        get_escrow_balance_key(token_id.to_string(), chain_uid, token_type_with_decimals);
+    escrow_key
+        .save(deps.as_mut().storage, &Uint256::from(u128::MAX))
+        .unwrap();
+}
+
+/// Like `seed_token_metadata` but uses the provided `decimals` instead of
+/// hardcoding 24, so tests can exercise real normalization paths.
+/// Escrow is pre-seeded to zero (caller controls initial escrow).
+pub fn seed_token_metadata_with_decimals(
+    deps: &mut MockDeps,
+    token_id: &str,
+    chain_uid: ChainUid,
+    token_type: TokenType,
+    decimals: u32,
+) {
+    let token_type_with_decimals = match token_type {
+        TokenType::Native { denom, .. } => TokenType::Native {
+            denom,
+            decimals: Some(decimals),
+        },
+        other => other,
+    };
+    let metadata_key = get_token_metadata_key(
+        token_id.to_string(),
+        chain_uid.clone(),
+        token_type_with_decimals.clone(),
+    );
+    metadata_key
+        .save(
+            deps.as_mut().storage,
+            &TokenMetadata {
+                token: Token::create(token_id.to_string()).unwrap(),
+                chain_uid: chain_uid.clone(),
+                token_type: token_type_with_decimals.clone(),
+                allowed: true,
+            },
+        )
+        .unwrap();
+    let escrow_key =
+        get_escrow_balance_key(token_id.to_string(), chain_uid, token_type_with_decimals);
+    escrow_key
+        .save(deps.as_mut().storage, &Uint256::zero())
         .unwrap();
 }
 

@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint128, WasmMsg,
+    ensure, from_json, DepsMut, Env, MessageInfo, Response, Timestamp, Uint256, WasmMsg,
 };
 use euclid::{admin, chain::ChainUid, error::ContractError};
 use relayer::{
@@ -101,7 +101,7 @@ pub fn execute_meta_transaction(
     NONCES.save(
         deps.storage,
         meta_transaction.nonce.clone(),
-        &Uint128::from(env.block.height),
+        &Uint256::from(env.block.height),
     )?;
 
     // Ensure the timestamp is not exceeded
@@ -499,7 +499,7 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 "used-nonce".to_string(),
-                &cosmwasm_std::Uint128::from(1u64),
+                &cosmwasm_std::Uint256::from(1u64),
             )
             .unwrap();
 
@@ -663,7 +663,7 @@ mod tests {
         let block_height = NONCES
             .load(&deps.storage, "unique-nonce".to_string())
             .unwrap();
-        assert_eq!(block_height, cosmwasm_std::Uint128::from(env.block.height));
+        assert_eq!(block_height, cosmwasm_std::Uint256::from(env.block.height));
     }
 
     #[test]

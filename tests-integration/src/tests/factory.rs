@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{coin, Addr, Uint128};
+use cosmwasm_std::{coin, Addr, Uint128, Uint256};
 use escrow::mock::mock_escrow;
 use euclid::{admin::EuclidAdmin, chain::ChainUid, msgs::factory::StateResponse};
 use factory::mock::{mock_factory, MockFactory};
@@ -31,7 +31,7 @@ fn test_proper_instantiation() {
     let relayer_contract = Addr::unchecked("relayer_contract");
     let rate_limit_fee_recipient = Addr::unchecked("rate_limit_fee_recipient");
     let rate_limit_fee_denom = "rate_limit_fee_denom".to_string();
-    let rate_limit_free_limit = Uint128::from(10u128);
+    let rate_limit_free_limit = Uint256::from(10u128);
 
     let mock_factory = MockFactory::instantiate(
         &mut factory,

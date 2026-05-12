@@ -3,7 +3,7 @@
 use crate::helpers::chains::get_escrow_addr;
 use crate::helpers::multi_chain::MultiChainEnv;
 use crate::helpers::relayer::relay_factory_router_factory;
-use cosmwasm_std::{coin, Addr, Coin, Uint128};
+use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint256};
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
@@ -81,7 +81,7 @@ pub fn deposit_token(
     router_chain_id: &str,
     env: &mut MultiChainEnv,
     token: TokenWithDenom,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<Recipient>,
 ) -> Result<(), anyhow::Error> {
     let factory_chain_uid = {
@@ -96,7 +96,7 @@ pub fn deposit_token(
     faucet(
         env.chain_mut(factory_chain_id),
         &sender,
-        amount.u128(),
+        Uint128::try_from(amount).unwrap().u128(),
         token.token_type.clone(),
         &mut funds,
     );
@@ -110,18 +110,21 @@ pub fn deposit_token(
         .chain(factory_chain_id)
         .query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
 
-    let old_router_escrow_balance: euclid::msgs::router::TokenEscrowsResponse =
+    let router_state: euclid::msgs::router::StateResponse = env
+        .chain(router_chain_id)
+        .query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
+    let virtual_balance_address = router_state.virtual_balance_address;
+
+    let old_vb_escrow: euclid::msgs::virtual_balance::GetEscrowBalanceResponse =
         env.chain(router_chain_id).query(
-            router_addr,
-            &euclid::msgs::router::QueryMsg::QueryTokenEscrows {
-                token: token.token.clone(),
-                pagination: Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
+            &virtual_balance_address,
+            &euclid::msgs::virtual_balance::QueryMsg::GetEscrowBalance {
+                token_id: token.token.to_string(),
+                chain_uid: factory_chain_uid.clone(),
+                token_type: token.token_type.clone(),
             },
         );
-    let old_balance = match old_router_escrow_balance.chains.first() {
-        Some(chain) => chain.balance,
-        None => Uint128::zero(),
-    };
+    let old_balance = old_vb_escrow.balance;
 
     let tx_response = env.chain_mut(factory_chain_id).execute(
         &sender,
@@ -145,22 +148,20 @@ pub fn deposit_token(
         env,
     )?;
 
-    let new_router_escrow_balance: euclid::msgs::router::TokenEscrowsResponse =
+    let new_vb_escrow: euclid::msgs::virtual_balance::GetEscrowBalanceResponse =
         env.chain(router_chain_id).query(
-            router_addr,
-            &euclid::msgs::router::QueryMsg::QueryTokenEscrows {
-                token: token.token.clone(),
-                pagination: Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
+            &virtual_balance_address,
+            &euclid::msgs::virtual_balance::QueryMsg::GetEscrowBalance {
+                token_id: token.token.to_string(),
+                chain_uid: factory_chain_uid.clone(),
+                token_type: token.token_type.clone(),
             },
         );
-    let new_balance = match new_router_escrow_balance.chains.first() {
-        Some(chain) => chain.balance,
-        None => Uint128::zero(),
-    };
+    let new_balance = new_vb_escrow.balance;
     assert_eq!(
         new_balance,
         old_balance + amount,
-        "Router escrow balance not updated properly"
+        "Virtual balance escrow not updated properly"
     );
 
     let new_escrow_state: euclid::msgs::escrow::StateResponse = env
@@ -182,7 +183,7 @@ pub fn transfer_token_vcoin(
     router_chain_id: &str,
     env: &mut MultiChainEnv,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<Recipient>,
 ) -> Result<(), anyhow::Error> {
     let router_state: euclid::msgs::router::StateResponse = env
@@ -244,8 +245,8 @@ pub fn transfer_token_vcoin(
         );
 
     assert_eq!(
-        new_balance.amount.u128() + amount.u128(),
-        old_balance.amount.u128(),
+        new_balance.amount + amount,
+        old_balance.amount,
         "Virtual balance not transferred properly"
     );
     Ok(())
@@ -259,11 +260,11 @@ pub fn faucet(
     funds: &mut Vec<Coin>,
 ) {
     match token_type {
-        TokenType::Native { denom } => {
+        TokenType::Native { denom, .. } => {
             app.add_balance(address, vec![coin(amount, denom.clone())]);
             funds.push(coin(amount, denom));
         }
-        TokenType::Smart { contract_address } => {
+        TokenType::Smart { contract_address, .. } => {
             let lp_addr = Addr::unchecked(contract_address);
             let sender = app.sender();
             app.execute(
@@ -271,7 +272,7 @@ pub fn faucet(
                 &lp_addr,
                 &euclid::msgs::lp_token::msg::ExecuteMsg::IncreaseAllowance {
                     spender: address.to_string(),
-                    amount: Uint128::from(amount),
+                    amount: Uint256::from(amount),
                     expires: None,
                 },
                 &[],
@@ -297,7 +298,7 @@ pub fn create_pool(
         faucet(
             env.chain_mut(factory_chain_id),
             &sender,
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -396,9 +397,9 @@ pub fn swap_request(
     router_chain_id: &str,
     env: &mut MultiChainEnv,
     asset_in: TokenWithDenom,
-    amount_in: Uint128,
+    amount_in: Uint256,
     asset_out: Token,
-    min_amount_out: Uint128,
+    min_amount_out: Uint256,
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,
     partner_fee: Option<PartnerFee>,

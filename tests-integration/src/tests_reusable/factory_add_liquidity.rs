@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{Addr, Coin, Uint128};
+use cosmwasm_std::{Addr, Coin, Uint128, Uint256};
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::recipient::Recipient;
 use euclid::token::{PairWithDenomAndAmount, TokenWithDenom};
@@ -15,7 +15,7 @@ pub fn deposit_token(
     router_chain_id: &str,
     env: &mut MultiChainEnv,
     token: TokenWithDenom,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<Recipient>,
 ) -> Result<(), anyhow::Error> {
     crate::helpers::factory::deposit_token(
@@ -45,7 +45,7 @@ pub fn add_liquidity(
         faucet(
             env.chain_mut(factory_chain_id),
             &sender,
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -137,7 +137,8 @@ mod tests {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
-            },
+            decimals: Some(6),
+        },
         };
         register_denom(
             &factory_addr,
@@ -171,10 +172,10 @@ mod tests {
             );
         let old_balance = match old_router_escrow_balance.chains.first() {
             Some(chain) => chain.balance,
-            None => Uint128::zero(),
+            None => Uint256::zero(),
         };
 
-        let amount = Uint128::from(10_000u128);
+        let amount = Uint256::from(10_000u128);
         let recipient_one = CrossChainUser::new(
             factory_chain_uid.clone(),
             env.chain(factory_chain_id)
@@ -187,29 +188,30 @@ mod tests {
                 .addr_make("recipient_two")
                 .to_string(),
         );
+        let normalized_amount = euclid::normalize::normalize_token_to_voucher(amount, 6).unwrap();
         let (recipients, expected_balances) = match recipient_case {
             "empty" => (vec![], vec![]),
             "single_voucher" => (
                 vec![Recipient::default_voucher_recipient(
                     recipient_one.clone(),
-                    Limit::Dynamic(Uint128::zero()),
+                    Limit::Dynamic(Uint256::zero()),
                 )],
-                vec![(recipient_one.clone(), amount)],
+                vec![(recipient_one.clone(), normalized_amount)],
             ),
             "two_voucher" => (
                 vec![
                     Recipient::default_voucher_recipient(
                         recipient_one.clone(),
-                        Limit::Dynamic(Uint128::zero()),
+                        Limit::Dynamic(Uint256::zero()),
                     ),
                     Recipient::default_voucher_recipient(
                         recipient_two.clone(),
-                        Limit::Dynamic(Uint128::zero()),
+                        Limit::Dynamic(Uint256::zero()),
                     ),
                 ],
                 vec![
-                    (recipient_one.clone(), amount),
-                    (recipient_two.clone(), Uint128::zero()),
+                    (recipient_one.clone(), normalized_amount),
+                    (recipient_two.clone(), Uint256::zero()),
                 ],
             ),
             _ => unreachable!("unexpected recipient case"),
@@ -279,13 +281,15 @@ mod tests {
             token: Token::create("tokena".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokena".to_string(),
-            },
+            decimals: Some(6),
+        },
         };
         let token_b = TokenWithDenom {
             token: Token::create("tokenb".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokenb".to_string(),
-            },
+            decimals: Some(6),
+        },
         };
 
         register_denom(
@@ -311,12 +315,12 @@ mod tests {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
                 token_type: token_a.token_type.clone(),
-                amount: Uint128::from(10_000u128),
+                amount: Uint256::from(10_000u128),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token.clone(),
                 token_type: token_b.token_type.clone(),
-                amount: Uint128::from(10_000u128),
+                amount: Uint256::from(10_000u128),
             },
         };
         create_pool(
@@ -335,12 +339,12 @@ mod tests {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
                 token_type: token_a.token_type.clone(),
-                amount: Uint128::from(1_000u128),
+                amount: Uint256::from(1_000u128),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token.clone(),
                 token_type: token_b.token_type.clone(),
-                amount: Uint128::from(5_000u128),
+                amount: Uint256::from(5_000u128),
             },
         };
 

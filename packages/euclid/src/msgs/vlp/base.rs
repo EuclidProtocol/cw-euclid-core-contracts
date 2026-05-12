@@ -5,7 +5,7 @@ use crate::{
     token::{Pair, PairWithAmount, Token},
 };
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128, Uint64};
+use cosmwasm_std::{Addr, Uint256, Uint64};
 
 pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 
@@ -24,7 +24,7 @@ pub struct State {
     // The last timestamp where the balances for each token have been updated
     pub last_updated: u64,
     // total number of LP tokens issued
-    pub total_lp_tokens: Uint128,
+    pub total_lp_tokens: Uint256,
 }
 
 #[cw_serde]
@@ -32,8 +32,8 @@ pub struct VlpSwapMsg {
     pub sender: CrossChainUser,
     pub tx_id: String,
     pub asset_in: Token,
-    pub amount_in: Uint128,
-    pub min_token_out: Uint128,
+    pub amount_in: Uint256,
+    pub min_token_out: Uint256,
     pub next_swaps: Vec<NextSwapVlp>,
     pub test_fail: Option<bool>,
 }
@@ -50,7 +50,7 @@ pub struct VlpAddLiquidityMsg {
 pub struct VlpRemoveLiquidityMsg {
     pub sender: CrossChainUser,
     pub tx_id: String,
-    pub lp_allocation: Uint128,
+    pub lp_allocation: Uint256,
 }
 
 #[cw_serde]
@@ -63,32 +63,32 @@ pub struct VlpRegisterPoolMsg {
 #[cw_serde]
 pub struct VlpSimulateSwapMsg {
     pub asset: Token,
-    pub asset_amount: Uint128,
+    pub asset_amount: Uint256,
     pub swaps: Vec<NextSwapVlp>,
 }
 
 #[cw_serde]
 pub struct GetLiquidityQueryResponse {
     pub pair: Pair,
-    pub token_1_reserve: Uint128,
-    pub token_2_reserve: Uint128,
-    pub total_lp_tokens: Uint128,
+    pub token_1_reserve: Uint256,
+    pub token_2_reserve: Uint256,
+    pub total_lp_tokens: Uint256,
 }
 
 #[cw_serde]
 pub struct GetSwapQueryResponse {
-    pub amount_out: Uint128,
+    pub amount_out: Uint256,
     pub asset_out: Token,
-    pub spread_amount: Uint128,
-    pub lp_fee: Uint128,
-    pub euclid_fee: Uint128,
+    pub spread_amount: Uint256,
+    pub lp_fee: Uint256,
+    pub euclid_fee: Uint256,
 }
 
 #[cw_serde]
 pub struct PoolCreationResponse {
     pub vlp_contract: String,
     pub tx_id: String,
-    pub mint_lp_tokens: Uint128,
+    pub mint_lp_tokens: Uint256,
     pub sender: CrossChainUser,
 }
 
@@ -97,13 +97,13 @@ pub struct VlpSwapResponse {
     pub sender: CrossChainUser,
     pub tx_id: String,
     pub asset_out: Token,
-    pub amount_out: Uint128,
+    pub amount_out: Uint256,
 }
 
 #[cw_serde]
 pub struct VlpAddLiquidityResponse {
     pub liquidity_added: PairWithAmount,
-    pub mint_lp_tokens: Uint128,
+    pub mint_lp_tokens: Uint256,
     pub tx_id: String,
     pub sender: CrossChainUser,
     pub vlp_address: String,
@@ -112,7 +112,7 @@ pub struct VlpAddLiquidityResponse {
 #[cw_serde]
 pub struct VlpRemoveLiquidityResponse {
     pub liquidity_released: PairWithAmount,
-    pub burn_lp_tokens: Uint128,
+    pub burn_lp_tokens: Uint256,
     pub tx_id: String,
     pub sender: CrossChainUser,
     pub vlp_address: String,

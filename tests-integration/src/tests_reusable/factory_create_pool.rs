@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint256};
 use euclid::msgs::vlp::base::PoolConfig;
 use euclid::token::PairWithDenomAndAmount;
 
@@ -76,13 +76,15 @@ mod tests {
             token: Token::create("tokena".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokena".to_string(),
-            },
+            decimals: Some(6),
+        },
         };
         let token_b = TokenWithDenom {
             token: Token::create("tokenb".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "tokenb".to_string(),
-            },
+            decimals: Some(6),
+        },
         };
 
         register_denom(
@@ -108,12 +110,12 @@ mod tests {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
                 token_type: token_a.token_type.clone(),
-                amount: Uint128::from(10_000u128),
+                amount: Uint256::from(10_000u128),
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token.clone(),
                 token_type: token_b.token_type.clone(),
-                amount: Uint128::from(10_000u128),
+                amount: Uint256::from(10_000u128),
             },
         };
 

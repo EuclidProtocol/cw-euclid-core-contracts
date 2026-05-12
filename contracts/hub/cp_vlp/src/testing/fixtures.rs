@@ -6,7 +6,7 @@ pub use inner::*;
 mod inner {
     use crate::testing::helpers::{init, seed_chain_lp, seed_liquidity, seed_pool, MockDeps};
     use cosmwasm_std::testing::mock_dependencies;
-    use cosmwasm_std::Uint128;
+    use cosmwasm_std::Uint256;
     use euclid::chain::ChainUid;
     use rstest::fixture;
 
@@ -33,15 +33,15 @@ mod inner {
     pub fn with_liquidity() -> MockDeps {
         let mut deps = with_pool();
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
-        let total_lp = Uint128::new(1_000_000);
+        let total_lp = Uint256::from(1_000_000u128);
         seed_liquidity(
             &mut deps,
-            Uint128::new(1_000_000),
-            Uint128::new(1_000_000),
+            Uint256::from(1_000_000u128),
+            Uint256::from(1_000_000u128),
             total_lp,
         );
         // Give the chain a share of the LP tokens equal to total_lp (minus minimum liquidity)
-        seed_chain_lp(&mut deps, &chain_uid, Uint128::new(999_000));
+        seed_chain_lp(&mut deps, &chain_uid, Uint256::from(999_000u128));
         deps
     }
 }

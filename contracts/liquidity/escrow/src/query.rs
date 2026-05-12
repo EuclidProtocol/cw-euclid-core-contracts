@@ -1,11 +1,14 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps};
 use euclid::{
     error::ContractError,
-    msgs::escrow::{AllowedDenomsResponse, AllowedTokenResponse, StateResponse, TokenIdResponse},
+    msgs::escrow::{
+        AllowedDenomsResponse, AllowedTokenResponse, DenomBalanceResponse, StateResponse,
+        TokenIdResponse,
+    },
     token::TokenType,
 };
 
-use crate::state::{ALLOWED_DENOMS, STATE};
+use crate::state::{ALLOWED_DENOMS, DENOM_TO_AMOUNT, STATE};
 
 // New escrow query functions
 
@@ -35,6 +38,13 @@ pub fn query_allowed_denoms(deps: Deps) -> Result<Binary, ContractError> {
     Ok(to_json_binary(&response)?)
 }
 
+pub fn query_denom_balance(deps: Deps, denom: String) -> Result<Binary, ContractError> {
+    let amount = DENOM_TO_AMOUNT
+        .may_load(deps.storage, denom.clone())?
+        .unwrap_or_default();
+    Ok(to_json_binary(&DenomBalanceResponse { denom, amount })?)
+}
+
 // Returns the allowed denoms
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -49,7 +59,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{from_json, testing::mock_env, Uint128};
+    use cosmwasm_std::{from_json, testing::mock_env, Uint128, Uint256};
     use euclid::{
         msgs::escrow::{
             AllowedDenomsResponse, AllowedTokenResponse, ExecuteMsg, QueryMsg, StateResponse,
@@ -78,7 +88,7 @@ mod tests {
 
         assert_eq!(res.token, token());
         assert_eq!(res.factory_address, factory);
-        assert_eq!(res.total_amount, Uint128::zero());
+        assert_eq!(res.total_amount, Uint256::zero());
     }
 
     #[rstest]
@@ -86,7 +96,7 @@ mod tests {
         let res: StateResponse =
             from_json(query(with_deposit.as_ref(), mock_env(), QueryMsg::State {}).unwrap())
                 .unwrap();
-        assert_eq!(res.total_amount, Uint128::new(1_000));
+        assert_eq!(res.total_amount, Uint256::from(1_000u128));
     }
 
     #[rstest]
@@ -122,6 +132,7 @@ mod tests {
                 QueryMsg::TokenAllowed {
                     denom: TokenType::Native {
                         denom: "never_added".to_string(),
+                        decimals: None,
                     },
                 },
             )
@@ -176,6 +187,7 @@ mod tests {
         let info = message_info(&factory, &[]);
         let denom2 = TokenType::Native {
             denom: "uatom".to_string(),
+            decimals: None,
         };
         execute(
             initialized.as_mut(),

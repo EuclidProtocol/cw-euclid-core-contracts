@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 use cw_multi_test::ContractWrapper;
 use euclid::chain::{ChainType, ChainUid, CosmosChain, EvmChain};
 use euclid::msgs::router::{
@@ -325,7 +325,7 @@ fn setup_factory_inner(
                 relayer_contract: relayer_addr_factory.clone(),
                 rate_limit_fee_recipient: rate_limit_fee_recipient.clone(),
                 rate_limit_fee_denom: "ufee".to_string(),
-                rate_limit_free_limit: Uint128::from(10u128),
+                rate_limit_free_limit: Uint256::from(10u128),
                 is_native,
             },
             &[],

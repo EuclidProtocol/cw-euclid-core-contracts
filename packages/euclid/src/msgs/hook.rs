@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_json_binary, Binary, Uint128};
+use cosmwasm_std::{to_json_binary, Binary, Uint256};
 
 use crate::{cross_chain_user::CrossChainUser, error::ContractError};
 
@@ -29,7 +29,7 @@ impl EuclidReceive {
 #[cw_serde]
 pub struct VoucherReceive {
     pub sender: CrossChainUser,
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub token_id: String,
     pub msg: Binary,
 }

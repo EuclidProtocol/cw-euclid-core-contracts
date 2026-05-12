@@ -14,7 +14,7 @@ Withdraw is handled by `ExecuteMsg::Withdraw` in
 ```
 ExecuteMsg::Withdraw {
   root_id: String,
-  amount: Uint128,
+  amount: Uint256,
   nonce: u64,
   leaf: WithdrawalLeaf,
   proof: Vec<MerkleProofStep>,
@@ -156,7 +156,7 @@ All of the following structures are referenced directly in
 ```
 Withdraw {
   root_id: String,
-  amount: Uint128,
+  amount: Uint256,
   nonce: u64,
   leaf: WithdrawalLeaf,
   proof: Vec<MerkleProofStep>,
@@ -171,7 +171,7 @@ Withdraw {
 WithdrawalLeaf {
   user: String,
   token_id: String,
-  balance: Uint128,
+  balance: Uint256,
 }
 ```
 
@@ -203,7 +203,7 @@ PermitData {
   root_id: String,
   user: String,
   token_id: String,
-  amount: Uint128,
+  amount: Uint256,
   nonce: u64,
   destination_chain_uid: String,
   destination: String,
@@ -237,7 +237,7 @@ RootConfig {
 ```
 AssetTotal {
   token_id: String,
-  amount: Uint128,
+  amount: Uint256,
 }
 ```
 
@@ -263,7 +263,7 @@ CrossChainUser { chain_uid: ChainUid, address: String }
 ### ExecuteTransfer (virtual balance transfer)
 ```
 ExecuteTransfer {
-  amount: Uint128,
+  amount: Uint256,
   token_id: String,
   sender: Option<CrossChainUser>,
   to: CrossChainUser,

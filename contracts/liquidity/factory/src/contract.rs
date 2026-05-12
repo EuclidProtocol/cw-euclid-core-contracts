@@ -25,8 +25,9 @@ use crate::execute::token::{
 };
 use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_native};
 use crate::query::{
-    get_escrow, get_lp_token_address, get_partner_fees_collected, get_vlp, pending_liquidity,
-    pending_remove_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
+    get_escrow, get_lp_token_address, get_partner_fees_collected, get_rate_limit_state,
+    get_user_rate_limit, get_vlp, pending_liquidity, pending_remove_liquidity, pending_swaps,
+    query_all_pools, query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
@@ -73,7 +74,9 @@ pub fn instantiate(
     RATE_LIMIT_STATE.save(
         deps.storage,
         &RateLimitState {
-            free_limit: msg.rate_limit_free_limit.u128(),
+            free_limit: cosmwasm_std::Uint128::try_from(msg.rate_limit_free_limit)
+                .unwrap()
+                .u128(),
             fee_brackets: vec![],
         },
     )?;
@@ -195,15 +198,13 @@ pub fn execute(
 
             let mut amount_in = msg.amount_in;
             // If this asset is native, lets get the actual amount of funds sent because these amount can vary depending on forwarding contract swaps
-            if let TokenType::Native { denom } = &msg.asset_in.token_type {
-                let coin_amount = info
+            if let TokenType::Native { denom, .. } = &msg.asset_in.token_type {
+                amount_in = info
                     .funds
                     .iter()
                     .find(|fund| fund.denom == *denom)
                     .ok_or(ContractError::InsufficientFunds {})?
                     .amount;
-                amount_in = Uint128::try_from(coin_amount)
-                    .map_err(|_| ContractError::new("Coin amount exceeds Uint128 max"))?;
             }
             ensure!(
                 amount_in.ge(&msg.amount_in),
@@ -296,6 +297,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
+        QueryMsg::GetRateLimitState {} => get_rate_limit_state(deps),
+        QueryMsg::GetUserRateLimit { user } => get_user_rate_limit(deps, user),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -325,7 +328,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, Uint128,
+        to_json_binary, Addr, Uint128, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -425,7 +428,7 @@ mod tests {
             relayer_contract: Addr::unchecked(TEST_RELAYER),
             rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),
             rate_limit_fee_denom: "uusd".to_string(),
-            rate_limit_free_limit: Uint128::new(100),
+            rate_limit_free_limit: Uint256::from(100u128),
         };
         assert!(instantiate(deps.as_mut(), mock_env(), info, msg).is_ok());
     }

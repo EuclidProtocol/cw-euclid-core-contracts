@@ -1,6 +1,7 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, Binary, DepsMut, Env, MessageInfo, Response, Uint128,
+    ensure, from_json, to_json_binary, Addr, Binary, DepsMut, Env, MessageInfo, Response, Uint256,
 };
+use cw_utils::nonpayable;
 
 use euclid::cw20_types::Cw20ReceiveMsg;
 use euclid::{
@@ -19,11 +20,11 @@ pub fn execute_add_allowed_denom(
     info: MessageInfo,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
-    cw_utils::nonpayable(&info)?;
+    nonpayable(&info)?;
+
     // Vouchers are not escrowed
     ensure!(!denom.is_voucher(), ContractError::CannotEscrowVoucher {});
 
-    // TODO nonpayable to this function? would be better to limit depositing funds through the deposit functions
     // Only the factory can call this function
     let factory_address = STATE.load(deps.storage)?.factory_address;
     ensure!(
@@ -51,7 +52,7 @@ pub fn execute_add_allowed_denom(
     let new_amount =
         DENOM_TO_AMOUNT.update(deps.storage, denom.get_key(), |existing| match existing {
             Some(existing) => Ok::<_, ContractError>(existing),
-            None => Ok(Uint128::zero()),
+            None => Ok(Uint256::zero()),
         })?;
 
     Ok(Response::new()
@@ -60,6 +61,7 @@ pub fn execute_add_allowed_denom(
         .add_attribute("amount", new_amount))
 }
 
+// Disallowed denoms can still be withdrawn, but not deposited into the escrow.
 pub fn execute_disallow_denom(
     deps: DepsMut,
     _env: Env,
@@ -90,7 +92,6 @@ pub fn execute_disallow_denom(
     disallowed_denoms.push(denom.clone());
     DISALLOWED_DENOMS.save(deps.storage, &disallowed_denoms)?;
 
-    //TODO refund the disallowed funds
     Ok(Response::new()
         .add_attribute("method", "disallow_denom")
         .add_attribute("deregistered_denom", denom.get_key()))
@@ -127,25 +128,27 @@ pub fn execute_deposit_native(
         );
         let token_type = TokenType::Native {
             denom: token.denom.clone(),
+            decimals: None,
         };
+        let token_type_string = token_type.get_key();
         // Make sure token is part of allowed denoms
         ensure!(
-            allowed_denoms.contains(&token_type),
+            allowed_denoms
+                .iter()
+                .any(|denom| denom.get_key() == token_type_string),
             ContractError::UnsupportedDenomination {}
         );
 
         // Check current balance of denom
         let current_balance = DENOM_TO_AMOUNT.load(deps.storage, token_type.get_key())?;
 
-        let token_amount = Uint128::try_from(token.amount)
-            .map_err(|_| ContractError::new("Coin amount exceeds Uint128 max"))?;
         // Add the sent amount to current balance and save it
         DENOM_TO_AMOUNT.save(
             deps.storage,
             token_type.get_key(),
-            &current_balance.checked_add(token_amount)?,
+            &current_balance.checked_add(token.amount)?,
         )?;
-        state.total_amount = state.total_amount.checked_add(token_amount)?;
+        state.total_amount = state.total_amount.checked_add(token.amount)?;
 
         response = response
             .add_attribute("denom", token_type.get_key())
@@ -178,7 +181,6 @@ pub fn receive_cw20(
             );
 
             let amount_sent = cw20_msg.amount;
-            // TODO should this check be on the factory level? Or even before the factory
             ensure!(
                 !amount_sent.is_zero(),
                 ContractError::InsufficientDeposit {}
@@ -186,9 +188,10 @@ pub fn receive_cw20(
             let asset_sent = info.sender.clone().into_string();
             let asset_sent = TokenType::Smart {
                 contract_address: asset_sent,
+                decimals: None,
             };
 
-            execute_deposit_cw20(deps, env, info, amount_sent, asset_sent)
+            execute_deposit_cw20(deps, env, info, Uint256::from(amount_sent), asset_sent)
         }
     }
 }
@@ -197,7 +200,7 @@ pub fn execute_deposit_cw20(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    amount: Uint128,
+    amount: Uint256,
     denom: TokenType,
 ) -> Result<Response, ContractError> {
     ensure!(denom.is_smart(), ContractError::UnsupportedDenomination {});
@@ -205,10 +208,12 @@ pub fn execute_deposit_cw20(
     // Non-zero and unauthorized checks were made in receive_cw20
 
     let allowed_denoms = ALLOWED_DENOMS.load(deps.storage)?;
-
+    let denom_string = denom.get_key();
     // Make sure token is part of allowed denoms
     ensure!(
-        allowed_denoms.contains(&denom),
+        allowed_denoms
+            .iter()
+            .any(|denom| denom.get_key() == denom_string),
         ContractError::UnsupportedDenomination {}
     );
 
@@ -239,7 +244,7 @@ pub fn execute_withdraw(
     _env: Env,
     info: MessageInfo,
     recipient: Addr,
-    amount: Uint128,
+    amount: Uint256,
     denom: TokenType,
     forwarding_message: Option<String>,
 ) -> Result<Response, ContractError> {
@@ -321,7 +326,7 @@ mod tests {
     use cosmwasm_std::{
         attr, coin, from_json,
         testing::{message_info, mock_env},
-        Addr, BankMsg, Binary, CosmosMsg, Uint128, WasmMsg,
+        Addr, BankMsg, Binary, CosmosMsg, Uint128, Uint256, WasmMsg,
     };
     use euclid::{
         error::ContractError,
@@ -352,6 +357,7 @@ mod tests {
         let factory = initialized.api.addr_make("factory");
         let new_denom = TokenType::Native {
             denom: "uosmo".to_string(),
+            decimals: None,
         };
         let info = message_info(&factory, &[]);
         let res = execute(
@@ -373,7 +379,7 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&initialized.storage, new_denom.get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::zero());
+        assert_eq!(bal, Uint256::zero());
     }
 
     #[rstest]
@@ -541,6 +547,7 @@ mod tests {
             ExecuteMsg::DisallowDenom {
                 denom: TokenType::Native {
                     denom: "nonexistent".to_string(),
+                    decimals: None,
                 },
             },
         )
@@ -582,6 +589,7 @@ mod tests {
 
         let denom2 = TokenType::Native {
             denom: "uatom".to_string(),
+            decimals: None,
         };
         execute(
             initialized.as_mut(),
@@ -644,10 +652,10 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&initialized.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::new(500));
+        assert_eq!(bal, Uint256::from(500u128));
 
         let state = STATE.load(&initialized.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(500));
+        assert_eq!(state.total_amount, Uint256::from(500u128));
     }
 
     #[rstest]
@@ -668,10 +676,10 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&initialized.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::new(300));
+        assert_eq!(bal, Uint256::from(300u128));
 
         let state = STATE.load(&initialized.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(300));
+        assert_eq!(state.total_amount, Uint256::from(300u128));
     }
 
     #[rstest]
@@ -795,10 +803,10 @@ mod tests {
                 smart_denom(cw20_contract.as_str()).get_key(),
             )
             .unwrap();
-        assert_eq!(bal, Uint128::new(250));
+        assert_eq!(bal, Uint256::from(250u128));
 
         let state = STATE.load(&initialized.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(250));
+        assert_eq!(state.total_amount, Uint256::from(250u128));
     }
 
     #[rstest]
@@ -894,7 +902,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: recipient.clone(),
-                amount: Uint128::new(400),
+                amount: Uint256::from(400u128),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -919,10 +927,10 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&with_deposit.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::new(600));
+        assert_eq!(bal, Uint256::from(600u128));
 
         let state = STATE.load(&with_deposit.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(600));
+        assert_eq!(state.total_amount, Uint256::from(600u128));
     }
 
     #[rstest]
@@ -935,7 +943,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -946,9 +954,9 @@ mod tests {
         let ack: AcknowledgementMsg<ReleaseEscrowResponse> = from_json(data).unwrap();
         match ack {
             AcknowledgementMsg::Ok(inner) => {
-                assert_eq!(inner.amount, Uint128::new(100));
+                assert_eq!(inner.amount, Uint256::from(100u128));
                 assert_eq!(inner.to_address, "recip");
-                assert_eq!(inner.escrow_balance, Uint128::new(1_000));
+                assert_eq!(inner.escrow_balance, Uint256::from(1_000u128));
             }
             AcknowledgementMsg::Error(_) => panic!("expected Ok ack"),
         }
@@ -964,7 +972,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -983,7 +991,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::zero(),
+                amount: Uint256::zero(),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -1002,7 +1010,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::new(9_999_999),
+                amount: Uint256::from(9_999_999u128),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -1017,6 +1025,7 @@ mod tests {
         let info = message_info(&factory, &[]);
         let unknown_denom = TokenType::Native {
             denom: "unknown".to_string(),
+            decimals: None,
         };
         let err = execute(
             with_deposit.as_mut(),
@@ -1024,7 +1033,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 denom: unknown_denom,
                 forwarding_message: None,
             },
@@ -1063,7 +1072,7 @@ mod tests {
             factory_info,
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::new(600),
+                amount: Uint256::from(600u128),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -1073,10 +1082,10 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&initialized.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::new(400));
+        assert_eq!(bal, Uint256::from(400u128));
 
         let state = STATE.load(&initialized.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(400));
+        assert_eq!(state.total_amount, Uint256::from(400u128));
     }
 
     #[rstest]
@@ -1090,7 +1099,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: Addr::unchecked("recip"),
-                amount: Uint128::new(1_000),
+                amount: Uint256::from(1_000u128),
                 denom: native_denom(),
                 forwarding_message: None,
             },
@@ -1100,10 +1109,10 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&with_deposit.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::zero());
+        assert_eq!(bal, Uint256::zero());
 
         let state = STATE.load(&with_deposit.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::zero());
+        assert_eq!(state.total_amount, Uint256::zero());
     }
 
     #[rstest]
@@ -1121,7 +1130,7 @@ mod tests {
             info,
             ExecuteMsg::Withdraw {
                 recipient: recipient.clone(),
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 denom: native_denom(),
                 forwarding_message: Some(fwd_msg_b64),
             },
@@ -1192,11 +1201,11 @@ mod tests {
         let smart_bal = DENOM_TO_AMOUNT
             .load(&deps.storage, smart_denom(cw20_contract.as_str()).get_key())
             .unwrap();
-        assert_eq!(native_bal, Uint128::new(700));
-        assert_eq!(smart_bal, Uint128::new(300));
+        assert_eq!(native_bal, Uint256::from(700u128));
+        assert_eq!(smart_bal, Uint256::from(300u128));
 
         let state = STATE.load(&deps.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(1_000));
+        assert_eq!(state.total_amount, Uint256::from(1_000u128));
     }
 
     #[test]
@@ -1248,9 +1257,9 @@ mod tests {
         let bal = DENOM_TO_AMOUNT
             .load(&deps.storage, native_denom().get_key())
             .unwrap();
-        assert_eq!(bal, Uint128::new(250));
+        assert_eq!(bal, Uint256::from(250u128));
 
         let state = STATE.load(&deps.storage).unwrap();
-        assert_eq!(state.total_amount, Uint128::new(250));
+        assert_eq!(state.total_amount, Uint256::from(250u128));
     }
 }

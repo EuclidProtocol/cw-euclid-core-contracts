@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::Uint256;
 
 use crate::{
     cross_chain_user::CrossChainUser,
@@ -25,7 +25,7 @@ pub enum FactoryCw20HookMsg {
     Swap {
         asset_in: TokenWithDenom,
         asset_out: Token,
-        min_amount_out: Uint128,
+        min_amount_out: Uint256,
         swaps: Vec<NextSwapPair>,
         recipients: Vec<Recipient>,
         partner_fee: Option<PartnerFee>,

@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, BlockInfo, Coin, Empty, Uint128};
+use cosmwasm_std::{Addr, BlockInfo, Coin, Empty, Uint128, Uint256};
 use cw_multi_test::{AppBuilder, AppResponse, BankSudo, BasicApp, Contract, Executor, SudoMsg};
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -130,14 +130,12 @@ impl EuclidApp {
             .unwrap();
     }
 
-    pub fn query_balance(&self, addr: &Addr, denom: &str) -> Uint128 {
+    pub fn query_balance(&self, addr: &Addr, denom: &str) -> Uint256 {
         self.inner
             .wrap()
             .query_balance(addr, denom)
             .unwrap()
             .amount
-            .try_into()
-            .unwrap()
     }
 
     pub fn block_info(&self) -> BlockInfo {

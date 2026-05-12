@@ -1,12 +1,8 @@
-use cosmwasm_std::{
-    ConversionOverflowError, Decimal256, Fraction, StdError, StdResult, Uint128, Uint256,
-};
+use cosmwasm_std::{Decimal256, Fraction, StdError, StdResult, Uint256};
 
 /// Trait extension for Decimal256 to work with token precisions more accurately.
 pub trait Decimal256Ext {
     fn to_uint256(&self) -> Uint256;
-
-    fn to_uint128_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint128>;
 
     fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256>;
 
@@ -26,18 +22,6 @@ pub trait Decimal256Ext {
 impl Decimal256Ext for Decimal256 {
     fn to_uint256(&self) -> Uint256 {
         self.numerator() / self.denominator()
-    }
-
-    fn to_uint128_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint128> {
-        let value = self.atomics();
-        let precision = precision.into();
-
-        value
-            .checked_div(10u128.pow(self.decimal_places() - precision).into())?
-            .try_into()
-            .map_err(|o: ConversionOverflowError| {
-                StdError::msg(format!("Error converting {}", o.target_type))
-            })
     }
 
     fn to_uint256_with_precision(&self, precision: impl Into<u32>) -> StdResult<Uint256> {

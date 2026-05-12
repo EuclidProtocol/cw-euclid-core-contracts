@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{to_json_binary, Addr, Uint128};
+use cosmwasm_std::{to_json_binary, Addr, Uint128, Uint256};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
@@ -54,7 +54,7 @@ fn get_vb_balance(
     router_addr: &Addr,
     user: &CrossChainUser,
     token: &Token,
-) -> Uint128 {
+) -> Uint256 {
     let vb_addr = get_virtual_balance_addr(env.chain(ROUTER_CHAIN_ID), router_addr);
     let resp: GetBalanceResponse = env.chain(ROUTER_CHAIN_ID).query(
         &vb_addr,
@@ -109,6 +109,7 @@ fn test_create_claim() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(6),
         },
     };
     register_token(
@@ -120,7 +121,7 @@ fn test_create_claim() {
         token.clone(),
     )
     .unwrap();
-    let amount_to_distribute = Uint128::from(10_000u128);
+    let amount_to_distribute = Uint256::from(10_000u128);
     let (_, pubkey_binary) = get_claimer_key();
     let claim_obj =
         euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
@@ -141,7 +142,7 @@ fn test_create_claim() {
         amount_to_distribute,
         vec![Recipient {
             recipient: claimer_cross_chain_user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: Some(to_json_binary(&claim_obj).unwrap().to_base64()),
             unsafe_refund_as_voucher: None,
@@ -152,7 +153,10 @@ fn test_create_claim() {
     let claims = get_user_claims(&env, &claimer_addr, pubkey_binary.clone(), 1, 0);
     assert_eq!(claims.len(), 1);
     let claim = claims.first().unwrap().1.clone();
-    assert_eq!(claim.amount.u128(), amount_to_distribute.u128());
+    assert_eq!(
+        claim.amount,
+        euclid::normalize::normalize_token_to_voucher(amount_to_distribute, 6).unwrap()
+    );
     assert_eq!(claim.token, token.token);
     assert_eq!(claim.claimer_pubkey, pubkey_binary);
     assert_eq!(
@@ -176,6 +180,7 @@ fn test_create_claim_using_vcoin_transfer() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(6),
         },
     };
     register_token(
@@ -187,7 +192,7 @@ fn test_create_claim_using_vcoin_transfer() {
         token.clone(),
     )
     .unwrap();
-    let amount_to_distribute = Uint128::from(10_000u128);
+    let amount_to_distribute = Uint256::from(10_000u128);
     let (_, pubkey_binary) = get_claimer_key();
     let claim_obj =
         euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
@@ -220,7 +225,7 @@ fn test_create_claim_using_vcoin_transfer() {
         amount_to_distribute,
         vec![Recipient {
             recipient: claimer_cross_chain_user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: Some(to_json_binary(&claim_obj).unwrap().to_base64()),
             unsafe_refund_as_voucher: None,
@@ -231,7 +236,7 @@ fn test_create_claim_using_vcoin_transfer() {
     let claims = get_user_claims(&env, &claimer_addr, pubkey_binary.clone(), 1, 0);
     assert_eq!(claims.len(), 1);
     let claim = claims[0].1.clone();
-    assert_eq!(claim.amount.u128(), amount_to_distribute.u128());
+    assert_eq!(claim.amount, amount_to_distribute);
     assert_eq!(claim.token, token.token);
     assert_eq!(claim.claimer_pubkey, pubkey_binary);
     assert_eq!(
@@ -254,6 +259,7 @@ fn test_claim_voucher_as_voucher() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(6),
         },
     };
     register_token(
@@ -265,7 +271,7 @@ fn test_claim_voucher_as_voucher() {
         token.clone(),
     )
     .unwrap();
-    let amount_to_distribute = Uint128::from(10_000u128);
+    let amount_to_distribute = Uint256::from(10_000u128);
     let (signer_key, pubkey_binary) = get_claimer_key();
     let claim_obj =
         euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
@@ -286,7 +292,7 @@ fn test_claim_voucher_as_voucher() {
         amount_to_distribute,
         vec![Recipient {
             recipient: claimer_cross_chain_user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: Some(to_json_binary(&claim_obj).unwrap().to_base64()),
             unsafe_refund_as_voucher: None,
@@ -297,7 +303,10 @@ fn test_claim_voucher_as_voucher() {
     let claims = get_user_claims(&env, &claimer_addr, pubkey_binary.clone(), 1, 0);
     assert_eq!(claims.len(), 1);
     let (claim_id, claim) = claims.first().unwrap();
-    assert_eq!(claim.amount.u128(), amount_to_distribute.u128());
+    assert_eq!(
+        claim.amount,
+        euclid::normalize::normalize_token_to_voucher(amount_to_distribute, 6).unwrap()
+    );
     assert_eq!(claim.token, token.token);
     assert_eq!(claim.claimer_pubkey, pubkey_binary);
     assert_eq!(
@@ -319,7 +328,7 @@ fn test_claim_voucher_as_voucher() {
         claim_id: *claim_id,
         recipients: vec![Recipient {
             recipient: new_recipient.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: None,
             unsafe_refund_as_voucher: Some(true),
@@ -351,7 +360,10 @@ fn test_claim_voucher_as_voucher() {
     assert_eq!(claims.len(), 0);
 
     let vb_balance = get_vb_balance(&env, &router_addr, &new_recipient, &token.token);
-    assert_eq!(vb_balance, amount_to_distribute);
+    assert_eq!(
+        vb_balance,
+        euclid::normalize::normalize_token_to_voucher(amount_to_distribute, 6).unwrap()
+    );
 }
 
 #[test]
@@ -365,6 +377,7 @@ fn test_claim_voucher_and_release() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(6),
         },
     };
     register_token(
@@ -376,7 +389,7 @@ fn test_claim_voucher_and_release() {
         token.clone(),
     )
     .unwrap();
-    let amount_to_distribute = Uint128::from(10_000u128);
+    let amount_to_distribute = Uint256::from(10_000u128);
     let (signer_key, pubkey_binary) = get_claimer_key();
     let claim_obj =
         euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
@@ -397,7 +410,7 @@ fn test_claim_voucher_and_release() {
         amount_to_distribute,
         vec![Recipient {
             recipient: claimer_cross_chain_user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: Some(to_json_binary(&claim_obj).unwrap().to_base64()),
             unsafe_refund_as_voucher: None,
@@ -420,7 +433,7 @@ fn test_claim_voucher_and_release() {
         claim_id: *claim_id,
         recipients: vec![Recipient {
             recipient: new_recipient.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: token.token_type.clone(),
             forwarding_message: None,
             unsafe_refund_as_voucher: Some(true),
@@ -452,7 +465,7 @@ fn test_claim_voucher_and_release() {
     assert_eq!(claims.len(), 0);
 
     let vb_balance = get_vb_balance(&env, &router_addr, &new_recipient, &token.token);
-    assert_eq!(vb_balance, Uint128::zero());
+    assert_eq!(vb_balance, Uint256::zero());
 
     let native_balance = env.chain(FACTORY_CHAIN_ID).query_balance(
         &Addr::unchecked(new_recipient.address.clone()),
@@ -471,6 +484,7 @@ fn test_unauthorized_claim_voucher() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(6),
         },
     };
     register_token(
@@ -482,7 +496,7 @@ fn test_unauthorized_claim_voucher() {
         token.clone(),
     )
     .unwrap();
-    let amount_to_distribute = Uint128::from(10_000u128);
+    let amount_to_distribute = Uint256::from(10_000u128);
     let (_, pubkey_binary) = get_claimer_key();
     let claim_obj =
         euclid::msgs::claimer::voucher_receive::VoucherReceiveHookMsg::CreateVoucherClaim(
@@ -503,7 +517,7 @@ fn test_unauthorized_claim_voucher() {
         amount_to_distribute,
         vec![Recipient {
             recipient: claimer_cross_chain_user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: Some(to_json_binary(&claim_obj).unwrap().to_base64()),
             unsafe_refund_as_voucher: None,
@@ -529,7 +543,7 @@ fn test_unauthorized_claim_voucher() {
         claim_id: *claim_id,
         recipients: vec![Recipient {
             recipient: new_recipient.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: token.token_type.clone(),
             forwarding_message: None,
             unsafe_refund_as_voucher: Some(false),

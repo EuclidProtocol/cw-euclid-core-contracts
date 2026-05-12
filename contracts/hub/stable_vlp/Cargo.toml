@@ -1,6 +1,6 @@
 [package]
 name = "stable_vlp"
-version = "0.2.4"
+version = "0.2.5"
 authors = [
   "gachouchani1999 <georgeschouchani1@gmail.com>",
   "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",

@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, HexBinary, Uint128};
+use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, HexBinary, Uint128, Uint256};
 use cw_multi_test::BasicApp;
 use euclid::{
     admin::{AdminType, EuclidAdmin},
@@ -176,7 +176,7 @@ fn get_vb_balance(
     router_addr: &Addr,
     user: &CrossChainUser,
     token: &Token,
-) -> Uint128 {
+) -> Uint256 {
     let vb_addr = get_virtual_balance_addr(env.chain(META_ROUTER_CHAIN_ID), router_addr);
     let resp: GetBalanceResponse = env.chain(META_ROUTER_CHAIN_ID).query(
         &vb_addr,
@@ -254,6 +254,7 @@ fn test_execute_meta_transaction_withdraw_voucher() {
         token: Token::create("token.a".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: token_denom.to_string(),
+            decimals: Some(6),
         },
     };
 
@@ -273,23 +274,25 @@ fn test_execute_meta_transaction_withdraw_voucher() {
         META_ROUTER_CHAIN_ID,
         &mut env,
         token_a.clone(),
-        Uint128::from(1000u128),
+        Uint256::from(1000u128),
         vec![Recipient::default_voucher_recipient(
             user.clone(),
-            Limit::Dynamic(Uint128::zero()),
+            Limit::Dynamic(Uint256::zero()),
         )],
     )
     .unwrap();
 
     let user_addr = Addr::unchecked(user.address.clone());
+    let normalized_1000 =
+        euclid::normalize::normalize_token_to_voucher(Uint256::from(1000u128), 6).unwrap();
     assert_eq!(
         env.chain(META_FACTORY_CHAIN_ID)
             .query_balance(&user_addr, token_denom),
-        Uint128::zero(),
+        Uint256::zero(),
     );
     assert_eq!(
         get_vb_balance(&env, &router_addr, &user, &token_a.token),
-        Uint128::from(1000u128)
+        normalized_1000
     );
 
     // Attempt unauthorized withdraw
@@ -298,11 +301,11 @@ fn test_execute_meta_transaction_withdraw_voucher() {
             sender: user.clone(),
             tx_id: "".to_string(),
             token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
+            amount: normalized_1000,
             from: None,
             recipients: vec![Recipient::default_voucher_recipient(
                 unauthorized_user.clone(),
-                Limit::Dynamic(Uint128::zero()),
+                Limit::Dynamic(Uint256::zero()),
             )],
         });
     let unauthorized_call_data = MetaTransactionCallData {
@@ -336,11 +339,11 @@ fn test_execute_meta_transaction_withdraw_voucher() {
             sender: user.clone(),
             tx_id: "".to_string(),
             token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
+            amount: normalized_1000,
             from: None,
             recipients: vec![Recipient {
                 recipient: user.clone(),
-                amount: Limit::Dynamic(Uint128::zero()),
+                amount: Limit::Dynamic(Uint256::zero()),
                 denom: token_a.token_type.clone(),
                 forwarding_message: None,
                 unsafe_refund_as_voucher: None,
@@ -381,11 +384,11 @@ fn test_execute_meta_transaction_withdraw_voucher() {
     assert_eq!(
         env.chain(META_FACTORY_CHAIN_ID)
             .query_balance(&user_addr, token_denom),
-        Uint128::from(1000u128),
+        Uint256::from(1000u128),
     );
     assert_eq!(
         get_vb_balance(&env, &router_addr, &user, &token_a.token),
-        Uint128::zero()
+        Uint256::zero()
     );
 }
 
@@ -407,6 +410,7 @@ fn test_execute_meta_transaction_transfer_voucher() {
         token: Token::create("token.a".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "tokena".to_string(),
+            decimals: Some(6),
         },
     };
 
@@ -426,10 +430,10 @@ fn test_execute_meta_transaction_transfer_voucher() {
         META_ROUTER_CHAIN_ID,
         &mut env,
         token_a.clone(),
-        Uint128::from(1000u128),
+        Uint256::from(1000u128),
         vec![Recipient {
             recipient: user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: None,
             unsafe_refund_as_voucher: None,
@@ -437,9 +441,11 @@ fn test_execute_meta_transaction_transfer_voucher() {
     )
     .unwrap();
 
+    let normalized_1000 =
+        euclid::normalize::normalize_token_to_voucher(Uint256::from(1000u128), 6).unwrap();
     assert_eq!(
         get_vb_balance(&env, &router_addr, &user, &token_a.token),
-        Uint128::from(1000u128)
+        normalized_1000
     );
 
     let transfer_msg =
@@ -447,11 +453,11 @@ fn test_execute_meta_transaction_transfer_voucher() {
             sender: user.clone(),
             tx_id: "".to_string(),
             token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
+            amount: normalized_1000,
             from: None,
             recipients: vec![Recipient {
                 recipient: recipient_user.clone(),
-                amount: Limit::Dynamic(Uint128::zero()),
+                amount: Limit::Dynamic(Uint256::zero()),
                 denom: TokenType::Voucher {},
                 forwarding_message: None,
                 unsafe_refund_as_voucher: None,
@@ -492,11 +498,11 @@ fn test_execute_meta_transaction_transfer_voucher() {
 
     assert_eq!(
         get_vb_balance(&env, &router_addr, &user, &token_a.token),
-        Uint128::zero()
+        Uint256::zero()
     );
     assert_eq!(
         get_vb_balance(&env, &router_addr, &recipient_user, &token_a.token),
-        Uint128::from(1000u128)
+        normalized_1000
     );
 }
 
@@ -513,12 +519,14 @@ fn test_execute_meta_transaction_swap() {
         token: Token::create("token.a".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "tokena".to_string(),
+            decimals: Some(6),
         },
     };
     let token_b = TokenWithDenom {
         token: Token::create("token.b".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: token_denom_b.to_string(),
+            decimals: Some(6),
         },
     };
 
@@ -542,8 +550,8 @@ fn test_execute_meta_transaction_swap() {
     .unwrap();
 
     let pair_info = PairWithDenomAndAmount {
-        token_1: token_a.clone().with_amount(Uint128::from(1_000_000u128)),
-        token_2: token_b.clone().with_amount(Uint128::from(1_000_000u128)),
+        token_1: token_a.clone().with_amount(Uint256::from(1_000_000u128)),
+        token_2: token_b.clone().with_amount(Uint256::from(1_000_000u128)),
     };
     create_pool(
         &factory_addr,
@@ -564,10 +572,10 @@ fn test_execute_meta_transaction_swap() {
         META_ROUTER_CHAIN_ID,
         &mut env,
         token_a.clone(),
-        Uint128::from(1000u128),
+        Uint256::from(1000u128),
         vec![Recipient {
             recipient: user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: None,
             unsafe_refund_as_voucher: None,
@@ -575,9 +583,11 @@ fn test_execute_meta_transaction_swap() {
     )
     .unwrap();
 
+    let normalized_1000 =
+        euclid::normalize::normalize_token_to_voucher(Uint256::from(1000u128), 6).unwrap();
     assert_eq!(
         get_vb_balance(&env, &router_addr, &user, &token_a.token),
-        Uint128::from(1000u128)
+        normalized_1000
     );
 
     let token_a_voucher = TokenWithDenom {
@@ -588,19 +598,19 @@ fn test_execute_meta_transaction_swap() {
         sender: user.clone(),
         tx_id: "".to_string(),
         asset_in: token_a_voucher.clone(),
-        amount_in: Uint128::from(1000u128),
+        amount_in: normalized_1000,
         asset_out: token_b.token.clone(),
-        min_amount_out: Uint128::from(10u128),
+        min_amount_out: Uint256::from(10u128),
         swaps: vec![NextSwapPair {
             token_in: token_a.token.clone(),
             token_out: token_b.token.clone(),
             test_fail: None,
         }],
-        partner_fee_amount: Uint128::zero(),
+        partner_fee_amount: Uint256::zero(),
         partner_fee_recipient: user.clone(),
         recipients: vec![Recipient {
             recipient: user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: token_b.token_type.clone(),
             forwarding_message: None,
             unsafe_refund_as_voucher: None,
@@ -641,13 +651,13 @@ fn test_execute_meta_transaction_swap() {
 
     assert_eq!(
         get_vb_balance(&env, &router_addr, &user, &token_a.token),
-        Uint128::zero()
+        Uint256::zero()
     );
     let user_native_b = env
         .chain(META_FACTORY_CHAIN_ID)
         .query_balance(&Addr::unchecked(user.address.clone()), token_denom_b);
     assert!(
-        user_native_b > Uint128::zero(),
+        user_native_b > Uint256::zero(),
         "User should have received token_b after swap"
     );
 }

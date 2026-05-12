@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
-    Response, StdError, SubMsg, Uint128, WasmMsg,
+    Response, StdError, SubMsg, Uint256, WasmMsg,
 };
 use euclid::{
     error::ContractError,
@@ -112,7 +112,7 @@ pub fn execute_receive_packet(
         }
     );
     // Save the processed sequence to avoid duplicate events
-    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+    processed_sequence_key.save(deps.storage, &Uint256::from(env.block.height))?;
 
     let receive_packet_event = receive_packet_event(sequence, &source_port, &destination_port);
 
@@ -179,7 +179,7 @@ pub fn execute_receive_acknowledgement(
     deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
-    msg: Binary,
+    _msg: Binary,
     sequence: u128,
     source_port: String,
     destination_port: String,
@@ -202,13 +202,10 @@ pub fn execute_receive_acknowledgement(
     let (existing_request, sender) =
         remove_pending_packet_and_decrement_count(deps.storage, sequence)?;
 
-    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
-    // ensure!(
-    //     existing_request == msg,
-    //     ContractError::new("Ack source msg doesn't match with existing request")
-    // );
-
-    let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
+    // Decode the locally-stored original message; the bytes returned in the ack
+    // may have been re-encoded by intermediate chains (e.g. EVM) and are not
+    // guaranteed to be byte-identical even when semantically equivalent.
+    let msg: RouterCrossChainExecuteMsg = from_json(&existing_request.original_msg)?;
 
     let response =
         ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack.clone(), state.is_native)?;

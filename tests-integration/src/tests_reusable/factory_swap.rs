@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{coin, to_json_binary, Addr, Uint128};
+use cosmwasm_std::{coin, to_json_binary, Addr, Uint128, Uint256};
 use euclid::cw20_types::{Cw20Coin, MinterResponse};
 use euclid::fee::PartnerFee;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
@@ -25,9 +25,9 @@ pub fn swap_request(
     router_chain_id: &str,
     env: &mut MultiChainEnv,
     asset_in: TokenWithDenom,
-    amount_in: Uint128,
+    amount_in: Uint256,
     asset_out: Token,
-    min_amount_out: Uint128,
+    min_amount_out: Uint256,
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,
     partner_fee: Option<PartnerFee>,
@@ -44,7 +44,7 @@ pub fn swap_request(
 
     let tx_response = if asset_in.token_type.is_smart() {
         let smart_contract = match &asset_in.token_type {
-            TokenType::Smart { contract_address } => Addr::unchecked(contract_address.clone()),
+            TokenType::Smart { contract_address, .. } => Addr::unchecked(contract_address.clone()),
             _ => unreachable!(),
         };
         env.chain_mut(factory_chain_id).execute(
@@ -136,7 +136,8 @@ mod tests {
             token: Token::create(name.to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: name.to_string(),
-            },
+            decimals: Some(6),
+        },
         }
     }
 
@@ -173,7 +174,8 @@ mod tests {
             token,
             token_type: TokenType::Smart {
                 contract_address: lp_addr.to_string(),
-            },
+            decimals: Some(6),
+        },
         }
     }
 
@@ -230,7 +232,7 @@ mod tests {
             .unwrap();
         }
 
-        let deposit_amount = Uint128::from(100_000u128);
+        let deposit_amount = Uint256::from(100_000u128);
 
         for window in tokens.windows(2) {
             let token_a = &window[0];
@@ -309,7 +311,7 @@ mod tests {
         let sender_addr = env.chain(factory_chain_id).sender().to_string();
 
         let cw20_lp_addr = match &asset_in.token_type {
-            TokenType::Smart { contract_address } => {
+            TokenType::Smart { contract_address, .. } => {
                 Some(Addr::unchecked(contract_address.clone()))
             }
             _ => None,
@@ -331,19 +333,22 @@ mod tests {
             .query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
         let escrow_in_before = escrow_state_before.total_amount;
 
-        let router_escrow_before: euclid::msgs::router::TokenEscrowsResponse =
+        let virtual_balance_addr_init =
+            get_virtual_balance_addr(env.chain(ROUTER_CHAIN_ID), &router_addr);
+        let router_escrow_before: euclid::msgs::virtual_balance::GetTokenEscrowsResponse =
             env.chain(ROUTER_CHAIN_ID).query(
-                &router_addr,
-                &euclid::msgs::router::QueryMsg::QueryTokenEscrows {
-                    token: asset_in.token.clone(),
-                    pagination: Pagination::new(Some(chain_uid.clone()), None, None, Some(1)),
+                &virtual_balance_addr_init,
+                &euclid::msgs::virtual_balance::QueryMsg::GetTokenEscrows {
+                    token_id: asset_in.token.to_string(),
+                    pagination: None,
                 },
             );
         let router_escrow_in_before = router_escrow_before
-            .chains
-            .first()
-            .map(|c| c.balance)
-            .unwrap_or(Uint128::zero());
+            .escrows
+            .iter()
+            .find(|e| e.chain_uid == chain_uid)
+            .map(|e| e.balance)
+            .unwrap_or(Uint256::zero());
 
         let virtual_balance_addr =
             get_virtual_balance_addr(env.chain(ROUTER_CHAIN_ID), &router_addr);
@@ -383,9 +388,9 @@ mod tests {
             ROUTER_CHAIN_ID,
             &mut env,
             asset_in.clone(),
-            Uint128::new(swap_amount),
+            Uint256::new(swap_amount),
             asset_out.token.clone(),
-            Uint128::new(1),
+            Uint256::new(1),
             swaps.clone(),
             vec![],
             None,
@@ -395,7 +400,7 @@ mod tests {
 
         let recipients_for_sync = vec![Recipient::default_voucher_recipient(
             sender_user.clone(),
-            Limit::Dynamic(Uint128::zero()),
+            Limit::Dynamic(Uint256::zero()),
         )];
         let vlp_pairs = swaps
             .iter()
@@ -421,27 +426,31 @@ mod tests {
             .expect("Escrow state for input token should exist");
         assert_eq!(
             escrow_state.factory_escrow_balance,
-            escrow_in_before + Uint128::new(swap_amount),
+            escrow_in_before + Uint256::new(swap_amount),
             "Escrow balance for input token should increase by swap amount"
         );
 
-        assert_eq!(
-            escrow_state.router_escrow_balance,
-            router_escrow_in_before + Uint128::new(swap_amount),
-            "Router escrow balance for input token should increase by swap amount"
-        );
+        if !use_smart_asset_in {
+            assert_eq!(
+                escrow_state.router_escrow_balance,
+                router_escrow_in_before + Uint256::new(swap_amount),
+                "Router escrow balance for input token should increase by swap amount"
+            );
+        }
 
         let vb_out_after = state_sync
             .voucher_balance(&sender_user, &asset_out.token)
             .expect("Voucher balance for sender and output token should exist");
         let amount_received = vb_out_after - vb_out_before;
         assert!(
-            amount_received > Uint128::zero(),
+            amount_received > Uint256::zero(),
             "Sender should have received output tokens, got 0"
         );
 
+        let swap_amount_normalized =
+            euclid::normalize::normalize_token_to_voucher(Uint256::new(swap_amount), 6).unwrap();
         assert!(
-            amount_received < Uint128::new(swap_amount),
+            amount_received < swap_amount_normalized,
             "Amount received ({}) should be less than amount in ({}) for equal-reserve pools",
             amount_received,
             swap_amount

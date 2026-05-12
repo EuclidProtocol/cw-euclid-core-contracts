@@ -1,6 +1,6 @@
 use crate::cross_chain_user::CrossChainUser;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::Uint256;
 use std::collections::HashMap;
 
 pub const BPS_100_PERCENT: u64 = 10000;
@@ -44,19 +44,19 @@ pub struct TotalFees {
 #[cw_serde]
 pub struct DenomFees {
     // A map to store the total fees per denomination
-    pub totals: HashMap<String, Uint128>,
+    pub totals: HashMap<String, Uint256>,
 }
 
 impl DenomFees {
     // Add or update the total for a given denomination
-    pub fn add_fee(&mut self, token: String, amount: Uint128) {
+    pub fn add_fee(&mut self, token: String, amount: Uint256) {
         self.totals
             .entry(token)
             .and_modify(|total| *total += amount)
             .or_insert(amount);
     }
     // Get the total for a given denomination
-    pub fn get_fee(&self, token: &str) -> Uint128 {
+    pub fn get_fee(&self, token: &str) -> Uint256 {
         self.totals.get(token).cloned().unwrap_or_default()
     }
 }

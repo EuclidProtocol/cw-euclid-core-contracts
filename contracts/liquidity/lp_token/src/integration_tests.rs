@@ -3,7 +3,7 @@
 mod tests {
     use crate::helpers::CwTemplateContract;
     use crate::msg::InstantiateMsg;
-    use cosmwasm_std::{Addr, Coin, Empty, Uint128};
+    use cosmwasm_std::{Addr, Coin, Empty, Uint256};
     use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor};
 
     pub fn contract_template() -> Box<dyn Contract<Empty>> {
@@ -28,7 +28,7 @@ mod tests {
                     &Addr::unchecked(USER),
                     vec![Coin {
                         denom: NATIVE_DENOM.to_string(),
-                        amount: Uint128::new(1),
+                        amount: Uint256::new(1),
                     }],
                 )
                 .unwrap();

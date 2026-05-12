@@ -3,7 +3,7 @@
 use crate::helpers::chains::get_escrow_addr;
 use crate::helpers::multi_chain::MultiChainEnv;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::vlp::base::GetLiquidityQueryResponse;
@@ -16,7 +16,7 @@ use euclid::voucher::BalanceKey;
 pub struct VoucherBalanceState {
     pub recipient: CrossChainUser,
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
@@ -24,24 +24,24 @@ pub struct UserFundsState {
     pub chain_uid: ChainUid,
     pub user_addr: String,
     pub denom: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
 pub struct EscrowBalanceState {
     pub chain_uid: ChainUid,
     pub token: Token,
-    pub factory_escrow_balance: Uint128,
-    pub router_escrow_balance: Uint128,
+    pub factory_escrow_balance: Uint256,
+    pub router_escrow_balance: Uint256,
 }
 
 #[cw_serde]
 pub struct VlpBalanceState {
     pub pair: Pair,
     pub vlp_address: String,
-    pub token_1_reserve: Uint128,
-    pub token_2_reserve: Uint128,
-    pub total_lp_tokens: Uint128,
+    pub token_1_reserve: Uint256,
+    pub token_2_reserve: Uint256,
+    pub total_lp_tokens: Uint256,
 }
 
 #[cw_serde]
@@ -61,7 +61,7 @@ pub struct UserFundsQuery {
 }
 
 impl StateSync {
-    pub fn voucher_balance(&self, recipient: &CrossChainUser, token: &Token) -> Option<Uint128> {
+    pub fn voucher_balance(&self, recipient: &CrossChainUser, token: &Token) -> Option<Uint256> {
         self.voucher_balances
             .iter()
             .find(|entry| &entry.recipient == recipient && &entry.token == token)
@@ -73,7 +73,7 @@ impl StateSync {
         chain_uid: &ChainUid,
         user_addr: &str,
         denom: &str,
-    ) -> Option<Uint128> {
+    ) -> Option<Uint256> {
         self.user_funds
             .iter()
             .find(|entry| {
@@ -159,24 +159,22 @@ pub(crate) fn sync_state(
                 factory_app.query(&escrow_addr, &euclid::msgs::escrow::QueryMsg::State {});
             let factory_escrow_balance = escrow_state.total_amount;
 
-            let router_escrow: euclid::msgs::router::TokenEscrowsResponse = router_app.query(
-                router_addr,
-                &euclid::msgs::router::QueryMsg::QueryTokenEscrows {
-                    token: token.clone(),
-                    pagination: Pagination::new(
-                        Some(escrow_chain_uid.clone()),
-                        None,
-                        None,
-                        Some(1),
-                    ),
-                },
-            );
-            let router_escrow_balance = router_escrow
-                .chains
+            let router_state: euclid::msgs::router::StateResponse = router_app
+                .query(router_addr, &euclid::msgs::router::QueryMsg::GetState {});
+            let vb_escrows: euclid::msgs::virtual_balance::GetTokenEscrowsResponse = router_app
+                .query(
+                    &router_state.virtual_balance_address,
+                    &euclid::msgs::virtual_balance::QueryMsg::GetTokenEscrows {
+                        token_id: token.to_string(),
+                        pagination: None,
+                    },
+                );
+            let router_escrow_balance = vb_escrows
+                .escrows
                 .iter()
-                .find(|chain| chain.chain_uid == escrow_chain_uid)
-                .map(|chain| chain.balance)
-                .unwrap_or(Uint128::zero());
+                .find(|entry| entry.chain_uid == escrow_chain_uid)
+                .map(|entry| entry.balance)
+                .unwrap_or(Uint256::zero());
 
             EscrowBalanceState {
                 chain_uid: escrow_chain_uid.clone(),

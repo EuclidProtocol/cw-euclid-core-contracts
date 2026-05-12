@@ -107,6 +107,7 @@ mod tests {
             token: Token::create("pendingcheck".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "pendingcheck".to_string(),
+                decimals: Some(18),
             },
         };
 
@@ -195,12 +196,14 @@ mod tests {
             token: Token::create("pendingone".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "pendingone".to_string(),
+                decimals: Some(18),
             },
         };
         let token_two = TokenWithDenom {
             token: Token::create("pendingtwo".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "pendingtwo".to_string(),
+                decimals: Some(18),
             },
         };
 
@@ -266,7 +269,10 @@ mod tests {
             let token_id = format!("ratelimit{i}");
             let token = TokenWithDenom {
                 token: Token::create(token_id.clone()).unwrap(),
-                token_type: TokenType::Native { denom: token_id },
+                token_type: TokenType::Native {
+                    denom: token_id,
+                    decimals: Some(18),
+                },
             };
             let tx = env.chain_mut(FACTORY_CHAIN_ID_IBC).execute(
                 &sender_addr,

@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, HexBinary, MessageInfo,
-    QueryRequest, Response, Timestamp, Uint128, WasmMsg, WasmQuery,
+    QueryRequest, Response, Timestamp, Uint256, WasmMsg, WasmQuery,
 };
 use euclid::admin;
 use euclid::chain::ChainType;
@@ -134,7 +134,7 @@ pub fn execute_meta_transaction(
     NONCES.save(
         deps.storage,
         (sender_key.clone(), meta_transaction.data.nonce.clone()),
-        &Uint128::from(env.block.height),
+        &Uint256::from(env.block.height),
     )?;
 
     let mut response = Response::new()
@@ -171,7 +171,7 @@ mod tests {
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
     use cosmwasm_std::{
         attr, from_json, to_json_binary, to_json_string, Addr, Binary, CosmosMsg, Env, Timestamp,
-        Uint128, WasmMsg,
+        Uint256, WasmMsg,
     };
     use euclid::admin::AdminType;
     use euclid::chain::{Chain, ChainType, ChainUid, CosmosChain, EvmChain};
@@ -778,7 +778,7 @@ mod tests {
                 (sender_key, "unique_nonce_happy".to_string()),
             )
             .unwrap();
-        assert_eq!(height, Uint128::from(env.block.height));
+        assert_eq!(height, Uint256::from(env.block.height));
     }
 
     // -----------------------------------------------------------------------
@@ -965,7 +965,7 @@ mod tests {
             .load(&with_cosmos_chain.storage, (sender_key, nonce))
             .unwrap();
 
-        assert_eq!(stored_height, Uint128::from(env.block.height));
+        assert_eq!(stored_height, Uint256::from(env.block.height));
     }
 
     // -----------------------------------------------------------------------
@@ -982,7 +982,7 @@ mod tests {
             .save(
                 with_cosmos_chain.as_mut().storage,
                 (other_sender_key, nonce.clone()),
-                &Uint128::new(5),
+                &Uint256::from(5u128),
             )
             .unwrap();
 
@@ -1155,7 +1155,7 @@ mod tests {
                 (sender_key, "1765897877".to_string()),
             )
             .unwrap();
-        assert_eq!(height, Uint128::from(env.block.height));
+        assert_eq!(height, Uint256::from(env.block.height));
     }
 
     // -----------------------------------------------------------------------
@@ -1204,7 +1204,7 @@ mod tests {
                 (sender_key, "native_nonce_happy".to_string()),
             )
             .unwrap();
-        assert_eq!(height, Uint128::from(env.block.height));
+        assert_eq!(height, Uint256::from(env.block.height));
     }
 
     // -----------------------------------------------------------------------

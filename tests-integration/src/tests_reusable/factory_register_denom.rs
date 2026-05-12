@@ -108,9 +108,48 @@ mod tests {
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
     };
+    use crate::helpers::chains::lp_token_code;
     use crate::tests_reusable::factory_register::{setup_factory_with_mode, FactorySetupMode};
-    use euclid::token::{Token, TokenType};
+    use cosmwasm_std::Uint128;
+    use euclid::cw20_types::{Cw20Coin, MinterResponse};
+    use euclid::msgs::lp_token::msg::InstantiateMsg as LpTokenInstantiateMsg;
+    use euclid::token::{Pair, Token, TokenType};
     use rstest::rstest;
+
+    fn deploy_lp_token(
+        env: &mut MultiChainEnv,
+        factory_chain_id: &str,
+        token: &Token,
+    ) -> Addr {
+        let app = env.chain_mut(factory_chain_id);
+        let sender = app.sender();
+        let code_id = lp_token_code(app);
+        let aux_token = Token::create(format!("{}.aux", token)).unwrap();
+        let token_pair = Pair::new(token.clone(), aux_token).unwrap();
+        app.instantiate(
+            code_id,
+            &sender,
+            &LpTokenInstantiateMsg {
+                name: format!("{}_cw20", token),
+                symbol: "TEST".to_string(),
+                decimals: 6,
+                initial_balances: vec![Cw20Coin {
+                    address: sender.to_string(),
+                    amount: Uint128::new(1_000_000_000),
+                }],
+                mint: Some(MinterResponse {
+                    minter: sender.to_string(),
+                    cap: None,
+                }),
+                marketing: None,
+                vlp: app.addr_make("dummy_vlp").to_string(),
+                factory: app.addr_make("dummy_factory"),
+                token_pair,
+            },
+            &[],
+            "lp_smart_token",
+        )
+    }
 
     fn mode_for(factory_chain_id: &str) -> FactorySetupMode {
         if factory_chain_id == ROUTER_CHAIN_ID {
@@ -146,13 +185,16 @@ mod tests {
         let token_type = match token_type_case {
             "native" => TokenType::Native {
                 denom: "eucl".to_string(),
-            },
-            "smart" => TokenType::Smart {
-                contract_address: env
-                    .chain(factory_chain_id)
-                    .addr_make("token_contract")
-                    .to_string(),
-            },
+            decimals: Some(6),
+        },
+            "smart" => {
+                let token = Token::create("eucl".to_string()).unwrap();
+                let lp_addr = deploy_lp_token(&mut env, factory_chain_id, &token);
+                TokenType::Smart {
+                    contract_address: lp_addr.to_string(),
+                    decimals: Some(6),
+                }
+            }
             _ => unreachable!("unexpected token type case"),
         };
         let token = TokenWithDenom {
@@ -205,7 +247,8 @@ mod tests {
             token: Token::create("eucl".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "eucl".to_string(),
-            },
+            decimals: Some(6),
+        },
         };
 
         register_denom(

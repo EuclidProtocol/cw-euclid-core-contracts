@@ -1,6 +1,6 @@
 use bech32::{encode, ToBase32, Variant};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, Binary, Coin, Deps, HexBinary, Uint128};
+use cosmwasm_std::{ensure, Binary, Coin, Deps, HexBinary, Uint256};
 use euclid::error::ContractError;
 // use k256::{elliptic_curve::sec1::ToEncodedPoint, PublicKey};
 use ripemd::Ripemd160;
@@ -10,23 +10,23 @@ use sha3::Keccak256;
 // https://docs.cosmos.network/main/build/architecture/adr-036-arbitrary-signature
 #[cw_serde]
 pub struct MsgSignData {
-    pub account_number: Uint128,
+    pub account_number: Uint256,
     pub chain_id: String,
     pub fee: MsgSignDataFee,
     pub memo: String,
     pub msgs: Vec<MsgSignDataMsg>,
-    pub sequence: Uint128,
+    pub sequence: Uint256,
 }
 
 impl MsgSignData {
     pub fn new(msgs: Vec<MsgSignDataMsg>) -> Self {
         Self {
-            account_number: Uint128::zero(),
+            account_number: Uint256::zero(),
             chain_id: "".to_string(),
             fee: MsgSignDataFee::new(),
             memo: "".to_string(),
             msgs,
-            sequence: Uint128::zero(),
+            sequence: Uint256::zero(),
         }
     }
 }
@@ -34,7 +34,7 @@ impl MsgSignData {
 #[cw_serde]
 pub struct MsgSignDataFee {
     pub amount: Vec<Coin>,
-    pub gas: Uint128,
+    pub gas: Uint256,
 }
 
 impl Default for MsgSignDataFee {
@@ -47,7 +47,7 @@ impl MsgSignDataFee {
     pub fn new() -> Self {
         Self {
             amount: vec![],
-            gas: Uint128::zero(),
+            gas: Uint256::zero(),
         }
     }
 }
