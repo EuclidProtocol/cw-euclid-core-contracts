@@ -94,9 +94,7 @@ mod tests {
         GetPendingSingleSidedLiquidityResponse, QueryMsg as FactoryQueryMsg,
     };
     use euclid::msgs::lp_token::msg::QueryMsgFns as LpTokenQueryMsgFns;
-    use euclid::msgs::vlp::base::{
-        GetLiquidityQueryResponse, PoolConfig, QueryMsg as VlpQueryMsg,
-    };
+    use euclid::msgs::vlp::base::{GetLiquidityQueryResponse, PoolConfig, QueryMsg as VlpQueryMsg};
     use euclid::token::{PairWithDenomAndAmount, TokenWithDenomAndAmount};
     use euclid::utils::pagination::Pagination;
     use rstest::rstest;
@@ -347,7 +345,9 @@ mod tests {
         match result {
             Ok(events) => {
                 let ack_events = extract_ack_packet_events(&events);
-                let first_ack = ack_events.first().expect("expected at least one ack packet");
+                let first_ack = ack_events
+                    .first()
+                    .expect("expected at least one ack packet");
                 let ack_str = String::from_utf8(first_ack.ack.to_vec()).unwrap();
                 // `SlippageExceeded`'s Display text starts with "Slippage has
                 // not been tolerated"; it surfaces from

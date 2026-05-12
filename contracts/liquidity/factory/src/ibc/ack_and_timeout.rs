@@ -2349,10 +2349,8 @@ mod tests {
                     msg: hook_msg,
                 }) = cosmwasm_std::from_json::<cw20_base::msg::ExecuteMsg>(msg.as_slice())
                 {
-                    let hook: Result<
-                        euclid::msgs::escrow::cw20::EscrowCw20HookMsg,
-                        _,
-                    > = cosmwasm_std::from_json(hook_msg.as_slice());
+                    let hook: Result<euclid::msgs::escrow::cw20::EscrowCw20HookMsg, _> =
+                        cosmwasm_std::from_json(hook_msg.as_slice());
                     return contract == "escrow_aaa"
                         && amount == Uint128::from(1000u128)
                         && matches!(
