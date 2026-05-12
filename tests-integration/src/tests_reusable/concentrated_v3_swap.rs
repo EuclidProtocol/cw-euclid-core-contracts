@@ -1,10 +1,11 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 use cw_orch::prelude::*;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::vlp::base::VlpSimulateSwapMsg;
 use euclid::msgs::vlp::concentrated::msg::{QueryMsg as ConcentratedQueryMsg, Slot0Response};
+use euclid::normalize::normalize_token_to_voucher;
 use rstest::rstest;
 
 use crate::helpers::chains::get_concentrated_vlp;
@@ -30,10 +31,12 @@ fn test_exact_single_range_quote_execution_parity(
         router.environment(),
         &Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp),
     );
+    let raw_amount = Uint256::from(2_500u128);
+    let voucher_amount = normalize_token_to_voucher(raw_amount, 6).unwrap();
     let simulation: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
         .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
             asset: token_a.token.clone(),
-            asset_amount: Uint128::new(2_500),
+            asset_amount: voucher_amount,
             swaps: vec![],
         }))
         .unwrap();
@@ -44,7 +47,7 @@ fn test_exact_single_range_quote_execution_parity(
         pool_key,
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(2_500),
+        raw_amount,
     );
     assert_eq!(amount_out, simulation.amount_out);
 }
@@ -85,9 +88,9 @@ fn test_tick_crossing_updates_slot0_liquidity(
         pool_key,
         token_a,
         token_b.token,
-        Uint128::new(15_000),
+        Uint256::from(15_000u128),
     );
-    assert!(amount_out > Uint128::zero());
+    assert!(amount_out > Uint256::zero());
 
     let after: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
     assert_ne!(

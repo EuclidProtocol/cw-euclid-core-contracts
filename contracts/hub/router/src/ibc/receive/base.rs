@@ -239,6 +239,7 @@ mod tests {
                 token: Token::create("usdc".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uusdc".to_string(),
+                    decimals: Some(6),
                 },
             },
             tx_id: "tx1".to_string(),

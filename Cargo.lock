@@ -830,6 +830,7 @@ dependencies = [
  "euclid-pool",
  "function_name",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
@@ -1591,11 +1592,13 @@ dependencies = [
  "cw-multi-test",
  "cw-orch",
  "cw-storage-plus 2.0.0",
+ "cw-utils 2.0.0",
  "cw2 2.0.0",
  "cw20 2.0.0",
  "euclid",
  "euclid-ibc",
  "mock",
+ "rstest",
  "schemars",
  "serde",
  "thiserror 1.0.69",
@@ -1617,6 +1620,7 @@ dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
  "quote",
+ "rstest",
  "schemars",
  "serde",
  "syn 1.0.109",
@@ -1638,7 +1642,7 @@ dependencies = [
 
 [[package]]
 name = "euclid-pool"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -1662,10 +1666,13 @@ dependencies = [
  "cw-utils 2.0.0",
  "cw2 2.0.0",
  "euclid",
+ "k256",
  "mock",
  "relayer",
+ "rstest",
  "schemars",
  "serde",
+ "sha2 0.10.8",
  "thiserror 1.0.69",
 ]
 
@@ -2359,7 +2366,6 @@ version = "0.2.2"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
- "cw-multi-test",
  "cw-orch",
  "cw-storage-plus 2.0.0",
  "cw2 2.0.0",
@@ -2566,6 +2572,7 @@ dependencies = [
  "cw-multi-test",
  "cw-orch",
  "cw-storage-plus 2.0.0",
+ "cw-utils 2.0.0",
  "cw2 2.0.0",
  "euclid",
  "mock",
@@ -3123,6 +3130,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rstest_reuse"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88530b681abe67924d42cca181d070e3ac20e0740569441a9e35a7cedd2b34a4"
+dependencies = [
+ "quote",
+ "rand 0.8.5",
+ "rustc_version",
+ "syn 2.0.98",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3520,7 +3539,7 @@ dependencies = [
 
 [[package]]
 name = "stable_vlp"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "cosmwasm-schema 2.2.2",
  "cosmwasm-std 2.2.2",
@@ -3819,6 +3838,7 @@ dependencies = [
  "escrow",
  "euclid",
  "euclid-ibc",
+ "euclid-pool",
  "euclid-relayer",
  "factory",
  "ibc-relayer-types 0.32.2",
@@ -3832,6 +3852,7 @@ dependencies = [
  "relayer",
  "router",
  "rstest",
+ "rstest_reuse",
  "sha2 0.10.8",
  "sha3",
  "stable_vlp",

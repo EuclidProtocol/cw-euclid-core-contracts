@@ -97,10 +97,10 @@ fn test_fee_accrual_and_collect(#[case] mode: FactorySetupMode, #[case] factory_
         pool_key,
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(2_000),
+        Uint256::from(2_000u128),
     );
     assert!(
-        amount_out > Uint128::zero(),
+        amount_out > Uint256::zero(),
         "swap must return non-zero output"
     );
 
@@ -137,7 +137,7 @@ fn test_collect_idempotency(#[case] mode: FactorySetupMode, #[case] factory_chai
         pool_key,
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(1_000),
+        Uint256::from(1_000u128),
     );
 
     let first: euclid::msgs::vlp::concentrated::msg::TotalFeesResponse = vlp
@@ -178,7 +178,7 @@ fn test_fee_growth_inside_consistent_after_add_to_new_ticks(
         pool_key.clone(),
         token_b.clone(),
         token_a.token.clone(),
-        Uint128::new(30_000),
+        Uint256::from(30_000u128),
     );
 
     // Step 2: Verify global fee growth is non-zero.
@@ -256,7 +256,7 @@ fn test_fee_growth_consistent_after_add_to_existing_position(
         pool_key.clone(),
         token_b.clone(),
         token_a.token.clone(),
-        Uint128::new(20_000),
+        Uint256::from(20_000u128),
     );
 
     // Step 2: Query position — tokens_owed should be 0 (not yet settled).
@@ -317,7 +317,7 @@ fn test_remove_after_add_at_new_ticks(
         pool_key.clone(),
         token_b.clone(),
         token_a.token.clone(),
-        Uint128::new(20_000),
+        Uint256::from(20_000u128),
     );
 
     // Step 2: Add liquidity at new ticks (the formerly buggy path).
@@ -350,7 +350,7 @@ fn test_remove_after_add_at_new_ticks(
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(5_000),
+        Uint256::from(5_000u128),
     );
 
     // Step 4: Collect fees — should not error.

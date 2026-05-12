@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
@@ -11,6 +11,7 @@ use euclid::msgs::virtual_balance::msg::{
 };
 use euclid::msgs::vlp::base::{VlpSimulateSwapMsg, VlpSwapMsg};
 use euclid::msgs::vlp::concentrated::msg::QueryMsg as ConcentratedQueryMsg;
+use euclid::normalize::{normalize_token_to_voucher, normalize_voucher_to_token};
 use euclid::voucher::BalanceKey;
 use rstest::rstest;
 
@@ -28,8 +29,19 @@ pub fn execute_concentrated_swap(
     pool_key: euclid::msgs::vlp::base::PoolKey,
     asset_in: euclid::token::TokenWithDenom,
     asset_out: euclid::token::Token,
-    amount_in: Uint128,
-) -> Uint128 {
+    amount_in: Uint256,
+) -> Uint256 {
+    let voucher_amount = if asset_in.token_type.is_voucher() {
+        amount_in
+    } else {
+        let decimals = asset_in
+            .token_type
+            .get_decimals()
+            .expect("token type should have decimals");
+        euclid::normalize::normalize_token_to_voucher(amount_in, decimals)
+            .expect("normalization should succeed")
+    };
+
     let chain_uid = factory.get_state().unwrap().chain_uid;
     let sender = CrossChainUser::new(chain_uid, factory.environment().sender.to_string());
     deposit_token(factory, router, asset_in.clone(), amount_in, vec![]).unwrap();
@@ -45,7 +57,7 @@ pub fn execute_concentrated_swap(
     virtual_balance
         .execute(
             &VirtualBalanceExecuteMsg::Approve(ExecuteApprove {
-                amount: amount_in,
+                amount: voucher_amount,
                 token_id: asset_in.token.to_string(),
                 spender: CrossChainUser::new(
                     euclid::chain::ChainUid::vsl_chain_uid().unwrap(),
@@ -71,8 +83,8 @@ pub fn execute_concentrated_swap(
             sender: sender.clone(),
             tx_id: "concentrated_swap".to_string(),
             asset_in: asset_in.token,
-            amount_in,
-            min_token_out: Uint128::one(),
+            amount_in: voucher_amount,
+            min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
         }),
@@ -99,12 +111,20 @@ fn test_swap_single_range(#[case] mode: FactorySetupMode, #[case] factory_chain_
     let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
+    let raw_amount = Uint256::from(1_000u128);
+    let decimals = token_a
+        .token_type
+        .get_decimals()
+        .expect("token should have decimals");
+    let voucher_amount =
+        normalize_token_to_voucher(raw_amount, decimals).expect("normalization should succeed");
+
     let vlp_address = router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
     let simulation: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
         .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
             asset: token_a.token.clone(),
-            asset_amount: Uint128::new(1_000),
+            asset_amount: voucher_amount,
             swaps: vec![],
         }))
         .unwrap();
@@ -115,7 +135,7 @@ fn test_swap_single_range(#[case] mode: FactorySetupMode, #[case] factory_chain_
         pool_key,
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(1_000),
+        raw_amount,
     );
     assert_eq!(amount_out, simulation.amount_out);
 }
@@ -157,9 +177,9 @@ fn test_swap_crosses_ticks(#[case] mode: FactorySetupMode, #[case] factory_chain
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(8_000),
+        Uint256::from(8_000u128),
     );
-    assert!(amount_out > Uint128::zero());
+    assert!(amount_out > Uint256::zero());
 
     let after: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse = vlp
         .query(&ConcentratedQueryMsg::Pool {
@@ -201,17 +221,24 @@ fn test_swap_explicit_fee_tier_routing(
         &Addr::unchecked(router.get_vlp_by_pool_key(pool_3000).unwrap().vlp),
     );
 
+    let decimals = token_a
+        .token_type
+        .get_decimals()
+        .expect("token should have decimals");
+    let voucher_amount = normalize_token_to_voucher(Uint256::from(1_000u128), decimals)
+        .expect("normalization should succeed");
+
     let sim_500: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp_500
         .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
             asset: token_a.token.clone(),
-            asset_amount: Uint128::new(1_000),
+            asset_amount: voucher_amount,
             swaps: vec![],
         }))
         .unwrap();
     let sim_3000: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp_3000
         .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
             asset: token_a.token.clone(),
-            asset_amount: Uint128::new(1_000),
+            asset_amount: voucher_amount,
             swaps: vec![],
         }))
         .unwrap();
@@ -237,29 +264,35 @@ fn test_larger_swap_has_worse_effective_price(
 
     let vlp_address = router.get_vlp_by_pool_key(pool_key).unwrap().vlp;
     let vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address));
+    let decimals = token_a
+        .token_type
+        .get_decimals()
+        .expect("token should have decimals");
     let small_in = Uint128::new(1_000);
     let large_in = Uint128::new(5_000);
+    let small_in_voucher = normalize_token_to_voucher(Uint256::from(small_in), decimals).unwrap();
+    let large_in_voucher = normalize_token_to_voucher(Uint256::from(large_in), decimals).unwrap();
 
     let small: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
         .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
             asset: token_a.token.clone(),
-            asset_amount: small_in,
+            asset_amount: small_in_voucher,
             swaps: vec![],
         }))
         .unwrap();
     let large: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
         .query(&ConcentratedQueryMsg::SimulateSwap(VlpSimulateSwapMsg {
             asset: token_a.token.clone(),
-            asset_amount: large_in,
+            asset_amount: large_in_voucher,
             swaps: vec![],
         }))
         .unwrap();
 
-    assert!(small.amount_out > Uint128::zero());
-    assert!(large.amount_out > Uint128::zero());
+    assert!(small.amount_out > Uint256::zero());
+    assert!(large.amount_out > Uint256::zero());
 
-    let small_effective_numerator = small.amount_out.u128() * large_in.u128();
-    let large_effective_numerator = large.amount_out.u128() * small_in.u128();
+    let small_effective_numerator = small.amount_out * large_in_voucher;
+    let large_effective_numerator = large.amount_out * small_in_voucher;
     assert!(
         small_effective_numerator > large_effective_numerator,
         "larger trades should receive a worse effective price due to curve impact",
@@ -278,16 +311,32 @@ fn test_round_trip_swap_loses_value(
     let pair = pair_with_amounts(&token_a, &token_b, 40_000, 40_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
-    let amount_in = Uint128::new(2_000);
+    let raw_amount_in = Uint256::from(2_000u128);
+    let decimals_a = token_a
+        .token_type
+        .get_decimals()
+        .expect("token_a should have decimals");
+    let decimals_b = token_b
+        .token_type
+        .get_decimals()
+        .expect("token_b should have decimals");
+    let voucher_amount_in = normalize_token_to_voucher(raw_amount_in, decimals_a)
+        .expect("normalization should succeed");
+
     let amount_out = execute_concentrated_swap(
         &factory,
         &router,
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        amount_in,
+        raw_amount_in,
     );
-    assert!(amount_out > Uint128::zero());
+    assert!(amount_out > Uint256::zero());
+
+    // amount_out is in voucher units. execute_concentrated_swap normalizes
+    // raw->voucher internally, so denormalize back to raw for the second swap.
+    let raw_amount_out =
+        normalize_voucher_to_token(amount_out, decimals_b).expect("denormalization should succeed");
 
     let amount_back = execute_concentrated_swap(
         &factory,
@@ -295,11 +344,11 @@ fn test_round_trip_swap_loses_value(
         pool_key,
         token_b.clone(),
         token_a.token.clone(),
-        amount_out,
+        raw_amount_out,
     );
 
     assert!(
-        amount_back < amount_in,
+        amount_back < voucher_amount_in,
         "round-trip should lose value from swap fees/price impact",
     );
 }

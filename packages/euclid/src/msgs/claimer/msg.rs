@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint256};
 
 use crate::{
     cross_chain_user::CrossChainUser, msgs::hook::VoucherReceive, recipient::Recipient,
@@ -83,7 +83,7 @@ pub struct UpdateAdminMsg {
 #[cw_serde]
 pub struct Claim {
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub claimer_pubkey: Binary,
     pub sender: CrossChainUser,
     pub pseudo_claim_id: Option<String>, // Used by indexers

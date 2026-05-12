@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Order, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order, Uint128, Uint256};
 use cw_storage_plus::{Bound, PrefixBound};
 use euclid::{
     chain::ChainUid,
@@ -7,24 +7,27 @@ use euclid::{
     msgs::{
         router::{
             AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-            ClpPositionInfoResponse, EscrowResponse, PoolKeyVlpResponse,
+            ChainTimeoutResponse, ClpPositionInfoResponse, DefaultReleaseFeeResponse,
+            EscrowResponse, FeeStateResponse, LockedChainsResponse, PoolKeyVlpResponse,
             QueryRelayerAddressesResponse, QuerySimulateSwap, QueryTokenDenomsResponse, ReleaseFee,
             ReleaseFeesQueryResponse, SimulateSwapResponse, StateResponse,
             TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
         },
+        virtual_balance::{GetTokenMetadataByDenomResponse, GetTokenStatusResponse},
         vlp::{
             base::{PoolKey, PoolType, VlpSimulateSwapMsg},
             concentrated::msg::{PositionResponse, QueryMsg as ConcentratedQueryMsg},
         },
     },
     swap::{NextSwapPair, NextSwapVlp},
-    token::{Pair, Token},
+    token::{Pair, Token, TokenMetadata, TokenType},
     utils::pagination::{Pagination, DEFAULT_PAGINATION_LIMIT, DEFAULT_PAGINATION_SKIP},
 };
 
 use crate::state::{
-    ADMIN, CHAIN_UID_TO_CHAIN, CLP_POSITION_ID_VLP_MAP, CONCENTRATED_VLPS, ESCROW_BALANCES,
-    RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+    ADMIN, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, CLP_POSITION_ID_VLP_MAP, CONCENTRATED_VLPS,
+    DEFAULT_RELEASE_FEE, ESCROW_BALANCES, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, RELEASE_FEES,
+    STATE, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -225,102 +228,6 @@ pub fn validate_swap_pairs(
     swap_vlps
 }
 
-pub fn query_token_escrows(
-    deps: Deps,
-    token: Token,
-    pagination: Pagination<ChainUid>,
-) -> Result<Binary, ContractError> {
-    let Pagination {
-        min: start,
-        max: end,
-        skip,
-        limit,
-    } = pagination;
-
-    let start = start.map(Bound::inclusive);
-    let end = end.map(Bound::exclusive);
-
-    let chains: Result<_, ContractError> = ESCROW_BALANCES
-        .prefix(token.to_string())
-        .range(deps.storage, start, end, Order::Ascending)
-        .skip(skip.unwrap_or(0) as usize)
-        .take(limit.unwrap_or(10) as usize)
-        .map(|v| {
-            let v = v?;
-            Ok(TokenEscrowChainResponse {
-                balance: v.1,
-                chain_uid: v.0,
-            })
-        })
-        .collect();
-
-    Ok(to_json_binary(&TokenEscrowsResponse { chains: chains? })?)
-}
-
-pub fn query_all_escrows(
-    deps: Deps,
-    pagination: Pagination<String>,
-) -> Result<Binary, ContractError> {
-    let Pagination {
-        min: start,
-        max: end,
-        skip,
-        limit,
-    } = pagination;
-    let start = start.map(PrefixBound::inclusive);
-    let end = end.map(PrefixBound::exclusive);
-
-    let escrows: Result<_, ContractError> = ESCROW_BALANCES
-        .prefix_range(deps.storage, start, end, Order::Ascending)
-        .skip(skip.unwrap_or(DEFAULT_PAGINATION_SKIP) as usize)
-        .take(limit.unwrap_or(DEFAULT_PAGINATION_LIMIT) as usize)
-        .map(|v| {
-            let v = v?;
-            Ok(EscrowResponse {
-                token: Token::create(v.0 .0)?,
-                chain_uid: v.0 .1,
-                balance: v.1,
-            })
-        })
-        .collect();
-
-    Ok(to_json_binary(&AllEscrowsResponse { escrows: escrows? })?)
-}
-
-pub fn query_all_tokens(
-    deps: Deps,
-    pagination: Pagination<Token>,
-) -> Result<Binary, ContractError> {
-    let Pagination {
-        min: start,
-        max: end,
-        skip,
-        limit,
-    } = pagination;
-
-    let start = start.map(Bound::inclusive);
-    let end = end.map(Bound::exclusive);
-    let tokens = TOKEN_DENOMS
-        .keys(deps.storage, start, end, Order::Ascending)
-        .skip(skip.unwrap_or(DEFAULT_PAGINATION_SKIP) as usize)
-        .take(limit.unwrap_or(DEFAULT_PAGINATION_LIMIT) as usize)
-        .flatten()
-        .collect();
-
-    Ok(to_json_binary(&AllTokensResponse { tokens })?)
-}
-
-pub fn query_token_denoms(deps: Deps, token: Token) -> Result<Binary, ContractError> {
-    ensure!(
-        !TOKEN_DENOMS.is_empty(deps.storage),
-        ContractError::Generic {
-            err: "Token denoms are not registered".to_string()
-        }
-    );
-    let denoms = TOKEN_DENOMS.load(deps.storage, token)?;
-    Ok(to_json_binary(&QueryTokenDenomsResponse { denoms })?)
-}
-
 pub fn verify_cross_chain_addresses(
     deps: Deps,
     users: Vec<CrossChainUser>,
@@ -395,12 +302,85 @@ pub fn query_release_fees(
     })?)
 }
 
+pub fn query_token_metadata_by_denom(
+    deps: Deps,
+    virtual_balance_address: &Addr,
+    token: &Token,
+    chain_uid: &ChainUid,
+    token_type: &TokenType,
+) -> Result<TokenMetadata, ContractError> {
+    let response: GetTokenMetadataByDenomResponse = deps.querier.query_wasm_smart(
+        virtual_balance_address.to_string(),
+        &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenMetadataByDenom {
+            token_id: token.to_string(),
+            chain_uid: chain_uid.clone(),
+            token_type: token_type.clone(),
+        },
+    )?;
+    Ok(response.metadata)
+}
+
+pub fn query_token_status(deps: Deps, token_id: &Token) -> Result<bool, ContractError> {
+    let response: GetTokenStatusResponse = deps.querier.query_wasm_smart(
+        VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?,
+        &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenStatus {
+            token_id: token_id.to_string(),
+        },
+    )?;
+    Ok(response.registered)
+}
+
+#[allow(deprecated)]
+pub fn query_all_escrows(deps: Deps) -> Result<Binary, ContractError> {
+    use crate::state::ESCROW_BALANCES;
+    let escrows: Vec<EscrowResponse> = ESCROW_BALANCES
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|item| {
+            let ((token_id, chain_uid), balance) = item?;
+            Ok(EscrowResponse {
+                token: Token::create(token_id)?,
+                chain_uid,
+                balance,
+            })
+        })
+        .collect::<Result<_, ContractError>>()?;
+    Ok(to_json_binary(&AllEscrowsResponse { escrows })?)
+}
+pub fn query_locked_chains(deps: Deps) -> Result<Binary, ContractError> {
+    let chains = LOCKED_CHAINS.load(deps.storage)?;
+    Ok(to_json_binary(&LockedChainsResponse { chains })?)
+}
+
+pub fn query_fee_state(deps: Deps) -> Result<Binary, ContractError> {
+    let fee_state = FEE_STATE.load(deps.storage)?;
+    Ok(to_json_binary(&FeeStateResponse {
+        release_fee_recipient: fee_state.release_fee_recipient,
+        default_fee_recipient: fee_state.default_fee_recipient,
+    })?)
+}
+
+pub fn query_default_release_fee(deps: Deps) -> Result<Binary, ContractError> {
+    let fee = DEFAULT_RELEASE_FEE
+        .may_load(deps.storage)?
+        .unwrap_or_default();
+    Ok(to_json_binary(&DefaultReleaseFeeResponse { fee })?)
+}
+
+pub fn query_chain_timeout(deps: Deps, chain_uid: ChainUid) -> Result<Binary, ContractError> {
+    let chain_uid = chain_uid.validate()?.to_owned();
+    let timeout_seconds = CHAIN_TIMEOUT_SECONDS.load(deps.storage, chain_uid.clone())?;
+    Ok(to_json_binary(&ChainTimeoutResponse {
+        chain_uid,
+        timeout_seconds,
+    })?)
+}
+
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{
         from_json,
         testing::{message_info, mock_env},
-        Addr, Uint128,
+        Addr, Uint128, Uint256,
     };
 
     use crate::{
@@ -428,35 +408,16 @@ mod tests {
 
     use crate::{
         contract::query,
-        state::{ESCROW_BALANCES, RELEASE_FEES, VLPS},
+        state::{RELEASE_FEES, VLPS},
     };
     use euclid::msgs::router::QueryMsg;
     // -----------------------------------------------------------------------
     // Queries: not-found / empty error cases (table-driven)
     // -----------------------------------------------------------------------
 
-    #[rstest]
-    #[case::chain_not_found(QueryMsg::GetChain {
-        chain_uid: ChainUid::create("nonexistent".to_string()).unwrap(),
-    })]
-    #[case::vlp_not_found(QueryMsg::GetVlp {
-        pair: Pair::new(
-            Token::create("token1".to_string()).unwrap(),
-            Token::create("token2".to_string()).unwrap(),
-        ).unwrap(),
-    })]
-    #[case::token_denoms_empty(QueryMsg::QueryTokenDenoms {
-        token: Token::create("usdc".to_string()).unwrap(),
-    })]
-    fn test_query_returns_error_when_not_found(initialized: MockDeps, #[case] msg: QueryMsg) {
-        let res = query(initialized.as_ref(), mock_env(), msg);
-        assert!(res.is_err());
-    }
-
     // -----------------------------------------------------------------------
     // Queries: empty collections
     // -----------------------------------------------------------------------
-
     #[rstest]
     fn test_query_get_all_chains_empty(initialized: MockDeps) {
         let parsed: AllChainResponse =
@@ -484,48 +445,6 @@ mod tests {
         )
         .unwrap();
         assert!(parsed.vlps.is_empty());
-    }
-
-    #[rstest]
-    fn test_query_all_tokens_empty(initialized: MockDeps) {
-        let parsed: AllTokensResponse = from_json(
-            query(
-                initialized.as_ref(),
-                mock_env(),
-                QueryMsg::QueryAllTokens {
-                    pagination: Pagination {
-                        min: None,
-                        max: None,
-                        skip: None,
-                        limit: None,
-                    },
-                },
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert!(parsed.tokens.is_empty());
-    }
-
-    #[rstest]
-    fn test_query_all_escrows_empty(initialized: MockDeps) {
-        let parsed: AllEscrowsResponse = from_json(
-            query(
-                initialized.as_ref(),
-                mock_env(),
-                QueryMsg::QueryAllEscrows {
-                    pagination: Pagination {
-                        min: None,
-                        max: None,
-                        skip: None,
-                        limit: None,
-                    },
-                },
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert!(parsed.escrows.is_empty());
     }
 
     // -----------------------------------------------------------------------
@@ -612,147 +531,6 @@ mod tests {
     }
 
     #[rstest]
-    fn test_query_all_tokens_with_data(mut initialized: MockDeps) {
-        TOKEN_DENOMS
-            .save(
-                initialized.as_mut().storage,
-                Token::create("usdc".to_string()).unwrap(),
-                &vec![],
-            )
-            .unwrap();
-        TOKEN_DENOMS
-            .save(
-                initialized.as_mut().storage,
-                Token::create("atom".to_string()).unwrap(),
-                &vec![],
-            )
-            .unwrap();
-
-        let parsed: AllTokensResponse = from_json(
-            query(
-                initialized.as_ref(),
-                mock_env(),
-                QueryMsg::QueryAllTokens {
-                    pagination: Pagination {
-                        min: None,
-                        max: None,
-                        skip: None,
-                        limit: None,
-                    },
-                },
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(parsed.tokens.len(), 2);
-    }
-
-    #[rstest]
-    fn test_query_token_escrows_with_data(mut initialized: MockDeps) {
-        let token = Token::create("usdc".to_string()).unwrap();
-        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
-
-        ESCROW_BALANCES
-            .save(
-                initialized.as_mut().storage,
-                (token.to_string(), chain_uid.clone()),
-                &Uint128::new(1000),
-            )
-            .unwrap();
-
-        let parsed: TokenEscrowsResponse = from_json(
-            query(
-                initialized.as_ref(),
-                mock_env(),
-                QueryMsg::QueryTokenEscrows {
-                    token: token.clone(),
-                    pagination: Pagination {
-                        min: None,
-                        max: None,
-                        skip: None,
-                        limit: None,
-                    },
-                },
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(parsed.chains.len(), 1);
-        assert_eq!(parsed.chains[0].chain_uid, chain_uid);
-        assert_eq!(parsed.chains[0].balance, Uint128::new(1000));
-    }
-
-    #[rstest]
-    fn test_query_token_denoms_success(mut initialized: MockDeps) {
-        let token = Token::create("usdc".to_string()).unwrap();
-        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
-
-        TOKEN_DENOMS
-            .save(
-                initialized.as_mut().storage,
-                token.clone(),
-                &vec![TokenDenom {
-                    chain_uid: chain_uid.clone(),
-                    token_type: TokenType::Native {
-                        denom: "uusdc".to_string(),
-                    },
-                }],
-            )
-            .unwrap();
-
-        let parsed: QueryTokenDenomsResponse = from_json(
-            query(
-                initialized.as_ref(),
-                mock_env(),
-                QueryMsg::QueryTokenDenoms { token },
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(parsed.denoms.len(), 1);
-        assert_eq!(parsed.denoms[0].chain_uid, chain_uid);
-        assert_eq!(
-            parsed.denoms[0].token_type,
-            TokenType::Native {
-                denom: "uusdc".to_string()
-            }
-        );
-    }
-
-    #[rstest]
-    fn test_query_all_escrows_with_data(mut initialized: MockDeps) {
-        let token = Token::create("atom".to_string()).unwrap();
-        let chain_uid = ChainUid::create("cosmos1".to_string()).unwrap();
-
-        ESCROW_BALANCES
-            .save(
-                initialized.as_mut().storage,
-                (token.to_string(), chain_uid.clone()),
-                &Uint128::new(5000),
-            )
-            .unwrap();
-
-        let parsed: AllEscrowsResponse = from_json(
-            query(
-                initialized.as_ref(),
-                mock_env(),
-                QueryMsg::QueryAllEscrows {
-                    pagination: Pagination {
-                        min: None,
-                        max: None,
-                        skip: None,
-                        limit: None,
-                    },
-                },
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(parsed.escrows.len(), 1);
-        assert_eq!(parsed.escrows[0].balance, Uint128::new(5000));
-        assert_eq!(parsed.escrows[0].chain_uid, chain_uid);
-    }
-
     #[rstest]
     fn test_query_relayer_addresses(initialized: MockDeps) {
         let parsed: QueryRelayerAddressesResponse = from_json(
@@ -798,7 +576,7 @@ mod tests {
             .save(
                 initialized.as_mut().storage,
                 (token.clone(), chain_uid.clone()),
-                &Uint128::new(250),
+                &Uint256::from(250u128),
             )
             .unwrap();
         assert_eq!(
@@ -808,7 +586,7 @@ mod tests {
                     (token.clone(), chain_uid.clone())
                 )
                 .unwrap(),
-            Uint128::new(250)
+            Uint256::from(250u128)
         );
 
         execute(
@@ -818,7 +596,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::UpdateReleaseFee {
                 token: token.clone(),
                 chain_uid: chain_uid.clone(),
-                release_fee: Uint128::new(999),
+                release_fee: Uint256::from(999u128),
             }),
         )
         .unwrap();
@@ -826,7 +604,7 @@ mod tests {
             RELEASE_FEES
                 .load(initialized.as_ref().storage, (token, chain_uid))
                 .unwrap(),
-            Uint128::new(999)
+            Uint256::from(999u128)
         );
     }
 }

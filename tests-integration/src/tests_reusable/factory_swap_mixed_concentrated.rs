@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Uint128, Uint64};
+use cosmwasm_std::{Uint128, Uint256, Uint64};
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::InterchainEnv;
@@ -37,6 +37,7 @@ fn native_token(name: &str) -> TokenWithDenom {
         token: Token::create(name.to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: name.to_string(),
+            decimals: Some(6),
         },
     }
 }
@@ -92,8 +93,8 @@ fn setup_mixed_route_pools(
         factory,
         router,
         PairWithDenomAndAmount {
-            token_1: token_a.with_amount(Uint128::new(50_000)),
-            token_2: token_b.with_amount(Uint128::new(50_000)),
+            token_1: token_a.with_amount(Uint256::from(50_000u128)),
+            token_2: token_b.with_amount(Uint256::from(50_000u128)),
         },
         100,
         PoolConfig::Stable {
@@ -106,8 +107,8 @@ fn setup_mixed_route_pools(
         factory,
         router,
         PairWithDenomAndAmount {
-            token_1: token_b.with_amount(Uint128::new(50_000)),
-            token_2: token_c.with_amount(Uint128::new(50_000)),
+            token_1: token_b.with_amount(Uint256::from(50_000u128)),
+            token_2: token_c.with_amount(Uint256::from(50_000u128)),
         },
         500,
         10,
@@ -119,8 +120,8 @@ fn setup_mixed_route_pools(
         factory,
         router,
         PairWithDenomAndAmount {
-            token_1: token_c.with_amount(Uint128::new(50_000)),
-            token_2: token_d.with_amount(Uint128::new(50_000)),
+            token_1: token_c.with_amount(Uint256::from(50_000u128)),
+            token_2: token_d.with_amount(Uint256::from(50_000u128)),
         },
         100,
         PoolConfig::ConstantProduct {},
@@ -170,7 +171,7 @@ fn get_voucher_balance(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     token: &Token,
-) -> Uint128 {
+) -> Uint256 {
     let sender = get_sender(factory);
     let virtual_balance = get_virtual_balance(
         router.environment(),
@@ -190,9 +191,9 @@ fn execute_swap_and_get_output(
     router: &RouterContract<MockBase>,
     token_in: TokenWithDenom,
     token_out: Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     swaps: Vec<NextSwapPair>,
-) -> Result<Uint128, CwOrchError> {
+) -> Result<Uint256, CwOrchError> {
     let before = get_voucher_balance(factory, router, &token_out);
     swap_request(
         factory,
@@ -200,28 +201,28 @@ fn execute_swap_and_get_output(
         token_in,
         token_out.clone(),
         amount_in,
-        Uint128::one(),
+        Uint256::from(1u128),
         swaps,
         vec![],
         None,
     )?;
     let after = get_voucher_balance(factory, router, &token_out);
-    Ok(after.checked_sub(before).unwrap_or(Uint128::zero()))
+    Ok(after.checked_sub(before).unwrap_or(Uint256::zero()))
 }
 
 fn simulate_mixed_route(
     router: &RouterContract<MockBase>,
     asset_in: Token,
     asset_out: Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     swaps: Vec<NextSwapPair>,
-) -> Uint128 {
+) -> Uint256 {
     let simulation: SimulateSwapResponse = router
         .query(&RouterQueryMsg::SimulateSwap(QuerySimulateSwap {
             asset_in,
             amount_in,
             asset_out,
-            min_amount_out: Uint128::one(),
+            min_amount_out: Uint256::from(1u128),
             swaps,
         }))
         .unwrap();
@@ -246,7 +247,7 @@ fn test_multihop_stable_clp_cp_executes(
         &router,
         token_a.clone(),
         token_d.token.clone(),
-        Uint128::new(1_000),
+        Uint256::from(1_000u128),
         mixed_route(
             &token_a,
             &token_b,
@@ -256,7 +257,7 @@ fn test_multihop_stable_clp_cp_executes(
         ),
     )
     .unwrap();
-    assert!(output > Uint128::zero());
+    assert!(output > Uint256::zero());
 }
 
 #[rstest]
@@ -271,7 +272,7 @@ fn test_mixed_route_simulation_matches_execution(
     let middle_pool_key =
         setup_mixed_route_pools(&factory, &router, &token_a, &token_b, &token_c, &token_d);
 
-    let amount_in = Uint128::new(1_000);
+    let amount_in = Uint256::from(1_000u128);
     let route = mixed_route(
         &token_a,
         &token_b,
@@ -279,11 +280,19 @@ fn test_mixed_route_simulation_matches_execution(
         &token_d,
         Some(middle_pool_key),
     );
+
+    // VLPs now store reserves in voucher units (24 decimals). The router's
+    // SimulateSwap query does NOT normalize the input, so we must pass
+    // voucher-unit amounts to get results comparable to the execution path
+    // (which normalizes via the factory/router deposit flow).
+    let decimals_a = token_a.token_type.get_decimals().unwrap();
+    let voucher_amount_in =
+        euclid::normalize::normalize_token_to_voucher(amount_in, decimals_a).unwrap();
     let simulated = simulate_mixed_route(
         &router,
         token_a.token.clone(),
         token_d.token.clone(),
-        amount_in,
+        voucher_amount_in,
         route.clone(),
     );
 
@@ -314,8 +323,8 @@ fn test_mixed_route_fee_tier_selection_is_explicit(
         &factory,
         &router,
         PairWithDenomAndAmount {
-            token_1: token_b.with_amount(Uint128::new(50_000)),
-            token_2: token_c.with_amount(Uint128::new(50_000)),
+            token_1: token_b.with_amount(Uint256::from(50_000u128)),
+            token_2: token_c.with_amount(Uint256::from(50_000u128)),
         },
         3_000,
         60,
@@ -323,7 +332,7 @@ fn test_mixed_route_fee_tier_selection_is_explicit(
     )
     .unwrap();
 
-    let amount_in = Uint128::new(1_000);
+    let amount_in = Uint256::from(1_000u128);
     let sim_500 = simulate_mixed_route(
         &router,
         token_a.token.clone(),
@@ -363,8 +372,8 @@ fn test_missing_pool_key_does_not_use_clp(
         &router,
         token_a.clone(),
         token_d.token.clone(),
-        Uint128::new(1_000),
-        Uint128::one(),
+        Uint256::from(1_000u128),
+        Uint256::from(1u128),
         mixed_route(&token_a, &token_b, &token_c, &token_d, None),
         vec![],
         None,
@@ -416,8 +425,8 @@ fn test_invalid_pool_key_pair_mismatch_rejected(
         &router,
         token_a.clone(),
         token_d.token.clone(),
-        Uint128::new(1_000),
-        Uint128::one(),
+        Uint256::from(1_000u128),
+        Uint256::from(1u128),
         bad_route,
         vec![],
         None,
@@ -455,8 +464,8 @@ fn test_invalid_pool_key_type_rejected(
         &router,
         token_a.clone(),
         token_d.token.clone(),
-        Uint128::new(1_000),
-        Uint128::one(),
+        Uint256::from(1_000u128),
+        Uint256::from(1u128),
         route,
         vec![],
         None,

@@ -1,10 +1,11 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Event, Uint128};
+use cosmwasm_std::{Addr, Event, Uint128, Uint256};
 use cw_orch::prelude::*;
 use euclid::events::EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
+use euclid::normalize::normalize_token_to_voucher;
 use euclid::swap::NextSwapPair;
 use euclid::token::{Token, TokenType, TokenWithDenom};
 use euclid::utils::pagination::Pagination;
@@ -34,7 +35,7 @@ fn test_no_ack_does_not_finalize_position() {
         faucet(
             factory.environment(),
             factory.environment().sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type,
             &mut funds,
         );
@@ -88,7 +89,7 @@ fn test_ack_error_rolls_back_pending() {
         faucet(
             factory.environment(),
             factory.environment().sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type,
             &mut funds,
         );
@@ -192,12 +193,14 @@ fn test_two_unregistered_tokens_rejected() {
         token: Token::create("conc.unregistered.x".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "conc.unregistered.x".to_string(),
+            decimals: Some(6),
         },
     };
     let token_y = TokenWithDenom {
         token: Token::create("conc.unregistered.y".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "conc.unregistered.y".to_string(),
+            decimals: Some(6),
         },
     };
     let pair = pair_with_amounts(&token_x, &token_y, 10_000, 10_000);
@@ -207,7 +210,7 @@ fn test_two_unregistered_tokens_rejected() {
         faucet(
             factory.environment(),
             factory.environment().sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type,
             &mut funds,
         );
@@ -246,7 +249,7 @@ fn test_duplicate_ack_idempotent(#[case] mode: FactorySetupMode) {
         faucet(
             factory.environment(),
             factory.environment().sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type,
             &mut funds,
         );
@@ -360,8 +363,8 @@ fn test_concentrated_swap_rejects_zero_amount() {
         &router,
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::zero(),
-        Uint128::one(),
+        Uint256::zero(),
+        Uint256::from(1u128),
         vec![NextSwapPair {
             token_in: token_a.token.clone(),
             token_out: token_b.token.clone(),
@@ -387,13 +390,22 @@ fn test_concentrated_swap_rejects_unreachable_min_amount_out() {
     let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
     let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
+    // min_amount_out must be in voucher units (24 decimals) since the VLP
+    // operates entirely in voucher precision.
+    let decimals = token_b
+        .token_type
+        .get_decimals()
+        .expect("token should have decimals");
+    let unreachable_min = normalize_token_to_voucher(Uint256::from(1_000_000_000u128), decimals)
+        .expect("normalization should succeed");
+
     let err = swap_request(
         &factory,
         &router,
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(1_000),
-        Uint128::new(1_000_000_000),
+        Uint256::from(1_000u128),
+        unreachable_min,
         vec![NextSwapPair {
             token_in: token_a.token.clone(),
             token_out: token_b.token.clone(),

@@ -1,6 +1,6 @@
 use crate::chains::get_concentrated_vlp;
 use crate::relayer::relay_factory_router_factory;
-use cosmwasm_std::{coin, Addr, Coin, Uint128};
+use cosmwasm_std::{coin, Addr, Coin, Uint128, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
@@ -41,13 +41,15 @@ pub fn faucet(
     funds: &mut Vec<Coin>,
 ) {
     match token_type {
-        TokenType::Native { denom } => {
+        TokenType::Native { denom, .. } => {
             chain
                 .add_balance(&Addr::unchecked(address), vec![coin(amount, denom.clone())])
                 .expect("adding native balance should succeed");
             funds.push(coin(amount, denom));
         }
-        TokenType::Smart { contract_address } => {
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             let cw20 = LpTokenContract::new(chain.clone());
             cw20.set_address(&Addr::unchecked(contract_address));
             cw20.increase_allowance(amount, address, None)
@@ -74,15 +76,18 @@ pub fn deposit_token(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     token: TokenWithDenom,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<euclid::recipient::Recipient>,
 ) -> Result<(), CwOrchError> {
     let chain_uid = factory_chain_uid(factory);
     let mut funds = vec![];
+    let amount_u128 = Uint128::try_from(amount)
+        .expect("deposit amount should fit in u128")
+        .u128();
     faucet(
         factory.environment(),
         factory.environment().sender.as_str(),
-        amount.u128(),
+        amount_u128,
         token.token_type.clone(),
         &mut funds,
     );
@@ -125,6 +130,7 @@ pub fn setup_concentrated_env() -> (
             .expect("token_a creation should succeed"),
         token_type: TokenType::Native {
             denom: "conc.token.a".to_string(),
+            decimals: Some(6),
         },
     };
     let token_b = TokenWithDenom {
@@ -132,6 +138,7 @@ pub fn setup_concentrated_env() -> (
             .expect("token_b creation should succeed"),
         token_type: TokenType::Native {
             denom: "conc.token.b".to_string(),
+            decimals: Some(6),
         },
     };
     register_denom(&factory, &router, token_a.clone())
@@ -196,7 +203,9 @@ pub fn create_concentrated_pool_with_tick(
         faucet(
             chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount)
+                .expect("token amount should fit in u128")
+                .u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -239,7 +248,9 @@ pub fn add_concentrated_liquidity(
         faucet(
             chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount)
+                .expect("token amount should fit in u128")
+                .u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -331,23 +342,71 @@ pub fn pair_with_amounts(
     amount_b: u128,
 ) -> PairWithDenomAndAmount {
     PairWithDenomAndAmount {
-        token_1: token_a.with_amount(Uint128::new(amount_a)),
-        token_2: token_b.with_amount(Uint128::new(amount_b)),
+        token_1: token_a.with_amount(Uint256::from(amount_a)),
+        token_2: token_b.with_amount(Uint256::from(amount_b)),
     }
 }
 
 /// Execute a concentrated swap directly through VLP (bypassing factory message flow).
+///
+/// `raw_amount_in` is in raw token units. This helper deposits the raw amount
+/// (router normalizes during deposit), then normalizes the swap amount to
+/// voucher units (24 decimals) for approve and VLP swap. Returns the output
+/// amount in voucher units.
 pub fn execute_concentrated_swap(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     pool_key: PoolKey,
     asset_in: TokenWithDenom,
     asset_out: Token,
-    amount_in: Uint128,
-) -> Result<Uint128, CwOrchError> {
+    raw_amount_in: Uint256,
+) -> Result<Uint256, CwOrchError> {
+    let voucher_amount = if asset_in.token_type.is_voucher() {
+        raw_amount_in
+    } else {
+        let decimals = asset_in
+            .token_type
+            .get_decimals()
+            .expect("token type should have decimals");
+        euclid::normalize::normalize_token_to_voucher(raw_amount_in, decimals)
+            .expect("normalization should succeed")
+    };
+    execute_concentrated_swap_voucher(
+        factory,
+        router,
+        pool_key,
+        asset_in,
+        asset_out,
+        raw_amount_in,
+        voucher_amount,
+    )
+}
+
+/// Execute a concentrated swap using pre-normalized voucher amounts.
+///
+/// `raw_amount_deposit` is the raw token amount to deposit (router normalizes internally).
+/// `voucher_amount` is the voucher-unit amount for approve and VLP swap.
+/// Returns the output amount in voucher units.
+pub fn execute_concentrated_swap_voucher(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    pool_key: PoolKey,
+    asset_in: TokenWithDenom,
+    asset_out: Token,
+    raw_amount_deposit: Uint256,
+    voucher_amount: Uint256,
+) -> Result<Uint256, CwOrchError> {
     let chain_uid = factory_chain_uid(factory);
     let sender = CrossChainUser::new(chain_uid, factory.environment().sender.to_string());
-    deposit_token(factory, router, asset_in.clone(), amount_in, vec![])?;
+    if !raw_amount_deposit.is_zero() {
+        deposit_token(
+            factory,
+            router,
+            asset_in.clone(),
+            raw_amount_deposit,
+            vec![],
+        )?;
+    }
 
     let vlp_address = router.get_vlp_by_pool_key(pool_key)?.vlp;
     let mut vlp = get_concentrated_vlp(router.environment(), &Addr::unchecked(vlp_address.clone()));
@@ -362,7 +421,7 @@ pub fn execute_concentrated_swap(
     virtual_balance.set_sender(&router.address().expect("router should have address"));
     virtual_balance.execute(
         &VirtualBalanceExecuteMsg::Approve(ExecuteApprove {
-            amount: amount_in,
+            amount: voucher_amount,
             token_id: asset_in.token.to_string(),
             spender: CrossChainUser::new(
                 euclid::chain::ChainUid::vsl_chain_uid().expect("VSL chain UID should be valid"),
@@ -386,8 +445,8 @@ pub fn execute_concentrated_swap(
             sender: sender.clone(),
             tx_id: "fuzz_swap".to_string(),
             asset_in: asset_in.token,
-            amount_in,
-            min_token_out: Uint128::one(),
+            amount_in: voucher_amount,
+            min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
         }),

@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response,
-    StdError, SubMsg, Uint128, WasmMsg,
+    StdError, SubMsg, Uint256, WasmMsg,
 };
 use euclid::{
     chain::{Chain, ChainUid},
@@ -39,6 +39,7 @@ pub fn execute_send_packet(
     ack_response: Option<Binary>,
     sender: String,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Only contract can call this function internally
     ensure!(
         info.sender == env.contract.address,
@@ -88,6 +89,7 @@ pub fn execute_receive_packet(
     destination_port: String,
     timeout: u64,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     ensure!(
         RELAYER_CONTRACT.load(deps.storage)? == info.sender,
         ContractError::Unauthorized {}
@@ -117,7 +119,7 @@ pub fn execute_receive_packet(
             err: "Processed sequence already exists".to_string()
         }
     );
-    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+    processed_sequence_key.save(deps.storage, &Uint256::from(env.block.height))?;
     let receive_packet_event = receive_packet_event(sequence, &source_port, &destination_port);
 
     let write_acknowledge_event = write_acknowledgement_event(
@@ -163,6 +165,7 @@ pub fn execute_receive_packet_internal_callback(
     chain_uid: ChainUid,
     timeout: u64,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
@@ -183,12 +186,13 @@ pub fn execute_receive_acknowledgement(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
-    msg: Binary,
+    _msg: Binary,
     sequence: u128,
     source_port: String,
     destination_port: String,
     ack: Binary,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     ensure!(
         RELAYER_CONTRACT.load(deps.storage)? == info.sender,
         ContractError::Unauthorized {}
@@ -200,15 +204,13 @@ pub fn execute_receive_acknowledgement(
         destination_port == format!("vsl.{router}", router = env.contract.address),
         ContractError::new("Invalid destination port")
     );
-    remove_pending_packet_and_decrement_count(deps.storage, &chain_uid, sequence)?;
+    let existing_request =
+        remove_pending_packet_and_decrement_count(deps.storage, &chain_uid, sequence)?;
 
-    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
-    // ensure!(
-    //     existing_request == msg,
-    //     ContractError::new("Ack source msg doesn't match with existing request")
-    // );
-
-    let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
+    // Decode the locally-stored original message; the bytes returned in the ack
+    // may have been re-encoded by intermediate chains (e.g. EVM) and are not
+    // guaranteed to be byte-identical even when semantically equivalent.
+    let msg: FactoryCrossChainExecuteMsg = from_json(&existing_request.original_msg)?;
 
     // Verify chain uid is registerd and is solana chain if its not a register factory msg
     let chain_type = match msg.clone() {
@@ -259,6 +261,7 @@ pub fn execute_native_receive_callback(
     chain_uid: ChainUid,
     msg: Binary,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let chain_uid = chain_uid.validate()?.clone();
     let chain = CHAIN_UID_TO_CHAIN.load(deps.storage, chain_uid.clone())?;
     // Only native chains can directly use this messages
@@ -277,7 +280,7 @@ pub fn execute_native_receive_callback(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
-        Addr, Binary, Uint128,
+        Addr, Binary, Uint256,
     };
     use euclid::{
         chain::{Chain, ChainType, ChainUid, CosmosChain},
@@ -386,7 +389,7 @@ mod tests {
                 .save(
                     initialized.as_mut().storage,
                     (chain_uid.clone(), 0_u128),
-                    &Uint128::from(1_u64),
+                    &Uint256::from(1_u64),
                 )
                 .unwrap();
         }

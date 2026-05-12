@@ -1,12 +1,12 @@
 use crate::contract::instantiate;
 use crate::ibc::receive::reusable_internal_call;
 
-use crate::state::{CHAIN_UID_TO_CHAIN, VIRTUAL_BALANCE_CONTRACT, VLPS};
+use crate::state::{CHAIN_UID_TO_CHAIN, CONCENTRATED_VLPS, VIRTUAL_BALANCE_CONTRACT, VLPS};
 
 use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
 use cosmwasm_std::{
     to_json_binary, Addr, ContractResult, DepsMut, MessageInfo, Response, SystemResult, Uint128,
-    WasmQuery,
+    Uint256, WasmQuery,
 };
 
 use euclid::chain::{Chain, ChainType, ChainUid};
@@ -83,7 +83,7 @@ pub(crate) fn make_native_recipient(
     chain_uid: ChainUid,
     address: &str,
     denom: &str,
-    limit: Uint128,
+    limit: Uint256,
 ) -> euclid::recipient::Recipient {
     use euclid::recipient::Recipient;
     Recipient {
@@ -91,6 +91,7 @@ pub(crate) fn make_native_recipient(
         amount: Limit::LessThanOrEqual(limit),
         denom: TokenType::Native {
             denom: denom.to_string(),
+            decimals: None,
         },
         forwarding_message: None,
         unsafe_refund_as_voucher: None,
@@ -123,6 +124,7 @@ pub(crate) fn register_denom_msg(chain_uid: ChainUid) -> RouterCrossChainExecute
             token: Token::create("usdc".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "uusdc".to_string(),
+                decimals: None,
             },
         },
         tx_id: "tx1".to_string(),
@@ -139,15 +141,17 @@ pub(crate) fn make_pool_pair(amount_a: u128, amount_b: u128) -> PairWithDenomAnd
             token: Token::create("aaa".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "uaaa".to_string(),
+                decimals: None,
             },
-            amount: Uint128::new(amount_a),
+            amount: Uint256::from(amount_a),
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("bbb".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "ubbb".to_string(),
+                decimals: None,
             },
-            amount: Uint128::new(amount_b),
+            amount: Uint256::from(amount_b),
         },
     }
 }
@@ -174,7 +178,113 @@ pub(crate) fn seed_vlp_aaa_bbb(deps: &mut MockDeps) {
 // Swap dispatch
 // -----------------------------------------------------------------------
 
+/// Helper: seed CONCENTRATED_VLPS with a pool_key → vlp_addr mapping.
+pub(crate) fn seed_concentrated_vlp(
+    deps: &mut MockDeps,
+    pool_key: &euclid::msgs::vlp::base::PoolKey,
+    vlp_addr: &str,
+) {
+    CONCENTRATED_VLPS
+        .save(
+            deps.as_mut().storage,
+            pool_key.to_map_key(),
+            &Addr::unchecked(vlp_addr),
+        )
+        .unwrap();
+}
+
+/// Make a PairWithDenomAndAmount with configurable decimals per token.
+pub(crate) fn make_pool_pair_with_decimals(
+    token_a: &str,
+    denom_a: &str,
+    decimals_a: u32,
+    amount_a: u128,
+    token_b: &str,
+    denom_b: &str,
+    decimals_b: u32,
+    amount_b: u128,
+) -> PairWithDenomAndAmount {
+    PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create(token_a.to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: denom_a.to_string(),
+                decimals: Some(decimals_a),
+            },
+            amount: Uint256::from(amount_a),
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create(token_b.to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: denom_b.to_string(),
+                decimals: Some(decimals_b),
+            },
+            amount: Uint256::from(amount_b),
+        },
+    }
+}
+
+/// Build a MockDeps with a mock querier that returns configurable decimals
+/// for GetTokenMetadataByDenom queries. Maps token_id → decimals.
+pub(crate) fn make_clp_deps_with_decimals(decimals_map: Vec<(String, u32)>) -> MockDeps {
+    use cosmwasm_std::from_json;
+    use euclid::msgs::virtual_balance::msg::{
+        GetTokenMetadataByDenomResponse, QueryMsg as VirtualBalanceQueryMsg,
+    };
+    use euclid::token::TokenMetadata;
+
+    let mut deps = mock_dependencies();
+    let creator = deps.api.addr_make("creator");
+    init(deps.as_mut(), message_info(&creator, &[]));
+
+    seed_virtual_balance(&mut deps);
+
+    deps.querier.update_wasm(move |q| match q {
+        WasmQuery::Smart { contract_addr, msg } if contract_addr == TEST_VIRTUAL_BALANCE => {
+            let parsed: VirtualBalanceQueryMsg = from_json(msg).unwrap();
+            match parsed {
+                VirtualBalanceQueryMsg::GetTokenMetadataByDenom {
+                    token_id,
+                    chain_uid,
+                    token_type,
+                } => {
+                    let decimals = decimals_map
+                        .iter()
+                        .find(|(id, _)| *id == token_id)
+                        .map(|(_, d)| *d)
+                        .unwrap_or(6);
+                    let token_type_with_decimals = match token_type {
+                        TokenType::Native { denom, .. } => TokenType::Native {
+                            denom,
+                            decimals: Some(decimals),
+                        },
+                        other => other,
+                    };
+                    let resp = GetTokenMetadataByDenomResponse {
+                        metadata: TokenMetadata {
+                            token: Token::create(token_id).unwrap(),
+                            chain_uid,
+                            token_type: token_type_with_decimals,
+                            allowed: true,
+                        },
+                    };
+                    SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
+                }
+                other => panic!("unexpected virtual_balance query: {other:?}"),
+            }
+        }
+        _ => panic!("unexpected wasm query in clp test"),
+    });
+    deps
+}
+
 pub(crate) fn make_swap_deps_with_mock_querier(amount_out: u128) -> MockDeps {
+    use cosmwasm_std::from_json;
+    use euclid::msgs::virtual_balance::msg::{
+        GetTokenMetadataByDenomResponse, QueryMsg as VirtualBalanceQueryMsg,
+    };
+    use euclid::token::TokenMetadata;
+
     let mut deps = mock_dependencies();
     let creator = deps.api.addr_make("creator");
     init(deps.as_mut(), message_info(&creator, &[]));
@@ -184,13 +294,41 @@ pub(crate) fn make_swap_deps_with_mock_querier(amount_out: u128) -> MockDeps {
 
     let token_b = Token::create("bbb".to_string()).unwrap();
     deps.querier.update_wasm(move |q| match q {
+        WasmQuery::Smart { contract_addr, msg } if contract_addr == TEST_VIRTUAL_BALANCE => {
+            let parsed: VirtualBalanceQueryMsg = from_json(msg).unwrap();
+            match parsed {
+                VirtualBalanceQueryMsg::GetTokenMetadataByDenom {
+                    token_id,
+                    chain_uid,
+                    token_type,
+                } => {
+                    let token_type_with_decimals = match token_type {
+                        TokenType::Native { denom, .. } => TokenType::Native {
+                            denom,
+                            decimals: Some(24),
+                        },
+                        other => other,
+                    };
+                    let resp = GetTokenMetadataByDenomResponse {
+                        metadata: TokenMetadata {
+                            token: Token::create(token_id).unwrap(),
+                            chain_uid,
+                            token_type: token_type_with_decimals,
+                            allowed: true,
+                        },
+                    };
+                    SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
+                }
+                other => panic!("unexpected virtual_balance query: {other:?}"),
+            }
+        }
         WasmQuery::Smart { .. } => {
             let resp = GetSwapQueryResponse {
-                amount_out: Uint128::new(amount_out),
+                amount_out: Uint256::from(amount_out),
                 asset_out: token_b.clone(),
-                spread_amount: Uint128::zero(),
-                lp_fee: Uint128::zero(),
-                euclid_fee: Uint128::zero(),
+                spread_amount: Uint256::zero(),
+                lp_fee: Uint256::zero(),
+                euclid_fee: Uint256::zero(),
             };
             SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
         }

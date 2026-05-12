@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Env, Uint128};
+use cosmwasm_std::{ensure, to_json_binary, Binary, Deps, Env, Uint128, Uint256};
 use euclid::chain::ChainUid;
 use euclid::error::ContractError;
 use euclid::msgs::vlp::base::{
@@ -17,7 +17,7 @@ use crate::state::{BALANCES, CHAIN_LP_TOKENS, POOL_KEY, STATE};
 pub fn query_simulate_swap(
     deps: Deps,
     asset_in: Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     next_swaps: Vec<NextSwapVlp>,
 ) -> Result<Binary, ContractError> {
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
@@ -86,8 +86,9 @@ pub fn query_total_fees_per_denom(deps: Deps, denom: String) -> Result<Binary, C
     let euclid_fees = total_fees_collected.euclid_fees.get_fee(denom.as_str());
 
     Ok(to_json_binary(&TotalFeesPerDenomResponse {
-        lp_fees,
-        euclid_fees,
+        lp_fees: Uint128::try_from(lp_fees).map_err(|_| ContractError::new("lp_fees overflow"))?,
+        euclid_fees: Uint128::try_from(euclid_fees)
+            .map_err(|_| ContractError::new("euclid_fees overflow"))?,
     })?)
 }
 
@@ -110,7 +111,8 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         fee: state.fee,
         total_fees_collected: state.total_fees_collected,
         last_updated: state.last_updated,
-        total_lp_tokens: state.total_lp_tokens,
+        total_lp_tokens: Uint128::try_from(state.total_lp_tokens)
+            .map_err(|_| ContractError::new("total_lp_tokens overflow"))?,
         pool_config: PoolConfig::Concentrated {
             fee_tier_bps,
             tick_spacing,
@@ -173,21 +175,27 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
 fn get_pool(
     state: &State,
     pool_key: PoolKey,
-    chain_lp_tokens: Uint128,
-    reserve_1: Uint128,
-    reserve_2: Uint128,
+    chain_lp_tokens: Uint256,
+    reserve_1: Uint256,
+    reserve_2: Uint256,
 ) -> Result<ConcentratedPoolResponse, ContractError> {
+    let r1 = calculate_amount_from_shares(reserve_1, chain_lp_tokens, state.total_lp_tokens)
+        .unwrap_or(Uint256::zero());
+    let r2 = calculate_amount_from_shares(reserve_2, chain_lp_tokens, state.total_lp_tokens)
+        .unwrap_or(Uint256::zero());
     Ok(ConcentratedPoolResponse {
         pool_key,
-        reserve_1: calculate_amount_from_shares(reserve_1, chain_lp_tokens, state.total_lp_tokens)
-            .unwrap_or(Uint128::zero()),
-        reserve_2: calculate_amount_from_shares(reserve_2, chain_lp_tokens, state.total_lp_tokens)
-            .unwrap_or(Uint128::zero()),
-        lp_shares: chain_lp_tokens,
+        reserve_1: Uint128::try_from(r1).map_err(|_| ContractError::new("reserve_1 overflow"))?,
+        reserve_2: Uint128::try_from(r2).map_err(|_| ContractError::new("reserve_2 overflow"))?,
+        lp_shares: Uint128::try_from(chain_lp_tokens)
+            .map_err(|_| ContractError::new("lp_shares overflow"))?,
     })
 }
 
-pub fn extract_token_amount(liquidity: &PairWithAmount, pair: &Pair) -> (Uint128, Uint128) {
+pub fn extract_token_amount(
+    liquidity: &PairWithAmount,
+    pair: &Pair,
+) -> Result<(Uint128, Uint128), ContractError> {
     let token_1_liquidity = if liquidity.token_1.token == pair.token_1 {
         liquidity.token_1.amount
     } else {
@@ -200,5 +208,10 @@ pub fn extract_token_amount(liquidity: &PairWithAmount, pair: &Pair) -> (Uint128
         liquidity.token_1.amount
     };
 
-    (token_1_liquidity, token_2_liquidity)
+    Ok((
+        Uint128::try_from(token_1_liquidity)
+            .map_err(|_| ContractError::new("token_1 amount overflow"))?,
+        Uint128::try_from(token_2_liquidity)
+            .map_err(|_| ContractError::new("token_2 amount overflow"))?,
+    ))
 }

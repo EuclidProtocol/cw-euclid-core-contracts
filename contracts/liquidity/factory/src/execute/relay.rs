@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
-    Response, StdError, SubMsg, Uint128, WasmMsg,
+    Response, StdError, SubMsg, Uint256, WasmMsg,
 };
 use euclid::{
     error::ContractError,
@@ -41,6 +41,7 @@ pub fn execute_send_packet(
     ack_response: Option<Binary>,
     sender: Addr,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Only contract can call this function internally
     ensure!(
         info.sender == env.contract.address,
@@ -88,6 +89,7 @@ pub fn execute_receive_packet(
     destination_port: String,
     timeout: u64,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == state.relayer_contract,
@@ -110,7 +112,7 @@ pub fn execute_receive_packet(
         }
     );
     // Save the processed sequence to avoid duplicate events
-    processed_sequence_key.save(deps.storage, &Uint128::from(env.block.height))?;
+    processed_sequence_key.save(deps.storage, &Uint256::from(env.block.height))?;
 
     let receive_packet_event = receive_packet_event(sequence, &source_port, &destination_port);
 
@@ -156,6 +158,7 @@ pub fn execute_receive_packet_internal_callback(
     msg: Binary,
     timeout: u64,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     ensure!(
         info.sender == env.contract.address,
         ContractError::Unauthorized {}
@@ -176,12 +179,13 @@ pub fn execute_receive_acknowledgement(
     deps: &mut DepsMut,
     info: MessageInfo,
     env: Env,
-    msg: Binary,
+    _msg: Binary,
     sequence: u128,
     source_port: String,
     destination_port: String,
     ack: Binary,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == state.relayer_contract,
@@ -199,13 +203,10 @@ pub fn execute_receive_acknowledgement(
     let (existing_request, sender) =
         remove_pending_packet_and_decrement_count(deps.storage, sequence)?;
 
-    // TODO: This is lost during relayer encoding and decoding, fix this once relayer is stable
-    // ensure!(
-    //     existing_request == msg,
-    //     ContractError::new("Ack source msg doesn't match with existing request")
-    // );
-
-    let msg: RouterCrossChainExecuteMsg = from_json(msg)?;
+    // Decode the locally-stored original message; the bytes returned in the ack
+    // may have been re-encoded by intermediate chains (e.g. EVM) and are not
+    // guaranteed to be byte-identical even when semantically equivalent.
+    let msg: RouterCrossChainExecuteMsg = from_json(&existing_request.original_msg)?;
 
     let response =
         ack_and_timeout::reusable_internal_ack_call(deps, env, msg, ack.clone(), state.is_native)?;
@@ -242,6 +243,7 @@ pub fn execute_native_receive_callback(
     info: MessageInfo,
     msg: Binary,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let msg: FactoryCrossChainExecuteMsg = from_json(msg)?;
     let state = STATE.load(deps.storage)?;
 

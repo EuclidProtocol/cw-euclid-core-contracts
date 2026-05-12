@@ -1,4 +1,4 @@
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint256};
 use cw_orch::prelude::*;
 
 use euclid::cross_chain_user::CrossChainUser;
@@ -28,7 +28,7 @@ impl ConcentratedPool {
             self.pool_key(),
             asset_in,
             asset_out,
-            Uint128::new(amount),
+            Uint256::from(amount),
         )
         .map_err(|e| format!("swap: {}", root_cause(&e)))?;
 

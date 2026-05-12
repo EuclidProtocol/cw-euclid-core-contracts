@@ -414,8 +414,9 @@ mod tests {
                     token: token.clone(),
                     token_type: TokenType::Native {
                         denom: "uatom".to_string(),
+                        decimals: None,
                     },
-                    amount: cosmwasm_std::Uint128::new(500),
+                    amount: cosmwasm_std::Uint256::from(500u128),
                 },
             )
             .unwrap();

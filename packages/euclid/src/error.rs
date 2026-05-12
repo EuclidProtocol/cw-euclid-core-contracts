@@ -2,13 +2,11 @@ use std::num::ParseIntError;
 
 use cosmwasm_std::{
     Addr, CheckedFromRatioError, CheckedMultiplyFractionError, CheckedMultiplyRatioError,
-    Decimal256, DivideByZeroError, OverflowError, StdError, Uint128,
+    Decimal256, DivideByZeroError, OverflowError, StdError, Uint256,
 };
 use cw20_base::ContractError as Cw20ContractError;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum Never {}
 #[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
@@ -81,18 +79,18 @@ pub enum ContractError {
     UnsupportedDenomination {},
 
     #[error("Limit exceeded: {limit} < {amount}")]
-    LimitExceeded { limit: Uint128, amount: Uint128 },
+    LimitExceeded { limit: Uint256, amount: Uint256 },
 
     #[error("Amount mismatch: expected {expected}, received {received}")]
     AmountMismatch {
-        expected: Uint128,
-        received: Uint128,
+        expected: Uint256,
+        received: Uint256,
     },
 
     #[error("Insufficient amount: min_amount {min_amount}, amount {amount}")]
     InsufficientAmount {
-        min_amount: Uint128,
-        amount: Uint128,
+        min_amount: Uint256,
+        amount: Uint256,
     },
 
     #[error("CannotEscrowVoucher")]
@@ -165,8 +163,8 @@ pub enum ContractError {
 
     #[error("Slippage has not been tolerated for set amount, amount: {amount}, min_amount_out: {min_amount_out}")]
     SlippageExceeded {
-        amount: Uint128,
-        min_amount_out: Uint128,
+        amount: Uint256,
+        min_amount_out: Uint256,
     },
 
     #[error("Invalid Liquidity Ratio")]
@@ -268,8 +266,8 @@ pub enum ContractError {
     // END CW20 ERRORS
     #[error("Min received {received} is less than expected {expected}")]
     MinReceived {
-        expected: Uint128,
-        received: Uint128,
+        expected: Uint256,
+        received: Uint256,
     },
 
     #[error("Invalid Address: {address} {msg}")]
@@ -283,6 +281,12 @@ pub enum ContractError {
 
     #[error("Rate limit exceeded: limit {limit}, actual {actual}")]
     RateLimitExceeded { limit: u128, actual: u128 },
+
+    #[error("Invalid Decimals: {decimals}")]
+    InvalidDecimals { decimals: u32 },
+
+    #[error("Decimals mismatch: expected {expected}, received {received}")]
+    DecimalsMismatch { expected: u32, received: u32 },
 }
 
 impl ContractError {
@@ -290,6 +294,12 @@ impl ContractError {
         ContractError::Generic {
             err: err.to_string(),
         }
+    }
+}
+
+impl From<cw_utils::PaymentError> for ContractError {
+    fn from(err: cw_utils::PaymentError) -> Self {
+        ContractError::Std(StdError::generic_err(err.to_string()))
     }
 }
 

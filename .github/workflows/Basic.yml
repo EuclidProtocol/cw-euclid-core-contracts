@@ -1,4 +1,3 @@
-
 name: Basic
 
 on:
@@ -13,57 +12,35 @@ on:
       - gc/clp # Temporary branch for CLV pool testing
     types: [opened, synchronize, reopened]
 
+concurrency:
+  group: basic-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          profile: minimal
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          override: true
+          toolchain: 1.86.0
+          rustflags: ""
+          cache: true
 
       - name: Run unit tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: unit-test
-          args: --locked
+        run: cargo unit-test --locked
         env:
           RUST_BACKTRACE: 1
 
-      - name: Compile WASM contract
-        uses: actions-rs/cargo@v1
-        with:
-          command: wasm
-          args: --locked
+      - name: Run integration tests
+        run: cargo test -p tests-integration
         env:
-          RUSTFLAGS: "-C link-arg=-s"
-
-  fuzz:
-    name: Fuzz Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          RUST_BACKTRACE: 1
 
       - name: Run fuzz tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p tests-fuzz -- --test-threads=1
+        run: cargo test -p tests-fuzz
         env:
           RUST_BACKTRACE: 1
 
@@ -71,25 +48,36 @@ jobs:
     name: Lints
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          toolchain: 1.86.0
           components: rustfmt, clippy
+          rustflags: ""
+          cache: true
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
+        run: cargo clippy -- -W clippy::pedantic
+
+  compile:
+    name: Compile WASM
+    needs: [test, lints]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          command: clippy
-          args: -- -W clippy::pedantic
+          toolchain: 1.86.0
+          target: wasm32-unknown-unknown
+          rustflags: ""
+          cache: true
+
+      - name: Compile WASM contracts
+        run: cargo wasm --locked
+        env:
+          RUSTFLAGS: "-C link-arg=-s"

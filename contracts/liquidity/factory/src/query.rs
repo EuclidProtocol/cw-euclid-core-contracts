@@ -1,23 +1,27 @@
-use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Env, Order, Uint128};
+use cosmwasm_std::{to_json_binary, Addr, Binary, Deps, Env, Order, Uint256};
 use cw_storage_plus::Bound;
 use euclid::{
     chain::{ChainType, CosmosChain},
     error::ContractError,
     msgs::factory::{
         AllConcentratedPoolsResponse, AllPoolsResponse, AllTokensResponse,
-        ConcentratedPoolVlpResponse, GetConcentratedVlpResponse, GetEscrowResponse,
+        ConcentratedPoolVlpResponse, FeeBracket, GetConcentratedVlpResponse, GetEscrowResponse,
         GetLPTokenResponse, GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse,
-        GetPendingSwapsResponse, GetPositionTokenContractResponse, GetVlpResponse,
-        PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse, PoolVlpResponse,
-        StateResponse,
+        GetPendingSwapsResponse, GetPositionTokenContractResponse, GetRateLimitStateResponse,
+        GetUserRateLimitResponse, GetVlpResponse, PartnerFeesCollectedPerDenomResponse,
+        PartnerFeesCollectedResponse, PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
 };
 
-use crate::state::{
-    ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS,
-    POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+use crate::{
+    rate_limit::{RATE_LIMIT_STATE, USER_FREE_LIMIT, USER_PENDING_PACKETS_COUNT},
+    state::{
+        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
+        PENDING_SWAPS, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_LP_TOKEN,
+    },
 };
 use euclid::msgs::vlp::base::PoolKey;
 
@@ -150,7 +154,7 @@ pub fn query_all_tokens(deps: Deps) -> Result<Binary, ContractError> {
 pub fn pending_swaps(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);
@@ -171,7 +175,7 @@ pub fn pending_swaps(
 pub fn pending_liquidity(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);
@@ -193,7 +197,7 @@ pub fn pending_liquidity(
 pub fn pending_remove_liquidity(
     deps: Deps,
     user: Addr,
-    pagination: Pagination<Uint128>,
+    pagination: Pagination<Uint256>,
 ) -> Result<Binary, ContractError> {
     let min = pagination.min.map(Bound::inclusive);
     let max = pagination.max.map(Bound::inclusive);
@@ -208,6 +212,34 @@ pub fn pending_remove_liquidity(
 
     Ok(to_json_binary(&GetPendingRemoveLiquidityResponse {
         pending_remove_liquidity,
+    })?)
+}
+
+pub fn get_rate_limit_state(deps: Deps) -> Result<Binary, ContractError> {
+    let state = RATE_LIMIT_STATE.load(deps.storage)?;
+    let fee_brackets = state
+        .fee_brackets
+        .into_iter()
+        .map(|b| FeeBracket {
+            threshold: b.threshold,
+            fee: b.fee,
+        })
+        .collect();
+    Ok(to_json_binary(&GetRateLimitStateResponse {
+        free_limit: state.free_limit,
+        fee_brackets,
+    })?)
+}
+
+pub fn get_user_rate_limit(deps: Deps, user: Addr) -> Result<Binary, ContractError> {
+    let free_limit = USER_FREE_LIMIT.may_load(deps.storage, user.clone())?;
+    let pending_packets = USER_PENDING_PACKETS_COUNT
+        .may_load(deps.storage, user.clone())?
+        .unwrap_or(0);
+    Ok(to_json_binary(&GetUserRateLimitResponse {
+        user,
+        free_limit,
+        pending_packets,
     })?)
 }
 
@@ -226,7 +258,7 @@ pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError>
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, ContractResult, SystemResult, Uint128, WasmQuery,
+        to_json_binary, Addr, ContractResult, SystemResult, Uint128, Uint256, WasmQuery,
     };
     use euclid::{
         chain::ChainUid,
@@ -348,6 +380,7 @@ mod tests {
                 let resp = AllowedDenomsResponse {
                     denoms: vec![TokenType::Native {
                         denom: "uusdc".to_string(),
+                        decimals: None,
                     }],
                 };
                 SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
@@ -539,7 +572,7 @@ mod tests {
             relayer_contract: Addr::unchecked(TEST_RELAYER),
             rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),
             rate_limit_fee_denom: "uusd".to_string(),
-            rate_limit_free_limit: Uint128::new(100),
+            rate_limit_free_limit: Uint256::from(100u128),
         };
         crate::contract::instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 

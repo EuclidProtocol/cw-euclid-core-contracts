@@ -1,44 +1,37 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::Addr;
 use cw_orch::prelude::*;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::vlp::concentrated::msg::{PositionResponse, QueryMsg as ConcentratedQueryMsg};
 use rstest::rstest;
+use rstest_reuse::apply;
 
-use super::utils::first_position_id;
+use super::utils::{first_position_id, scaled_pair, setup_clp};
 use crate::helpers::chains::get_concentrated_vlp;
 use crate::helpers::factory::{
     add_concentrated_liquidity, create_concentrated_pool, get_position_token, list_position_ids,
     remove_concentrated_liquidity,
 };
-use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
-use crate::tests_reusable::constants::{
-    FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
-};
 use crate::tests_reusable::factory_register::FactorySetupMode;
+use crate::tests_reusable::test_macros::clp_matrix;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
-    fn test_position_ids_are_sequential(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
-    ) {
+    #[apply(clp_matrix)]
+    fn test_position_ids_are_sequential(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
+            setup_clp(mode, decimals_a, decimals_b);
 
         // Pool creation mints position #1
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         // Add a second position at different ticks -> ID should be 2
-        let pair2 = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
+        let pair2 = scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b);
         add_concentrated_liquidity(
             &factory,
             &router,
@@ -52,7 +45,7 @@ mod tests {
         .unwrap();
 
         // Add a third position at yet another range -> ID should be 3
-        let pair3 = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
+        let pair3 = scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b);
         add_concentrated_liquidity(
             &factory,
             &router,
@@ -84,22 +77,18 @@ mod tests {
         assert_eq!(parsed[2], 3, "third position ID should be 3");
     }
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    fn test_position_id_maps_to_correct_vlp(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
-    ) {
+    #[apply(clp_matrix)]
+    fn test_position_id_maps_to_correct_vlp(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
+            setup_clp(mode, decimals_a, decimals_b);
 
         // Create two pools with different fee tiers
-        let pair_500 = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        let pair_500 = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key_500 =
             create_concentrated_pool(&factory, &router, pair_500, 500, 10, 100).unwrap();
 
-        let pair_3000 = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        let pair_3000 = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key_3000 =
             create_concentrated_pool(&factory, &router, pair_3000, 3_000, 60, 100).unwrap();
 
@@ -146,19 +135,14 @@ mod tests {
         );
     }
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
-    fn test_burned_position_id_not_reused(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
-    ) {
+    #[apply(clp_matrix)]
+    fn test_burned_position_id_not_reused(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
+            setup_clp(mode, decimals_a, decimals_b);
 
         // Pool creation mints the initial position
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let initial_id = first_position_id(&factory);
@@ -183,7 +167,7 @@ mod tests {
         .unwrap();
 
         // Create a new position at different ticks
-        let pair2 = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
+        let pair2 = scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b);
         add_concentrated_liquidity(
             &factory,
             &router,
@@ -213,19 +197,17 @@ mod tests {
         );
     }
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
+    #[apply(clp_matrix)]
     fn test_position_id_consistent_across_add_operations(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
+        mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
+            setup_clp(mode, decimals_a, decimals_b);
 
         // Pool creation mints position #1
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let position_id = first_position_id(&factory);
@@ -239,7 +221,7 @@ mod tests {
             .unwrap();
 
         // Add more liquidity to the same position using Some(position_id) and same tick range
-        let pair2 = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
+        let pair2 = scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b);
         add_concentrated_liquidity(
             &factory,
             &router,

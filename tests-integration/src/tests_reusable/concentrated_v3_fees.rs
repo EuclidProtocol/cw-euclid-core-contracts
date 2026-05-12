@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
@@ -41,7 +41,7 @@ fn test_collect_fees_is_idempotent(#[case] mode: FactorySetupMode, #[case] facto
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(20_000),
+        Uint256::from(20_000u128),
     );
 
     let sender = CrossChainUser::new(
@@ -175,7 +175,7 @@ fn test_out_of_range_position_collects_zero(
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(2_000),
+        Uint256::from(2_000u128),
     );
 
     let sender = CrossChainUser::new(

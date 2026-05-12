@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 use cw_orch::prelude::*;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::vlp::concentrated::msg::{ObserveResponse, QueryMsg as ConcentratedQueryMsg};
@@ -31,7 +31,7 @@ fn test_observe_returns_valid_cumulatives(
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(2_000),
+        Uint256::from(2_000u128),
     );
     execute_concentrated_swap(
         &factory,
@@ -39,7 +39,7 @@ fn test_observe_returns_valid_cumulatives(
         pool_key.clone(),
         token_b.clone(),
         token_a.token.clone(),
-        Uint128::new(1_000),
+        Uint256::from(1_000u128),
     );
 
     let vlp = get_concentrated_vlp(

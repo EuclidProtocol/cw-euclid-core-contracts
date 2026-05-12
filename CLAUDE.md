@@ -56,6 +56,45 @@ User → Factory (chain) →[IBC]→ Router (VSL) → VLP contract
                          ←[ACK]←
 ```
 
+1. User calls `ExecuteMsg` on Router (e.g., swap, transfer, add liquidity)
+2. Router creates an IBC packet (`SendPacket`) to the target chain's Factory
+3. Factory executes the operation (escrow, VLP interaction)
+4. Factory sends acknowledgment back
+5. Router processes `AcknowledgePacket` — success path releases vouchers or triggers callbacks; timeout path reverts
+
+### Key State in Router (`contracts/hub/router/src/state.rs`)
+
+Storage items/maps:
+- `VLPS: Map<(String, String), Addr>` — registered VLP pool addresses (keyed by token pair)
+- `TOKEN_VLPS: Map<Token, Vec<Addr>>` — all VLPs associated with a given token
+- `PENDING_SWAPS: Map<String, RouterCrossChainSwapExecuteMsg>` — in-flight cross-chain swaps (keyed by tx_id)
+- `PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher>` — in-flight voucher releases awaiting IBC ack
+- `ESCROW_BALANCES: Map<(String, ChainUid), Uint128>` — **DEPRECATED** (moved to virtual_balance contract)
+- `LOCKED_CHAINS: Item<Vec<ChainUid>>` — chains paused for emergency stops
+- `DEFAULT_RELEASE_FEE: Item<Uint128>` — fallback release fee when no per-chain fee is set
+- `RELEASE_FEES: Map<(Token, ChainUid), Uint128>` — per-(token, chain) release fee overrides
+- `CHAIN_TIMEOUT_SECONDS: Map<ChainUid, u64>` — per-chain IBC packet timeout in seconds
+
+### IBC Module (`contracts/hub/router/src/ibc/`)
+
+- `channel.rs` — channel open/close handshake
+- `receive/` — handlers for incoming packets: `swap.rs`, `token.rs`, `pool.rs`, `base.rs`
+- `ack_and_timeout.rs` — success/failure callbacks per packet type
+
+### Reply Pattern
+
+Contracts use CosmWasm's `SubMsg` + `reply` for async outcomes (VLP instantiation, liquidity ops, cross-chain callbacks). Reply IDs are defined as constants at the top of `contract.rs` or `reply.rs`.
+
+### Admin Pattern
+
+```rust
+pub struct EuclidAdmin {
+    general_admin: Addr,   // day-to-day operations
+    fee_admin: Addr, // fee management
+    migration_admin: Addr, // contract migrations
+}
+```
+
 - IBC messages: `RouterCrossChainExecuteMsg` (packages/euclid_ibc/src/router_ibc.rs)
 - ACK messages: `FactoryCrossChainExecuteMsg` (packages/euclid_ibc/src/factory_ibc.rs)
 - Native chains skip IBC, use `NativeReceiveCallback` directly
@@ -95,3 +134,9 @@ User → Factory (chain) →[IBC]→ Router (VSL) → VLP contract
 - Non-wasm dependencies (cw-orch, cw-multi-test, mock) are gated behind `cfg(not(target_arch = "wasm32"))`.
 - All contracts use `library` feature flag to disable entry point exports when used as a dependency.
 - Pool math uses `Uint512`/`Uint256` for precision. Concentrated VLP uses `2^96` and `2^128` fixed-point scaling.
+
+When writing unit tests for a contract, use the `unit-test-writer` agent. It understands the project's test conventions (rstest parameterization, `MockDeps` fixtures, `init` helpers, state assertions). Invoke it via the `/write-tests <contract-path>` skill.
+
+### Changelog
+
+The project maintains a `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/) format. Each release is named after a star with a status (in progress, freezed, released). When making contract or package changes (not test only), add an entry under the current "in progress" section in the appropriate category (Added, Changed, Fixed, Deprecated, Removed, Security). Prefix entries with the contract or package name in brackets, e.g. `[router]`, `[euclid]`. One line per logical change. Event changes are especially important to track as they affect backend indexing.

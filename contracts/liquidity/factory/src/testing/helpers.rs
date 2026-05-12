@@ -55,7 +55,7 @@ pub fn init(deps: &mut MockDeps) -> Response {
         relayer_contract: relayer,
         rate_limit_fee_recipient,
         rate_limit_fee_denom: "uusd".to_string(),
-        rate_limit_free_limit: cosmwasm_std::Uint128::new(100),
+        rate_limit_free_limit: cosmwasm_std::Uint256::from(100u128),
     };
 
     let info = message_info(&sender, &[]);
@@ -142,6 +142,7 @@ pub fn native_token(token_id: &str, denom: &str) -> euclid::token::TokenWithDeno
         token: Token::create(token_id.to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: denom.to_string(),
+            decimals: None,
         },
     }
 }

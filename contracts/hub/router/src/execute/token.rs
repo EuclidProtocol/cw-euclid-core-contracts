@@ -1,24 +1,29 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, to_json_string, Binary, DepsMut, Env, Response, SubMsg, Uint128,
+    ensure, to_json_binary, to_json_string, Addr, Binary, DepsMut, Env, Response, SubMsg, Uint256,
     WasmMsg,
 };
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     limit::Limit,
-    msgs::{cross_chain_config::CrossChainConfig, router::TokenDenom},
+    msgs::cross_chain_config::CrossChainConfig,
+    normalize::{normalize_token_to_voucher, normalize_voucher_to_token},
     recipient::Recipient,
     token::Token,
     utils::tx::generate_tx,
-    voucher::BalanceKey,
 };
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 
+use euclid::msgs::virtual_balance::msg::{
+    ExecuteBurn, GetEscrowBalanceResponse, QueryMsg as VirtualBalanceQueryMsg,
+};
+
 use crate::{
     helpers::release::get_release_fee_storage,
+    query::query_token_metadata_by_denom,
     state::{
-        PendingReleaseVoucher, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, ESCROW_BALANCES,
-        LOCKED_CHAINS, PENDING_RELEASE_VOUCHER, TOKEN_DENOMS, VIRTUAL_BALANCE_CONTRACT,
+        PendingReleaseVoucher, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, LOCKED_CHAINS,
+        PENDING_RELEASE_VOUCHER, VIRTUAL_BALANCE_CONTRACT,
     },
 };
 
@@ -27,20 +32,31 @@ pub fn execute_withdraw_voucher(
     env: Env,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     recipient: Recipient,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
-    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?.into_string();
-    let available_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
     let ack_response = cross_chain_config.ack_response;
     let timeout = cross_chain_config.timeout;
-    let tx_id = generate_tx(deps, &env, &sender)?;
+    let tx_id = generate_tx(deps, &env, &sender.clone())?;
+    let escrow_balance = deps
+        .querier
+        .query_wasm_smart::<GetEscrowBalanceResponse>(
+            virtual_balance_address.clone(),
+            &VirtualBalanceQueryMsg::GetEscrowBalance {
+                token_id: token.to_string(),
+                chain_uid: recipient.recipient.chain_uid.clone(),
+                token_type: recipient.denom.clone(),
+            },
+        )
+        .map(|r| r.balance)
+        .unwrap_or_default();
     let (msgs, released_amount) = _release_voucher(
         deps,
         &env,
-        virtual_balance_address,
-        available_denoms,
+        &virtual_balance_address,
+        escrow_balance,
         sender,
         token,
         amount,
@@ -60,20 +76,18 @@ pub fn execute_transfer_voucher(
     env: Env,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<Recipient>,
 ) -> Result<Response, ContractError> {
-    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?.into_string();
+    let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     let mut response = Response::new().add_attribute("recipients", to_json_string(&recipients)?);
 
     let mut remaining_withdraw_amount = amount;
 
     let mut recipients_iterator = recipients.into_iter().peekable();
-    let available_denoms = TOKEN_DENOMS.load(deps.storage, token.clone())?;
-
-    let mut release_initiated_amount = Uint128::zero();
-    let mut transferred_amount = Uint128::zero();
+    let mut release_initiated_amount = Uint256::zero();
+    let mut transferred_amount = Uint256::zero();
 
     let mut index = 0;
 
@@ -89,7 +103,7 @@ pub fn execute_transfer_voucher(
         // We will transfer vouchers to the recipient
         if recipient.denom.is_voucher() {
             let (transfer_voucher_msgs, transfer_amount) = _transfer_voucher_as_voucher(
-                virtual_balance_address.clone(),
+                &virtual_balance_address,
                 sender.clone(),
                 token.clone(),
                 remaining_withdraw_amount,
@@ -109,11 +123,23 @@ pub fn execute_transfer_voucher(
             let tx_id = generate_tx(deps, &env, &sender.clone())?;
             let timeout = CHAIN_TIMEOUT_SECONDS
                 .may_load(deps.storage, recipient.recipient.chain_uid.clone())?;
+            let escrow_balance = deps
+                .querier
+                .query_wasm_smart::<GetEscrowBalanceResponse>(
+                    virtual_balance_address.clone(),
+                    &VirtualBalanceQueryMsg::GetEscrowBalance {
+                        token_id: token.to_string(),
+                        chain_uid: recipient.recipient.chain_uid.clone(),
+                        token_type: recipient.denom.clone(),
+                    },
+                )
+                .map(|r| r.balance)
+                .unwrap_or_default();
             let (release_msgs, release_amount) = _release_voucher(
                 deps,
                 &env,
-                virtual_balance_address.clone(),
-                available_denoms.clone(),
+                &virtual_balance_address,
+                escrow_balance,
                 sender.clone(),
                 token.clone(),
                 remaining_withdraw_amount,
@@ -151,12 +177,12 @@ pub fn execute_transfer_voucher(
 }
 
 pub fn _transfer_voucher_as_voucher(
-    virtual_balance_address: String,
+    virtual_balance_address: &Addr,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     recipient: Recipient,
-) -> Result<(Vec<SubMsg>, Uint128), ContractError> {
+) -> Result<(Vec<SubMsg>, Uint256), ContractError> {
     recipient.validate()?;
     ensure!(
         recipient.denom.is_voucher(),
@@ -179,7 +205,7 @@ pub fn _transfer_voucher_as_voucher(
         Limit::Dynamic(_) => amount,
     };
     if amount.is_zero() {
-        return Ok((vec![], Uint128::zero()));
+        return Ok((vec![], Uint256::zero()));
     }
     let forwarding_msg = match recipient.forwarding_message {
         Some(msg) => Some(Binary::from_base64(msg.as_str())?),
@@ -191,7 +217,7 @@ pub fn _transfer_voucher_as_voucher(
     }
     let transfer_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Transfer(
         euclid::msgs::virtual_balance::msg::ExecuteTransfer {
-            amount,
+            amount: amount.into(),
             token_id: token.to_string(),
             sender: Some(sender.clone()),
             to: recipient.recipient.clone(),
@@ -201,7 +227,7 @@ pub fn _transfer_voucher_as_voucher(
     );
 
     let transfer_voucher_msg = WasmMsg::Execute {
-        contract_addr: virtual_balance_address,
+        contract_addr: virtual_balance_address.to_string(),
         msg: to_json_binary(&transfer_voucher_msg)?,
         funds: vec![],
     };
@@ -212,16 +238,16 @@ pub fn _transfer_voucher_as_voucher(
 pub fn _release_voucher(
     deps: &mut DepsMut,
     env: &Env,
-    virtual_balance_address: String,
-    available_denoms: Vec<TokenDenom>,
+    virtual_balance_address: &Addr,
+    escrow_balance: Uint256,
     sender: CrossChainUser,
     token: Token,
-    amount: Uint128,
+    voucher_amount: Uint256,
     recipient: Recipient,
     ack_response: Option<Binary>,
     timeout: Option<u64>,
     tx_id: String,
-) -> Result<(Vec<SubMsg>, Uint128), ContractError> {
+) -> Result<(Vec<SubMsg>, Uint256), ContractError> {
     recipient.validate()?;
     ensure!(
         !recipient.denom.is_voucher(),
@@ -233,50 +259,56 @@ pub fn _release_voucher(
         !locked_chains.contains(&recipient.recipient.chain_uid),
         ContractError::new("Chain is locked")
     );
-    // Ensure that the preferred denom is valid
+
+    let token_metadata = query_token_metadata_by_denom(
+        deps.as_ref(),
+        virtual_balance_address,
+        &token,
+        &recipient.recipient.chain_uid,
+        &recipient.denom,
+    )?;
+    // Ensure that denom is valid
     ensure!(
-        available_denoms
-            .iter()
-            .any(|x| x.token_type == recipient.denom.clone()
-                && x.chain_uid == recipient.recipient.chain_uid),
-        ContractError::InvalidDenom {}
+        token_metadata.allowed,
+        ContractError::new("Denom not allowed")
     );
 
-    let escrow_key =
-        ESCROW_BALANCES.key((token.to_string(), recipient.recipient.chain_uid.clone()));
-    let escrow_balance = escrow_key
-        .may_load(deps.storage)?
-        .unwrap_or(Uint128::zero());
+    let normalized_token_amount =
+        normalize_voucher_to_token(voucher_amount, token_metadata.token_type.get_decimals()?)?;
+
+    if normalized_token_amount.is_zero() && !voucher_amount.is_zero() {
+        return Ok((vec![], Uint256::zero()));
+    }
 
     // We cannot release more than escrow balance
-    let max_release_amount = amount.min(escrow_balance);
+    let max_release_amount = normalized_token_amount.min(escrow_balance);
 
     let release_amount = match recipient.amount {
-        Limit::LessThanOrEqual(limit) => max_release_amount.min(limit),
-        Limit::Equal(limit) => max_release_amount.min(limit),
+        Limit::LessThanOrEqual(limit) => max_release_amount.min(limit.into()),
+        Limit::Equal(limit) => max_release_amount.min(limit.into()),
         Limit::GreaterThanOrEqual(limit) => {
             ensure!(
-                max_release_amount.ge(&limit),
+                max_release_amount.ge(&limit.into()),
                 ContractError::InsufficientAmount {
                     min_amount: limit,
-                    amount
+                    amount: max_release_amount,
                 }
             );
             max_release_amount
         }
         Limit::Dynamic(_) => {
             ensure!(
-                max_release_amount.ge(&amount),
+                max_release_amount.ge(&normalized_token_amount),
                 ContractError::InsufficientAmount {
-                    min_amount: amount,
+                    min_amount: normalized_token_amount,
                     amount: max_release_amount
                 }
             );
-            amount
+            max_release_amount
         }
     };
     if release_amount.is_zero() {
-        return Ok((vec![], Uint128::zero()));
+        return Ok((vec![], Uint256::zero()));
     }
 
     let release_fee_amount = get_release_fee_storage(deps, &token, &recipient.recipient.chain_uid);
@@ -310,31 +342,29 @@ pub fn _release_voucher(
         ack_response,
     )?;
 
-    let burn_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Burn(
-        euclid::msgs::virtual_balance::msg::ExecuteBurn {
-            amount: release_amount,
-            balance_key: BalanceKey {
-                cross_chain_user: sender.clone(),
-                token_id: token.to_string(),
-            },
-        },
-    );
+    // Convert raw release_amount back to voucher units for burn and return
+    let voucher_release_amount =
+        normalize_token_to_voucher(release_amount, token_metadata.token_type.get_decimals()?)?;
+
+    let burn_voucher_msg = euclid::msgs::virtual_balance::msg::ExecuteMsg::Burn(ExecuteBurn {
+        voucher_amount: voucher_release_amount,
+        from_user: sender.clone(),
+        token_id: token.to_string(),
+        release_denom: recipient.denom.clone(),
+        release_chain_uid: recipient.recipient.chain_uid.clone(),
+    });
     let burn_voucher_msg = WasmMsg::Execute {
-        contract_addr: virtual_balance_address.clone(),
+        contract_addr: virtual_balance_address.to_string(),
         msg: to_json_binary(&burn_voucher_msg)?,
         funds: vec![],
     };
 
-    // Update escrow balance state
-    escrow_key.save(
-        deps.storage,
-        &escrow_balance.checked_sub(release_amount_after_fee)?,
-    )?;
+    // Escrow balance is decremented by virtual_balance during burn
 
     // Order matters here because we want to burn the vouchers before releasing to prevent any reentrancy attacks.
     Ok((
         vec![SubMsg::new(burn_voucher_msg), release_ibc_msg],
-        release_amount,
+        voucher_release_amount,
     ))
 }
 
@@ -342,7 +372,7 @@ pub fn _release_voucher(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_env},
-        Addr, Order, Uint128,
+        Addr, Order, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -356,7 +386,7 @@ mod tests {
 
     use crate::{
         contract::execute,
-        state::{ESCROW_BALANCES, LOCKED_CHAINS, PENDING_RELEASE_VOUCHER, RELEASE_FEES},
+        state::{PENDING_RELEASE_VOUCHER, RELEASE_FEES},
         testing::{
             fixtures::{initialized, transfer_deps, voucher_deps},
             helpers::{make_native_recipient, seed_virtual_balance, MockDeps},
@@ -364,73 +394,10 @@ mod tests {
     };
     use euclid::msgs::router::ExecuteMsg;
     use rstest::*;
-    // -----------------------------------------------------------------------
-    // WithdrawVoucher: error cases (table-driven)
-    // -----------------------------------------------------------------------
 
-    #[rstest]
-    #[case::invalid_denom("uatom", false, ContractError::InvalidDenom {})]
-    #[case::locked_chain("uusdc", true, ContractError::new("Chain is locked"))]
-    fn test_withdraw_voucher_error_cases(
-        mut initialized: MockDeps,
-        #[case] registered_denom: &str,
-        #[case] lock_chain: bool,
-        #[case] expected_error: ContractError,
-    ) {
-        use euclid::{
-            msgs::{cross_chain_config::CrossChainConfig, router::TokenDenom},
-            token::TokenType,
-        };
-
-        use crate::{
-            state::TOKEN_DENOMS,
-            testing::helpers::{seed_chain1_native, seed_virtual_balance},
-        };
-
-        let creator = initialized.api.addr_make("creator");
-        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
-        let token = Token::create("usdc".to_string()).unwrap();
-
-        seed_virtual_balance(&mut initialized);
-        seed_chain1_native(&mut initialized);
-        let locked = if lock_chain {
-            vec![chain_uid.clone()]
-        } else {
-            vec![]
-        };
-        LOCKED_CHAINS
-            .save(initialized.as_mut().storage, &locked)
-            .unwrap();
-        TOKEN_DENOMS
-            .save(
-                initialized.as_mut().storage,
-                token.clone(),
-                &vec![TokenDenom {
-                    chain_uid: chain_uid.clone(),
-                    token_type: TokenType::Native {
-                        denom: registered_denom.to_string(),
-                    },
-                }],
-            )
-            .unwrap();
-
-        let res = execute(
-            initialized.as_mut(),
-            mock_env(),
-            message_info(&creator, &[]),
-            ExecuteMsg::WithdrawVoucher {
-                token,
-                amount: Uint128::new(100),
-                recipient: make_native_recipient(
-                    chain_uid,
-                    "recipient",
-                    "uusdc",
-                    Uint128::new(100),
-                ),
-                cross_chain_config: CrossChainConfig::default(),
-            },
-        );
-        assert_eq!(res.unwrap_err(), expected_error);
+    /// Converts a raw 6-decimal token amount to 24-decimal voucher units.
+    fn to_voucher_units(raw: u128) -> Uint256 {
+        Uint256::from(raw) * Uint256::from(1_000_000_000_000_000_000u128)
     }
 
     #[rstest]
@@ -445,72 +412,17 @@ mod tests {
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
                 token: Token::create("usdc".to_string()).unwrap(),
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 recipient: make_native_recipient(
                     ChainUid::create("chain1".to_string()).unwrap(),
                     "recipient",
                     "uusdc",
-                    Uint128::new(100),
+                    Uint256::from(100u128),
                 ),
                 cross_chain_config: CrossChainConfig::default(),
             },
         );
         assert!(res.is_err());
-    }
-
-    #[test]
-    fn test_withdraw_voucher_happy_path() {
-        let mut deps = voucher_deps();
-        let creator = deps.api.addr_make("creator");
-        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
-        let token = Token::create("usdc".to_string()).unwrap();
-
-        let res = execute(
-            deps.as_mut(),
-            mock_env(),
-            message_info(&creator, &[]),
-            ExecuteMsg::WithdrawVoucher {
-                token: token.clone(),
-                amount: Uint128::new(200),
-                recipient: make_native_recipient(
-                    chain_uid.clone(),
-                    "recipientaddr",
-                    "uusdc",
-                    Uint128::new(200),
-                ),
-                cross_chain_config: CrossChainConfig::default(),
-            },
-        )
-        .unwrap();
-
-        assert_eq!(
-            res.messages.len(),
-            2,
-            "expected burn + ibc release submessages"
-        );
-
-        let escrow = ESCROW_BALANCES
-            .load(
-                deps.as_ref().storage,
-                (token.to_string(), chain_uid.clone()),
-            )
-            .unwrap();
-        assert_eq!(escrow, Uint128::new(300));
-
-        let pending: Vec<_> = PENDING_RELEASE_VOUCHER
-            .range(deps.as_ref().storage, None, None, Order::Ascending)
-            .collect::<Result<_, _>>()
-            .unwrap();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].1.total_amount, Uint128::new(200));
-        assert_eq!(pending[0].1.release_fee_amount, Uint128::zero());
-
-        let released_attr = res
-            .attributes
-            .iter()
-            .find(|a| a.key == "released_amount")
-            .unwrap();
-        assert_eq!(released_attr.value, "200");
     }
 
     #[test]
@@ -524,43 +436,43 @@ mod tests {
             .save(
                 deps.as_mut().storage,
                 (token.clone(), chain_uid.clone()),
-                &Uint128::new(10),
+                &Uint256::from(10u128),
             )
             .unwrap();
 
-        execute(
+        let res = execute(
             deps.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
                 token: token.clone(),
-                amount: Uint128::new(200),
+                amount: to_voucher_units(200),
                 recipient: make_native_recipient(
                     chain_uid.clone(),
                     "recipientaddr",
                     "uusdc",
-                    Uint128::new(200),
+                    Uint256::from(200u128),
                 ),
                 cross_chain_config: CrossChainConfig::default(),
             },
         )
         .unwrap();
 
-        // escrow reduced by release_amount_after_fee = 200 - 10 = 190
-        let escrow = ESCROW_BALANCES
-            .load(
-                deps.as_ref().storage,
-                (token.to_string(), chain_uid.clone()),
-            )
-            .unwrap();
-        assert_eq!(escrow, Uint128::new(310));
-
         let pending: Vec<_> = PENDING_RELEASE_VOUCHER
             .range(deps.as_ref().storage, None, None, Order::Ascending)
             .collect::<Result<_, _>>()
             .unwrap();
-        assert_eq!(pending[0].1.total_amount, Uint128::new(200));
-        assert_eq!(pending[0].1.release_fee_amount, Uint128::new(10));
+        assert_eq!(pending[0].1.total_amount, Uint256::from(200u128));
+        assert_eq!(pending[0].1.release_fee_amount, Uint256::from(10u128));
+
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "released_amount")
+                .unwrap()
+                .value,
+            to_voucher_units(200).to_string()
+        );
     }
     // -----------------------------------------------------------------------
     // TransferVoucher
@@ -578,14 +490,17 @@ mod tests {
             message_info(&creator, &[]),
             ExecuteMsg::TransferVoucher {
                 token: Token::create("usdc".to_string()).unwrap(),
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 recipient: vec![euclid::recipient::Recipient {
                     recipient: euclid::cross_chain_user::CrossChainUser::new(
-                        ChainUid::vsl_chain_uid().unwrap(),
+                        ChainUid::create("unregistered".to_string()).unwrap(),
                         "recipient_addr".to_string(),
                     ),
-                    amount: Limit::LessThanOrEqual(Uint128::new(100)),
-                    denom: TokenType::Voucher {},
+                    amount: Limit::LessThanOrEqual(Uint256::from(100u128)),
+                    denom: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                        decimals: None,
+                    },
                     forwarding_message: None,
                     unsafe_refund_as_voucher: None,
                 }],
@@ -606,13 +521,13 @@ mod tests {
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
                 token,
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 recipient: vec![euclid::recipient::Recipient {
                     recipient: euclid::cross_chain_user::CrossChainUser::new(
                         ChainUid::vsl_chain_uid().unwrap(),
                         "recipient_addr".to_string(),
                     ),
-                    amount: Limit::LessThanOrEqual(Uint128::new(100)),
+                    amount: Limit::LessThanOrEqual(Uint256::from(100u128)),
                     denom: TokenType::Voucher {},
                     forwarding_message: None,
                     unsafe_refund_as_voucher: None,
@@ -656,13 +571,13 @@ mod tests {
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
                 token,
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 recipient: vec![euclid::recipient::Recipient {
                     recipient: euclid::cross_chain_user::CrossChainUser::new(
                         ChainUid::vsl_chain_uid().unwrap(),
                         sender.to_string(),
                     ),
-                    amount: Limit::LessThanOrEqual(Uint128::new(100)),
+                    amount: Limit::LessThanOrEqual(Uint256::from(100u128)),
                     denom: TokenType::Voucher {},
                     forwarding_message: None,
                     unsafe_refund_as_voucher: None,
@@ -690,10 +605,10 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// When the requested amount exceeds the escrow balance the release is
-    /// silently capped at the available escrow.
+    /// capped at the available escrow.
     #[test]
     fn test_withdraw_voucher_capped_at_escrow_balance() {
-        let mut deps = voucher_deps(); // escrow = 500
+        let mut deps = voucher_deps(); // escrow = 500 raw tokens (6 decimals)
         let creator = deps.api.addr_make("creator");
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let token = Token::create("usdc".to_string()).unwrap();
@@ -704,63 +619,58 @@ mod tests {
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
                 token: token.clone(),
-                amount: Uint128::new(1_000),
+                amount: to_voucher_units(1_000),
                 recipient: make_native_recipient(
                     chain_uid.clone(),
                     "recipientaddr",
                     "uusdc",
-                    Uint128::new(1_000),
+                    Uint256::from(1_000u128),
                 ),
                 cross_chain_config: CrossChainConfig::default(),
             },
         )
         .unwrap();
 
-        // Escrow fully drained (not negative).
-        let escrow = ESCROW_BALANCES
-            .load(deps.as_ref().storage, (token.to_string(), chain_uid))
-            .unwrap();
-        assert_eq!(escrow, Uint128::zero());
-
-        // PENDING_RELEASE records the actual released amount (500), not the requested 1000.
+        // PENDING_RELEASE records the actual released amount in raw token units (500, not 1000).
         let pending: Vec<_> = PENDING_RELEASE_VOUCHER
             .range(deps.as_ref().storage, None, None, Order::Ascending)
             .collect::<Result<_, _>>()
             .unwrap();
-        assert_eq!(pending[0].1.total_amount, Uint128::new(500));
+        assert_eq!(pending[0].1.total_amount, Uint256::from(500u128));
 
-        // released_amount attribute also reflects the cap.
+        // released_amount attribute is in voucher units (24-decimal).
         assert_eq!(
             res.attributes
                 .iter()
                 .find(|a| a.key == "released_amount")
                 .unwrap()
                 .value,
-            "500"
+            to_voucher_units(500).to_string()
         );
     }
 
     /// GreaterThanOrEqual limit fails when the escrow can't satisfy the minimum.
     #[test]
     fn test_withdraw_voucher_gte_limit_fails_when_escrow_too_low() {
-        let mut deps = voucher_deps(); // escrow = 500
+        let mut deps = voucher_deps(); // escrow = 500 raw tokens
         let creator = deps.api.addr_make("creator");
         let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
         let token = Token::create("usdc".to_string()).unwrap();
 
-        // Request 200 but require at least 600 (escrow=500 < 600).
+        // Request 200 raw tokens worth of vouchers but require at least 600 raw (escrow=500 < 600).
         let res = execute(
             deps.as_mut(),
             mock_env(),
             message_info(&creator, &[]),
             ExecuteMsg::WithdrawVoucher {
                 token,
-                amount: Uint128::new(200),
+                amount: to_voucher_units(200),
                 recipient: Recipient {
                     recipient: CrossChainUser::new(chain_uid, "recipientaddr".to_string()),
-                    amount: Limit::GreaterThanOrEqual(Uint128::new(600)),
+                    amount: Limit::GreaterThanOrEqual(Uint256::from(600u128)),
                     denom: TokenType::Native {
                         denom: "uusdc".to_string(),
+                        decimals: None,
                     },
                     forwarding_message: None,
                     unsafe_refund_as_voucher: None,
@@ -794,18 +704,18 @@ mod tests {
             message_info(&sender, &[]),
             ExecuteMsg::TransferVoucher {
                 token,
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 recipient: vec![
                     Recipient {
                         recipient: CrossChainUser::new(vsl_chain.clone(), "addr_one".to_string()),
-                        amount: Limit::LessThanOrEqual(Uint128::new(60)),
+                        amount: Limit::LessThanOrEqual(Uint256::from(60u128)),
                         denom: TokenType::Voucher {},
                         forwarding_message: None,
                         unsafe_refund_as_voucher: None,
                     },
                     Recipient {
                         recipient: CrossChainUser::new(vsl_chain, "addr_two".to_string()),
-                        amount: Limit::LessThanOrEqual(Uint128::new(100)),
+                        amount: Limit::LessThanOrEqual(Uint256::from(100u128)),
                         denom: TokenType::Voucher {},
                         forwarding_message: None,
                         unsafe_refund_as_voucher: None,
@@ -830,5 +740,48 @@ mod tests {
         assert_eq!(attrs["transfer_id_0_amount"], "60");
         assert_eq!(attrs["transfer_id_1_amount"], "40");
         assert_eq!(attrs["transferred_amount"], "100");
+    }
+
+    // -----------------------------------------------------------------------
+    // Truncation guard (Bug #4 from review)
+    // -----------------------------------------------------------------------
+
+    /// Voucher amount too small to produce any raw tokens after normalization
+    /// Dust amounts that normalize to zero are skipped gracefully, not errored.
+    #[test]
+    fn test_withdraw_voucher_dust_amount_skips() {
+        let mut deps = voucher_deps(); // 6-decimal token, escrow = 500
+        let creator = deps.api.addr_make("creator");
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let token = Token::create("usdc".to_string()).unwrap();
+
+        // 999 voucher units (24-dec). normalize_voucher_to_token(999, 6) = 999 / 10^18 = 0.
+        let dust_amount = Uint256::from(999u128);
+
+        let res = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::WithdrawVoucher {
+                token,
+                amount: dust_amount,
+                recipient: make_native_recipient(
+                    chain_uid,
+                    "recipientaddr",
+                    "uusdc",
+                    Uint256::from(999u128),
+                ),
+                cross_chain_config: CrossChainConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "released_amount")
+                .map(|a| a.value.as_str()),
+            Some("0")
+        );
     }
 }

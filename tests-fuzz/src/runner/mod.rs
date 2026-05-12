@@ -98,12 +98,18 @@ impl<P: FuzzPool> FuzzRunner<P> {
         if result.all_passed() {
             return;
         }
+        let details: Vec<String> = result
+            .checks
+            .iter()
+            .filter(|c| !c.passed)
+            .map(|c| format!("  {} — {}", c.name, c.detail))
+            .collect();
         panic!(
-            "Transition invariant violated at op {} ({:?}, seed={}): {:?}",
+            "Transition invariant violated at op {} ({:?}, seed={}):\n{}",
             op_idx,
             op,
             self.seed,
-            result.failed_names()
+            details.join("\n")
         );
     }
 
@@ -245,10 +251,10 @@ impl<P: FuzzPool> FuzzRunner<P> {
             FULL_CHECK_INTERVAL,
         );
 
-        // Take initial light snapshot — reused as `before` for the first op.
-        // After each successful op, `current` becomes the next `before`,
-        // cutting snapshot queries from 2 per op to 1.
-        let mut current = self.pool.light_snapshot();
+        // Take initial full snapshot so the first full-check cycle (op 0)
+        // gets a coherent before/after pair. After each op, `current` becomes
+        // the next `before`, cutting snapshot queries from 2 per op to 1.
+        let mut current = self.pool.snapshot();
 
         while SystemTime::now() < end {
             let op = self.pool.random_op(&mut self.rng);
@@ -316,12 +322,15 @@ impl<P: FuzzPool> FuzzRunner<P> {
             seed,
         );
 
+        let mut aggregate_stats = RunStats::new();
+
         while SystemTime::now() <= end {
             let iter_seed = seed.wrapping_add(iterations);
             let mut runner = FuzzRunner::<P>::new(config, iter_seed);
             runner.seed(seed_positions);
             runner.run_mixed(ops_per_iter);
             aggregate_coverage.merge(&runner.coverage);
+            aggregate_stats.merge(&runner.stats);
             total_ops += ops_per_iter;
             iterations += 1;
         }
@@ -334,6 +343,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
             humanize_duration(elapsed),
             total_ops as f64 / elapsed.as_secs_f64(),
         );
+        aggregate_stats.print_summary("aggregate", seed);
         aggregate_coverage.print_report();
     }
 }

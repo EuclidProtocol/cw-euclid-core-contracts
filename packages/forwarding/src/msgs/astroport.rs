@@ -1,7 +1,7 @@
 use super::common_old::{EuclidReceive, TokenType};
 use astroport::router::SwapOperation;
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Decimal, Uint128};
+use cosmwasm_std::{Addr, Binary, Decimal, Uint256};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -27,7 +27,7 @@ pub struct SwapMsg {
     pub max_spread: Option<Decimal>,
     pub forwarding_msg: Option<Binary>,
     pub to_token: TokenType,
-    pub minimum_receive: Uint128,
+    pub minimum_receive: Uint256,
     pub recipient: String,
 }
 

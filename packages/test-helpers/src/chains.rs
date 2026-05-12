@@ -133,7 +133,7 @@ pub fn setup_factory_native(
     interchain: &cw_orch_interchain::mock::MockInterchainEnv,
     router: &RouterContract<MockBase>,
 ) -> Result<FactoryContract<MockBase>, CwOrchError> {
-    use cosmwasm_std::Uint128;
+    use cosmwasm_std::Uint256;
     use cw_orch_interchain::core::InterchainEnv;
     use escrow::EscrowContract;
     use euclid::chain::ChainUid;
@@ -176,7 +176,7 @@ pub fn setup_factory_native(
                 relayer_contract: relayer.address().expect("relayer should have address"),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),
-                rate_limit_free_limit: Uint128::from(10u128),
+                rate_limit_free_limit: Uint256::from(10u128),
                 is_native: true,
             },
             None,

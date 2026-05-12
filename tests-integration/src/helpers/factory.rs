@@ -7,7 +7,7 @@ use crate::helpers::chains::{get_escrow, query_concentrated_migration_status};
 use crate::helpers::relayer::relay_factory_router_factory;
 use crate::tests_reusable::clp::utils::pair_to_tick;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{coin, to_json_binary, Addr, StdError, Uint128};
+use cosmwasm_std::{coin, to_json_binary, Addr, StdError, Uint128, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::*;
 use cw_orch_interchain::prelude::MockInterchainEnv;
@@ -30,6 +30,7 @@ use euclid::token::PairWithDenomAndAmount;
 use euclid::token::Token;
 use euclid::token::TokenType;
 use euclid::token::TokenWithDenom;
+
 use euclid::utils::pagination::Pagination;
 use euclid::voucher::BalanceKey;
 use factory::FactoryContract;
@@ -61,30 +62,52 @@ pub fn deposit_token(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     token: TokenWithDenom,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<Recipient>,
 ) -> Result<(), CwOrchError> {
     let factory_chain_uid = &factory.get_state().unwrap().chain_uid;
+    let mut funds = vec![];
+    faucet(
+        factory.environment(),
+        factory.environment().sender.as_str(),
+        Uint128::try_from(amount).unwrap().u128(),
+        token.token_type.clone(),
+        &mut funds,
+    );
+    let _tx_response = factory.execute(
+        &euclid::msgs::factory::msg::ExecuteMsg::DepositToken {
+            asset_in: token.clone(),
+            amount_in: amount,
+            recipients: recipients.clone(),
+            cross_chain_config: CrossChainConfig::default(),
+        },
+        &funds,
+    )?;
     let escrow_contract = get_escrow(factory, token.token.as_str());
     let old_escrow_balance = escrow_contract.state().unwrap();
-    let old_router_escrow_balance = router.query_token_escrows(
-        Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
-        token.token.clone(),
-    )?;
-    let old_balance = match old_router_escrow_balance.chains.first() {
+
+    let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
+    let virtual_balance_contract =
+        get_virtual_balance(router.environment(), &virtual_balance_address);
+    let old_router_escrow_balance =
+        virtual_balance_contract.get_token_escrows(token.token.to_string(), None)?;
+    let old_balance = match old_router_escrow_balance.escrows.first() {
         Some(chain) => chain.balance,
-        None => Uint128::zero(),
+        None => Uint256::zero(),
     };
 
     let mut funds = vec![];
     faucet(
         factory.environment(),
         factory.environment().sender.as_str(),
-        amount.u128(),
+        Uint128::try_from(amount).unwrap().u128(),
         token.token_type.clone(),
         &mut funds,
     );
-    let tx_response = if let TokenType::Smart { contract_address } = token.token_type.clone() {
+    let tx_response = if let TokenType::Smart {
+        contract_address, ..
+    } = token.token_type.clone()
+    {
         let cw20 = LpTokenContract::new(factory.environment().clone());
         cw20.set_address(&Addr::unchecked(contract_address));
         cw20.execute(
@@ -111,18 +134,15 @@ pub fn deposit_token(
         )?
     };
     relay_factory_router_factory(tx_response.events, factory, router, factory_chain_uid)?;
-
-    let new_router_escrow_balance = router.query_token_escrows(
-        Pagination::new(Some(factory_chain_uid.clone()), None, None, Some(1)),
-        token.token.clone(),
-    )?;
-    let new_balance = match new_router_escrow_balance.chains.first() {
+    let new_router_escrow_balance =
+        virtual_balance_contract.get_token_escrows(token.token.to_string(), None)?;
+    let new_balance = match new_router_escrow_balance.escrows.first() {
         Some(chain) => chain.balance,
-        None => Uint128::zero(),
+        None => Uint256::zero(),
     };
     assert_eq!(
         new_balance,
-        old_balance + amount,
+        old_balance + Uint256::from(amount),
         "Router escrow balance not updated properly"
     );
     let new_escrow_balance = escrow_contract.state().unwrap();
@@ -139,7 +159,7 @@ pub fn transfer_token_vcoin(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     recipients: Vec<Recipient>,
 ) -> Result<(), CwOrchError> {
     let virtual_balance_address = router.get_state().unwrap().virtual_balance_address;
@@ -175,12 +195,12 @@ pub fn transfer_token_vcoin(
     })?;
 
     assert_eq!(
-        new_balance.amount.u128() + amount.u128(),
-        old_balance.amount.u128(),
+        new_balance.amount + Uint256::from(amount),
+        old_balance.amount,
         "Virtual balance not transferred properly, old balance: {}, new balance: {}, amount: {}",
-        old_balance.amount.u128(),
-        new_balance.amount.u128(),
-        amount.u128()
+        old_balance.amount,
+        new_balance.amount,
+        amount
     );
     Ok(())
 }
@@ -193,23 +213,22 @@ pub fn faucet(
     funds: &mut Vec<Coin>,
 ) {
     match token_type {
-        TokenType::Native { denom } => {
+        TokenType::Native { denom, .. } => {
             chain
                 .add_balance(&Addr::unchecked(address), vec![coin(amount, denom.clone())])
                 .unwrap();
             // attach native token to the message
             funds.push(coin(amount, denom));
         }
-        TokenType::Smart { contract_address } => {
-            // Mint cw20 tokens to the recipient. Callers are responsible for
-            // granting allowance to the factory (or using the cw20 Send hook)
-            // when they need the factory to pull these tokens.
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             let cw20 = LpTokenContract::new(chain.clone());
             cw20.set_address(&Addr::unchecked(contract_address));
             cw20.execute(
                 &euclid::msgs::lp_token::msg::ExecuteMsg::Mint {
                     recipient: address.to_string(),
-                    amount: Uint128::new(amount),
+                    amount: Uint256::from(amount),
                 },
                 &[],
             )
@@ -229,7 +248,10 @@ pub fn approve_factory_for_smart_tokens(
     let chain = factory.environment();
     let factory_addr = factory.address()?.to_string();
     for token in pair_with_denom.get_vec_token_info() {
-        if let TokenType::Smart { contract_address } = token.token_type {
+        if let TokenType::Smart {
+            contract_address, ..
+        } = token.token_type
+        {
             let cw20 = LpTokenContract::new(chain.clone());
             cw20.set_address(&Addr::unchecked(contract_address));
             cw20.execute(
@@ -258,7 +280,7 @@ pub fn create_pool(
         faucet(
             chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -306,10 +328,13 @@ pub fn create_concentrated_pool(
     tick_spacing: u64,
     slippage_tolerance_bps: u64,
 ) -> Result<PoolKey, CwOrchError> {
-    let initial_tick = pair_to_tick(
-        pair_with_denom.token_1.amount,
-        pair_with_denom.token_2.amount,
-    );
+    // Compute the initial tick from voucher-unit normalised amounts so that the
+    // price hint matches what the VLP will see after the router normalises
+    // native/smart amounts. Voucher-type amounts are already in voucher units
+    // and pass through unchanged.
+    let norm_1 = normalize_for_tick(&pair_with_denom.token_1);
+    let norm_2 = normalize_for_tick(&pair_with_denom.token_2);
+    let initial_tick = pair_to_tick(norm_1, norm_2);
     create_concentrated_pool_with_tick(
         factory,
         router,
@@ -319,6 +344,20 @@ pub fn create_concentrated_pool(
         slippage_tolerance_bps,
         Some(initial_tick),
     )
+}
+
+/// Normalise a token amount to voucher units for tick calculation purposes.
+/// Native/smart tokens are normalised using their decimals; voucher tokens
+/// are already in voucher units and returned as-is.
+fn normalize_for_tick(token: &euclid::token::TokenWithDenomAndAmount) -> Uint128 {
+    let amount = Uint128::try_from(token.amount).unwrap();
+    if token.token_type.is_voucher() {
+        amount
+    } else {
+        let decimals = token.token_type.get_decimals().unwrap_or(0);
+        let scale = Uint128::from(10u128.pow(24 - decimals));
+        amount.checked_mul(scale).unwrap()
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -337,7 +376,7 @@ pub fn create_concentrated_pool_with_tick(
         faucet(
             chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -388,7 +427,7 @@ pub fn add_concentrated_liquidity(
         faucet(
             chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -610,9 +649,9 @@ pub fn swap_request(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     asset_in: TokenWithDenom,
-    amount_in: Uint128,
+    amount_in: Uint256,
     asset_out: Token,
-    min_amount_out: Uint128,
+    min_amount_out: Uint256,
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,
     partner_fee: Option<PartnerFee>,

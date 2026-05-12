@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint256};
 use cw20::{Cw20Coin, MinterResponse};
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
@@ -87,6 +87,7 @@ pub fn make_smart_token(factory: &FactoryContract<MockBase>, token_id: &str) -> 
         token,
         token_type: TokenType::Smart {
             contract_address: cw20.address().unwrap().to_string(),
+            decimals: Some(6),
         },
     }
 }
@@ -102,11 +103,21 @@ pub fn make_token(
     token_id: &str,
     kind: &str,
 ) -> TokenWithDenom {
+    make_token_with_decimals(factory, token_id, kind, 6)
+}
+
+pub fn make_token_with_decimals(
+    factory: &FactoryContract<MockBase>,
+    token_id: &str,
+    kind: &str,
+    decimals: u32,
+) -> TokenWithDenom {
     match kind {
         "native" => TokenWithDenom {
             token: Token::create(token_id.to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: token_id.to_string(),
+                decimals: Some(decimals),
             },
         },
         "smart" => make_smart_token(factory, token_id),
@@ -165,21 +176,39 @@ fn prepare_token(
     token_id: &str,
     kind: &str,
 ) -> TokenWithDenom {
-    let token = make_token(factory, token_id, kind);
+    prepare_token_with_decimals(factory, router, token_id, kind, 6)
+}
+
+fn prepare_token_with_decimals(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    token_id: &str,
+    kind: &str,
+    decimals: u32,
+) -> TokenWithDenom {
+    let token = make_token_with_decimals(factory, token_id, kind, decimals);
     match kind {
         "voucher" => {
             // Router-side voucher validation requires the token to exist on at
             // least one chain, so register a backing native denom on the
             // factory chain. Then mint voucher balance on the hub so the
             // sender can actually spend vouchers of this token.
+            let backing_type = TokenType::Native {
+                denom: token_id.to_string(),
+                decimals: Some(6),
+            };
             let backing = TokenWithDenom {
                 token: token.token.clone(),
-                token_type: TokenType::Native {
-                    denom: token_id.to_string(),
-                },
+                token_type: backing_type.clone(),
             };
             register_denom(factory, router, backing).unwrap();
-            mint_voucher_balance(factory, router, &token.token, 1_000_000_000u128);
+            mint_voucher_balance(
+                factory,
+                router,
+                &token.token,
+                1_000_000_000u128,
+                backing_type,
+            );
         }
         "native" | "smart" => {
             register_denom(factory, router, token.clone()).unwrap();
@@ -192,11 +221,18 @@ fn prepare_token(
 /// Mint `amount` of voucher balance for the factory sender on the hub's
 /// virtual balance contract. Only the router is authorised to mint, so the
 /// call is dispatched via a temporary `set_sender` override.
+///
+/// `backing_token_type` must be the native/smart token type under which the
+/// token metadata was registered (via `register_denom`). The virtual balance
+/// contract looks up metadata by `(token_id, chain_uid, token_type_key)`,
+/// so using `TokenType::Voucher` here would fail because no metadata is
+/// stored under that key.
 fn mint_voucher_balance(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,
     token: &Token,
     amount: u128,
+    backing_token_type: TokenType,
 ) {
     let factory_chain_uid = factory.get_state().unwrap().chain_uid;
     let sender = factory.environment().sender.to_string();
@@ -205,11 +241,13 @@ fn mint_voucher_balance(
     vb.set_sender(&router.address().unwrap());
     vb.execute(
         &VirtualBalanceExecuteMsg::Mint(ExecuteMint {
-            amount: Uint128::new(amount),
+            amount: Uint256::from(amount),
             balance_key: BalanceKey {
-                cross_chain_user: CrossChainUser::new(factory_chain_uid, sender),
+                cross_chain_user: CrossChainUser::new(factory_chain_uid.clone(), sender),
                 token_id: token.to_string(),
             },
+            token_type: backing_token_type,
+            token_source_chain_uid: factory_chain_uid,
         }),
         &[],
     )
@@ -225,15 +263,55 @@ pub fn chain_id_for_mode(mode: FactorySetupMode) -> &'static str {
     }
 }
 
+pub fn setup_concentrated_env_with_decimals(
+    mode: FactorySetupMode,
+    factory_chain_id: &str,
+    decimals_a: u32,
+    decimals_b: u32,
+) -> (
+    MockInterchainEnv,
+    FactoryContract<MockBase>,
+    RouterContract<MockBase>,
+    TokenWithDenom,
+    TokenWithDenom,
+) {
+    let (interchain, factory, router) = setup_concentrated_base(mode, factory_chain_id);
+
+    let token_a =
+        prepare_token_with_decimals(&factory, &router, "conc.token.a", "native", decimals_a);
+    let token_b =
+        prepare_token_with_decimals(&factory, &router, "conc.token.b", "native", decimals_b);
+
+    (interchain, factory, router, token_a, token_b)
+}
+
+/// Build a `PairWithDenomAndAmount` from two tokens and their "raw" amounts.
+///
+/// For native/smart tokens the amount is passed through as-is (the router will
+/// normalise it to voucher units). For voucher tokens the caller's raw amount
+/// is interpreted as the smallest unit of its 6-decimal backing and is scaled
+/// to 24-decimal voucher units so the two sides are economically equivalent.
+/// All test voucher tokens have a 6-decimal native backing, making the
+/// scaling factor 10^18.
 pub fn pair_with_amounts(
     token_a: &TokenWithDenom,
     token_b: &TokenWithDenom,
     amount_a: u128,
     amount_b: u128,
 ) -> PairWithDenomAndAmount {
+    let scale = |token: &TokenWithDenom, raw: u128| -> Uint256 {
+        if token.token_type.is_voucher() {
+            // Voucher amounts are already in 24-decimal units on the router.
+            // Scale from the implied 6-decimal raw amount to match the
+            // normalisation the router applies to native/smart tokens.
+            Uint256::from(raw) * Uint256::from(10u128.pow(18))
+        } else {
+            Uint256::from(raw)
+        }
+    };
     PairWithDenomAndAmount {
-        token_1: token_a.with_amount(Uint128::new(amount_a)),
-        token_2: token_b.with_amount(Uint128::new(amount_b)),
+        token_1: token_a.with_amount(scale(token_a, amount_a)),
+        token_2: token_b.with_amount(scale(token_b, amount_b)),
     }
 }
 
@@ -416,7 +494,7 @@ fn test_create_pool_invalid_spacing_rejected(
         faucet(
             factory.environment(),
             factory.environment().sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type,
             &mut funds,
         );

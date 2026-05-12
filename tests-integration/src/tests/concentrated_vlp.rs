@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint256};
 use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::vlp::base::PoolConfig;
@@ -36,24 +36,28 @@ fn test_cp_stable_regression_smoke(#[case] mode: FactorySetupMode, #[case] facto
         token: Token::create("reg.token.a".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "reg.token.a".to_string(),
+            decimals: Some(6),
         },
     };
     let token_b = TokenWithDenom {
         token: Token::create("reg.token.b".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "reg.token.b".to_string(),
+            decimals: Some(6),
         },
     };
     let token_c = TokenWithDenom {
         token: Token::create("reg.token.c".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "reg.token.c".to_string(),
+            decimals: Some(6),
         },
     };
     let token_d = TokenWithDenom {
         token: Token::create("reg.token.d".to_string()).unwrap(),
         token_type: TokenType::Native {
             denom: "reg.token.d".to_string(),
+            decimals: Some(6),
         },
     };
 
@@ -70,8 +74,8 @@ fn test_cp_stable_regression_smoke(#[case] mode: FactorySetupMode, #[case] facto
         &factory,
         &router,
         PairWithDenomAndAmount {
-            token_1: token_a.with_amount(Uint128::new(30_000)),
-            token_2: token_b.with_amount(Uint128::new(30_000)),
+            token_1: token_a.with_amount(Uint256::from(30_000u128)),
+            token_2: token_b.with_amount(Uint256::from(30_000u128)),
         },
         100,
         PoolConfig::ConstantProduct {},
@@ -82,8 +86,8 @@ fn test_cp_stable_regression_smoke(#[case] mode: FactorySetupMode, #[case] facto
         &factory,
         &router,
         PairWithDenomAndAmount {
-            token_1: token_c.with_amount(Uint128::new(30_000)),
-            token_2: token_d.with_amount(Uint128::new(30_000)),
+            token_1: token_c.with_amount(Uint256::from(30_000u128)),
+            token_2: token_d.with_amount(Uint256::from(30_000u128)),
         },
         100,
         PoolConfig::Stable {
@@ -97,8 +101,8 @@ fn test_cp_stable_regression_smoke(#[case] mode: FactorySetupMode, #[case] facto
         &router,
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(1_000),
-        Uint128::one(),
+        Uint256::from(1_000u128),
+        Uint256::from(1u128),
         vec![NextSwapPair {
             token_in: token_a.token.clone(),
             token_out: token_b.token.clone(),
@@ -113,8 +117,8 @@ fn test_cp_stable_regression_smoke(#[case] mode: FactorySetupMode, #[case] facto
     assert!(factory
         .get_vlp(
             PairWithDenomAndAmount {
-                token_1: token_a.with_amount(Uint128::one()),
-                token_2: token_b.with_amount(Uint128::one()),
+                token_1: token_a.with_amount(Uint256::from(1u128)),
+                token_2: token_b.with_amount(Uint256::from(1u128)),
             }
             .get_pair()
             .unwrap(),
@@ -123,8 +127,8 @@ fn test_cp_stable_regression_smoke(#[case] mode: FactorySetupMode, #[case] facto
     assert!(factory
         .get_vlp(
             PairWithDenomAndAmount {
-                token_1: token_c.with_amount(Uint128::one()),
-                token_2: token_d.with_amount(Uint128::one()),
+                token_1: token_c.with_amount(Uint256::from(1u128)),
+                token_2: token_d.with_amount(Uint256::from(1u128)),
             }
             .get_pair()
             .unwrap(),

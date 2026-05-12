@@ -7,15 +7,17 @@ use euclid::msgs::vlp::concentrated::msg::{
     PositionResponse, QueryMsg as ConcentratedQueryMsg, Slot0Response,
 };
 use rstest::rstest;
+use rstest_reuse::apply;
 
-use super::utils::last_position_id;
+use super::utils::{last_position_id, raw_units, scaled_pair, setup_clp};
 use crate::helpers::chains::get_concentrated_vlp;
 use crate::helpers::factory::{
     add_concentrated_liquidity, create_concentrated_pool, list_position_ids,
     remove_concentrated_liquidity,
 };
-use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
+use crate::tests_reusable::concentrated_create_pool::pair_with_amounts;
 use crate::tests_reusable::factory_register::FactorySetupMode;
+use crate::tests_reusable::test_macros::clp_matrix;
 
 #[cfg(test)]
 mod tests {
@@ -24,15 +26,12 @@ mod tests {
     /// Position below current tick needs only token_1. Providing token_0 = 1
     /// (dust, to satisfy escrow) with max slippage should succeed and
     /// effectively use only token_1.
-    #[rstest]
-    fn test_one_sided_below_tick_only_token_1(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
-        mode: FactorySetupMode,
-    ) {
-        let factory_chain_id = mode.factory_chain_id();
+    #[apply(clp_matrix)]
+    fn test_one_sided_below_tick_only_token_1(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -45,7 +44,7 @@ mod tests {
         let add_resp = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 1, 10_000),
+            pair_with_amounts(&token_a, &token_b, 1, raw_units(10, decimals_b)),
             pool_key.clone(),
             lower,
             upper,
@@ -69,15 +68,12 @@ mod tests {
     /// Position above current tick needs only token_0. Providing token_1 = 1
     /// (dust, to satisfy escrow) with max slippage should succeed and
     /// effectively use only token_0.
-    #[rstest]
-    fn test_one_sided_above_tick_only_token_0(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
-        mode: FactorySetupMode,
-    ) {
-        let factory_chain_id = mode.factory_chain_id();
+    #[apply(clp_matrix)]
+    fn test_one_sided_above_tick_only_token_0(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -90,7 +86,7 @@ mod tests {
         let add_resp = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 10_000, 1),
+            pair_with_amounts(&token_a, &token_b, raw_units(10, decimals_a), 1),
             pool_key.clone(),
             lower,
             upper,
@@ -113,15 +109,15 @@ mod tests {
 
     /// Escrow rejects zero-amount coins, so providing exactly 0 for one token
     /// in an OOR add should fail at the factory/escrow level.
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_one_sided_zero_amount_rejected_by_escrow(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -134,7 +130,7 @@ mod tests {
         let err = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 0, 10_000),
+            pair_with_amounts(&token_a, &token_b, 0, raw_units(10, decimals_b)),
             pool_key,
             lower,
             upper,
@@ -149,15 +145,15 @@ mod tests {
 
     /// Providing both tokens for a below-tick position with tight slippage
     /// should fail because token_0 is entirely unused.
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_one_sided_below_tick_both_tokens_tight_slippage_fails(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -170,7 +166,7 @@ mod tests {
         let err = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+            scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b),
             pool_key,
             lower,
             upper,
@@ -185,15 +181,15 @@ mod tests {
 
     /// Providing both tokens for an above-tick position with tight slippage
     /// should fail because token_1 is entirely unused.
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_one_sided_above_tick_both_tokens_tight_slippage_fails(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -206,7 +202,7 @@ mod tests {
         let err = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+            scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b),
             pool_key,
             lower,
             upper,
@@ -220,16 +216,16 @@ mod tests {
     }
 
     /// Providing both tokens with max slippage (100%) should succeed for OOR
-    /// positions — unused token is fully refunded.
-    #[rstest]
+    /// positions, unused token is fully refunded.
+    #[apply(clp_matrix)]
     fn test_one_sided_below_tick_both_tokens_max_slippage_succeeds(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -242,7 +238,7 @@ mod tests {
         let add_resp = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+            scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b),
             pool_key,
             lower,
             upper,
@@ -257,15 +253,12 @@ mod tests {
     }
 
     /// One-sided position (with dust on unused side) can be fully removed.
-    #[rstest]
-    fn test_one_sided_position_full_remove(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
-        mode: FactorySetupMode,
-    ) {
-        let factory_chain_id = mode.factory_chain_id();
+    #[apply(clp_matrix)]
+    fn test_one_sided_position_full_remove(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -278,7 +271,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 10_000, 1),
+            pair_with_amounts(&token_a, &token_b, raw_units(10, decimals_a), 1),
             pool_key.clone(),
             lower,
             upper,
@@ -308,15 +301,12 @@ mod tests {
 
     /// Adding more liquidity to existing one-sided position with dust on
     /// unused side should succeed.
-    #[rstest]
-    fn test_one_sided_add_to_existing_position(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
-        mode: FactorySetupMode,
-    ) {
-        let factory_chain_id = mode.factory_chain_id();
+    #[apply(clp_matrix)]
+    fn test_one_sided_add_to_existing_position(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -329,7 +319,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 1, 5_000),
+            pair_with_amounts(&token_a, &token_b, 1, raw_units(5, decimals_b)),
             pool_key.clone(),
             lower,
             upper,
@@ -348,7 +338,7 @@ mod tests {
         let add_resp = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 1, 5_000),
+            pair_with_amounts(&token_a, &token_b, 1, raw_units(5, decimals_b)),
             pool_key,
             lower,
             upper,
@@ -381,15 +371,15 @@ mod tests {
     /// Providing mainly the wrong token for tick direction with tight slippage
     /// should fail. Below tick needs token_1; providing lots of token_0 with
     /// tight slippage fails because token_0 is 100% unused. Same for above.
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_one_sided_wrong_token_tight_slippage_fails(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -397,14 +387,19 @@ mod tests {
         let slot0: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
 
         // Below tick needs token_1. Provide heavy token_0 + small token_1,
-        // tight slippage — token_0 fully unused → slippage error
+        // tight slippage, token_0 fully unused -> slippage error
         let lower = ((slot0.tick - 500) / 10) * 10;
         let upper = ((slot0.tick - 100) / 10) * 10;
 
         let err = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 10_000, 1_000),
+            pair_with_amounts(
+                &token_a,
+                &token_b,
+                raw_units(10, decimals_a),
+                raw_units(1, decimals_b),
+            ),
             pool_key.clone(),
             lower,
             upper,
@@ -417,14 +412,19 @@ mod tests {
         );
 
         // Above tick needs token_0. Provide heavy token_1 + small token_0,
-        // tight slippage — token_1 fully unused → slippage error
+        // tight slippage, token_1 fully unused -> slippage error
         let lower_above = ((slot0.tick + 100) / 10) * 10;
         let upper_above = ((slot0.tick + 500) / 10) * 10;
 
         let err = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 1_000, 10_000),
+            pair_with_amounts(
+                &token_a,
+                &token_b,
+                raw_units(1, decimals_a),
+                raw_units(10, decimals_b),
+            ),
             pool_key,
             lower_above,
             upper_above,

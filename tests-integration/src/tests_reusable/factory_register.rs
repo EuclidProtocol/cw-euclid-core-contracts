@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{from_json, Uint128};
+use cosmwasm_std::{from_json, Uint256};
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::IbcQueryHandler;
@@ -33,11 +33,11 @@ pub enum FactorySetupMode {
 }
 
 impl FactorySetupMode {
-    pub fn factory_chain_id(self) -> &'static str {
+    pub fn chain_id(&self) -> &'static str {
         match self {
-            FactorySetupMode::Native => FACTORY_CHAIN_ID_LOCAL,
-            FactorySetupMode::Ibc => FACTORY_CHAIN_ID_IBC,
-            FactorySetupMode::Evm => FACTORY_CHAIN_ID_EVM,
+            Self::Native => FACTORY_CHAIN_ID_LOCAL,
+            Self::Ibc => FACTORY_CHAIN_ID_IBC,
+            Self::Evm => FACTORY_CHAIN_ID_EVM,
         }
     }
 }
@@ -99,7 +99,7 @@ pub fn setup_factory_with_mode(
                 relayer_contract: relayer.address().unwrap(),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),
-                rate_limit_free_limit: Uint128::from(10u128),
+                rate_limit_free_limit: Uint256::from(10u128),
                 is_native,
             },
             None,
@@ -167,16 +167,13 @@ mod tests {
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
     };
+    use crate::tests_reusable::test_macros::factory_modes;
     use rstest::rstest;
+    use rstest_reuse::apply;
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
-    fn setup_factory_registers_chain(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
-    ) {
+    #[apply(factory_modes)]
+    fn setup_factory_registers_chain(mode: FactorySetupMode) {
+        let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
         let mut chains = vec![(ROUTER_CHAIN_ID, sender)];
         if ROUTER_CHAIN_ID != factory_chain_id {

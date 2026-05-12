@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint256};
 
 use crate::{
     admin::AdminType,
@@ -20,13 +20,13 @@ pub enum ExecuteMsg {
     },
     WithdrawVoucher {
         token: Token,
-        amount: Uint128,
+        amount: Uint256,
         recipient: Recipient,
         cross_chain_config: CrossChainConfig,
     },
     TransferVoucher {
         token: Token,
-        amount: Uint128,
+        amount: Uint256,
         recipient: Vec<Recipient>,
     },
 
@@ -98,10 +98,10 @@ pub enum ManageRouterState {
     UpdateReleaseFee {
         token: Token,
         chain_uid: ChainUid,
-        release_fee: Uint128,
+        release_fee: Uint256,
     },
     UpdateDefaultReleaseFee {
-        default_release_fee: Uint128,
+        default_release_fee: Uint256,
     },
     LockChain {
         chain: ChainUid,

@@ -107,15 +107,15 @@ pub fn instantiate(
             },
         },
         last_updated: 0,
-        total_lp_tokens: Uint128::zero(),
+        total_lp_tokens: Uint256::zero(),
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     STATE.save(deps.storage, &state)?;
     ADMIN.save(deps.storage, &EuclidAdmin::default(msg.admin))?;
 
-    BALANCES.save(deps.storage, state.pair.token_1.clone(), &Uint128::zero())?;
-    BALANCES.save(deps.storage, state.pair.token_2.clone(), &Uint128::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_1.clone(), &Uint256::zero())?;
+    BALANCES.save(deps.storage, state.pair.token_2.clone(), &Uint256::zero())?;
     POOL_KEY.save(
         deps.storage,
         &euclid::msgs::vlp::base::PoolKey {
@@ -429,7 +429,7 @@ fn execute_add_concentrated_liquidity(
         add_liquidity_msg.liquidity.get_pair()? == state.pair,
         ContractError::new("liquidity tokens do not match pool pair")
     );
-    let (provided_0, provided_1) = extract_token_amount(&add_liquidity_msg.liquidity, &state.pair);
+    let (provided_0, provided_1) = extract_token_amount(&add_liquidity_msg.liquidity, &state.pair)?;
     ensure!(
         !provided_0.is_zero() || !provided_1.is_zero(),
         ContractError::ZeroAssetAmount {}
@@ -536,10 +536,12 @@ fn execute_add_concentrated_liquidity(
                 sender.chain_uid
             ),
         })?;
-    chain_lp_tokens = chain_lp_tokens.checked_add(liquidity_delta)?;
+    chain_lp_tokens = chain_lp_tokens.checked_add(Uint256::from(liquidity_delta))?;
     CHAIN_LP_TOKENS.save(deps.storage, sender.chain_uid.clone(), &chain_lp_tokens)?;
 
-    state.total_lp_tokens = state.total_lp_tokens.checked_add(liquidity_delta)?;
+    state.total_lp_tokens = state
+        .total_lp_tokens
+        .checked_add(Uint256::from(liquidity_delta))?;
     STATE.save(deps.storage, &state)?;
 
     // Update oracle so seconds_per_liquidity_cumulative stays accurate
@@ -555,8 +557,8 @@ fn execute_add_concentrated_liquidity(
 
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
-    reserve_0 = reserve_0.checked_add(amount_0_used)?;
-    reserve_1 = reserve_1.checked_add(amount_1_used)?;
+    reserve_0 = reserve_0.checked_add(Uint256::from(amount_0_used))?;
+    reserve_1 = reserve_1.checked_add(Uint256::from(amount_1_used))?;
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
@@ -574,7 +576,7 @@ fn execute_add_concentrated_liquidity(
     if !refund_0.is_zero() {
         response = response.add_message(state.pair.token_1.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            refund_0,
+            Uint256::from(refund_0),
             None,
             sender.clone(),
             None,
@@ -584,7 +586,7 @@ fn execute_add_concentrated_liquidity(
     if !refund_1.is_zero() {
         response = response.add_message(state.pair.token_2.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            refund_1,
+            Uint256::from(refund_1),
             None,
             sender.clone(),
             None,
@@ -594,7 +596,7 @@ fn execute_add_concentrated_liquidity(
 
     let liquidity_added = state
         .pair
-        .get_pair_with_amount(amount_0_used, amount_1_used)?;
+        .get_pair_with_amount(Uint256::from(amount_0_used), Uint256::from(amount_1_used))?;
     let concentrated_ack = VlpConcentratedAddLiquidityResponse {
         liquidity_added: liquidity_added.clone(),
         liquidity_delta,
@@ -719,7 +721,8 @@ fn execute_remove_concentrated_liquidity(
                 remove_liquidity_msg.sender.chain_uid
             ),
         })?;
-    chain_lp_tokens = chain_lp_tokens.checked_sub(remove_liquidity_msg.liquidity_delta)?;
+    chain_lp_tokens =
+        chain_lp_tokens.checked_sub(Uint256::from(remove_liquidity_msg.liquidity_delta))?;
     CHAIN_LP_TOKENS.save(
         deps.storage,
         remove_liquidity_msg.sender.chain_uid.clone(),
@@ -728,7 +731,7 @@ fn execute_remove_concentrated_liquidity(
 
     state.total_lp_tokens = state
         .total_lp_tokens
-        .checked_sub(remove_liquidity_msg.liquidity_delta)?;
+        .checked_sub(Uint256::from(remove_liquidity_msg.liquidity_delta))?;
     STATE.save(deps.storage, &state)?;
 
     // Update oracle so seconds_per_liquidity_cumulative stays accurate (I-06).
@@ -746,14 +749,14 @@ fn execute_remove_concentrated_liquidity(
 
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
-    reserve_0 = reserve_0.checked_sub(total_0_out)?;
-    reserve_1 = reserve_1.checked_sub(total_1_out)?;
+    reserve_0 = reserve_0.checked_sub(Uint256::from(total_0_out))?;
+    reserve_1 = reserve_1.checked_sub(Uint256::from(total_1_out))?;
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
     let liquidity_released = state
         .pair
-        .get_pair_with_amount(amount_0_out, amount_1_out)?;
+        .get_pair_with_amount(Uint256::from(amount_0_out), Uint256::from(amount_1_out))?;
     let concentrated_ack = VlpConcentratedRemoveLiquidityResponse {
         liquidity_released: liquidity_released.clone(),
         liquidity_delta: remove_liquidity_msg.liquidity_delta,
@@ -770,7 +773,7 @@ fn execute_remove_concentrated_liquidity(
     if !total_0_out.is_zero() {
         response = response.add_message(state.pair.token_1.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            total_0_out,
+            Uint256::from(total_0_out),
             None,
             remove_liquidity_msg.sender.clone(),
             None,
@@ -780,7 +783,7 @@ fn execute_remove_concentrated_liquidity(
     if !total_1_out.is_zero() {
         response = response.add_message(state.pair.token_2.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            total_1_out,
+            Uint256::from(total_1_out),
             None,
             remove_liquidity_msg.sender.clone(),
             None,
@@ -1235,10 +1238,12 @@ fn execute_clp_swap(
     info: MessageInfo,
     swap_msg: VlpSwapMsg,
 ) -> Result<Response, ContractError> {
+    let amount_in_u128 = Uint128::try_from(swap_msg.amount_in)
+        .map_err(|_| ContractError::new("amount_in overflow"))?;
     let simulation = run_swap_simulation(
         deps.as_ref(),
         swap_msg.asset_in.clone(),
-        swap_msg.amount_in,
+        amount_in_u128,
         swap_msg.test_fail,
         None,
     )?;
@@ -1268,7 +1273,7 @@ fn execute_clp_swap(
     let mut reserve_in = BALANCES.load(deps.storage, swap_msg.asset_in.clone())?;
     let mut reserve_out = BALANCES.load(deps.storage, simulation.asset_out.clone())?;
     reserve_in = reserve_in.checked_add(swap_msg.amount_in)?;
-    reserve_out = reserve_out.checked_sub(simulation.amount_out)?;
+    reserve_out = reserve_out.checked_sub(Uint256::from(simulation.amount_out))?;
     BALANCES.save(deps.storage, swap_msg.asset_in.clone(), &reserve_in)?;
     BALANCES.save(deps.storage, simulation.asset_out.clone(), &reserve_out)?;
 
@@ -1294,21 +1299,21 @@ fn execute_clp_swap(
     )?;
 
     let mut state = simulation.state.clone();
-    state
-        .total_fees_collected
-        .lp_fees
-        .add_fee(swap_msg.asset_in.to_string(), simulation.lp_fee);
-    state
-        .total_fees_collected
-        .euclid_fees
-        .add_fee(swap_msg.asset_in.to_string(), simulation.protocol_fee);
+    state.total_fees_collected.lp_fees.add_fee(
+        swap_msg.asset_in.to_string(),
+        Uint256::from(simulation.lp_fee),
+    );
+    state.total_fees_collected.euclid_fees.add_fee(
+        swap_msg.asset_in.to_string(),
+        Uint256::from(simulation.protocol_fee),
+    );
     STATE.save(deps.storage, &state)?;
 
     let swap_response = VlpSwapResponse {
         sender: swap_msg.sender.clone(),
         tx_id: swap_msg.tx_id.clone(),
         asset_out: simulation.asset_out.clone(),
-        amount_out: simulation.amount_out,
+        amount_out: Uint256::from(simulation.amount_out),
     };
 
     match swap_msg.next_swaps.split_first() {
@@ -1380,13 +1385,15 @@ fn execute_clp_swap(
             ],
             &[
                 swap_msg.asset_in.with_amount(swap_msg.amount_in),
-                simulation.asset_out.with_amount(simulation.amount_out),
+                simulation
+                    .asset_out
+                    .with_amount(Uint256::from(simulation.amount_out)),
             ],
             &swap_msg.tx_id,
         ))
         .add_attribute("action", "swap")
         .add_attribute("amount_in", swap_msg.amount_in)
-        .add_attribute("amount_out", simulation.amount_out)
+        .add_attribute("amount_out", Uint256::from(simulation.amount_out))
         .add_attribute("asset_in", swap_msg.asset_in.to_string())
         .add_attribute("asset_out", simulation.asset_out.to_string())
         .set_data(to_json_binary(&swap_response)?))
@@ -1395,16 +1402,18 @@ fn execute_clp_swap(
 fn query_clp_simulate_swap(
     deps: Deps,
     asset_in: Token,
-    amount_in: Uint128,
+    amount_in: Uint256,
     next_swaps: Vec<NextSwapVlp>,
 ) -> Result<Binary, ContractError> {
-    let sim = run_swap_simulation(deps, asset_in, amount_in, None, None)?;
+    let amount_in_u128 =
+        Uint128::try_from(amount_in).map_err(|_| ContractError::new("amount_in overflow"))?;
+    let sim = run_swap_simulation(deps, asset_in, amount_in_u128, None, None)?;
     let response = GetSwapQueryResponse {
-        amount_out: sim.amount_out,
+        amount_out: Uint256::from(sim.amount_out),
         asset_out: sim.asset_out,
-        spread_amount: Uint128::zero(),
-        lp_fee: sim.lp_fee,
-        euclid_fee: sim.protocol_fee,
+        spread_amount: Uint256::zero(),
+        lp_fee: Uint256::from(sim.lp_fee),
+        euclid_fee: Uint256::from(sim.protocol_fee),
     };
     match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
@@ -1455,8 +1464,8 @@ fn execute_collect_fees(
 
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
-    reserve_0 = reserve_0.checked_sub(amount_0)?;
-    reserve_1 = reserve_1.checked_sub(amount_1)?;
+    reserve_0 = reserve_0.checked_sub(Uint256::from(amount_0))?;
+    reserve_1 = reserve_1.checked_sub(Uint256::from(amount_1))?;
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
@@ -1464,7 +1473,7 @@ fn execute_collect_fees(
     if !amount_0.is_zero() {
         response = response.add_message(state.pair.token_1.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            amount_0,
+            Uint256::from(amount_0),
             None,
             msg.recipient.clone(),
             None,
@@ -1474,7 +1483,7 @@ fn execute_collect_fees(
     if !amount_1.is_zero() {
         response = response.add_message(state.pair.token_2.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            amount_1,
+            Uint256::from(amount_1),
             None,
             msg.recipient.clone(),
             None,
@@ -1521,8 +1530,8 @@ fn execute_collect_protocol_fees(
 
     let mut reserve_0 = BALANCES.load(deps.storage, state.pair.token_1.clone())?;
     let mut reserve_1 = BALANCES.load(deps.storage, state.pair.token_2.clone())?;
-    reserve_0 = reserve_0.checked_sub(amount_0)?;
-    reserve_1 = reserve_1.checked_sub(amount_1)?;
+    reserve_0 = reserve_0.checked_sub(Uint256::from(amount_0))?;
+    reserve_1 = reserve_1.checked_sub(Uint256::from(amount_1))?;
     BALANCES.save(deps.storage, state.pair.token_1.clone(), &reserve_0)?;
     BALANCES.save(deps.storage, state.pair.token_2.clone(), &reserve_1)?;
 
@@ -1530,7 +1539,7 @@ fn execute_collect_protocol_fees(
     if !amount_0.is_zero() {
         response = response.add_message(state.pair.token_1.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            amount_0,
+            Uint256::from(amount_0),
             None,
             msg.recipient.clone(),
             None,
@@ -1540,7 +1549,7 @@ fn execute_collect_protocol_fees(
     if !amount_1.is_zero() {
         response = response.add_message(state.pair.token_2.create_voucher_transfer_msg(
             state.virtual_balance_contract.to_string(),
-            amount_1,
+            Uint256::from(amount_1),
             None,
             msg.recipient.clone(),
             None,
@@ -1715,7 +1724,8 @@ fn query_migration_status(deps: Deps) -> Result<MigrationStatusResponse, Contrac
         migrated_at: 0,
         positions_migrated: 0,
         active_liquidity: ACTIVE_LIQUIDITY.may_load(deps.storage)?.unwrap_or_default(),
-        total_liquidity: state.total_lp_tokens,
+        total_liquidity: Uint128::try_from(state.total_lp_tokens)
+            .map_err(|_| ContractError::new("total_lp_tokens overflow"))?,
     })
 }
 
@@ -1764,7 +1774,7 @@ mod tests {
                 },
             },
             last_updated: 0,
-            total_lp_tokens: Uint128::zero(),
+            total_lp_tokens: Uint256::zero(),
         };
         STATE
             .save(deps.as_mut().storage, &state)
@@ -2246,7 +2256,7 @@ mod tests {
             pool_key: wrong_pool_key,
             liquidity: state
                 .pair
-                .get_pair_with_amount(Uint128::new(1000), Uint128::new(1000))
+                .get_pair_with_amount(Uint256::from(1000u128), Uint256::from(1000u128))
                 .unwrap(),
             lower_tick_index: -600,
             upper_tick_index: 600,
@@ -2281,11 +2291,11 @@ mod tests {
         let wrong_pair = euclid::token::PairWithAmount::new(
             TokenWithAmount {
                 token: wrong_token_a,
-                amount: Uint128::new(1000),
+                amount: Uint256::from(1000u128),
             },
             TokenWithAmount {
                 token: wrong_token_b,
-                amount: Uint128::new(1000),
+                amount: Uint256::from(1000u128),
             },
         )
         .unwrap();
@@ -2414,20 +2424,24 @@ mod tests {
         let state = STATE.load(deps.as_ref().storage).unwrap();
         let chain_uid = ChainUid::create("vsl".to_string()).unwrap();
         CHAIN_LP_TOKENS
-            .save(deps.as_mut().storage, chain_uid.clone(), &Uint128::new(100))
+            .save(
+                deps.as_mut().storage,
+                chain_uid.clone(),
+                &Uint256::from(100u128),
+            )
             .unwrap();
         BALANCES
             .save(
                 deps.as_mut().storage,
                 state.pair.token_1.clone(),
-                &Uint128::new(5000),
+                &Uint256::from(5000u128),
             )
             .unwrap();
         BALANCES
             .save(
                 deps.as_mut().storage,
                 state.pair.token_2.clone(),
-                &Uint128::new(5000),
+                &Uint256::from(5000u128),
             )
             .unwrap();
 

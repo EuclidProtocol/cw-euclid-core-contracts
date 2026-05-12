@@ -19,9 +19,9 @@ use crate::execute::token::{execute_transfer_voucher, execute_withdraw_voucher};
 use crate::execute::{execute_manage_router_state, execute_meta_receive, execute_register_factory};
 
 use crate::query::{
-    self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_clp_position_info, query_relayer_addresses, query_release_fees, query_state,
-    query_token_denoms, query_token_escrows, query_vlp, query_vlp_by_pool_key,
+    self, query_all_chains, query_all_escrows, query_all_vlps, query_chain, query_chain_timeout,
+    query_clp_position_info, query_default_release_fee, query_fee_state, query_locked_chains,
+    query_relayer_addresses, query_release_fees, query_state, query_vlp, query_vlp_by_pool_key,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, COLLECT_CONCENTRATED_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID,
@@ -119,6 +119,7 @@ pub fn execute(
                     recipient,
                     cross_chain_config,
                 } => {
+                    cw_utils::nonpayable(&info)?;
                     let verified_sender =
                         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
                     execute_withdraw_voucher(
@@ -136,6 +137,7 @@ pub fn execute(
                     amount,
                     recipient,
                 } => {
+                    cw_utils::nonpayable(&info)?;
                     let verified_sender =
                         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
                     execute_transfer_voucher(
@@ -215,15 +217,15 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetVlpByPoolKey { pool_key } => query_vlp_by_pool_key(deps, pool_key),
         QueryMsg::GetAllVlps { pagination } => query_all_vlps(deps, pagination),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
-        QueryMsg::QueryTokenEscrows { token, pagination } => {
-            query_token_escrows(deps, token, pagination)
-        }
-        QueryMsg::QueryAllEscrows { pagination } => query_all_escrows(deps, pagination),
-        QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
-        QueryMsg::QueryTokenDenoms { token } => query_token_denoms(deps, token),
         QueryMsg::QueryRelayerAddresses {} => query_relayer_addresses(deps),
         QueryMsg::GetReleaseFees { pagination } => query_release_fees(deps, pagination),
         QueryMsg::GetClpPositionInfo { position_id } => query_clp_position_info(deps, position_id),
+        #[allow(deprecated)]
+        QueryMsg::GetAllEscrows {} => query::query_all_escrows(deps),
+        QueryMsg::GetLockedChains {} => query_locked_chains(deps),
+        QueryMsg::GetFeeState {} => query_fee_state(deps),
+        QueryMsg::GetDefaultReleaseFee {} => query_default_release_fee(deps),
+        QueryMsg::GetChainTimeout { chain_uid } => query_chain_timeout(deps, chain_uid),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]

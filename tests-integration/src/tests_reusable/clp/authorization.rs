@@ -1,36 +1,35 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint256};
 use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use rstest::rstest;
+use rstest_reuse::apply;
 
-use super::utils::first_position_id;
+use super::utils::{first_position_id, raw_units, scaled_pair, setup_clp};
 use crate::helpers::factory::{
     add_concentrated_liquidity, create_concentrated_pool, remove_concentrated_liquidity,
 };
-use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
-use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL};
 use crate::tests_reusable::factory_register::FactorySetupMode;
+use crate::tests_reusable::test_macros::clp_matrix;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+    #[apply(clp_matrix)]
     fn test_add_to_position_owned_by_another_user_rejected(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
+        mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, mut factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
+            setup_clp(mode, decimals_a, decimals_b);
 
-        let pair = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
+        let pair = scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b);
         let pool_key =
             create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
@@ -51,7 +50,7 @@ mod tests {
         let intruder = factory.environment().addr_make("intruder");
         factory.set_sender(&intruder);
 
-        let intruder_pair = pair_with_amounts(&token_a, &token_b, 5_000, 5_000);
+        let intruder_pair = scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b);
         let err = add_concentrated_liquidity(
             &factory,
             &router,
@@ -68,17 +67,16 @@ mod tests {
         );
     }
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+    #[apply(clp_matrix)]
     fn test_remove_from_position_owned_by_another_user_rejected(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
+        mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, mut factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
+            setup_clp(mode, decimals_a, decimals_b);
 
-        let pair = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
+        let pair = scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b);
         let pool_key =
             create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
@@ -112,17 +110,16 @@ mod tests {
         );
     }
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+    #[apply(clp_matrix)]
     fn test_collect_fees_for_position_owned_by_another_user_rejected(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
+        mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, mut factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
+            setup_clp(mode, decimals_a, decimals_b);
 
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key =
             create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
@@ -145,7 +142,7 @@ mod tests {
             pool_key.clone(),
             token_a.clone(),
             token_b.token.clone(),
-            Uint128::new(5_000),
+            Uint256::from(raw_units(5, decimals_a)),
         );
 
         let position_id = first_position_id(&factory);
@@ -171,13 +168,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_position_from_pool_a_cannot_be_used_in_pool_b() {
+    #[apply(clp_matrix)]
+    fn test_position_from_pool_a_cannot_be_used_in_pool_b(
+        mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
+    ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL);
+            setup_clp(mode, decimals_a, decimals_b);
 
         // Create pool A (fee 500, spacing 10)
-        let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        let pair = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key_a =
             create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
@@ -196,12 +197,12 @@ mod tests {
         let position_id = first_position_id(&factory);
 
         // Create pool B (fee 3000, spacing 60)
-        let pair_b = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+        let pair_b = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key_b =
             create_concentrated_pool(&factory, &router, pair_b.clone(), 3_000, 60, 100).unwrap();
 
         // Try to add liquidity to pool B using pool A's position
-        let add_pair = pair_with_amounts(&token_a, &token_b, 5_000, 5_000);
+        let add_pair = scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b);
         let err = add_concentrated_liquidity(
             &factory,
             &router,
@@ -231,12 +232,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_nonexistent_position_id_rejected() {
+    #[apply(clp_matrix)]
+    fn test_nonexistent_position_id_rejected(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL);
+            setup_clp(mode, decimals_a, decimals_b);
 
-        let pair = pair_with_amounts(&token_a, &token_b, 10_000, 10_000);
+        let pair = scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b);
         let pool_key =
             create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
@@ -255,7 +257,7 @@ mod tests {
         let bogus_id = Uint128::new(999_999_999);
 
         // Add with nonexistent position
-        let add_pair = pair_with_amounts(&token_a, &token_b, 5_000, 5_000);
+        let add_pair = scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b);
         let err = add_concentrated_liquidity(
             &factory,
             &router,

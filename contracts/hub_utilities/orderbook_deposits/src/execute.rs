@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     attr, ensure, from_json, to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, HexBinary,
-    MessageInfo, Response, StdError, Timestamp, Uint128, WasmMsg,
+    MessageInfo, Response, StdError, Timestamp, Uint256, WasmMsg,
 };
 use euclid::{
     chain::ChainUid,
@@ -82,18 +82,21 @@ pub fn execute(
             permit,
             destination_chain_uid,
             destination,
-        } => execute_withdraw(
-            deps,
-            env,
-            root_id,
-            amount,
-            nonce,
-            leaf,
-            proof,
-            permit,
-            destination_chain_uid,
-            destination,
-        ),
+        } => {
+            cw_utils::nonpayable(&info)?;
+            execute_withdraw(
+                deps,
+                env,
+                root_id,
+                amount,
+                nonce,
+                leaf,
+                proof,
+                permit,
+                destination_chain_uid,
+                destination,
+            )
+        }
     }
 }
 
@@ -103,6 +106,7 @@ fn execute_voucher_receive(
     info: MessageInfo,
     transfer: VoucherReceive,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == state.virtual_balance,
@@ -116,7 +120,11 @@ fn execute_voucher_receive(
     let hook: VoucherReceiveHookMsg = from_json(transfer.msg.clone())?;
     match hook {
         VoucherReceiveHookMsg::Deposit {} => {
-            execute_deposit(deps, transfer.token_id, transfer.amount, transfer.sender)
+            let amount: Uint256 = transfer
+                .amount
+                .try_into()
+                .map_err(|_| StdError::generic_err("Amount overflow"))?;
+            execute_deposit(deps, transfer.token_id, amount, transfer.sender)
         }
     }
 }
@@ -124,7 +132,7 @@ fn execute_voucher_receive(
 fn execute_deposit(
     deps: DepsMut,
     token_id: String,
-    amount: Uint128,
+    amount: Uint256,
     sender: CrossChainUser,
 ) -> Result<Response, ContractError> {
     ensure!(!amount.is_zero(), ContractError::InvalidAmount {});
@@ -170,6 +178,7 @@ fn execute_set_whitelist(
     token_id: String,
     whitelisted: bool,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let admin = ADMIN.load(deps.storage)?;
     ensure!(info.sender == admin, ContractError::Unauthorized {});
 
@@ -194,6 +203,7 @@ fn execute_update_config(
     permit_signer_address: Option<String>,
     authorized_posters: Option<Vec<String>>,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let mut state = STATE.load(deps.storage)?;
     let current_admin = ADMIN.load(deps.storage)?;
     ensure!(info.sender == current_admin, ContractError::Unauthorized {});
@@ -244,6 +254,7 @@ fn execute_propose_root(
     da_hash: Option<Binary>,
     da_url: Option<String>,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         matches!(state.status, OrderbookDepositsStatus::Active),
@@ -289,6 +300,7 @@ fn execute_activate_root(
     info: MessageInfo,
     root_id: String,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         matches!(state.status, OrderbookDepositsStatus::Active),
@@ -327,7 +339,7 @@ fn execute_withdraw(
     deps: DepsMut,
     env: Env,
     root_id: String,
-    amount: Uint128,
+    amount: Uint256,
     nonce: u64,
     leaf: WithdrawalLeaf,
     proof: Vec<MerkleProofStep>,
@@ -435,7 +447,7 @@ fn execute_withdraw(
         .unwrap_or_default();
     let new_user_total = user_total
         .checked_sub(amount)
-        .unwrap_or_else(|_| Uint128::zero());
+        .unwrap_or_else(|_| Uint256::zero());
     if new_user_total.is_zero() {
         USER_DEPOSITS.remove(deps.storage, user_key);
     } else {
@@ -450,7 +462,7 @@ fn execute_withdraw(
     // Reject mixed-case or empty addresses before sending to virtual_balance
     destination_user.validate()?;
     let transfer_msg = VirtualBalanceExecuteMsg::Transfer(ExecuteTransfer {
-        amount,
+        amount: amount.into(),
         token_id: permit_data.token_id.clone(),
         sender: None,
         to: destination_user,
@@ -509,7 +521,7 @@ fn verify_permit(
     env: &Env,
     config: &RootConfig,
     root_id: &str,
-    amount: Uint128,
+    amount: Uint256,
     nonce: u64,
     leaf: &WithdrawalLeaf,
     destination_chain_uid: &str,

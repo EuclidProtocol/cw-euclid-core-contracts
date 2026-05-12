@@ -1,5 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{coin, to_json_binary, Addr, Coin, Uint128, Uint64};
+use std::ops::Add;
+
+use cosmwasm_std::{coin, to_json_binary, Addr, Coin, Isqrt, Uint128, Uint256, Uint512, Uint64};
 use cw_orch::{
     core::CwEnvError,
     mock::MockBase,
@@ -23,21 +25,23 @@ use euclid::{
             QueryMsgFns as FactoryQueryMsgFns, StateResponse,
         },
         lp_token::msg::{ExecuteMsgFns, QueryMsgFns},
-        router::{
-            AllEscrowsResponse, AllVlpResponse, QueryMsgFns as RouterQueryMsgFns,
-            QueryTokenDenomsResponse, TokenDenom, VlpResponse,
+        router::{AllVlpResponse, QueryMsgFns as RouterQueryMsgFns, VlpResponse},
+        virtual_balance::msg::{
+            GetTokenMetadataResponse, QueryMsgFns as VirtualBalanceQueryMsgFns,
         },
-        virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns,
         vlp::base::{GetLiquidityQueryResponse, PoolConfig},
     },
+    normalize::normalize_token_to_voucher,
     recipient::Recipient,
     swap::NextSwapPair,
     token::{
-        Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
+        Pair, PairWithDenomAndAmount, Token, TokenMetadata, TokenType, TokenWithDenom,
+        TokenWithDenomAndAmount,
     },
     utils::pagination::Pagination,
     voucher::BalanceKey,
 };
+use euclid_pool::MINIMUM_LIQUIDITY;
 use factory::{
     mock::{mock_factory, MockFactory},
     FactoryContract,
@@ -53,6 +57,27 @@ use crate::helpers::{
         relay_factory_router_factory, relay_factory_send_packet, relay_router_factory_router,
     },
 };
+
+/// Compute LP tokens as isqrt(r1_norm * r2_norm) for normalized reserves
+fn lp_tokens(r1: Uint256, r2: Uint256) -> Uint256 {
+    let r1_up = Uint512::from(r1);
+    let r2_up = Uint512::from(r2);
+    let lp_tokens = Isqrt::isqrt(r1_up.checked_mul(r2_up).unwrap());
+    Uint256::try_from(lp_tokens).unwrap()
+}
+
+fn stable_lp_tokens(r1: Uint256, r2: Uint256, amp: Uint64) -> Uint256 {
+    use cosmwasm_std::Decimal256;
+    use euclid::utils::math::Decimal256Ext;
+    let pools = [
+        Decimal256::checked_from_integer(r1).unwrap(),
+        Decimal256::checked_from_integer(r2).unwrap(),
+    ];
+    euclid_pool::stable_math::compute_d(amp, &pools)
+        .unwrap()
+        .to_uint256_with_precision(0u32)
+        .unwrap()
+}
 
 #[test]
 fn test_proper_instantiation() {
@@ -80,7 +105,7 @@ fn test_proper_instantiation() {
     let relayer_contract = Addr::unchecked("relayer_contract");
     let rate_limit_fee_recipient = Addr::unchecked("rate_limit_fee_recipient");
     let rate_limit_fee_denom = "rate_limit_fee_denom".to_string();
-    let rate_limit_free_limit = Uint128::from(10u128);
+    let rate_limit_free_limit = Uint256::from(10u128);
 
     let mock_factory = MockFactory::instantiate(
         &mut factory,
@@ -177,11 +202,15 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         token: Token::create(token_a_id.clone()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_a_id.clone(),
+            decimals: Some(18),
         },
     };
     let token_b = TokenWithDenom {
         token: Token::create(token_b_id.clone()).unwrap(),
-        token_type: euclid::token::TokenType::Native { denom: token_b_id },
+        token_type: euclid::token::TokenType::Native {
+            denom: token_b_id,
+            decimals: Some(18),
+        },
     };
 
     // // Register escrow
@@ -207,21 +236,29 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
     //     .await_packets("osmosis", register_escrow_request)
     //     .unwrap();
 
-    let token_denoms_response: QueryTokenDenomsResponse = router_contract
-        .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
-            token: token_a.token.clone(),
-        })
+    let virtual_balance_address = router_contract.get_state().unwrap().virtual_balance_address;
+    let virtual_balance_contract = get_virtual_balance(&router, &virtual_balance_address);
+
+    let token_metadata_response: GetTokenMetadataResponse = virtual_balance_contract
+        .query(
+            &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenMetadata {
+                token_id: token_a.token.to_string(),
+                pagination: None,
+            },
+        )
         .unwrap();
 
     assert_eq!(
-        token_denoms_response,
-        QueryTokenDenomsResponse {
-            denoms: vec![TokenDenom {
-                chain_uid: factory_chain_uid.clone(),
-                token_type: euclid::token::TokenType::Native {
+        token_metadata_response,
+        GetTokenMetadataResponse {
+            metadata: vec![TokenMetadata::new(
+                token_a.token.clone(),
+                factory_chain_uid.clone(),
+                euclid::token::TokenType::Native {
                     denom: token_a.token.to_string(),
+                    decimals: Some(18),
                 },
-            }],
+            )],
         }
     );
 
@@ -229,8 +266,8 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
     let create_pool_with_funds_request = factory_contract.execute(
         &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
             pair_with_denom_and_amount: PairWithDenomAndAmount {
-                token_1: token_a.with_amount(Uint128::from(0u128)),
-                token_2: token_b.with_amount(Uint128::from(0u128)),
+                token_1: token_a.with_amount(Uint256::from(0u128)),
+                token_2: token_b.with_amount(Uint256::from(0u128)),
             },
             slippage_tolerance_bps: 100,
             lp_token_name: "lp".to_string(),
@@ -255,8 +292,8 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
                 pair_with_denom_and_amount: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                    token_1: token_a.with_amount(Uint256::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint256::from(100_000u128)),
                 },
                 slippage_tolerance_bps: 100,
                 lp_token_name: "lpname".to_string(),
@@ -305,6 +342,16 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
+    let token_1_reserve = normalize_token_to_voucher(
+        Uint256::from(10_000_u128),
+        token_a.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
+    let token_2_reserve = normalize_token_to_voucher(
+        Uint256::from(100_000_u128),
+        token_b.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         liquidity_query,
         GetLiquidityQueryResponse {
@@ -312,9 +359,17 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
                 token_1: token_a.token.clone(),
                 token_2: token_b.token.clone(),
             },
-            token_1_reserve: Uint128::new(10_000),
-            token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(31622),
+            token_1_reserve: normalize_token_to_voucher(
+                Uint256::from(10_000_u128),
+                token_a.token_type.get_decimals().unwrap()
+            )
+            .unwrap(),
+            token_2_reserve: normalize_token_to_voucher(
+                Uint256::from(100_000_u128),
+                token_b.token_type.get_decimals().unwrap()
+            )
+            .unwrap(),
+            total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
         }
     );
 
@@ -331,7 +386,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         EscrowStateResponse {
             token: token_a.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(10_000u128),
+            total_amount: Uint256::from(10_000u128),
         }
     );
 
@@ -344,7 +399,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         EscrowStateResponse {
             token: token_b.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(100_000u128),
+            total_amount: Uint256::from(100_000u128),
         }
     );
 
@@ -354,8 +409,8 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         .execute(
             &euclid::msgs::factory::ExecuteMsg::AddLiquidity {
                 pair_with_denom_and_amount: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                    token_1: token_a.with_amount(Uint256::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint256::from(100_000u128)),
                 },
                 slippage_tolerance_bps: 100,
                 cross_chain_config: CrossChainConfig::default(),
@@ -378,17 +433,45 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
+    let token_1_reserve = normalize_token_to_voucher(
+        Uint256::from(10_000_u128 * 2),
+        token_a.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
+    let token_2_reserve = normalize_token_to_voucher(
+        Uint256::from(100_000_u128 * 2),
+        token_b.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
     assert_eq!(
-        liquidity_query,
-        GetLiquidityQueryResponse {
-            pair: Pair {
-                token_1: token_a.token.clone(),
-                token_2: token_b.token.clone(),
-            },
-            token_1_reserve: Uint128::new(10_000u128 * 2),
-            token_2_reserve: Uint128::new(100_000u128 * 2),
-            total_lp_tokens: Uint128::new(31622u128 * 2),
+        liquidity_query.pair,
+        Pair {
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
         }
+    );
+    assert_eq!(
+        liquidity_query.token_1_reserve,
+        normalize_token_to_voucher(
+            Uint256::from(10_000_u128 * 2),
+            token_a.token_type.get_decimals().unwrap()
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        liquidity_query.token_2_reserve,
+        normalize_token_to_voucher(
+            Uint256::from(100_000_u128 * 2),
+            token_b.token_type.get_decimals().unwrap()
+        )
+        .unwrap()
+    );
+    assert!(
+        liquidity_query
+            .total_lp_tokens
+            .abs_diff(lp_tokens(token_1_reserve, token_2_reserve))
+            .le(&Uint256::one()),
+        "Total LP tokens are not equal to expected total LP tokens"
     );
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_token_a
@@ -399,7 +482,7 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         EscrowStateResponse {
             token: token_a.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(10_000u128 * 2),
+            total_amount: Uint256::from(10_000u128 * 2),
         }
     );
     // Osmo escrow contract
@@ -411,15 +494,18 @@ fn run_create_pool_with_funds(router_chain_id: &str, factory_chain_id: &str) {
         EscrowStateResponse {
             token: token_b.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(100_000u128 * 2),
+            total_amount: Uint256::from(100_000u128 * 2),
         }
     );
 
-    let _resp: AllEscrowsResponse = router_contract
-        .query(&euclid::msgs::router::QueryMsg::QueryAllEscrows {
-            pagination: Pagination::new(None, None, None, None),
-        })
-        .unwrap();
+    let _resp: euclid::msgs::virtual_balance::msg::GetAllEscrowBalancesResponse =
+        virtual_balance_contract
+            .query(
+                &euclid::msgs::virtual_balance::msg::QueryMsg::GetAllEscrowBalances {
+                    pagination: Some(Pagination::new(None, None, None, None)),
+                },
+            )
+            .unwrap();
 
     let _resp: AllVlpResponse = router_contract
         .query(&euclid::msgs::router::QueryMsg::GetAllVlps {
@@ -453,6 +539,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         token: Token::create(token_a_id.clone()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_a_id.clone(),
+            decimals: Some(18),
         },
     };
     let token_b_id: String = "token.b".to_string();
@@ -460,6 +547,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         token: Token::create(token_b_id.clone()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_b_id.clone(),
+            decimals: Some(18),
         },
     };
 
@@ -516,19 +604,26 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     )
     .unwrap();
 
-    let token_denoms_response: QueryTokenDenomsResponse = router_contract
-        .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
-            token: token_a.token.clone(),
-        })
+    let virtual_balance_address = router_contract.get_state().unwrap().virtual_balance_address;
+    let virtual_balance_contract = get_virtual_balance(&router_chain, &virtual_balance_address);
+
+    let token_metadata_response: GetTokenMetadataResponse = virtual_balance_contract
+        .query(
+            &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenMetadata {
+                token_id: token_a.token.to_string(),
+                pagination: None,
+            },
+        )
         .unwrap();
 
     assert_eq!(
-        token_denoms_response,
-        QueryTokenDenomsResponse {
-            denoms: vec![TokenDenom {
-                chain_uid: factory_chain_uid.clone(),
-                token_type: token_a.token_type.clone(),
-            }],
+        token_metadata_response,
+        GetTokenMetadataResponse {
+            metadata: vec![TokenMetadata::new(
+                token_a.token.clone(),
+                factory_chain_uid.clone(),
+                token_a.token_type.clone(),
+            )],
         }
     );
 
@@ -537,8 +632,8 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
                 pair_with_denom_and_amount: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                    token_1: token_a.with_amount(Uint256::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint256::from(100_000u128)),
                 },
                 slippage_tolerance_bps: 100,
                 lp_token_name: "lpname".to_string(),
@@ -587,19 +682,34 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
+    let token_1_reserve = normalize_token_to_voucher(
+        Uint256::from(10_000_u128),
+        token_a.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
+    let token_2_reserve = normalize_token_to_voucher(
+        Uint256::from(100_000_u128),
+        token_b.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
     assert_eq!(
-        liquidity_query,
-        GetLiquidityQueryResponse {
-            pair: Pair {
-                token_1: token_a.token.clone(),
-                token_2: token_b.token.clone(),
-            },
-            token_1_reserve: Uint128::new(10_000),
-            token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(31622),
+        liquidity_query.pair,
+        Pair {
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
         }
     );
-
+    assert_eq!(liquidity_query.token_1_reserve, token_1_reserve);
+    assert_eq!(liquidity_query.token_2_reserve, token_2_reserve);
+    let expected_total_lp = lp_tokens(token_1_reserve, token_2_reserve);
+    assert!(
+        liquidity_query
+            .total_lp_tokens
+            .abs_diff(expected_total_lp)
+            .le(&Uint256::one()),
+        "Total LP tokens are not equal to expected total LP tokens {expected_total_lp} != {}",
+        liquidity_query.total_lp_tokens
+    );
     // Osmo escrow contract
     let escrow_token_a = get_escrow(&factory_contract, token_a.token.as_str());
     let escrow_token_b = get_escrow(&factory_contract, token_b.token.as_str());
@@ -613,7 +723,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         EscrowStateResponse {
             token: token_a.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(10_000u128),
+            total_amount: Uint256::from(10_000u128),
         }
     );
 
@@ -625,7 +735,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         EscrowStateResponse {
             token: token_b.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(100_000u128),
+            total_amount: Uint256::from(100_000u128),
         }
     );
 
@@ -635,8 +745,8 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .execute(
             &euclid::msgs::factory::ExecuteMsg::AddLiquidity {
                 pair_with_denom_and_amount: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                    token_1: token_a.with_amount(Uint256::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint256::from(100_000u128)),
                 },
                 slippage_tolerance_bps: 100, // 1% slippage tolerance
                 cross_chain_config: CrossChainConfig::default(),
@@ -659,17 +769,35 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
+    let new_token_1_reserve = token_1_reserve
+        + normalize_token_to_voucher(
+            Uint256::from(10_000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap();
+    let new_token_2_reserve = token_2_reserve
+        + normalize_token_to_voucher(
+            Uint256::from(100_000_u128),
+            token_b.token_type.get_decimals().unwrap(),
+        )
+        .unwrap();
     assert_eq!(
-        liquidity_query,
-        GetLiquidityQueryResponse {
-            pair: Pair {
-                token_1: token_a.token.clone(),
-                token_2: token_b.token.clone(),
-            },
-            token_1_reserve: Uint128::new(10_000u128 * 2),
-            token_2_reserve: Uint128::new(100_000u128 * 2),
-            total_lp_tokens: Uint128::new(31622u128 * 2),
+        liquidity_query.pair,
+        Pair {
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
         }
+    );
+    assert_eq!(liquidity_query.token_1_reserve, new_token_1_reserve);
+    assert_eq!(liquidity_query.token_2_reserve, new_token_2_reserve);
+    let expected_total_lp = lp_tokens(new_token_1_reserve, new_token_2_reserve);
+    assert!(
+        liquidity_query
+            .total_lp_tokens
+            .abs_diff(expected_total_lp)
+            .le(&Uint256::one()),
+        "Total LP tokens are not equal to expected total LP tokens {expected_total_lp} != {}",
+        liquidity_query.total_lp_tokens.to_string()
     );
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_token_a
@@ -680,7 +808,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         EscrowStateResponse {
             token: token_a.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(10_000u128 * 2),
+            total_amount: Uint256::from(10_000u128 * 2),
         }
     );
     // Osmo escrow contract
@@ -692,7 +820,7 @@ fn run_add_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         EscrowStateResponse {
             token: token_b.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(100_000u128 * 2),
+            total_amount: Uint256::from(100_000u128 * 2),
         }
     );
 }
@@ -711,16 +839,18 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
+            amount: Uint256::from(10_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -743,7 +873,7 @@ fn test_add_liquidity_fails_with_invalid_slippage_tolerance() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -765,16 +895,18 @@ fn test_add_liquidity_fails_when_pool_does_not_exit() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
+            amount: Uint256::from(10_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -790,7 +922,7 @@ fn test_add_liquidity_fails_when_pool_does_not_exit() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -820,16 +952,18 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(0u128),
+            amount: Uint256::from(0u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -853,7 +987,7 @@ fn test_add_liquidity_fails_with_zero_liquidity_amount() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -883,16 +1017,18 @@ fn test_add_liquidity_fails_with_insufficient_deposit() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -931,16 +1067,18 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
     let mut pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -958,6 +1096,7 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
     // Attempt to add liquidity with tokens that aren't allowed by the escrow.
     pair_info.token_1.token_type = TokenType::Native {
         denom: "osmo".to_string(),
+        decimals: Some(18),
     };
 
     // adding funds
@@ -969,7 +1108,7 @@ fn test_add_liquidity_fails_with_unsupported_token_denomination() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -999,16 +1138,18 @@ fn test_add_liquidity_fails_with_extra_funds() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
+            amount: Uint256::from(10_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -1032,7 +1173,7 @@ fn test_add_liquidity_fails_with_extra_funds() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128() + 10,
+            Uint128::try_from(token.amount).unwrap().u128() + 10,
             token.token_type.clone(),
             &mut funds,
         );
@@ -1074,6 +1215,7 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         token: Token::create(token_a_id.clone()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_a_id.clone(),
+            decimals: Some(6),
         },
     };
     let token_b_id: String = "token.b".to_string();
@@ -1081,6 +1223,7 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         token: Token::create(token_b_id.clone()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_b_id.clone(),
+            decimals: Some(6),
         },
     };
 
@@ -1137,19 +1280,26 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     )
     .unwrap();
 
-    let token_denoms_response: QueryTokenDenomsResponse = router_contract
-        .query(&euclid::msgs::router::QueryMsg::QueryTokenDenoms {
-            token: token_a.token.clone(),
-        })
+    let virtual_balance_address = router_contract.get_state().unwrap().virtual_balance_address;
+    let virtual_balance_contract = get_virtual_balance(&router_chain, &virtual_balance_address);
+
+    let token_metadata_response: GetTokenMetadataResponse = virtual_balance_contract
+        .query(
+            &euclid::msgs::virtual_balance::msg::QueryMsg::GetTokenMetadata {
+                token_id: token_a.token.to_string(),
+                pagination: None,
+            },
+        )
         .unwrap();
 
     assert_eq!(
-        token_denoms_response,
-        QueryTokenDenomsResponse {
-            denoms: vec![TokenDenom {
-                chain_uid: factory_chain_uid.clone(),
-                token_type: token_a.token_type.clone(),
-            }],
+        token_metadata_response,
+        GetTokenMetadataResponse {
+            metadata: vec![TokenMetadata::new(
+                token_a.token.clone(),
+                factory_chain_uid.clone(),
+                token_a.token_type.clone(),
+            )],
         }
     );
 
@@ -1158,8 +1308,8 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .execute(
             &euclid::msgs::factory::ExecuteMsg::RequestPoolCreation {
                 pair_with_denom_and_amount: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                    token_1: token_a.with_amount(Uint256::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint256::from(100_000u128)),
                 },
                 slippage_tolerance_bps: 100,
                 lp_token_name: "lpname".to_string(),
@@ -1208,6 +1358,16 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
+    let token_1_reserve = normalize_token_to_voucher(
+        Uint256::from(10_000_u128),
+        token_a.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
+    let token_2_reserve = normalize_token_to_voucher(
+        Uint256::from(100_000_u128),
+        token_b.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         liquidity_query,
         GetLiquidityQueryResponse {
@@ -1215,9 +1375,9 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
                 token_1: token_a.token.clone(),
                 token_2: token_b.token.clone(),
             },
-            token_1_reserve: Uint128::new(10_000),
-            token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(31622),
+            token_1_reserve,
+            token_2_reserve,
+            total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
         }
     );
 
@@ -1231,7 +1391,13 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .balance(factory_chain.sender.clone())
         .unwrap();
     let user_lp_balance = lp_token_balance_response.balance;
-    assert_eq!(user_lp_balance, Uint128::from(30622u128));
+    let expected_initial_lp =
+        lp_tokens(token_1_reserve, token_2_reserve) - Uint256::from(MINIMUM_LIQUIDITY);
+    assert_eq!(
+        user_lp_balance,
+        Uint128::try_from(expected_initial_lp).unwrap(),
+        "User LP balance is not equal to expected initial LP"
+    );
 
     // Osmo escrow contract
     let escrow_token_a = get_escrow(&factory_contract, token_a.token.as_str());
@@ -1246,7 +1412,7 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         EscrowStateResponse {
             token: token_a.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(10_000u128),
+            total_amount: Uint256::from(10_000u128),
         }
     );
 
@@ -1258,7 +1424,7 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         EscrowStateResponse {
             token: token_b.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(100_000u128),
+            total_amount: Uint256::from(100_000u128),
         }
     );
 
@@ -1268,8 +1434,8 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         .execute(
             &euclid::msgs::factory::ExecuteMsg::AddLiquidity {
                 pair_with_denom_and_amount: PairWithDenomAndAmount {
-                    token_1: token_a.with_amount(Uint128::from(10_000u128)),
-                    token_2: token_b.with_amount(Uint128::from(100_000u128)),
+                    token_1: token_a.with_amount(Uint256::from(10_000u128)),
+                    token_2: token_b.with_amount(Uint256::from(100_000u128)),
                 },
                 slippage_tolerance_bps: 100, // 1% slippage tolerance
                 cross_chain_config: CrossChainConfig::default(),
@@ -1292,23 +1458,39 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
+    let token_1_reserve = normalize_token_to_voucher(
+        Uint256::from(10_000_u128 * 2),
+        token_a.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
+    let token_2_reserve = normalize_token_to_voucher(
+        Uint256::from(100_000_u128 * 2),
+        token_b.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
     assert_eq!(
-        liquidity_query,
-        GetLiquidityQueryResponse {
-            pair: Pair {
-                token_1: token_a.token.clone(),
-                token_2: token_b.token.clone(),
-            },
-            token_1_reserve: Uint128::new(10_000u128 * 2),
-            token_2_reserve: Uint128::new(100_000u128 * 2),
-            total_lp_tokens: Uint128::new(31622u128 * 2),
+        liquidity_query.pair,
+        Pair {
+            token_1: token_a.token.clone(),
+            token_2: token_b.token.clone(),
         }
+    );
+    assert_eq!(liquidity_query.token_1_reserve, token_1_reserve);
+    assert_eq!(liquidity_query.token_2_reserve, token_2_reserve);
+    assert!(
+        liquidity_query
+            .total_lp_tokens
+            .abs_diff(lp_tokens(token_1_reserve, token_2_reserve))
+            .le(&Uint256::one()),
+        "Total LP tokens are not equal to expected total LP tokens"
     );
     let lp_token_balance_response = lp_token_contract
         .balance(factory_chain.sender.clone())
         .unwrap();
     let user_lp_balance = lp_token_balance_response.balance;
-    assert_eq!(user_lp_balance, Uint128::from(62244u128));
+    // LP tokens are normalized to 24 decimals: lp_tokens(10_000, 100_000) * 2 - MINIMUM_LIQUIDITY
+    // = isqrt(10_000 * 10^6 * 100_000 * 10^6) * 2 - 1_000_000_000
+    assert_eq!(user_lp_balance, Uint128::from(63245553203366586639976u128));
     // Euclid escrow contract
     let escrow_query: EscrowStateResponse = escrow_token_a
         .query(&euclid::msgs::escrow::QueryMsg::State {})
@@ -1318,7 +1500,7 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         EscrowStateResponse {
             token: token_a.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(10_000u128 * 2),
+            total_amount: Uint256::from(10_000u128 * 2),
         }
     );
     // Osmo escrow contract
@@ -1330,7 +1512,7 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         EscrowStateResponse {
             token: token_b.token.clone(),
             factory_address: factory_contract.address().unwrap(),
-            total_amount: Uint128::from(100_000u128 * 2),
+            total_amount: Uint256::from(100_000u128 * 2),
         }
     );
     let remove_msg = FactoryCw20HookMsg::RemoveLiquidity {
@@ -1338,11 +1520,11 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
         recipient: CrossChainUser::new(factory_chain_uid.clone(), factory_chain.sender.to_string()),
         cross_chain_config: CrossChainConfig::default(),
     };
-    // let lp_to_remove = Uint128::from(1000u128);
+    // let lp_to_remove = Uint256::from(1000u128);
     let lp_to_remove = user_lp_balance;
     let remove_request = lp_token_contract
         .send(
-            lp_to_remove.u128(),
+            Uint128::try_from(lp_to_remove).unwrap().u128(),
             factory_contract.address().unwrap(),
             to_json_binary(&remove_msg).unwrap(),
         )
@@ -1365,7 +1547,10 @@ fn run_remove_liquidity(factory_chain_id: &str, router_chain_id: &str) {
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
-    assert_eq!(liquidity_query.total_lp_tokens, Uint128::new(1000));
+    assert_eq!(
+        liquidity_query.total_lp_tokens,
+        Uint256::from(1_000_000_000u128)
+    );
 }
 
 #[test]
@@ -1396,7 +1581,7 @@ fn run_test_swap_request(factory_chain_id: &str, router_chain_id: &str) {
 pub struct SwapTestReusableOutput {
     // pub token_in: TokenWithDenom,
     pub token_out: TokenWithDenom,
-    // pub amount_in: Uint128,
+    // pub amount_in: Uint256,
 }
 
 pub fn run_test_swap_request_reusable(
@@ -1416,6 +1601,7 @@ pub fn run_test_swap_request_reusable(
         token: token_a.clone(),
         token_type: euclid::token::TokenType::Native {
             denom: token_a.to_string(),
+            decimals: Some(18),
         },
     };
     let token_b = Token::create("token.b".to_string()).unwrap();
@@ -1423,6 +1609,7 @@ pub fn run_test_swap_request_reusable(
         token: token_b.clone(),
         token_type: euclid::token::TokenType::Native {
             denom: token_b.to_string(),
+            decimals: Some(18),
         },
     };
     let mut funds = vec![];
@@ -1440,8 +1627,8 @@ pub fn run_test_swap_request_reusable(
     register_token(factory, router, token_a.clone())?;
     register_token(factory, router, token_b.clone())?;
 
-    let pool_token_1 = token_a.with_amount(Uint128::from(10_000_000_000u128));
-    let pool_token_2 = token_b.with_amount(Uint128::from(100_000_000_000u128));
+    let pool_token_1 = token_a.with_amount(Uint256::from(10_000_000_000u128));
+    let pool_token_2 = token_b.with_amount(Uint256::from(100_000_000_000u128));
 
     create_pool(
         factory,
@@ -1461,6 +1648,16 @@ pub fn run_test_swap_request_reusable(
 
     let liquidity_query: GetLiquidityQueryResponse =
         vlp_contract.query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})?;
+    let token_1_reserve = normalize_token_to_voucher(
+        Uint256::from(10_000_000_000_u128),
+        token_a.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
+    let token_2_reserve = normalize_token_to_voucher(
+        Uint256::from(100_000_000_000_u128),
+        token_b.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         liquidity_query,
         GetLiquidityQueryResponse {
@@ -1468,9 +1665,9 @@ pub fn run_test_swap_request_reusable(
                 token_1: token_a.token.clone(),
                 token_2: token_b.token.clone(),
             },
-            token_1_reserve: pool_token_1.amount,
-            token_2_reserve: pool_token_2.amount,
-            total_lp_tokens: Uint128::new(31_622_776_601),
+            token_1_reserve,
+            token_2_reserve,
+            total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
         }
     );
 
@@ -1501,14 +1698,14 @@ pub fn run_test_swap_request_reusable(
         }
     );
 
-    let amount_in = Uint128::new(1_000_000);
+    let amount_in = Uint256::from(1_000_000u128);
 
     let swap_request_msg = factory.execute(
         &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
             amount_in,
             asset_in: token_a.clone(),
             asset_out: token_b.token.clone(),
-            min_amount_out: Uint128::new(50),
+            min_amount_out: Uint256::from(50u128),
             swaps: vec![NextSwapPair {
                 token_in: token_a.token.clone(),
                 token_out: token_b.token.clone(),
@@ -1519,10 +1716,40 @@ pub fn run_test_swap_request_reusable(
             partner_fee: None,
             cross_chain_config: CrossChainConfig::default(),
         }),
-        &[coin(amount_in.u128(), token_a.token.to_string())],
+        &[coin(
+            Uint128::try_from(amount_in).unwrap().u128(),
+            token_a.token.to_string(),
+        )],
     )?;
 
     relay_factory_router_factory(swap_request_msg.events, factory, router, &factory_chain_uid)?;
+
+    // --- Post-swap assertions: VLP liquidity state ---
+    let post_swap_liquidity: GetLiquidityQueryResponse =
+        vlp_contract.query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})?;
+
+    // LP tokens should be unchanged (swaps do not mint or burn LP tokens)
+    let pre_swap_lp_tokens = lp_tokens(token_1_reserve, token_2_reserve);
+    assert_eq!(
+        post_swap_liquidity.total_lp_tokens, pre_swap_lp_tokens,
+        "total_lp_tokens should be unchanged after swap (no minting/burning)"
+    );
+
+    // token_1 (input) reserve should increase
+    assert!(
+        post_swap_liquidity.token_1_reserve > token_1_reserve,
+        "token_1_reserve should increase after swapping token_a in: before={}, after={}",
+        token_1_reserve,
+        post_swap_liquidity.token_1_reserve
+    );
+
+    // token_2 (output) reserve should decrease
+    assert!(
+        post_swap_liquidity.token_2_reserve < token_2_reserve,
+        "token_2_reserve should decrease after swapping token_b out: before={}, after={}",
+        token_2_reserve,
+        post_swap_liquidity.token_2_reserve
+    );
 
     Ok(SwapTestReusableOutput {
         // token_in: token_a,
@@ -1560,6 +1787,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         token: token_a.clone(),
         token_type: euclid::token::TokenType::Native {
             denom: token_a.to_string(),
+            decimals: Some(18),
         },
     };
     let token_b = Token::create("token.b".to_string()).unwrap();
@@ -1567,6 +1795,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         token: token_b.clone(),
         token_type: euclid::token::TokenType::Native {
             denom: token_b.to_string(),
+            decimals: Some(18),
         },
     };
     let token_c = Token::create("token.c".to_string()).unwrap();
@@ -1574,6 +1803,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         token: token_c.clone(),
         token_type: euclid::token::TokenType::Native {
             denom: token_c.to_string(),
+            decimals: Some(18),
         },
     };
     let mut funds = vec![];
@@ -1602,8 +1832,8 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
             &factory,
             &router,
             PairWithDenomAndAmount {
-                token_1: token_in.with_amount(Uint128::from(10_000u128)),
-                token_2: token_out.with_amount(Uint128::from(100_000u128)),
+                token_1: token_in.with_amount(Uint256::from(10_000u128)),
+                token_2: token_out.with_amount(Uint256::from(100_000u128)),
             },
             BPS_1_PERCENT,
             PoolConfig::ConstantProduct {},
@@ -1619,6 +1849,16 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         let liquidity_query: GetLiquidityQueryResponse = vlp_contract
             .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
             .unwrap();
+        let token_1_reserve = normalize_token_to_voucher(
+            Uint256::from(10_000_u128),
+            token_in.token_type.get_decimals().unwrap(),
+        )
+        .unwrap();
+        let token_2_reserve = normalize_token_to_voucher(
+            Uint256::from(100_000_u128),
+            token_out.token_type.get_decimals().unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             liquidity_query,
             GetLiquidityQueryResponse {
@@ -1626,9 +1866,9 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
                     token_1: token_in.token.clone(),
                     token_2: token_out.token.clone(),
                 },
-                token_1_reserve: Uint128::new(10_000),
-                token_2_reserve: Uint128::new(100_000),
-                total_lp_tokens: Uint128::new(31622),
+                token_1_reserve,
+                token_2_reserve,
+                total_lp_tokens: lp_tokens(token_1_reserve, token_2_reserve),
             }
         );
     }
@@ -1639,9 +1879,9 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         .execute(
             &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
                 asset_in: token_a.clone(),
-                amount_in: Uint128::new(100),
+                amount_in: Uint256::from(100u128),
                 asset_out: token_c.token.clone(),
-                min_amount_out: Uint128::new(50),
+                min_amount_out: Uint256::from(50u128),
                 swaps: vec![
                     NextSwapPair {
                         token_in: token_a.token.clone(),
@@ -1661,7 +1901,7 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
                         ChainUid::create(factory_chain_id.to_string()).unwrap(),
                         random_user.to_string(),
                     ),
-                    amount: Limit::GreaterThanOrEqual(Uint128::new(50)),
+                    amount: Limit::GreaterThanOrEqual(Uint256::from(50u128)),
                     denom: token_c.token_type.clone(),
                     forwarding_message: None,
                     unsafe_refund_as_voucher: None,
@@ -1690,8 +1930,8 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
         )
         .unwrap();
     assert!(
-        random_user_balance > Uint128::new(0),
-        "Random user balance is {}",
+        random_user_balance >= Uint128::from(50u128),
+        "Random user balance ({}) should be at least min_amount_out (50)",
         random_user_balance
     );
 }
@@ -1721,16 +1961,18 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
+            amount: Uint256::from(10_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -1756,6 +1998,7 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -1768,7 +2011,7 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -1785,11 +2028,11 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
     .unwrap();
 
     funds.clear();
-    let amount_in = Uint128::new(10000);
+    let amount_in = Uint256::from(10000u128);
     faucet(
         &chain,
         chain.sender.as_str(),
-        amount_in.u128(),
+        Uint128::try_from(amount_in).unwrap().u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -1802,7 +2045,7 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
         asset_in,
         amount_in,
         Token::create("nibi".to_string()).unwrap(),
-        Uint128::new(50),
+        Uint256::from(50u128),
         // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
         // last_swap.token_out doesn’t match asset_out.
         vec![NextSwapPair {
@@ -1843,16 +2086,18 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
+            amount: Uint256::from(10_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -1870,6 +2115,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -1882,7 +2128,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -1899,11 +2145,11 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
     .unwrap();
 
     funds.clear();
-    let amount_in = Uint128::new(1000);
+    let amount_in = Uint256::from(1000u128);
     faucet(
         &chain,
         chain.sender.as_str(),
-        amount_in.u128(),
+        Uint128::try_from(amount_in).unwrap().u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -1926,7 +2172,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         asset_in,
         amount_in,
         Token::create("nibi".to_string()).unwrap(),
-        Uint128::new(50),
+        Uint256::from(50u128),
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
@@ -1963,16 +2209,18 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
+            amount: Uint256::from(10_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -1991,6 +2239,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: "juno".to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -2003,7 +2252,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -2020,11 +2269,11 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
     .unwrap();
 
     funds.clear();
-    let amount_in = Uint128::new(1000);
+    let amount_in = Uint256::from(1000u128);
     faucet(
         &chain,
         chain.sender.as_str(),
-        amount_in.u128(),
+        Uint128::try_from(amount_in).unwrap().u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -2042,7 +2291,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         asset_in,
         amount_in,
         Token::create("nibi".to_string()).unwrap(),
-        Uint128::new(50),
+        Uint256::from(50u128),
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
@@ -2078,16 +2327,18 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
+            amount: Uint256::from(10_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -2105,6 +2356,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -2117,7 +2369,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -2134,11 +2386,11 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
     .unwrap();
 
     funds.clear();
-    let amount_in = Uint128::new(1000);
+    let amount_in = Uint256::from(1000u128);
     faucet(
         &chain,
         chain.sender.as_str(),
-        amount_in.u128(),
+        Uint128::try_from(amount_in).unwrap().u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -2151,7 +2403,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         asset_in,
         amount_in,
         Token::create("nibi".to_string()).unwrap(),
-        Uint128::new(0),
+        Uint256::from(0u128),
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
@@ -2178,16 +2430,18 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     let pair_info = PairWithDenomAndAmount {
         token_1: TokenWithDenomAndAmount {
             token: Token::create("eucl".to_string()).unwrap(),
-            amount: Uint128::from(10_000u128),
+            amount: Uint256::from(10_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "eucl".to_string(),
+                decimals: Some(18),
             },
         },
         token_2: TokenWithDenomAndAmount {
             token: Token::create("nibi".to_string()).unwrap(),
-            amount: Uint128::from(100_000u128),
+            amount: Uint256::from(100_000u128),
             token_type: euclid::token::TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
         },
     };
@@ -2205,6 +2459,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         token: Token::create("eucl".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: "eucl".to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -2217,7 +2472,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         faucet(
             &chain,
             chain.sender.as_str(),
-            token.amount.u128(),
+            Uint128::try_from(token.amount).unwrap().u128(),
             token.token_type.clone(),
             &mut funds,
         );
@@ -2234,11 +2489,11 @@ fn test_swap_request_fails_for_invalid_swap_route() {
     .unwrap();
 
     funds.clear();
-    let amount_in = Uint128::new(1000);
+    let amount_in = Uint256::from(1000u128);
     faucet(
         &chain,
         chain.sender.as_str(),
-        amount_in.u128(),
+        Uint128::try_from(amount_in).unwrap().u128(),
         asset_in.token_type.clone(),
         &mut funds,
     );
@@ -2257,7 +2512,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         asset_in,
         amount_in,
         Token::create("nibi".to_string()).unwrap(),
-        Uint128::new(50),
+        Uint256::from(50u128),
         // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
         // last_swap.token_out doesn’t match asset_out.
         vec![NextSwapPair {
@@ -2271,9 +2526,10 @@ fn test_swap_request_fails_for_invalid_swap_route() {
                 ChainUid::create("nibiru".to_string()).unwrap(),
                 sender.to_string(),
             ),
-            amount: Limit::GreaterThanOrEqual(Uint128::one()),
+            amount: Limit::GreaterThanOrEqual(Uint256::one()),
             denom: TokenType::Native {
                 denom: "nibi".to_string(),
+                decimals: Some(18),
             },
             forwarding_message: None,
             unsafe_refund_as_voucher: None,
@@ -2306,14 +2562,14 @@ fn test_swap_request_fails_for_invalid_swap_route() {
 //     let pair_info = PairWithDenomAndAmount {
 //         token_1: TokenWithDenomAndAmount {
 //             token: Token::create("eucl".to_string()).unwrap(),
-//             amount: Uint128::from(10_000u128),
+//             amount: Uint256::from(10_000u128),
 //             token_type: euclid::token::TokenType::Native {
 //                 denom: "eucl".to_string(),
 //             },
 //         },
 //         token_2: TokenWithDenomAndAmount {
 //             token: Token::create("nibi".to_string()).unwrap(),
-//             amount: Uint128::from(100_000u128),
+//             amount: Uint256::from(100_000u128),
 //             token_type: euclid::token::TokenType::Native {
 //                 denom: "nibi".to_string(),
 //             },
@@ -2344,7 +2600,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
 //         faucet(
 //             &chain,
 //             chain.sender.as_str(),
-//             token.amount.u128(),
+//             Uint128::try_from(token.amount).unwrap().u128(),
 //             token.token_type.clone(),
 //             &mut funds,
 //         );
@@ -2374,9 +2630,9 @@ fn test_swap_request_fails_for_invalid_swap_route() {
 //         &factory,
 //         None,
 //         asset_in,
-//         Uint128::new(1000),
+//         Uint256::from(1000u128),
 //         Token::create("nibi".to_string()).unwrap(),
-//         Uint128::new(50),
+//         Uint256::from(50u128),
 //         Some(241),
 //         // Set swaps such that first_swap.token_in doesn’t match asset_in.token or
 //         // last_swap.token_out doesn’t match asset_out.
@@ -2430,6 +2686,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
         token: token_a.clone(),
         token_type: euclid::token::TokenType::Native {
             denom: token_a.to_string(),
+            decimals: Some(18),
         },
     };
     let token_b = Token::create("token.b".to_string()).unwrap();
@@ -2437,6 +2694,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
         token: token_b.clone(),
         token_type: euclid::token::TokenType::Native {
             denom: token_b.to_string(),
+            decimals: Some(18),
         },
     };
     let mut funds = vec![];
@@ -2458,8 +2716,8 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
         &factory,
         &router,
         PairWithDenomAndAmount {
-            token_1: token_a.with_amount(Uint128::from(10_000u128)),
-            token_2: token_b.with_amount(Uint128::from(100_000u128)),
+            token_1: token_a.with_amount(Uint256::from(10_000u128)),
+            token_2: token_b.with_amount(Uint256::from(100_000u128)),
         },
         BPS_1_PERCENT,
         PoolConfig::Stable {
@@ -2477,6 +2735,16 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
     let liquidity_query: GetLiquidityQueryResponse = vlp_contract
         .query(&euclid::msgs::vlp::cp::QueryMsg::Liquidity {})
         .unwrap();
+    let token_1_reserve = normalize_token_to_voucher(
+        Uint256::from(10_000_u128),
+        token_a.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
+    let token_2_reserve = normalize_token_to_voucher(
+        Uint256::from(100_000_u128),
+        token_b.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         liquidity_query,
         GetLiquidityQueryResponse {
@@ -2484,9 +2752,13 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
                 token_1: token_a.token.clone(),
                 token_2: token_b.token.clone(),
             },
-            token_1_reserve: Uint128::new(10_000),
-            token_2_reserve: Uint128::new(100_000),
-            total_lp_tokens: Uint128::new(31622),
+            token_1_reserve,
+            token_2_reserve,
+            total_lp_tokens: stable_lp_tokens(
+                token_1_reserve,
+                token_2_reserve,
+                Uint64::from(100u64)
+            ),
         }
     );
 
@@ -2502,7 +2774,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
         EscrowStateResponse {
             token: token_a.token.clone(),
             factory_address: factory.address().unwrap(),
-            total_amount: Uint128::from(10_000u128),
+            total_amount: Uint256::from(10_000u128),
         }
     );
 
@@ -2515,7 +2787,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
         EscrowStateResponse {
             token: token_b.token.clone(),
             factory_address: factory.address().unwrap(),
-            total_amount: Uint128::from(100_000u128),
+            total_amount: Uint256::from(100_000u128),
         }
     );
 
@@ -2523,9 +2795,9 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
         .execute(
             &euclid::msgs::factory::ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
                 asset_in: token_a.clone(),
-                amount_in: Uint128::new(100),
+                amount_in: Uint256::from(100u128),
                 asset_out: token_b.token.clone(),
-                min_amount_out: Uint128::new(50),
+                min_amount_out: Uint256::from(50u128),
                 swaps: vec![NextSwapPair {
                     token_in: token_a.token.clone(),
                     token_out: token_b.token.clone(),
@@ -2561,9 +2833,10 @@ fn test_deposit_and_withdraw() {
 
     let token = TokenWithDenomAndAmount {
         token: Token::create("osmo".to_string()).unwrap(),
-        amount: Uint128::from(100_000u128),
+        amount: Uint256::from(100_000u128),
         token_type: TokenType::Native {
             denom: "osmo".to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -2594,20 +2867,25 @@ fn test_deposit_and_withdraw() {
 
     println!("Try withdraw - ");
 
-    // Withdraw tokens
+    // Compute normalized voucher amount (tokens use 6 decimals, vouchers use 24)
+    let voucher_amount =
+        normalize_token_to_voucher(token.amount, token.token_type.get_decimals().unwrap()).unwrap();
+
+    // Withdraw tokens using voucher-denominated amounts
     let withdraw_response = factory
         .execute(
             &euclid::msgs::factory::ExecuteMsg::TransferVoucher {
                 token_id: token.token.clone(),
-                amount: token.amount,
+                amount: voucher_amount,
                 recipients: vec![Recipient {
                     recipient: CrossChainUser::new(
                         factory_chain_uid.clone(),
                         factory.environment().sender.to_string(),
                     ),
-                    amount: Limit::Equal(token.amount),
+                    amount: Limit::Equal(voucher_amount),
                     denom: TokenType::Native {
                         denom: "osmo".to_string(),
+                        decimals: Some(18),
                     },
                     forwarding_message: None,
                     unsafe_refund_as_voucher: None,
@@ -2639,7 +2917,7 @@ fn test_deposit_and_withdraw() {
         EscrowStateResponse {
             token: token.token.clone(),
             factory_address: factory.address().unwrap(),
-            total_amount: Uint128::zero(),
+            total_amount: Uint256::zero(),
         }
     );
 }
@@ -2657,9 +2935,10 @@ fn test_deposit_and_withdraw_with_failure() {
 
     let token = TokenWithDenomAndAmount {
         token: Token::create("osmo".to_string()).unwrap(),
-        amount: Uint128::from(100_000u128),
+        amount: Uint256::from(100_000u128),
         token_type: TokenType::Native {
             denom: "osmo".to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -2671,7 +2950,7 @@ fn test_deposit_and_withdraw_with_failure() {
     faucet(
         factory.environment(),
         factory.environment().sender.as_str(),
-        token.amount.u128(),
+        Uint128::try_from(token.amount).unwrap().u128(),
         token.token_type.clone(),
         &mut funds,
     );
@@ -2700,10 +2979,14 @@ fn test_deposit_and_withdraw_with_failure() {
         ),
         token_id: token.token.to_string(),
     };
+    // Compute normalized voucher amount
+    let voucher_amount =
+        normalize_token_to_voucher(token.amount, token.token_type.get_decimals().unwrap()).unwrap();
+
     let balance = virtual_balance_contract
         .get_balance(balance_key.clone())
         .unwrap();
-    assert_eq!(balance.amount, token.amount);
+    assert_eq!(balance.amount, voucher_amount);
 
     // Query escrow state after deposit
     let escrow_contract = get_escrow(&factory, token.token.to_string().as_str());
@@ -2713,7 +2996,7 @@ fn test_deposit_and_withdraw_with_failure() {
         EscrowStateResponse {
             token: token.token.clone(),
             factory_address: factory.address().unwrap(),
-            total_amount: Uint128::zero(),
+            total_amount: Uint256::zero(),
         }
     );
 
@@ -2722,17 +3005,18 @@ fn test_deposit_and_withdraw_with_failure() {
         factory.environment().addr_make("new_recipient").to_string(),
     );
 
-    // Withdraw tokens
+    // Withdraw tokens using voucher-denominated amounts
     let withdraw_response = factory
         .execute(
             &euclid::msgs::factory::ExecuteMsg::TransferVoucher {
                 token_id: token.token.clone(),
-                amount: token.amount,
+                amount: voucher_amount,
                 recipients: vec![Recipient {
                     recipient: new_recipient.clone(),
-                    amount: Limit::Equal(token.amount),
+                    amount: Limit::Equal(voucher_amount),
                     denom: TokenType::Native {
                         denom: "osmo".to_string(),
+                        decimals: Some(18),
                     },
                     forwarding_message: None,
                     unsafe_refund_as_voucher: None,
@@ -2757,21 +3041,22 @@ fn test_deposit_and_withdraw_with_failure() {
         .get_balance(balance_key.clone())
         .unwrap();
     assert_eq!(
-        balance.amount, token.amount,
+        balance.amount, voucher_amount,
         "Vcoin not refunded to original sender (unsafe send to recipient false)"
     );
 
-    // Withdraw tokens
+    // Withdraw tokens with unsafe_refund_as_voucher
     let withdraw_response = factory
         .execute(
             &euclid::msgs::factory::ExecuteMsg::TransferVoucher {
                 token_id: token.token.clone(),
-                amount: token.amount,
+                amount: voucher_amount,
                 recipients: vec![Recipient {
                     recipient: new_recipient.clone(),
-                    amount: Limit::Equal(token.amount),
+                    amount: Limit::Equal(voucher_amount),
                     denom: TokenType::Native {
                         denom: "osmo".to_string(),
+                        decimals: Some(18),
                     },
                     forwarding_message: None,
                     unsafe_refund_as_voucher: Some(true),
@@ -2797,7 +3082,7 @@ fn test_deposit_and_withdraw_with_failure() {
         .unwrap();
     assert_eq!(
         balance.amount,
-        Uint128::zero(),
+        Uint256::zero(),
         "Vcoin refunded  to original sender after failed withdraw (unsafe send to recipient true)",
     );
 
@@ -2810,7 +3095,7 @@ fn test_deposit_and_withdraw_with_failure() {
         .get_balance(new_balance_key.clone())
         .unwrap();
     assert_eq!(
-        balance.amount, token.amount,
+        balance.amount, voucher_amount,
         "Vcoin refunded to recipient after failed withdraw (unsafe send to recipient true)",
     );
 }

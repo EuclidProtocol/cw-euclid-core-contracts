@@ -457,11 +457,14 @@ pub fn on_swap_reply(deps: &mut DepsMut, env: Env, msg: Reply) -> Result<Respons
                 ContractError::new("Asset Out Mismatch")
             );
 
+            // min_amount_out is already in voucher units (24 decimals)
+            let normalized_min_amount_out = swap_msg.min_amount_out;
+
             ensure!(
-                vlp_swap_response.amount_out >= swap_msg.min_amount_out,
+                vlp_swap_response.amount_out >= normalized_min_amount_out,
                 ContractError::SlippageExceeded {
                     amount: vlp_swap_response.amount_out,
-                    min_amount_out: swap_msg.min_amount_out
+                    min_amount_out: normalized_min_amount_out
                 }
             );
 
@@ -616,7 +619,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env, MockQuerier},
-        Addr, Binary, Reply, SubMsgResponse, SubMsgResult, Uint128,
+        Addr, Binary, Reply, SubMsgResponse, SubMsgResult, Uint128, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -847,7 +850,7 @@ mod tests {
     fn make_add_liquidity_response(pair_with_amount: PairWithAmount) -> VlpAddLiquidityResponse {
         VlpAddLiquidityResponse {
             liquidity_added: pair_with_amount,
-            mint_lp_tokens: Uint128::new(500),
+            mint_lp_tokens: Uint256::from(500u128),
             vlp_address: "vlp_contract".to_string(),
             tx_id: "tx-add-liq-1".to_string(),
             sender: CrossChainUser::new(
@@ -868,7 +871,7 @@ mod tests {
         .unwrap();
 
         let liq_response = make_add_liquidity_response(
-            pair.get_pair_with_amount(Uint128::new(100), Uint128::new(200))
+            pair.get_pair_with_amount(Uint256::from(100u128), Uint256::from(200u128))
                 .unwrap(),
         );
         let inner_json = cosmwasm_std::to_json_binary(&liq_response).unwrap();
@@ -900,12 +903,12 @@ mod tests {
         let pair_with_denom = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: token1.clone(),
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 token_type: TokenType::Voucher {},
             },
             token_2: TokenWithDenomAndAmount {
                 token: token2.clone(),
-                amount: Uint128::new(200),
+                amount: Uint256::from(200u128),
                 token_type: TokenType::Voucher {},
             },
         };
@@ -950,15 +953,15 @@ mod tests {
             liquidity_released: PairWithAmount::new(
                 TokenWithAmount {
                     token: Token::create("aaa".to_string()).unwrap(),
-                    amount: Uint128::new(100),
+                    amount: Uint256::from(100u128),
                 },
                 TokenWithAmount {
                     token: Token::create("bbb".to_string()).unwrap(),
-                    amount: Uint128::new(200),
+                    amount: Uint256::from(200u128),
                 },
             )
             .unwrap(),
-            burn_lp_tokens: Uint128::new(50),
+            burn_lp_tokens: Uint256::from(50u128),
             tx_id: tx_id.to_string(),
             sender: CrossChainUser::new(
                 ChainUid::create("chain1".to_string()).unwrap(),
@@ -979,7 +982,7 @@ mod tests {
                 ChainUid::create("chain1".to_string()).unwrap(),
                 "user1".to_string(),
             ),
-            lp_allocation: Uint128::new(50),
+            lp_allocation: Uint256::from(50u128),
             pair,
             recipient: CrossChainUser::new(
                 ChainUid::create("chain1".to_string()).unwrap(),
@@ -1048,7 +1051,7 @@ mod tests {
     // on_swap_reply
     // -----------------------------------------------------------------------
 
-    fn seed_pending_swap(deps: &mut MockDeps, tx_id: &str, asset_out: Token, min_out: Uint128) {
+    fn seed_pending_swap(deps: &mut MockDeps, tx_id: &str, asset_out: Token, min_out: Uint256) {
         use euclid::token::TokenWithDenom;
         let msg = RouterCrossChainSwapExecuteMsg {
             sender: CrossChainUser::new(
@@ -1059,14 +1062,15 @@ mod tests {
                 token: Token::create("aaa".to_string()).unwrap(),
                 token_type: TokenType::Native {
                     denom: "uaaa".to_string(),
+                    decimals: None,
                 },
             },
-            amount_in: Uint128::new(1000),
+            amount_in: Uint256::from(1000u128),
             asset_out: asset_out.clone(),
             min_amount_out: min_out,
             swaps: vec![],
             recipients: vec![],
-            partner_fee_amount: Uint128::zero(),
+            partner_fee_amount: Uint256::zero(),
             partner_fee_recipient: CrossChainUser::new(
                 ChainUid::create("chain1".to_string()).unwrap(),
                 "fee_recipient".to_string(),
@@ -1078,7 +1082,7 @@ mod tests {
             .unwrap();
     }
 
-    fn seed_for_swap_reply(deps: &mut MockDeps, tx_id: &str, asset_out: Token, min_out: Uint128) {
+    fn seed_for_swap_reply(deps: &mut MockDeps, tx_id: &str, asset_out: Token, min_out: Uint256) {
         VIRTUAL_BALANCE_CONTRACT
             .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
             .unwrap();
@@ -1093,8 +1097,8 @@ mod tests {
         let mut deps = initialized();
         let tx_id = "tx-swap-1";
         let asset_out = Token::create("bbb".to_string()).unwrap();
-        let amount_out = Uint128::new(800);
-        seed_for_swap_reply(&mut deps, tx_id, asset_out.clone(), Uint128::new(700));
+        let amount_out = Uint256::from(800u128);
+        seed_for_swap_reply(&mut deps, tx_id, asset_out.clone(), Uint256::from(700u128));
 
         let vlp_swap_response = VlpSwapResponse {
             sender: CrossChainUser::new(
@@ -1153,7 +1157,7 @@ mod tests {
             &mut deps,
             tx_id,
             registered_asset_out.clone(),
-            Uint128::new(500),
+            Uint256::from(500u128),
         );
 
         // VLP returns a different asset_out
@@ -1165,7 +1169,7 @@ mod tests {
             ),
             tx_id: tx_id.to_string(),
             asset_out: wrong_asset_out,
-            amount_out: Uint128::new(800),
+            amount_out: Uint256::from(800u128),
         };
         let inner_json = cosmwasm_std::to_json_binary(&vlp_swap_response).unwrap();
         let proto_bytes = encode_execute_response(&inner_json);
@@ -1181,7 +1185,7 @@ mod tests {
         let tx_id = "tx-swap-slippage";
         let asset_out = Token::create("bbb".to_string()).unwrap();
         // min_amount_out = 1000; amount_out will be 500 → slippage exceeded
-        seed_for_swap_reply(&mut deps, tx_id, asset_out.clone(), Uint128::new(1000));
+        seed_for_swap_reply(&mut deps, tx_id, asset_out.clone(), Uint256::from(1000u128));
 
         let vlp_swap_response = VlpSwapResponse {
             sender: CrossChainUser::new(
@@ -1190,7 +1194,7 @@ mod tests {
             ),
             tx_id: tx_id.to_string(),
             asset_out: asset_out.clone(),
-            amount_out: Uint128::new(500),
+            amount_out: Uint256::from(500u128),
         };
         let inner_json = cosmwasm_std::to_json_binary(&vlp_swap_response).unwrap();
         let proto_bytes = encode_execute_response(&inner_json);
@@ -1220,6 +1224,7 @@ mod tests {
         PoolCreationResponse {
             vlp_contract: vlp_address.to_string(),
             tx_id: tx_id.to_string(),
+            mint_lp_tokens: Uint256::from(1000u128),
             sender: CrossChainUser::new(
                 ChainUid::create("chain1".to_string()).unwrap(),
                 "user1".to_string(),
@@ -1270,12 +1275,12 @@ mod tests {
         let pair_with_denom = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: token1.clone(),
-                amount: Uint128::new(100),
+                amount: Uint256::from(100u128),
                 token_type: TokenType::Voucher {},
             },
             token_2: TokenWithDenomAndAmount {
                 token: token2.clone(),
-                amount: Uint128::new(200),
+                amount: Uint256::from(200u128),
                 token_type: TokenType::Voucher {},
             },
         };

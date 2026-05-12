@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Event, Uint128};
+use cosmwasm_std::{Addr, Event, Uint128, Uint256};
 use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::events::EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT;
@@ -10,7 +10,9 @@ use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::vlp::concentrated::msg::{PositionResponse, QueryMsg as ConcentratedQueryMsg};
 use euclid_ibc::ack::make_ack_fail;
 use rstest::rstest;
+use rstest_reuse::apply;
 
+use super::utils::{raw_units, scaled_pair, setup_clp};
 use crate::helpers::chains::get_concentrated_vlp;
 use crate::helpers::factory::{
     add_concentrated_liquidity, create_concentrated_pool, faucet, get_position_token,
@@ -19,12 +21,9 @@ use crate::helpers::factory::{
 use crate::helpers::relayer::{
     extract_send_packet_events, relay_factory_ack_packet, relay_factory_send_packet,
 };
-use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
 use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
-use crate::tests_reusable::constants::{
-    FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
-};
 use crate::tests_reusable::factory_register::FactorySetupMode;
+use crate::tests_reusable::test_macros::clp_matrix;
 
 #[cfg(test)]
 mod tests {
@@ -61,11 +60,14 @@ mod tests {
     /// Send two add_concentrated_liquidity requests without relaying acks,
     /// then relay acks one at a time. Both positions should be minted,
     /// giving 3 total (initial + 2 new).
-    #[test]
-    fn test_add_liquidity_while_previous_add_pending() {
+    #[rstest]
+    fn test_add_liquidity_while_previous_add_pending(
+        #[values((6, 6), (6, 18), (8, 6))] decimal_pair: (u32, u32),
+    ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC);
-        let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+            setup_clp(FactorySetupMode::Ibc, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key =
             create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
@@ -77,13 +79,13 @@ mod tests {
         );
 
         // First add: tick range [-240, -120), no relay of ack yet
-        let pair1 = pair_with_amounts(&token_a, &token_b, 5_000, 5_000);
+        let pair1 = scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b);
         let mut funds1 = vec![];
         for token in pair1.get_vec_token_info() {
             faucet(
                 factory.environment(),
                 factory.environment().sender.as_str(),
-                token.amount.u128(),
+                Uint128::try_from(token.amount).unwrap().u128(),
                 token.token_type,
                 &mut funds1,
             );
@@ -105,13 +107,13 @@ mod tests {
         let ack_events1 = relay_factory_send_packet(tx1.events, &router).unwrap();
 
         // Second add: tick range [120, 240), no relay of ack yet
-        let pair2 = pair_with_amounts(&token_a, &token_b, 5_000, 5_000);
+        let pair2 = scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b);
         let mut funds2 = vec![];
         for token in pair2.get_vec_token_info() {
             faucet(
                 factory.environment(),
                 factory.environment().sender.as_str(),
-                token.amount.u128(),
+                Uint128::try_from(token.amount).unwrap().u128(),
                 token.token_type,
                 &mut funds2,
             );
@@ -162,17 +164,15 @@ mod tests {
 
     /// Remove half liquidity from a position, then add back to the same position.
     /// Verify the position still exists with adjusted liquidity.
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
+    #[apply(clp_matrix)]
     fn test_remove_then_add_same_position_sequential(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
+        mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key =
             create_concentrated_pool(&factory, &router, pair.clone(), 500, 10, 100).unwrap();
 
@@ -207,7 +207,7 @@ mod tests {
         let add_resp = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 10_000, 10_000),
+            scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b),
             pool_key.clone(),
             initial_pos.lower_tick_index,
             initial_pos.upper_tick_index,
@@ -243,17 +243,15 @@ mod tests {
 
     /// Remove half liquidity, then try to remove the original full amount.
     /// The second remove should fail because remaining < requested.
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
+    #[apply(clp_matrix)]
     fn test_double_remove_same_position_second_fails(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
+        mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let position_id = first_position_id(&factory);
@@ -303,11 +301,14 @@ mod tests {
     /// Send a remove request via IBC, then deliver a synthetic error ack.
     /// The position token liquidity (pre-decremented on send) must be
     /// restored to its original value.
-    #[test]
-    fn test_remove_ack_failure_restores_position_liquidity() {
+    #[rstest]
+    fn test_remove_ack_failure_restores_position_liquidity(
+        #[values((6, 6), (6, 18), (8, 6))] decimal_pair: (u32, u32),
+    ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC);
-        let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+            setup_clp(FactorySetupMode::Ibc, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let position_id = first_position_id(&factory);
@@ -379,26 +380,30 @@ mod tests {
     /// Create pool + position, execute swaps to accrue fees, then send a
     /// partial remove (only relay send, not ack). While the remove is
     /// "in flight", attempt to collect fees.
-    #[test]
-    fn test_collect_fees_during_remove_pending() {
+    #[rstest]
+    fn test_collect_fees_during_remove_pending(
+        #[values((6, 6), (6, 18), (8, 6))] decimal_pair: (u32, u32),
+    ) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC);
-        let pair = pair_with_amounts(&token_a, &token_b, 20_000, 20_000);
+            setup_clp(FactorySetupMode::Ibc, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let position_id = first_position_id(&factory);
         let original_liquidity =
             position_liquidity_from_vlp(&factory, &router, &pool_key, position_id);
 
-        // Execute swaps to accrue fees
-        for _ in 0..5 {
+        // Execute swaps to accrue fees (keep iteration count low to stay
+        // within the IBC rate limit of 10 pending packets)
+        for _ in 0..3 {
             execute_concentrated_swap(
                 &factory,
                 &router,
                 pool_key.clone(),
                 token_a.clone(),
                 token_b.token.clone(),
-                Uint128::new(1_000),
+                Uint256::from(raw_units(1, decimals_a)),
             );
             execute_concentrated_swap(
                 &factory,
@@ -406,7 +411,7 @@ mod tests {
                 pool_key.clone(),
                 token_b.clone(),
                 token_a.token.clone(),
-                Uint128::new(1_000),
+                Uint256::from(raw_units(1, decimals_b)),
             );
         }
 

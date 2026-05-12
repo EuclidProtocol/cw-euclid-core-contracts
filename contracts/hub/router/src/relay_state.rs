@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, Binary, Storage, Uint128};
+use cosmwasm_std::{ensure, Binary, Storage, Uint256};
 use cw_storage_plus::Map;
 use euclid::chain::Chain;
 use euclid::chain::ChainUid;
@@ -22,7 +22,7 @@ pub const CROSS_CHAIN_PENDING_PACKET_SENDER: Map<(ChainUid, u128), String> =
     Map::new("cross_chain_pending_packet_sender");
 
 // Cross Chain processed sequence. Used to track the sequence of the processed packets
-pub const CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS: Map<(ChainUid, u128), Uint128> =
+pub const CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS: Map<(ChainUid, u128), Uint256> =
     Map::new("cross_chain_processed_received_packets");
 
 pub(crate) fn create_pending_packet_and_update_sequence(
@@ -75,10 +75,9 @@ pub(crate) fn remove_pending_packet_and_decrement_count(
     storage: &mut dyn Storage,
     chain_uid: &ChainUid,
     sequence: u128,
-) -> Result<(), ContractError> {
-    let _existing_request =
+) -> Result<PendingPacket, ContractError> {
+    let existing_request =
         CROSS_CHAIN_PENDING_SEND_PACKETS.load(storage, (chain_uid.clone(), sequence))?;
-    let _sender = CROSS_CHAIN_PENDING_PACKET_SENDER.load(storage, (chain_uid.clone(), sequence))?;
 
     // Remove the existing request as its already relayed now
     CROSS_CHAIN_PENDING_SEND_PACKETS.remove(storage, (chain_uid.clone(), sequence));
@@ -96,5 +95,5 @@ pub(crate) fn remove_pending_packet_and_decrement_count(
         &count.checked_sub(1).ok_or(ContractError::new("Overflow"))?,
     )?;
 
-    Ok(())
+    Ok(existing_request)
 }

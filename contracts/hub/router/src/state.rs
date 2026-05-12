@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, DepsMut, Uint128};
+use cosmwasm_std::{Addr, DepsMut, Uint128, Uint256};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     admin::EuclidAdmin,
@@ -46,11 +46,13 @@ pub const CONCENTRATED_VLPS: Map<String, Addr> = Map::new("concentrated_vlps");
 // Store all vlps related to a token
 pub const TOKEN_VLPS: Map<Token, Vec<Addr>> = Map::new("token_vlps");
 
+#[deprecated(note = "TOKEN_DENOMS has been moved to virtual_balance contract")]
 // Store all tokens in a map for easy access
 pub const TOKEN_DENOMS: Map<Token, Vec<TokenDenom>> = Map::new("token_denoms");
 
+#[deprecated(note = "ESCROW_BALANCES has been moved to virtual_balance contract")]
 // Token escrow balance on each chain. Mapping of (token, chain_uid) to balance
-pub const ESCROW_BALANCES: Map<(String, ChainUid), Uint128> = Map::new("escrow_balances");
+pub const ESCROW_BALANCES: Map<(String, ChainUid), Uint256> = Map::new("escrow_balances");
 
 // Store info of chain against chain uid
 pub const CHAIN_UID_TO_CHAIN: Map<ChainUid, Chain> = Map::new("chain_uid_to_chain");
@@ -95,8 +97,8 @@ pub const CONCENTRATED_FUNDS_INFO: Item<ConcentratedFundsInfo> =
 
 #[cw_serde]
 pub struct PendingReleaseVoucher {
-    pub total_amount: Uint128,
-    pub release_fee_amount: Uint128,
+    pub total_amount: Uint256,
+    pub release_fee_amount: Uint256,
     pub unsafe_refund_voucher: bool,
 }
 // Tx Id to Release Voucher Request
@@ -108,8 +110,8 @@ pub const PENDING_RELEASE_VOUCHER: Map<String, PendingReleaseVoucher> =
 pub const FUNDS_INFO: Item<(PairWithDenomAndAmount, u64)> = Item::new("funds_info");
 
 /// The key is TokenID_ChainUID
-pub const RELEASE_FEES: Map<(Token, ChainUid), Uint128> = Map::new("release_fees");
-pub const DEFAULT_RELEASE_FEE: Item<Uint128> = Item::new("default_release_fee");
+pub const RELEASE_FEES: Map<(Token, ChainUid), Uint256> = Map::new("release_fees");
+pub const DEFAULT_RELEASE_FEE: Item<Uint256> = Item::new("default_release_fee");
 
 // The key is ChainUid and the value is the timeout in seconds for chain send packets
 pub const CHAIN_TIMEOUT_SECONDS: Map<ChainUid, u64> = Map::new("chains_timeout_seconds");

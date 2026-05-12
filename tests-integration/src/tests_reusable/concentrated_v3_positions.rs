@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
@@ -47,7 +47,7 @@ fn virtual_balance_for_token(
     router: &router::RouterContract<cw_orch::mock::MockBase>,
     sender: CrossChainUser,
     token_id: String,
-) -> Uint128 {
+) -> Uint256 {
     let virtual_balance = get_virtual_balance(
         router.environment(),
         &router.get_state().unwrap().virtual_balance_address,
@@ -94,12 +94,15 @@ fn test_in_range_imbalanced_add_refunds_excess(
     let refund_a = after_a.checked_sub(before_a).unwrap();
     let refund_b = after_b.checked_sub(before_b).unwrap();
 
+    // Virtual balance stores amounts in voucher units (24 decimals).
+    // For 6-decimal tokens the normalization factor is 10^18.
+    let voucher_factor = Uint256::from(10u128.pow(18));
     assert!(
-        refund_a >= Uint128::new(8_000),
+        refund_a >= Uint256::from(8_000u128) * voucher_factor,
         "expected large refund on excess in-range side",
     );
     assert!(
-        refund_b <= Uint128::new(50),
+        refund_b <= Uint256::from(50u128) * voucher_factor,
         "limiting side should have no/low refund",
     );
 }
@@ -137,13 +140,16 @@ fn test_below_range_add_refunds_token1(
     let refund_a = after_a.checked_sub(before_a).unwrap();
     let refund_b = after_b.checked_sub(before_b).unwrap();
 
+    // Virtual balance stores amounts in voucher units (24 decimals).
+    // For 6-decimal tokens the normalization factor is 10^18.
+    let voucher_factor = Uint256::from(10u128.pow(18));
     assert_eq!(
         refund_b,
-        Uint128::new(5_000),
+        Uint256::from(5_000u128) * voucher_factor,
         "token1 should be fully refunded when range is above current price",
     );
     assert!(
-        refund_a <= Uint128::new(5),
+        refund_a <= Uint256::from(5u128) * voucher_factor,
         "token0 should be nearly fully consumed in below-range add",
     );
 }
@@ -181,13 +187,16 @@ fn test_above_range_add_refunds_token0(
     let refund_a = after_a.checked_sub(before_a).unwrap();
     let refund_b = after_b.checked_sub(before_b).unwrap();
 
+    // Virtual balance stores amounts in voucher units (24 decimals).
+    // For 6-decimal tokens the normalization factor is 10^18.
+    let voucher_factor = Uint256::from(10u128.pow(18));
     assert_eq!(
         refund_a,
-        Uint128::new(5_000),
+        Uint256::from(5_000u128) * voucher_factor,
         "token0 should be fully refunded when range is below current price",
     );
     assert!(
-        refund_b <= Uint128::new(5),
+        refund_b <= Uint256::from(5u128) * voucher_factor,
         "token1 should be nearly fully consumed in above-range add",
     );
 }

@@ -7,16 +7,18 @@ use euclid::msgs::vlp::concentrated::msg::{
     PositionResponse, QueryMsg as ConcentratedQueryMsg, Slot0Response,
 };
 use rstest::rstest;
+use rstest_reuse::apply;
 
-use super::utils::{last_position_id, sender, voucher_balance};
+use super::utils::{last_position_id, raw_units, scaled_pair, sender, setup_clp, voucher_balance};
 use crate::helpers::chains::get_concentrated_vlp;
 use crate::helpers::factory::{
     add_concentrated_liquidity, collect_concentrated_fees, create_concentrated_pool,
     list_position_ids, remove_concentrated_liquidity,
 };
-use crate::tests_reusable::concentrated_create_pool::{pair_with_amounts, setup_concentrated_env};
+use crate::tests_reusable::concentrated_create_pool::pair_with_amounts;
 use crate::tests_reusable::concentrated_swap::execute_concentrated_swap;
 use crate::tests_reusable::factory_register::FactorySetupMode;
+use crate::tests_reusable::test_macros::clp_matrix;
 
 const TICK_SPACING: i64 = 10;
 
@@ -24,15 +26,15 @@ const TICK_SPACING: i64 = 10;
 mod tests {
     use super::*;
 
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_add_position_below_range_does_not_change_active_liquidity(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -50,7 +52,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+            scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b),
             pool_key,
             lower,
             upper,
@@ -66,15 +68,15 @@ mod tests {
         );
     }
 
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_add_position_above_range_does_not_change_active_liquidity(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -92,7 +94,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+            scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b),
             pool_key,
             lower,
             upper,
@@ -108,15 +110,12 @@ mod tests {
         );
     }
 
-    #[rstest]
-    fn test_out_of_range_position_earns_no_fees(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
-        mode: FactorySetupMode,
-    ) {
-        let factory_chain_id = mode.factory_chain_id();
+    #[apply(clp_matrix)]
+    fn test_out_of_range_position_earns_no_fees(mode: FactorySetupMode, decimal_pair: (u32, u32)) {
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 50_000, 50_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 50, decimals_a, 50, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -130,7 +129,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 10_000, 10_000),
+            scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b),
             pool_key.clone(),
             lower,
             upper,
@@ -142,6 +141,8 @@ mod tests {
         let oor_position_id = last_position_id(&factory);
 
         // Execute swaps that stay within the in-range position
+        let swap_amount_a = raw_units(2, decimals_a);
+        let swap_amount_b = raw_units(2, decimals_b);
         for _ in 0..3 {
             execute_concentrated_swap(
                 &factory,
@@ -149,7 +150,7 @@ mod tests {
                 pool_key.clone(),
                 token_a.clone(),
                 token_b.token.clone(),
-                Uint128::new(2_000),
+                Uint256::from(swap_amount_a),
             );
             execute_concentrated_swap(
                 &factory,
@@ -157,7 +158,7 @@ mod tests {
                 pool_key.clone(),
                 token_b.clone(),
                 token_a.token.clone(),
-                Uint128::new(2_000),
+                Uint256::from(swap_amount_b),
             );
         }
 
@@ -187,15 +188,15 @@ mod tests {
         );
     }
 
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_swap_into_out_of_range_position_activates_it(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 50_000, 50_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 50, decimals_a, 50, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -210,7 +211,7 @@ mod tests {
         let add_resp = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 20_000, 20_000),
+            scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b),
             pool_key.clone(),
             lower,
             upper,
@@ -230,7 +231,7 @@ mod tests {
             pool_key.clone(),
             token_a.clone(),
             token_b.token.clone(),
-            Uint128::new(5_000),
+            Uint256::from(raw_units(5, decimals_a)),
         );
 
         let slot0_after: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
@@ -257,15 +258,15 @@ mod tests {
         );
     }
 
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_remove_liquidity_from_out_of_range_position(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -279,7 +280,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 10_000, 10_000),
+            scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b),
             pool_key.clone(),
             lower,
             upper,
@@ -333,15 +334,15 @@ mod tests {
         );
     }
 
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_add_to_existing_out_of_range_position_keeps_active_liquidity(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 30_000, 30_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 30, decimals_a, 30, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -355,7 +356,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+            scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b),
             pool_key.clone(),
             lower,
             upper,
@@ -376,7 +377,7 @@ mod tests {
         let add_resp = add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 5_000, 5_000),
+            scaled_pair(&token_a, &token_b, 5, decimals_a, 5, decimals_b),
             pool_key,
             lower,
             upper,
@@ -410,15 +411,15 @@ mod tests {
         );
     }
 
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_collect_fees_on_out_of_range_position_returns_zero(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 50_000, 50_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 50, decimals_a, 50, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -432,7 +433,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 10_000, 10_000),
+            scaled_pair(&token_a, &token_b, 10, decimals_a, 10, decimals_b),
             pool_key.clone(),
             lower,
             upper,
@@ -444,6 +445,8 @@ mod tests {
         let oor_id = last_position_id(&factory);
 
         // Swap back and forth (stays in range of initial position, never reaches OOR)
+        let swap_amount_a = raw_units(3, decimals_a);
+        let swap_amount_b = raw_units(3, decimals_b);
         for _ in 0..3 {
             execute_concentrated_swap(
                 &factory,
@@ -451,7 +454,7 @@ mod tests {
                 pool_key.clone(),
                 token_a.clone(),
                 token_b.token.clone(),
-                Uint128::new(3_000),
+                Uint256::from(swap_amount_a),
             );
             execute_concentrated_swap(
                 &factory,
@@ -459,7 +462,7 @@ mod tests {
                 pool_key.clone(),
                 token_b.clone(),
                 token_a.token.clone(),
-                Uint128::new(3_000),
+                Uint256::from(swap_amount_b),
             );
         }
 
@@ -481,15 +484,15 @@ mod tests {
         );
     }
 
-    #[rstest]
+    #[apply(clp_matrix)]
     fn test_position_earns_fees_only_after_tick_enters_range(
-        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
         mode: FactorySetupMode,
+        decimal_pair: (u32, u32),
     ) {
-        let factory_chain_id = mode.factory_chain_id();
+        let (decimals_a, decimals_b) = decimal_pair;
         let (_interchain, factory, router, token_a, token_b) =
-            setup_concentrated_env(mode, factory_chain_id);
-        let pair = pair_with_amounts(&token_a, &token_b, 50_000, 50_000);
+            setup_clp(mode, decimals_a, decimals_b);
+        let pair = scaled_pair(&token_a, &token_b, 50, decimals_a, 50, decimals_b);
         let pool_key = create_concentrated_pool(&factory, &router, pair, 500, 10, 100).unwrap();
 
         let vlp_addr = Addr::unchecked(router.get_vlp_by_pool_key(pool_key.clone()).unwrap().vlp);
@@ -503,7 +506,7 @@ mod tests {
         add_concentrated_liquidity(
             &factory,
             &router,
-            pair_with_amounts(&token_a, &token_b, 20_000, 20_000),
+            scaled_pair(&token_a, &token_b, 20, decimals_a, 20, decimals_b),
             pool_key.clone(),
             lower,
             upper,
@@ -521,7 +524,7 @@ mod tests {
             pool_key.clone(),
             token_b.clone(),
             token_a.token.clone(),
-            Uint128::new(1_000),
+            Uint256::from(raw_units(1, decimals_b)),
         );
 
         let pos_before_entry: PositionResponse = vlp
@@ -539,7 +542,7 @@ mod tests {
             pool_key.clone(),
             token_a.clone(),
             token_b.token.clone(),
-            Uint128::new(5_000),
+            Uint256::from(raw_units(5, decimals_a)),
         );
 
         let slot0_after_big: Slot0Response = vlp.query(&ConcentratedQueryMsg::Slot0 {}).unwrap();
@@ -558,7 +561,7 @@ mod tests {
             pool_key.clone(),
             token_b.clone(),
             token_a.token.clone(),
-            Uint128::new(2_000),
+            Uint256::from(raw_units(2, decimals_b)),
         );
 
         let before_0 = voucher_balance(&factory, &router, &token_a.token.to_string());

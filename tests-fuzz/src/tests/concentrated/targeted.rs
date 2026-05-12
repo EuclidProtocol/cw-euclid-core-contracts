@@ -1,10 +1,10 @@
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Uint256};
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
 
 use crate::harness::concentrated::{ConcentratedConfig, ConcentratedPool};
-use crate::helpers::factory::execute_concentrated_swap;
+use crate::helpers::factory::{execute_concentrated_swap, execute_concentrated_swap_voucher};
 use crate::runner::FuzzPool;
 use crate::strategies::concentrated::ConcentratedOp;
 
@@ -109,36 +109,43 @@ fn test_round_trip_swap_loses_value() {
     };
     pool.execute_op(&op).expect("add liquidity should succeed");
 
-    let amount_in = 5_000u128;
+    let raw_amount_in = 5_000u128;
+    let voucher_amount_in = euclid::normalize::normalize_token_to_voucher(
+        Uint256::from(raw_amount_in),
+        pool.token_a.token_type.get_decimals().unwrap(),
+    )
+    .unwrap();
+
     let amount_out = execute_concentrated_swap(
         &pool.factory,
         &pool.router,
         pool.pool_key.clone(),
         pool.token_a.clone(),
         pool.token_b.token.clone(),
-        Uint128::new(amount_in),
+        Uint256::from(raw_amount_in),
     )
     .expect("forward swap should succeed");
 
     assert!(
-        amount_out > Uint128::zero(),
+        amount_out > Uint256::zero(),
         "forward swap should produce output"
     );
 
-    let amount_back = execute_concentrated_swap(
+    let amount_back = execute_concentrated_swap_voucher(
         &pool.factory,
         &pool.router,
         pool.pool_key.clone(),
         pool.token_b.clone(),
         pool.token_a.token.clone(),
+        Uint256::zero(),
         amount_out,
     )
     .expect("reverse swap should succeed");
 
     assert!(
-        amount_back < Uint128::new(amount_in),
+        amount_back < voucher_amount_in,
         "round-trip should lose value: in={}, back={}",
-        amount_in,
+        voucher_amount_in,
         amount_back
     );
 }

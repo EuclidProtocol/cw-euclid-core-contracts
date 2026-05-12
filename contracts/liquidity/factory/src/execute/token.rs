@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, Uint256};
 use euclid::{
     cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
@@ -29,6 +29,7 @@ pub fn execute_request_register_denom(
     token: TokenWithDenom,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Vouchers are not registered
     ensure!(
         !token.token_type.is_voucher(),
@@ -67,6 +68,24 @@ pub fn execute_request_register_denom(
     }
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
+
+    let token_decimals = token.token_type.get_decimals()?;
+    match token.token_type {
+        TokenType::Smart { .. } => {
+            let validated_decimals = token.token_type.query_decimals(&deps.as_ref())?;
+            ensure!(
+                validated_decimals == token_decimals,
+                ContractError::DecimalsMismatch {
+                    expected: token_decimals as u32,
+                    received: validated_decimals as u32,
+                }
+            );
+        }
+        TokenType::Native { .. } => {
+            // We don't have a stable check yet for native tokens decimals as their metadata might not be stored on chain
+        }
+        TokenType::Voucher { .. } => {}
+    };
 
     let request_register_denom_msg = RouterCrossChainExecuteMsg::RegisterDenom {
         token: token.clone(),
@@ -117,6 +136,7 @@ pub fn execute_request_deregister_denom(
     token: TokenWithDenom,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // Vouchers are not registered
     ensure!(
         !token.token_type.is_voucher(),
@@ -199,7 +219,7 @@ pub fn execute_deposit_token(
     info: MessageInfo,
     sender: CrossChainUser,
     asset_in: TokenWithDenom,
-    amount_in: Uint128,
+    amount_in: Uint256,
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
@@ -243,10 +263,12 @@ pub fn execute_deposit_token(
     let mut msgs = Vec::new();
 
     match &asset_in.token_type {
-        TokenType::Native { denom } => {
+        TokenType::Native { denom, .. } => {
             fund_manager.use_fund(amount_in, denom)?;
         }
-        TokenType::Smart { contract_address } => {
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             ensure!(
                 info.sender.as_str() == contract_address,
                 ContractError::new(
@@ -319,11 +341,12 @@ pub fn execute_transfer_voucher(
     env: Env,
     info: MessageInfo,
     token_id: Token,
-    amount: Uint128,
+    amount: Uint256,
     from: Option<CrossChainUser>,
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     // The transfer amount should be greater than zero
     ensure!(!amount.is_zero(), ContractError::ZeroAssetAmount {});
     let state = STATE.load(deps.storage)?;
@@ -376,7 +399,7 @@ pub fn execute_transfer_voucher(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128,
+        Uint128, Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -442,7 +465,13 @@ mod tests {
 
         set_escrow_token_allowed(&mut deps, false);
 
-        let token_with_denom = native_token("usdc", "uusdc");
+        let token_with_denom = euclid::token::TokenWithDenom {
+            token: Token::create("usdc".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+        };
         let admin = deps.api.addr_make("sender");
         let info = message_info(&admin, &[]);
         let msg = ExecuteMsg::RegisterDenom {
@@ -495,11 +524,11 @@ mod tests {
         let info = message_info(&sender, &[]);
         let msg = ExecuteMsg::TransferVoucher {
             token_id: Token::create("usdc".to_string()).unwrap(),
-            amount: Uint128::zero(),
+            amount: Uint256::zero(),
             from: None,
             recipients: vec![euclid::recipient::Recipient {
                 recipient: recipient_user,
-                amount: euclid::limit::Limit::LessThanOrEqual(Uint128::new(100)),
+                amount: euclid::limit::Limit::LessThanOrEqual(Uint256::from(100u128)),
                 denom: TokenType::Voucher {},
                 forwarding_message: None,
                 unsafe_refund_as_voucher: None,
@@ -516,7 +545,7 @@ mod tests {
         init(&mut deps);
 
         let token_id = Token::create("usdc".to_string()).unwrap();
-        let amount = Uint128::new(500);
+        let amount = Uint256::from(500u128);
 
         let sender = deps.api.addr_make("sender");
         let recipient_user = euclid::cross_chain_user::CrossChainUser::new(

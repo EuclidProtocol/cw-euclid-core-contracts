@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 use claimer::ClaimerContract;
 use concentrated_vlp::ConcentratedVlpContract;
-use cosmwasm_std::{from_json, Uint128};
+use cosmwasm_std::{from_json, Uint256};
 use cp_vlp::VlpContract;
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::core::{IbcQueryHandler, InterchainEnv};
@@ -125,7 +125,7 @@ fn setup_factory_inner(
                 relayer_contract: relayer.address().unwrap(),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),
-                rate_limit_free_limit: Uint128::from(10u128),
+                rate_limit_free_limit: Uint256::from(10u128),
                 is_native,
             },
             None,

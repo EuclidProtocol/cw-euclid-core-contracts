@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::prelude::*;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
@@ -43,7 +43,7 @@ fn voucher_balance(
     factory: &factory::FactoryContract<cw_orch::mock::MockBase>,
     router: &router::RouterContract<cw_orch::mock::MockBase>,
     token_id: &str,
-) -> Uint128 {
+) -> Uint256 {
     let virtual_balance = get_virtual_balance(
         router.environment(),
         &router.get_state().unwrap().virtual_balance_address,
@@ -76,7 +76,7 @@ fn test_collect_position_fees_native_and_ibc(
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(20_000),
+        Uint256::from(20_000u128),
     );
 
     let before_0 = voucher_balance(&factory, &router, &token_a.token.to_string());
@@ -124,7 +124,7 @@ fn test_collect_protocol_fees_admin_native_and_ibc(
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(25_000),
+        Uint256::from(25_000u128),
     );
 
     let before_protocol: ProtocolFeesResponse =
@@ -238,7 +238,7 @@ fn test_collect_duplicate_ack_idempotent_ibc() {
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(20_000),
+        Uint256::from(20_000u128),
     );
 
     let tx = factory
@@ -351,7 +351,7 @@ fn test_full_removal_auto_collects_fees(
         pool_key.clone(),
         token_b.clone(),
         token_a.token.clone(),
-        Uint128::new(10_000),
+        Uint256::from(10_000u128),
     );
     execute_concentrated_swap(
         &factory,
@@ -359,7 +359,7 @@ fn test_full_removal_auto_collects_fees(
         pool_key.clone(),
         token_a.clone(),
         token_b.token.clone(),
-        Uint128::new(10_000),
+        Uint256::from(10_000u128),
     );
 
     // Verify fees have accrued (fee_growth > 0)

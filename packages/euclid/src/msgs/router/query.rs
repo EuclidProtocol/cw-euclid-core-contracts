@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 
 use crate::{
     admin::EuclidAdmin,
@@ -30,20 +30,6 @@ pub enum QueryMsg {
     #[returns(SimulateSwapResponse)]
     SimulateSwap(QuerySimulateSwap),
 
-    #[returns(TokenEscrowsResponse)]
-    QueryTokenEscrows {
-        token: Token,
-        pagination: Pagination<ChainUid>,
-    },
-    #[returns(AllEscrowsResponse)]
-    QueryAllEscrows { pagination: Pagination<String> },
-
-    #[returns(AllTokensResponse)]
-    QueryAllTokens { pagination: Pagination<Token> },
-
-    #[returns(QueryTokenDenomsResponse)]
-    QueryTokenDenoms { token: Token },
-
     #[returns(QueryRelayerAddressesResponse)]
     QueryRelayerAddresses {},
     #[returns(ReleaseFeesQueryResponse)]
@@ -52,14 +38,26 @@ pub enum QueryMsg {
     },
     #[returns(ClpPositionInfoResponse)]
     GetClpPositionInfo { position_id: Uint128 },
+
+    #[deprecated(note = "ESCROW_BALANCES moved to virtual_balance. Used only during migration.")]
+    #[returns(AllEscrowsResponse)]
+    GetAllEscrows {},
+    #[returns(LockedChainsResponse)]
+    GetLockedChains {},
+    #[returns(FeeStateResponse)]
+    GetFeeState {},
+    #[returns(DefaultReleaseFeeResponse)]
+    GetDefaultReleaseFee {},
+    #[returns(ChainTimeoutResponse)]
+    GetChainTimeout { chain_uid: ChainUid },
 }
 
 #[cw_serde]
 pub struct QuerySimulateSwap {
     pub asset_in: Token,
-    pub amount_in: Uint128,
+    pub amount_in: Uint256,
     pub asset_out: Token,
-    pub min_amount_out: Uint128,
+    pub min_amount_out: Uint256,
     pub swaps: Vec<NextSwapPair>,
 }
 
@@ -105,7 +103,7 @@ pub struct AllChainResponse {
 
 #[cw_serde]
 pub struct SimulateSwapResponse {
-    pub amount_out: Uint128,
+    pub amount_out: Uint256,
     pub asset_out: Token,
 }
 
@@ -117,14 +115,14 @@ pub struct TokenEscrowsResponse {
 #[cw_serde]
 pub struct TokenEscrowChainResponse {
     pub chain_uid: ChainUid,
-    pub balance: Uint128,
+    pub balance: Uint256,
 }
 
 #[cw_serde]
 pub struct EscrowResponse {
     pub token: Token,
     pub chain_uid: ChainUid,
-    pub balance: Uint128,
+    pub balance: Uint256,
 }
 
 #[cw_serde]
@@ -141,7 +139,7 @@ pub struct AllTokensResponse {
 pub struct ReleaseFee {
     pub token: Token,
     pub chain_uid: ChainUid,
-    pub fee: Uint128,
+    pub fee: Uint256,
 }
 
 #[cw_serde]
@@ -173,4 +171,26 @@ pub struct QueryRelayerAddressesResponse {
 pub struct ClpPositionInfoResponse {
     pub vlp_address: String,
     pub position: PositionResponse,
+}
+
+#[cw_serde]
+pub struct LockedChainsResponse {
+    pub chains: Vec<ChainUid>,
+}
+
+#[cw_serde]
+pub struct FeeStateResponse {
+    pub release_fee_recipient: Addr,
+    pub default_fee_recipient: Addr,
+}
+
+#[cw_serde]
+pub struct DefaultReleaseFeeResponse {
+    pub fee: Uint256,
+}
+
+#[cw_serde]
+pub struct ChainTimeoutResponse {
+    pub chain_uid: ChainUid,
+    pub timeout_seconds: u64,
 }

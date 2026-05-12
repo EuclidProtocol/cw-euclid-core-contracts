@@ -8,14 +8,11 @@ use euclid::{error::ContractError, msgs::router::MigrateMsg};
 
 #[cw_serde]
 struct LegacyStateWithoutCLP {
-    // Pools
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
-
     pub locked: bool,
 }
 
-/// This is the migrate entry point for the contract.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
     let migrated = if STATE.load(deps.storage).is_ok() {
