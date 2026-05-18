@@ -516,14 +516,7 @@ mod tests {
                 amount: seed,
             },
         };
-        create_pool(
-            &factory,
-            &router,
-            pair,
-            500,
-            PoolConfig::ConstantProduct {},
-        )
-        .unwrap();
+        create_pool(&factory, &router, pair, 500, PoolConfig::ConstantProduct {}).unwrap();
 
         (factory, router, usdc, usdt)
     }
@@ -710,10 +703,7 @@ mod tests {
 
         let pool_pair = Pair::new(usdc.token.clone(), usdt.token.clone()).unwrap();
         let vlp_address = factory.get_vlp(pool_pair).unwrap().vlp_address;
-        let lp_token_address = factory
-            .get_lp_token(vlp_address)
-            .unwrap()
-            .token_address;
+        let lp_token_address = factory.get_lp_token(vlp_address).unwrap().token_address;
         let lp_token = get_lp_token(factory.environment(), &lp_token_address);
 
         let lp_balance_before = lp_token.balance(user.to_string()).unwrap().balance;

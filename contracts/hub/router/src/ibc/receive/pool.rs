@@ -930,7 +930,15 @@ mod tests {
                     test_fail: None,
                 },
             ];
-            let msg = make_msg(1000, 400, 10, hops, asset_in_native(), pair_aaa_bbb(), "tx-2h");
+            let msg = make_msg(
+                1000,
+                400,
+                10,
+                hops,
+                asset_in_native(),
+                pair_aaa_bbb(),
+                "tx-2h",
+            );
             let err =
                 ibc_execute_single_sided_add_liquidity(deps.as_mut(), mock_env(), msg).unwrap_err();
             assert_eq!(
@@ -980,9 +988,7 @@ mod tests {
                 ibc_execute_single_sided_add_liquidity(deps.as_mut(), mock_env(), msg).unwrap_err();
             assert_eq!(
                 err,
-                ContractError::new(
-                    "swap_route last hop token_out must match the other pair token"
-                )
+                ContractError::new("swap_route last hop token_out must match the other pair token")
             );
         }
 
