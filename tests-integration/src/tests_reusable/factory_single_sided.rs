@@ -90,6 +90,7 @@ mod tests {
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::{setup_factory, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
+    use crate::tests_reusable::test_macros::{decimal_pair, decimal_pair_full};
     use cosmwasm_std::Uint64;
     use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
     use euclid::msgs::factory::msg::{
@@ -100,13 +101,14 @@ mod tests {
     use euclid::token::{PairWithDenomAndAmount, TokenWithDenomAndAmount};
     use euclid::utils::pagination::Pagination;
     use rstest::rstest;
+    use rstest_reuse::apply;
 
-    fn native_token(name: &str) -> TokenWithDenom {
+    fn native_token_with_decimals(name: &str, decimals: u32) -> TokenWithDenom {
         TokenWithDenom {
             token: Token::create(name.to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: name.to_string(),
-                decimals: Some(6),
+                decimals: Some(decimals),
             },
         }
     }
@@ -150,12 +152,18 @@ mod tests {
         );
     }
 
-    /// Scenario A: stable pool happy path. Native USDC into a USDC/USDT stable
-    /// VLP. The orchestrator is pool-type agnostic — the same single-sided flow
-    /// that works for constant-product must work here unchanged.
-    #[rstest]
+    /// Scenario A: stable pool happy path. Native asset_in into a stable VLP
+    /// across the project's decimal-pair test grid. The orchestrator is
+    /// pool-type agnostic — the same single-sided flow that works for
+    /// constant-product must work for stable here unchanged. Parameterizing
+    /// over decimals exercises the voucher-normalization seams between the
+    /// remote factory (raw denom units) and the hub VLP (24-dec voucher units).
+    #[cfg_attr(not(feature = "full_decimals"), apply(decimal_pair))]
+    #[cfg_attr(feature = "full_decimals", apply(decimal_pair_full))]
     fn test_single_sided_stable_pool_happy_path(
         #[values(FactorySetupMode::Native, FactorySetupMode::Ibc)] mode: FactorySetupMode,
+        decimals_a: u32,
+        decimals_b: u32,
     ) {
         let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
@@ -164,25 +172,33 @@ mod tests {
         let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
         let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
 
-        let usdc = native_token("uusdc");
-        let usdt = native_token("uusdt");
+        let usdc = native_token_with_decimals("uusdc", decimals_a);
+        let usdt = native_token_with_decimals("uusdt", decimals_b);
 
         register_denom(&factory, &router, usdc.clone()).unwrap();
         register_denom(&factory, &router, usdt.clone()).unwrap();
 
-        // Seed the pool with deep, balanced reserves so the single-sided swap
-        // is well within tolerance.
-        let seed = Uint256::from(1_000_000u128 * 1_000_000u128); // 1M units (6 dp)
+        let decimal_a_multiplier = Uint256::from(10u128).pow(decimals_a);
+        let decimal_b_multiplier = Uint256::from(10u128).pow(decimals_b);
+
+        // Seed the pool with deep, balanced reserves (per-side at native dp)
+        // so the single-sided swap is well within tolerance.
+        let seed_a = Uint256::from(1_000_000u128)
+            .checked_mul(decimal_a_multiplier)
+            .unwrap();
+        let seed_b = Uint256::from(1_000_000u128)
+            .checked_mul(decimal_b_multiplier)
+            .unwrap();
         let pair = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: usdc.token.clone(),
                 token_type: usdc.token_type.clone(),
-                amount: seed,
+                amount: seed_a,
             },
             token_2: TokenWithDenomAndAmount {
                 token: usdt.token.clone(),
                 token_type: usdt.token_type.clone(),
-                amount: seed,
+                amount: seed_b,
             },
         };
         create_pool(
@@ -211,10 +227,14 @@ mod tests {
         let escrow_in = get_escrow(&factory, usdc.token.as_str());
         let escrow_in_before = escrow_in.state().unwrap().total_amount;
 
-        // Single-sided deposit: 10_000 USDC, swap 4_000 to USDT, expect a
-        // small but non-zero LP mint.
-        let amount_in = Uint256::from(10_000u128 * 1_000_000u128);
-        let swap_amount = Uint256::from(4_000u128 * 1_000_000u128);
+        // Single-sided deposit: 10_000 asset_a (1% of pool), swap 4_000 to
+        // asset_b. Scaled into asset_a's native dp.
+        let amount_in = Uint256::from(10_000u128)
+            .checked_mul(decimal_a_multiplier)
+            .unwrap();
+        let swap_amount = Uint256::from(4_000u128)
+            .checked_mul(decimal_a_multiplier)
+            .unwrap();
         let min_lp_out = Uint256::from(1u128);
 
         single_sided_add_liquidity(
@@ -255,13 +275,16 @@ mod tests {
     /// magnitude above any plausible LP output forces the hub's add-liquidity
     /// reply to return `SlippageExceeded`. The outer reply converts to an
     /// error ack, the factory refunds `amount_in + partner_fee_amount` to the
-    /// user, and no residual state remains.
-    ///
-    /// With Issue 2 merged, this also verifies the partner-fee portion is
-    /// refunded (no retention at the factory, no transfer to the partner).
-    #[rstest]
+    /// user, and no residual state remains. Parameterized over decimals to
+    /// ensure the refund/escrow accounting is correct across mixed-decimal
+    /// pools (refund is in raw denom units, so decimal handling must match
+    /// the deposit path exactly).
+    #[cfg_attr(not(feature = "full_decimals"), apply(decimal_pair))]
+    #[cfg_attr(feature = "full_decimals", apply(decimal_pair_full))]
     fn test_single_sided_ack_failure_refunds_user(
         #[values(FactorySetupMode::Native, FactorySetupMode::Ibc)] mode: FactorySetupMode,
+        decimals_a: u32,
+        decimals_b: u32,
     ) {
         let factory_chain_id = mode.chain_id();
         let sender_name = "sender_for_all_chains";
@@ -271,23 +294,31 @@ mod tests {
         let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
         let user = factory.environment().sender.clone();
 
-        let token_a = native_token("uusdc");
-        let token_b = native_token("uweth");
+        let token_a = native_token_with_decimals("uusdc", decimals_a);
+        let token_b = native_token_with_decimals("uweth", decimals_b);
 
         register_denom(&factory, &router, token_a.clone()).unwrap();
         register_denom(&factory, &router, token_b.clone()).unwrap();
 
-        let seed = Uint256::from(1_000_000u128 * 1_000_000u128);
+        let decimal_a_multiplier = Uint256::from(10u128).pow(decimals_a);
+        let decimal_b_multiplier = Uint256::from(10u128).pow(decimals_b);
+
+        let seed_a = Uint256::from(1_000_000u128)
+            .checked_mul(decimal_a_multiplier)
+            .unwrap();
+        let seed_b = Uint256::from(1_000_000u128)
+            .checked_mul(decimal_b_multiplier)
+            .unwrap();
         let pair = PairWithDenomAndAmount {
             token_1: TokenWithDenomAndAmount {
                 token: token_a.token.clone(),
                 token_type: token_a.token_type.clone(),
-                amount: seed,
+                amount: seed_a,
             },
             token_2: TokenWithDenomAndAmount {
                 token: token_b.token.clone(),
                 token_type: token_b.token_type.clone(),
-                amount: seed,
+                amount: seed_b,
             },
         };
         create_pool(
@@ -316,8 +347,12 @@ mod tests {
             .unwrap();
 
         // Contrived: min_lp_out is huge, guaranteed to exceed any LP mint.
-        let amount_in = Uint256::from(10_000u128 * 1_000_000u128);
-        let swap_amount = Uint256::from(4_000u128 * 1_000_000u128);
+        let amount_in = Uint256::from(10_000u128)
+            .checked_mul(decimal_a_multiplier)
+            .unwrap();
+        let swap_amount = Uint256::from(4_000u128)
+            .checked_mul(decimal_a_multiplier)
+            .unwrap();
         let min_lp_out = Uint256::from(u128::MAX / 2);
 
         // Partner fee = 0.3% (max).
