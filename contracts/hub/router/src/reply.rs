@@ -19,7 +19,6 @@ use euclid::{
     },
     normalize::normalize_token_to_voucher,
     swap::SwapResponse,
-    token::Pair,
 };
 use euclid_ibc::{
     ack::{make_ack_fail, AcknowledgementMsg},
@@ -453,8 +452,10 @@ pub fn on_single_sided_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response,
             let pending = PENDING_SINGLE_SIDED_LIQUIDITY
                 .load(deps.storage, vlp_swap_response.tx_id.clone())?;
 
+            // The swap output token is the "other" side of the target pair.
+            let asset_out = pending.pair.get_other_token(pending.asset_in.token.clone());
             ensure!(
-                vlp_swap_response.asset_out == pending.asset_out,
+                vlp_swap_response.asset_out == asset_out,
                 ContractError::new("asset_out mismatch on single-sided swap reply")
             );
 
@@ -478,9 +479,8 @@ pub fn on_single_sided_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response,
             };
 
             // Target VLP (same as swap VLP in single-hop v1).
-            let pair = Pair::new(pending.asset_in.token.clone(), pending.asset_out.clone())?;
             let vlp_address = VLPS
-                .may_load(deps.storage, pair.get_tupple())?
+                .may_load(deps.storage, pending.pair.get_tupple())?
                 .ok_or(ContractError::PoolDoesNotExist {})?;
 
             let mut response = Response::new()
@@ -505,7 +505,7 @@ pub fn on_single_sided_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response,
             // Approve VLP to spend asset_out (swap output) on behalf of user.
             let approve_out_msg = VirtualBalanceMsg::Approve(ExecuteApprove {
                 amount: vlp_swap_response.amount_out,
-                token_id: pending.asset_out.to_string(),
+                token_id: asset_out.to_string(),
                 spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
                 owner: pending.sender.clone(),
             });
@@ -515,13 +515,13 @@ pub fn on_single_sided_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response,
                 funds: vec![],
             });
 
-            // Pair::new sorts tokens, so match each token to its canonical position.
-            let (amount_1, amount_2) = if pair.token_1 == pending.asset_in.token {
+            // Pair tokens are canonically sorted, so match each side to its position.
+            let (amount_1, amount_2) = if pending.pair.token_1 == pending.asset_in.token {
                 (remaining_normalized, vlp_swap_response.amount_out)
             } else {
                 (vlp_swap_response.amount_out, remaining_normalized)
             };
-            let normalized_liquidity = pair.get_pair_with_amount(amount_1, amount_2)?;
+            let normalized_liquidity = pending.pair.get_pair_with_amount(amount_1, amount_2)?;
 
             let add_liquidity_msg = msgs::vlp::base::ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
                 sender: pending.sender.clone(),
@@ -1384,6 +1384,7 @@ mod tests {
             asset_out: Token,
         ) -> RouterCrossChainSingleSidedAddLiquidityMsg {
             let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+            let pair = Pair::new(token_aaa(), asset_out.clone()).unwrap();
             RouterCrossChainSingleSidedAddLiquidityMsg {
                 sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
                 asset_in: TokenWithDenom {
@@ -1395,10 +1396,10 @@ mod tests {
                 },
                 amount_in: Uint256::from(amount_in),
                 swap_amount: Uint256::from(swap_amount),
-                asset_out,
+                pair,
                 swaps: vec![NextSwapPair {
                     token_in: token_aaa(),
-                    token_out: token_bbb(),
+                    token_out: asset_out,
                     test_fail: None,
                 }],
                 min_lp_out: Uint256::from(min_lp_out),

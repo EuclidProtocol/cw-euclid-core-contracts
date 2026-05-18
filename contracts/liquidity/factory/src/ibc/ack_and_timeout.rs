@@ -1867,7 +1867,11 @@ mod tests {
                 asset_in: native_token("aaa", "uaaa"),
                 amount_in: Uint256::from(1000u128),
                 swap_amount: Uint256::from(500u128),
-                asset_out: Token::create("bbb".to_string()).unwrap(),
+                pair: euclid::token::Pair::new(
+                    Token::create("aaa".to_string()).unwrap(),
+                    Token::create("bbb".to_string()).unwrap(),
+                )
+                .unwrap(),
                 swaps: vec![],
                 min_lp_out: Uint256::from(1u128),
                 partner_fee_amount: Uint256::zero(),

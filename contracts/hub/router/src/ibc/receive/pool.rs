@@ -11,7 +11,7 @@ use euclid::{
         vlp::base::{PoolConfig, VlpAddLiquidityMsg, VlpRegisterPoolMsg, VlpRemoveLiquidityMsg},
     },
     normalize::normalize_token_to_voucher,
-    token::{Pair, PairWithDenomAndAmount, TokenMetadata, TokenType},
+    token::{PairWithDenomAndAmount, TokenMetadata},
     voucher::BalanceKey,
 };
 use euclid_ibc::router_ibc::{
@@ -348,6 +348,15 @@ pub fn ibc_execute_single_sided_add_liquidity(
     _env: Env,
     msg: RouterCrossChainSingleSidedAddLiquidityMsg,
 ) -> Result<Response, ContractError> {
+    msg.pair.validate()?;
+    // asset_in must be one side of the target pair; the other side is the
+    // swap output and the matching liquidity leg.
+    ensure!(
+        msg.asset_in.token == msg.pair.token_1 || msg.asset_in.token == msg.pair.token_2,
+        ContractError::new("asset_in must be one of the pair tokens")
+    );
+    let asset_out = msg.pair.get_other_token(msg.asset_in.token.clone());
+
     // v1: single-hop only. Kept Vec<NextSwapPair> for forward-compat.
     ensure!(
         msg.swaps.len() == 1,
@@ -359,8 +368,8 @@ pub fn ibc_execute_single_sided_add_liquidity(
         ContractError::new("swap_route first hop token_in must match asset_in")
     );
     ensure!(
-        hop.token_out == msg.asset_out,
-        ContractError::new("swap_route last hop token_out must match asset_out")
+        hop.token_out == asset_out,
+        ContractError::new("swap_route last hop token_out must match the other pair token")
     );
 
     ensure!(!msg.amount_in.is_zero(), ContractError::ZeroAssetAmount {});
@@ -373,10 +382,6 @@ pub fn ibc_execute_single_sided_add_liquidity(
         ContractError::new("swap_amount must be < amount_in")
     );
     ensure!(!msg.min_lp_out.is_zero(), ContractError::ZeroAssetAmount {});
-    ensure!(
-        msg.asset_in.token != msg.asset_out,
-        ContractError::new("asset_in must differ from asset_out")
-    );
 
     let req_key = msg.tx_id.clone();
     ensure!(
@@ -385,9 +390,8 @@ pub fn ibc_execute_single_sided_add_liquidity(
     );
 
     // Target VLP exists and is shared by both swap and add-liquidity legs.
-    let pair = Pair::new(msg.asset_in.token.clone(), msg.asset_out.clone())?;
     let vlp_address = VLPS
-        .may_load(deps.storage, pair.get_tupple())?
+        .may_load(deps.storage, msg.pair.get_tupple())?
         .ok_or(ContractError::PoolDoesNotExist {})?;
 
     PENDING_SINGLE_SIDED_LIQUIDITY.save(deps.storage, req_key, &msg)?;
@@ -788,7 +792,7 @@ mod tests {
             min_lp_out: u128,
             swaps: Vec<NextSwapPair>,
             asset_in: TokenWithDenom,
-            asset_out: Token,
+            pair: Pair,
             tx_id: &str,
         ) -> RouterCrossChainSingleSidedAddLiquidityMsg {
             let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
@@ -797,13 +801,17 @@ mod tests {
                 asset_in,
                 amount_in: Uint256::from(amount_in),
                 swap_amount: Uint256::from(swap_amount),
-                asset_out,
+                pair,
                 swaps,
                 min_lp_out: Uint256::from(min_lp_out),
                 partner_fee_amount: Uint256::zero(),
                 partner_fee_recipient: CrossChainUser::new(chain_uid, "user".to_string()),
                 tx_id: tx_id.to_string(),
             }
+        }
+
+        fn pair_aaa_bbb() -> Pair {
+            Pair::new(token_aaa(), token_bbb()).unwrap()
         }
 
         fn single_hop(token_in: Token, token_out: Token) -> Vec<NextSwapPair> {
@@ -827,7 +835,7 @@ mod tests {
                 10,
                 single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-ssl-1",
             );
 
@@ -895,7 +903,7 @@ mod tests {
                 10,
                 vec![],
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-zh",
             );
             let err =
@@ -922,7 +930,7 @@ mod tests {
                     test_fail: None,
                 },
             ];
-            let msg = make_msg(1000, 400, 10, hops, asset_in_native(), token_bbb(), "tx-2h");
+            let msg = make_msg(1000, 400, 10, hops, asset_in_native(), pair_aaa_bbb(), "tx-2h");
             let err =
                 ibc_execute_single_sided_add_liquidity(deps.as_mut(), mock_env(), msg).unwrap_err();
             assert_eq!(
@@ -943,7 +951,7 @@ mod tests {
                 10,
                 single_hop(ccc, token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-mismatch-in",
             );
             let err =
@@ -965,14 +973,16 @@ mod tests {
                 10,
                 single_hop(token_aaa(), ccc),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-mismatch-out",
             );
             let err =
                 ibc_execute_single_sided_add_liquidity(deps.as_mut(), mock_env(), msg).unwrap_err();
             assert_eq!(
                 err,
-                ContractError::new("swap_route last hop token_out must match asset_out")
+                ContractError::new(
+                    "swap_route last hop token_out must match the other pair token"
+                )
             );
         }
 
@@ -986,7 +996,7 @@ mod tests {
                 10,
                 single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-zsa",
             );
             let err =
@@ -1004,7 +1014,7 @@ mod tests {
                 10,
                 single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-zai",
             );
             let err =
@@ -1023,7 +1033,7 @@ mod tests {
                 10,
                 single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-eq",
             );
             let err =
@@ -1041,7 +1051,7 @@ mod tests {
                 0,
                 single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-zlp",
             );
             let err =
@@ -1050,25 +1060,26 @@ mod tests {
         }
 
         #[test]
-        fn test_rejects_asset_in_equals_asset_out() {
+        fn test_rejects_asset_in_not_in_pair() {
             let mut deps = make_deps_with_metadata_querier();
             seed_vlp_aaa_bbb(&mut deps);
-            // asset_in.token == asset_out (= aaa). Pair the swap hop the same way
-            // so we hit the asset_in==asset_out check before the hop checks fail.
+            // asset_in is `aaa`, but pair is (bbb, ccc) → asset_in not in pair.
+            let ccc = Token::create("ccc".to_string()).unwrap();
+            let bbb_ccc = Pair::new(token_bbb(), ccc.clone()).unwrap();
             let msg = make_msg(
                 1000,
                 400,
                 10,
-                single_hop(token_aaa(), token_aaa()),
+                single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_aaa(),
-                "tx-same",
+                bbb_ccc,
+                "tx-not-in-pair",
             );
             let err =
                 ibc_execute_single_sided_add_liquidity(deps.as_mut(), mock_env(), msg).unwrap_err();
             assert_eq!(
                 err,
-                ContractError::new("asset_in must differ from asset_out")
+                ContractError::new("asset_in must be one of the pair tokens")
             );
         }
 
@@ -1082,7 +1093,7 @@ mod tests {
                 10,
                 single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-novlp",
             );
             let err =
@@ -1102,7 +1113,7 @@ mod tests {
                 10,
                 single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-dup",
             );
             PENDING_SINGLE_SIDED_LIQUIDITY
@@ -1115,7 +1126,7 @@ mod tests {
                 10,
                 single_hop(token_aaa(), token_bbb()),
                 asset_in_native(),
-                token_bbb(),
+                pair_aaa_bbb(),
                 "tx-dup",
             );
             let err =

@@ -196,7 +196,7 @@ pub fn execute(
         ExecuteMsg::AddSingleSidedLiquidity {
             asset_in,
             amount_in,
-            asset_out,
+            pair,
             swap_amount,
             swap_route,
             min_lp_out,
@@ -208,7 +208,7 @@ pub fn execute(
             info,
             asset_in,
             amount_in,
-            asset_out,
+            pair,
             swap_amount,
             swap_route,
             min_lp_out,

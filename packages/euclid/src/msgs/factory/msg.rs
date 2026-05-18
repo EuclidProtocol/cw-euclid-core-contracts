@@ -74,7 +74,7 @@ pub enum ExecuteMsg {
     AddSingleSidedLiquidity {
         asset_in: TokenWithDenom,
         amount_in: Uint256,
-        asset_out: Token,
+        pair: Pair,
         swap_amount: Uint256,
         swap_route: Vec<NextSwapPair>,
         min_lp_out: Uint256,

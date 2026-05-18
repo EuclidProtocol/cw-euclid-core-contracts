@@ -10,7 +10,7 @@ use euclid::{
         cross_chain_config::CrossChainConfig, escrow::AllowedTokenResponse, vlp::base::PoolConfig,
     },
     swap::NextSwapPair,
-    token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
+    token::{Pair, PairWithDenomAndAmount, TokenType, TokenWithDenom},
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::router_ibc::{
@@ -460,7 +460,7 @@ pub fn execute_single_sided_add_liquidity_request(
     info: MessageInfo,
     asset_in: TokenWithDenom,
     amount_in: Uint256,
-    asset_out: Token,
+    pair: Pair,
     swap_amount: Uint256,
     swap_route: Vec<NextSwapPair>,
     min_lp_out: Uint256,
@@ -469,12 +469,15 @@ pub fn execute_single_sided_add_liquidity_request(
 ) -> Result<Response, ContractError> {
     asset_in.token.validate()?;
     asset_in.token_type.validate(&deps.as_ref())?;
-    asset_out.validate()?;
+    pair.validate()?;
 
+    // asset_in must be one side of the target pair; the other side is the
+    // swap output and the matching liquidity leg.
     ensure!(
-        asset_in.token != asset_out,
-        ContractError::new("asset_in must differ from asset_out")
+        asset_in.token == pair.token_1 || asset_in.token == pair.token_2,
+        ContractError::new("asset_in must be one of the pair tokens")
     );
+    let asset_out = pair.get_other_token(asset_in.token.clone());
 
     // Partner fee: same model as execute_swap_request.
     // The full `amount_in` from the user is split into:
@@ -511,7 +514,7 @@ pub fn execute_single_sided_add_liquidity_request(
     );
     ensure!(
         hop.token_out == asset_out,
-        ContractError::new("swap_route last hop token_out must match asset_out")
+        ContractError::new("swap_route last hop token_out must match the other pair token")
     );
 
     let state = STATE.load(deps.storage)?;
@@ -524,7 +527,6 @@ pub fn execute_single_sided_add_liquidity_request(
     );
 
     // Target VLP must already exist — fail fast before paying IBC roundtrip.
-    let pair = Pair::new(asset_in.token.clone(), asset_out.clone())?;
     ensure!(
         PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
         ContractError::PoolDoesNotExist {}
@@ -600,7 +602,7 @@ pub fn execute_single_sided_add_liquidity_request(
             asset_in: asset_in.clone(),
             amount_in,
             swap_amount,
-            asset_out: asset_out.clone(),
+            pair: pair.clone(),
             swaps: swap_route,
             min_lp_out,
             partner_fee_amount,
@@ -1081,7 +1083,11 @@ mod tests {
         ExecuteMsg::AddSingleSidedLiquidity {
             asset_in: native_token_with_denom("eth", "ueth"),
             amount_in: Uint256::from(1000u128),
-            asset_out: Token::create("usdc".to_string()).unwrap(),
+            pair: Pair::new(
+                Token::create("eth".to_string()).unwrap(),
+                Token::create("usdc".to_string()).unwrap(),
+            )
+            .unwrap(),
             swap_amount: Uint256::from(500u128),
             swap_route: single_hop("eth", "usdc"),
             min_lp_out: Uint256::from(1u128),
@@ -1160,9 +1166,9 @@ mod tests {
         assert_eq!(err, ContractError::PoolDoesNotExist {});
     }
 
-    /// asset_in.token == asset_out → "must differ" error.
+    /// asset_in.token not in pair → "asset_in must be one of the pair tokens".
     #[test]
-    fn test_single_sided_same_asset_rejected() {
+    fn test_single_sided_asset_in_not_in_pair() {
         let mut deps = mock_dependencies();
         init(&mut deps);
         set_native_supply(&mut deps);
@@ -1171,16 +1177,17 @@ mod tests {
         let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
 
         let mut msg = ss_default_msg();
-        if let ExecuteMsg::AddSingleSidedLiquidity {
-            ref mut asset_out, ..
-        } = msg
-        {
-            *asset_out = Token::create("eth".to_string()).unwrap();
+        if let ExecuteMsg::AddSingleSidedLiquidity { ref mut pair, .. } = msg {
+            *pair = Pair::new(
+                Token::create("usdc".to_string()).unwrap(),
+                Token::create("dai".to_string()).unwrap(),
+            )
+            .unwrap();
         }
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
         assert_eq!(
             err,
-            ContractError::new("asset_in must differ from asset_out")
+            ContractError::new("asset_in must be one of the pair tokens")
         );
     }
 
@@ -1374,7 +1381,7 @@ mod tests {
         );
     }
 
-    /// swap_route[0].token_out != asset_out → hop_out mismatch error.
+    /// swap_route[0].token_out != other pair token → hop_out mismatch error.
     #[test]
     fn test_single_sided_route_token_out_mismatch() {
         let mut deps = mock_dependencies();
@@ -1389,12 +1396,12 @@ mod tests {
             ref mut swap_route, ..
         } = msg
         {
-            *swap_route = single_hop("eth", "dai"); // asset_out is usdc, not dai
+            *swap_route = single_hop("eth", "dai"); // other pair token is usdc, not dai
         }
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
         assert_eq!(
             err,
-            ContractError::new("swap_route last hop token_out must match asset_out")
+            ContractError::new("swap_route last hop token_out must match the other pair token")
         );
     }
 
@@ -1535,7 +1542,11 @@ mod tests {
         let msg = ExecuteMsg::AddSingleSidedLiquidity {
             asset_in,
             amount_in: Uint256::from(1000u128),
-            asset_out: Token::create("usdc".to_string()).unwrap(),
+            pair: Pair::new(
+                Token::create("eth".to_string()).unwrap(),
+                Token::create("usdc".to_string()).unwrap(),
+            )
+            .unwrap(),
             swap_amount: Uint256::from(500u128),
             swap_route: single_hop("eth", "usdc"),
             min_lp_out: Uint256::from(1u128),
@@ -1648,7 +1659,11 @@ mod tests {
         let msg = ExecuteMsg::AddSingleSidedLiquidity {
             asset_in,
             amount_in: Uint256::from(1000u128),
-            asset_out: Token::create("usdc".to_string()).unwrap(),
+            pair: Pair::new(
+                Token::create("eth".to_string()).unwrap(),
+                Token::create("usdc".to_string()).unwrap(),
+            )
+            .unwrap(),
             swap_amount: Uint256::from(500u128),
             swap_route: single_hop("eth", "usdc"),
             min_lp_out: Uint256::from(1u128),
@@ -1711,7 +1726,11 @@ mod tests {
         let msg = ExecuteMsg::AddSingleSidedLiquidity {
             asset_in: voucher,
             amount_in: Uint256::from(1000u128),
-            asset_out: Token::create("usdc".to_string()).unwrap(),
+            pair: Pair::new(
+                Token::create("eth".to_string()).unwrap(),
+                Token::create("usdc".to_string()).unwrap(),
+            )
+            .unwrap(),
             swap_amount: Uint256::from(500u128),
             swap_route: single_hop("eth", "usdc"),
             min_lp_out: Uint256::from(1u128),

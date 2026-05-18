@@ -232,10 +232,11 @@ pub struct RouterCrossChainSingleSidedAddLiquidityMsg {
     // Total raw amount of asset_in AFTER partner-fee deduction.
     // This is the amount the hub operates on; the partner-fee portion never crosses IBC.
     pub amount_in: Uint256,
-    // Raw amount of asset_in to swap into asset_out (backend-computed)
+    // Raw amount of asset_in to swap into the other side of the pair (backend-computed)
     pub swap_amount: Uint256,
-    // The other token in the target pool
-    pub asset_out: Token,
+    // Target VLP pair. The "other" token (asset_out for the swap leg) is
+    // derived as pair.get_other_token(asset_in.token).
+    pub pair: Pair,
     // Swap route. v1: must be length 1; kept Vec for forward-compat.
     pub swaps: Vec<NextSwapPair>,
     // Minimum LP tokens to receive — sole user-facing slippage guard

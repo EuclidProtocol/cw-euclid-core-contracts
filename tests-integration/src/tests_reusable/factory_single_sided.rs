@@ -27,7 +27,7 @@ use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
 use euclid::msgs::factory::ExecuteMsg as FactoryExecuteMsg;
 use euclid::swap::NextSwapPair;
-use euclid::token::{Token, TokenType, TokenWithDenom};
+use euclid::token::{Pair, Token, TokenType, TokenWithDenom};
 use factory::FactoryContract;
 use router::RouterContract;
 
@@ -56,11 +56,13 @@ pub fn single_sided_add_liquidity(
         asset_in.token_type.clone(),
         &mut vec![],
     );
+    let pair = Pair::new(asset_in.token.clone(), asset_out.clone())
+        .expect("asset_in and asset_out must form a valid pair");
     let tx_response = factory.execute(
         &FactoryExecuteMsg::AddSingleSidedLiquidity {
             asset_in: asset_in.clone(),
             amount_in,
-            asset_out: asset_out.clone(),
+            pair,
             swap_amount,
             swap_route: vec![NextSwapPair {
                 token_in: asset_in.token,
