@@ -472,4 +472,318 @@ mod tests {
         // No residual pending state on the factory.
         assert_no_pending_single_sided(&factory, &user);
     }
+
+    // -----------------------------------------------------------------------
+    // Issue-4 follow-ups (review request):
+    //   1. invalid swap routes are rejected at the factory before IBC
+    //   2. swap_amount = amount_in - 1 boundary (no underflow downstream)
+    //   3. partner-fee happy path (partner is paid on success)
+    // -----------------------------------------------------------------------
+
+    /// Build a pool of (uusdc, uusdt) at 6 decimals each, seeded balanced.
+    /// Returns (factory, router, usdc, usdt). Fixed decimals here — these
+    /// tests target scenarios independent of the decimal grid.
+    fn setup_pool_6dp(
+        mode: FactorySetupMode,
+    ) -> (
+        FactoryContract<MockBase>,
+        RouterContract<MockBase>,
+        TokenWithDenom,
+        TokenWithDenom,
+    ) {
+        let factory_chain_id = mode.chain_id();
+        let sender = "sender_for_all_chains";
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
+
+        let usdc = native_token_with_decimals("uusdc", 6);
+        let usdt = native_token_with_decimals("uusdt", 6);
+        register_denom(&factory, &router, usdc.clone()).unwrap();
+        register_denom(&factory, &router, usdt.clone()).unwrap();
+
+        let seed = Uint256::from(1_000_000u128 * 1_000_000u128);
+        let pair = PairWithDenomAndAmount {
+            token_1: TokenWithDenomAndAmount {
+                token: usdc.token.clone(),
+                token_type: usdc.token_type.clone(),
+                amount: seed,
+            },
+            token_2: TokenWithDenomAndAmount {
+                token: usdt.token.clone(),
+                token_type: usdt.token_type.clone(),
+                amount: seed,
+            },
+        };
+        create_pool(
+            &factory,
+            &router,
+            pair,
+            500,
+            PoolConfig::ConstantProduct {},
+        )
+        .unwrap();
+
+        (factory, router, usdc, usdt)
+    }
+
+    /// Invalid swap routes are rejected at the factory before any IBC
+    /// roundtrip. The contract returns Err synchronously; no pending
+    /// state is created. Covers: empty hops, multi-hop (v1 forbids it),
+    /// wrong hop.token_in, wrong hop.token_out.
+    #[rstest]
+    #[case::empty_route(vec![], "swap_route must contain exactly one hop in v1")]
+    #[case::two_hops(
+        vec![
+            NextSwapPair {
+                token_in: Token::create("uusdc".to_string()).unwrap(),
+                token_out: Token::create("uusdt".to_string()).unwrap(),
+                test_fail: None,
+            },
+            NextSwapPair {
+                token_in: Token::create("uusdt".to_string()).unwrap(),
+                token_out: Token::create("uusdc".to_string()).unwrap(),
+                test_fail: None,
+            },
+        ],
+        "swap_route must contain exactly one hop in v1"
+    )]
+    #[case::wrong_token_in(
+        vec![NextSwapPair {
+            token_in: Token::create("udai".to_string()).unwrap(),
+            token_out: Token::create("uusdt".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        "swap_route first hop token_in must match asset_in"
+    )]
+    #[case::wrong_token_out(
+        vec![NextSwapPair {
+            token_in: Token::create("uusdc".to_string()).unwrap(),
+            token_out: Token::create("udai".to_string()).unwrap(),
+            test_fail: None,
+        }],
+        "swap_route last hop token_out must match the other pair token"
+    )]
+    fn test_single_sided_invalid_swap_route_rejected_at_factory(
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc)] mode: FactorySetupMode,
+        #[case] swap_route: Vec<NextSwapPair>,
+        #[case] expected_error: &str,
+    ) {
+        let (factory, _router, usdc, usdt) = setup_pool_6dp(mode);
+        let user = factory.environment().sender.clone();
+
+        let amount_in = Uint256::from(10_000u128 * 1_000_000u128);
+        let amount_in_u128 = Uint128::try_from(amount_in).unwrap().u128();
+        factory
+            .environment()
+            .add_balance(&user, vec![coin(amount_in_u128, "uusdc")])
+            .unwrap();
+
+        let pair = Pair::new(usdc.token.clone(), usdt.token.clone()).unwrap();
+        let result = factory.execute(
+            &FactoryExecuteMsg::AddSingleSidedLiquidity {
+                asset_in: usdc.clone(),
+                amount_in,
+                pair,
+                swap_amount: Uint256::from(4_000u128 * 1_000_000u128),
+                swap_route,
+                min_lp_out: Uint256::from(1u128),
+                partner_fee: None,
+                cross_chain_config: CrossChainConfig::default(),
+            },
+            &[coin(amount_in_u128, "uusdc")],
+        );
+
+        let err = result.expect_err("expected factory.execute to reject invalid route");
+        let err_msg = err.root().to_string();
+        assert!(
+            err_msg.contains(expected_error),
+            "Expected error containing '{expected_error}', got: {err_msg}"
+        );
+
+        // Factory must not have created any pending entry.
+        assert_no_pending_single_sided(&factory, &user);
+    }
+
+    /// Boundary: swap_amount = amount_in - 1 satisfies the strict `<` check
+    /// and must not underflow downstream (the hub subtracts swap_amount from
+    /// amount_in to derive the residual asset_in for add-liquidity). With
+    /// `amount_in - swap_amount = 1`, the liquidity leg is extremely
+    /// imbalanced — the result will typically be `SlippageExceeded` on the
+    /// add-liquidity reply — but the call must surface that as either an
+    /// ack-fail (IBC) or a revert (native), NEVER a panic/underflow.
+    #[rstest]
+    fn test_single_sided_swap_amount_equals_amount_in_minus_one_boundary(
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc)] mode: FactorySetupMode,
+    ) {
+        let (factory, router, usdc, usdt) = setup_pool_6dp(mode);
+        let user = factory.environment().sender.clone();
+
+        let escrow_in = get_escrow(&factory, usdc.token.as_str());
+        let escrow_in_before = escrow_in.state().unwrap().total_amount;
+        let user_balance_before = factory
+            .environment()
+            .balance(&user, Some("uusdc".to_string()))
+            .unwrap()
+            .iter()
+            .find(|c| c.denom == "uusdc")
+            .map(|c| c.amount)
+            .unwrap_or(Uint128::zero());
+
+        let amount_in = Uint256::from(10_000u128 * 1_000_000u128);
+        let swap_amount = amount_in.checked_sub(Uint256::one()).unwrap();
+
+        let result = single_sided_add_liquidity(
+            &factory,
+            &router,
+            usdc.clone(),
+            amount_in,
+            usdt.token.clone(),
+            swap_amount,
+            Uint256::from(1u128),
+            None,
+        );
+
+        // Either branch is acceptable; the key invariant is no panic /
+        // arithmetic underflow. With remaining = amount_in - swap_amount = 1
+        // voucher unit on the asset_in side, the liquidity leg is grossly
+        // imbalanced and slippage is the expected failure mode. The message
+        // surfaces from either the VLP's slippage_tolerance check
+        // ("Slippage has been exceeded ...") or the orchestrator's
+        // min_lp_out check ("Slippage has not been tolerated") — both must
+        // contain "Slippage", never an arithmetic-overflow artifact.
+        match result {
+            Ok(events) => {
+                let ack_events = extract_ack_packet_events(&events);
+                if let Some(first) = ack_events.first() {
+                    let ack_str = String::from_utf8(first.ack.to_vec()).unwrap();
+                    if !ack_str.contains("\"Ok\"") {
+                        assert!(
+                            ack_str.contains("Slippage"),
+                            "boundary case must surface a slippage error, got: {ack_str}"
+                        );
+                    }
+                }
+            }
+            Err(err) => {
+                let root = err.root().to_string();
+                assert!(
+                    root.contains("Slippage"),
+                    "boundary case must revert with a slippage error, got: {root}"
+                );
+                // On revert, escrow and user funds are unchanged.
+                let escrow_in_after = escrow_in.state().unwrap().total_amount;
+                assert_eq!(escrow_in_after, escrow_in_before);
+                let user_balance_after = factory
+                    .environment()
+                    .balance(&user, Some("uusdc".to_string()))
+                    .unwrap()
+                    .iter()
+                    .find(|c| c.denom == "uusdc")
+                    .map(|c| c.amount)
+                    .unwrap_or(Uint128::zero());
+                // Faucet handed user `amount_in` then the revert returned it.
+                assert_eq!(
+                    user_balance_after,
+                    user_balance_before + Uint128::try_from(amount_in).unwrap()
+                );
+            }
+        }
+
+        // No residual pending state regardless of which path was taken.
+        assert_no_pending_single_sided(&factory, &user);
+    }
+
+    /// Partner-fee happy path: on success, the partner receives
+    /// `partner_fee_amount` in raw asset_in units, the escrow receives
+    /// `amount_in - partner_fee_amount` (the post-fee portion that crosses
+    /// IBC), and the user receives LP. Complements the ack-failure refund
+    /// test which asserts the partner is NOT paid on failure.
+    #[rstest]
+    fn test_single_sided_partner_fee_happy_path_pays_partner(
+        #[values(FactorySetupMode::Native, FactorySetupMode::Ibc)] mode: FactorySetupMode,
+    ) {
+        let (factory, router, usdc, usdt) = setup_pool_6dp(mode);
+        let user = factory.environment().sender.clone();
+        let partner = factory.environment().addr_make("partner");
+
+        let pool_pair = Pair::new(usdc.token.clone(), usdt.token.clone()).unwrap();
+        let vlp_address = factory.get_vlp(pool_pair).unwrap().vlp_address;
+        let lp_token_address = factory
+            .get_lp_token(vlp_address)
+            .unwrap()
+            .token_address;
+        let lp_token = get_lp_token(factory.environment(), &lp_token_address);
+
+        let lp_balance_before = lp_token.balance(user.to_string()).unwrap().balance;
+        let escrow_in = get_escrow(&factory, usdc.token.as_str());
+        let escrow_in_before = escrow_in.state().unwrap().total_amount;
+        let partner_before = factory
+            .environment()
+            .balance(&partner, Some("uusdc".to_string()))
+            .unwrap()
+            .iter()
+            .find(|c| c.denom == "uusdc")
+            .map(|c| c.amount)
+            .unwrap_or(Uint128::zero());
+
+        let amount_in = Uint256::from(10_000u128 * 1_000_000u128);
+        let swap_amount = Uint256::from(4_000u128 * 1_000_000u128);
+        let partner_fee_bps = 30u64; // 0.3% = max
+        let partner_fee = Some(PartnerFee {
+            partner_fee_bps,
+            recipient: partner.to_string(),
+        });
+
+        // partner_fee_amount = ceil(amount_in * 30 / 10000)
+        let partner_fee_amount = amount_in
+            .checked_mul_ceil(cosmwasm_std::Decimal::bps(partner_fee_bps))
+            .unwrap();
+        let net_amount_in = amount_in.checked_sub(partner_fee_amount).unwrap();
+
+        single_sided_add_liquidity(
+            &factory,
+            &router,
+            usdc.clone(),
+            amount_in,
+            usdt.token.clone(),
+            swap_amount,
+            Uint256::from(1u128),
+            partner_fee,
+        )
+        .unwrap();
+
+        // LP CW20 minted to user.
+        let lp_balance_after = lp_token.balance(user.to_string()).unwrap().balance;
+        assert!(
+            lp_balance_after > lp_balance_before,
+            "LP balance must grow on success; before={lp_balance_before} after={lp_balance_after}"
+        );
+
+        // Escrow grew by net (post-fee) amount only.
+        let escrow_in_after = escrow_in.state().unwrap().total_amount;
+        assert_eq!(
+            escrow_in_after,
+            escrow_in_before + net_amount_in,
+            "Escrow must hold amount_in - partner_fee_amount"
+        );
+
+        // Partner received exactly partner_fee_amount in raw uusdc.
+        let partner_after = factory
+            .environment()
+            .balance(&partner, Some("uusdc".to_string()))
+            .unwrap()
+            .iter()
+            .find(|c| c.denom == "uusdc")
+            .map(|c| c.amount)
+            .unwrap_or(Uint128::zero());
+        assert_eq!(
+            partner_after,
+            partner_before + Uint128::try_from(partner_fee_amount).unwrap(),
+            "Partner must be paid exactly partner_fee_amount in raw asset_in units"
+        );
+
+        assert_no_pending_single_sided(&factory, &user);
+    }
 }
