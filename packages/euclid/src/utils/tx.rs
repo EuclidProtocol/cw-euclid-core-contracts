@@ -9,7 +9,7 @@ use crate::{cross_chain_user::CrossChainUser, error::ContractError};
 /// counter). That value is no longer read or written and is left as orphan
 /// storage; the new namespace prevents any collision with cw-storage-plus's
 /// internal layout.
-const TX_NONCES: Map<String, u128> = Map::new("tx_nonces");
+pub const TX_NONCES: Map<String, u128> = Map::new("tx_nonces");
 
 /// Generates a deterministic identifier for a cross-chain transaction.
 ///

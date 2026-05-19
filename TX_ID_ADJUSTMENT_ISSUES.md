@@ -102,6 +102,33 @@ Old `Item<u128>` at storage key `"tx_nonce"` is orphaned (no reads, no writes); 
 
 ---
 
+## Slice 4 — Layer 1 cw-orch-interchain end-to-end coverage
+
+- **Type:** AFK
+- **Blocked by:** Slices 1 and 3
+- **User stories covered:** 1, 2, 3, 9, 10 (end-to-end verifiability)
+
+### What to build
+
+End-to-end integration tests in `tests-integration` that exercise the new tx_id format and per-sender `TX_NONCES` through a real `cw-orch-interchain` cross-chain flow (Factory → Router → ack round-trip). These are the highest-fidelity test layer that fits in CI; further verification (devnet rehearsal, testnet shadow, canary deploy) is operational and outside this repo's scope.
+
+`TX_NONCES` is exposed as `pub` in `euclid::utils::tx` so tests can query it directly.
+
+### Acceptance criteria
+
+- [x] Test: `tx_id` emitted in an outbound IBC packet has exactly 4 colon-separated segments — confirms `block.height` and `transaction.index` are absent.
+- [x] Test: third segment is `chain_id` (not a numeric block height) — locks down field ordering.
+- [x] Test: `TX_NONCES` storage is populated per-sender after a real cross-chain call (queried via `cw-storage-plus` Map through cw-orch).
+- [x] Test: two sequential calls increment per-sender nonce from 1 to 2, visible end-to-end after ack delivery and storage commit.
+- [x] Test: old `Item<u128>` at raw storage key `"tx_nonce"` is never written by new code (orphan-storage invariant).
+- [x] `cargo test -p tests-integration tx_id_format` passes; no regressions elsewhere.
+
+### Blocked by
+
+- Slices 1 and 3 (depend on the format change and the per-sender Map).
+
+---
+
 ## Out of scope on this branch
 
 - Solana and Tron implementations (handled separately under SC-8 parent).

@@ -12,4 +12,5 @@ pub mod factory_swap;
 pub mod mixed_decimal_pool;
 pub mod pending_packets;
 pub mod state_sync;
+pub mod tx_id_format;
 pub mod voucher_release;
