@@ -464,6 +464,8 @@ pub fn on_single_sided_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response,
             // Compute the residual asset_in (in voucher units). This matches
             // the user's virtual_balance balance after the swap, because the
             // VLP consumed exactly normalized_swap_amount = normalize(swap_amount).
+            // Re-querying metadata is safe: token metadata is set out-of-band
+            // by admin and cannot change within a single transaction.
             let remaining_raw = pending.amount_in.checked_sub(pending.swap_amount)?;
             let remaining_normalized = if pending.asset_in.token_type.is_voucher() {
                 remaining_raw

@@ -769,6 +769,16 @@ fn ack_single_sided_add_liquidity(
                     pending.partner_fee_recipient.to_string(),
                 );
 
+            // Track collected partner fees so they surface in fee queries.
+            if !pending.partner_fee_amount.is_zero() {
+                let mut fee_state = FEE_STATE.load(deps.storage)?;
+                fee_state.partner_fees_collected.add_fee(
+                    pending.asset_in.token.to_string(),
+                    pending.partner_fee_amount,
+                );
+                FEE_STATE.save(deps.storage, &fee_state)?;
+            }
+
             // Escrow asset_in. Vouchers never reach this path (factory rejects them).
             if !pending.asset_in.token_type.is_voucher() {
                 let escrow_address =
@@ -2230,6 +2240,13 @@ mod tests {
             "partner_fee_recipient",
             partner_recipient.to_string()
         )));
+
+        // FEE_STATE tracks the collected partner fee so `get_partner_fees_collected` sees it.
+        let fee_state = FEE_STATE.load(&deps.storage).unwrap();
+        assert_eq!(
+            fee_state.partner_fees_collected.get_fee("aaa"),
+            Uint256::from(3u128),
+        );
     }
 
     /// Error ack on a non-native chain with a non-zero partner fee:
