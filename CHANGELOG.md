@@ -114,6 +114,7 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [virtual_balance] Strict single metadata assertion in migration prevents duplicate seeds
 - [factory] `ZeroAssetAmount` error on `Limit::Dynamic` validation was misleading, now corrected
 - [cp_vlp, stable_vlp] Migration uses `.may_load()` instead of `.load()` for proper optional semantics
+- [euclid] `generate_tx` no longer embeds `block.height` or `transaction.index` in the `tx_id`. New format: `{sender}:{chain_id}:{nonce}`. Reorg replay now reproduces the same `tx_id`, so the ack-direction lookup in `PENDING_SWAPS` / `PENDING_REMOVE_LIQUIDITY` / `PENDING_RELEASE_VOUCHER` cannot miss its entry after a source reorg. Old in-flight entries written under the previous format remain valid (segment-count differs, no collision); no migration required. Known limitation deferred to a follow-up: `TX_NONCE` is a global counter, so cross-sender reordering during reorg replay still shifts nonces — per-sender nonce (`Map<String, u128>`) is the planned mitigation.
 
 ### Deprecated
 
