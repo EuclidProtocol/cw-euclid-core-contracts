@@ -12,9 +12,9 @@ The shared `generate_tx` helper in the `euclid` package produces the `tx_id` use
 
 The fix removes `block.height` and `transaction.index` from the format. After the change, every input to `generate_tx` is either external (`sender`), constant per chain (`chain_id`), or backed by atomically-rolled-back contract storage (`nonce`), so the same logical transaction reproduces the same `tx_id` across any replay.
 
-### Known limitation (deferred)
+### Per-sender nonce (originally deferred, landed in slice 3)
 
-`TX_NONCE` is a single global counter per contract, not per-sender. If a reorg replays a block containing multiple senders' transactions in a different order, each sender's nonce shifts and the determinism property breaks for the cross-sender reordering case. Mitigation is per-sender nonce (`Map<String, u128>` keyed by `sender.to_sender_string()`), which is reorg-deterministic in practice because Cosmos SDK enforces strict per-account sequence ordering. This is documented in code and CHANGELOG but **not** implemented in this branch; it is a deliberate follow-up.
+`TX_NONCE: Item<u128>` (a single global counter) was originally going to remain unchanged, with the cross-sender reorg-reordering limitation called out as a follow-up. The decision was reversed: per-sender nonce is now part of this branch (slice 3 below), because it converts the determinism property from "true for the common case" to "true for every reorg scenario realistic in Cosmos SDK" at the cost of one storage-type change. Cosmos SDK enforces strict per-account sequence ordering at the mempool level, so a single sender's own txs cannot be re-included out of order — per-sender nonce is therefore reorg-deterministic in practice.
 
 ---
 
@@ -74,10 +74,37 @@ The synthesis is exercised at the **router unit-test level** rather than in `tes
 
 ---
 
+## Slice 3 — Per-sender nonce (closes cross-sender reorg-reordering hole)
+
+- **Type:** AFK
+- **Blocked by:** Slice 1
+- **User stories covered:** 1, 2, 3, 4, 5, 11 (closes the deferred limitation)
+
+### What to build
+
+Replace `TX_NONCE: Item<u128>` (global counter) with `TX_NONCES: Map<String, u128>` keyed by `sender.to_sender_string()` in `generate_tx`. Each sender's nonce stream becomes independent of all others. This is the deterministic-under-realistic-reorg form: Cosmos SDK enforces strict per-account sequence ordering, so a single sender's own txs cannot be re-included out of order, and cross-sender interleaving no longer perturbs any sender's id.
+
+Old `Item<u128>` at storage key `"tx_nonce"` is orphaned (no reads, no writes); new namespace `"tx_nonces"` for the Map avoids any cw-storage-plus layout collision. No `MigrateMsg` needed.
+
+### Acceptance criteria
+
+- [x] `TX_NONCE: Item<u128>` removed; `TX_NONCES: Map<String, u128>` added with namespace `"tx_nonces"`.
+- [x] `generate_tx` loads/saves the nonce keyed by `sender.to_sender_string()`.
+- [x] Inline doc comment on `generate_tx` updated to remove the "known limitation" section and describe the per-sender determinism property.
+- [x] Unit test: two senders' first calls each produce nonce 1; second calls each produce nonce 2 (per-sender independence).
+- [x] Unit test: reordering Alice and Bob across two `MockDeps` instances does not shift either sender's first-call id (cross-sender reordering stability).
+- [x] CHANGELOG entry updated to reflect that the deferred limitation is now closed.
+- [x] `cargo test -p euclid` passes.
+
+### Blocked by
+
+- Slice 1 (depends on the format change).
+
+---
+
 ## Out of scope on this branch
 
 - Solana and Tron implementations (handled separately under SC-8 parent).
 - Off-chain consumer (relayer, indexer, dashboards) updates to handle the 3-segment format.
-- Per-sender nonce implementation (deferred follow-up; documented but not built).
 - Migration of in-flight `PENDING_*` entries (none needed — old and new formats coexist via segment-count difference).
-- Replacing `wrapping_add` on `TX_NONCE` with `checked_add`.
+- Replacing `wrapping_add` on `TX_NONCES` with `checked_add`.
