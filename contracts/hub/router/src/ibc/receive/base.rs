@@ -7,7 +7,7 @@ use crate::{
     ibc::receive::{
         pool::{
             ibc_execute_add_liquidity, ibc_execute_remove_liquidity,
-            ibc_execute_request_pool_creation,
+            ibc_execute_request_pool_creation, ibc_execute_single_sided_add_liquidity,
         },
         swap::ibc_execute_swap,
         token::{
@@ -123,6 +123,13 @@ pub fn reusable_internal_call(
                 ContractError::new("Chain UID mismatch")
             );
             ibc_execute_swap(deps.branch(), env, msg)?
+        }
+        RouterCrossChainExecuteMsg::SingleSidedAddLiquidity(msg) => {
+            ensure!(
+                msg.sender.chain_uid == chain_uid,
+                ContractError::new("Chain UID mismatch")
+            );
+            ibc_execute_single_sided_add_liquidity(deps.branch(), env, msg)?
         }
     };
     response = response.add_attribute("tx_id", tx_id);

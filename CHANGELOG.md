@@ -23,6 +23,17 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [stable_vlp] `MIN_AMP = 100` constant with validation in `compute_stable_swap`, `update_amp_factor`, and `instantiate`
 - [router] `GetAllEscrows` query (deprecated on arrival, exists only to support virtual_balance migration)
 - [orderbook_deposits] `NULLIFIERS` map tracking withdrawn amounts by hashed key
+- [factory] `AddSingleSidedLiquidity` execute entry point: user deposits a single token, the hub atomically swaps a backend-computed portion and adds liquidity on the target VLP in one IBC roundtrip
+- [factory] `AddSingleSidedLiquidity` supports `TokenType::Smart` (CW20) `asset_in` via the `IncreaseAllowance` + `TransferFrom` pattern (mirrors `add_liquidity_request`); `TokenType::Voucher` rejected as `UnreachableCode`
+- [factory] `AddSingleSidedLiquidity` accepts an optional `partner_fee` (bounded by `MAX_PARTNER_FEE_BPS`); fee retained at the factory and routed to the recipient on ack success, refunded with `amount_in` on ack failure
+- [factory] `PENDING_SINGLE_SIDED_LIQUIDITY` map carries `partner_fee_amount` and `partner_fee_recipient` for the ack handler
+- [factory] `PendingSingleSidedLiquidity { user, pagination }` query returning in-flight single-sided requests for a user
+- [router] `PENDING_SINGLE_SIDED_LIQUIDITY` map storing in-flight single-sided requests
+- [router] `on_single_sided_swap_reply` and `on_single_sided_add_liquidity_reply` reply handlers chaining the internal swap -> add-liquidity flow with `min_lp_out` slippage enforcement
+- [router] `ibc_execute_single_sided_add_liquidity` IBC receive handler validating the request and kicking off the swap submsg
+- [euclid] `SingleSidedLiquidityRequest` pending-state struct (in `liquidity.rs`) carrying `partner_fee_amount` and `partner_fee_recipient` for the factory ack handler
+- [euclid] `GetPendingSingleSidedLiquidityResponse { pending_single_sided_liquidity }` for the new query
+- [euclid_ibc] `RouterCrossChainSingleSidedAddLiquidityMsg` IBC packet payload carrying `asset_in`, `amount_in`, `swap_amount`, target `pair`, `swaps` route, `min_lp_out`, and partner-fee fields
 
 #### Packages
 
@@ -37,6 +48,7 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [euclid] `token_metadata_update_event(token_metadata, action)` emitting `euclid-token-metadata-update` with attributes: action, token, chain_uid, token_type, decimals, allowed
 - [euclid] `virtual_balance_change_event(action, amount, user, token_id)` emitting `euclid-virtual-balance-change` with attributes: action, amount, user, token_id
 - [euclid] `escrow_balance_change_event(action, amount, token_id, chain_uid, token_type)` emitting `euclid-escrow-balance-change` with attributes: action, amount, token_id, chain_uid, token_type
+- [euclid] `TxType::SingleSidedAddLiquidity` variant (display: `single_sided_add_liquidity`) emitted by the router on single-sided add-liquidity entry
 - [virtual_balance] `normalized_amount` attribute added to `execute_mint` response
 
 #### Documentation

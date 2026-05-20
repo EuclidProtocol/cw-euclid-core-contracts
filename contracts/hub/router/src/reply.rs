@@ -1,15 +1,23 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Env, Event, Reply, Response, SubMsgResult,
+    ensure, from_json, to_json_binary, DepsMut, Env, Event, Reply, Response, SubMsg, SubMsgResult,
+    WasmMsg,
 };
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::{
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     error::ContractError,
     events::{simple_event, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT},
+    fee::BPS_50_PERCENT,
     liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
     msgs::{
         self,
-        vlp::base::{PoolCreationResponse, VlpRemoveLiquidityResponse, VlpSwapResponse},
+        virtual_balance::msg::{ExecuteApprove, ExecuteMsg as VirtualBalanceMsg},
+        vlp::base::{
+            PoolCreationResponse, VlpAddLiquidityMsg, VlpRemoveLiquidityResponse, VlpSwapResponse,
+        },
     },
+    normalize::normalize_token_to_voucher,
     swap::SwapResponse,
 };
 use euclid_ibc::{
@@ -22,9 +30,10 @@ use function_name::named;
 use crate::{
     execute::token::execute_transfer_voucher,
     ibc::{self, receive::pool::ibc_execute_add_liquidity},
+    query::query_token_metadata_by_denom,
     state::{
-        FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS, VIRTUAL_BALANCE_CONTRACT,
-        VLPS,
+        FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, PENDING_SINGLE_SIDED_LIQUIDITY, PENDING_SWAPS,
+        TOKEN_VLPS, VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
 
@@ -38,6 +47,9 @@ pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 
 pub const CROSS_CHAIN_RECEIVE_REPLY_ID: u64 = 8;
+
+pub const SINGLE_SIDED_SWAP_REPLY_ID: u64 = 9;
+pub const SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID: u64 = 10;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.result.clone() {
@@ -412,6 +424,171 @@ pub fn on_cross_chain_receive_reply(_deps: DepsMut, msg: Reply) -> Result<Respon
                 .add_event(euclid_event)
                 .add_event(write_acknowledge_event)
                 .set_data(data))
+        }
+    }
+}
+
+// Reply to the internal single-sided swap. The VLP has already deposited
+// amount_out of asset_out into the user's virtual_balance via its terminal-hop
+// Transfer. We just need to approve the same VLP to spend remaining asset_in
+// and the swap output asset_out, then fire the add-liquidity submsg.
+#[named]
+pub fn on_single_sided_swap_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
+        SubMsgResult::Ok(result) => {
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+            let execute_data =
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+            let vlp_swap_response: VlpSwapResponse =
+                from_json(execute_data.data.unwrap_or_default())?;
+
+            let pending = PENDING_SINGLE_SIDED_LIQUIDITY
+                .load(deps.storage, vlp_swap_response.tx_id.clone())?;
+
+            // The swap output token is the "other" side of the target pair.
+            let asset_out = pending.pair.get_other_token(pending.asset_in.token.clone());
+            ensure!(
+                vlp_swap_response.asset_out == asset_out,
+                ContractError::new("asset_out mismatch on single-sided swap reply")
+            );
+
+            let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
+
+            // Compute the residual asset_in (in voucher units). This matches
+            // the user's virtual_balance balance after the swap, because the
+            // VLP consumed exactly normalized_swap_amount = normalize(swap_amount).
+            // Re-querying metadata is safe: token metadata is set out-of-band
+            // by admin and cannot change within a single transaction.
+            let remaining_raw = pending.amount_in.checked_sub(pending.swap_amount)?;
+            let remaining_normalized = if pending.asset_in.token_type.is_voucher() {
+                remaining_raw
+            } else {
+                let metadata = query_token_metadata_by_denom(
+                    deps.as_ref(),
+                    &virtual_balance_address,
+                    &pending.asset_in.token,
+                    &pending.sender.chain_uid,
+                    &pending.asset_in.token_type,
+                )?;
+                normalize_token_to_voucher(remaining_raw, metadata.token_type.get_decimals()?)?
+            };
+
+            // Target VLP (same as swap VLP in single-hop v1).
+            let vlp_address = VLPS
+                .may_load(deps.storage, pending.pair.get_tupple())?
+                .ok_or(ContractError::PoolDoesNotExist {})?;
+
+            let mut response = Response::new()
+                .add_attribute("action", "single_sided_swap_reply")
+                .add_attribute("tx_id", vlp_swap_response.tx_id.clone())
+                .add_attribute("amount_out", vlp_swap_response.amount_out)
+                .add_attribute("remaining_normalized", remaining_normalized);
+
+            // Approve VLP to spend asset_in (remaining) on behalf of user.
+            let approve_in_msg = VirtualBalanceMsg::Approve(ExecuteApprove {
+                amount: remaining_normalized,
+                token_id: pending.asset_in.token.to_string(),
+                spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
+                owner: pending.sender.clone(),
+            });
+            response = response.add_message(WasmMsg::Execute {
+                contract_addr: virtual_balance_address.to_string(),
+                msg: to_json_binary(&approve_in_msg)?,
+                funds: vec![],
+            });
+
+            // Approve VLP to spend asset_out (swap output) on behalf of user.
+            let approve_out_msg = VirtualBalanceMsg::Approve(ExecuteApprove {
+                amount: vlp_swap_response.amount_out,
+                token_id: asset_out.to_string(),
+                spender: CrossChainUser::new(ChainUid::vsl_chain_uid()?, vlp_address.to_string()),
+                owner: pending.sender.clone(),
+            });
+            response = response.add_message(WasmMsg::Execute {
+                contract_addr: virtual_balance_address.to_string(),
+                msg: to_json_binary(&approve_out_msg)?,
+                funds: vec![],
+            });
+
+            // Pair tokens are canonically sorted, so match each side to its position.
+            let (amount_1, amount_2) = if pending.pair.token_1 == pending.asset_in.token {
+                (remaining_normalized, vlp_swap_response.amount_out)
+            } else {
+                (vlp_swap_response.amount_out, remaining_normalized)
+            };
+            let normalized_liquidity = pending.pair.get_pair_with_amount(amount_1, amount_2)?;
+
+            let add_liquidity_msg = msgs::vlp::base::ExecuteMsg::AddLiquidity(VlpAddLiquidityMsg {
+                sender: pending.sender.clone(),
+                tx_id: vlp_swap_response.tx_id.clone(),
+                liquidity: normalized_liquidity,
+                slippage_tolerance_bps: BPS_50_PERCENT,
+            });
+            let add_liquidity_wasm = WasmMsg::Execute {
+                contract_addr: vlp_address.to_string(),
+                msg: to_json_binary(&add_liquidity_msg)?,
+                funds: vec![],
+            };
+
+            Ok(response.add_submessage(SubMsg::reply_always(
+                add_liquidity_wasm,
+                SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID,
+            )))
+        }
+    }
+}
+
+// Reply to the internal single-sided add-liquidity. Enforces min_lp_out;
+// on success sets ack data to AcknowledgementMsg::Ok(AddLiquidityResponse).
+// Slippage / submsg failures return Err so the outer cross-chain receive
+// reply emits an error ack and all hub state rolls back.
+#[named]
+pub fn on_single_sided_add_liquidity_reply(
+    deps: DepsMut,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    match msg.result.clone() {
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
+        SubMsgResult::Ok(result) => {
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+            let execute_data =
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+            let liquidity_response: AddLiquidityResponse =
+                from_json(execute_data.data.unwrap_or_default())?;
+
+            let pending = PENDING_SINGLE_SIDED_LIQUIDITY
+                .load(deps.storage, liquidity_response.tx_id.clone())?;
+
+            ensure!(
+                liquidity_response.mint_lp_tokens >= pending.min_lp_out,
+                ContractError::SlippageExceeded {
+                    amount: liquidity_response.mint_lp_tokens,
+                    min_amount_out: pending.min_lp_out,
+                }
+            );
+
+            PENDING_SINGLE_SIDED_LIQUIDITY.remove(deps.storage, liquidity_response.tx_id.clone());
+
+            let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
+            Ok(Response::new()
+                .add_attribute("action", "single_sided_add_liquidity_reply")
+                .add_attribute("tx_id", liquidity_response.tx_id.clone())
+                .add_attribute("mint_lp_tokens", liquidity_response.mint_lp_tokens)
+                .add_attribute("vlp", liquidity_response.vlp_address)
+                .set_data(to_json_binary(&ack)?))
         }
     }
 }
@@ -1115,5 +1292,390 @@ mod tests {
             err,
             euclid::error::ContractError::InstantiateError { .. }
         ));
+    }
+
+    // -----------------------------------------------------------------------
+    // single_sided reply handlers
+    // -----------------------------------------------------------------------
+
+    mod single_sided {
+        use super::*;
+        use cosmwasm_std::{
+            from_json, to_json_binary, ContractResult, CosmosMsg, SystemResult, WasmMsg, WasmQuery,
+        };
+        use euclid::{
+            msgs::virtual_balance::msg::{
+                ExecuteMsg as VirtualBalanceMsg, GetTokenMetadataByDenomResponse,
+                QueryMsg as VirtualBalanceQueryMsg,
+            },
+            swap::NextSwapPair,
+            token::{TokenMetadata, TokenWithDenom},
+        };
+        use euclid_ibc::router_ibc::RouterCrossChainSingleSidedAddLiquidityMsg;
+
+        use crate::{
+            reply::{
+                on_single_sided_add_liquidity_reply, on_single_sided_swap_reply,
+                SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID, SINGLE_SIDED_SWAP_REPLY_ID,
+            },
+            state::PENDING_SINGLE_SIDED_LIQUIDITY,
+        };
+
+        fn token_aaa() -> Token {
+            Token::create("aaa".to_string()).unwrap()
+        }
+        fn token_bbb() -> Token {
+            Token::create("bbb".to_string()).unwrap()
+        }
+
+        fn seed_vlp(deps: &mut MockDeps) {
+            let pair = Pair::new(token_aaa(), token_bbb()).unwrap();
+            VLPS.save(
+                deps.as_mut().storage,
+                pair.get_tupple(),
+                &Addr::unchecked("vlp_contract"),
+            )
+            .unwrap();
+        }
+
+        fn seed_virtual_balance(deps: &mut MockDeps) {
+            VIRTUAL_BALANCE_CONTRACT
+                .save(deps.as_mut().storage, &Addr::unchecked("virtual_balance"))
+                .unwrap();
+        }
+
+        fn install_metadata_querier(deps: &mut MockDeps) {
+            deps.querier.update_wasm(|q| match q {
+                WasmQuery::Smart { msg, .. } => {
+                    let parsed: VirtualBalanceQueryMsg = from_json(msg).unwrap();
+                    match parsed {
+                        VirtualBalanceQueryMsg::GetTokenMetadataByDenom {
+                            token_id,
+                            chain_uid,
+                            token_type,
+                        } => {
+                            let token_type_with_decimals = match token_type {
+                                TokenType::Native { denom, .. } => TokenType::Native {
+                                    denom,
+                                    decimals: Some(24),
+                                },
+                                other => other,
+                            };
+                            let resp = GetTokenMetadataByDenomResponse {
+                                metadata: TokenMetadata {
+                                    token: Token::create(token_id).unwrap(),
+                                    chain_uid,
+                                    token_type: token_type_with_decimals,
+                                    allowed: true,
+                                },
+                            };
+                            SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
+                        }
+                        other => panic!("unexpected vb query: {other:?}"),
+                    }
+                }
+                _ => panic!("unexpected wasm query"),
+            });
+        }
+
+        fn make_pending(
+            tx_id: &str,
+            amount_in: u128,
+            swap_amount: u128,
+            min_lp_out: u128,
+            asset_out: Token,
+        ) -> RouterCrossChainSingleSidedAddLiquidityMsg {
+            let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+            let pair = Pair::new(token_aaa(), asset_out.clone()).unwrap();
+            RouterCrossChainSingleSidedAddLiquidityMsg {
+                sender: CrossChainUser::new(chain_uid.clone(), "user".to_string()),
+                asset_in: TokenWithDenom {
+                    token: token_aaa(),
+                    token_type: TokenType::Native {
+                        denom: "uaaa".to_string(),
+                        decimals: None,
+                    },
+                },
+                amount_in: Uint256::from(amount_in),
+                swap_amount: Uint256::from(swap_amount),
+                pair,
+                swaps: vec![NextSwapPair {
+                    token_in: token_aaa(),
+                    token_out: asset_out,
+                    test_fail: None,
+                }],
+                min_lp_out: Uint256::from(min_lp_out),
+                partner_fee_amount: Uint256::zero(),
+                partner_fee_recipient: CrossChainUser::new(chain_uid, "user".to_string()),
+                tx_id: tx_id.to_string(),
+            }
+        }
+
+        fn seed_pending(deps: &mut MockDeps, pending: &RouterCrossChainSingleSidedAddLiquidityMsg) {
+            PENDING_SINGLE_SIDED_LIQUIDITY
+                .save(deps.as_mut().storage, pending.tx_id.clone(), pending)
+                .unwrap();
+        }
+
+        // ----------------- on_single_sided_swap_reply -----------------
+
+        #[test]
+        fn test_single_sided_swap_reply_err_returns_reply_error() {
+            let mut deps = initialized();
+            let reply = err_reply(SINGLE_SIDED_SWAP_REPLY_ID, "swap failed");
+            let err = on_single_sided_swap_reply(deps.as_mut(), reply).unwrap_err();
+            assert!(matches!(err, euclid::error::ContractError::Reply { .. }));
+        }
+
+        #[test]
+        fn test_single_sided_swap_reply_missing_pending_returns_error() {
+            let mut deps = initialized();
+            seed_virtual_balance(&mut deps);
+            seed_vlp(&mut deps);
+            install_metadata_querier(&mut deps);
+
+            // No PENDING_SINGLE_SIDED_LIQUIDITY entry seeded.
+            let vlp_resp = VlpSwapResponse {
+                sender: CrossChainUser::new(
+                    ChainUid::create("chain1".to_string()).unwrap(),
+                    "user".to_string(),
+                ),
+                tx_id: "tx-no-pending".to_string(),
+                asset_out: token_bbb(),
+                amount_out: Uint256::from(300u128),
+            };
+            let inner_json = cosmwasm_std::to_json_binary(&vlp_resp).unwrap();
+            let proto = encode_execute_response(&inner_json);
+            let reply = ok_reply(SINGLE_SIDED_SWAP_REPLY_ID, proto);
+
+            assert!(on_single_sided_swap_reply(deps.as_mut(), reply).is_err());
+        }
+
+        #[test]
+        fn test_single_sided_swap_reply_asset_out_mismatch_returns_error() {
+            let mut deps = initialized();
+            seed_virtual_balance(&mut deps);
+            seed_vlp(&mut deps);
+            install_metadata_querier(&mut deps);
+
+            let tx_id = "tx-mismatch";
+            let pending = make_pending(tx_id, 1000, 400, 10, token_bbb());
+            seed_pending(&mut deps, &pending);
+
+            // VLP returns ccc instead of bbb
+            let wrong = Token::create("ccc".to_string()).unwrap();
+            let vlp_resp = VlpSwapResponse {
+                sender: pending.sender.clone(),
+                tx_id: tx_id.to_string(),
+                asset_out: wrong,
+                amount_out: Uint256::from(300u128),
+            };
+            let inner_json = cosmwasm_std::to_json_binary(&vlp_resp).unwrap();
+            let proto = encode_execute_response(&inner_json);
+            let reply = ok_reply(SINGLE_SIDED_SWAP_REPLY_ID, proto);
+
+            let err = on_single_sided_swap_reply(deps.as_mut(), reply).unwrap_err();
+            assert_eq!(
+                err,
+                euclid::error::ContractError::new("asset_out mismatch on single-sided swap reply")
+            );
+        }
+
+        #[test]
+        fn test_single_sided_swap_reply_happy_path_emits_two_approvals_and_add_liq_submsg() {
+            let mut deps = initialized();
+            seed_virtual_balance(&mut deps);
+            seed_vlp(&mut deps);
+            install_metadata_querier(&mut deps);
+
+            let tx_id = "tx-ssw-happy";
+            let pending = make_pending(tx_id, 1000, 400, 10, token_bbb());
+            seed_pending(&mut deps, &pending);
+
+            let amount_out = Uint256::from(380u128);
+            let vlp_resp = VlpSwapResponse {
+                sender: pending.sender.clone(),
+                tx_id: tx_id.to_string(),
+                asset_out: token_bbb(),
+                amount_out,
+            };
+            let inner_json = cosmwasm_std::to_json_binary(&vlp_resp).unwrap();
+            let proto = encode_execute_response(&inner_json);
+            let reply = ok_reply(SINGLE_SIDED_SWAP_REPLY_ID, proto);
+
+            let res = on_single_sided_swap_reply(deps.as_mut(), reply).unwrap();
+
+            // Expect exactly: 2 plain wasm messages (Approve in, Approve out)
+            // + 1 SubMsg (AddLiquidity with SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID).
+            assert_eq!(
+                res.messages.len(),
+                3,
+                "expected 2 approvals + 1 add-liq submsg"
+            );
+
+            let mut approve_in_seen = false;
+            let mut approve_out_seen = false;
+            for sub in res.messages.iter().take(2) {
+                if let CosmosMsg::Wasm(WasmMsg::Execute { msg, .. }) = &sub.msg {
+                    let parsed: VirtualBalanceMsg = from_json(msg).unwrap();
+                    match parsed {
+                        VirtualBalanceMsg::Approve(a) => {
+                            if a.token_id == "aaa" {
+                                approve_in_seen = true;
+                                // remaining_normalized = 1000 - 400 = 600 (24-dec native is identity)
+                                assert_eq!(a.amount, Uint256::from(600u128));
+                            } else if a.token_id == "bbb" {
+                                approve_out_seen = true;
+                                assert_eq!(a.amount, amount_out);
+                            } else {
+                                panic!("unexpected token_id in approve: {}", a.token_id);
+                            }
+                        }
+                        VirtualBalanceMsg::Mint(_) => {
+                            panic!("Mint must NOT be emitted in single-sided swap reply (would double-count)");
+                        }
+                        other => panic!("unexpected vb msg: {other:?}"),
+                    }
+                } else {
+                    panic!("expected wasm execute msg");
+                }
+            }
+            assert!(approve_in_seen, "expected Approve(asset_in)");
+            assert!(approve_out_seen, "expected Approve(asset_out)");
+
+            // Final SubMsg id matches add-liq reply id.
+            assert_eq!(
+                res.messages.last().unwrap().id,
+                SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID
+            );
+
+            // Critical negative assertion: NO ExecuteMint anywhere in the response.
+            for sub in &res.messages {
+                if let CosmosMsg::Wasm(WasmMsg::Execute { msg, .. }) = &sub.msg {
+                    // Only attempt to decode messages destined for the virtual_balance
+                    // contract — the AddLiquidity message decodes as a vlp ExecuteMsg.
+                    if let Ok(parsed) = from_json::<VirtualBalanceMsg>(msg) {
+                        assert!(
+                            !matches!(parsed, VirtualBalanceMsg::Mint(_)),
+                            "Mint message present — would double-count asset_out"
+                        );
+                    }
+                }
+            }
+        }
+
+        // ----------------- on_single_sided_add_liquidity_reply -----------------
+
+        #[test]
+        fn test_single_sided_add_liq_reply_err_returns_reply_error() {
+            let mut deps = initialized();
+            let reply = err_reply(SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID, "addliq failed");
+            let err = on_single_sided_add_liquidity_reply(deps.as_mut(), reply).unwrap_err();
+            assert!(matches!(err, euclid::error::ContractError::Reply { .. }));
+        }
+
+        #[test]
+        fn test_single_sided_add_liq_reply_missing_pending_returns_error() {
+            let mut deps = initialized();
+
+            let liq_resp = AddLiquidityResponse {
+                mint_lp_tokens: Uint256::from(100u128),
+                vlp_address: "vlp_contract".to_string(),
+                tx_id: "tx-no-pending".to_string(),
+                sender: CrossChainUser::new(
+                    ChainUid::create("chain1".to_string()).unwrap(),
+                    "user".to_string(),
+                ),
+            };
+            let inner_json = cosmwasm_std::to_json_binary(&liq_resp).unwrap();
+            let proto = encode_execute_response(&inner_json);
+            let reply = ok_reply(SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID, proto);
+            assert!(on_single_sided_add_liquidity_reply(deps.as_mut(), reply).is_err());
+        }
+
+        #[test]
+        fn test_single_sided_add_liq_reply_happy_path_sets_ack_and_clears_pending() {
+            let mut deps = initialized();
+            let tx_id = "tx-ssal-happy";
+            let pending = make_pending(tx_id, 1000, 400, 50, token_bbb());
+            seed_pending(&mut deps, &pending);
+
+            let liq_resp = AddLiquidityResponse {
+                mint_lp_tokens: Uint256::from(100u128), // >= min_lp_out (50)
+                vlp_address: "vlp_contract".to_string(),
+                tx_id: tx_id.to_string(),
+                sender: pending.sender.clone(),
+            };
+            let inner_json = cosmwasm_std::to_json_binary(&liq_resp).unwrap();
+            let proto = encode_execute_response(&inner_json);
+            let reply = ok_reply(SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID, proto);
+
+            let res = on_single_sided_add_liquidity_reply(deps.as_mut(), reply).unwrap();
+
+            // Ack data was set
+            assert!(res.data.is_some(), "expected ack data to be set");
+
+            // Pending entry was removed
+            assert!(
+                PENDING_SINGLE_SIDED_LIQUIDITY
+                    .may_load(deps.as_ref().storage, tx_id.to_string())
+                    .unwrap()
+                    .is_none(),
+                "pending entry should be cleared on success"
+            );
+
+            // Attribute sanity
+            assert_eq!(
+                res.attributes
+                    .iter()
+                    .find(|a| a.key == "action")
+                    .unwrap()
+                    .value,
+                "single_sided_add_liquidity_reply"
+            );
+        }
+
+        #[test]
+        fn test_single_sided_add_liq_reply_slippage_exceeded_returns_err_and_no_set_data() {
+            let mut deps = initialized();
+            let tx_id = "tx-ssal-slip";
+            // min_lp_out = 100, mint_lp_tokens = 50 -> SlippageExceeded
+            let pending = make_pending(tx_id, 1000, 400, 100, token_bbb());
+            seed_pending(&mut deps, &pending);
+
+            let liq_resp = AddLiquidityResponse {
+                mint_lp_tokens: Uint256::from(50u128),
+                vlp_address: "vlp_contract".to_string(),
+                tx_id: tx_id.to_string(),
+                sender: pending.sender.clone(),
+            };
+            let inner_json = cosmwasm_std::to_json_binary(&liq_resp).unwrap();
+            let proto = encode_execute_response(&inner_json);
+            let reply = ok_reply(SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID, proto);
+
+            let err = on_single_sided_add_liquidity_reply(deps.as_mut(), reply).unwrap_err();
+            match err {
+                euclid::error::ContractError::SlippageExceeded {
+                    amount,
+                    min_amount_out,
+                } => {
+                    assert_eq!(amount, Uint256::from(50u128));
+                    assert_eq!(min_amount_out, Uint256::from(100u128));
+                }
+                other => panic!("expected SlippageExceeded, got {other:?}"),
+            }
+
+            // CRITICAL: when SlippageExceeded fires, the function must return Err
+            // BEFORE clearing the pending state. The Err propagation is what rolls
+            // back the hub state via the outer cross-chain reply. We assert here
+            // that the pending entry is still present.
+            assert!(
+                PENDING_SINGLE_SIDED_LIQUIDITY
+                    .may_load(deps.as_ref().storage, tx_id.to_string())
+                    .unwrap()
+                    .is_some(),
+                "pending entry must remain when slippage triggers Err (rollback path)"
+            );
+        }
     }
 }

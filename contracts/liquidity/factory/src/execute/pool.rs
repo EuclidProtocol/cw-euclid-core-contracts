@@ -1,26 +1,29 @@
-use cosmwasm_std::{ensure, DepsMut, Env, MessageInfo, Response, SubMsg, Uint256};
+use cosmwasm_std::{ensure, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Uint256};
 use cw20::Logo;
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    events::tx_event,
-    fee::BPS_100_PERCENT,
-    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    events::{tx_event, TxType},
+    fee::{PartnerFee, BPS_100_PERCENT, MAX_PARTNER_FEE_BPS},
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest, SingleSidedLiquidityRequest},
     msgs::{
         cross_chain_config::CrossChainConfig, escrow::AllowedTokenResponse, vlp::base::PoolConfig,
     },
-    token::{Pair, PairWithDenomAndAmount, TokenType},
+    swap::NextSwapPair,
+    token::{Pair, PairWithDenomAndAmount, TokenType, TokenWithDenom},
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
 use euclid_ibc::router_ibc::{
     RouterCrossChainExecuteMsg, RouterCrossChainRemoveLiquidityExecuteMsg,
+    RouterCrossChainSingleSidedAddLiquidityMsg,
 };
 
 use crate::{
     query::get_chain_type,
     state::{
         PoolCreateRequest, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SINGLE_SIDED_LIQUIDITY, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_LP_TOKEN,
     },
 };
 
@@ -447,6 +450,197 @@ pub fn remove_liquidity_request(
         .add_submessage(remove_liq_msg))
 }
 
+// Single-sided add liquidity: user deposits one token, the hub atomically swaps
+// a backend-computed portion through the target VLP and adds liquidity on the
+// same VLP, all in one IBC roundtrip.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_single_sided_add_liquidity_request(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    asset_in: TokenWithDenom,
+    amount_in: Uint256,
+    pair: Pair,
+    swap_amount: Uint256,
+    swap_route: Vec<NextSwapPair>,
+    min_lp_out: Uint256,
+    partner_fee: Option<PartnerFee>,
+    cross_chain_config: CrossChainConfig,
+) -> Result<Response, ContractError> {
+    asset_in.token.validate()?;
+    asset_in.token_type.validate(&deps.as_ref())?;
+    pair.validate()?;
+
+    // asset_in must be one side of the target pair; the other side is the
+    // swap output and the matching liquidity leg.
+    ensure!(
+        asset_in.token == pair.token_1 || asset_in.token == pair.token_2,
+        ContractError::new("asset_in must be one of the pair tokens")
+    );
+    let asset_out = pair.get_other_token(asset_in.token.clone());
+
+    // Partner fee: same model as execute_swap_request.
+    // The full `amount_in` from the user is split into:
+    //   - partner_fee_amount: retained at the factory until ack resolves
+    //   - amount_in (rebound below): the portion that crosses IBC
+    let partner_fee_bps = partner_fee
+        .as_ref()
+        .map(|fee| fee.partner_fee_bps)
+        .unwrap_or(0);
+    ensure!(
+        partner_fee_bps <= MAX_PARTNER_FEE_BPS,
+        ContractError::InvalidPartnerFee {}
+    );
+    let partner_fee_amount = amount_in.checked_mul_ceil(Decimal::bps(partner_fee_bps))?;
+    let amount_in = amount_in.checked_sub(partner_fee_amount)?;
+
+    ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
+    ensure!(!swap_amount.is_zero(), ContractError::ZeroAssetAmount {});
+    ensure!(
+        swap_amount < amount_in,
+        ContractError::new("swap_amount must be < amount_in")
+    );
+    ensure!(!min_lp_out.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Single-hop in v1 — kept Vec for forward-compat.
+    ensure!(
+        swap_route.len() == 1,
+        ContractError::new("swap_route must contain exactly one hop in v1")
+    );
+    let hop = &swap_route[0];
+    ensure!(
+        hop.token_in == asset_in.token,
+        ContractError::new("swap_route first hop token_in must match asset_in")
+    );
+    ensure!(
+        hop.token_out == asset_out,
+        ContractError::new("swap_route last hop token_out must match the other pair token")
+    );
+
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser::new(state.chain_uid.clone(), info.sender.to_string());
+    let tx_id = generate_tx(deps, &env, &sender)?;
+
+    ensure!(
+        !PENDING_SINGLE_SIDED_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+
+    // Target VLP must already exist — fail fast before paying IBC roundtrip.
+    ensure!(
+        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
+        ContractError::PoolDoesNotExist {}
+    );
+
+    // Escrow must exist and allow this denom.
+    let escrow_address = TOKEN_TO_ESCROW
+        .load(deps.storage, asset_in.token.clone())
+        .or(Err(ContractError::EscrowDoesNotExist {}))?;
+    let token_allowed: AllowedTokenResponse = deps.querier.query_wasm_smart(
+        escrow_address,
+        &euclid::msgs::escrow::QueryMsg::TokenAllowed {
+            denom: asset_in.token_type.clone(),
+        },
+    )?;
+    ensure!(
+        token_allowed.allowed,
+        ContractError::UnsupportedDenomination {}
+    );
+
+    // Handle funds. Native: bank funds; Smart: TransferFrom into the factory;
+    // Voucher: structurally impossible from a remote-chain factory.
+    // Funds must cover the FULL deposit (amount_in + partner_fee_amount).
+    let full_amount = amount_in.checked_add(partner_fee_amount)?;
+    let mut fund_manager = FundManager::new(&info.funds);
+    let mut pre_submsgs: Vec<SubMsg> = Vec::new();
+    match &asset_in.token_type {
+        TokenType::Native { denom, .. } => {
+            fund_manager.use_fund(full_amount, denom)?;
+        }
+        TokenType::Smart { .. } => {
+            let transfer_msg = asset_in.token_type.create_transfer_msg(
+                full_amount,
+                env.contract.address.to_string(),
+                Some(sender.address.clone()),
+                None,
+            )?;
+            pre_submsgs.push(SubMsg::new(transfer_msg));
+        }
+        TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
+    }
+    ensure!(
+        fund_manager.validate_funds_are_empty().is_ok(),
+        ContractError::new("Extra funds are not allowed")
+    );
+
+    // Resolve partner-fee recipient: default to sender if not specified.
+    let partner_fee_recipient = partner_fee
+        .as_ref()
+        .map(|fee| deps.api.addr_validate(&fee.recipient))
+        .transpose()?
+        .unwrap_or(info.sender.clone());
+
+    let pending = SingleSidedLiquidityRequest {
+        sender: info.sender.to_string(),
+        tx_id: tx_id.clone(),
+        asset_in: asset_in.clone(),
+        amount_in,
+        partner_fee_amount,
+        partner_fee_recipient: partner_fee_recipient.clone(),
+    };
+    PENDING_SINGLE_SIDED_LIQUIDITY.save(
+        deps.storage,
+        (info.sender.clone(), tx_id.clone()),
+        &pending,
+    )?;
+
+    let chain_type = get_chain_type(deps.as_ref(), &env)?;
+
+    let ibc_msg = RouterCrossChainExecuteMsg::SingleSidedAddLiquidity(
+        RouterCrossChainSingleSidedAddLiquidityMsg {
+            sender,
+            asset_in: asset_in.clone(),
+            amount_in,
+            swap_amount,
+            pair: pair.clone(),
+            swaps: swap_route,
+            min_lp_out,
+            partner_fee_amount,
+            partner_fee_recipient: CrossChainUser::new(
+                state.chain_uid.clone(),
+                partner_fee_recipient.to_string(),
+            ),
+            tx_id: tx_id.clone(),
+        },
+    )
+    .to_msg(
+        deps,
+        &env,
+        state.router_contract,
+        info.sender.clone(),
+        state.chain_uid,
+        chain_type,
+        cross_chain_config.timeout,
+        cross_chain_config.ack_response,
+    )?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            TxType::SingleSidedAddLiquidity,
+        ))
+        .add_attribute("action", "single_sided_add_liquidity")
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "execute_single_sided_add_liquidity_request")
+        .add_attribute("asset_in", asset_in.token.to_string())
+        .add_attribute("asset_out", asset_out.to_string())
+        .add_attribute("amount_in", amount_in)
+        .add_attribute("swap_amount", swap_amount)
+        .add_submessages(pre_submsgs)
+        .add_submessage(ibc_msg))
+}
+
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{
@@ -851,5 +1045,933 @@ mod tests {
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg);
         assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: AddSingleSidedLiquidity tests
+    // -----------------------------------------------------------------------
+
+    use cosmwasm_std::{to_json_binary, ContractResult, SystemResult, WasmQuery};
+    use euclid::{
+        msgs::escrow::AllowedTokenResponse,
+        swap::NextSwapPair,
+        token::{Pair, TokenWithDenom},
+    };
+
+    use crate::state::PENDING_SINGLE_SIDED_LIQUIDITY;
+    use crate::testing::helpers::get_attribute;
+
+    fn native_token_with_denom(token_id: &str, denom: &str) -> TokenWithDenom {
+        TokenWithDenom {
+            token: Token::create(token_id.to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: denom.to_string(),
+                decimals: None,
+            },
+        }
+    }
+
+    fn single_hop(token_in: &str, token_out: &str) -> Vec<NextSwapPair> {
+        vec![NextSwapPair {
+            token_in: Token::create(token_in.to_string()).unwrap(),
+            token_out: Token::create(token_out.to_string()).unwrap(),
+            test_fail: None,
+        }]
+    }
+
+    fn ss_default_msg() -> ExecuteMsg {
+        ExecuteMsg::AddSingleSidedLiquidity {
+            asset_in: native_token_with_denom("eth", "ueth"),
+            amount_in: Uint256::from(1000u128),
+            pair: Pair::new(
+                Token::create("eth".to_string()).unwrap(),
+                Token::create("usdc".to_string()).unwrap(),
+            )
+            .unwrap(),
+            swap_amount: Uint256::from(500u128),
+            swap_route: single_hop("eth", "usdc"),
+            min_lp_out: Uint256::from(1u128),
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        }
+    }
+
+    /// Seed mock querier for `ueth` supply so `TokenType::Native::validate` succeeds.
+    fn set_native_supply(deps: &mut crate::testing::helpers::MockDeps) {
+        deps.querier
+            .bank
+            .update_balance("anywhere", vec![cosmwasm_std::coin(1_000_000, "ueth")]);
+        deps.querier
+            .bank
+            .update_balance("anywhere2", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+    }
+
+    /// Happy path: native USDC-style deposit creates pending entry and emits IBC submsg.
+    #[test]
+    fn test_single_sided_happy_path_native_saves_pending_and_emits_ibc() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let msg = ss_default_msg();
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // One submsg: the IBC packet
+        assert_eq!(res.messages.len(), 1);
+
+        // PENDING_SINGLE_SIDED_LIQUIDITY should now contain exactly one entry for this sender.
+        let entries: Vec<_> = PENDING_SINGLE_SIDED_LIQUIDITY
+            .range(&deps.storage, None, None, cosmwasm_std::Order::Ascending)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        let ((sender_addr, _tx_id), pending) = &entries[0];
+        assert_eq!(sender_addr, &user);
+        assert_eq!(pending.sender, user.to_string());
+        assert_eq!(pending.amount_in, Uint256::from(1000u128));
+        assert_eq!(pending.asset_in.token.to_string(), "eth");
+
+        // Attributes
+        let attrs = &res.attributes;
+        assert!(attrs
+            .iter()
+            .any(|a| a.key == "method" && a.value == "execute_single_sided_add_liquidity_request"));
+        assert!(attrs
+            .iter()
+            .any(|a| a.key == "asset_in" && a.value == "eth"));
+        assert!(attrs
+            .iter()
+            .any(|a| a.key == "asset_out" && a.value == "usdc"));
+    }
+
+    /// PAIR_TO_VLP missing for (asset_in, asset_out) → PoolDoesNotExist.
+    #[test]
+    fn test_single_sided_pool_does_not_exist() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        // intentionally do NOT seed_vlp
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let msg = ss_default_msg();
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::PoolDoesNotExist {});
+    }
+
+    /// asset_in.token not in pair → "asset_in must be one of the pair tokens".
+    #[test]
+    fn test_single_sided_asset_in_not_in_pair() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity { ref mut pair, .. } = msg {
+            *pair = Pair::new(
+                Token::create("usdc".to_string()).unwrap(),
+                Token::create("dai".to_string()).unwrap(),
+            )
+            .unwrap();
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::new("asset_in must be one of the pair tokens")
+        );
+    }
+
+    /// amount_in == 0 → ZeroAssetAmount.
+    #[test]
+    fn test_single_sided_zero_amount_in() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut amount_in, ..
+        } = msg
+        {
+            *amount_in = Uint256::zero();
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::ZeroAssetAmount {});
+    }
+
+    /// swap_amount == 0 → ZeroAssetAmount.
+    #[test]
+    fn test_single_sided_zero_swap_amount() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut swap_amount,
+            ..
+        } = msg
+        {
+            *swap_amount = Uint256::zero();
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::ZeroAssetAmount {});
+    }
+
+    /// swap_amount > amount_in → "swap_amount must be < amount_in".
+    #[test]
+    fn test_single_sided_swap_amount_greater_than_amount_in() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(2000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut swap_amount,
+            ref mut amount_in,
+            ..
+        } = msg
+        {
+            *amount_in = Uint256::from(1000u128);
+            *swap_amount = Uint256::from(2000u128);
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::new("swap_amount must be < amount_in"));
+    }
+
+    /// swap_amount == amount_in (boundary) → "swap_amount must be < amount_in".
+    #[test]
+    fn test_single_sided_swap_amount_equals_amount_in_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut swap_amount,
+            ref mut amount_in,
+            ..
+        } = msg
+        {
+            *amount_in = Uint256::from(1000u128);
+            *swap_amount = Uint256::from(1000u128);
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::new("swap_amount must be < amount_in"));
+    }
+
+    /// min_lp_out == 0 → ZeroAssetAmount.
+    #[test]
+    fn test_single_sided_zero_min_lp_out() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut min_lp_out, ..
+        } = msg
+        {
+            *min_lp_out = Uint256::zero();
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::ZeroAssetAmount {});
+    }
+
+    /// swap_route.len() != 1 (e.g. empty) → "exactly one hop in v1".
+    #[test]
+    fn test_single_sided_empty_swap_route() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut swap_route, ..
+        } = msg
+        {
+            *swap_route = vec![];
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::new("swap_route must contain exactly one hop in v1")
+        );
+    }
+
+    /// swap_route.len() > 1 → "exactly one hop in v1".
+    #[test]
+    fn test_single_sided_multi_hop_swap_route_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut swap_route, ..
+        } = msg
+        {
+            let mut routes = single_hop("eth", "usdc");
+            routes.push(NextSwapPair {
+                token_in: Token::create("usdc".to_string()).unwrap(),
+                token_out: Token::create("dai".to_string()).unwrap(),
+                test_fail: None,
+            });
+            *swap_route = routes;
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::new("swap_route must contain exactly one hop in v1")
+        );
+    }
+
+    /// swap_route[0].token_in != asset_in.token → hop_in mismatch error.
+    #[test]
+    fn test_single_sided_route_token_in_mismatch() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut swap_route, ..
+        } = msg
+        {
+            *swap_route = single_hop("dai", "usdc"); // asset_in is eth, not dai
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::new("swap_route first hop token_in must match asset_in")
+        );
+    }
+
+    /// swap_route[0].token_out != other pair token → hop_out mismatch error.
+    #[test]
+    fn test_single_sided_route_token_out_mismatch() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut swap_route, ..
+        } = msg
+        {
+            *swap_route = single_hop("eth", "dai"); // other pair token is usdc, not dai
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::new("swap_route last hop token_out must match the other pair token")
+        );
+    }
+
+    /// Escrow does not exist for asset_in.token → EscrowDoesNotExist.
+    #[test]
+    fn test_single_sided_escrow_does_not_exist() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        // No seed_escrow for "eth"
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let msg = ss_default_msg();
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::EscrowDoesNotExist {});
+    }
+
+    /// Escrow exists but TokenAllowed returns false → UnsupportedDenomination.
+    #[test]
+    fn test_single_sided_token_not_allowed_by_escrow() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, false);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let msg = ss_default_msg();
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::UnsupportedDenomination {});
+    }
+
+    /// Native funds insufficient (info.funds doesn't contain enough of the denom)
+    /// → fund_manager InsufficientFunds.
+    #[test]
+    fn test_single_sided_native_funds_mismatch() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        // Send only 100 of ueth even though amount_in = 1000.
+        let info = message_info(&user, &[cosmwasm_std::coin(100, "ueth")]);
+
+        let msg = ss_default_msg();
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::InsufficientFunds {});
+    }
+
+    /// Extra funds beyond what amount_in requires → "Extra funds are not allowed".
+    #[test]
+    fn test_single_sided_extra_funds_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        // Send the right amount of ueth, plus an extra unrelated denom.
+        let info = message_info(
+            &user,
+            &[
+                cosmwasm_std::coin(1000, "ueth"),
+                cosmwasm_std::coin(50, "uextra"),
+            ],
+        );
+
+        let msg = ss_default_msg();
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::new("Extra funds are not allowed"));
+    }
+
+    /// Smart (CW20) asset_in happy path:
+    /// - No native funds attached (CW20 TransferFrom model).
+    /// - Response carries a TransferFrom submessage pulling `amount_in` (full
+    ///   deposit, BEFORE partner-fee deduction) from the user into the factory.
+    /// - Pending entry is saved with post-fee `amount_in` and the partner-fee
+    ///   fields.
+    ///
+    /// Mocks both ContractInfo (for token_type.validate) and Smart queries.
+    #[test]
+    fn test_single_sided_smart_asset_in_happy_path() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+
+        let cw20_addr = deps.api.addr_make("cw20").to_string();
+        let cw20_for_querier = cw20_addr.clone();
+
+        // Mock all wasm queries: ContractInfo always succeeds; TokenAllowed always true.
+        deps.querier.update_wasm(move |q| match q {
+            WasmQuery::ContractInfo { .. } => SystemResult::Ok(ContractResult::Ok(
+                to_json_binary(&cosmwasm_std::ContractInfoResponse::new(
+                    1,
+                    cosmwasm_std::Addr::unchecked("creator"),
+                    Some(cosmwasm_std::Addr::unchecked("admin")),
+                    false,
+                    None,
+                ))
+                .unwrap(),
+            )),
+            WasmQuery::Smart { msg, .. } => {
+                let query: serde_json::Value = serde_json::from_slice(msg.as_slice()).unwrap();
+                if query.get("token_allowed").is_some() {
+                    SystemResult::Ok(ContractResult::Ok(
+                        to_json_binary(&AllowedTokenResponse { allowed: true }).unwrap(),
+                    ))
+                } else {
+                    panic!("unexpected smart query to {cw20_for_querier}")
+                }
+            }
+            _ => panic!("unexpected query"),
+        });
+
+        let user = deps.api.addr_make("user");
+        // No native funds attached — Smart tokens flow via TransferFrom.
+        let info = message_info(&user, &[]);
+
+        let asset_in = TokenWithDenom {
+            token: Token::create("eth".to_string()).unwrap(),
+            token_type: TokenType::Smart {
+                contract_address: cw20_addr.clone(),
+                decimals: Some(6),
+            },
+        };
+        let msg = ExecuteMsg::AddSingleSidedLiquidity {
+            asset_in,
+            amount_in: Uint256::from(1000u128),
+            pair: Pair::new(
+                Token::create("eth".to_string()).unwrap(),
+                Token::create("usdc".to_string()).unwrap(),
+            )
+            .unwrap(),
+            swap_amount: Uint256::from(500u128),
+            swap_route: single_hop("eth", "usdc"),
+            min_lp_out: Uint256::from(1u128),
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // Expect at least one TransferFrom submessage targeting the CW20
+        // contract, owned by the user, recipient = the factory contract.
+        let env = mock_env();
+        let factory_addr = env.contract.address.to_string();
+        let user_str = user.to_string();
+        let mut found_transfer_from = false;
+        for sm in &res.messages {
+            if let cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr,
+                msg,
+                funds,
+            }) = &sm.msg
+            {
+                if contract_addr != &cw20_addr {
+                    continue;
+                }
+                assert!(funds.is_empty(), "CW20 TransferFrom must carry no funds");
+                let parsed: cw20_base::msg::ExecuteMsg =
+                    cosmwasm_std::from_json(msg.as_slice()).unwrap();
+                if let cw20_base::msg::ExecuteMsg::TransferFrom {
+                    owner,
+                    recipient,
+                    amount,
+                } = parsed
+                {
+                    assert_eq!(owner, user_str);
+                    assert_eq!(recipient, factory_addr);
+                    // No partner fee → full deposit equals amount_in (1000).
+                    assert_eq!(amount, cosmwasm_std::Uint128::from(1000u128));
+                    found_transfer_from = true;
+                    break;
+                }
+            }
+        }
+        assert!(
+            found_transfer_from,
+            "expected a CW20 TransferFrom submessage targeting the factory"
+        );
+
+        // Pending entry persists post-fee amount_in (= 1000 with no fee) and
+        // zero partner_fee_amount.
+        let tx_id = get_attribute(&res, "tx_id").to_string();
+        let pending = PENDING_SINGLE_SIDED_LIQUIDITY
+            .load(deps.as_ref().storage, (user.clone(), tx_id))
+            .unwrap();
+        assert_eq!(pending.amount_in, Uint256::from(1000u128));
+        assert_eq!(pending.partner_fee_amount, Uint256::zero());
+    }
+
+    /// Smart (CW20) asset_in with a partner fee: the TransferFrom must pull the
+    /// FULL deposit (amount_in + partner_fee_amount) — pre-deduction — from the
+    /// user, mirroring the native invariant that funds must cover the full
+    /// deposit.
+    #[test]
+    fn test_single_sided_smart_asset_in_partner_fee_transfers_full_deposit() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+
+        let cw20_addr = deps.api.addr_make("cw20").to_string();
+        let cw20_for_querier = cw20_addr.clone();
+
+        deps.querier.update_wasm(move |q| match q {
+            WasmQuery::ContractInfo { .. } => SystemResult::Ok(ContractResult::Ok(
+                to_json_binary(&cosmwasm_std::ContractInfoResponse::new(
+                    1,
+                    cosmwasm_std::Addr::unchecked("creator"),
+                    Some(cosmwasm_std::Addr::unchecked("admin")),
+                    false,
+                    None,
+                ))
+                .unwrap(),
+            )),
+            WasmQuery::Smart { msg, .. } => {
+                let query: serde_json::Value = serde_json::from_slice(msg.as_slice()).unwrap();
+                if query.get("token_allowed").is_some() {
+                    SystemResult::Ok(ContractResult::Ok(
+                        to_json_binary(&AllowedTokenResponse { allowed: true }).unwrap(),
+                    ))
+                } else {
+                    panic!("unexpected smart query to {cw20_for_querier}")
+                }
+            }
+            _ => panic!("unexpected query"),
+        });
+
+        let user = deps.api.addr_make("user");
+        let partner = deps.api.addr_make("partner");
+        let info = message_info(&user, &[]);
+
+        // amount_in=1000, bps=30 → partner_fee_amount = ceil(1000 * 30/10000) = 3.
+        // Full deposit pulled via TransferFrom must equal 1000.
+        // After deduction, pending.amount_in = 997.
+        let asset_in = TokenWithDenom {
+            token: Token::create("eth".to_string()).unwrap(),
+            token_type: TokenType::Smart {
+                contract_address: cw20_addr.clone(),
+                decimals: Some(6),
+            },
+        };
+        let msg = ExecuteMsg::AddSingleSidedLiquidity {
+            asset_in,
+            amount_in: Uint256::from(1000u128),
+            pair: Pair::new(
+                Token::create("eth".to_string()).unwrap(),
+                Token::create("usdc".to_string()).unwrap(),
+            )
+            .unwrap(),
+            swap_amount: Uint256::from(500u128),
+            swap_route: single_hop("eth", "usdc"),
+            min_lp_out: Uint256::from(1u128),
+            partner_fee: Some(PartnerFee {
+                partner_fee_bps: 30,
+                recipient: partner.to_string(),
+            }),
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // Find the TransferFrom submessage and assert it pulls the full 1000.
+        let mut found_amount: Option<cosmwasm_std::Uint128> = None;
+        for sm in &res.messages {
+            if let cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr,
+                msg,
+                ..
+            }) = &sm.msg
+            {
+                if contract_addr != &cw20_addr {
+                    continue;
+                }
+                if let cw20_base::msg::ExecuteMsg::TransferFrom { amount, .. } =
+                    cosmwasm_std::from_json(msg.as_slice()).unwrap()
+                {
+                    found_amount = Some(amount);
+                    break;
+                }
+            }
+        }
+        assert_eq!(found_amount, Some(cosmwasm_std::Uint128::from(1000u128)));
+
+        // Pending state holds the post-fee amount_in and the partner fee.
+        let tx_id = get_attribute(&res, "tx_id").to_string();
+        let pending = PENDING_SINGLE_SIDED_LIQUIDITY
+            .load(deps.as_ref().storage, (user.clone(), tx_id))
+            .unwrap();
+        assert_eq!(pending.amount_in, Uint256::from(997u128));
+        assert_eq!(pending.partner_fee_amount, Uint256::from(3u128));
+        assert_eq!(pending.partner_fee_recipient, partner);
+    }
+
+    /// Voucher asset_in → UnreachableCode (Voucher is structurally impossible from a remote factory).
+    #[test]
+    fn test_single_sided_voucher_asset_in_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[]);
+
+        let voucher = TokenWithDenom {
+            token: Token::create("eth".to_string()).unwrap(),
+            token_type: TokenType::Voucher {},
+        };
+        let msg = ExecuteMsg::AddSingleSidedLiquidity {
+            asset_in: voucher,
+            amount_in: Uint256::from(1000u128),
+            pair: Pair::new(
+                Token::create("eth".to_string()).unwrap(),
+                Token::create("usdc".to_string()).unwrap(),
+            )
+            .unwrap(),
+            swap_amount: Uint256::from(500u128),
+            swap_route: single_hop("eth", "usdc"),
+            min_lp_out: Uint256::from(1u128),
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::UnreachableCode {});
+    }
+
+    /// Sanity: silence "unused" warnings for items only consumed by certain test cases.
+    #[allow(dead_code)]
+    fn _silence_unused() {
+        let _ = (Pair::new, Uint128::zero);
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: AddSingleSidedLiquidity – partner fee tests
+    // -----------------------------------------------------------------------
+
+    use euclid::fee::PartnerFee;
+
+    /// partner_fee_bps > MAX_PARTNER_FEE_BPS (30) → InvalidPartnerFee.
+    #[test]
+    fn test_single_sided_partner_fee_exceeds_cap() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        let recipient = deps.api.addr_make("partner");
+        // amount_in (1000) + ceil(1000 * 31/10000) (4) = 1004 funds attached;
+        // the partner-fee check happens before fund checks but we attach valid
+        // funds to ensure the cap check is what actually trips.
+        let info = message_info(&user, &[cosmwasm_std::coin(1004, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut partner_fee,
+            ..
+        } = msg
+        {
+            *partner_fee = Some(PartnerFee {
+                partner_fee_bps: 31,
+                recipient: recipient.to_string(),
+            });
+        }
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::InvalidPartnerFee {});
+    }
+
+    /// partner_fee_bps = 0 → behaves as no fee: partner_fee_amount=0, recipient=info.sender.
+    #[test]
+    fn test_single_sided_partner_fee_zero_bps_acts_as_no_fee() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        let recipient = deps.api.addr_make("partner");
+        // 0 bps means full amount_in (1000) crosses, no extra needed for the fee.
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut partner_fee,
+            ..
+        } = msg
+        {
+            *partner_fee = Some(PartnerFee {
+                partner_fee_bps: 0,
+                recipient: recipient.to_string(),
+            });
+        }
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(res.messages.len(), 1);
+
+        let entries: Vec<_> = PENDING_SINGLE_SIDED_LIQUIDITY
+            .range(&deps.storage, None, None, cosmwasm_std::Order::Ascending)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        let ((sender_addr, _tx_id), pending) = &entries[0];
+        assert_eq!(sender_addr, &user);
+        assert_eq!(pending.amount_in, Uint256::from(1000u128));
+        assert_eq!(pending.partner_fee_amount, Uint256::zero());
+        // 0-bps with Some(partner_fee) still validates the recipient.
+        // The recipient is honored (does NOT default to info.sender).
+        assert_eq!(pending.partner_fee_recipient, recipient);
+    }
+
+    /// MAX bps fee deposit: native funds must cover post-fee amount_in + partner_fee_amount,
+    /// which equals the originally supplied amount_in.
+    /// User supplies amount_in=1000, bps=30 → partner_fee_amount = ceil(1000 * 30/10000) = 3,
+    /// post-fee amount_in = 997, full_deposit = 997 + 3 = 1000.
+    /// Funds=999 fails (InsufficientFunds); funds=1000 succeeds.
+    #[test]
+    fn test_single_sided_partner_fee_native_funds_must_cover_full_deposit() {
+        let recipient_str = {
+            let deps = mock_dependencies();
+            deps.api.addr_make("partner").to_string()
+        };
+
+        // Case A: funds short by 1 → InsufficientFunds.
+        {
+            let mut deps = mock_dependencies();
+            init(&mut deps);
+            set_native_supply(&mut deps);
+            seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+            seed_escrow(&mut deps, "eth", "escrow_eth");
+            set_escrow_token_allowed(&mut deps, true);
+
+            let user = deps.api.addr_make("user");
+            let info = message_info(&user, &[cosmwasm_std::coin(999, "ueth")]);
+
+            let mut msg = ss_default_msg();
+            if let ExecuteMsg::AddSingleSidedLiquidity {
+                ref mut partner_fee,
+                ..
+            } = msg
+            {
+                *partner_fee = Some(PartnerFee {
+                    partner_fee_bps: 30,
+                    recipient: recipient_str.clone(),
+                });
+            }
+            let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+            assert_eq!(err, ContractError::InsufficientFunds {});
+        }
+
+        // Case B: exact full deposit (1000) attached → success.
+        {
+            let mut deps = mock_dependencies();
+            init(&mut deps);
+            set_native_supply(&mut deps);
+            seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+            seed_escrow(&mut deps, "eth", "escrow_eth");
+            set_escrow_token_allowed(&mut deps, true);
+
+            let user = deps.api.addr_make("user");
+            let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+            let mut msg = ss_default_msg();
+            if let ExecuteMsg::AddSingleSidedLiquidity {
+                ref mut partner_fee,
+                ..
+            } = msg
+            {
+                *partner_fee = Some(PartnerFee {
+                    partner_fee_bps: 30,
+                    recipient: recipient_str.clone(),
+                });
+            }
+            let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+            assert_eq!(res.messages.len(), 1);
+        }
+    }
+
+    /// Pending state reflects post-fee deduction:
+    /// User supplies amount_in=1000, bps=30 → stored amount_in=997, partner_fee_amount=3,
+    /// partner_fee_recipient = validated recipient. Native funds attached = 1000 (the
+    /// original amount_in, which equals post-fee amount_in + partner_fee_amount).
+    #[test]
+    fn test_single_sided_partner_fee_pending_state_reflects_deduction() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        let recipient = deps.api.addr_make("partner");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        let mut msg = ss_default_msg();
+        // swap_amount default in ss_default_msg is 500; new amount_in becomes 997
+        // so 500 < 997 still holds.
+        if let ExecuteMsg::AddSingleSidedLiquidity {
+            ref mut partner_fee,
+            ..
+        } = msg
+        {
+            *partner_fee = Some(PartnerFee {
+                partner_fee_bps: 30,
+                recipient: recipient.to_string(),
+            });
+        }
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(res.messages.len(), 1);
+
+        let entries: Vec<_> = PENDING_SINGLE_SIDED_LIQUIDITY
+            .range(&deps.storage, None, None, cosmwasm_std::Order::Ascending)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        let ((sender_addr, _tx_id), pending) = &entries[0];
+        assert_eq!(sender_addr, &user);
+        assert_eq!(pending.amount_in, Uint256::from(997u128));
+        assert_eq!(pending.partner_fee_amount, Uint256::from(3u128));
+        assert_eq!(pending.partner_fee_recipient, recipient);
+
+        // amount_in attribute reflects post-fee amount.
+        let attrs = &res.attributes;
+        assert!(attrs
+            .iter()
+            .any(|a| a.key == "amount_in" && a.value == "997"));
+    }
+
+    /// partner_fee = None → partner_fee_amount=0 and recipient defaults to info.sender.
+    #[test]
+    fn test_single_sided_partner_fee_default_recipient_is_sender() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        set_native_supply(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&user, &[cosmwasm_std::coin(1000, "ueth")]);
+
+        // ss_default_msg() uses partner_fee: None
+        let msg = ss_default_msg();
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(res.messages.len(), 1);
+
+        let entries: Vec<_> = PENDING_SINGLE_SIDED_LIQUIDITY
+            .range(&deps.storage, None, None, cosmwasm_std::Order::Ascending)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        let ((sender_addr, _tx_id), pending) = &entries[0];
+        assert_eq!(sender_addr, &user);
+        assert_eq!(pending.partner_fee_amount, Uint256::zero());
+        assert_eq!(pending.partner_fee_recipient, user);
     }
 }

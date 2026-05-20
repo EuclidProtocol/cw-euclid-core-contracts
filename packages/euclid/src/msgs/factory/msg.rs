@@ -3,7 +3,7 @@ use crate::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     fee::{DenomFees, PartnerFee},
-    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest, SingleSidedLiquidityRequest},
     msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive, vlp::base::PoolConfig},
     recipient::Recipient,
     swap::{NextSwapPair, SwapRequest},
@@ -68,6 +68,17 @@ pub enum ExecuteMsg {
     AddLiquidity {
         pair_with_denom_and_amount: PairWithDenomAndAmount,
         slippage_tolerance_bps: u64,
+        cross_chain_config: CrossChainConfig,
+    },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
+    AddSingleSidedLiquidity {
+        asset_in: TokenWithDenom,
+        amount_in: Uint256,
+        pair: Pair,
+        swap_amount: Uint256,
+        swap_route: Vec<NextSwapPair>,
+        min_lp_out: Uint256,
+        partner_fee: Option<PartnerFee>,
         cross_chain_config: CrossChainConfig,
     },
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
@@ -178,6 +189,11 @@ pub enum QueryMsg {
         user: Addr,
         pagination: Pagination<Uint256>,
     },
+    #[returns(GetPendingSingleSidedLiquidityResponse)]
+    PendingSingleSidedLiquidity {
+        user: Addr,
+        pagination: Pagination<Uint256>,
+    },
 
     #[returns(GetEscrowResponse)]
     GetEscrow { token_id: String },
@@ -274,6 +290,11 @@ pub struct GetPendingLiquidityResponse {
 #[cw_serde]
 pub struct GetPendingRemoveLiquidityResponse {
     pub pending_remove_liquidity: Vec<RemoveLiquidityRequest>,
+}
+
+#[cw_serde]
+pub struct GetPendingSingleSidedLiquidityResponse {
+    pub pending_single_sided_liquidity: Vec<SingleSidedLiquidityRequest>,
 }
 
 #[cw_serde]
