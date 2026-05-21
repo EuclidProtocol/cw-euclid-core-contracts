@@ -12,7 +12,6 @@ use euclid::token::{
     PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
 };
 use factory::FactoryContract;
-use pool_factory::PoolFactoryContract;
 use router::RouterContract;
 
 use crate::helpers::factory::faucet;

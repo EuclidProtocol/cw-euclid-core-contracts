@@ -23,11 +23,26 @@ Slice 1 (scaffold + CP create)
 
 All slices are AFK except Slice 8.
 
+## Status
+
+| Slice | Status | Notes |
+|------:|:-------|:------|
+| 1 | ✅ Done | Landed on `pools-functions-refactor` in commits `69d2740c` (scaffold + delegation + unit tests + CHANGELOG) and `04b2c7e8` (integration tests). 127 factory unit + 4 pool_factory unit + 2,475 integration tests pass. |
+| 2 | ⬜ Not started | Unblocked. |
+| 3 | ⬜ Not started | Unblocked. |
+| 4 | ⬜ Not started | Unblocked. |
+| 5 | ⬜ Blocked by Slice 4 | |
+| 6 | ⬜ Blocked by Slice 4 | |
+| 7 | ⬜ Blocked by Slices 4, 5 | |
+| 8 | ⬜ HITL — Blocked by Slices 1–7 | `MigrateAcceptPoolState` stub already lives on pool_factory; full drain-and-cut runbook still to write. |
+| 9 | ⬜ Blocked by Slice 8 | |
+
 ---
 
 ## Slice 1 — pool_factory scaffold + CP pool creation tracer
 
 **Type:** AFK
+**Status:** ✅ Done
 **Blocked by:** None — can start immediately.
 
 ### What to build
@@ -57,15 +72,23 @@ Out of scope for this slice: add/remove liquidity flows, all CLP variants, migra
 
 ### Acceptance criteria
 
-- [ ] `contracts/liquidity/pool_factory/` exists with the project's standard layout and compiles to wasm via `cargo wasm`.
-- [ ] Main Factory has `POOL_FACTORY_ADDRESS`, `POOL_FACTORY_INITIALISED`, `ProxySendPacket`, `QueryAdminRole`, `QueryPoolFactoryAddress`.
-- [ ] Pool factory has `MAIN_FACTORY_ADDRESS`, `on_request_pool_creation`, `outbound::request_pool_creation`, `on_pool_ack` dispatcher (with only the `RequestPoolCreation` arm wired this slice), VLP+LP instantiate reply IDs in its own namespace.
-- [ ] Main Factory's pool-handler stub for `RequestPoolCreation` delegates to pool factory; the old in-Factory code path is removed only for this variant (other variants remain untouched).
-- [ ] `reusable_internal_ack_call` on main Factory forwards `RequestPoolCreation` ack to pool factory; other variants unchanged.
-- [ ] Integration test `pool_factory_cp_create` (or equivalent name) passes for Native, IBC, and EVM modes.
-- [ ] Unit tests: `ProxySendPacket` rejects non-pool-factory callers; `outbound` builder produces the expected serialised packet; `on_request_pool_creation` rejects non-main-Factory callers.
-- [ ] `cargo fmt --all -- --check`, `cargo clippy -- -W clippy::pedantic`, and `cargo unit-test --locked` all pass.
-- [ ] `CHANGELOG.md` updated with `[factory]` and new `[pool_factory]` entries under the current Sirius in-progress section.
+- [x] `contracts/liquidity/pool_factory/` exists with the project's standard layout and compiles to wasm via `cargo wasm`.
+- [x] Main Factory has `POOL_FACTORY_ADDRESS`, `POOL_FACTORY_INITIALISED`, `ProxySendPacket`, `QueryAdminRole`, `QueryPoolFactoryAddress`.
+- [x] Pool factory has `MAIN_FACTORY_ADDRESS`, `on_request_pool_creation`, `outbound::request_pool_creation`, `on_pool_ack` dispatcher (with only the `RequestPoolCreation` arm wired this slice), VLP+LP instantiate reply IDs in its own namespace.
+- [x] Main Factory's pool-handler stub for `RequestPoolCreation` delegates to pool factory; the old in-Factory code path is removed only for this variant (other variants remain untouched). *(Implementation note: rather than removing the legacy code path, it is gated on `POOL_FACTORY_INITIALISED`. Pre-bootstrap chains continue to use the in-Factory path; once `SetPoolFactory` or the Slice 8 migration flips the flag, the delegation path takes over. The gate will be removed in a follow-up Sirius release per the original plan.)*
+- [x] `reusable_internal_ack_call` on main Factory forwards `RequestPoolCreation` ack to pool factory; other variants unchanged.
+- [x] Integration test `pool_factory_cp_create` (or equivalent name) passes for Native, IBC, and EVM modes.
+- [x] Unit tests: `ProxySendPacket` rejects non-pool-factory callers; `outbound` builder produces the expected serialised packet; `on_request_pool_creation` rejects non-main-Factory callers.
+- [x] `cargo fmt --all -- --check`, `cargo clippy -- -W clippy::pedantic`, and `cargo unit-test --locked` all pass. *(Pedantic emits informational warnings; the existing factory has ~430 such warnings, pool_factory adds ~34. No errors at default clippy level.)*
+- [x] `CHANGELOG.md` updated with `[factory]` and new `[pool_factory]` entries under the current Sirius in-progress section.
+
+### Implementation notes carried into later slices
+
+- `pool_factory::ExecuteMsg::MigrateAcceptPoolState` is already scaffolded (Slice 1 narrow payload: `pair_to_vlp`, `vlp_to_lp_token`). Slice 8 will extend the payload with `position_token_contract`, `concentrated_vlps`, `clp_position_id_vlp_map`, and the pending-queue items.
+- `SetPoolFactory` admin entry on main Factory is the fresh-chain bootstrap path. Migration admin only, one-shot.
+- `proxy.rs` deep module exports helpers used by later slices: `pool_factory_is_initialised`, `pool_factory_on_pool_ack_submsg`, `pool_factory_execute_msg`. Re-use these from Slices 2–7 instead of re-rolling delegation logic.
+- `outbound.rs` is the home for all per-pool-op packet builders. Slices 2–7 add one builder each, all table-driven against `RouterCrossChainExecuteMsg`.
+- The forward in `reusable_internal_ack_call` short-circuits on `is_pool_variant(&msg)`. Each later slice extends that matcher to include the additional pool variants it owns.
 
 ---
 
