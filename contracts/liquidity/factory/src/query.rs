@@ -19,10 +19,12 @@ use crate::{
     rate_limit::{RATE_LIMIT_STATE, USER_FREE_LIMIT, USER_PENDING_PACKETS_COUNT},
     state::{
         ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SWAPS, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW,
-        VLP_TO_LP_TOKEN,
+        PENDING_SWAPS, POOL_FACTORY_ADDRESS, POOL_FACTORY_INITIALISED, POOL_KEY_TO_VLP,
+        POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
+use euclid::admin::AdminType;
+use euclid::msgs::factory::{QueryAdminRoleResponse, QueryPoolFactoryAddressResponse};
 use euclid::msgs::vlp::base::PoolKey;
 
 // Returns the VLP address
@@ -252,6 +254,27 @@ pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError>
             chain_id: env.block.chain_id.clone(),
         }))
     }
+}
+
+pub fn query_admin_role(deps: Deps, addr: Addr, role: AdminType) -> Result<Binary, ContractError> {
+    let admins = ADMIN.load(deps.storage)?;
+    let has_role = match role {
+        AdminType::GeneralAdmin => admins.general_admin == addr,
+        AdminType::FeeAdmin => admins.fee_admin == addr,
+        AdminType::MigrationAdmin => admins.migration_admin == addr,
+    };
+    Ok(to_json_binary(&QueryAdminRoleResponse { has_role })?)
+}
+
+pub fn query_pool_factory_address(deps: Deps) -> Result<Binary, ContractError> {
+    let pool_factory_address = POOL_FACTORY_ADDRESS.may_load(deps.storage)?;
+    let initialised = POOL_FACTORY_INITIALISED
+        .may_load(deps.storage)?
+        .unwrap_or(false);
+    Ok(to_json_binary(&QueryPoolFactoryAddressResponse {
+        pool_factory_address,
+        initialised,
+    })?)
 }
 
 #[cfg(test)]

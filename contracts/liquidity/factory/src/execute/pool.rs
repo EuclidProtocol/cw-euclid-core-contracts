@@ -28,6 +28,7 @@ use euclid_ibc::router_ibc::{
 };
 
 use crate::{
+    execute::proxy::pool_factory_is_initialised,
     query::get_chain_type,
     state::{
         ConcentratedAddLiquidityRequest, ConcentratedCollectFeesRequest,
@@ -36,8 +37,8 @@ use crate::{
         PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
-        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT,
-        STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, POOL_FACTORY_ADDRESS, POOL_KEY_TO_VLP,
+        POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -171,6 +172,56 @@ pub fn execute_request_pool_creation(
         pair.token_1 != pair.token_2,
         ContractError::new("Cannot create pool with same token")
     );
+
+    // Slice 1: once pool_factory has been wired and migration accepted,
+    // delegate the CP/Stable pool creation flow. Main Factory keeps fund
+    // custody (escrow deposits + validation above) and hands the typed
+    // request to pool_factory, which builds the outbound packet via its
+    // `outbound` module and calls back through `ProxySendPacket`.
+    if pool_factory_is_initialised(deps)? {
+        // We might get errors in ack if marketing is not valid
+        if let Some(marketing) = &lp_token_marketing {
+            if let Some(logo) = &marketing.logo {
+                ensure!(
+                    matches!(logo, Logo::Url(_)),
+                    ContractError::new("Only URL logos are supported")
+                );
+            }
+            if let Some(marketing_address) = &marketing.marketing {
+                deps.api.addr_validate(marketing_address)?;
+            }
+        }
+        let pool_factory = POOL_FACTORY_ADDRESS.load(deps.storage)?;
+        let exec = euclid::msgs::pool_factory::ExecuteMsg::OnRequestPoolCreation {
+            tx_id: tx_id.clone(),
+            sender: info.sender.clone(),
+            pair_with_denom_and_amount: pair_with_denom_and_amount.clone(),
+            pool_config,
+            lp_token_name,
+            lp_token_symbol,
+            lp_token_decimal,
+            lp_token_marketing,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        };
+        let delegate_msg = cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+            contract_addr: pool_factory.into_string(),
+            msg: cosmwasm_std::to_json_binary(&exec)?,
+            funds: vec![],
+        });
+        return Ok(res
+            .add_event(tx_event(
+                &tx_id,
+                info.sender.as_str(),
+                euclid::events::TxType::PoolCreation,
+            ))
+            .add_attribute("action", "pool_creation")
+            .add_attribute("tx_id", tx_id)
+            .add_attribute("method", "request_pool_creation_delegated")
+            .add_attribute("token_1", pair.token_1.to_string())
+            .add_attribute("token_2", pair.token_2.to_string())
+            .add_submessage(SubMsg::new(delegate_msg)));
+    }
 
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),

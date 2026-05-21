@@ -12,6 +12,32 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 
 #### Contracts
 
+- [pool_factory] New contract at `contracts/liquidity/pool_factory/` introduced by SC-4 Slice 1; owns CP/Stable pool registry (`PAIR_TO_VLP`, `VLP_TO_LP_TOKEN`), pending pool requests, `MAIN_FACTORY_ADDRESS`, and one-shot `MIGRATION_ACCEPTED` flag
+- [pool_factory] Execute entries `OnRequestPoolCreation` (delegated by main factory; builds outbound `RouterCrossChainExecuteMsg::RequestPoolCreation` and calls `ProxySendPacket`), `OnPoolAck` (ack dispatcher), and `MigrateAcceptPoolState` (one-shot drain-and-cut accept)
+- [pool_factory] Queries `GetVlp { pair }`, `GetLpToken { vlp }`, `GetMainFactoryAddress {}`
+- [pool_factory] Reply IDs in disjoint namespace from main factory (`LP_INSTANTIATE_REPLY_ID = 1001`, etc.) so reply collisions across the two contracts are structurally impossible
+- [pool_factory] Deep `outbound` module with table-driven tests for outbound packet builders
+- [factory] `ProxySendPacket` execute entry (auth: `info.sender == POOL_FACTORY_ADDRESS`) routing pool packets through main factory's existing IBC/native transport
+- [factory] `SetPoolFactory` admin entry (migration admin, one-shot) for fresh-chain bootstrap
+- [factory] State items `POOL_FACTORY_ADDRESS: Item<Addr>` and `POOL_FACTORY_INITIALISED: Item<bool>`
+- [factory] Queries `QueryAdminRole { addr, role }` and `QueryPoolFactoryAddress {}`
+
+#### Packages
+
+- [euclid] New `msgs::pool_factory` module with `InstantiateMsg`, `ExecuteMsg`, `QueryMsg`, `MigrateMsg`, and response types
+- [euclid] New factory response types `QueryAdminRoleResponse` and `QueryPoolFactoryAddressResponse`
+
+### Changed
+
+#### Contracts
+
+- [factory] `RequestPoolCreation` user-facing handler shrinks to a thin stub when `POOL_FACTORY_INITIALISED == true`: validates inputs, deposits funds, then delegates to `pool_factory::OnRequestPoolCreation` via `WasmMsg::Execute`. Pre-initialisation chains continue to use the in-Factory code path
+- [factory] `reusable_internal_ack_call` forwards pool-related ack variants to `pool_factory::OnPoolAck` when pool factory is initialised; non-pool variants unchanged
+
+### Added (existing items continue below)
+
+#### Contracts
+
 - [virtual_balance] Token metadata registry (`TOKEN_METADATA`) storing per token decimals, chain, and type
 - [virtual_balance] Centralized escrow balance tracking (`ESCROW_BALANCES`), migrated from router contract
 - [virtual_balance] `RegisterTokenMetadata` and `DeregisterTokenMetadata` execute messages

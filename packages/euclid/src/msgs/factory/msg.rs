@@ -134,6 +134,22 @@ pub enum ExecuteMsg {
         sender: Addr,
     },
 
+    /// Proxy entry used by `pool_factory` to dispatch a cross-chain pool packet
+    /// through main factory's existing IBC/native send path. Auth: only callable
+    /// by the configured pool factory address.
+    ProxySendPacket {
+        msg: Binary,
+        timeout: Option<u64>,
+        ack_response: Option<Binary>,
+        sender: Addr,
+    },
+
+    /// Admin entry to bootstrap the pool_factory link on a fresh chain.
+    /// One-shot: rejects if `POOL_FACTORY_INITIALISED` is already true.
+    SetPoolFactory {
+        pool_factory_address: String,
+    },
+
     ReceivePacket {
         source_port: String,
         destination_port: String,
@@ -246,6 +262,29 @@ pub enum QueryMsg {
 
     #[returns(GetUserRateLimitResponse)]
     GetUserRateLimit { user: Addr },
+
+    /// Returns whether `addr` holds the requested admin role. Used by
+    /// pool_factory for admin-gated actions.
+    #[returns(QueryAdminRoleResponse)]
+    QueryAdminRole {
+        addr: Addr,
+        role: crate::admin::AdminType,
+    },
+
+    /// Returns the configured pool_factory address (if any).
+    #[returns(QueryPoolFactoryAddressResponse)]
+    QueryPoolFactoryAddress {},
+}
+
+#[cw_serde]
+pub struct QueryAdminRoleResponse {
+    pub has_role: bool,
+}
+
+#[cw_serde]
+pub struct QueryPoolFactoryAddressResponse {
+    pub pool_factory_address: Option<Addr>,
+    pub initialised: bool,
 }
 
 #[cw_serde]

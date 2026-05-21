@@ -393,6 +393,23 @@ pub fn execute(
             destination_port,
             ack,
         ),
+        ExecuteMsg::ProxySendPacket {
+            msg,
+            timeout,
+            ack_response,
+            sender,
+        } => crate::execute::proxy::execute_proxy_send_packet(
+            deps,
+            env,
+            info,
+            msg,
+            timeout,
+            ack_response,
+            sender,
+        ),
+        ExecuteMsg::SetPoolFactory {
+            pool_factory_address,
+        } => crate::execute::proxy::execute_set_pool_factory(deps, env, info, pool_factory_address),
     }
 }
 
@@ -419,6 +436,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetPositionTokenContract {} => get_position_token_contract(deps),
         QueryMsg::GetRateLimitState {} => get_rate_limit_state(deps),
         QueryMsg::GetUserRateLimit { user } => get_user_rate_limit(deps, user),
+        QueryMsg::QueryAdminRole { addr, role } => crate::query::query_admin_role(deps, addr, role),
+        QueryMsg::QueryPoolFactoryAddress {} => crate::query::query_pool_factory_address(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
