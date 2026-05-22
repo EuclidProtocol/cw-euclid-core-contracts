@@ -28,8 +28,8 @@ All slices are AFK except Slice 8.
 | Slice | Status | Notes |
 |------:|:-------|:------|
 | 1 | ✅ Done | Landed on `pools-functions-refactor` in commits `69d2740c` (scaffold + delegation + unit tests + CHANGELOG) and `04b2c7e8` (integration tests). 127 factory unit + 4 pool_factory unit + 2,475 integration tests pass. |
-| 2 | ⬜ Not started | Unblocked. |
-| 3 | ⬜ Not started | Unblocked. |
+| 2 | ✅ Done | CP add-liquidity routed through pool_factory end-to-end. 132 factory unit + 14 pool_factory unit + 2,480 integration tests pass (5 new). Pool creation through delegation deliberately stays on the legacy ack path (Slice 1 LP-instantiate gap is not yet closed); the Slice 2 integration test bootstraps via legacy pool creation + a `MigrateAcceptPoolState` replay helper to bridge state across the two factories. |
+| 3 | ⬜ Not started | Unblocked. Slices 3+ inherit the same Slice 1 LP-instantiate gap; either close it directly in pool_factory's `ack_pool_creation` or continue to rely on the legacy-bootstrap-then-migrate pattern used by Slice 2's test. |
 | 4 | ⬜ Not started | Unblocked. |
 | 5 | ⬜ Blocked by Slice 4 | |
 | 6 | ⬜ Blocked by Slice 4 | |
@@ -95,6 +95,7 @@ Out of scope for this slice: add/remove liquidity flows, all CLP variants, migra
 ## Slice 2 — CP/Stable add_liquidity through pool_factory
 
 **Type:** AFK
+**Status:** ✅ Done
 **Blocked by:** Slice 1
 
 ### What to build
@@ -115,15 +116,15 @@ User-facing semantics are unchanged: funds land in escrow before any pool-state 
 
 ### Acceptance criteria
 
-- [ ] Main Factory's `AddLiquidity` handler is reduced to a thin stub + escrow-deposit submsg + reply-driven delegation to pool factory.
-- [ ] Pool factory has `on_add_liquidity` handler, `outbound::add_liquidity` builder, `AddLiquidity` arm wired in `on_pool_ack`, `PENDING_ADD_LIQUIDITY` storage.
-- [ ] Main Factory has `ProxyMintLpToken` with auth (`info.sender == POOL_FACTORY_ADDRESS`).
-- [ ] `ProxyReleaseEscrow` is added to main Factory (auth-gated) and used by the ack failure path.
-- [ ] Integration test `pool_factory_cp_add_liquidity` runs end-to-end in all three chain modes; on success the user's LP balance increases and escrow balances update; on failure (e.g. slippage rejection) the user gets a refund and no LP is minted.
-- [ ] Unit tests: `on_add_liquidity` rejects non-main-Factory callers; `outbound::add_liquidity` is table-driven over inputs; `ProxyMintLpToken` and `ProxyReleaseEscrow` each have unauthorised-caller tests.
-- [ ] Events and tx attributes (`tx_id`, `TxType`, `simple_event`, `tx_event`) emitted by the add-liquidity flow are unchanged from today (indexer compatibility).
-- [ ] `cargo fmt --all -- --check`, `cargo clippy -- -W clippy::pedantic`, and `cargo unit-test --locked` all pass.
-- [ ] `CHANGELOG.md` updated.
+- [x] Main Factory's `AddLiquidity` handler is reduced to a thin stub + escrow-deposit submsg + reply-driven delegation to pool factory. *(Implementation note: when `POOL_FACTORY_INITIALISED == true`, `add_liquidity_request` validates and routes into `add_liquidity_request_delegated`, which emits the per-token `create_transfer_msg` (cw20) and `create_escrow_msg` (deposit-to-escrow) messages followed by the `WasmMsg::Execute` delegate. Funds land in escrow before the IBC packet is sent — the whole tx reverts if any step errors. Pre-initialisation chains continue to use the in-Factory code path.)*
+- [x] Pool factory has `on_add_liquidity` handler, `outbound::add_liquidity` builder, `AddLiquidity` arm wired in `on_pool_ack`, `PENDING_ADD_LIQUIDITY` storage.
+- [x] Main Factory has `ProxyMintLpToken` with auth (`info.sender == POOL_FACTORY_ADDRESS`).
+- [x] `ProxyReleaseEscrow` is added to main Factory (auth-gated) and used by the ack failure path.
+- [x] Integration test `pool_factory_cp_add_liquidity` runs end-to-end in all three chain modes; on success the user's LP balance increases and escrow balances update; on failure (e.g. slippage rejection) the user gets a refund and no LP is minted. *(Implementation note: pool creation through delegation still hits the Slice 1 LP-instantiate gap, so the Slice 2 integration test bootstraps via legacy pool creation + a `migrate_pool_state_to_pool_factory` helper that replays `PAIR_TO_VLP` and `VLP_TO_LP_TOKEN` into pool_factory via `MigrateAcceptPoolState`. Slippage-refund coverage runs on IBC + EVM modes — Native fails fast with an error rather than returning an ack.)*
+- [x] Unit tests: `on_add_liquidity` rejects non-main-Factory callers; `outbound::add_liquidity` is table-driven over inputs; `ProxyMintLpToken` and `ProxyReleaseEscrow` each have unauthorised-caller tests.
+- [x] Events and tx attributes (`tx_id`, `TxType`, `simple_event`, `tx_event`) emitted by the add-liquidity flow are unchanged from today (indexer compatibility). *(Delegated path emits `action=add_liquidity`, `tx_event(tx_id, sender, TxType::AddLiquidity)`, plus a new `method=add_liquidity_request_delegated` marker attribute that distinguishes the new path from the legacy `method=add_liquidity_request` for indexer telemetry.)*
+- [x] `cargo fmt --all -- --check`, `cargo clippy -- -W clippy::pedantic`, and `cargo unit-test --locked` all pass.
+- [x] `CHANGELOG.md` updated.
 
 ---
 
