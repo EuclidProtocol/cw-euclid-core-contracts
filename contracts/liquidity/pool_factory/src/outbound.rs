@@ -30,6 +30,24 @@ pub fn request_pool_creation(
     Ok(to_json_binary(&msg)?)
 }
 
+/// Builds a `RouterCrossChainExecuteMsg::AddLiquidity` packet for the CP/Stable
+/// add-liquidity flow. The packet is dispatched through main factory's
+/// `ProxySendPacket`.
+pub fn add_liquidity(
+    sender: CrossChainUser,
+    tx_id: String,
+    pair: PairWithDenomAndAmount,
+    slippage_tolerance_bps: u64,
+) -> Result<Binary, ContractError> {
+    let msg = RouterCrossChainExecuteMsg::AddLiquidity {
+        sender,
+        slippage_tolerance_bps,
+        pair,
+        tx_id,
+    };
+    Ok(to_json_binary(&msg)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,6 +107,35 @@ mod tests {
                 } => {
                     assert_eq!(decoded_tx_id, *tx_id);
                     assert_eq!(slippage_tolerance_bps, *slippage);
+                }
+                _ => panic!("unexpected variant"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_add_liquidity_roundtrip() {
+        let cases: &[(&str, u64)] = &[("tx_a", 1), ("tx_b", 50), ("tx_c", 10_000)];
+        for (tx_id, slippage) in cases {
+            let bin = add_liquidity(
+                sample_sender(),
+                (*tx_id).to_string(),
+                sample_pair(),
+                *slippage,
+            )
+            .unwrap();
+            let decoded: RouterCrossChainExecuteMsg = from_json(&bin).unwrap();
+            match decoded {
+                RouterCrossChainExecuteMsg::AddLiquidity {
+                    tx_id: decoded_tx_id,
+                    slippage_tolerance_bps,
+                    sender,
+                    pair,
+                } => {
+                    assert_eq!(decoded_tx_id, *tx_id);
+                    assert_eq!(slippage_tolerance_bps, *slippage);
+                    assert_eq!(sender, sample_sender());
+                    assert_eq!(pair, sample_pair());
                 }
                 _ => panic!("unexpected variant"),
             }

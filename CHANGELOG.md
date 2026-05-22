@@ -17,7 +17,12 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [pool_factory] Queries `GetVlp { pair }`, `GetLpToken { vlp }`, `GetMainFactoryAddress {}`
 - [pool_factory] Reply IDs in disjoint namespace from main factory (`LP_INSTANTIATE_REPLY_ID = 1001`, etc.) so reply collisions across the two contracts are structurally impossible
 - [pool_factory] Deep `outbound` module with table-driven tests for outbound packet builders
+- [pool_factory] SC-4 Slice 2: `OnAddLiquidity` execute entry (auth: caller is main factory) records `PENDING_ADD_LIQUIDITY`, builds outbound `RouterCrossChainExecuteMsg::AddLiquidity` via `outbound::add_liquidity`, and dispatches through main factory's `ProxySendPacket`
+- [pool_factory] SC-4 Slice 2: `OnPoolAck` extended to handle the `AddLiquidity` variant — on success issues `ProxyMintLpToken` to main factory; on failure issues `ProxyReleaseEscrow` per non-voucher token to refund the user
+- [pool_factory] SC-4 Slice 2: `PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest>` state map mirrors main factory's pre-refactor pending-queue shape
 - [factory] `ProxySendPacket` execute entry (auth: `info.sender == POOL_FACTORY_ADDRESS`) routing pool packets through main factory's existing IBC/native transport
+- [factory] SC-4 Slice 2: `ProxyMintLpToken { lp_token, recipient, amount }` execute entry (auth: pool factory) mints LP cw20 tokens — main factory remains the cw20 minter
+- [factory] SC-4 Slice 2: `ProxyReleaseEscrow { token, denom, recipient, amount }` execute entry (auth: pool factory) drives an escrow `Withdraw` via the existing `RELEASE_ESCROW_REPLY_ID` reply path
 - [factory] `SetPoolFactory` admin entry (migration admin, one-shot) for fresh-chain bootstrap
 - [factory] State items `POOL_FACTORY_ADDRESS: Item<Addr>` and `POOL_FACTORY_INITIALISED: Item<bool>`
 - [factory] Queries `QueryAdminRole { addr, role }` and `QueryPoolFactoryAddress {}`
@@ -26,13 +31,16 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 
 - [euclid] New `msgs::pool_factory` module with `InstantiateMsg`, `ExecuteMsg`, `QueryMsg`, `MigrateMsg`, and response types
 - [euclid] New factory response types `QueryAdminRoleResponse` and `QueryPoolFactoryAddressResponse`
+- [euclid] SC-4 Slice 2: `pool_factory::ExecuteMsg::OnAddLiquidity` variant for delegated add-liquidity
+- [euclid] SC-4 Slice 2: `factory::ExecuteMsg::ProxyMintLpToken` and `factory::ExecuteMsg::ProxyReleaseEscrow` proxy variants
 
 ### Changed
 
 #### Contracts
 
 - [factory] `RequestPoolCreation` user-facing handler shrinks to a thin stub when `POOL_FACTORY_INITIALISED == true`: validates inputs, deposits funds, then delegates to `pool_factory::OnRequestPoolCreation` via `WasmMsg::Execute`. Pre-initialisation chains continue to use the in-Factory code path
-- [factory] `reusable_internal_ack_call` forwards pool-related ack variants to `pool_factory::OnPoolAck` when pool factory is initialised; non-pool variants unchanged
+- [factory] SC-4 Slice 2: `AddLiquidity` user-facing handler shrinks to a thin stub when `POOL_FACTORY_INITIALISED == true`: validates inputs, deposits each non-voucher token to escrow up-front, then delegates to `pool_factory::OnAddLiquidity`. Pre-initialisation chains continue to use the in-Factory code path. Funds now land in escrow before any pool-state mutation; ack-failure refunds release them back through `ProxyReleaseEscrow`
+- [factory] `reusable_internal_ack_call` forwards pool-related ack variants to `pool_factory::OnPoolAck` when pool factory is initialised; non-pool variants unchanged. Slice 2 adds `AddLiquidity` to the forwarded set
 
 ### Added (existing items continue below)
 

@@ -8,7 +8,11 @@ use euclid::{
 };
 
 use crate::{
-    execute::{ack::on_pool_ack, cp::on_request_pool_creation, migrate::migrate_accept_pool_state},
+    execute::{
+        ack::on_pool_ack,
+        cp::{on_add_liquidity, on_request_pool_creation},
+        migrate::migrate_accept_pool_state,
+    },
     query::{get_lp_token, get_main_factory_address, get_vlp},
     reply::{on_lp_instantiate_reply, LP_INSTANTIATE_REPLY_ID},
     state::MAIN_FACTORY_ADDRESS,
@@ -63,6 +67,22 @@ pub fn execute(
             lp_token_symbol,
             lp_token_decimal,
             lp_token_marketing,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        ),
+        ExecuteMsg::OnAddLiquidity {
+            tx_id,
+            sender,
+            pair_with_denom_and_amount,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        } => on_add_liquidity(
+            deps,
+            env,
+            info,
+            tx_id,
+            sender,
+            pair_with_denom_and_amount,
             slippage_tolerance_bps,
             cross_chain_config,
         ),

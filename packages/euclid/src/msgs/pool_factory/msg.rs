@@ -1,7 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary};
 
-use crate::token::{Pair, PairWithDenomAndAmount};
+use crate::{
+    msgs::cross_chain_config::CrossChainConfig,
+    token::{Pair, PairWithDenomAndAmount},
+};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -26,6 +29,19 @@ pub enum ExecuteMsg {
         lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
         slippage_tolerance_bps: u64,
         cross_chain_config: crate::msgs::cross_chain_config::CrossChainConfig,
+    },
+
+    /// Called by main factory to delegate a CP/Stable add-liquidity request.
+    /// Main factory has already deposited the funds to escrow and generated
+    /// `tx_id`. Pool factory records the pending entry, builds the outbound
+    /// `RouterCrossChainExecuteMsg::AddLiquidity` packet via `outbound`, and
+    /// calls back into main factory's `ProxySendPacket` for dispatch.
+    OnAddLiquidity {
+        tx_id: String,
+        sender: Addr,
+        pair_with_denom_and_amount: PairWithDenomAndAmount,
+        slippage_tolerance_bps: u64,
+        cross_chain_config: CrossChainConfig,
     },
 
     /// Called by main factory after an IBC ack arrives for a pool variant.

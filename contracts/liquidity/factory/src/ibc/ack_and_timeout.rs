@@ -42,9 +42,14 @@ use crate::{
 };
 
 /// Returns true if `msg` is a pool-related variant that pool_factory now owns
-/// (Slice 1 starts with `RequestPoolCreation`; later slices extend this set).
+/// (Slice 1 starts with `RequestPoolCreation`; Slice 2 adds `AddLiquidity`;
+/// later slices extend this set).
 fn is_pool_variant(msg: &RouterCrossChainExecuteMsg) -> bool {
-    matches!(msg, RouterCrossChainExecuteMsg::RequestPoolCreation { .. })
+    matches!(
+        msg,
+        RouterCrossChainExecuteMsg::RequestPoolCreation { .. }
+            | RouterCrossChainExecuteMsg::AddLiquidity { .. }
+    )
 }
 
 pub fn reusable_internal_ack_call(

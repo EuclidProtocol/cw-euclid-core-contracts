@@ -150,6 +150,26 @@ pub enum ExecuteMsg {
         pool_factory_address: String,
     },
 
+    /// Proxy entry used by `pool_factory` to mint LP tokens after a
+    /// successful add-liquidity ack. Auth: only callable by the configured
+    /// pool factory address.
+    ProxyMintLpToken {
+        lp_token: Addr,
+        recipient: String,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to release tokens from escrow back
+    /// to a recipient — used by add-liquidity failure refunds and other
+    /// future pool flows. Auth: only callable by the configured pool factory
+    /// address.
+    ProxyReleaseEscrow {
+        token: Token,
+        denom: TokenType,
+        recipient: String,
+        amount: Uint256,
+    },
+
     ReceivePacket {
         source_port: String,
         destination_port: String,

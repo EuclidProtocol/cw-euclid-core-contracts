@@ -410,6 +410,21 @@ pub fn execute(
         ExecuteMsg::SetPoolFactory {
             pool_factory_address,
         } => crate::execute::proxy::execute_set_pool_factory(deps, env, info, pool_factory_address),
+        ExecuteMsg::ProxyMintLpToken {
+            lp_token,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_mint_lp_token(
+            deps, env, info, lp_token, recipient, amount,
+        ),
+        ExecuteMsg::ProxyReleaseEscrow {
+            token,
+            denom,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_release_escrow(
+            deps, env, info, token, denom, recipient, amount,
+        ),
     }
 }
 

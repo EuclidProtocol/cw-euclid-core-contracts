@@ -302,6 +302,113 @@ pub fn execute_request_pool_creation(
         .add_submessage(pool_create_msg))
 }
 
+/// Delegated CP/Stable add-liquidity path used once `pool_factory` is wired.
+///
+/// Main Factory still owns the escrow custody surface: it validates funds,
+/// pulls cw20 transfers, and deposits each non-voucher token to its escrow
+/// up-front via `create_escrow_msg`. The pool-state mutation (writing the
+/// pending entry, building the outbound packet, ack handling) is delegated
+/// to pool_factory's `OnAddLiquidity` handler.
+#[allow(clippy::too_many_arguments)]
+fn add_liquidity_request_delegated(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    pair_info: PairWithDenomAndAmount,
+    slippage_tolerance_bps: u64,
+    cross_chain_config: CrossChainConfig,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let pair = pair_info.get_pair()?;
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
+
+    // Validate funds + collect transfer/deposit messages. Deposits happen
+    // up-front so that on failure the refund path can pull from escrow via
+    // `ProxyReleaseEscrow` instead of touching factory holdings.
+    let mut msgs: Vec<SubMsg> = Vec::new();
+    let mut fund_manager = FundManager::new(&info.funds);
+    let tokens = pair_info.get_vec_token_info();
+    for token in tokens {
+        token.token_type.validate(&deps.as_ref())?;
+        ensure!(!token.amount.is_zero(), ContractError::ZeroAssetAmount {});
+
+        if token.token_type.is_voucher() {
+            continue;
+        }
+
+        let escrow_address = TOKEN_TO_ESCROW
+            .load(deps.storage, token.token.clone())
+            .or(Err(ContractError::EscrowDoesNotExist {}))?;
+        let token_allowed_query_msg = euclid::msgs::escrow::QueryMsg::TokenAllowed {
+            denom: token.token_type.clone(),
+        };
+        let token_allowed: AllowedTokenResponse = deps
+            .querier
+            .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+        ensure!(
+            token_allowed.allowed,
+            ContractError::UnsupportedDenomination {}
+        );
+
+        match &token.token_type {
+            TokenType::Native { denom, .. } => {
+                ensure!(
+                    !info.funds.is_empty(),
+                    ContractError::InsufficientDeposit {}
+                );
+                fund_manager.use_fund(token.amount, denom)?;
+            }
+            TokenType::Smart { .. } => {
+                let transfer = token.token_type.create_transfer_msg(
+                    token.amount,
+                    env.contract.address.clone().to_string(),
+                    Some(sender.address.clone()),
+                    None,
+                )?;
+                msgs.push(SubMsg::new(transfer));
+            }
+            TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
+        }
+
+        // Deposit funds to escrow up-front. This message executes after the
+        // optional cw20 TransferFrom above and before the delegate call —
+        // the whole tx reverts if any step fails.
+        let deposit = token
+            .token_type
+            .create_escrow_msg(token.amount, escrow_address)?;
+        msgs.push(SubMsg::new(deposit));
+    }
+
+    ensure!(
+        fund_manager.validate_funds_are_empty().is_ok(),
+        ContractError::new("Extra funds are not allowed")
+    );
+
+    let exec = euclid::msgs::pool_factory::ExecuteMsg::OnAddLiquidity {
+        tx_id: tx_id.clone(),
+        sender: info.sender.clone(),
+        pair_with_denom_and_amount: pair_info,
+        slippage_tolerance_bps,
+        cross_chain_config,
+    };
+    let delegate = crate::execute::proxy::pool_factory_execute_msg(deps, &exec)?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::AddLiquidity,
+        ))
+        .add_attribute("action", "add_liquidity")
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "add_liquidity_request_delegated")
+        .add_attribute("token_1", pair.token_1.to_string())
+        .add_attribute("token_2", pair.token_2.to_string())
+        .add_submessages(msgs)
+        .add_submessage(SubMsg::new(delegate)))
+}
+
 // Add liquidity to the pool
 pub fn add_liquidity_request(
     deps: &mut DepsMut,
@@ -322,6 +429,24 @@ pub fn add_liquidity_request(
         slippage_tolerance_bps >= 1 && slippage_tolerance_bps <= BPS_100_PERCENT,
         ContractError::InvalidSlippageTolerance {}
     );
+
+    // Slice 2: when pool_factory is wired and migration accepted, route
+    // add-liquidity end-to-end through pool_factory. Main Factory keeps
+    // fund custody up to the escrow deposit, then hands the typed request
+    // to pool_factory which dispatches the IBC packet via `ProxySendPacket`
+    // and drives the ack-side proxy calls (`ProxyMintLpToken` on success,
+    // `ProxyReleaseEscrow` on failure).
+    if pool_factory_is_initialised(deps)? {
+        return add_liquidity_request_delegated(
+            deps,
+            env,
+            info,
+            pair_info,
+            slippage_tolerance_bps,
+            cross_chain_config,
+            tx_id,
+        );
+    }
 
     ensure!(
         !PENDING_ADD_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),

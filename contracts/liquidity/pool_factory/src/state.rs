@@ -1,7 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
-use euclid::token::PairWithDenomAndAmount;
+use euclid::{liquidity::AddLiquidityRequest, token::PairWithDenomAndAmount};
 
 /// Address of the main factory on this chain. All `On*` execute entries
 /// require `info.sender == MAIN_FACTORY_ADDRESS`.
@@ -31,3 +31,9 @@ pub struct PoolCreateRequest {
 /// (sender, tx_id) to match the main-factory pending-queue shape.
 pub const PENDING_POOL_REQUESTS: Map<(Addr, String), PoolCreateRequest> =
     Map::new("request_to_pool");
+
+/// Pool factory's view of in-flight CP/Stable add-liquidity requests, keyed by
+/// (sender, tx_id) — matches the main-factory pending-queue shape so migration
+/// can copy entries verbatim.
+pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
+    Map::new("pending_add_liquidity");

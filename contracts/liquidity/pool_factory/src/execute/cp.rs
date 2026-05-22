@@ -4,13 +4,18 @@ use cosmwasm_std::{
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
+    fee::BPS_100_PERCENT,
+    liquidity::AddLiquidityRequest,
     msgs::{cross_chain_config::CrossChainConfig, factory::ExecuteMsg as FactoryExecuteMsg},
     token::PairWithDenomAndAmount,
 };
 
 use crate::{
     outbound,
-    state::{PoolCreateRequest, MAIN_FACTORY_ADDRESS, PAIR_TO_VLP, PENDING_POOL_REQUESTS},
+    state::{
+        PoolCreateRequest, MAIN_FACTORY_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        PENDING_POOL_REQUESTS,
+    },
 };
 
 /// Handles a CP/Stable `RequestPoolCreation` delegated from main factory.
@@ -102,6 +107,90 @@ pub fn on_request_pool_creation(
 
     Ok(Response::new()
         .add_attribute("method", "on_request_pool_creation")
+        .add_attribute("tx_id", tx_id)
+        .add_submessage(SubMsg::new(proxy_wasm)))
+}
+
+/// Handles a CP/Stable `AddLiquidity` delegated from main factory. Caller
+/// MUST be the configured main factory; main factory has already deposited
+/// funds to escrow upstream and generated `tx_id`.
+///
+/// Pool factory:
+///   1. validates slippage and pair existence,
+///   2. records the request in `PENDING_ADD_LIQUIDITY` keyed by (sender, tx_id),
+///   3. builds the outbound `RouterCrossChainExecuteMsg::AddLiquidity` via
+///      `outbound::add_liquidity`,
+///   4. hands the packet to `main_factory::ProxySendPacket` for dispatch.
+pub fn on_add_liquidity(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    tx_id: String,
+    sender: Addr,
+    pair_with_denom_and_amount: PairWithDenomAndAmount,
+    slippage_tolerance_bps: u64,
+    cross_chain_config: CrossChainConfig,
+) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
+    let main_factory = MAIN_FACTORY_ADDRESS.load(deps.storage)?;
+    ensure!(info.sender == main_factory, ContractError::Unauthorized {});
+
+    ensure!(
+        slippage_tolerance_bps >= 1 && slippage_tolerance_bps <= BPS_100_PERCENT,
+        ContractError::InvalidSlippageTolerance {}
+    );
+
+    let pair = pair_with_denom_and_amount.get_pair()?;
+    pair.validate()?;
+
+    ensure!(
+        !PENDING_ADD_LIQUIDITY.has(deps.storage, (sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    ensure!(
+        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
+        ContractError::PoolDoesNotExist {}
+    );
+
+    // Build a CrossChainUser for the outbound packet using main factory's
+    // chain_uid.
+    let main_state: euclid::msgs::factory::StateResponse = deps.querier.query_wasm_smart(
+        main_factory.clone(),
+        &euclid::msgs::factory::QueryMsg::GetState {},
+    )?;
+    let cross_chain_sender = CrossChainUser::new(main_state.chain_uid, sender.to_string());
+
+    PENDING_ADD_LIQUIDITY.save(
+        deps.storage,
+        (sender.clone(), tx_id.clone()),
+        &AddLiquidityRequest {
+            sender: sender.to_string(),
+            tx_id: tx_id.clone(),
+            pair_info: pair_with_denom_and_amount.clone(),
+        },
+    )?;
+
+    let packet = outbound::add_liquidity(
+        cross_chain_sender,
+        tx_id.clone(),
+        pair_with_denom_and_amount,
+        slippage_tolerance_bps,
+    )?;
+
+    let proxy_msg = FactoryExecuteMsg::ProxySendPacket {
+        msg: packet,
+        timeout: cross_chain_config.timeout,
+        ack_response: cross_chain_config.ack_response,
+        sender,
+    };
+    let proxy_wasm = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: main_factory.into_string(),
+        msg: to_json_binary(&proxy_msg)?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_attribute("method", "on_add_liquidity")
         .add_attribute("tx_id", tx_id)
         .add_submessage(SubMsg::new(proxy_wasm)))
 }
@@ -220,6 +309,149 @@ mod tests {
             .load(deps.as_ref().storage, (user, "tx_happy".to_string()))
             .unwrap();
         assert_eq!(pending.tx_id, "tx_happy");
+    }
+
+    #[test]
+    fn test_on_add_liquidity_rejects_non_main_factory_caller() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+
+        let stranger = deps.api.addr_make("stranger");
+        let user = deps.api.addr_make("user");
+        let info = message_info(&stranger, &[]);
+        let res = on_add_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_unauth".to_string(),
+            user,
+            sample_pair(),
+            50,
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_on_add_liquidity_pool_does_not_exist() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&main_factory, &[]);
+        let res = on_add_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_no_pool".to_string(),
+            user,
+            sample_pair(),
+            50,
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::PoolDoesNotExist {});
+    }
+
+    #[test]
+    fn test_on_add_liquidity_invalid_slippage() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&main_factory, &[]);
+        let res = on_add_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_slip".to_string(),
+            user,
+            sample_pair(),
+            0,
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::InvalidSlippageTolerance {});
+    }
+
+    #[test]
+    fn test_on_add_liquidity_happy_path_emits_proxy_send() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+        install_main_factory_state_querier(&mut deps);
+
+        // Seed the pair so the existence check passes.
+        let pair = sample_pair().get_pair().unwrap();
+        PAIR_TO_VLP
+            .save(
+                deps.as_mut().storage,
+                pair.get_tupple(),
+                &"vlp_addr".to_string(),
+            )
+            .unwrap();
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&main_factory, &[]);
+        let res = on_add_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_al_happy".to_string(),
+            user.clone(),
+            sample_pair(),
+            50,
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        )
+        .unwrap();
+        assert_eq!(res.messages.len(), 1);
+        let pending = PENDING_ADD_LIQUIDITY
+            .load(deps.as_ref().storage, (user, "tx_al_happy".to_string()))
+            .unwrap();
+        assert_eq!(pending.tx_id, "tx_al_happy");
+    }
+
+    #[test]
+    fn test_on_add_liquidity_duplicate_tx_id_rejected() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+        install_main_factory_state_querier(&mut deps);
+
+        let pair = sample_pair().get_pair().unwrap();
+        PAIR_TO_VLP
+            .save(
+                deps.as_mut().storage,
+                pair.get_tupple(),
+                &"vlp_addr".to_string(),
+            )
+            .unwrap();
+
+        let user = deps.api.addr_make("user");
+        let info = message_info(&main_factory, &[]);
+        on_add_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info.clone(),
+            "tx_dup".to_string(),
+            user.clone(),
+            sample_pair(),
+            50,
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        )
+        .unwrap();
+        let res = on_add_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_dup".to_string(),
+            user,
+            sample_pair(),
+            50,
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::TxAlreadyExist {});
     }
 
     #[test]
