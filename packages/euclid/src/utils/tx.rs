@@ -30,6 +30,19 @@ pub const TX_NONCES: Map<String, u128> = Map::new("tx_nonces");
 /// cannot reorder within a chain because Cosmos SDK enforces strict
 /// per-account sequence ordering at the mempool level, so each sender's
 /// nonce stream is invariant under any realistic replay.
+///
+/// # Known limitation: post-complete reorg
+///
+/// Determinism only protects the *in-flight* window. If a source-chain tx
+/// reorgs **after** the destination has already processed the full round-trip
+/// (packet + ack), the destination's released output cannot be unwound: the
+/// destination's `CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS` still rejects a
+/// replay of the same `(chain_uid, sequence)`, but the original processing
+/// already moved funds. The source's input escrow is rolled back by the
+/// reorg, leaving the cross-chain state inconsistent (user effectively
+/// receives output without paying input). This is a finality problem, not
+/// solvable at the contract level — the relayer must wait for source-chain
+/// finality before forwarding packets.
 pub fn generate_tx(
     deps: &mut DepsMut,
     env: &Env,
