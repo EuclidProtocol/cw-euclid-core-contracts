@@ -20,9 +20,19 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [pool_factory] SC-4 Slice 2: `OnAddLiquidity` execute entry (auth: caller is main factory) records `PENDING_ADD_LIQUIDITY`, builds outbound `RouterCrossChainExecuteMsg::AddLiquidity` via `outbound::add_liquidity`, and dispatches through main factory's `ProxySendPacket`
 - [pool_factory] SC-4 Slice 2: `OnPoolAck` extended to handle the `AddLiquidity` variant — on success issues `ProxyMintLpToken` to main factory; on failure issues `ProxyReleaseEscrow` per non-voucher token to refund the user
 - [pool_factory] SC-4 Slice 2: `PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest>` state map mirrors main factory's pre-refactor pending-queue shape
+- [pool_factory] SC-4 Slice 3: `OnRemoveLiquidity` execute entry (auth: caller is main factory) records `PENDING_REMOVE_LIQUIDITY`, builds outbound `RouterCrossChainExecuteMsg::RemoveLiquidity` via `outbound::remove_liquidity`, and dispatches through main factory's `ProxySendPacket`
+- [pool_factory] SC-4 Slice 3: `OnPoolAck` extended to handle the `RemoveLiquidity` variant — on success decrements `VLP_TO_LP_SHARES` and issues `ProxyBurnLpToken`; on failure issues `ProxyTransferLpToken` to return the held LP cw20 tokens to the user
+- [pool_factory] SC-4 Slice 3: `PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest>` and `VLP_TO_LP_SHARES: Map<String, Int256>` state maps mirror main factory's pre-refactor shape
+- [pool_factory] SC-4 Slice 4: new `execute::clp` module with `OnRequestConcentratedPoolCreation` execute entry (auth: caller is main factory) — validates pair/pool_key/fee/spacing, records `PENDING_CONCENTRATED_POOL_REQUESTS`, builds outbound `RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation` via `outbound::request_concentrated_pool_creation`, and dispatches through main factory's `ProxySendPacket`
+- [pool_factory] SC-4 Slice 4: `OnPoolAck` extended to handle the `RequestConcentratedPoolCreation` variant — on success writes `CONCENTRATED_VLPS`; on failure logs and (for native chains) propagates the hub error
+- [pool_factory] SC-4 Slice 4: `CONCENTRATED_VLPS: Map<String, String>` (keyed by `PoolKey::to_map_key()`) and `POSITION_TOKEN_CONTRACT: Item<Addr>` state items mirror main factory's pre-refactor shape; `ConcentratedPoolCreateRequest` + `PENDING_CONCENTRATED_POOL_REQUESTS` map the pending-queue
+- [pool_factory] SC-4 Slice 4: new queries `GetConcentratedVlp { pool_key }` and `GetPositionTokenContract {}` exposing the new CLP/position-token surface
+- [factory] SC-4 Slice 4: `ProxyMintPosition { token_id, owner, vlp_address, liquidity }` execute entry (auth: pool factory) mints into the singleton position-token NFT contract held by main factory — added now so the auth boundary is in place for Slice 5 CLP add-liquidity
 - [factory] `ProxySendPacket` execute entry (auth: `info.sender == POOL_FACTORY_ADDRESS`) routing pool packets through main factory's existing IBC/native transport
 - [factory] SC-4 Slice 2: `ProxyMintLpToken { lp_token, recipient, amount }` execute entry (auth: pool factory) mints LP cw20 tokens — main factory remains the cw20 minter
 - [factory] SC-4 Slice 2: `ProxyReleaseEscrow { token, denom, recipient, amount }` execute entry (auth: pool factory) drives an escrow `Withdraw` via the existing `RELEASE_ESCROW_REPLY_ID` reply path
+- [factory] SC-4 Slice 3: `ProxyBurnLpToken { lp_token, amount }` execute entry (auth: pool factory) burns LP cw20 tokens held by main factory after a successful remove-liquidity ack
+- [factory] SC-4 Slice 3: `ProxyTransferLpToken { lp_token, recipient, amount }` execute entry (auth: pool factory) returns LP cw20 tokens held by main factory back to the original sender after a failed remove-liquidity ack
 - [factory] `SetPoolFactory` admin entry (migration admin, one-shot) for fresh-chain bootstrap
 - [factory] State items `POOL_FACTORY_ADDRESS: Item<Addr>` and `POOL_FACTORY_INITIALISED: Item<bool>`
 - [factory] Queries `QueryAdminRole { addr, role }` and `QueryPoolFactoryAddress {}`
@@ -33,6 +43,11 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [euclid] New factory response types `QueryAdminRoleResponse` and `QueryPoolFactoryAddressResponse`
 - [euclid] SC-4 Slice 2: `pool_factory::ExecuteMsg::OnAddLiquidity` variant for delegated add-liquidity
 - [euclid] SC-4 Slice 2: `factory::ExecuteMsg::ProxyMintLpToken` and `factory::ExecuteMsg::ProxyReleaseEscrow` proxy variants
+- [euclid] SC-4 Slice 3: `pool_factory::ExecuteMsg::OnRemoveLiquidity` variant for delegated remove-liquidity
+- [euclid] SC-4 Slice 3: `factory::ExecuteMsg::ProxyBurnLpToken` and `factory::ExecuteMsg::ProxyTransferLpToken` proxy variants for the remove-liquidity burn/refund paths
+- [euclid] SC-4 Slice 4: `pool_factory::ExecuteMsg::OnRequestConcentratedPoolCreation` variant for delegated CLP pool creation; `MigrateAcceptPoolState` extended with optional `concentrated_vlps` and `position_token_contract` fields
+- [euclid] SC-4 Slice 4: `pool_factory::QueryMsg::GetConcentratedVlp` / `GetPositionTokenContract` + matching response types
+- [euclid] SC-4 Slice 4: `factory::ExecuteMsg::ProxyMintPosition` proxy variant for position-NFT minting from pool factory
 
 ### Changed
 
@@ -40,7 +55,9 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 
 - [factory] `RequestPoolCreation` user-facing handler shrinks to a thin stub when `POOL_FACTORY_INITIALISED == true`: validates inputs, deposits funds, then delegates to `pool_factory::OnRequestPoolCreation` via `WasmMsg::Execute`. Pre-initialisation chains continue to use the in-Factory code path
 - [factory] SC-4 Slice 2: `AddLiquidity` user-facing handler shrinks to a thin stub when `POOL_FACTORY_INITIALISED == true`: validates inputs, deposits each non-voucher token to escrow up-front, then delegates to `pool_factory::OnAddLiquidity`. Pre-initialisation chains continue to use the in-Factory code path. Funds now land in escrow before any pool-state mutation; ack-failure refunds release them back through `ProxyReleaseEscrow`
-- [factory] `reusable_internal_ack_call` forwards pool-related ack variants to `pool_factory::OnPoolAck` when pool factory is initialised; non-pool variants unchanged. Slice 2 adds `AddLiquidity` to the forwarded set
+- [factory] SC-4 Slice 3: `RemoveLiquidity` (cw20 hook) shrinks to a thin stub when `POOL_FACTORY_INITIALISED == true`: validates inputs and holds the LP cw20 tokens (they arrived via the `cw20::Send` hook), then delegates to `pool_factory::OnRemoveLiquidity`. Pre-initialisation chains continue to use the in-Factory code path. The delegated path emits `method=remove_liquidity_request_delegated` to distinguish it from the legacy `method=remove_liquidity_request` for indexer telemetry
+- [factory] SC-4 Slice 4: `RequestConcentratedPoolCreation` shrinks to a thin stub when `POOL_FACTORY_INITIALISED == true`: validates fee/spacing, slippage, pair, and fund custody, then delegates to `pool_factory::OnRequestConcentratedPoolCreation`. Pre-initialisation chains continue to use the in-Factory code path. The delegated path emits `method=request_concentrated_pool_creation_delegated` to distinguish it from the legacy `method=request_concentrated_pool_creation` for indexer telemetry. Per-token escrow funding and the position-NFT mint remain main-factory-side carry-overs while the bridge pattern lands in Slice 5+
+- [factory] `reusable_internal_ack_call` forwards pool-related ack variants to `pool_factory::OnPoolAck` when pool factory is initialised; non-pool variants unchanged. Slice 2 adds `AddLiquidity` to the forwarded set; Slice 3 adds `RemoveLiquidity`; Slice 4 adds `RequestConcentratedPoolCreation`
 
 ### Added (existing items continue below)
 

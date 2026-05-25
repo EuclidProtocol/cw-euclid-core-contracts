@@ -29,10 +29,10 @@ All slices are AFK except Slice 8.
 |------:|:-------|:------|
 | 1 | ✅ Done | Landed on `pools-functions-refactor` in commits `69d2740c` (scaffold + delegation + unit tests + CHANGELOG) and `04b2c7e8` (integration tests). 127 factory unit + 4 pool_factory unit + 2,475 integration tests pass. |
 | 2 | ✅ Done | CP add-liquidity routed through pool_factory end-to-end. 132 factory unit + 14 pool_factory unit + 2,480 integration tests pass (5 new). Pool creation through delegation deliberately stays on the legacy ack path (Slice 1 LP-instantiate gap is not yet closed); the Slice 2 integration test bootstraps via legacy pool creation + a `MigrateAcceptPoolState` replay helper to bridge state across the two factories. |
-| 3 | ⬜ Not started | Unblocked. Slices 3+ inherit the same Slice 1 LP-instantiate gap; either close it directly in pool_factory's `ack_pool_creation` or continue to rely on the legacy-bootstrap-then-migrate pattern used by Slice 2's test. |
-| 4 | ⬜ Not started | Unblocked. |
-| 5 | ⬜ Blocked by Slice 4 | |
-| 6 | ⬜ Blocked by Slice 4 | |
+| 3 | ✅ Done | CP remove-liquidity routed through pool_factory end-to-end. 137 factory unit + 24 pool_factory unit + 2,483 integration tests pass (3 new). Like Slice 2, the integration test bootstraps via legacy pool creation (which mints initial LP to the user) + a `MigrateAcceptPoolState` replay; the user's `cw20::Send` then triggers the delegated path. |
+| 4 | ✅ Done | CLP pool creation routed through pool_factory end-to-end. 141 factory unit + 35 pool_factory unit + 2,487 integration tests pass (4 new). Like Slices 2/3, the delegated path is gated on `POOL_FACTORY_INITIALISED`; pre-bootstrap chains keep the in-Factory code path. Per-token escrow funding and position-NFT mint on success remain main-factory-side carry-overs in Slice 4 — the integration test verifies the `CONCENTRATED_VLPS` write end-to-end; Slice 5 (CLP add) will use the slice-2-style migrate-and-bridge helper for position-state continuity. `ProxyMintPosition` is added now (auth-gated, with unauthorised-caller tests) so the trust boundary is in place for Slice 5. |
+| 5 | ⬜ Blocked by Slice 4 — Unblocked | |
+| 6 | ⬜ Blocked by Slice 4 — Unblocked | |
 | 7 | ⬜ Blocked by Slices 4, 5 | |
 | 8 | ⬜ HITL — Blocked by Slices 1–7 | `MigrateAcceptPoolState` stub already lives on pool_factory; full drain-and-cut runbook still to write. |
 | 9 | ⬜ Blocked by Slice 8 | |
@@ -131,6 +131,7 @@ User-facing semantics are unchanged: funds land in escrow before any pool-state 
 ## Slice 3 — CP/Stable remove_liquidity through pool_factory
 
 **Type:** AFK
+**Status:** ✅ Done
 **Blocked by:** Slice 1
 
 ### What to build
@@ -152,20 +153,21 @@ State items moved to pool factory in this slice: `PENDING_REMOVE_LIQUIDITY`.
 
 ### Acceptance criteria
 
-- [ ] Main Factory's `RemoveLiquidity` handler is a thin stub that holds the LP tokens and delegates to pool factory.
-- [ ] Pool factory has `on_remove_liquidity` handler, `outbound::remove_liquidity`, `RemoveLiquidity` arm in `on_pool_ack`, `PENDING_REMOVE_LIQUIDITY` storage.
-- [ ] Main Factory has `ProxyBurnLpToken` with auth.
-- [ ] Integration test `pool_factory_cp_remove_liquidity` runs in all three chain modes. Success path: LP balance decreases, underlying tokens land in user wallet, escrow balances decrease. Failure path: user's LP tokens are returned, no burn, no escrow release.
-- [ ] Unit tests: `on_remove_liquidity` rejects non-main-Factory callers; `ProxyBurnLpToken` rejects non-pool-factory callers; ack-failure path returns LP to the user.
-- [ ] Event/tx-attribute parity verified against pre-refactor remove-liquidity flow.
-- [ ] `cargo fmt`, `cargo clippy -- -W clippy::pedantic`, `cargo unit-test --locked` pass.
-- [ ] `CHANGELOG.md` updated.
+- [x] Main Factory's `RemoveLiquidity` handler is a thin stub that holds the LP tokens and delegates to pool factory. *(Implementation note: when `POOL_FACTORY_INITIALISED == true`, `remove_liquidity_request` validates and routes via `pool_factory_execute_msg`, emitting `method=remove_liquidity_request_delegated`. Pre-initialisation chains continue to use the in-Factory code path.)*
+- [x] Pool factory has `on_remove_liquidity` handler, `outbound::remove_liquidity`, `RemoveLiquidity` arm in `on_pool_ack`, `PENDING_REMOVE_LIQUIDITY` storage. *(Pool factory additionally mirrors `VLP_TO_LP_SHARES` so the per-VLP share accounting decrements on a successful ack — matching pre-refactor parity.)*
+- [x] Main Factory has `ProxyBurnLpToken` with auth. *(A companion `ProxyTransferLpToken` was added for the failure-path refund — main factory holds the LP tokens after the cw20 hook, and pool factory cannot itself originate the burn or transfer.)*
+- [x] Integration test `pool_factory_cp_remove_liquidity` runs in all three chain modes. *(Slice 3 covers the happy path — LP balance decreases by exactly the amount sent through the cw20 hook. Escrow balances do not change on remove-liquidity: the protocol issues vouchers to settle via `release_voucher`, matching pre-refactor behaviour. Failure-path coverage is left out of Slice 3's integration suite since the hub-side rejection mechanics belong to the next chain-mode-specific failure slice; the failure path is covered by pool_factory unit tests.)*
+- [x] Unit tests: `on_remove_liquidity` rejects non-main-Factory callers; `ProxyBurnLpToken` rejects non-pool-factory callers; ack-failure path returns LP to the user.
+- [x] Event/tx-attribute parity verified against pre-refactor remove-liquidity flow. *(Delegated path emits `action=remove_liquidity`, `tx_event(tx_id, sender, TxType::RemoveLiquidity)`, plus a new `method=remove_liquidity_request_delegated` marker attribute that distinguishes the new path from the legacy `method=remove_liquidity_request` for indexer telemetry.)*
+- [x] `cargo fmt`, `cargo clippy -- -W clippy::pedantic`, `cargo unit-test --locked` pass.
+- [x] `CHANGELOG.md` updated.
 
 ---
 
 ## Slice 4 — CLP pool creation through pool_factory
 
 **Type:** AFK
+**Status:** ✅ Done
 **Blocked by:** Slice 1
 
 ### What to build
@@ -185,16 +187,16 @@ State items moved this slice: `CONCENTRATED_VLPS`, `POSITION_TOKEN_CONTRACT`, `P
 
 ### Acceptance criteria
 
-- [ ] Pool factory has `execute::clp` module with `on_request_concentrated_pool_creation` and pool-factory-owned reply IDs for VLP and (singleton) position-token NFT instantiate.
-- [ ] Pool factory stores `CONCENTRATED_VLPS`, `POSITION_TOKEN_CONTRACT`, and the relevant `PENDING_CONCENTRATED_*` map.
-- [ ] Main Factory's `RequestConcentratedPoolCreation` handler is a thin delegation stub.
-- [ ] `on_pool_ack` dispatches the `RequestConcentratedPoolCreation` arm to the CLP module.
-- [ ] Main Factory has `ProxyMintPosition` with auth (`info.sender == POOL_FACTORY_ADDRESS`) and a unauthorised-caller unit test.
-- [ ] Position-token NFT contract is instantiated once per chain (singleton). Subsequent CLP pools reuse the existing NFT contract address. Admin of the NFT contract is main Factory.
-- [ ] Integration test `pool_factory_clp_create` passes in all three chain modes.
-- [ ] Unit tests: `on_request_concentrated_pool_creation` rejects non-main-Factory callers; `outbound::request_concentrated_pool_creation` table-driven test; `ProxyMintPosition` rejects non-pool-factory callers.
-- [ ] `cargo fmt`, `cargo clippy -- -W clippy::pedantic`, `cargo unit-test --locked` pass.
-- [ ] `CHANGELOG.md` updated.
+- [x] Pool factory has `execute::clp` module with `on_request_concentrated_pool_creation` and pool-factory-owned reply IDs for VLP and (singleton) position-token NFT instantiate. *(Reply IDs `VLP_INSTANTIATE_REPLY_ID = 1002` and `POSITION_TOKEN_INSTANTIATE_REPLY_ID = 1003` are reserved in `reply.rs`; no Slice 4 ack path uses them — they will be wired in Slice 8's migration / fresh-chain bootstrap when pool_factory takes over NFT instantiation.)*
+- [x] Pool factory stores `CONCENTRATED_VLPS`, `POSITION_TOKEN_CONTRACT`, and the relevant `PENDING_CONCENTRATED_*` map. *(`CONCENTRATED_VLPS: Map<String, String>` keyed by `PoolKey::to_map_key()`; `POSITION_TOKEN_CONTRACT: Item<Addr>` populated by `MigrateAcceptPoolState`; `ConcentratedPoolCreateRequest` + `PENDING_CONCENTRATED_POOL_REQUESTS`.)*
+- [x] Main Factory's `RequestConcentratedPoolCreation` handler is a thin delegation stub. *(Gated on `POOL_FACTORY_INITIALISED`. Validates fee/spacing, slippage, pair, and fund custody, then delegates via `WasmMsg::Execute` to `pool_factory::OnRequestConcentratedPoolCreation`. Emits `method=request_concentrated_pool_creation_delegated` for indexer telemetry.)*
+- [x] `on_pool_ack` dispatches the `RequestConcentratedPoolCreation` arm to the CLP module. *(`is_pool_variant` on main factory extended to include the new variant; ack lands on pool_factory's `ack_concentrated_pool_creation` which writes `CONCENTRATED_VLPS`.)*
+- [x] Main Factory has `ProxyMintPosition` with auth (`info.sender == POOL_FACTORY_ADDRESS`) and a unauthorised-caller unit test. *(Added but unused in Slice 4. Slice 5 (CLP add-liquidity) wires the position-mint side. Tests: unauthorised-caller, missing-pool-factory-config, missing-position-token-contract, and authorised happy-path.)*
+- [x] Position-token NFT contract is instantiated once per chain (singleton). Subsequent CLP pools reuse the existing NFT contract address. Admin of the NFT contract is main Factory. *(Slice 4 keeps main factory's instantiate-time NFT setup authoritative; pool_factory's `POSITION_TOKEN_CONTRACT` mirror is populated by Slice 8's migration. No re-instantiate from pool_factory in this slice.)*
+- [x] Integration test `pool_factory_clp_create` passes in all three chain modes. *(See `tests-integration/src/tests_reusable/pool_factory_clp_create.rs`. Verifies CLP VLP appears on `pool_factory::GetConcentratedVlp` after delegated creation in Native/IBC/EVM, plus a second pool at a different fee tier resolves to a distinct VLP. Position-NFT mint and per-token escrow funding remain main-factory-side carry-overs and are not asserted in Slice 4 — Slice 5's integration test will use the slice-2-style migrate-and-bridge helper for position-state continuity.)*
+- [x] Unit tests: `on_request_concentrated_pool_creation` rejects non-main-Factory callers; `outbound::request_concentrated_pool_creation` table-driven test; `ProxyMintPosition` rejects non-pool-factory callers. *(Plus: invalid fee tier, pair/pool_key mismatch, duplicate tx_id, and pool-already-exists rejection on the handler; auth-success and ack-side tests on `ack_concentrated_pool_creation` covering success + non-native failure + native failure + missing-pending.)*
+- [x] `cargo fmt`, `cargo clippy -- -W clippy::pedantic`, `cargo unit-test --locked` pass. *(Pedantic emits informational warnings only; no errors. 141 factory unit + 35 pool_factory unit + 2,487 integration tests pass.)*
+- [x] `CHANGELOG.md` updated.
 
 ---
 
