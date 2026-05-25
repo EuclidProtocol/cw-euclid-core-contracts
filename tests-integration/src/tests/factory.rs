@@ -1,5 +1,4 @@
 #![cfg(not(target_arch = "wasm32"))]
-use std::ops::Add;
 
 use cosmwasm_std::{coin, to_json_binary, Addr, Coin, Isqrt, Uint128, Uint256, Uint512, Uint64};
 use cw_orch::{

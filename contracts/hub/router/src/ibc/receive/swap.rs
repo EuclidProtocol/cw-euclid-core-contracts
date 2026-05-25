@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, Uint256, WasmMsg};
+use cosmwasm_std::{ensure, to_json_binary, DepsMut, Env, Response, SubMsg, WasmMsg};
 use euclid::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,

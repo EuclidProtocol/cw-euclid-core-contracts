@@ -1,5 +1,5 @@
 use cosmwasm_std::to_json_binary;
-use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, Uint256, WasmMsg};
+use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, WasmMsg};
 use euclid::chain::{Chain, ChainType, ChainUid};
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;

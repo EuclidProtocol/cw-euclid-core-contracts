@@ -106,9 +106,7 @@ mod tests {
     use crate::helpers::chains::{
         get_escrow, get_lp_token, get_virtual_balance, setup_interchain, setup_router,
     };
-    use crate::tests_reusable::constants::{
-        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
-    };
+
     use crate::tests_reusable::factory_add_liquidity::deposit_token;
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::{setup_factory, FactorySetupMode};
@@ -121,7 +119,7 @@ mod tests {
     use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
     use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 
-    use crate::tests_reusable::test_macros::{decimal_pair, decimal_pair_full};
+    use crate::tests_reusable::test_macros::decimal_pair;
     use euclid::voucher::BalanceKey;
     fn native_token(name: &str, decimals: u32) -> TokenWithDenom {
         TokenWithDenom {

@@ -90,7 +90,7 @@ mod tests {
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::{setup_factory, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
-    use crate::tests_reusable::test_macros::{decimal_pair, decimal_pair_full};
+    use crate::tests_reusable::test_macros::decimal_pair;
     use cosmwasm_std::Uint64;
     use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
     use euclid::msgs::factory::msg::{

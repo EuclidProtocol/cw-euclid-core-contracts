@@ -11,7 +11,7 @@ use crate::{
     utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint128, Uint256};
+use cosmwasm_std::{Addr, Binary, Uint256};
 use cw20::Cw20ReceiveMsg;
 #[cw_serde]
 pub struct InstantiateMsg {

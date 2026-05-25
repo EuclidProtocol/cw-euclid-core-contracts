@@ -5,7 +5,6 @@ use euclid::{
     error::ContractError,
     events::{tx_event, TxType},
     msgs::{
-        router::TokenDenom,
         virtual_balance::{
             msg::{
                 ExecuteMint, ExecuteMsg as VirtualBalanceMsg, QueryMsg as VirtualBalanceQueryMsg,

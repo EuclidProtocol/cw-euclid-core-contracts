@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order, Uint256};
+use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order};
 use cw_storage_plus::Bound;
 use euclid::{
     chain::ChainUid,
@@ -6,11 +6,10 @@ use euclid::{
     error::ContractError,
     msgs::{
         router::{
-            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
+            AllChainResponse, AllEscrowsResponse, AllVlpResponse, ChainResponse,
             ChainTimeoutResponse, DefaultReleaseFeeResponse, EscrowResponse, FeeStateResponse,
-            LockedChainsResponse, QueryRelayerAddressesResponse, QuerySimulateSwap,
-            QueryTokenDenomsResponse, ReleaseFee, ReleaseFeesQueryResponse, SimulateSwapResponse,
-            StateResponse, TokenEscrowChainResponse, TokenEscrowsResponse, VlpResponse,
+            LockedChainsResponse, QueryRelayerAddressesResponse, QuerySimulateSwap, ReleaseFee,
+            ReleaseFeesQueryResponse, SimulateSwapResponse, StateResponse, VlpResponse,
         },
         virtual_balance::{GetTokenMetadataByDenomResponse, GetTokenStatusResponse},
         vlp::base::VlpSimulateSwapMsg,
@@ -21,9 +20,8 @@ use euclid::{
 };
 
 use crate::state::{
-    ADMIN, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, DEFAULT_RELEASE_FEE, ESCROW_BALANCES,
-    FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, RELEASE_FEES, STATE, TOKEN_DENOMS,
-    VIRTUAL_BALANCE_CONTRACT, VLPS,
+    ADMIN, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, DEFAULT_RELEASE_FEE, FEE_STATE,
+    LOCKED_CHAINS, RELAYER_CONTRACT, RELEASE_FEES, STATE, VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -309,12 +307,11 @@ mod tests {
     use cosmwasm_std::{
         from_json,
         testing::{message_info, mock_env},
-        Addr, Uint128, Uint256,
+        Addr, Uint256,
     };
 
     use crate::{
         contract::execute,
-        state::TOKEN_DENOMS,
         testing::{
             fixtures::initialized,
             helpers::{
@@ -326,11 +323,10 @@ mod tests {
     use euclid::{
         chain::ChainUid,
         msgs::router::{
-            AllChainResponse, AllEscrowsResponse, AllTokensResponse, AllVlpResponse, ChainResponse,
-            ExecuteMsg, ManageRouterState, QueryRelayerAddressesResponse, QueryTokenDenomsResponse,
-            ReleaseFeesQueryResponse, StateResponse, TokenDenom, TokenEscrowsResponse, VlpResponse,
+            AllChainResponse, AllVlpResponse, ChainResponse, ExecuteMsg, ManageRouterState,
+            QueryRelayerAddressesResponse, ReleaseFeesQueryResponse, StateResponse, VlpResponse,
         },
-        token::{Pair, Token, TokenType},
+        token::{Pair, Token},
         utils::pagination::Pagination,
     };
     use rstest::*;

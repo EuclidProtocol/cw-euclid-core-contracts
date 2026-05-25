@@ -8,7 +8,7 @@ use crate::{
     cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
     swap::SwapRequest,
-    token::{Token, TokenMetadata, TokenType, TokenWithAmount},
+    token::{TokenMetadata, TokenType, TokenWithAmount},
 };
 
 pub fn liquidity_event(

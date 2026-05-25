@@ -480,12 +480,12 @@ pub fn ibc_execute_single_sided_add_liquidity(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{Addr, Uint128, Uint256};
+    use cosmwasm_std::Uint256;
     use euclid::{
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         error::ContractError,
-        msgs::{router::TokenDenom, vlp::base::PoolConfig},
+        msgs::vlp::base::PoolConfig,
         token::{Pair, Token, TokenType},
     };
     use euclid_ibc::router_ibc::{
@@ -493,8 +493,8 @@ mod tests {
     };
 
     use crate::{
-        reply::{REMOVE_LIQUIDITY_REPLY_ID, VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID},
-        state::{PENDING_REMOVE_LIQUIDITY, VLPS},
+        reply::REMOVE_LIQUIDITY_REPLY_ID,
+        state::PENDING_REMOVE_LIQUIDITY,
         testing::{
             fixtures::initialized,
             helpers::{

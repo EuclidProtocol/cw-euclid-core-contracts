@@ -5,7 +5,6 @@ use cosmwasm_std::{to_json_binary, Addr, Uint128, Uint256};
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::{core::InterchainEnv, prelude::*};
 use euclid::normalize::normalize_token_to_voucher;
-use euclid::token::TokenMetadata;
 use factory::FactoryContract;
 use router::RouterContract;
 

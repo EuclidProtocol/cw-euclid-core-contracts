@@ -160,9 +160,7 @@ pub fn setup_factory_with_mode(
 mod tests {
     use super::*;
     use crate::helpers::chains::setup_router;
-    use crate::tests_reusable::constants::{
-        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
-    };
+
     use crate::tests_reusable::test_macros::factory_modes;
     use rstest::rstest;
     use rstest_reuse::apply;

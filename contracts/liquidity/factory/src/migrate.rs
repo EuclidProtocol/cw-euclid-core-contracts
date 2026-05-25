@@ -1,7 +1,9 @@
 use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 use crate::state::{State, ADMIN, STATE};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{entry_point, DepsMut, Env, Response};
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
+use cosmwasm_std::{DepsMut, Env, Response};
 use cw2::set_contract_version;
 use cw_storage_plus::Item;
 use euclid::{admin::EuclidAdmin, error::ContractError, msgs::factory::MigrateMsg};
