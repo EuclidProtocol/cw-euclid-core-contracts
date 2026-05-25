@@ -4,12 +4,17 @@
 //! makes table-driven tests easy and keeps the variant-specific knowledge in
 //! one place.
 
-use cosmwasm_std::{to_json_binary, Binary};
+use cosmwasm_std::{to_json_binary, Binary, Uint256};
 use euclid::{
-    cross_chain_user::CrossChainUser, error::ContractError, msgs::vlp::base::PoolConfig,
-    token::PairWithDenomAndAmount,
+    cross_chain_user::CrossChainUser,
+    error::ContractError,
+    msgs::vlp::base::{PoolConfig, PoolKey},
+    token::{Pair, PairWithDenomAndAmount},
 };
-use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
+use euclid_ibc::router_ibc::{
+    RouterCrossChainConcentratedRequestPoolCreationExecuteMsg, RouterCrossChainExecuteMsg,
+    RouterCrossChainRemoveLiquidityExecuteMsg,
+};
 
 /// Builds a `RouterCrossChainExecuteMsg::RequestPoolCreation` packet ready to
 /// be handed to main factory's `ProxySendPacket`.
@@ -45,6 +50,51 @@ pub fn add_liquidity(
         pair,
         tx_id,
     };
+    Ok(to_json_binary(&msg)?)
+}
+
+/// Builds a `RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation`
+/// packet for the CLP pool creation flow. The packet is dispatched through
+/// main factory's `ProxySendPacket`.
+pub fn request_concentrated_pool_creation(
+    sender: CrossChainUser,
+    tx_id: String,
+    pair: PairWithDenomAndAmount,
+    pool_key: PoolKey,
+    slippage_tolerance_bps: u64,
+    initial_tick: Option<i64>,
+) -> Result<Binary, ContractError> {
+    let msg = RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation(
+        RouterCrossChainConcentratedRequestPoolCreationExecuteMsg {
+            sender,
+            tx_id,
+            pair,
+            pool_key,
+            slippage_tolerance_bps,
+            initial_tick,
+        },
+    );
+    Ok(to_json_binary(&msg)?)
+}
+
+/// Builds a `RouterCrossChainExecuteMsg::RemoveLiquidity` packet for the
+/// CP/Stable remove-liquidity flow. The packet is dispatched through main
+/// factory's `ProxySendPacket`.
+pub fn remove_liquidity(
+    sender: CrossChainUser,
+    tx_id: String,
+    pair: Pair,
+    lp_allocation: Uint256,
+    recipient: CrossChainUser,
+) -> Result<Binary, ContractError> {
+    let msg =
+        RouterCrossChainExecuteMsg::RemoveLiquidity(RouterCrossChainRemoveLiquidityExecuteMsg {
+            sender,
+            lp_allocation,
+            pair,
+            recipient,
+            tx_id,
+        });
     Ok(to_json_binary(&msg)?)
 }
 
@@ -107,6 +157,77 @@ mod tests {
                 } => {
                     assert_eq!(decoded_tx_id, *tx_id);
                     assert_eq!(slippage_tolerance_bps, *slippage);
+                }
+                _ => panic!("unexpected variant"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_remove_liquidity_roundtrip() {
+        let recipient = CrossChainUser {
+            chain_uid: ChainUid::create("chainx".to_string()).unwrap(),
+            address: "recipient".to_string(),
+        };
+        let cases: &[(&str, u128)] = &[("tx_r1", 1), ("tx_r2", 100), ("tx_r3", 1_000_000_000)];
+        let pair = sample_pair().get_pair().unwrap();
+        for (tx_id, alloc) in cases {
+            let bin = remove_liquidity(
+                sample_sender(),
+                (*tx_id).to_string(),
+                pair.clone(),
+                cosmwasm_std::Uint256::from(*alloc),
+                recipient.clone(),
+            )
+            .unwrap();
+            let decoded: RouterCrossChainExecuteMsg = from_json(&bin).unwrap();
+            match decoded {
+                RouterCrossChainExecuteMsg::RemoveLiquidity(inner) => {
+                    assert_eq!(inner.tx_id, *tx_id);
+                    assert_eq!(inner.lp_allocation, cosmwasm_std::Uint256::from(*alloc));
+                    assert_eq!(inner.sender, sample_sender());
+                    assert_eq!(inner.pair, pair);
+                    assert_eq!(inner.recipient, recipient);
+                }
+                _ => panic!("unexpected variant"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_request_concentrated_pool_creation_roundtrip() {
+        use euclid::msgs::vlp::base::{PoolKey, PoolType};
+        let pair = sample_pair().get_pair().unwrap();
+        let cases: &[(&str, u64, u64, u64, Option<i64>)] = &[
+            ("tx_c1", 500, 10, 50, None),
+            ("tx_c2", 3_000, 60, 100, Some(0)),
+            ("tx_c3", 10_000, 200, 10_000, Some(-100)),
+        ];
+        for (tx_id, fee_tier_bps, tick_spacing, slippage, initial_tick) in cases {
+            let pool_key = PoolKey {
+                pair: pair.clone(),
+                pool_type: PoolType::Concentrated {
+                    fee_tier_bps: *fee_tier_bps,
+                    tick_spacing: *tick_spacing,
+                },
+            };
+            let bin = request_concentrated_pool_creation(
+                sample_sender(),
+                (*tx_id).to_string(),
+                sample_pair(),
+                pool_key.clone(),
+                *slippage,
+                *initial_tick,
+            )
+            .unwrap();
+            let decoded: RouterCrossChainExecuteMsg = from_json(&bin).unwrap();
+            match decoded {
+                RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation(inner) => {
+                    assert_eq!(inner.tx_id, *tx_id);
+                    assert_eq!(inner.slippage_tolerance_bps, *slippage);
+                    assert_eq!(inner.initial_tick, *initial_tick);
+                    assert_eq!(inner.pool_key, pool_key);
+                    assert_eq!(inner.sender, sample_sender());
                 }
                 _ => panic!("unexpected variant"),
             }

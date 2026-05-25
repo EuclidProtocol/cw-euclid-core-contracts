@@ -1,8 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary};
+use cosmwasm_std::{Addr, Binary, Uint256};
 
 use crate::{
+    cross_chain_user::CrossChainUser,
     msgs::cross_chain_config::CrossChainConfig,
+    msgs::vlp::base::PoolKey,
     token::{Pair, PairWithDenomAndAmount},
 };
 
@@ -44,6 +46,38 @@ pub enum ExecuteMsg {
         cross_chain_config: CrossChainConfig,
     },
 
+    /// Called by main factory to delegate a CP/Stable remove-liquidity
+    /// request. Main factory has already received the LP cw20 tokens via the
+    /// `cw20::Send` hook (factory now holds them) and generated `tx_id`.
+    /// Pool factory records the pending entry, builds the outbound
+    /// `RouterCrossChainExecuteMsg::RemoveLiquidity` packet via `outbound`,
+    /// and calls back into main factory's `ProxySendPacket` for dispatch.
+    OnRemoveLiquidity {
+        tx_id: String,
+        sender: Addr,
+        pair: Pair,
+        lp_allocation: Uint256,
+        lp_token: Addr,
+        recipient: CrossChainUser,
+        cross_chain_config: CrossChainConfig,
+    },
+
+    /// Called by main factory to delegate a CLP (concentrated) pool creation
+    /// request. Main factory has validated the request and generated `tx_id`.
+    /// Pool factory records the pending entry, builds the outbound
+    /// `RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation` packet via
+    /// `outbound`, and calls back into main factory's `ProxySendPacket` for
+    /// dispatch.
+    OnRequestConcentratedPoolCreation {
+        tx_id: String,
+        sender: Addr,
+        pair_with_denom_and_amount: PairWithDenomAndAmount,
+        pool_key: PoolKey,
+        slippage_tolerance_bps: u64,
+        initial_tick: Option<i64>,
+        cross_chain_config: CrossChainConfig,
+    },
+
     /// Called by main factory after an IBC ack arrives for a pool variant.
     /// `original_msg` is the originally sent `RouterCrossChainExecuteMsg`
     /// serialised, and `ack` is the raw acknowledgement bytes.
@@ -58,6 +92,14 @@ pub enum ExecuteMsg {
     MigrateAcceptPoolState {
         pair_to_vlp: Vec<(Pair, String)>,
         vlp_to_lp_token: Vec<(String, Addr)>,
+        /// Mirror of main factory's CLP `POOL_KEY_TO_VLP`. Optional in the
+        /// Slice 4 carry-over shape so existing Slice 1–3 migration tests
+        /// continue to pass with the empty default; Slice 8 will require
+        /// non-empty entries for chains that have CLP pools.
+        concentrated_vlps: Option<Vec<(PoolKey, String)>>,
+        /// Mirror of main factory's singleton position-token NFT contract.
+        /// Optional for the same reason as `concentrated_vlps`.
+        position_token_contract: Option<Addr>,
     },
 }
 
@@ -75,6 +117,16 @@ pub enum QueryMsg {
     /// Returns the configured main factory address.
     #[returns(MainFactoryAddressResponse)]
     GetMainFactoryAddress {},
+
+    /// Returns the VLP address for a given concentrated pool key.
+    #[returns(GetConcentratedVlpResponse)]
+    GetConcentratedVlp { pool_key: PoolKey },
+
+    /// Returns the singleton position-token NFT contract address recorded on
+    /// pool factory. May be `None` while the Slice 4 carry-over keeps main
+    /// factory authoritative.
+    #[returns(PositionTokenContractResponse)]
+    GetPositionTokenContract {},
 }
 
 #[cw_serde]
@@ -90,6 +142,17 @@ pub struct GetLpTokenResponse {
 #[cw_serde]
 pub struct MainFactoryAddressResponse {
     pub main_factory_address: Addr,
+}
+
+#[cw_serde]
+pub struct GetConcentratedVlpResponse {
+    pub vlp_address: Option<String>,
+    pub pool_key: PoolKey,
+}
+
+#[cw_serde]
+pub struct PositionTokenContractResponse {
+    pub position_token_contract: Option<Addr>,
 }
 
 #[cw_serde]

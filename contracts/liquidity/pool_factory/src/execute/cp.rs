@@ -1,20 +1,21 @@
 use cosmwasm_std::{
-    ensure, to_json_binary, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, WasmMsg,
+    ensure, to_json_binary, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, Uint256,
+    WasmMsg,
 };
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     fee::BPS_100_PERCENT,
-    liquidity::AddLiquidityRequest,
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
     msgs::{cross_chain_config::CrossChainConfig, factory::ExecuteMsg as FactoryExecuteMsg},
-    token::PairWithDenomAndAmount,
+    token::{Pair, PairWithDenomAndAmount},
 };
 
 use crate::{
     outbound,
     state::{
         PoolCreateRequest, MAIN_FACTORY_ADDRESS, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
-        PENDING_POOL_REQUESTS,
+        PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY,
     },
 };
 
@@ -191,6 +192,93 @@ pub fn on_add_liquidity(
 
     Ok(Response::new()
         .add_attribute("method", "on_add_liquidity")
+        .add_attribute("tx_id", tx_id)
+        .add_submessage(SubMsg::new(proxy_wasm)))
+}
+
+/// Handles a CP/Stable `RemoveLiquidity` delegated from main factory. Caller
+/// MUST be the configured main factory; main factory already received the LP
+/// cw20 tokens via the `cw20::Send` hook (and now holds them) and generated
+/// `tx_id`.
+///
+/// Pool factory:
+///   1. validates pair existence and lp_allocation > 0,
+///   2. records the request in `PENDING_REMOVE_LIQUIDITY` keyed by
+///      (sender, tx_id),
+///   3. builds the outbound `RouterCrossChainExecuteMsg::RemoveLiquidity`
+///      via `outbound::remove_liquidity`,
+///   4. hands the packet to `main_factory::ProxySendPacket` for dispatch.
+#[allow(clippy::too_many_arguments)]
+pub fn on_remove_liquidity(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    tx_id: String,
+    sender: Addr,
+    pair: Pair,
+    lp_allocation: Uint256,
+    lp_token: Addr,
+    recipient: CrossChainUser,
+    cross_chain_config: CrossChainConfig,
+) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
+    let main_factory = MAIN_FACTORY_ADDRESS.load(deps.storage)?;
+    ensure!(info.sender == main_factory, ContractError::Unauthorized {});
+
+    pair.validate()?;
+    recipient.validate()?;
+
+    ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
+
+    ensure!(
+        !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (sender.clone(), tx_id.clone())),
+        ContractError::TxAlreadyExist {}
+    );
+    ensure!(
+        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
+        ContractError::PoolDoesNotExist {}
+    );
+
+    let main_state: euclid::msgs::factory::StateResponse = deps.querier.query_wasm_smart(
+        main_factory.clone(),
+        &euclid::msgs::factory::QueryMsg::GetState {},
+    )?;
+    let cross_chain_sender = CrossChainUser::new(main_state.chain_uid, sender.to_string());
+
+    PENDING_REMOVE_LIQUIDITY.save(
+        deps.storage,
+        (sender.clone(), tx_id.clone()),
+        &RemoveLiquidityRequest {
+            sender: sender.to_string(),
+            tx_id: tx_id.clone(),
+            lp_allocation,
+            pair: pair.clone(),
+            lp_token,
+        },
+    )?;
+
+    let packet = outbound::remove_liquidity(
+        cross_chain_sender,
+        tx_id.clone(),
+        pair,
+        lp_allocation,
+        recipient,
+    )?;
+
+    let proxy_msg = FactoryExecuteMsg::ProxySendPacket {
+        msg: packet,
+        timeout: cross_chain_config.timeout,
+        ack_response: cross_chain_config.ack_response,
+        sender,
+    };
+    let proxy_wasm = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: main_factory.into_string(),
+        msg: to_json_binary(&proxy_msg)?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_attribute("method", "on_remove_liquidity")
         .add_attribute("tx_id", tx_id)
         .add_submessage(SubMsg::new(proxy_wasm)))
 }
@@ -449,6 +537,168 @@ mod tests {
             user,
             sample_pair(),
             50,
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::TxAlreadyExist {});
+    }
+
+    fn sample_recipient() -> CrossChainUser {
+        CrossChainUser {
+            chain_uid: ChainUid::create("testchain".to_string()).unwrap(),
+            address: "user1".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_on_remove_liquidity_rejects_non_main_factory_caller() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+
+        let stranger = deps.api.addr_make("stranger");
+        let user = deps.api.addr_make("user");
+        let lp_token = deps.api.addr_make("lp_token");
+        let info = message_info(&stranger, &[]);
+        let res = on_remove_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_unauth".to_string(),
+            user,
+            sample_pair().get_pair().unwrap(),
+            Uint256::from(100u128),
+            lp_token,
+            sample_recipient(),
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_on_remove_liquidity_pool_does_not_exist() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+
+        let user = deps.api.addr_make("user");
+        let lp_token = deps.api.addr_make("lp_token");
+        let info = message_info(&main_factory, &[]);
+        let res = on_remove_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_no_pool".to_string(),
+            user,
+            sample_pair().get_pair().unwrap(),
+            Uint256::from(100u128),
+            lp_token,
+            sample_recipient(),
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::PoolDoesNotExist {});
+    }
+
+    #[test]
+    fn test_on_remove_liquidity_zero_amount_rejected() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+        let pair = sample_pair().get_pair().unwrap();
+        PAIR_TO_VLP
+            .save(deps.as_mut().storage, pair.get_tupple(), &"vlp".to_string())
+            .unwrap();
+
+        let user = deps.api.addr_make("user");
+        let lp_token = deps.api.addr_make("lp_token");
+        let info = message_info(&main_factory, &[]);
+        let res = on_remove_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_zero".to_string(),
+            user,
+            pair,
+            Uint256::zero(),
+            lp_token,
+            sample_recipient(),
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::ZeroAssetAmount {});
+    }
+
+    #[test]
+    fn test_on_remove_liquidity_happy_path_emits_proxy_send() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+        install_main_factory_state_querier(&mut deps);
+
+        let pair = sample_pair().get_pair().unwrap();
+        PAIR_TO_VLP
+            .save(deps.as_mut().storage, pair.get_tupple(), &"vlp".to_string())
+            .unwrap();
+
+        let user = deps.api.addr_make("user");
+        let lp_token = deps.api.addr_make("lp_token");
+        let info = message_info(&main_factory, &[]);
+        let res = on_remove_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_rm_happy".to_string(),
+            user.clone(),
+            pair,
+            Uint256::from(123u128),
+            lp_token,
+            sample_recipient(),
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        )
+        .unwrap();
+        assert_eq!(res.messages.len(), 1);
+        let pending = PENDING_REMOVE_LIQUIDITY
+            .load(deps.as_ref().storage, (user, "tx_rm_happy".to_string()))
+            .unwrap();
+        assert_eq!(pending.tx_id, "tx_rm_happy");
+        assert_eq!(pending.lp_allocation, Uint256::from(123u128));
+    }
+
+    #[test]
+    fn test_on_remove_liquidity_duplicate_tx_id_rejected() {
+        let mut deps = mock_dependencies();
+        let main_factory = deps.api.addr_make("main_factory");
+        init_with_main_factory(&mut deps, &main_factory);
+        install_main_factory_state_querier(&mut deps);
+        let pair = sample_pair().get_pair().unwrap();
+        PAIR_TO_VLP
+            .save(deps.as_mut().storage, pair.get_tupple(), &"vlp".to_string())
+            .unwrap();
+
+        let user = deps.api.addr_make("user");
+        let lp_token = deps.api.addr_make("lp_token");
+        let info = message_info(&main_factory, &[]);
+        on_remove_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info.clone(),
+            "tx_dup".to_string(),
+            user.clone(),
+            pair.clone(),
+            Uint256::from(10u128),
+            lp_token.clone(),
+            sample_recipient(),
+            euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
+        )
+        .unwrap();
+        let res = on_remove_liquidity(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            "tx_dup".to_string(),
+            user,
+            pair,
+            Uint256::from(10u128),
+            lp_token,
+            sample_recipient(),
             euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
         );
         assert_eq!(res.unwrap_err(), ContractError::TxAlreadyExist {});

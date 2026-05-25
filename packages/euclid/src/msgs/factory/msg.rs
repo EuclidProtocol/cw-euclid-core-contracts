@@ -170,6 +170,38 @@ pub enum ExecuteMsg {
         amount: Uint256,
     },
 
+    /// Proxy entry used by `pool_factory` to burn LP cw20 tokens held by main
+    /// factory after a successful remove-liquidity ack. Main factory holds the
+    /// LP tokens (they arrived via the `cw20::Send` hook) and remains the only
+    /// authority capable of burning them. Auth: only callable by the
+    /// configured pool factory address.
+    ProxyBurnLpToken {
+        lp_token: Addr,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to return LP cw20 tokens held by
+    /// main factory back to the original sender after a failed
+    /// remove-liquidity ack. Auth: only callable by the configured pool
+    /// factory address.
+    ProxyTransferLpToken {
+        lp_token: Addr,
+        recipient: String,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to mint a concentrated-liquidity
+    /// position NFT into the singleton position-token contract held by main
+    /// factory. Slice 4 adds the auth boundary up-front; the wire-up from the
+    /// pool_factory side lands in Slice 5 (CLP add_concentrated_liquidity).
+    /// Auth: only callable by the configured pool factory address.
+    ProxyMintPosition {
+        token_id: Uint128,
+        owner: Addr,
+        vlp_address: String,
+        liquidity: Uint128,
+    },
+
     ReceivePacket {
         source_port: String,
         destination_port: String,

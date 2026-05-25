@@ -10,10 +10,14 @@ use euclid::{
 use crate::{
     execute::{
         ack::on_pool_ack,
-        cp::{on_add_liquidity, on_request_pool_creation},
+        clp::on_request_concentrated_pool_creation,
+        cp::{on_add_liquidity, on_remove_liquidity, on_request_pool_creation},
         migrate::migrate_accept_pool_state,
     },
-    query::{get_lp_token, get_main_factory_address, get_vlp},
+    query::{
+        get_concentrated_vlp, get_lp_token, get_main_factory_address, get_position_token_contract,
+        get_vlp,
+    },
     reply::{on_lp_instantiate_reply, LP_INSTANTIATE_REPLY_ID},
     state::MAIN_FACTORY_ADDRESS,
 };
@@ -86,6 +90,46 @@ pub fn execute(
             slippage_tolerance_bps,
             cross_chain_config,
         ),
+        ExecuteMsg::OnRemoveLiquidity {
+            tx_id,
+            sender,
+            pair,
+            lp_allocation,
+            lp_token,
+            recipient,
+            cross_chain_config,
+        } => on_remove_liquidity(
+            deps,
+            env,
+            info,
+            tx_id,
+            sender,
+            pair,
+            lp_allocation,
+            lp_token,
+            recipient,
+            cross_chain_config,
+        ),
+        ExecuteMsg::OnRequestConcentratedPoolCreation {
+            tx_id,
+            sender,
+            pair_with_denom_and_amount,
+            pool_key,
+            slippage_tolerance_bps,
+            initial_tick,
+            cross_chain_config,
+        } => on_request_concentrated_pool_creation(
+            deps,
+            env,
+            info,
+            tx_id,
+            sender,
+            pair_with_denom_and_amount,
+            pool_key,
+            slippage_tolerance_bps,
+            initial_tick,
+            cross_chain_config,
+        ),
         ExecuteMsg::OnPoolAck {
             original_msg,
             ack,
@@ -94,7 +138,17 @@ pub fn execute(
         ExecuteMsg::MigrateAcceptPoolState {
             pair_to_vlp,
             vlp_to_lp_token,
-        } => migrate_accept_pool_state(deps, env, info, pair_to_vlp, vlp_to_lp_token),
+            concentrated_vlps,
+            position_token_contract,
+        } => migrate_accept_pool_state(
+            deps,
+            env,
+            info,
+            pair_to_vlp,
+            vlp_to_lp_token,
+            concentrated_vlps,
+            position_token_contract,
+        ),
     }
 }
 
@@ -104,6 +158,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetVlp { pair } => get_vlp(deps, pair),
         QueryMsg::GetLpToken { vlp } => get_lp_token(deps, vlp),
         QueryMsg::GetMainFactoryAddress {} => get_main_factory_address(deps),
+        QueryMsg::GetConcentratedVlp { pool_key } => get_concentrated_vlp(deps, pool_key),
+        QueryMsg::GetPositionTokenContract {} => get_position_token_contract(deps),
     }
 }
 

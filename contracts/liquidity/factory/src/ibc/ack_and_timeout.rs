@@ -43,12 +43,15 @@ use crate::{
 
 /// Returns true if `msg` is a pool-related variant that pool_factory now owns
 /// (Slice 1 starts with `RequestPoolCreation`; Slice 2 adds `AddLiquidity`;
-/// later slices extend this set).
+/// Slice 3 adds `RemoveLiquidity`; Slice 4 adds
+/// `RequestConcentratedPoolCreation`; later slices extend this set).
 fn is_pool_variant(msg: &RouterCrossChainExecuteMsg) -> bool {
     matches!(
         msg,
         RouterCrossChainExecuteMsg::RequestPoolCreation { .. }
             | RouterCrossChainExecuteMsg::AddLiquidity { .. }
+            | RouterCrossChainExecuteMsg::RemoveLiquidity(_)
+            | RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation(_)
     )
 }
 

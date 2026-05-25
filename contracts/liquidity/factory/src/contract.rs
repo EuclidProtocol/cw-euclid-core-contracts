@@ -425,6 +425,30 @@ pub fn execute(
         } => crate::execute::proxy::execute_proxy_release_escrow(
             deps, env, info, token, denom, recipient, amount,
         ),
+        ExecuteMsg::ProxyBurnLpToken { lp_token, amount } => {
+            crate::execute::proxy::execute_proxy_burn_lp_token(deps, env, info, lp_token, amount)
+        }
+        ExecuteMsg::ProxyTransferLpToken {
+            lp_token,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_transfer_lp_token(
+            deps, env, info, lp_token, recipient, amount,
+        ),
+        ExecuteMsg::ProxyMintPosition {
+            token_id,
+            owner,
+            vlp_address,
+            liquidity,
+        } => crate::execute::proxy::execute_proxy_mint_position(
+            deps,
+            env,
+            info,
+            token_id,
+            owner,
+            vlp_address,
+            liquidity,
+        ),
     }
 }
 

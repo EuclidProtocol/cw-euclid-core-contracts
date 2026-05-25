@@ -1,11 +1,15 @@
 use cosmwasm_std::{
     ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
-    Response, SubMsg, Uint256, WasmMsg,
+    Response, SubMsg, Uint128, Uint256, WasmMsg,
 };
 use euclid::{
     chain::ChainType,
     error::ContractError,
-    msgs::{escrow::ExecuteMsg as EscrowExecuteMsg, factory::ExecuteMsg},
+    msgs::{
+        escrow::ExecuteMsg as EscrowExecuteMsg,
+        factory::ExecuteMsg,
+        position_token::{self, MintMsg as PositionMintMsg},
+    },
     token::{Token, TokenType},
 };
 use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
@@ -13,7 +17,10 @@ use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
 use crate::{
     query::get_chain_type,
     reply::RELEASE_ESCROW_REPLY_ID,
-    state::{ADMIN, POOL_FACTORY_ADDRESS, POOL_FACTORY_INITIALISED, STATE, TOKEN_TO_ESCROW},
+    state::{
+        ADMIN, POOL_FACTORY_ADDRESS, POOL_FACTORY_INITIALISED, POSITION_TOKEN_CONTRACT, STATE,
+        TOKEN_TO_ESCROW,
+    },
 };
 
 /// Bootstrap entry — wires main Factory to a freshly deployed pool_factory.
@@ -140,6 +147,75 @@ pub fn execute_proxy_mint_lp_token(
         .add_message(mint_msg))
 }
 
+/// Authorised proxy entry used by `pool_factory` to burn LP cw20 tokens held
+/// by main factory after a successful remove-liquidity ack. The LP tokens
+/// arrived on main factory via the `cw20::Send` hook before delegation, so
+/// the burn message executes from main factory's address and destroys tokens
+/// from main factory's own balance — matching the pre-refactor behaviour.
+pub fn execute_proxy_burn_lp_token(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    lp_token: Addr,
+    amount: Uint256,
+) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
+    let pool_factory = POOL_FACTORY_ADDRESS
+        .may_load(deps.storage)?
+        .ok_or(ContractError::Unauthorized {})?;
+    ensure!(info.sender == pool_factory, ContractError::Unauthorized {});
+
+    let burn_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: lp_token.clone().into_string(),
+        msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Burn { amount })?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_attribute("method", "proxy_burn_lp_token")
+        .add_attribute("pool_factory", pool_factory)
+        .add_attribute("lp_token", lp_token)
+        .add_attribute("amount", amount.to_string())
+        .add_message(burn_msg))
+}
+
+/// Authorised proxy entry used by `pool_factory` to return LP cw20 tokens
+/// held by main factory back to the original sender after a failed
+/// remove-liquidity ack. Issues a cw20 `Transfer` from main factory to the
+/// recipient — matching the pre-refactor refund behaviour.
+pub fn execute_proxy_transfer_lp_token(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    lp_token: Addr,
+    recipient: String,
+    amount: Uint256,
+) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
+    let pool_factory = POOL_FACTORY_ADDRESS
+        .may_load(deps.storage)?
+        .ok_or(ContractError::Unauthorized {})?;
+    ensure!(info.sender == pool_factory, ContractError::Unauthorized {});
+
+    let recipient_addr = deps.api.addr_validate(&recipient)?;
+    let transfer_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: lp_token.clone().into_string(),
+        msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Transfer {
+            recipient: recipient_addr.to_string(),
+            amount,
+        })?,
+        funds: vec![],
+    });
+
+    Ok(Response::new()
+        .add_attribute("method", "proxy_transfer_lp_token")
+        .add_attribute("pool_factory", pool_factory)
+        .add_attribute("lp_token", lp_token)
+        .add_attribute("recipient", recipient_addr)
+        .add_attribute("amount", amount.to_string())
+        .add_message(transfer_msg))
+}
+
 /// Authorised proxy entry used by `pool_factory` to release escrowed tokens
 /// to a recipient. Mirrors the existing `execute_release_escrow` IBC-receive
 /// path: looks up the escrow contract for `token`, issues a `Withdraw` with
@@ -185,6 +261,55 @@ pub fn execute_proxy_release_escrow(
         .add_attribute("recipient", recipient_addr)
         .add_attribute("amount", amount.to_string())
         .add_submessage(sub))
+}
+
+/// Authorised proxy entry used by `pool_factory` to mint a CLP position NFT
+/// into the singleton position-token contract that main factory administers.
+/// Slice 4 stands up the auth boundary so follow-up CLP slices (5+) can drive
+/// minting from the pool_factory side without owning the NFT contract.
+pub fn execute_proxy_mint_position(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    token_id: Uint128,
+    owner: Addr,
+    vlp_address: String,
+    liquidity: Uint128,
+) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
+    let pool_factory = POOL_FACTORY_ADDRESS
+        .may_load(deps.storage)?
+        .ok_or(ContractError::Unauthorized {})?;
+    ensure!(info.sender == pool_factory, ContractError::Unauthorized {});
+
+    let position_token_contract = POSITION_TOKEN_CONTRACT
+        .may_load(deps.storage)?
+        .ok_or_else(|| ContractError::new("Position token contract not registered"))?;
+
+    let mint_msg = position_token::ExecuteMsg::Mint(PositionMintMsg {
+        token_id,
+        token_info: position_token::TokenInfo {
+            owner: owner.clone(),
+            token_uri: None,
+        },
+        position_info: position_token::PositionInfo {
+            liquidity,
+            vlp_address: vlp_address.clone(),
+        },
+    });
+    let mint_call = mint_msg
+        .to_msg(position_token_contract.clone())
+        .map_err(ContractError::Std)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "proxy_mint_position")
+        .add_attribute("pool_factory", pool_factory)
+        .add_attribute("position_token_contract", position_token_contract)
+        .add_attribute("token_id", token_id.to_string())
+        .add_attribute("owner", owner)
+        .add_attribute("vlp", vlp_address)
+        .add_attribute("liquidity", liquidity.to_string())
+        .add_message(mint_call))
 }
 
 /// Helper used by the executor to build the WasmMsg that hands an ack to
@@ -545,6 +670,260 @@ mod tests {
             cosmwasm_std::Uint256::from(100u128),
         );
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    // -----------------------------------------------------------------------
+    // ProxyBurnLpToken
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_proxy_burn_lp_token_unauthorised_caller_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let pool_factory = deps.api.addr_make("pool_factory");
+        POOL_FACTORY_ADDRESS
+            .save(deps.as_mut().storage, &pool_factory)
+            .unwrap();
+        POOL_FACTORY_INITIALISED
+            .save(deps.as_mut().storage, &true)
+            .unwrap();
+
+        let stranger = deps.api.addr_make("stranger");
+        let lp_token = deps.api.addr_make("lp_token");
+        let info = message_info(&stranger, &[]);
+        let res = execute_proxy_burn_lp_token(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            lp_token,
+            cosmwasm_std::Uint256::from(100u128),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_proxy_burn_lp_token_without_pool_factory_set_unauthorised() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let caller = deps.api.addr_make("any");
+        let lp_token = deps.api.addr_make("lp_token");
+        let info = message_info(&caller, &[]);
+        let res = execute_proxy_burn_lp_token(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            lp_token,
+            cosmwasm_std::Uint256::from(100u128),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_proxy_burn_lp_token_authorised_caller_emits_burn() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let pool_factory = deps.api.addr_make("pool_factory");
+        POOL_FACTORY_ADDRESS
+            .save(deps.as_mut().storage, &pool_factory)
+            .unwrap();
+        POOL_FACTORY_INITIALISED
+            .save(deps.as_mut().storage, &true)
+            .unwrap();
+
+        let lp_token = deps.api.addr_make("lp_token");
+        let info = message_info(&pool_factory, &[]);
+        let res = execute_proxy_burn_lp_token(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            lp_token,
+            cosmwasm_std::Uint256::from(77u128),
+        )
+        .unwrap();
+        assert_eq!(res.messages.len(), 1);
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "proxy_burn_lp_token"));
+    }
+
+    // -----------------------------------------------------------------------
+    // ProxyTransferLpToken
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_proxy_transfer_lp_token_unauthorised_caller_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let pool_factory = deps.api.addr_make("pool_factory");
+        POOL_FACTORY_ADDRESS
+            .save(deps.as_mut().storage, &pool_factory)
+            .unwrap();
+        POOL_FACTORY_INITIALISED
+            .save(deps.as_mut().storage, &true)
+            .unwrap();
+
+        let stranger = deps.api.addr_make("stranger");
+        let lp_token = deps.api.addr_make("lp_token");
+        let recipient = deps.api.addr_make("recipient");
+        let info = message_info(&stranger, &[]);
+        let res = execute_proxy_transfer_lp_token(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            lp_token,
+            recipient.to_string(),
+            cosmwasm_std::Uint256::from(100u128),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_proxy_transfer_lp_token_authorised_caller_emits_transfer() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let pool_factory = deps.api.addr_make("pool_factory");
+        POOL_FACTORY_ADDRESS
+            .save(deps.as_mut().storage, &pool_factory)
+            .unwrap();
+        POOL_FACTORY_INITIALISED
+            .save(deps.as_mut().storage, &true)
+            .unwrap();
+
+        let lp_token = deps.api.addr_make("lp_token");
+        let recipient = deps.api.addr_make("recipient");
+        let info = message_info(&pool_factory, &[]);
+        let res = execute_proxy_transfer_lp_token(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            lp_token,
+            recipient.to_string(),
+            cosmwasm_std::Uint256::from(77u128),
+        )
+        .unwrap();
+        assert_eq!(res.messages.len(), 1);
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "proxy_transfer_lp_token"));
+    }
+
+    // -----------------------------------------------------------------------
+    // ProxyMintPosition
+    // -----------------------------------------------------------------------
+
+    fn seed_position_token_contract(deps: &mut crate::testing::helpers::MockDeps, addr: &Addr) {
+        POSITION_TOKEN_CONTRACT
+            .save(deps.as_mut().storage, addr)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_proxy_mint_position_unauthorised_caller_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let pool_factory = deps.api.addr_make("pool_factory");
+        POOL_FACTORY_ADDRESS
+            .save(deps.as_mut().storage, &pool_factory)
+            .unwrap();
+        POOL_FACTORY_INITIALISED
+            .save(deps.as_mut().storage, &true)
+            .unwrap();
+        let position_token = deps.api.addr_make("position_token");
+        seed_position_token_contract(&mut deps, &position_token);
+
+        let stranger = deps.api.addr_make("stranger");
+        let owner = deps.api.addr_make("owner");
+        let info = message_info(&stranger, &[]);
+        let res = execute_proxy_mint_position(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            cosmwasm_std::Uint128::new(1),
+            owner,
+            "vlp_clp".to_string(),
+            cosmwasm_std::Uint128::new(100),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_proxy_mint_position_without_pool_factory_set_unauthorised() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let caller = deps.api.addr_make("any");
+        let owner = deps.api.addr_make("owner");
+        let info = message_info(&caller, &[]);
+        let res = execute_proxy_mint_position(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            cosmwasm_std::Uint128::new(1),
+            owner,
+            "vlp_clp".to_string(),
+            cosmwasm_std::Uint128::new(100),
+        );
+        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
+    }
+
+    #[test]
+    fn test_proxy_mint_position_without_position_token_set_errors() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let pool_factory = deps.api.addr_make("pool_factory");
+        POOL_FACTORY_ADDRESS
+            .save(deps.as_mut().storage, &pool_factory)
+            .unwrap();
+        POOL_FACTORY_INITIALISED
+            .save(deps.as_mut().storage, &true)
+            .unwrap();
+
+        let owner = deps.api.addr_make("owner");
+        let info = message_info(&pool_factory, &[]);
+        let res = execute_proxy_mint_position(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            cosmwasm_std::Uint128::new(1),
+            owner,
+            "vlp_clp".to_string(),
+            cosmwasm_std::Uint128::new(100),
+        );
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_proxy_mint_position_authorised_caller_emits_mint() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        let pool_factory = deps.api.addr_make("pool_factory");
+        POOL_FACTORY_ADDRESS
+            .save(deps.as_mut().storage, &pool_factory)
+            .unwrap();
+        POOL_FACTORY_INITIALISED
+            .save(deps.as_mut().storage, &true)
+            .unwrap();
+        let position_token = deps.api.addr_make("position_token");
+        seed_position_token_contract(&mut deps, &position_token);
+
+        let owner = deps.api.addr_make("owner");
+        let info = message_info(&pool_factory, &[]);
+        let res = execute_proxy_mint_position(
+            deps.as_mut(),
+            mock_env(),
+            info,
+            cosmwasm_std::Uint128::new(7),
+            owner,
+            "vlp_clp".to_string(),
+            cosmwasm_std::Uint128::new(1_000),
+        )
+        .unwrap();
+        assert_eq!(res.messages.len(), 1);
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "proxy_mint_position"));
     }
 
     #[test]

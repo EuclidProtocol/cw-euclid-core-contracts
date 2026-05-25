@@ -582,23 +582,49 @@ pub fn remove_liquidity_request(
 
     let tx_id = generate_tx(deps, &env, &sender)?;
 
+    let vlp = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
+    let lp_token = VLP_TO_LP_TOKEN.load(deps.storage, vlp)?;
+
+    // Caller (cw20 hook origin) must be the matching LP cw20 contract.
+    ensure!(lp_token == info.sender, ContractError::Unauthorized {});
+
+    // Check that the liquidity is greater than 0
+    ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Slice 3: when pool_factory is wired and migration accepted, route
+    // remove-liquidity end-to-end through pool_factory. Main Factory still
+    // holds the LP cw20 tokens (they arrived via the cw20::Send hook) and
+    // drives the burn/refund through `ProxyBurnLpToken` / `ProxyTransferLpToken`
+    // after the ack.
+    if pool_factory_is_initialised(deps)? {
+        let exec = euclid::msgs::pool_factory::ExecuteMsg::OnRemoveLiquidity {
+            tx_id: tx_id.clone(),
+            sender: sender_addr.clone(),
+            pair: pair.clone(),
+            lp_allocation,
+            lp_token: lp_token.clone(),
+            recipient: recipient.clone(),
+            cross_chain_config: cross_chain_config.clone(),
+        };
+        let delegate = crate::execute::proxy::pool_factory_execute_msg(deps, &exec)?;
+        return Ok(Response::new()
+            .add_event(tx_event(
+                &tx_id,
+                sender_addr.as_str(),
+                euclid::events::TxType::RemoveLiquidity,
+            ))
+            .add_attribute("action", "remove_liquidity")
+            .add_attribute("tx_id", tx_id)
+            .add_attribute("method", "remove_liquidity_request_delegated")
+            .add_attribute("token_1", pair.token_1.to_string())
+            .add_attribute("token_2", pair.token_2.to_string())
+            .add_submessage(SubMsg::new(delegate)));
+    }
+
     ensure!(
         !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-
-    let vlp = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
-    let lp_token = VLP_TO_LP_TOKEN.load(deps.storage, vlp)?;
-
-    ensure!(lp_token == info.sender, ContractError::Unauthorized {});
-
-    ensure!(
-        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolDoesNotExist {}
-    );
-
-    // Check that the liquidity is greater than 0
-    ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
 
     let liquidity_tx_info = RemoveLiquidityRequest {
         sender: sender_addr.to_string(),
@@ -695,6 +721,48 @@ pub fn execute_request_concentrated_pool_creation(
             tick_spacing,
         },
     };
+
+    // Slice 4: when pool_factory is wired, delegate the CLP pool-creation flow.
+    // Main factory keeps fund custody (validation/transfers above) and hands
+    // the typed request to pool_factory, which records the pending entry,
+    // builds the outbound packet via `outbound::request_concentrated_pool_creation`,
+    // and dispatches it through main factory's `ProxySendPacket`. The
+    // post-ack carry-overs (position-NFT mint and per-token escrow funding)
+    // continue to land via the Slice 4 bridge pattern documented in
+    // POOL_FACTORY_REFACTOR_ISSUES.md.
+    if crate::execute::proxy::pool_factory_is_initialised(deps)? {
+        ensure!(
+            fund_manager.validate_funds_are_empty().is_ok(),
+            ContractError::new("Extra funds are not allowed")
+        );
+        let pool_factory_addr = POOL_FACTORY_ADDRESS.load(deps.storage)?;
+        let exec = euclid::msgs::pool_factory::ExecuteMsg::OnRequestConcentratedPoolCreation {
+            tx_id: tx_id.clone(),
+            sender: info.sender.clone(),
+            pair_with_denom_and_amount: pair_with_denom_and_amount.clone(),
+            pool_key,
+            slippage_tolerance_bps,
+            initial_tick,
+            cross_chain_config,
+        };
+        let delegate_msg = cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+            contract_addr: pool_factory_addr.into_string(),
+            msg: cosmwasm_std::to_json_binary(&exec)?,
+            funds: vec![],
+        });
+        return Ok(res
+            .add_event(tx_event(
+                &tx_id,
+                info.sender.as_str(),
+                euclid::events::TxType::PoolCreation,
+            ))
+            .add_attribute("action", "concentrated_pool_creation")
+            .add_attribute("tx_id", tx_id)
+            .add_attribute("method", "request_concentrated_pool_creation_delegated")
+            .add_attribute("token_1", pair.token_1.to_string())
+            .add_attribute("token_2", pair.token_2.to_string())
+            .add_submessage(SubMsg::new(delegate_msg)));
+    }
 
     ensure!(
         !PENDING_CONCENTRATED_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
