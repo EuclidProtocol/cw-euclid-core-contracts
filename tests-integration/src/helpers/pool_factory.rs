@@ -76,6 +76,8 @@ pub fn migrate_pool_state_to_pool_factory(
         &euclid::msgs::pool_factory::ExecuteMsg::MigrateAcceptPoolState {
             pair_to_vlp,
             vlp_to_lp_token,
+            concentrated_vlps: None,
+            position_token_contract: None,
         },
         &[],
     )?;
