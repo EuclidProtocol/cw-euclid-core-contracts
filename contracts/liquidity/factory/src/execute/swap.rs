@@ -202,7 +202,7 @@ pub fn execute_swap_request(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128, Uint256,
+        Uint256,
     };
     use euclid::{
         error::ContractError,

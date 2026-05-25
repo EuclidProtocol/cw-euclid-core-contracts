@@ -2,7 +2,7 @@
 
 use crate::helpers::chains::{get_escrow, get_virtual_balance, get_vlp};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128, Uint256};
+use cosmwasm_std::{Addr, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::{CwOrchQuery, Environment};
 use euclid::chain::ChainUid;
@@ -14,7 +14,6 @@ use euclid::msgs::vlp::base::GetLiquidityQueryResponse;
 use euclid::normalize::normalize_voucher_to_token;
 use euclid::recipient::Recipient;
 use euclid::token::{Pair, Token};
-use euclid::utils::pagination::Pagination;
 use euclid::voucher::BalanceKey;
 use factory::FactoryContract;
 use router::RouterContract;

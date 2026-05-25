@@ -397,7 +397,7 @@ pub fn execute_transfer_voucher(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128, Uint256,
+        Uint256,
     };
     use euclid::{
         chain::ChainUid,

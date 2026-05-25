@@ -17,7 +17,7 @@ use euclid::msgs::vlp::base::{State, NEXT_SWAP_REPLY_ID};
 use euclid::msgs::vlp::stable::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, DEFAULT_AMP_FACTOR};
 use euclid_pool::{
     add_liquidity, execute_swap, register_pool, remove_liquidity, update_admin, update_amp_factor,
-    update_fee, SwapCalculationMethod, MINIMUM_LIQUIDITY,
+    update_fee, SwapCalculationMethod,
 };
 // version info for migration info
 pub(crate) const CONTRACT_NAME: &str = "crates.io:stable_vlp";
@@ -230,7 +230,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env},
-        Addr, Uint128, Uint256, Uint64,
+        Addr, Uint256, Uint64,
     };
     use euclid::{
         admin::{AdminType, EuclidAdmin},

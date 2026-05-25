@@ -1,4 +1,3 @@
-#[cfg(not(feature = "library"))]
 use cosmwasm_std::{
     from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response, SubMsg,
     WasmMsg,

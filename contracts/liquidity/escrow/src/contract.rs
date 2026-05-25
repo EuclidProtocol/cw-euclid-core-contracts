@@ -108,7 +108,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env},
-        Addr, Uint128, Uint256,
+        Addr, Uint256,
     };
     use euclid::{
         error::ContractError,

@@ -598,7 +598,7 @@ mod tests {
     use cosmwasm_std::{
         attr,
         testing::{message_info, mock_dependencies, mock_env, MockQuerier},
-        Addr, Binary, Reply, SubMsgResponse, SubMsgResult, Uint128, Uint256,
+        Addr, Binary, Reply, SubMsgResponse, SubMsgResult, Uint256,
     };
     use euclid::{
         chain::ChainUid,

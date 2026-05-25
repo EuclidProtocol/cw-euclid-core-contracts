@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     testing::{message_info, mock_env, MockQuerier},
-    Addr, Response, Uint128, Uint256, Uint64,
+    Addr, Response, Uint256, Uint64,
 };
 use euclid::{
     admin::EuclidAdmin,

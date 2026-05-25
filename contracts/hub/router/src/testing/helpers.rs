@@ -5,8 +5,8 @@ use crate::state::{CHAIN_UID_TO_CHAIN, VIRTUAL_BALANCE_CONTRACT, VLPS};
 
 use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
 use cosmwasm_std::{
-    to_json_binary, Addr, ContractResult, DepsMut, MessageInfo, Response, SystemResult, Uint128,
-    Uint256, WasmQuery,
+    to_json_binary, Addr, ContractResult, DepsMut, MessageInfo, Response, SystemResult, Uint256,
+    WasmQuery,
 };
 
 use euclid::chain::{Chain, ChainType, ChainUid};

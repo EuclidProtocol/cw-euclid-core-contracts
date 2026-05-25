@@ -5,7 +5,6 @@ use cosmwasm_std::{Uint128, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::CwOrchError;
 use cw_orch::prelude::Environment;
-use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::ExecuteMsgFns as FactoryExecuteMsgFns;
 use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;
@@ -59,12 +58,10 @@ mod tests {
     use super::*;
     use crate::helpers::chains::{setup_interchain, setup_router};
     use crate::helpers::relayer::{extract_ack_packet_events, relay_factory_router_factory};
-    use crate::tests_reusable::constants::{
-        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
-    };
+    use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_IBC, ROUTER_CHAIN_ID};
     use crate::tests_reusable::factory_register::{setup_factory, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
-    use crate::tests_reusable::test_macros::{decimal_pair, decimal_pair_full};
+    use crate::tests_reusable::test_macros::decimal_pair;
     use cosmwasm_std::Uint64;
     use cw_orch_interchain::prelude::InterchainEnv;
     use rstest_reuse::apply;

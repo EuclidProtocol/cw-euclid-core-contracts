@@ -355,7 +355,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, Uint128, Uint256,
+        to_json_binary, Addr, Uint256,
     };
     use euclid::{
         chain::ChainUid,
