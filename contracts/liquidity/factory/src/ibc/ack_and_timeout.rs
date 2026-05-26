@@ -41,20 +41,6 @@ use crate::{
     },
 };
 
-/// Returns true if `msg` is a pool-related variant that pool_factory now owns
-/// (Slice 1 starts with `RequestPoolCreation`; Slice 2 adds `AddLiquidity`;
-/// Slice 3 adds `RemoveLiquidity`; Slice 4 adds
-/// `RequestConcentratedPoolCreation`; later slices extend this set).
-fn is_pool_variant(msg: &RouterCrossChainExecuteMsg) -> bool {
-    matches!(
-        msg,
-        RouterCrossChainExecuteMsg::RequestPoolCreation { .. }
-            | RouterCrossChainExecuteMsg::AddLiquidity { .. }
-            | RouterCrossChainExecuteMsg::RemoveLiquidity(_)
-            | RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation(_)
-    )
-}
-
 pub fn reusable_internal_ack_call(
     deps: &mut DepsMut,
     env: Env,
@@ -63,7 +49,7 @@ pub fn reusable_internal_ack_call(
     is_native: bool,
 ) -> Result<Response, ContractError> {
     // When pool_factory owns pool flows, route pool-related acks to it.
-    if crate::execute::proxy::pool_factory_is_initialised(deps)? && is_pool_variant(&msg) {
+    if crate::execute::proxy::pool_factory_is_initialised(deps)? && msg.is_pool_variant() {
         let submsg = crate::execute::proxy::pool_factory_on_pool_ack_submsg(
             deps,
             to_json_binary(&msg)?,

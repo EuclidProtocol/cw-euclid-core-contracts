@@ -37,8 +37,9 @@ use crate::query::{
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
-    self, on_lp_instantiate_reply, on_position_token_instantiate_reply,
-    CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
+    self, on_lp_instantiate_reply, on_pool_factory_delegate_reply,
+    on_position_token_instantiate_reply, CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID,
+    POOL_FACTORY_DELEGATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
 };
 use crate::reply::{
     on_escrow_instantiate_reply, on_release_escrow_reply, ESCROW_INSTANTIATE_REPLY_ID,
@@ -497,6 +498,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         POSITION_TOKEN_INSTANTIATE_REPLY_ID => {
             on_position_token_instantiate_reply(deps.branch(), msg)
         }
+        POOL_FACTORY_DELEGATE_REPLY_ID => on_pool_factory_delegate_reply(deps.branch(), env, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

@@ -48,6 +48,9 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [euclid] SC-4 Slice 4: `pool_factory::ExecuteMsg::OnRequestConcentratedPoolCreation` variant for delegated CLP pool creation; `MigrateAcceptPoolState` extended with optional `concentrated_vlps` and `position_token_contract` fields
 - [euclid] SC-4 Slice 4: `pool_factory::QueryMsg::GetConcentratedVlp` / `GetPositionTokenContract` + matching response types
 - [euclid] SC-4 Slice 4: `factory::ExecuteMsg::ProxyMintPosition` proxy variant for position-NFT minting from pool factory
+- [euclid] SC-4 reply-data amendment PR A: `msgs::pool_factory::PoolFactoryReply` enum (single variant `SendPacket { msg, timeout, ack_response, sender }`) — the typed `Response::data` shape pool_factory will return on delegated `On*` handlers in PRs B–E so main factory can run `execute_send_packet` from its reply handler instead of routing through `ProxySendPacket`
+- [euclid-ibc] SC-4 reply-data amendment PR A: `RouterCrossChainExecuteMsg::is_pool_variant()` method centralising the pool-variant matcher so main factory's inbound ack dispatcher and the new outbound reply handler share a single source of truth
+- [factory] SC-4 reply-data amendment PR A: `POOL_FACTORY_DELEGATE_REPLY_ID` reply id and `on_pool_factory_delegate_reply` handler — decodes `PoolFactoryReply::SendPacket` from a successful submsg's data, validates the inner `RouterCrossChainExecuteMsg` is a pool variant (defence in depth), and dispatches via the existing `to_msg` flow. Additive: `ProxySendPacket` remains in place until PR E retires it
 
 ### Changed
 
