@@ -993,6 +993,220 @@ mod tests {
     // Execute: RequestPoolCreation – both tokens new (no pre-existing escrow)
     // -----------------------------------------------------------------------
 
+    // Reorg-replay safety: regenerating the same tx_id on RequestPoolCreation
+    // must hit the PENDING_POOL_REQUESTS TxAlreadyExist guard before the
+    // PoolAlreadyExists check.
+    #[test]
+    fn test_request_pool_creation_duplicate_tx_id_rejected() {
+        use euclid::utils::tx::TX_NONCES;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        // One token must already be registered (escrow exists) so the second
+        // token is treated as the new one; the pair itself is NOT seeded into
+        // PAIR_TO_VLP, so the first call succeeds.
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        set_escrow_token_allowed(&mut deps, true);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+        deps.querier
+            .bank
+            .update_balance("any2", vec![cosmwasm_std::coin(1_000_000, "ueth")]);
+
+        let user = deps.api.addr_make("user");
+        let make_msg = || ExecuteMsg::RequestPoolCreation {
+            pair_with_denom_and_amount: euclid::token::PairWithDenomAndAmount {
+                token_1: euclid::token::TokenWithDenomAndAmount {
+                    token: Token::create("eth".to_string()).unwrap(),
+                    token_type: TokenType::Native {
+                        denom: "ueth".to_string(),
+                        decimals: Some(6),
+                    },
+                    amount: Uint256::from(100u128),
+                },
+                token_2: euclid::token::TokenWithDenomAndAmount {
+                    token: Token::create("usdc".to_string()).unwrap(),
+                    token_type: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                        decimals: Some(6),
+                    },
+                    amount: Uint256::from(100u128),
+                },
+            },
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            lp_token_name: "LP Token".to_string(),
+            lp_token_symbol: "LPT".to_string(),
+            lp_token_decimal: 6,
+            slippage_tolerance_bps: 50,
+            lp_token_marketing: None,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let funds = [
+            cosmwasm_std::coin(100, "uusdc"),
+            cosmwasm_std::coin(100, "ueth"),
+        ];
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&user, &funds),
+            make_msg(),
+        )
+        .unwrap();
+
+        TX_NONCES
+            .save(deps.as_mut().storage, format!("testchain:{user}"), &0u128)
+            .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&user, &funds),
+            make_msg(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::TxAlreadyExist {});
+    }
+
+    // Reorg-replay safety for AddLiquidity: the PENDING_ADD_LIQUIDITY guard
+    // must reject a regenerated tx_id even though the pool exists.
+    #[test]
+    fn test_add_liquidity_duplicate_tx_id_rejected() {
+        use euclid::utils::tx::TX_NONCES;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        set_escrow_token_allowed(&mut deps, true);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+        deps.querier
+            .bank
+            .update_balance("any2", vec![cosmwasm_std::coin(1_000_000, "ueth")]);
+
+        let user = deps.api.addr_make("user");
+        let make_msg = || ExecuteMsg::AddLiquidity {
+            pair_with_denom_and_amount: euclid::token::PairWithDenomAndAmount {
+                token_1: euclid::token::TokenWithDenomAndAmount {
+                    token: Token::create("eth".to_string()).unwrap(),
+                    token_type: TokenType::Native {
+                        denom: "ueth".to_string(),
+                        decimals: None,
+                    },
+                    amount: Uint256::from(100u128),
+                },
+                token_2: euclid::token::TokenWithDenomAndAmount {
+                    token: Token::create("usdc".to_string()).unwrap(),
+                    token_type: TokenType::Native {
+                        denom: "uusdc".to_string(),
+                        decimals: None,
+                    },
+                    amount: Uint256::from(100u128),
+                },
+            },
+            slippage_tolerance_bps: 50,
+            cross_chain_config: default_cross_chain_config(),
+        };
+        let funds = [
+            cosmwasm_std::coin(100, "uusdc"),
+            cosmwasm_std::coin(100, "ueth"),
+        ];
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&user, &funds),
+            make_msg(),
+        )
+        .unwrap();
+
+        TX_NONCES
+            .save(deps.as_mut().storage, format!("testchain:{user}"), &0u128)
+            .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&user, &funds),
+            make_msg(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::TxAlreadyExist {});
+    }
+
+    // Reorg-replay safety for RemoveLiquidity: the PENDING_REMOVE_LIQUIDITY
+    // guard must reject a regenerated tx_id. RemoveLiquidity is reached via
+    // a CW20 hook, so this test calls `remove_liquidity_request` directly
+    // (the same path the CW20 receive handler invokes).
+    #[test]
+    fn test_remove_liquidity_duplicate_tx_id_rejected() {
+        use crate::execute::pool::remove_liquidity_request;
+        use crate::state::VLP_TO_LP_TOKEN;
+        use euclid::utils::tx::TX_NONCES;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_vlp(&mut deps, "eth", "usdc", "vlp_addr");
+        seed_escrow(&mut deps, "eth", "escrow_eth");
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        let lp_token = cosmwasm_std::Addr::unchecked("lp_addr");
+        VLP_TO_LP_TOKEN
+            .save(deps.as_mut().storage, "vlp_addr".to_string(), &lp_token)
+            .unwrap();
+
+        let user_addr = deps.api.addr_make("user");
+        let sender = euclid::cross_chain_user::CrossChainUser::new(
+            euclid::chain::ChainUid::create(crate::testing::helpers::TEST_CHAIN_UID.to_string())
+                .unwrap(),
+            user_addr.to_string(),
+        );
+        let pair = euclid::token::Pair::new(
+            Token::create("eth".to_string()).unwrap(),
+            Token::create("usdc".to_string()).unwrap(),
+        )
+        .unwrap();
+        let lp_info = message_info(&lp_token, &[]);
+
+        remove_liquidity_request(
+            &mut deps.as_mut(),
+            lp_info.clone(),
+            mock_env(),
+            sender.clone(),
+            pair.clone(),
+            Uint256::from(10u128),
+            sender.clone(),
+            default_cross_chain_config(),
+        )
+        .unwrap();
+
+        TX_NONCES
+            .save(
+                deps.as_mut().storage,
+                format!("testchain:{user_addr}"),
+                &0u128,
+            )
+            .unwrap();
+
+        let err = remove_liquidity_request(
+            &mut deps.as_mut(),
+            lp_info,
+            mock_env(),
+            sender.clone(),
+            pair,
+            Uint256::from(10u128),
+            sender,
+            default_cross_chain_config(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::TxAlreadyExist {});
+    }
+
     #[test]
     fn test_request_pool_creation_both_tokens_new_fails() {
         let mut deps = mock_dependencies();

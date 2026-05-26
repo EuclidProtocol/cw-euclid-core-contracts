@@ -311,4 +311,30 @@ mod tests {
             "expected SlippageExceeded"
         );
     }
+
+    // Reorg-replay safety: if a swap packet with the same `tx_id` somehow
+    // bypasses the inbound `(chain_uid, sequence)` dedup (e.g. relayer reassigns
+    // a fresh sequence to the replayed packet), the application-layer guard at
+    // `PENDING_SWAPS.has(tx_id)` must still reject it. Without this guard a
+    // reorg could double-process a swap.
+    #[test]
+    fn test_ibc_swap_same_tx_id_rejected_with_tx_already_exist() {
+        let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
+        let mut deps = make_swap_deps_with_mock_querier(90);
+
+        call_reusable(
+            &mut deps,
+            make_swap_msg(&chain_uid, "tx_dup"),
+            chain_uid.clone(),
+        )
+        .unwrap();
+        assert!(PENDING_SWAPS.has(deps.as_ref().storage, "tx_dup".to_string()));
+
+        let err =
+            call_reusable(&mut deps, make_swap_msg(&chain_uid, "tx_dup"), chain_uid).unwrap_err();
+        assert!(
+            matches!(err, ContractError::TxAlreadyExist {}),
+            "expected TxAlreadyExist, got: {err:?}"
+        );
+    }
 }

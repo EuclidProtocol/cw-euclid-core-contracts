@@ -1179,6 +1179,52 @@ mod tests {
         assert!(matches!(err, euclid::error::ContractError::Reply { .. }));
     }
 
+    // Synthesizes the Q1(b) ack-direction failure mode: an inbound swap reply
+    // references a `tx_id` that does not match any `PENDING_SWAPS` entry (the
+    // state a reorg-replayed source would produce if its replayed `tx_id`
+    // diverged from the one the destination already ack'd). The handler must
+    // fail predictably rather than silently mutating state.
+    #[test]
+    fn test_swap_reply_ok_missing_pending_returns_error() {
+        let mut deps = initialized();
+        let asset_out = Token::create("bbb".to_string()).unwrap();
+        // Seed for a known tx_id, but reply will reference a different one.
+        seed_for_swap_reply(
+            &mut deps,
+            "tx-seeded",
+            asset_out.clone(),
+            Uint256::from(500u128),
+        );
+
+        let vlp_swap_response = VlpSwapResponse {
+            sender: CrossChainUser::new(
+                ChainUid::create("chain1".to_string()).unwrap(),
+                "swapper".to_string(),
+            ),
+            tx_id: "tx-unknown".to_string(),
+            asset_out,
+            amount_out: Uint256::from(800u128),
+        };
+        let inner_json = cosmwasm_std::to_json_binary(&vlp_swap_response).unwrap();
+        let proto_bytes = encode_execute_response(&inner_json);
+        let reply = ok_reply(SWAP_REPLY_ID, proto_bytes);
+
+        let err = on_swap_reply(&mut deps.as_mut(), mock_env(), reply).unwrap_err();
+        // Defined failure: load on a missing key surfaces as a contract error.
+        // Importantly, NO panic, NO silent partial state change.
+        assert!(
+            format!("{err}").to_lowercase().contains("not found")
+                || matches!(err, euclid::error::ContractError::Std(_)),
+            "unexpected error variant: {err:?}"
+        );
+
+        // Seeded entry under the original tx_id is untouched.
+        assert!(PENDING_SWAPS
+            .may_load(deps.as_ref().storage, "tx-seeded".to_string())
+            .unwrap()
+            .is_some());
+    }
+
     // -----------------------------------------------------------------------
     // on_pool_register_reply
     // -----------------------------------------------------------------------
