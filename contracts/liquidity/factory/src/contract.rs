@@ -394,20 +394,6 @@ pub fn execute(
             destination_port,
             ack,
         ),
-        ExecuteMsg::ProxySendPacket {
-            msg,
-            timeout,
-            ack_response,
-            sender,
-        } => crate::execute::proxy::execute_proxy_send_packet(
-            deps,
-            env,
-            info,
-            msg,
-            timeout,
-            ack_response,
-            sender,
-        ),
         ExecuteMsg::SetPoolFactory {
             pool_factory_address,
         } => crate::execute::proxy::execute_set_pool_factory(deps, env, info, pool_factory_address),

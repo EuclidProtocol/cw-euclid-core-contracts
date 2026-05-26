@@ -12,7 +12,8 @@
 //!
 //! 1. main factory deposits funds to escrow up-front,
 //! 2. delegates to `pool_factory::OnAddLiquidity`,
-//! 3. pool_factory builds the outbound packet and calls `ProxySendPacket`,
+//! 3. pool_factory builds the outbound packet and returns it via
+//!    `Response::data`; main factory's reply handler dispatches it,
 //! 4. ack returns to main factory, forwarded to `pool_factory::OnPoolAck`,
 //! 5. on success pool_factory issues `ProxyMintLpToken`; on failure it
 //!    issues `ProxyReleaseEscrow` per non-voucher token.

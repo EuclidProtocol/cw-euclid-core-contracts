@@ -91,9 +91,9 @@ mod tests {
     /// `POOL_FACTORY_INITIALISED == true`, a `RequestConcentratedPoolCreation`
     /// call against main factory takes the delegated path. Pool factory builds
     /// the outbound `RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation`
-    /// packet, dispatches it through main factory's `ProxySendPacket`, and the
-    /// ack lands back on pool_factory which records the VLP into
-    /// `CONCENTRATED_VLPS`.
+    /// packet and returns it via `Response::data`; main factory's reply
+    /// handler dispatches it, and the ack lands back on pool_factory which
+    /// records the VLP into `CONCENTRATED_VLPS`.
     ///
     /// Position-NFT mint and per-token escrow funding remain main-factory-side
     /// carry-overs in Slice 4 (see POOL_FACTORY_REFACTOR_ISSUES.md Slice 5/8

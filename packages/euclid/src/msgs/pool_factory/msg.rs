@@ -18,8 +18,9 @@ pub struct InstantiateMsg {
 #[cfg_attr(not(target_arch = "wasm32"), derive(cw_orch::ExecuteFns))]
 pub enum ExecuteMsg {
     /// Called by main factory to delegate a CP/Stable pool creation request.
-    /// pool_factory builds the outbound IBC packet and calls back into main
-    /// factory's `ProxySendPacket` to dispatch it.
+    /// pool_factory builds the outbound IBC packet and returns it via
+    /// `Response::data` typed as `PoolFactoryReply::SendPacket`; main
+    /// factory's reply handler runs the dispatch.
     OnRequestPoolCreation {
         tx_id: String,
         sender: Addr,
@@ -37,7 +38,8 @@ pub enum ExecuteMsg {
     /// Main factory has already deposited the funds to escrow and generated
     /// `tx_id`. Pool factory records the pending entry, builds the outbound
     /// `RouterCrossChainExecuteMsg::AddLiquidity` packet via `outbound`, and
-    /// calls back into main factory's `ProxySendPacket` for dispatch.
+    /// returns it via `Response::data` typed as `PoolFactoryReply::SendPacket`
+    /// for main factory's reply handler to dispatch.
     OnAddLiquidity {
         tx_id: String,
         sender: Addr,
@@ -51,7 +53,9 @@ pub enum ExecuteMsg {
     /// `cw20::Send` hook (factory now holds them) and generated `tx_id`.
     /// Pool factory records the pending entry, builds the outbound
     /// `RouterCrossChainExecuteMsg::RemoveLiquidity` packet via `outbound`,
-    /// and calls back into main factory's `ProxySendPacket` for dispatch.
+    /// and returns it via `Response::data` typed as
+    /// `PoolFactoryReply::SendPacket` for main factory's reply handler to
+    /// dispatch.
     OnRemoveLiquidity {
         tx_id: String,
         sender: Addr,
@@ -66,7 +70,8 @@ pub enum ExecuteMsg {
     /// request. Main factory has validated the request and generated `tx_id`.
     /// Pool factory records the pending entry, builds the outbound
     /// `RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation` packet via
-    /// `outbound`, and calls back into main factory's `ProxySendPacket` for
+    /// `outbound`, and returns it via `Response::data` typed as
+    /// `PoolFactoryReply::SendPacket` for main factory's reply handler to
     /// dispatch.
     OnRequestConcentratedPoolCreation {
         tx_id: String,

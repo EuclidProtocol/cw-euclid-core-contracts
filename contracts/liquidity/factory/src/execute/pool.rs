@@ -177,7 +177,9 @@ pub fn execute_request_pool_creation(
     // delegate the CP/Stable pool creation flow. Main Factory keeps fund
     // custody (escrow deposits + validation above) and hands the typed
     // request to pool_factory, which builds the outbound packet via its
-    // `outbound` module and calls back through `ProxySendPacket`.
+    // `outbound` module and returns it as `Response::data`. Main factory's
+    // `on_pool_factory_delegate_reply` consumes the payload and runs the
+    // outbound dispatch.
     if pool_factory_is_initialised(deps)? {
         // We might get errors in ack if marketing is not valid
         if let Some(marketing) = &lp_token_marketing {
@@ -439,9 +441,10 @@ pub fn add_liquidity_request(
     // Slice 2: when pool_factory is wired and migration accepted, route
     // add-liquidity end-to-end through pool_factory. Main Factory keeps
     // fund custody up to the escrow deposit, then hands the typed request
-    // to pool_factory which dispatches the IBC packet via `ProxySendPacket`
-    // and drives the ack-side proxy calls (`ProxyMintLpToken` on success,
-    // `ProxyReleaseEscrow` on failure).
+    // to pool_factory which returns the outbound packet as `Response::data`;
+    // `on_pool_factory_delegate_reply` runs the dispatch and the ack-side
+    // proxy calls (`ProxyMintLpToken` on success, `ProxyReleaseEscrow` on
+    // failure) follow.
     if pool_factory_is_initialised(deps)? {
         return add_liquidity_request_delegated(
             deps,
@@ -735,10 +738,10 @@ pub fn execute_request_concentrated_pool_creation(
     // Main factory keeps fund custody (validation/transfers above) and hands
     // the typed request to pool_factory, which records the pending entry,
     // builds the outbound packet via `outbound::request_concentrated_pool_creation`,
-    // and dispatches it through main factory's `ProxySendPacket`. The
-    // post-ack carry-overs (position-NFT mint and per-token escrow funding)
-    // continue to land via the Slice 4 bridge pattern documented in
-    // POOL_FACTORY_REFACTOR_ISSUES.md.
+    // and returns it as `Response::data` for main factory's
+    // `on_pool_factory_delegate_reply` to dispatch. The post-ack carry-overs
+    // (position-NFT mint and per-token escrow funding) continue to land via
+    // the Slice 4 bridge pattern documented in POOL_FACTORY_REFACTOR_ISSUES.md.
     if crate::execute::proxy::pool_factory_is_initialised(deps)? {
         ensure!(
             fund_manager.validate_funds_are_empty().is_ok(),
@@ -770,7 +773,10 @@ pub fn execute_request_concentrated_pool_creation(
             .add_attribute("method", "request_concentrated_pool_creation_delegated")
             .add_attribute("token_1", pair.token_1.to_string())
             .add_attribute("token_2", pair.token_2.to_string())
-            .add_submessage(SubMsg::new(delegate_msg)));
+            .add_submessage(SubMsg::reply_on_success(
+                delegate_msg,
+                crate::reply::POOL_FACTORY_DELEGATE_REPLY_ID,
+            )));
     }
 
     ensure!(

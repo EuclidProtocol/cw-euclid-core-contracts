@@ -67,6 +67,17 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [pool_factory] SC-4 reply-data amendment PR C: `on_add_liquidity` no longer emits a `FactoryExecuteMsg::ProxySendPacket` submsg; instead it returns `Response::data` typed as `PoolFactoryReply::SendPacket` carrying the outbound `RouterCrossChainExecuteMsg::AddLiquidity` packet. Attributes (`method`, `tx_id`) are preserved
 - [factory] SC-4 reply-data amendment PR D: `remove_liquidity_request` (cw20 hook) switches its pool_factory delegate SubMsg from fire-and-forget `SubMsg::new` to `SubMsg::reply_on_success(POOL_FACTORY_DELEGATE_REPLY_ID)`. LP cw20 custody and the `method=remove_liquidity_request_delegated` attribute are unchanged
 - [pool_factory] SC-4 reply-data amendment PR D: `on_remove_liquidity` no longer emits a `FactoryExecuteMsg::ProxySendPacket` submsg; instead it returns `Response::data` typed as `PoolFactoryReply::SendPacket` carrying the outbound `RouterCrossChainExecuteMsg::RemoveLiquidity` packet. CP module no longer imports `FactoryExecuteMsg` — all three CP handlers (`on_request_pool_creation`, `on_add_liquidity`, `on_remove_liquidity`) now use the reply-data pattern
+- [factory] SC-4 reply-data amendment PR E: `request_concentrated_pool_creation` delegate SubMsg in `execute_request_concentrated_pool_creation` switched from fire-and-forget `SubMsg::new` to `SubMsg::reply_on_success(POOL_FACTORY_DELEGATE_REPLY_ID)`. The `method=request_concentrated_pool_creation_delegated` attribute is unchanged
+- [pool_factory] SC-4 reply-data amendment PR E: `on_request_concentrated_pool_creation` no longer emits a `FactoryExecuteMsg::ProxySendPacket` submsg; instead it returns `Response::data` typed as `PoolFactoryReply::SendPacket` carrying the outbound `RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation` packet. The CLP module no longer imports `FactoryExecuteMsg`; all four landed pool factory handlers now use the reply-data pattern exclusively
+
+### Security
+
+- [factory] SC-4 reply-data amendment PR E: removed `factory::ExecuteMsg::ProxySendPacket` variant, the `execute_proxy_send_packet` handler, and `handle_proxy_send_packet` wrapper. Pool factory now communicates outbound IBC packets exclusively via `Response::data` typed as `PoolFactoryReply::SendPacket`, consumed by main factory's `on_pool_factory_delegate_reply`. The reply handler decodes the inner `RouterCrossChainExecuteMsg` and rejects any non-pool variant before dispatching (`is_pool_variant` check), removing the previously addressable `ProxySendPacket` execute surface as defence in depth
+
+### Removed
+
+- [factory] SC-4 reply-data amendment PR E: `ExecuteMsg::ProxySendPacket` variant (breaking change to the factory execute surface); `execute_proxy_send_packet` / `handle_proxy_send_packet` handlers in `factory/src/execute/proxy.rs`; the three associated unit tests (`test_proxy_send_packet_unauthorised_caller_rejected`, `test_proxy_send_packet_with_no_pool_factory_set_unauthorised`, `test_proxy_send_packet_authorised_caller_emits_submsg`)
+- [euclid] SC-4 reply-data amendment PR E: `factory::ExecuteMsg::ProxySendPacket` variant removed from the shared message enum
 
 ### Added (existing items continue below)
 

@@ -31,8 +31,7 @@ pub const POSITION_TOKEN_INSTANTIATE_REPLY_ID: u64 = 7;
 
 /// Reply id used by main factory to consume `pool_factory`'s typed
 /// `PoolFactoryReply::SendPacket` payload and run the existing
-/// `execute_send_packet` flow on its behalf. Replaces the previous
-/// `ProxySendPacket` ExecuteMsg variant: pool_factory no longer calls
+/// `execute_send_packet` flow on its behalf. Pool factory does not call
 /// back into main factory to request an outbound packet; instead it
 /// returns the request as `Response::data` from the `On*` handler main
 /// factory dispatched as `SubMsg::reply_on_success`.
@@ -172,7 +171,8 @@ pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
 
 /// Consumes a `PoolFactoryReply::SendPacket` payload set on the data of a
 /// successful `On*` handler invocation against pool_factory, and runs the
-/// same outbound dispatch path `execute_proxy_send_packet` runs today.
+/// same outbound dispatch path `execute_send_packet` runs for user-driven
+/// flows.
 ///
 /// Authorisation is structural: CosmWasm guarantees this reply only fires
 /// for a submsg main factory itself dispatched, so there is no public
@@ -850,8 +850,7 @@ mod tests {
             on_pool_factory_delegate_reply(deps.as_mut(), mock_env(), reply_with_data(payload))
                 .unwrap();
 
-        // One submsg emitted (the to_msg() output that execute_proxy_send_packet
-        // would emit today).
+        // One submsg emitted (the to_msg() output for the outbound packet).
         assert_eq!(res.messages.len(), 1);
         assert!(res
             .attributes

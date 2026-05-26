@@ -26,11 +26,11 @@ PRs B/C/D are order-independent among themselves. PR E lands last because deleti
 
 | PR | Status | Notes |
 |---:|:-------|:------|
-| A | ⬜ Ready to start | Pure additive infra; no behaviour change. |
-| B | ⬜ Blocked by A | Retrofits the CP-create path landed in commit `69d2740c`. |
-| C | ⬜ Blocked by A | Retrofits the CP add-liquidity path landed in commit `…` (Slice 2). |
-| D | ⬜ Blocked by A | Retrofits the CP remove-liquidity path landed in commits `7dd4c0d1`, `d55dbdd7`. |
-| E | ⬜ Blocked by A, B, C, D | Retrofits CLP-create (Slice 4) and deletes `ProxySendPacket` end-to-end. |
+| A | ✅ Done | Pure additive infra; no behaviour change. |
+| B | ✅ Done | Retrofits the CP-create path landed in commit `69d2740c`. |
+| C | ✅ Done | Retrofits the CP add-liquidity path landed in commit `…` (Slice 2). |
+| D | ✅ Done | Retrofits the CP remove-liquidity path landed in commits `7dd4c0d1`, `d55dbdd7`. |
+| E | ✅ Done | Retrofits CLP-create (Slice 4); deletes `ProxySendPacket` end-to-end; adds defence-in-depth negative integration test. |
 
 ---
 

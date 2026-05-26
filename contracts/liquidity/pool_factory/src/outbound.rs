@@ -17,7 +17,8 @@ use euclid_ibc::router_ibc::{
 };
 
 /// Builds a `RouterCrossChainExecuteMsg::RequestPoolCreation` packet ready to
-/// be handed to main factory's `ProxySendPacket`.
+/// be returned in `Response::data` as a `PoolFactoryReply::SendPacket` for
+/// main factory's reply handler to dispatch.
 pub fn request_pool_creation(
     sender: CrossChainUser,
     tx_id: String,
@@ -36,8 +37,9 @@ pub fn request_pool_creation(
 }
 
 /// Builds a `RouterCrossChainExecuteMsg::AddLiquidity` packet for the CP/Stable
-/// add-liquidity flow. The packet is dispatched through main factory's
-/// `ProxySendPacket`.
+/// add-liquidity flow. The packet is returned in `Response::data` as a
+/// `PoolFactoryReply::SendPacket` and dispatched by main factory's reply
+/// handler.
 pub fn add_liquidity(
     sender: CrossChainUser,
     tx_id: String,
@@ -54,8 +56,9 @@ pub fn add_liquidity(
 }
 
 /// Builds a `RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation`
-/// packet for the CLP pool creation flow. The packet is dispatched through
-/// main factory's `ProxySendPacket`.
+/// packet for the CLP pool creation flow. The packet is returned in
+/// `Response::data` as a `PoolFactoryReply::SendPacket` and dispatched by main
+/// factory's reply handler.
 pub fn request_concentrated_pool_creation(
     sender: CrossChainUser,
     tx_id: String,
@@ -78,8 +81,9 @@ pub fn request_concentrated_pool_creation(
 }
 
 /// Builds a `RouterCrossChainExecuteMsg::RemoveLiquidity` packet for the
-/// CP/Stable remove-liquidity flow. The packet is dispatched through main
-/// factory's `ProxySendPacket`.
+/// CP/Stable remove-liquidity flow. The packet is returned in `Response::data`
+/// as a `PoolFactoryReply::SendPacket` and dispatched by main factory's reply
+/// handler.
 pub fn remove_liquidity(
     sender: CrossChainUser,
     tx_id: String,

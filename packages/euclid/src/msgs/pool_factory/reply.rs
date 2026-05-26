@@ -4,8 +4,7 @@ use cosmwasm_std::{Addr, Binary};
 /// Typed payload that `pool_factory` returns via `Response::data` on the
 /// handlers main factory dispatched as `SubMsg::reply_on_success`.
 ///
-/// Replaces the previous `factory::ExecuteMsg::ProxySendPacket` round-trip:
-/// pool_factory no longer calls main factory to request an outbound IBC
+/// pool_factory does not call main factory to request an outbound IBC
 /// packet; instead it sets this payload, and main factory's reply handler
 /// consumes it. The trust boundary is structural (CosmWasm reply scoping
 /// guarantees the data comes from a submsg main factory itself dispatched)

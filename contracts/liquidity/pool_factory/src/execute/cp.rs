@@ -24,8 +24,7 @@ use crate::{
 ///      via `outbound::request_pool_creation`,
 ///   3. returns the packet as `Response::data` typed as
 ///      `PoolFactoryReply::SendPacket` so main factory's reply handler can
-///      drive the outbound dispatch. Replaces the previous round-trip
-///      through `factory::ExecuteMsg::ProxySendPacket`.
+///      drive the outbound dispatch.
 #[allow(clippy::too_many_arguments)]
 pub fn on_request_pool_creation(
     deps: DepsMut,
@@ -118,8 +117,7 @@ pub fn on_request_pool_creation(
 ///      `outbound::add_liquidity`,
 ///   4. returns the packet as `Response::data` typed as
 ///      `PoolFactoryReply::SendPacket` so main factory's reply handler
-///      can drive the outbound dispatch. Replaces the previous round-trip
-///      through `factory::ExecuteMsg::ProxySendPacket`.
+///      can drive the outbound dispatch.
 pub fn on_add_liquidity(
     deps: DepsMut,
     _env: Env,
@@ -202,8 +200,7 @@ pub fn on_add_liquidity(
 ///      via `outbound::remove_liquidity`,
 ///   4. returns the packet as `Response::data` typed as
 ///      `PoolFactoryReply::SendPacket` so main factory's reply handler
-///      can drive the outbound dispatch. Replaces the previous round-trip
-///      through `factory::ExecuteMsg::ProxySendPacket`.
+///      can drive the outbound dispatch.
 #[allow(clippy::too_many_arguments)]
 pub fn on_remove_liquidity(
     deps: DepsMut,

@@ -20,8 +20,9 @@ use crate::helpers::relayer::relay_factory_router_factory;
 
 /// Slice 1 round-trip: with pool_factory wired, a `RequestPoolCreation` call
 /// against main factory delegates to pool_factory which builds the outbound
-/// packet and dispatches through main factory's `ProxySendPacket`. The ack
-/// is routed back to pool_factory which registers the VLP.
+/// packet and returns it via `Response::data`; main factory's reply handler
+/// dispatches it. The ack is routed back to pool_factory which registers the
+/// VLP.
 fn create_pool_via_delegation(
     factory: &FactoryContract<MockBase>,
     router: &RouterContract<MockBase>,

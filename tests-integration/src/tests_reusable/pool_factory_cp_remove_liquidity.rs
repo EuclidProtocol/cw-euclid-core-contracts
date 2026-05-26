@@ -14,7 +14,8 @@
 //!    request, holds the LP tokens (they arrived via the cw20 hook),
 //! 2. delegates to `pool_factory::OnRemoveLiquidity`,
 //! 3. pool_factory builds the outbound `RouterCrossChainExecuteMsg::RemoveLiquidity`
-//!    packet and calls `ProxySendPacket`,
+//!    packet and returns it via `Response::data`; main factory's reply
+//!    handler dispatches it,
 //! 4. ack returns to main factory, forwarded to `pool_factory::OnPoolAck`,
 //! 5. on success pool_factory issues `ProxyBurnLpToken`; on failure it
 //!    issues `ProxyTransferLpToken` to return the LP back to the user.

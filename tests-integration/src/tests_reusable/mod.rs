@@ -15,6 +15,7 @@ pub mod pool_factory_clp_create;
 pub mod pool_factory_cp_add_liquidity;
 pub mod pool_factory_cp_create;
 pub mod pool_factory_cp_remove_liquidity;
+pub mod pool_factory_reply_rejection;
 pub mod state_sync;
 pub mod voucher_release;
 

@@ -1,24 +1,20 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo,
-    Response, SubMsg, Uint128, Uint256, WasmMsg,
+    ensure, to_json_binary, Addr, Binary, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
+    Uint128, Uint256, WasmMsg,
 };
 use euclid::{
-    chain::ChainType,
     error::ContractError,
     msgs::{
         escrow::ExecuteMsg as EscrowExecuteMsg,
-        factory::ExecuteMsg,
         position_token::{self, MintMsg as PositionMintMsg},
     },
     token::{Token, TokenType},
 };
-use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
 
 use crate::{
-    query::get_chain_type,
     reply::RELEASE_ESCROW_REPLY_ID,
     state::{
-        ADMIN, POOL_FACTORY_ADDRESS, POOL_FACTORY_INITIALISED, POSITION_TOKEN_CONTRACT, STATE,
+        ADMIN, POOL_FACTORY_ADDRESS, POOL_FACTORY_INITIALISED, POSITION_TOKEN_CONTRACT,
         TOKEN_TO_ESCROW,
     },
 };
@@ -54,59 +50,6 @@ pub fn execute_set_pool_factory(
     Ok(Response::new()
         .add_attribute("method", "set_pool_factory")
         .add_attribute("pool_factory_address", pool_factory_addr))
-}
-
-/// Authorised proxy entry used by `pool_factory` to dispatch a pool-related
-/// `RouterCrossChainExecuteMsg` through main Factory's existing transport.
-///
-/// The body deserialises the packed binary back into the typed enum and calls
-/// the same `to_msg` factory uses today, so both Cosmos (SendPacket → IBC) and
-/// Native (direct router callback) branches behave identically to the
-/// pre-refactor flow.
-pub fn execute_proxy_send_packet(
-    mut deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: Binary,
-    timeout: Option<u64>,
-    ack_response: Option<Binary>,
-    sender: Addr,
-) -> Result<Response, ContractError> {
-    cw_utils::nonpayable(&info)?;
-    let pool_factory = POOL_FACTORY_ADDRESS
-        .may_load(deps.storage)?
-        .ok_or(ContractError::Unauthorized {})?;
-    ensure!(info.sender == pool_factory, ContractError::Unauthorized {});
-
-    let router_msg: RouterCrossChainExecuteMsg = from_json(&msg)?;
-    let tx_id = router_msg.get_tx_id();
-
-    let state = STATE.load(deps.storage)?;
-    let chain_type: ChainType = get_chain_type(deps.as_ref(), &env)?;
-
-    let submsg = match chain_type {
-        ChainType::Native {} | ChainType::Cosmos(_) => router_msg.to_msg(
-            &mut deps,
-            &env,
-            state.router_contract.clone(),
-            sender.clone(),
-            state.chain_uid.clone(),
-            chain_type,
-            timeout,
-            ack_response,
-        )?,
-        _ => {
-            return Err(ContractError::new(
-                "Pool factory proxy only supports cosmos/native chain types",
-            ));
-        }
-    };
-
-    Ok(Response::new()
-        .add_attribute("method", "proxy_send_packet")
-        .add_attribute("pool_factory", pool_factory)
-        .add_attribute("tx_id", tx_id)
-        .add_submessage(submsg))
 }
 
 /// Authorised proxy entry used by `pool_factory` to mint LP cw20 tokens to a
@@ -370,154 +313,16 @@ pub fn handle_set_pool_factory(
     execute_set_pool_factory(deps, env, info, pool_factory_address)
 }
 
-/// Wrapper kept symmetric with the other `execute_*` exports.
-pub fn handle_proxy_send_packet(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
-    match msg {
-        ExecuteMsg::ProxySendPacket {
-            msg,
-            timeout,
-            ack_response,
-            sender,
-        } => execute_proxy_send_packet(deps, env, info, msg, timeout, ack_response, sender),
-        _ => Err(ContractError::new("invalid proxy variant")),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr,
+        Addr,
     };
-    use euclid::{
-        cross_chain_user::CrossChainUser,
-        msgs::vlp::base::PoolConfig,
-        token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount},
-    };
-    use euclid_ibc::router_ibc::RouterCrossChainExecuteMsg;
+    use euclid::token::{Token, TokenType};
 
-    use crate::testing::helpers::{init, TEST_CHAIN_UID};
-
-    fn cross_chain_user(addr: &str) -> CrossChainUser {
-        CrossChainUser {
-            chain_uid: euclid::chain::ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap(),
-            address: addr.to_string(),
-        }
-    }
-
-    fn make_pool_creation_packet(sender_addr: &str) -> cosmwasm_std::Binary {
-        let pair = PairWithDenomAndAmount {
-            token_1: TokenWithDenomAndAmount {
-                token: Token::create("aaa".to_string()).unwrap(),
-                token_type: TokenType::Native {
-                    denom: "uaaa".to_string(),
-                    decimals: None,
-                },
-                amount: cosmwasm_std::Uint256::from(100u128),
-            },
-            token_2: TokenWithDenomAndAmount {
-                token: Token::create("bbb".to_string()).unwrap(),
-                token_type: TokenType::Native {
-                    denom: "ubbb".to_string(),
-                    decimals: None,
-                },
-                amount: cosmwasm_std::Uint256::from(100u128),
-            },
-        };
-        to_json_binary(&RouterCrossChainExecuteMsg::RequestPoolCreation {
-            sender: cross_chain_user(sender_addr),
-            tx_id: "tx_test".to_string(),
-            pair,
-            pool_config: PoolConfig::ConstantProduct {},
-            slippage_tolerance_bps: 50,
-        })
-        .unwrap()
-    }
-
-    #[test]
-    fn test_proxy_send_packet_unauthorised_caller_rejected() {
-        let mut deps = mock_dependencies();
-        init(&mut deps);
-        // Wire pool factory so the auth check has a configured address to
-        // compare against, but call from a different sender.
-        let pool_factory = deps.api.addr_make("pool_factory");
-        POOL_FACTORY_ADDRESS
-            .save(deps.as_mut().storage, &pool_factory)
-            .unwrap();
-        POOL_FACTORY_INITIALISED
-            .save(deps.as_mut().storage, &true)
-            .unwrap();
-
-        let stranger = deps.api.addr_make("stranger");
-        let user = deps.api.addr_make("user");
-        let info = message_info(&stranger, &[]);
-        let res = execute_proxy_send_packet(
-            deps.as_mut(),
-            mock_env(),
-            info,
-            make_pool_creation_packet(user.as_str()),
-            None,
-            None,
-            user,
-        );
-        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
-    }
-
-    #[test]
-    fn test_proxy_send_packet_with_no_pool_factory_set_unauthorised() {
-        let mut deps = mock_dependencies();
-        init(&mut deps);
-        let caller = deps.api.addr_make("any_caller");
-        let user = deps.api.addr_make("user");
-        let info = message_info(&caller, &[]);
-        let res = execute_proxy_send_packet(
-            deps.as_mut(),
-            mock_env(),
-            info,
-            make_pool_creation_packet(user.as_str()),
-            None,
-            None,
-            user,
-        );
-        assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
-    }
-
-    #[test]
-    fn test_proxy_send_packet_authorised_caller_emits_submsg() {
-        let mut deps = mock_dependencies();
-        init(&mut deps);
-        let pool_factory = deps.api.addr_make("pool_factory");
-        POOL_FACTORY_ADDRESS
-            .save(deps.as_mut().storage, &pool_factory)
-            .unwrap();
-        POOL_FACTORY_INITIALISED
-            .save(deps.as_mut().storage, &true)
-            .unwrap();
-
-        let user = deps.api.addr_make("user");
-        let info = message_info(&pool_factory, &[]);
-        let res = execute_proxy_send_packet(
-            deps.as_mut(),
-            mock_env(),
-            info,
-            make_pool_creation_packet(user.as_str()),
-            None,
-            None,
-            user,
-        )
-        .unwrap();
-        assert_eq!(res.messages.len(), 1);
-        assert!(res
-            .attributes
-            .iter()
-            .any(|a| a.key == "method" && a.value == "proxy_send_packet"));
-    }
+    use crate::testing::helpers::init;
 
     #[test]
     fn test_set_pool_factory_one_shot() {
@@ -554,8 +359,6 @@ mod tests {
             execute_set_pool_factory(deps.as_mut(), mock_env(), info, pool_factory.to_string());
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
     }
-
-    fn _silence(_: Pair) {}
 
     // -----------------------------------------------------------------------
     // ProxyMintLpToken

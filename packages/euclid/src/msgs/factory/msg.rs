@@ -134,16 +134,6 @@ pub enum ExecuteMsg {
         sender: Addr,
     },
 
-    /// Proxy entry used by `pool_factory` to dispatch a cross-chain pool packet
-    /// through main factory's existing IBC/native send path. Auth: only callable
-    /// by the configured pool factory address.
-    ProxySendPacket {
-        msg: Binary,
-        timeout: Option<u64>,
-        ack_response: Option<Binary>,
-        sender: Addr,
-    },
-
     /// Admin entry to bootstrap the pool_factory link on a fresh chain.
     /// One-shot: rejects if `POOL_FACTORY_INITIALISED` is already true.
     SetPoolFactory {
