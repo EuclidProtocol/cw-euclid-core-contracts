@@ -624,7 +624,10 @@ pub fn remove_liquidity_request(
             .add_attribute("method", "remove_liquidity_request_delegated")
             .add_attribute("token_1", pair.token_1.to_string())
             .add_attribute("token_2", pair.token_2.to_string())
-            .add_submessage(SubMsg::new(delegate)));
+            .add_submessage(SubMsg::reply_on_success(
+                delegate,
+                crate::reply::POOL_FACTORY_DELEGATE_REPLY_ID,
+            )));
     }
 
     ensure!(
