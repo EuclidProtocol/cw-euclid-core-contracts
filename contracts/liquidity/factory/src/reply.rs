@@ -195,16 +195,32 @@ pub fn on_pool_factory_delegate_reply(
             err,
         })?;
 
+    // SubMsg::reply_on_success delivers the called contract's
+    // `Response::data` wrapped in a protobuf `MsgExecuteContractResponse`
+    // envelope. Unwrap it the same way `on_release_escrow_reply` does
+    // before decoding the inner JSON payload.
     #[allow(deprecated)]
-    let data = result.data.ok_or_else(|| ContractError::Reply {
+    let envelope = result.data.ok_or_else(|| ContractError::Reply {
         action: function_name!().to_string(),
         err: "pool_factory delegate reply missing data".to_string(),
     })?;
 
-    let reply_payload: PoolFactoryReply = from_json(&data).map_err(|err| ContractError::Reply {
-        action: function_name!().to_string(),
-        err: format!("failed to decode PoolFactoryReply: {err}"),
-    })?;
+    let inner = parse_execute_response_data(&envelope)
+        .map_err(|err| ContractError::Reply {
+            action: function_name!().to_string(),
+            err: format!("failed to parse execute response envelope: {err}"),
+        })?
+        .data
+        .ok_or_else(|| ContractError::Reply {
+            action: function_name!().to_string(),
+            err: "pool_factory delegate reply envelope carried no data".to_string(),
+        })?;
+
+    let reply_payload: PoolFactoryReply =
+        from_json(&inner).map_err(|err| ContractError::Reply {
+            action: function_name!().to_string(),
+            err: format!("failed to decode PoolFactoryReply: {err}"),
+        })?;
 
     match reply_payload {
         PoolFactoryReply::SendPacket {
@@ -793,7 +809,13 @@ mod tests {
         .unwrap()
     }
 
-    fn reply_with_data(data: Binary) -> Reply {
+    /// Wraps an inner payload in the protobuf MsgExecuteContractResponse
+    /// envelope that a real SubMsg::reply_on_success would deliver. The
+    /// `encode_execute_response` helper at the top of this test module
+    /// produces the same encoding the CosmWasm VM emits for a successful
+    /// execute SubMsg.
+    fn reply_with_data(inner: Binary) -> Reply {
+        let envelope = Binary::from(encode_execute_response(inner.as_slice()));
         Reply {
             id: POOL_FACTORY_DELEGATE_REPLY_ID,
             payload: Binary::default(),
@@ -802,7 +824,7 @@ mod tests {
             result: SubMsgResult::Ok(SubMsgResponse {
                 events: vec![],
                 #[allow(deprecated)]
-                data: Some(data),
+                data: Some(envelope),
                 msg_responses: vec![],
             }),
         }

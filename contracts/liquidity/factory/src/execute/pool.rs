@@ -220,7 +220,10 @@ pub fn execute_request_pool_creation(
             .add_attribute("method", "request_pool_creation_delegated")
             .add_attribute("token_1", pair.token_1.to_string())
             .add_attribute("token_2", pair.token_2.to_string())
-            .add_submessage(SubMsg::new(delegate_msg)));
+            .add_submessage(SubMsg::reply_on_success(
+                delegate_msg,
+                crate::reply::POOL_FACTORY_DELEGATE_REPLY_ID,
+            )));
     }
 
     ensure!(
