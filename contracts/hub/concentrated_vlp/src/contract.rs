@@ -16,7 +16,7 @@ use euclid::{
     fee::{DenomFees, TotalFees, BPS_100_PERCENT},
     msgs::vlp::{
         base::{
-            GetSwapQueryResponse, PoolConfig, PoolType, State, VlpConcentratedAddLiquidityResponse,
+            GetSwapQueryResponse, PoolType, State, VlpConcentratedAddLiquidityResponse,
             VlpConcentratedCollectFeesResponse, VlpConcentratedCollectProtocolFeesResponse,
             VlpConcentratedRemoveLiquidityResponse, VlpSwapMsg, VlpSwapResponse,
             NEXT_SWAP_REPLY_ID,
@@ -30,7 +30,7 @@ use euclid::{
     swap::NextSwapVlp,
     token::Token,
 };
-use euclid_pool::{register_pool, update_admin, update_fee};
+use euclid_pool::common::{register_pool, update_admin, update_fee};
 
 use crate::{
     math::{
@@ -158,14 +158,13 @@ pub fn instantiate(
                         info.clone(),
                         &STATE,
                         &CHAIN_LP_TOKENS,
-                        PoolConfig::Concentrated {
-                            fee_tier_bps: msg.fee_tier_bps,
-                            tick_spacing: msg.tick_spacing,
-                        },
                         register_pool_msg.sender.clone(),
                         register_pool_msg.pool_key.pair.clone(),
                         register_pool_msg.tx_id.clone(),
-                    )?;
+                    )?
+                    .add_attribute("pool_type", "concentrated")
+                    .add_attribute("fee_tier_bps", msg.fee_tier_bps.to_string())
+                    .add_attribute("tick_spacing", msg.tick_spacing.to_string());
                     let ack = euclid::msgs::vlp::base::ConcentratedPoolCreationResponse {
                         vlp_contract: env.contract.address.to_string(),
                         tx_id: register_pool_msg.tx_id,
@@ -209,14 +208,13 @@ pub fn execute(
                 info,
                 &STATE,
                 &CHAIN_LP_TOKENS,
-                PoolConfig::Concentrated {
-                    fee_tier_bps: pool_state.get_fee_tier_bps()?,
-                    tick_spacing: pool_state.get_tick_spacing()?,
-                },
                 register_pool_msg.sender.clone(),
                 register_pool_msg.pool_key.pair.clone(),
                 register_pool_msg.tx_id.clone(),
-            )?;
+            )?
+            .add_attribute("pool_type", "concentrated")
+            .add_attribute("fee_tier_bps", pool_state.get_fee_tier_bps()?.to_string())
+            .add_attribute("tick_spacing", pool_state.get_tick_spacing()?.to_string());
             let ack = euclid::msgs::vlp::base::ConcentratedPoolCreationResponse {
                 vlp_contract: env.contract.address.to_string(),
                 tx_id: register_pool_msg.tx_id,

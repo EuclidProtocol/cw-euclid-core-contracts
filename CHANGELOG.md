@@ -70,6 +70,14 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [factory] SC-4 reply-data amendment PR E: `request_concentrated_pool_creation` delegate SubMsg in `execute_request_concentrated_pool_creation` switched from fire-and-forget `SubMsg::new` to `SubMsg::reply_on_success(POOL_FACTORY_DELEGATE_REPLY_ID)`. The `method=request_concentrated_pool_creation_delegated` attribute is unchanged
 - [pool_factory] SC-4 reply-data amendment PR E: `on_request_concentrated_pool_creation` no longer emits a `FactoryExecuteMsg::ProxySendPacket` submsg; instead it returns `Response::data` typed as `PoolFactoryReply::SendPacket` carrying the outbound `RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation` packet. The CLP module no longer imports `FactoryExecuteMsg`; all four landed pool factory handlers now use the reply-data pattern exclusively
 
+#### Packages
+
+- [euclid_pool] SC-4 pool-function split: `pool_functions.rs` replaced by per-pool-type modules. `euclid_pool::cp` owns constant-product math and operations (`calculate_cp_swap`, `calculate_lp_allocation`, `add_liquidity`, `pre_swap`, `execute_swap`, `simulate_swap`); `euclid_pool::stable` owns the StableSwap equivalents with a required `amp_factor: Uint64`; `euclid_pool::common` keeps the pool-type-agnostic surface (`register_pool`, `remove_liquidity`, `assert_slippage_tolerance`, `update_fee`, `update_amp_factor`, `update_admin`, `calculate_amount_from_shares`, `PreSwapResponse`, `SwapResult`, `MINIMUM_LIQUIDITY`). Contracts now call dedicated per-type functions instead of one reusable function that branched internally
+- [euclid_pool] `register_pool` no longer takes a `PoolConfig` argument; pool-type event attributes (`pool_type`, `amp_factor`, `fee_tier_bps`, `tick_spacing`) are emitted by the calling VLP after `register_pool` returns. Emitted attributes are unchanged from before
+- [cp_vlp] swap/liquidity/registration call sites moved to `euclid_pool::cp::*` / `euclid_pool::common::*`; `SwapCalculationMethod::Regular` discriminant removed from call sites
+- [stable_vlp] swap/liquidity/registration call sites moved to `euclid_pool::stable::*` / `euclid_pool::common::*`; `SwapCalculationMethod::Stable(amp)` and the `Some(amp_factor)` add-liquidity discriminant removed — `amp_factor` is now a plain required argument
+- [concentrated_vlp] registration and CP-style simulate-swap call sites moved to `euclid_pool::common::*` / `euclid_pool::cp::*`
+
 ### Security
 
 - [factory] SC-4 reply-data amendment PR E: removed `factory::ExecuteMsg::ProxySendPacket` variant, the `execute_proxy_send_packet` handler, and `handle_proxy_send_packet` wrapper. Pool factory now communicates outbound IBC packets exclusively via `Response::data` typed as `PoolFactoryReply::SendPacket`, consumed by main factory's `on_pool_factory_delegate_reply`. The reply handler decodes the inner `RouterCrossChainExecuteMsg` and rejects any non-pool variant before dispatching (`is_pool_variant` check), removing the previously addressable `ProxySendPacket` execute surface as defence in depth
@@ -78,6 +86,7 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 
 - [factory] SC-4 reply-data amendment PR E: `ExecuteMsg::ProxySendPacket` variant (breaking change to the factory execute surface); `execute_proxy_send_packet` / `handle_proxy_send_packet` handlers in `factory/src/execute/proxy.rs`; the three associated unit tests (`test_proxy_send_packet_unauthorised_caller_rejected`, `test_proxy_send_packet_with_no_pool_factory_set_unauthorised`, `test_proxy_send_packet_authorised_caller_emits_submsg`)
 - [euclid] SC-4 reply-data amendment PR E: `factory::ExecuteMsg::ProxySendPacket` variant removed from the shared message enum
+- [euclid_pool] SC-4 pool-function split: `SwapCalculationMethod` enum removed (the per-type modules encode the swap curve directly); `pool_functions` module removed in favour of `cp` / `stable` / `common`; the `amp_factor: Option<Uint64>` parameter on `add_liquidity` removed (CP has no amp factor; stable takes it as a required `Uint64`)
 
 ### Added (existing items continue below)
 

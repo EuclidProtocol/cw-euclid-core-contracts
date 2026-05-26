@@ -112,10 +112,10 @@ d_new = (leverage * sum_x + d_product * n_coins) * initial_d
 User submits swap(amount_in, asset_in)
     |
     v
-pre_swap (pool_functions.rs:528)
+stable::pre_swap (stable.rs) -> common::pre_swap_inner (common.rs)
     |-- Calculate fees: lp_fee + euclid_fee
     |-- swap_amount = amount_in - fees
-    |-- Pass Uint128 directly to compute_stable_swap
+    |-- Pass Uint128 directly to compute_stable_swap (via the stable closure)
     |
     v
 compute_stable_swap (stable_math.rs:19)
@@ -125,11 +125,15 @@ compute_stable_swap (stable_math.rs:19)
     |-- return SwapResult { return_amount, spread_amount } as Uint128
     |
     v
-execute_swap (pool_functions.rs:589)
+stable::execute_swap (stable.rs) -> common::execute_swap_inner (common.rs)
     |-- Update reserves: in += swap_amount + lp_fee, out -= receive_amount
     |-- Transfer euclid_fee to fee recipient
     |-- Transfer receive_amount to user (or chain to next swap)
 ```
+
+The constant-product pipeline is identical but routed through `cp::pre_swap` /
+`cp::execute_swap`, which pass `calculate_cp_swap` as the swap closure instead of
+`compute_stable_swap`.
 
 ## Known Limitations
 
