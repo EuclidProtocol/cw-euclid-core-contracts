@@ -122,7 +122,10 @@ pub fn on_request_pool_creation(
 ///   2. records the request in `PENDING_ADD_LIQUIDITY` keyed by (sender, tx_id),
 ///   3. builds the outbound `RouterCrossChainExecuteMsg::AddLiquidity` via
 ///      `outbound::add_liquidity`,
-///   4. hands the packet to `main_factory::ProxySendPacket` for dispatch.
+///   4. returns the packet as `Response::data` typed as
+///      `PoolFactoryReply::SendPacket` so main factory's reply handler
+///      can drive the outbound dispatch. Replaces the previous round-trip
+///      through `factory::ExecuteMsg::ProxySendPacket`.
 pub fn on_add_liquidity(
     deps: DepsMut,
     _env: Env,
@@ -179,22 +182,17 @@ pub fn on_add_liquidity(
         slippage_tolerance_bps,
     )?;
 
-    let proxy_msg = FactoryExecuteMsg::ProxySendPacket {
+    let reply_data = to_json_binary(&PoolFactoryReply::SendPacket {
         msg: packet,
         timeout: cross_chain_config.timeout,
         ack_response: cross_chain_config.ack_response,
         sender,
-    };
-    let proxy_wasm = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: main_factory.into_string(),
-        msg: to_json_binary(&proxy_msg)?,
-        funds: vec![],
-    });
+    })?;
 
     Ok(Response::new()
         .add_attribute("method", "on_add_liquidity")
         .add_attribute("tx_id", tx_id)
-        .add_submessage(SubMsg::new(proxy_wasm)))
+        .set_data(reply_data))
 }
 
 /// Handles a CP/Stable `RemoveLiquidity` delegated from main factory. Caller
@@ -500,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn test_on_add_liquidity_happy_path_emits_proxy_send() {
+    fn test_on_add_liquidity_happy_path_sets_reply_data() {
         let mut deps = mock_dependencies();
         let main_factory = deps.api.addr_make("main_factory");
         init_with_main_factory(&mut deps, &main_factory);
@@ -529,11 +527,43 @@ mod tests {
             euclid::msgs::cross_chain_config::CrossChainConfig::new(None, None, None),
         )
         .unwrap();
-        assert_eq!(res.messages.len(), 1);
+
+        // Reply-data path: handler emits no submessages itself; main
+        // factory's reply handler consumes Response.data and runs the
+        // outbound dispatch.
+        assert!(res.messages.is_empty());
+
         let pending = PENDING_ADD_LIQUIDITY
-            .load(deps.as_ref().storage, (user, "tx_al_happy".to_string()))
+            .load(
+                deps.as_ref().storage,
+                (user.clone(), "tx_al_happy".to_string()),
+            )
             .unwrap();
         assert_eq!(pending.tx_id, "tx_al_happy");
+
+        let data = res.data.expect("reply data must be set");
+        let reply: euclid::msgs::pool_factory::PoolFactoryReply =
+            cosmwasm_std::from_json(&data).unwrap();
+        match reply {
+            euclid::msgs::pool_factory::PoolFactoryReply::SendPacket {
+                msg,
+                timeout,
+                ack_response,
+                sender,
+            } => {
+                assert_eq!(sender, user);
+                assert!(timeout.is_none());
+                assert!(ack_response.is_none());
+                let router_msg: euclid_ibc::router_ibc::RouterCrossChainExecuteMsg =
+                    cosmwasm_std::from_json(&msg).unwrap();
+                assert!(matches!(
+                    router_msg,
+                    euclid_ibc::router_ibc::RouterCrossChainExecuteMsg::AddLiquidity { .. }
+                ));
+                assert_eq!(router_msg.get_tx_id(), "tx_al_happy");
+                assert!(router_msg.is_pool_variant());
+            }
+        }
     }
 
     #[test]
