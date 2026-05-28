@@ -7,9 +7,10 @@ use euclid::{
         AllConcentratedPoolsResponse, AllPoolsResponse, AllTokensResponse,
         ConcentratedPoolVlpResponse, FeeBracket, GetConcentratedVlpResponse, GetEscrowResponse,
         GetLPTokenResponse, GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse,
-        GetPendingSwapsResponse, GetPositionTokenContractResponse, GetRateLimitStateResponse,
-        GetUserRateLimitResponse, GetVlpResponse, PartnerFeesCollectedPerDenomResponse,
-        PartnerFeesCollectedResponse, PoolVlpResponse, StateResponse,
+        GetPendingSingleSidedLiquidityResponse, GetPendingSwapsResponse,
+        GetPositionTokenContractResponse, GetRateLimitStateResponse, GetUserRateLimitResponse,
+        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
+        PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
@@ -19,8 +20,8 @@ use crate::{
     rate_limit::{RATE_LIMIT_STATE, USER_FREE_LIMIT, USER_PENDING_PACKETS_COUNT},
     state::{
         ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SWAPS, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW,
-        VLP_TO_LP_TOKEN,
+        PENDING_SINGLE_SIDED_LIQUIDITY, PENDING_SWAPS, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT,
+        STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
     },
 };
 use euclid::msgs::vlp::base::PoolKey;
@@ -215,6 +216,28 @@ pub fn pending_remove_liquidity(
     })?)
 }
 
+// Returns pending single-sided add-liquidity requests for a user.
+pub fn pending_single_sided_liquidity(
+    deps: Deps,
+    user: Addr,
+    pagination: Pagination<Uint256>,
+) -> Result<Binary, ContractError> {
+    let min = pagination.min.map(Bound::inclusive);
+    let max = pagination.max.map(Bound::inclusive);
+
+    let pending_single_sided_liquidity = PENDING_SINGLE_SIDED_LIQUIDITY
+        .prefix(user)
+        .range(deps.storage, min, max, Order::Ascending)
+        .skip(pagination.skip.unwrap_or(0) as usize)
+        .take(pagination.limit.unwrap_or(10) as usize)
+        .flat_map(|k| -> Result<_, ContractError> { Ok(k?.1) })
+        .collect();
+
+    Ok(to_json_binary(&GetPendingSingleSidedLiquidityResponse {
+        pending_single_sided_liquidity,
+    })?)
+}
+
 pub fn get_rate_limit_state(deps: Deps) -> Result<Binary, ContractError> {
     let state = RATE_LIMIT_STATE.load(deps.storage)?;
     let fee_brackets = state
@@ -258,7 +281,7 @@ pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError>
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, ContractResult, SystemResult, Uint128, Uint256, WasmQuery,
+        to_json_binary, Addr, ContractResult, SystemResult, Uint256, WasmQuery,
     };
     use euclid::{
         chain::ChainUid,

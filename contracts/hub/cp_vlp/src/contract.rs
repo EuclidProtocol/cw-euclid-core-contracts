@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::{
-    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint256,
-};
+use cosmwasm_std::entry_point;
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint256};
 use cw2::set_contract_version;
 use euclid::{
     error::ContractError,

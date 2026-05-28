@@ -5,7 +5,6 @@ use cosmwasm_std::{Uint128, Uint256};
 use cw_orch::mock::MockBase;
 use cw_orch::prelude::CwOrchError;
 use cw_orch::prelude::Environment;
-use cw_orch_interchain::prelude::InterchainEnv;
 use euclid::msgs::cross_chain_config::CrossChainConfig;
 use euclid::msgs::factory::ExecuteMsgFns as FactoryExecuteMsgFns;
 use euclid::msgs::factory::QueryMsgFns as FactoryQueryMsgFns;

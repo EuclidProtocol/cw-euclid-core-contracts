@@ -399,7 +399,7 @@ pub fn execute_transfer_voucher(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128, Uint256,
+        Uint256,
     };
     use euclid::{
         chain::ChainUid,
@@ -505,6 +505,149 @@ mod tests {
             token_with_denom.token_type.get_key()
         );
         assert_tx_event_full(&res, "register_denom", &tx_id, admin.as_str());
+    }
+
+    // Reorg-replay safety: same tx_id must be rejected on second submission.
+    // Simulated by rewinding the per-sender nonce after the first happy-path
+    // call so the second call regenerates the same tx_id and trips the
+    // PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS guard.
+    #[test]
+    fn test_register_denom_duplicate_tx_id_rejected() {
+        use euclid::utils::tx::TX_NONCES;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+        set_escrow_token_allowed(&mut deps, false);
+
+        let admin = deps.api.addr_make("sender");
+        let token_with_denom = euclid::token::TokenWithDenom {
+            token: Token::create("usdc".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+        };
+        let make_msg = || ExecuteMsg::RegisterDenom {
+            token_with_denom: token_with_denom.clone(),
+            cross_chain_config: default_cross_chain_config(),
+        };
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&admin, &[]),
+            make_msg(),
+        )
+        .unwrap();
+
+        TX_NONCES
+            .save(deps.as_mut().storage, format!("testchain:{admin}"), &0u128)
+            .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&admin, &[]),
+            make_msg(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::TxAlreadyExist {});
+    }
+
+    // Reorg-replay safety for deregister_denom: regenerating the same tx_id
+    // must hit the same PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS guard.
+    #[test]
+    fn test_deregister_denom_duplicate_tx_id_rejected() {
+        use euclid::utils::tx::TX_NONCES;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        set_escrow_token_allowed(&mut deps, true);
+
+        let admin = deps.api.addr_make("sender");
+        let token = native_token("usdc", "uusdc");
+        let make_msg = || ExecuteMsg::DeregisterDenom {
+            token_with_denom: token.clone(),
+            cross_chain_config: default_cross_chain_config(),
+        };
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&admin, &[]),
+            make_msg(),
+        )
+        .unwrap();
+
+        TX_NONCES
+            .save(deps.as_mut().storage, format!("testchain:{admin}"), &0u128)
+            .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&admin, &[]),
+            make_msg(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::TxAlreadyExist {});
+    }
+
+    // Reorg-replay safety for deposit_token: same as above but for the
+    // PENDING_TOKEN_DEPOSIT guard.
+    #[test]
+    fn test_deposit_token_duplicate_tx_id_rejected() {
+        use euclid::utils::tx::TX_NONCES;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        set_escrow_token_allowed(&mut deps, true);
+
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+
+        let user = deps.api.addr_make("user");
+        let asset_in = euclid::token::TokenWithDenom {
+            token: Token::create("usdc".to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+        };
+        let make_msg = || ExecuteMsg::DepositToken {
+            asset_in: asset_in.clone(),
+            amount_in: Uint256::from(100u128),
+            recipients: vec![],
+            cross_chain_config: default_cross_chain_config(),
+        };
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&user, &[cosmwasm_std::coin(100, "uusdc")]),
+            make_msg(),
+        )
+        .unwrap();
+
+        TX_NONCES
+            .save(deps.as_mut().storage, format!("testchain:{user}"), &0u128)
+            .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&user, &[cosmwasm_std::coin(100, "uusdc")]),
+            make_msg(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::TxAlreadyExist {});
     }
 
     // -----------------------------------------------------------------------

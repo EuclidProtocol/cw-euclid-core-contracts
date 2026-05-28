@@ -95,12 +95,7 @@ mod tests {
     use crate::helpers::chains::setup_interchain;
     use crate::tests_reusable::factory_register::setup_factory;
     use crate::tests_reusable::factory_register::FactorySetupMode;
-    use crate::{
-        helpers::chains::setup_router,
-        tests_reusable::constants::{
-            FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
-        },
-    };
+    use crate::{helpers::chains::setup_router, tests_reusable::constants::ROUTER_CHAIN_ID};
     use euclid::token::{Token, TokenType};
     use rstest::rstest;
 

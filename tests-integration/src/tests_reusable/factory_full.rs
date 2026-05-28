@@ -97,7 +97,7 @@ mod tests {
     use crate::tests_reusable::factory_register_denom::setup_smart_denom_token;
     use crate::tests_reusable::state_sync::sync_state;
     use crate::tests_reusable::state_sync::UserFundsQuery;
-    use crate::tests_reusable::test_macros::{decimal_pair, decimal_pair_full};
+    use crate::tests_reusable::test_macros::decimal_pair;
     use cosmwasm_std::Uint64;
     use cw_orch::prelude::ContractInstance as _;
     use cw_orch::prelude::Environment;

@@ -1,5 +1,5 @@
 use cosmwasm_std::to_json_binary;
-use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, Uint256, WasmMsg};
+use cosmwasm_std::{from_json, Binary, CosmosMsg, DepsMut, Env, Response, WasmMsg};
 use euclid::chain::{Chain, ChainType, ChainUid};
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::error::ContractError;
@@ -466,5 +466,59 @@ mod tests {
 
         assert_eq!(mint_msg.balance_key.cross_chain_user, recipient);
         assert_eq!(mint_msg.amount, total_amount);
+    }
+
+    // Synthesizes the Q1(b) ack-direction failure mode: the inbound ack
+    // references a `tx_id` that does not match any `PENDING_RELEASE_VOUCHER`
+    // entry (the state a reorg-replayed source would produce if its replayed
+    // `tx_id` diverged from the one the destination already ack'd). The
+    // handler must fail predictably rather than silently mutating state.
+    #[test]
+    fn test_release_ack_with_unknown_tx_id_fails_cleanly() {
+        let mut deps = setup_release_ack_deps(Uint256::from(100u128), Uint256::from(5u128), false);
+
+        let sender = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "sender_addr".to_string(),
+        );
+        let recipient = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "recipient_addr".to_string(),
+        );
+
+        // setup_release_ack_deps seeds PENDING_RELEASE_VOUCHER under "tx_001";
+        // we deliver an ack for a different tx_id, simulating a key mismatch.
+        let err = ibc_ack_release_escrow(
+            deps.as_mut(),
+            mock_env(),
+            sender,
+            Token::create("usdc".to_string()).unwrap(),
+            TokenType::Native {
+                denom: "uusdc".to_string(),
+                decimals: Some(6),
+            },
+            AcknowledgementMsg::Ok(ReleaseEscrowResponse {
+                amount: Uint256::from(95u128),
+                to_address: "recipient_addr".to_string(),
+                escrow_balance: Uint256::from(300u128),
+            }),
+            recipient,
+            "tx_unknown".to_string(),
+        )
+        .unwrap_err();
+
+        // Defined failure: .load() on a missing key surfaces as a contract
+        // error. No panic, no silent partial state change.
+        assert!(
+            format!("{err}").to_lowercase().contains("not found")
+                || matches!(err, ContractError::Std(_)),
+            "unexpected error variant: {err:?}"
+        );
+
+        // Seeded entry under the original tx_id is untouched.
+        assert!(PENDING_RELEASE_VOUCHER
+            .may_load(deps.as_ref().storage, "tx_001".to_string())
+            .unwrap()
+            .is_some());
     }
 }

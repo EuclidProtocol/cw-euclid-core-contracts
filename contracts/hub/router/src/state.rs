@@ -12,7 +12,8 @@ use euclid_ibc::router_ibc::{
     RouterCrossChainConcentratedCollectFeesExecuteMsg,
     RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg,
     RouterCrossChainConcentratedRemoveLiquidityExecuteMsg,
-    RouterCrossChainRemoveLiquidityExecuteMsg, RouterCrossChainSwapExecuteMsg,
+    RouterCrossChainRemoveLiquidityExecuteMsg, RouterCrossChainSingleSidedAddLiquidityMsg,
+    RouterCrossChainSwapExecuteMsg,
 };
 
 #[cw_serde]
@@ -94,6 +95,10 @@ pub struct ConcentratedFundsInfo {
 /// pool creation can overwrite this value between save and load.
 pub const CONCENTRATED_FUNDS_INFO: Item<ConcentratedFundsInfo> =
     Item::new("concentrated_funds_info");
+
+// Tx Id to Single-Sided Add Liquidity Request
+pub const PENDING_SINGLE_SIDED_LIQUIDITY: Map<String, RouterCrossChainSingleSidedAddLiquidityMsg> =
+    Map::new("pending_single_sided_liquidity");
 
 #[cw_serde]
 pub struct PendingReleaseVoucher {

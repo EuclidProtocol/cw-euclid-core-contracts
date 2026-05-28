@@ -89,9 +89,7 @@ fn get_escrow_for_chain(
 mod tests {
     use super::*;
     use crate::helpers::chains::setup_interchain;
-    use crate::tests_reusable::constants::{
-        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
-    };
+    use crate::tests_reusable::constants::{FACTORY_CHAIN_ID_EVM, ROUTER_CHAIN_ID};
     use crate::tests_reusable::factory_register::FactorySetupMode;
     use crate::tests_reusable::factory_register::{setup_factory, setup_factory_evm};
     use crate::tests_reusable::factory_register_denom::register_denom;

@@ -78,6 +78,95 @@ fn relay_factory_send_packet_inner(
     Ok(responses)
 }
 
+/// Re-deliver a previously-relayed factory→router packet using a fresh
+/// relayer-level nonce so the relayer's own meta-tx nonce dedup does NOT
+/// fire. This lets a test exercise the router's contract-level dedup paths
+/// (`CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS`, `TxAlreadyExist`) directly.
+///
+/// `relayer_nonce_suffix` is appended to the relayer nonce string to make
+/// it distinct from the original delivery. Returns the `Result` from
+/// `execute_meta_transaction` for the (single) duplicate packet, so the
+/// caller can assert on the contract-level error.
+pub fn redeliver_factory_send_packet(
+    events: Vec<Event>,
+    router: &RouterContract<MockBase>,
+    relayer_nonce_suffix: &str,
+) -> Result<Vec<Event>, CwEnvError> {
+    let send_packets = extract_send_packet_events(&events);
+    let packet = send_packets
+        .into_iter()
+        .next()
+        .expect("expected at least one send_packet event");
+
+    let relayer_address = router.query_relayer_addresses().unwrap().relayer_contract;
+    let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
+
+    let call_data = euclid::msgs::router::ExecuteMsg::ReceivePacket {
+        msg: packet.msg,
+        sequence: packet.sequence,
+        source_port: packet.source_port.clone(),
+        destination_port: packet.destination_port.clone(),
+        timeout: packet.timeout,
+    };
+    let source_chain_uid = packet.source_port.split('.').next().unwrap();
+    let signed_data = sign_relay_messsage(
+        to_json_binary(&call_data).unwrap(),
+        router.address().unwrap(),
+        format!(
+            "{}-{}-{}-receive-{}",
+            packet.source_port, packet.destination_port, packet.sequence, relayer_nonce_suffix,
+        ),
+        &router.environment().app.borrow(),
+        source_chain_uid,
+    );
+
+    let response = relayer.execute_meta_transaction(signed_data)?;
+    Ok(response.events)
+}
+
+/// Mirror of `redeliver_factory_send_packet` for the router→factory direction:
+/// re-delivers an ack-bound packet to the factory with a fresh relayer-level
+/// nonce so the factory's contract-level state checks fire instead of the
+/// relayer's meta-tx dedup.
+pub fn redeliver_factory_ack_packet(
+    factory: &FactoryContract<MockBase>,
+    events: Vec<Event>,
+    chain_uid: &ChainUid,
+    relayer_nonce_suffix: &str,
+) -> Result<Vec<Event>, CwEnvError> {
+    let write_ack_packets = extract_ack_packet_events(&events);
+    let destination_port = format!("{}.{}", chain_uid.as_str(), factory.address().unwrap());
+    let packet = write_ack_packets
+        .into_iter()
+        .find(|p| p.destination_port == destination_port)
+        .expect("expected ack packet for factory");
+
+    let relayer_address = factory.get_state().unwrap().relayer_contract;
+    let relayer = get_relayer(factory.environment(), &Addr::unchecked(relayer_address));
+
+    let call_data = euclid::msgs::factory::ExecuteMsg::AcknowledgePacket {
+        source_port: packet.source_port.clone(),
+        destination_port: packet.destination_port.clone(),
+        msg: packet.msg,
+        sequence: packet.sequence,
+        ack: packet.ack,
+    };
+    let source_chain_uid = packet.source_port.split('.').next().unwrap();
+    let signed_data = sign_relay_messsage(
+        to_json_binary(&call_data).unwrap(),
+        factory.address().unwrap(),
+        format!(
+            "{}-{}-{}-ack-{}",
+            packet.source_port, packet.destination_port, packet.sequence, relayer_nonce_suffix,
+        ),
+        &factory.environment().app.borrow(),
+        source_chain_uid,
+    );
+
+    let response = relayer.execute_meta_transaction(signed_data)?;
+    Ok(response.events)
+}
+
 pub fn relay_router_send_packet(
     events: Vec<Event>,
     factory: &FactoryContract<MockBase>,

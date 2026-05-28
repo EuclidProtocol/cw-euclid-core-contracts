@@ -8,7 +8,7 @@ use crate::{
     cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
     swap::SwapRequest,
-    token::{Token, TokenMetadata, TokenType, TokenWithAmount},
+    token::{TokenMetadata, TokenType, TokenWithAmount},
 };
 
 pub fn liquidity_event(
@@ -102,6 +102,7 @@ pub enum TxType {
     UpdateFactoryChannel,
     WithdrawVirtualBalance,
     WithdrawVoucher,
+    SingleSidedAddLiquidity,
 }
 
 impl fmt::Display for TxType {
@@ -121,6 +122,7 @@ impl fmt::Display for TxType {
             TxType::UpdateFactoryChannel => "update_factory_channel",
             TxType::WithdrawVirtualBalance => "withdraw_virtual_balance",
             TxType::WithdrawVoucher => "withdraw_voucher",
+            TxType::SingleSidedAddLiquidity => "single_sided_add_liquidity",
         };
         write!(f, "{}", s)
     }
