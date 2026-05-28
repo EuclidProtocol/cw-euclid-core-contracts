@@ -7,7 +7,7 @@ use euclid::{
     cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
     fee::DenomFees,
-    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest, SingleSidedLiquidityRequest},
     msgs::vlp::base::PoolKey,
     swap::SwapRequest,
     token::{PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
@@ -167,6 +167,10 @@ pub const PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES: Map<
     (Addr, String),
     ConcentratedCollectProtocolFeesRequest,
 > = Map::new("pending_concentrated_collect_protocol_fees");
+
+// Map for PENDING single-sided add-liquidity transactions
+pub const PENDING_SINGLE_SIDED_LIQUIDITY: Map<(Addr, String), SingleSidedLiquidityRequest> =
+    Map::new("pending_single_sided_liquidity");
 
 pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
     Map::new("pending_deposit_token");

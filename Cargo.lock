@@ -1615,7 +1615,7 @@ dependencies = [
 
 [[package]]
 name = "euclid"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "cosmwasm-schema 2.3.2",
@@ -1638,7 +1638,7 @@ dependencies = [
 
 [[package]]
 name = "euclid-ibc"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cosmwasm-schema 2.3.2",
  "cosmwasm-std 2.3.2",
@@ -1709,7 +1709,7 @@ dependencies = [
 
 [[package]]
 name = "factory"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "cosmwasm-schema 2.3.2",
  "cosmwasm-std 2.3.2",
@@ -3187,7 +3187,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "cosmwasm-schema 2.3.2",
  "cosmwasm-std 2.3.2",

@@ -1,6 +1,6 @@
 [package]
 name = "router"
-version = "0.2.5"
+version = "0.2.6"
 authors = [
   "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
   "Joe Monem <jmonem@icloud.com>",

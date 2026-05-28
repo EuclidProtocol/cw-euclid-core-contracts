@@ -73,6 +73,10 @@ pub enum RouterCrossChainExecuteMsg {
 
     // Swap tokens on VLP
     Swap(RouterCrossChainSwapExecuteMsg),
+
+    // Single-sided add liquidity: deposit one token, hub atomically swaps a portion
+    // and adds liquidity on the same VLP
+    SingleSidedAddLiquidity(RouterCrossChainSingleSidedAddLiquidityMsg),
 }
 
 impl RouterCrossChainExecuteMsg {
@@ -91,6 +95,7 @@ impl RouterCrossChainExecuteMsg {
             Self::CollectConcentratedFees(msg) => msg.tx_id.clone(),
             Self::CollectConcentratedProtocolFees(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
+            Self::SingleSidedAddLiquidity(msg) => msg.tx_id.clone(),
         }
     }
 
@@ -132,6 +137,7 @@ impl RouterCrossChainExecuteMsg {
             Self::RemoveConcentratedLiquidity(msg) => &msg.sender,
             Self::CollectConcentratedFees(msg) => &msg.sender,
             Self::CollectConcentratedProtocolFees(msg) => &msg.sender,
+            Self::SingleSidedAddLiquidity(msg) => &msg.sender,
         }
     }
 
@@ -304,6 +310,31 @@ pub struct RouterCrossChainTransferVoucherExecuteMsg {
     pub amount: Uint256,
     pub from: Option<CrossChainUser>,
     pub recipients: Vec<Recipient>,
+    // Unique per tx
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainSingleSidedAddLiquidityMsg {
+    // Factory will set this to info.sender
+    pub sender: CrossChainUser,
+    // The single token the user is depositing
+    pub asset_in: TokenWithDenom,
+    // Total raw amount of asset_in AFTER partner-fee deduction.
+    // This is the amount the hub operates on; the partner-fee portion never crosses IBC.
+    pub amount_in: Uint256,
+    // Raw amount of asset_in to swap into the other side of the pair (backend-computed)
+    pub swap_amount: Uint256,
+    // Target VLP pair. The "other" token (asset_out for the swap leg) is
+    // derived as pair.get_other_token(asset_in.token).
+    pub pair: Pair,
+    // Swap route. v1: must be length 1; kept Vec for forward-compat.
+    pub swaps: Vec<NextSwapPair>,
+    // Minimum LP tokens to receive — sole user-facing slippage guard
+    pub min_lp_out: Uint256,
+    // Partner-fee accounting (used only by the factory ack handler).
+    pub partner_fee_amount: Uint256,
+    pub partner_fee_recipient: CrossChainUser,
     // Unique per tx
     pub tx_id: String,
 }

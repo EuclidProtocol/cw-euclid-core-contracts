@@ -4,15 +4,13 @@
 mod tests {
     use crate::helpers::chains::{get_lp_token, setup_interchain, setup_router};
     use crate::helpers::relayer::relay_factory_router_factory;
-    use crate::tests_reusable::constants::{
-        FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
-    };
+    use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
     use crate::tests_reusable::factory_add_liquidity::{add_liquidity, deposit_token};
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::{setup_factory, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
     use crate::tests_reusable::factory_swap::swap_request;
-    use crate::tests_reusable::test_macros::{decimal_pair, decimal_pair_full};
+    use crate::tests_reusable::test_macros::decimal_pair;
     use cosmwasm_std::{to_json_binary, Uint128, Uint256};
     use cw_orch::mock::MockBase;
     use cw_orch::prelude::*;
@@ -24,7 +22,7 @@ mod tests {
     use euclid::msgs::factory::msg::QueryMsgFns as FactoryQueryMsgFns;
     use euclid::msgs::lp_token::msg::QueryMsgFns as LpTokenQueryMsgFns;
     use euclid::msgs::vlp::base::PoolConfig;
-    use euclid::normalize::{self, normalize};
+
     use euclid::swap::NextSwapPair;
     use euclid::token::{
         Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,

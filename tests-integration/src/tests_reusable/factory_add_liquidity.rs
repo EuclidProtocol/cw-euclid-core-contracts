@@ -84,16 +84,12 @@ mod tests {
     use super::*;
     use crate::helpers::chains::{get_virtual_balance, setup_interchain, setup_router};
     use crate::helpers::relayer::extract_ack_packet_events;
-    use crate::tests_reusable::constants::{
-        FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
-    };
+    use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
     use crate::tests_reusable::factory_create_pool::create_pool;
     use crate::tests_reusable::factory_register::{setup_factory, FactorySetupMode};
     use crate::tests_reusable::factory_register_denom::register_denom;
     use crate::tests_reusable::state_sync::sync_state;
-    use crate::tests_reusable::test_macros::{
-        decimal_pair, decimal_pair_full, single_decimal, single_decimal_full,
-    };
+    use crate::tests_reusable::test_macros::{decimal_pair, single_decimal};
     use euclid::cross_chain_user::CrossChainUser;
     use euclid::limit::Limit;
     use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;

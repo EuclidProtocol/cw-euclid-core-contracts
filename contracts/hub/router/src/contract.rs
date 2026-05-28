@@ -25,8 +25,9 @@ use crate::query::{
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, COLLECT_CONCENTRATED_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID,
-    REMOVE_LIQUIDITY_REPLY_ID, SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID,
-    VLP_INSTANTIATE_REPLY_ID, VLP_POOL_REGISTER_REPLY_ID,
+    REMOVE_LIQUIDITY_REPLY_ID, SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID, SINGLE_SIDED_SWAP_REPLY_ID,
+    SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
+    VLP_POOL_REGISTER_REPLY_ID,
 };
 use crate::state::{FeeState, State, ADMIN, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE};
 use euclid::msgs::router::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -249,6 +250,10 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
             reply::on_virtual_balance_instantiate_reply(deps, msg)
         }
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps, msg),
+        SINGLE_SIDED_SWAP_REPLY_ID => reply::on_single_sided_swap_reply(deps, msg),
+        SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID => {
+            reply::on_single_sided_add_liquidity_reply(deps, msg)
+        }
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",

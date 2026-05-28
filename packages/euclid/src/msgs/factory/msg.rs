@@ -6,7 +6,7 @@ use crate::{
     liquidity::{
         AddLiquidityRequest, ConcentratedAddLiquidityResponse, ConcentratedCollectFeesResponse,
         ConcentratedCollectProtocolFeesResponse, ConcentratedRemoveLiquidityResponse,
-        RemoveLiquidityRequest,
+        RemoveLiquidityRequest, SingleSidedLiquidityRequest,
     },
     msgs::vlp::base::{PoolConfig, PoolKey},
     msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive},
@@ -113,6 +113,17 @@ pub enum ExecuteMsg {
         recipient: CrossChainUser,
         amount_0_requested: Uint128,
         amount_1_requested: Uint128,
+        cross_chain_config: CrossChainConfig,
+    },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
+    AddSingleSidedLiquidity {
+        asset_in: TokenWithDenom,
+        amount_in: Uint256,
+        pair: Pair,
+        swap_amount: Uint256,
+        swap_route: Vec<NextSwapPair>,
+        min_lp_out: Uint256,
+        partner_fee: Option<PartnerFee>,
         cross_chain_config: CrossChainConfig,
     },
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
@@ -289,6 +300,11 @@ pub enum QueryMsg {
     },
     #[returns(GetPendingRemoveLiquidityResponse)]
     PendingRemoveLiquidity {
+        user: Addr,
+        pagination: Pagination<Uint256>,
+    },
+    #[returns(GetPendingSingleSidedLiquidityResponse)]
+    PendingSingleSidedLiquidity {
         user: Addr,
         pagination: Pagination<Uint256>,
     },
@@ -473,6 +489,11 @@ pub struct CollectConcentratedProtocolFeesMsgResponse {
     pub tx_id: String,
     pub sender: CrossChainUser,
     pub response: ConcentratedCollectProtocolFeesResponse,
+}
+
+#[cw_serde]
+pub struct GetPendingSingleSidedLiquidityResponse {
+    pub pending_single_sided_liquidity: Vec<SingleSidedLiquidityRequest>,
 }
 
 #[cw_serde]

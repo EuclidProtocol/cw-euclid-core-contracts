@@ -1,5 +1,4 @@
 use cosmwasm_std::Uint256;
-#[cfg(not(feature = "library"))]
 use cosmwasm_std::{ensure, to_json_binary, CosmosMsg, DepsMut, Env, Response, SubMsg, WasmMsg};
 use euclid::{
     chain::ChainUid,
@@ -172,7 +171,7 @@ mod tests {
     };
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env},
-        CosmosMsg, ReplyOn, Uint128, Uint256, WasmMsg,
+        CosmosMsg, ReplyOn, Uint256, WasmMsg,
     };
     use euclid::{
         chain::ChainUid,

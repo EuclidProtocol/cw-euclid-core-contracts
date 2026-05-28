@@ -17,7 +17,8 @@ use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 use crate::execute::pool::{
     add_concentrated_liquidity_request, add_liquidity_request, collect_concentrated_fees_request,
     collect_concentrated_protocol_fees_request, execute_request_concentrated_pool_creation,
-    execute_request_pool_creation, remove_concentrated_liquidity_request,
+    execute_request_pool_creation, execute_single_sided_add_liquidity_request,
+    remove_concentrated_liquidity_request,
 };
 use crate::execute::relay::{
     execute_native_receive_callback, execute_receive_acknowledgement, execute_receive_packet,
@@ -32,8 +33,8 @@ use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_
 use crate::query::{
     get_concentrated_vlp, get_escrow, get_lp_token_address, get_partner_fees_collected,
     get_position_token_contract, get_rate_limit_state, get_user_rate_limit, get_vlp,
-    pending_liquidity, pending_remove_liquidity, pending_swaps, query_all_concentrated_pools,
-    query_all_pools, query_all_tokens, query_state,
+    pending_liquidity, pending_remove_liquidity, pending_single_sided_liquidity, pending_swaps,
+    query_all_concentrated_pools, query_all_pools, query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
@@ -309,6 +310,28 @@ pub fn execute(
             amount_1_requested,
             cross_chain_config,
         ),
+        ExecuteMsg::AddSingleSidedLiquidity {
+            asset_in,
+            amount_in,
+            pair,
+            swap_amount,
+            swap_route,
+            min_lp_out,
+            partner_fee,
+            cross_chain_config,
+        } => execute_single_sided_add_liquidity_request(
+            &mut deps,
+            env,
+            info,
+            asset_in,
+            amount_in,
+            pair,
+            swap_amount,
+            swap_route,
+            min_lp_out,
+            partner_fee,
+            cross_chain_config,
+        ),
         ExecuteMsg::ExecuteSwapRequest(msg) => {
             let state = STATE.load(deps.storage)?;
             let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
@@ -457,6 +480,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::PendingRemoveLiquidity { user, pagination } => {
             pending_remove_liquidity(deps, user, pagination)
         }
+        QueryMsg::PendingSingleSidedLiquidity { user, pagination } => {
+            pending_single_sided_liquidity(deps, user, pagination)
+        }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
         QueryMsg::GetPositionTokenContract {} => get_position_token_contract(deps),
@@ -496,7 +522,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        to_json_binary, Addr, Uint128, Uint256,
+        to_json_binary, Addr, Uint256,
     };
     use euclid::{
         chain::ChainUid,

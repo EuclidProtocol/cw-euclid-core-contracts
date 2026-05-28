@@ -217,7 +217,7 @@ pub fn execute_swap_request(
 mod tests {
     use cosmwasm_std::{
         testing::{message_info, mock_dependencies, mock_env},
-        Uint128, Uint256,
+        Uint256,
     };
     use euclid::{
         error::ContractError,
@@ -566,6 +566,51 @@ mod tests {
     // -----------------------------------------------------------------------
     // State invariant: PENDING_SWAPS accumulates across two different senders
     // -----------------------------------------------------------------------
+
+    // Reorg-replay safety: if the per-sender nonce somehow rewinds (e.g. the
+    // PENDING_* purge during ack ran but the nonce write was rolled back by a
+    // later reorg), the application-layer `PENDING_SWAPS.has(...)` guard must
+    // still reject a second submission with the same `tx_id`. Simulated here
+    // by running a successful swap, rewinding `TX_NONCES` to zero, and
+    // submitting the same swap again — the regenerated tx_id collides.
+    #[test]
+    fn test_swap_request_duplicate_tx_id_rejected() {
+        use euclid::utils::tx::TX_NONCES;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+
+        // First call succeeds and persists PENDING_SWAPS.
+        let first = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[]),
+            make_voucher_swap_msg(Uint256::from(100u128), Uint256::from(1u128)),
+        )
+        .unwrap();
+        let first_tx_id = get_attribute(&first, "tx_id").to_owned();
+        let sender_key = format!("testchain:{sender}");
+
+        // Rewind the per-sender nonce so the next call regenerates the same tx_id.
+        TX_NONCES
+            .save(deps.as_mut().storage, sender_key, &0u128)
+            .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[]),
+            make_voucher_swap_msg(Uint256::from(100u128), Uint256::from(1u128)),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::TxAlreadyExist {},
+            "second call should fail with TxAlreadyExist for tx_id {first_tx_id}"
+        );
+    }
 
     #[test]
     fn test_pending_swaps_accumulated_across_two_different_senders() {
