@@ -19,6 +19,7 @@ pub fn query_simulate_swap(
     asset_in: Token,
     amount_in: Uint256,
     next_swaps: Vec<NextSwapVlp>,
+    euclid_fee_override: Option<u64>,
 ) -> Result<Binary, ContractError> {
     let swap_response = simulate_swap(
         deps,
@@ -27,9 +28,9 @@ pub fn query_simulate_swap(
         asset_in,
         amount_in,
         SwapCalculationMethod::Stable(AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR)),
-        // Sender-aware simulation is wired in a later slice (Issue 6); for now
-        // the unparameterized query keeps the pool's configured Euclid fee.
-        None,
+        // Sender-aware override (resolved by the Router) so the simulated Euclid
+        // fee matches execution; `None` keeps the pool's configured Euclid fee.
+        euclid_fee_override,
     )?;
     let response = match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
@@ -39,6 +40,8 @@ pub fn query_simulate_swap(
                     asset: swap_response.asset_out,
                     asset_amount: swap_response.amount_out,
                     swaps: forward_swaps.to_vec(),
+                    // Forward the override so it applies on every simulated hop.
+                    euclid_fee_override,
                 }),
             )?;
             Ok(to_json_binary(&next_swap_response)?)
@@ -461,7 +464,14 @@ mod tests {
         seed_liquidity(&mut deps, 10_000_000_000);
 
         let res: GetSwapQueryResponse = from_json(
-            query_simulate_swap(deps.as_ref(), token1(), Uint256::from(1_000u128), vec![]).unwrap(),
+            query_simulate_swap(
+                deps.as_ref(),
+                token1(),
+                Uint256::from(1_000u128),
+                vec![],
+                None,
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -476,8 +486,8 @@ mod tests {
         init(&mut deps);
         seed_liquidity(&mut deps, 10_000_000_000);
 
-        let err =
-            query_simulate_swap(deps.as_ref(), token1(), Uint256::zero(), vec![]).unwrap_err();
+        let err = query_simulate_swap(deps.as_ref(), token1(), Uint256::zero(), vec![], None)
+            .unwrap_err();
         assert_eq!(err, ContractError::ZeroAssetAmount {});
     }
 
@@ -492,6 +502,7 @@ mod tests {
             euclid::token::Token::create("xtoken".to_string()).unwrap(),
             Uint256::from(1_000u128),
             vec![],
+            None,
         )
         .unwrap_err();
         assert_eq!(err, ContractError::AssetDoesNotExist {});
@@ -547,8 +558,14 @@ mod tests {
             .unwrap();
 
         let response: GetSwapQueryResponse = from_json(
-            query_simulate_swap(deps.as_ref(), pair.token_1, Uint256::from(100u128), vec![])
-                .unwrap(),
+            query_simulate_swap(
+                deps.as_ref(),
+                pair.token_1,
+                Uint256::from(100u128),
+                vec![],
+                None,
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -612,6 +629,7 @@ mod tests {
                 pair.token_1,
                 Uint256::from(10000000000000000u128),
                 vec![],
+                None,
             )
             .unwrap(),
         )

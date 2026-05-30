@@ -174,9 +174,13 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
     match msg {
         QueryMsg::State {} => query_state(deps),
         QueryMsg::GetAdmin {} => query_admin(deps),
-        QueryMsg::SimulateSwap(msg) => {
-            query_simulate_swap(deps, msg.asset, msg.asset_amount, msg.swaps)
-        }
+        QueryMsg::SimulateSwap(msg) => query_simulate_swap(
+            deps,
+            msg.asset,
+            msg.asset_amount,
+            msg.swaps,
+            msg.euclid_fee_override,
+        ),
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),

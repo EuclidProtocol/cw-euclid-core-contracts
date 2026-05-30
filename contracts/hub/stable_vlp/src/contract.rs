@@ -200,6 +200,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
             simulate_swap_msg.asset,
             simulate_swap_msg.asset_amount,
             simulate_swap_msg.swaps,
+            simulate_swap_msg.euclid_fee_override,
         ),
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),

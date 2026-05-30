@@ -62,6 +62,12 @@ pub struct QuerySimulateSwap {
     pub asset_out: Token,
     pub min_amount_out: Uint256,
     pub swaps: Vec<NextSwapPair>,
+    /// Optional swapping wallet. When present, the Router resolves its
+    /// per-wallet Euclid-fee override and threads it through the simulation so
+    /// the quoted Euclid fee equals what execution would charge. Absent (the
+    /// default for older callers) keeps the current full-fee quote.
+    #[serde(default)]
+    pub sender: Option<CrossChainUser>,
 }
 
 #[cw_serde]

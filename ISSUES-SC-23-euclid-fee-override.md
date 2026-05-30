@@ -156,11 +156,14 @@ SC-23
 Make quotes reflect the override deterministically. Add an optional sender to the swap simulation request; the Router resolves the override (via the Issue 1 resolver) and threads it through the simulation path into the same pre-swap fee logic used by execution, so the simulated Euclid fee equals the executed fee bit-for-bit — across single-hop, multi-hop, and the concentrated forwarding rule. The sender field is optional for backward compatibility (absent = current behavior).
 
 ### Acceptance criteria
-- [ ] Simulating a swap with a whitelisted sender returns a quote whose Euclid fee equals what execution charges, for a single-hop CP/stable swap.
-- [ ] The same parity holds for a multi-hop CP/stable route.
-- [ ] Simulating a route through a concentrated hop matches execution (concentrated leg charged normally).
-- [ ] Simulating without a sender returns the current (full-fee) behavior.
-- [ ] Integration test asserts simulated fee == executed fee for whitelisted and non-whitelisted senders.
+- [x] Simulating a swap with a whitelisted sender returns a quote whose Euclid fee equals what execution charges, for a single-hop CP/stable swap.
+- [x] The same parity holds for a multi-hop CP/stable route.
+- [~] Simulating a route through a concentrated hop matches execution (concentrated leg charged normally). — **N/A in this repo:** no concentrated curve exists (see Issue 5). The forwarding/threading is curve-independent, so this becomes live when a CLP curve is added.
+- [x] Simulating without a sender returns the current (full-fee) behavior.
+- [x] Integration test asserts simulated fee == executed fee for whitelisted and non-whitelisted senders.
+
+### Status
+**Done.** Added an optional `sender: Option<CrossChainUser>` to `QuerySimulateSwap`; the Router's `query_simulate_swap` resolves the override via the Issue 1 resolver and stamps it onto a new serde-defaulted `VlpSimulateSwapMsg.euclid_fee_override`. Both VLPs' `query_simulate_swap` apply the override to the same shared `simulate_swap`/`pre_swap` used by execution and forward it onto every next-hop `VlpSimulateSwapMsg`, so quotes match execution bit-for-bit across single- and multi-hop. Also made the execute-path slippage pre-check (`ibc_execute_swap`) simulate with the same resolved override (resolved once, reused for both the pre-check and the outgoing swap message). Added integration test `euclid_fee_override_simulation_matches_execution` (in `factory_swap.rs`) asserting, for CP (1- and 2-hop) and stable (1-hop), exempt and non-exempt wallets: (a) a senderless quote == a non-whitelisted-sender quote == executed output; (b) a whitelisted-sender quote strictly exceeds the senderless quote (exemption reflected) and equals executed output bit-for-bit (measured in voucher units straight from the wallet's virtual balance).
 
 ### Blocked by
 - Issue 5

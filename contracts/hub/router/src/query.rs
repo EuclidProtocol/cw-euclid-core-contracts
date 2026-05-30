@@ -173,10 +173,18 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
         err: "Swaps cannot be empty".to_string(),
     })?;
 
+    // Resolve the sender's Euclid-fee override (if a sender was supplied) via the
+    // shared resolver, so the simulated Euclid fee matches what execution charges.
+    let euclid_fee_override = match &msg.sender {
+        Some(sender) => get_euclid_fee_override(deps.storage, sender)?,
+        None => None,
+    };
+
     let simulate_msg = euclid::msgs::vlp::base::QueryMsg::SimulateSwap(VlpSimulateSwapMsg {
         asset: msg.asset_in,
         asset_amount: msg.amount_in,
         swaps: next_swaps.to_vec(),
+        euclid_fee_override,
     });
 
     let simulate_res: euclid::msgs::vlp::base::GetSwapQueryResponse = deps

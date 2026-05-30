@@ -80,6 +80,14 @@ pub struct VlpSimulateSwapMsg {
     pub asset: Token,
     pub asset_amount: Uint256,
     pub swaps: Vec<NextSwapVlp>,
+    /// Sender-level Euclid-fee override, resolved by the Router from the
+    /// simulation request's optional sender and stamped on so the simulated
+    /// Euclid fee matches what execution charges. Forwarded hop-to-hop exactly
+    /// like `VlpSwapMsg.euclid_fee_override`. `None` keeps the pool's
+    /// configured Euclid fee. Defaulted so older Routers that omit the field
+    /// decode to the unchanged (full-fee) behavior.
+    #[serde(default)]
+    pub euclid_fee_override: Option<u64>,
 }
 
 #[cw_serde]

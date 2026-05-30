@@ -60,6 +60,13 @@ pub fn ibc_execute_swap(
 
     let sender = msg.sender;
 
+    // Resolve the swapping wallet's Euclid-fee override once, at this single
+    // chokepoint, and stamp it onto both the slippage pre-check simulation and
+    // the outgoing swap message. Native and IBC swaps both converge here, so
+    // both inherit the override identically — and the pre-check sees the same
+    // fee execution will charge.
+    let euclid_fee_override = get_euclid_fee_override(deps.storage, &sender)?;
+
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     let swap_vlps = validate_swap_pairs(deps.as_ref(), &msg.swaps);
@@ -97,6 +104,7 @@ pub fn ibc_execute_swap(
         asset: msg.asset_in.token.clone(),
         asset_amount: normalized_amount_in,
         swaps: next_swaps.to_vec(),
+        euclid_fee_override,
     });
 
     let simulate_swap_res: euclid::msgs::vlp::base::GetSwapQueryResponse = deps
@@ -212,11 +220,6 @@ pub fn ibc_execute_swap(
             )
             .add_attribute("partner_fee_amount", msg.partner_fee_amount.to_string());
     }
-
-    // Resolve the swapping wallet's Euclid-fee override once, at this single
-    // chokepoint, and stamp it onto the outgoing message. Native and IBC swaps
-    // both converge here, so both inherit the override identically.
-    let euclid_fee_override = get_euclid_fee_override(deps.storage, &sender)?;
 
     let swap_msg = msgs::vlp::base::ExecuteMsg::Swap(VlpSwapMsg {
         sender: sender.clone(),
