@@ -108,9 +108,12 @@ SC-23
 Make the override survive every hop of a multi-hop route. Each VLP rebuilds the swap message for the next hop forwarding the sender; forward the override field the same way so it applies uniformly across all CP/stable hops.
 
 ### Acceptance criteria
-- [ ] A multi-hop CP/stable route by a whitelisted wallet charges the override Euclid fee on every hop, not just the first.
-- [ ] A non-whitelisted wallet's multi-hop route is unchanged on every hop.
-- [ ] Integration test covers a route with at least two CP/stable hops end-to-end.
+- [x] A multi-hop CP/stable route by a whitelisted wallet charges the override Euclid fee on every hop, not just the first.
+- [x] A non-whitelisted wallet's multi-hop route is unchanged on every hop.
+- [x] Integration test covers a route with at least two CP/stable hops end-to-end.
+
+### Status
+**Done.** The forwarding was wired in Issue 2 — `execute_swap` stamps `euclid_fee_override` onto the next-hop `VlpSwapMsg` it builds, so the override survives every CP/stable hop. Added an end-to-end integration test `euclid_fee_override_applies_on_every_multi_hop_cp_leg` (in `tests-integration/src/tests_reusable/factory_swap.rs`) that runs a 2-hop CP route (tokena → tokenb → tokenc) twice: once non-whitelisted (asserts each hop's VLP collects a non-zero Euclid fee, keyed by hop input denom) and once with a full-exemption override (asserts every hop's VLP collects zero Euclid fee). This proves the override is applied — not dropped — on the second hop.
 
 ### Blocked by
 - Issue 2
