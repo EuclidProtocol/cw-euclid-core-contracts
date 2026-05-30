@@ -146,3 +146,8 @@ pub fn get_clp_position_id(deps: &mut DepsMut) -> Result<u128, ContractError> {
         err: format!("No position id available after {} attempts", iters),
     })
 }
+
+/// Per-wallet Euclid-fee override in basis points, keyed by the components of
+/// the swapping `CrossChainUser` (`chain_uid`, `address`). An absent entry means
+/// "use the pool's configured Euclid fee"; `Some(0)` means full exemption.
+pub const EUCLID_FEE_OVERRIDES: Map<(ChainUid, String), u64> = Map::new("euclid_fee_overrides");

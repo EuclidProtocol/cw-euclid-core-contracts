@@ -4,6 +4,7 @@ use cosmwasm_std::{Addr, Uint128, Uint256};
 use crate::{
     admin::EuclidAdmin,
     chain::{Chain, ChainUid},
+    cross_chain_user::CrossChainUser,
     msgs::vlp::{base::PoolKey, concentrated::msg::PositionResponse},
     swap::NextSwapPair,
     token::{Pair, Token, TokenType},
@@ -50,6 +51,8 @@ pub enum QueryMsg {
     GetDefaultReleaseFee {},
     #[returns(ChainTimeoutResponse)]
     GetChainTimeout { chain_uid: ChainUid },
+    #[returns(EuclidFeeOverrideResponse)]
+    GetEuclidFeeOverride { user: CrossChainUser },
 }
 
 #[cw_serde]
@@ -193,4 +196,11 @@ pub struct DefaultReleaseFeeResponse {
 pub struct ChainTimeoutResponse {
     pub chain_uid: ChainUid,
     pub timeout_seconds: u64,
+}
+
+#[cw_serde]
+pub struct EuclidFeeOverrideResponse {
+    /// `Some(bps)` if a per-wallet override is set; `None` means the wallet
+    /// uses the pool's configured Euclid fee.
+    pub euclid_fee_bps: Option<u64>,
 }

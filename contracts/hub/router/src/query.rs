@@ -8,8 +8,9 @@ use euclid::{
         router::{
             AllChainResponse, AllEscrowsResponse, AllVlpResponse, ChainResponse,
             ChainTimeoutResponse, ClpPositionInfoResponse, DefaultReleaseFeeResponse,
-            EscrowResponse, FeeStateResponse, LockedChainsResponse, PoolKeyVlpResponse,
-            QueryRelayerAddressesResponse, QuerySimulateSwap, ReleaseFee, ReleaseFeesQueryResponse,
+            EscrowResponse, EuclidFeeOverrideResponse, FeeStateResponse, LockedChainsResponse,
+            PoolKeyVlpResponse, QueryRelayerAddressesResponse, QuerySimulateSwap, ReleaseFee,
+            ReleaseFeesQueryResponse,
             SimulateSwapResponse, StateResponse, VlpResponse,
         },
         virtual_balance::{GetTokenMetadataByDenomResponse, GetTokenStatusResponse},
@@ -23,6 +24,7 @@ use euclid::{
     utils::pagination::{Pagination, DEFAULT_PAGINATION_LIMIT, DEFAULT_PAGINATION_SKIP},
 };
 
+use crate::helpers::euclid_fee_override::get_euclid_fee_override;
 use crate::state::{
     ADMIN, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, CLP_POSITION_ID_VLP_MAP, CONCENTRATED_VLPS,
     DEFAULT_RELEASE_FEE, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, RELEASE_FEES, STATE,
@@ -374,6 +376,17 @@ pub fn query_chain_timeout(deps: Deps, chain_uid: ChainUid) -> Result<Binary, Co
     })?)
 }
 
+pub fn query_euclid_fee_override(
+    deps: Deps,
+    user: CrossChainUser,
+) -> Result<Binary, ContractError> {
+    let user = user.validate()?.to_owned();
+    let euclid_fee_bps = get_euclid_fee_override(deps.storage, &user)?;
+    Ok(to_json_binary(&EuclidFeeOverrideResponse {
+        euclid_fee_bps,
+    })?)
+}
+
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{
@@ -394,9 +407,11 @@ mod tests {
     };
     use euclid::{
         chain::ChainUid,
+        cross_chain_user::CrossChainUser,
         msgs::router::{
-            AllChainResponse, AllVlpResponse, ChainResponse, ExecuteMsg, ManageRouterState,
-            QueryRelayerAddressesResponse, ReleaseFeesQueryResponse, StateResponse, VlpResponse,
+            AllChainResponse, AllVlpResponse, ChainResponse, EuclidFeeOverrideResponse, ExecuteMsg,
+            ManageRouterState, QueryRelayerAddressesResponse, ReleaseFeesQueryResponse,
+            StateResponse, VlpResponse,
         },
         token::{Pair, Token},
         utils::pagination::Pagination,
@@ -561,6 +576,71 @@ mod tests {
         )
         .unwrap();
         assert!(parsed.fees.is_empty());
+    }
+
+    #[rstest]
+    fn test_query_euclid_fee_override_roundtrip(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let user = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "wallet1".to_string(),
+        );
+
+        // Absent: returns None.
+        let parsed: EuclidFeeOverrideResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetEuclidFeeOverride { user: user.clone() },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.euclid_fee_bps, None);
+
+        // After set: returns Some(bps).
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(42),
+            }),
+        )
+        .unwrap();
+        let parsed: EuclidFeeOverrideResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetEuclidFeeOverride { user: user.clone() },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.euclid_fee_bps, Some(42));
+
+        // After remove: returns None again.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: None,
+            }),
+        )
+        .unwrap();
+        let parsed: EuclidFeeOverrideResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetEuclidFeeOverride { user },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.euclid_fee_bps, None);
     }
 
     #[rstest]

@@ -22,6 +22,10 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [stable_vlp] Migration entry point that normalizes pool reserves by querying virtual_balance for token decimals
 - [stable_vlp] `MIN_AMP = 100` constant with validation in `compute_stable_swap`, `update_amp_factor`, and `instantiate`
 - [router] `GetAllEscrows` query (deprecated on arrival, exists only to support virtual_balance migration)
+- [router] `EUCLID_FEE_OVERRIDES: Map<(ChainUid, String), u64>` storing per-wallet Euclid-fee overrides keyed on the swapping `CrossChainUser` components
+- [router] `ManageRouterState::SetEuclidFeeOverride { user, euclid_fee_bps }` fee-admin-gated handler: `Some(bps)` upserts (bounded by `MAX_FEE_BPS`), `None` removes
+- [router] `GetEuclidFeeOverride { user } -> EuclidFeeOverrideResponse { euclid_fee_bps: Option<u64> }` query for backend/admin auditing
+- [router] `helpers::euclid_fee_override::get_euclid_fee_override` shared resolver — single resolution point reused by execute and simulate paths so quote and execution cannot drift
 - [orderbook_deposits] `NULLIFIERS` map tracking withdrawn amounts by hashed key
 - [factory] `AddSingleSidedLiquidity` execute entry point: user deposits a single token, the hub atomically swaps a backend-computed portion and adds liquidity on the target VLP in one IBC roundtrip
 - [factory] `AddSingleSidedLiquidity` supports `TokenType::Smart` (CW20) `asset_in` via the `IncreaseAllowance` + `TransferFrom` pattern (mirrors `add_liquidity_request`); `TokenType::Voucher` rejected as `UnreachableCode`
@@ -34,6 +38,7 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [euclid] `SingleSidedLiquidityRequest` pending-state struct (in `liquidity.rs`) carrying `partner_fee_amount` and `partner_fee_recipient` for the factory ack handler
 - [euclid] `GetPendingSingleSidedLiquidityResponse { pending_single_sided_liquidity }` for the new query
 - [euclid_ibc] `RouterCrossChainSingleSidedAddLiquidityMsg` IBC packet payload carrying `asset_in`, `amount_in`, `swap_amount`, target `pair`, `swaps` route, `min_lp_out`, and partner-fee fields
+- [euclid] `ManageRouterState::SetEuclidFeeOverride` execute variant and `QueryMsg::GetEuclidFeeOverride` query variant plus `EuclidFeeOverrideResponse` response type for the per-wallet Euclid-fee override (SC-23)
 
 #### Packages
 
@@ -49,6 +54,7 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [euclid] `virtual_balance_change_event(action, amount, user, token_id)` emitting `euclid-virtual-balance-change` with attributes: action, amount, user, token_id
 - [euclid] `escrow_balance_change_event(action, amount, token_id, chain_uid, token_type)` emitting `euclid-escrow-balance-change` with attributes: action, amount, token_id, chain_uid, token_type
 - [euclid] `TxType::SingleSidedAddLiquidity` variant (display: `single_sided_add_liquidity`) emitted by the router on single-sided add-liquidity entry
+- [euclid] `euclid_fee_override_change_event(action, user, euclid_fee_bps)` emitting `euclid-fee-override-change` with attributes: action (`set`/`remove`), chain_uid, address, euclid_fee_bps (omitted on remove)
 - [virtual_balance] `normalized_amount` attribute added to `execute_mint` response
 
 #### Documentation

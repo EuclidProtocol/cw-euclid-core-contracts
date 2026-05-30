@@ -20,8 +20,9 @@ use crate::execute::{execute_manage_router_state, execute_meta_receive, execute_
 
 use crate::query::{
     self, query_all_chains, query_all_vlps, query_chain, query_chain_timeout,
-    query_clp_position_info, query_default_release_fee, query_fee_state, query_locked_chains,
-    query_relayer_addresses, query_release_fees, query_state, query_vlp, query_vlp_by_pool_key,
+    query_clp_position_info, query_default_release_fee, query_euclid_fee_override,
+    query_fee_state, query_locked_chains, query_relayer_addresses, query_release_fees,
+    query_state, query_vlp, query_vlp_by_pool_key,
 };
 use crate::reply::{
     self, ADD_LIQUIDITY_REPLY_ID, COLLECT_CONCENTRATED_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID,
@@ -227,6 +228,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetFeeState {} => query_fee_state(deps),
         QueryMsg::GetDefaultReleaseFee {} => query_default_release_fee(deps),
         QueryMsg::GetChainTimeout { chain_uid } => query_chain_timeout(deps, chain_uid),
+        QueryMsg::GetEuclidFeeOverride { user } => query_euclid_fee_override(deps, user),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
