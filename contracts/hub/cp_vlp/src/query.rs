@@ -38,6 +38,9 @@ pub fn query_simulate_swap(
         asset_in,
         amount_in,
         SwapCalculationMethod::Regular,
+        // Sender-aware simulation is wired in a later slice (Issue 6); for now
+        // the unparameterized query keeps the pool's configured Euclid fee.
+        None,
     )?;
 
     let response = match next_swaps.split_first() {
@@ -350,6 +353,7 @@ mod tests {
                 min_token_out: Uint256::zero(),
                 next_swaps: vec![],
                 test_fail: None,
+                euclid_fee_override: None,
             }),
         )
         .unwrap();

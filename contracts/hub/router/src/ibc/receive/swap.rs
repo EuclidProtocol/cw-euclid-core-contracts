@@ -15,6 +15,7 @@ use euclid::{
 use euclid_ibc::router_ibc::RouterCrossChainSwapExecuteMsg;
 
 use crate::{
+    helpers::euclid_fee_override::get_euclid_fee_override,
     query::{query_token_metadata_by_denom, validate_swap_pairs},
     reply::SWAP_REPLY_ID,
     state::{PENDING_SWAPS, VIRTUAL_BALANCE_CONTRACT},
@@ -212,6 +213,11 @@ pub fn ibc_execute_swap(
             .add_attribute("partner_fee_amount", msg.partner_fee_amount.to_string());
     }
 
+    // Resolve the swapping wallet's Euclid-fee override once, at this single
+    // chokepoint, and stamp it onto the outgoing message. Native and IBC swaps
+    // both converge here, so both inherit the override identically.
+    let euclid_fee_override = get_euclid_fee_override(deps.storage, &sender)?;
+
     let swap_msg = msgs::vlp::base::ExecuteMsg::Swap(VlpSwapMsg {
         sender: sender.clone(),
         asset_in: msg.asset_in.token.clone(),
@@ -220,6 +226,7 @@ pub fn ibc_execute_swap(
         next_swaps: next_swaps.to_vec(),
         tx_id: msg.tx_id.clone(),
         test_fail: first_swap.test_fail,
+        euclid_fee_override,
     });
 
     let msg = WasmMsg::Execute {

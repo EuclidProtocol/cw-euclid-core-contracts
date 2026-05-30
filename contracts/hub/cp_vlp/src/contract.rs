@@ -148,6 +148,7 @@ pub fn execute(
             swap_msg.next_swaps,
             SwapCalculationMethod::Regular,
             swap_msg.test_fail,
+            swap_msg.euclid_fee_override,
         ),
         ExecuteMsg::UpdateFee {
             lp_fee_bps,
@@ -724,6 +725,7 @@ mod tests {
             min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
         let res = execute(deps.as_mut(), env, info, swap_msg).unwrap();
         assert!(res.messages.len() >= 2);
@@ -779,6 +781,7 @@ mod tests {
             min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
         let err = execute(deps.as_mut(), env, info, swap_msg).unwrap_err();
         assert_eq!(err, ContractError::ZeroAssetAmount {});
@@ -827,6 +830,7 @@ mod tests {
             min_token_out: Uint256::from(999_999_999u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
         let err = execute(deps.as_mut(), env, info, swap_msg).unwrap_err();
         assert!(matches!(err, ContractError::SlippageExceeded { .. }));
@@ -863,6 +867,7 @@ mod tests {
             min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
         let err = execute(deps.as_mut(), env, info, swap_msg).unwrap_err();
         assert_eq!(err, ContractError::AssetDoesNotExist {});
@@ -912,6 +917,7 @@ mod tests {
             min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: Some(true),
+            euclid_fee_override: None,
         });
         let err = execute(deps.as_mut(), env, info, swap_msg).unwrap_err();
         assert_eq!(err, ContractError::new("Force fail flag"));
@@ -1282,6 +1288,7 @@ mod tests {
                 min_token_out: Uint256::zero(),
                 next_swaps: vec![],
                 test_fail: None,
+                euclid_fee_override: None,
             }),
         )
         .unwrap();
@@ -1345,6 +1352,7 @@ mod tests {
                     min_token_out: Uint256::zero(),
                     next_swaps: vec![],
                     test_fail: None,
+                    euclid_fee_override: None,
                 }),
             )
             .unwrap();

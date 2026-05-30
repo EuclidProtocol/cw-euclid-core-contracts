@@ -178,6 +178,7 @@ pub fn execute(
                 swap_msg.next_swaps,
                 SwapCalculationMethod::Stable(amp_factor),
                 swap_msg.test_fail,
+                swap_msg.euclid_fee_override,
             )
         }
         ExecuteMsg::UpdateAdmin { admin, admin_type } => {
@@ -966,6 +967,7 @@ mod tests {
             min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
 
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -997,6 +999,7 @@ mod tests {
             min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
 
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
@@ -1019,6 +1022,7 @@ mod tests {
             min_token_out: Uint256::from(1_000_000u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
 
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
@@ -1041,6 +1045,7 @@ mod tests {
             min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
 
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
@@ -1063,6 +1068,7 @@ mod tests {
             min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: Some(true),
+            euclid_fee_override: None,
         });
 
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
@@ -1085,6 +1091,7 @@ mod tests {
             min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
 
         assert!(execute(deps.as_mut(), mock_env(), info, msg).is_ok());
@@ -1152,6 +1159,7 @@ mod tests {
                 min_token_out: Uint256::from(1u128),
                 next_swaps: vec![],
                 test_fail: None,
+                euclid_fee_override: None,
             });
             execute(deps.as_mut(), mock_env(), info, msg).unwrap();
         }

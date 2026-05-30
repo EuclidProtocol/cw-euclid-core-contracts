@@ -37,6 +37,13 @@ pub struct VlpSwapMsg {
     pub min_token_out: Uint256,
     pub next_swaps: Vec<NextSwapVlp>,
     pub test_fail: Option<bool>,
+    /// Per-wallet Euclid-fee override in basis points, resolved by the Router
+    /// for the swap's `sender` and stamped onto the outgoing message. `Some(bps)`
+    /// replaces the pool's configured Euclid fee for this swap (`Some(0)` = full
+    /// exemption); `None` keeps the pool's configured Euclid fee. Defaulted so
+    /// older Routers that omit the field decode to the unchanged behavior.
+    #[serde(default)]
+    pub euclid_fee_override: Option<u64>,
 }
 
 #[cw_serde]

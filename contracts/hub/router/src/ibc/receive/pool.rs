@@ -854,6 +854,9 @@ pub fn ibc_execute_single_sided_add_liquidity(
         min_token_out: Uint256::zero(),
         next_swaps: vec![],
         test_fail: hop.test_fail,
+        // Internal single-sided liquidity-provision swap; the per-wallet Euclid-fee
+        // override applies to user swaps only, not to liquidity provision.
+        euclid_fee_override: None,
     });
     let swap_wasm_msg = WasmMsg::Execute {
         contract_addr: vlp_address.to_string(),

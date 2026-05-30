@@ -39,6 +39,7 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [euclid] `GetPendingSingleSidedLiquidityResponse { pending_single_sided_liquidity }` for the new query
 - [euclid_ibc] `RouterCrossChainSingleSidedAddLiquidityMsg` IBC packet payload carrying `asset_in`, `amount_in`, `swap_amount`, target `pair`, `swaps` route, `min_lp_out`, and partner-fee fields
 - [euclid] `ManageRouterState::SetEuclidFeeOverride` execute variant and `QueryMsg::GetEuclidFeeOverride` query variant plus `EuclidFeeOverrideResponse` response type for the per-wallet Euclid-fee override (SC-23)
+- [euclid] `VlpSwapMsg.euclid_fee_override: Option<u64>` field (serde-defaulted) carrying the resolved per-wallet Euclid-fee override to the VLP (SC-23)
 
 #### Packages
 
@@ -113,6 +114,8 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [router] IBC receive handlers pass `token_type` and `token_source_chain_uid` to `ExecuteMint`
 - [router] `_release_voucher` queries escrow from virtual_balance instead of local state
 - [router] IBC ack failure path delegates re-mint to virtual_balance (no local escrow restore)
+- [router] Swap chokepoint (`ibc_execute_swap`) resolves the swapping wallet's Euclid-fee override and stamps it onto the outgoing `VlpSwapMsg`; native and IBC swaps both inherit it identically (SC-23)
+- [euclid_pool] `pre_swap`/`execute_swap`/`simulate_swap` accept an `euclid_fee_override: Option<u64>`; when `Some(bps)` it replaces the pool's Euclid-fee rate (`Some(0)` = full exemption), LP fee always charged at the pool rate; `execute_swap` forwards the override to the next hop (SC-23)
 - [factory] Replaced `.unwrap()` with error propagation in LP minting and burning (4 sites)
 
 #### Events (changes affecting backend indexing)

@@ -58,12 +58,15 @@ Make a whitelisted wallet actually pay the reduced (or zero) Euclid fee on a sin
 - Apply the override in the CP pre-swap fee calculation: when present it replaces the Euclid-fee rate; when absent, behavior is identical to today. The LP fee is always charged at the pool rate.
 
 ### Acceptance criteria
-- [ ] A whitelisted wallet's single-hop CP swap charges the override Euclid fee (`0` → no Euclid fee; reduced bps → reduced fee), increasing the swapped amount accordingly.
-- [ ] A non-whitelisted wallet's CP swap is unchanged (full Euclid fee).
-- [ ] The LP fee is identical with and without an override.
-- [ ] The override applies identically for swaps originating from native chains and IBC chains.
-- [ ] A wallet whose entry was removed reverts to the pool's configured Euclid fee.
-- [ ] Override-aware CP fee math is covered by table-driven unit tests (exemption, reduced, none/default, max-fee boundary, LP-fee-unchanged).
+- [x] A whitelisted wallet's single-hop CP swap charges the override Euclid fee (`0` → no Euclid fee; reduced bps → reduced fee), increasing the swapped amount accordingly.
+- [x] A non-whitelisted wallet's CP swap is unchanged (full Euclid fee).
+- [x] The LP fee is identical with and without an override.
+- [x] The override applies identically for swaps originating from native chains and IBC chains.
+- [x] A wallet whose entry was removed reverts to the pool's configured Euclid fee.
+- [x] Override-aware CP fee math is covered by table-driven unit tests (exemption, reduced, none/default, max-fee boundary, LP-fee-unchanged).
+
+### Status
+**Done.** Added `euclid_fee_override: Option<u64>` (serde-defaulted) to `VlpSwapMsg`; the Router resolves it via the Issue 1 resolver at the single `ibc_execute_swap` chokepoint (shared by native + IBC) and stamps it onto the outgoing message. `pre_swap` applies it (replaces the Euclid-fee rate; LP fee stays at pool rate); `execute_swap` forwards it to the next hop. Removed entries resolve to `None`, reverting to the pool fee. 7 new table-driven CP fee-math unit tests in `euclid-pool` (full exemption, reduced, none/default, override==pool, max-fee boundary, exemption-increases-out, reduced-between).
 
 ### Blocked by
 - Issue 1

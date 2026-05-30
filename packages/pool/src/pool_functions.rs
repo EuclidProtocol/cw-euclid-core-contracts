@@ -609,6 +609,7 @@ pub fn pre_swap(
     amount_in: Uint256,
     calculation_method: SwapCalculationMethod,
     _test_fail: Option<bool>,
+    euclid_fee_override: Option<u64>,
 ) -> Result<PreSwapResponse, ContractError> {
     ensure!(
         !_test_fail.unwrap_or(false),
@@ -630,8 +631,12 @@ pub fn pre_swap(
     // Get Fee from the state
     let fee = state.clone().fee;
 
+    // The LP fee is always charged at the pool's configured rate. The Euclid
+    // fee uses the per-wallet override when present, otherwise the pool rate.
+    let euclid_fee_bps = euclid_fee_override.unwrap_or(fee.euclid_fee_bps);
+
     let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
-    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
+    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(euclid_fee_bps))?;
 
     let swap_amount = amount_in.checked_sub(lp_fee.checked_add(euclid_fee)?)?;
 
@@ -672,6 +677,7 @@ pub fn execute_swap(
     next_swaps: Vec<NextSwapVlp>,
     calculation_method: SwapCalculationMethod,
     test_fail: Option<bool>,
+    euclid_fee_override: Option<u64>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
 
@@ -726,6 +732,7 @@ pub fn execute_swap(
         amount_in,
         calculation_method,
         test_fail,
+        euclid_fee_override,
     )?;
 
     // Add the lp fee to total fees
@@ -837,6 +844,8 @@ pub fn execute_swap(
                 min_token_out,
                 next_swaps: forward_swaps.to_vec(),
                 test_fail: next_swap.test_fail,
+                // Forward the override so it applies uniformly across every hop.
+                euclid_fee_override,
             });
             let next_swap_msg = WasmMsg::Execute {
                 contract_addr: next_swap.vlp_address.clone(),
@@ -927,6 +936,7 @@ pub fn simulate_swap(
     asset_in: Token,
     amount_in: Uint256,
     calculation_method: SwapCalculationMethod,
+    euclid_fee_override: Option<u64>,
 ) -> Result<GetSwapQueryResponse, ContractError> {
     let pre_swap_response = pre_swap(
         &deps,
@@ -936,6 +946,7 @@ pub fn simulate_swap(
         amount_in,
         calculation_method,
         None,
+        euclid_fee_override,
     )?;
 
     Ok(GetSwapQueryResponse {
