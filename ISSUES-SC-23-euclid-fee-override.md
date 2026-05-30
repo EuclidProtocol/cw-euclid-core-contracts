@@ -187,9 +187,23 @@ Decide between:
 Then implement the chosen approach (or document graceful fallback as the accepted behavior if no gate is added).
 
 ### Acceptance criteria
-- [ ] Decision recorded (graceful fallback vs. hard version gate) with rationale.
-- [ ] If a gate is chosen: swaps are rejected/handled per the decision until all contracts are upgraded, with tests.
-- [ ] If graceful fallback is chosen: the fallback behavior is documented and a test confirms mixed-version combinations never error and never touch LP fees.
+- [x] Decision recorded (graceful fallback vs. hard version gate) with rationale.
+- [x] If a gate is chosen: swaps are rejected/handled per the decision until all contracts are upgraded, with tests. — N/A (no gate chosen).
+- [x] If graceful fallback is chosen: the fallback behavior is documented and a test confirms mixed-version combinations never error and never touch LP fees.
+
+### Decision
+**Graceful fallback — no hard version gate.** (Decided with the maintainer.)
+
+**Rationale.** Every new field introduced for SC-23 is optional and serde-defaulted: `VlpSwapMsg.euclid_fee_override`, `VlpSimulateSwapMsg.euclid_fee_override`, and `QuerySimulateSwap.sender`. `cw_serde` does not set `deny_unknown_fields`, so the two mixed-version directions both decode without error:
+- **Old Router → new VLP:** the message lacks `euclid_fee_override`; it decodes to `None`, and the VLP keeps the pool's configured Euclid fee.
+- **New Router → old VLP:** the message carries `euclid_fee_override`; the old VLP's struct ignores the unknown field and charges the full fee.
+
+In both cases the worst case is that a whitelisted wallet temporarily pays the normal Euclid fee — never an error, never a fund-safety issue, and the LP fee is never affected (the LP fee is always charged at the pool rate in `pre_swap`, independent of the override). A hard gate would only add a new failure mode (swaps blocked mid-rollout) for a transient, benign window. The exemption takes effect once both the VLPs (apply) and the Router (inject) are upgraded.
+
+**Recommended rollout order:** upgrade the VLPs first, then the Router. (If the Router is upgraded first, it injects an override the not-yet-upgraded VLPs ignore — still benign, just no exemption yet.)
+
+### Status
+**Done.** Decision recorded above. The fallback is enforced by serde-defaulted optional fields (no code gate added). Added mixed-version decode tests in `packages/euclid` (`euclid_fee_override_rollout_tests` in `msgs/vlp/base.rs` and `msgs/router/query.rs`) proving: a legacy message without the new field decodes to `None`; a message with the field decodes correctly; and a message carrying the new field plus an unknown future field decodes into an unaware struct (unknown fields ignored, not rejected) — i.e. mixed old/new combinations never error. LP-fee-untouched is covered by the euclid-pool fee-math tests (LP fee is the pool rate regardless of the override).
 
 ### Blocked by
 - Issue 2

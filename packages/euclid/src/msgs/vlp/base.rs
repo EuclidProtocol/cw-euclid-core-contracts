@@ -423,3 +423,83 @@ mod tests {
         assert_eq!(spacing, 0);
     }
 }
+
+#[cfg(test)]
+mod euclid_fee_override_rollout_tests {
+    //! SC-23 Issue 7 — graceful-fallback rollout safety.
+    //!
+    //! The Euclid-fee override rolls out by upgrading the VLPs first, then the
+    //! Router (no hard version gate). The new swap-message fields are optional
+    //! and serde-defaulted, so old/new contract combinations decode without
+    //! error during the rollout window. These tests pin that contract:
+    //!
+    //! - **old Router -> new VLP**: a message lacking `euclid_fee_override`
+    //!   decodes to `None` (the VLP keeps the pool's configured Euclid fee).
+    //! - **new Router -> old VLP**: a message carrying `euclid_fee_override` is
+    //!   accepted by a struct that does not know the field (unknown fields are
+    //!   ignored, not rejected), so the old VLP simply charges the full fee.
+    //!
+    //! Either way: no error, no fund issue, and the LP fee is never touched
+    //! (LP fee is always the pool rate in `pre_swap`, independent of the
+    //! override — covered by the euclid-pool fee-math tests).
+    use super::*;
+    use cosmwasm_std::from_json;
+
+    #[test]
+    fn vlp_swap_msg_without_override_defaults_to_none() {
+        // Payload an *old* Router would send (no `euclid_fee_override`).
+        let legacy = br#"{
+            "sender": {"chain_uid": "chainA", "address": "addr1"},
+            "tx_id": "tx-1",
+            "asset_in": "usdc",
+            "amount_in": "1000",
+            "min_token_out": "1",
+            "swaps": [],
+            "next_swaps": []
+        }"#;
+        let msg: VlpSwapMsg = from_json(legacy).expect("legacy VlpSwapMsg must decode");
+        assert_eq!(msg.euclid_fee_override, None);
+    }
+
+    #[test]
+    fn vlp_swap_msg_with_override_decodes() {
+        let modern = br#"{
+            "sender": {"chain_uid": "chainA", "address": "addr1"},
+            "tx_id": "tx-1",
+            "asset_in": "usdc",
+            "amount_in": "1000",
+            "min_token_out": "1",
+            "swaps": [],
+            "next_swaps": [],
+            "euclid_fee_override": 0
+        }"#;
+        let msg: VlpSwapMsg = from_json(modern).expect("modern VlpSwapMsg must decode");
+        assert_eq!(msg.euclid_fee_override, Some(0));
+    }
+
+    #[test]
+    fn vlp_simulate_swap_msg_without_override_defaults_to_none() {
+        let legacy = br#"{"asset": "usdc", "asset_amount": "1000", "swaps": []}"#;
+        let msg: VlpSimulateSwapMsg =
+            from_json(legacy).expect("legacy VlpSimulateSwapMsg must decode");
+        assert_eq!(msg.euclid_fee_override, None);
+    }
+
+    #[test]
+    fn new_field_message_decodes_into_unaware_struct() {
+        // A *new* Router emits `euclid_fee_override`; an *old* VLP's struct (here
+        // stood in for by an extra unknown field) must ignore it, not reject it.
+        // cw_serde does not set `deny_unknown_fields`, so unknown keys are
+        // dropped — the swap proceeds at the full fee instead of erroring.
+        let forward_compat = br#"{
+            "asset": "usdc",
+            "asset_amount": "1000",
+            "swaps": [],
+            "euclid_fee_override": 7,
+            "a_field_from_an_even_newer_router": "ignored"
+        }"#;
+        let msg: VlpSimulateSwapMsg =
+            from_json(forward_compat).expect("unknown fields must be ignored, not rejected");
+        assert_eq!(msg.euclid_fee_override, Some(7));
+    }
+}

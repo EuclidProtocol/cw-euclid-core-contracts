@@ -210,3 +210,47 @@ pub struct EuclidFeeOverrideResponse {
     /// uses the pool's configured Euclid fee.
     pub euclid_fee_bps: Option<u64>,
 }
+
+#[cfg(test)]
+mod euclid_fee_override_rollout_tests {
+    //! SC-23 Issue 7 — graceful-fallback rollout safety for the simulate path.
+    //! An old caller that omits `sender` decodes to `None` (full-fee quote, the
+    //! current behavior); a new caller's `sender` decodes normally. No error.
+    use super::*;
+    use cosmwasm_std::from_json;
+
+    #[test]
+    fn simulate_swap_query_without_sender_defaults_to_none() {
+        let legacy = br#"{
+            "asset_in": "usdc",
+            "amount_in": "1000",
+            "asset_out": "eth",
+            "min_amount_out": "1",
+            "swaps": []
+        }"#;
+        let msg: QuerySimulateSwap =
+            from_json(legacy).expect("legacy QuerySimulateSwap must decode");
+        assert_eq!(msg.sender, None);
+    }
+
+    #[test]
+    fn simulate_swap_query_with_sender_decodes() {
+        let modern = br#"{
+            "asset_in": "usdc",
+            "amount_in": "1000",
+            "asset_out": "eth",
+            "min_amount_out": "1",
+            "swaps": [],
+            "sender": {"chain_uid": "chaina", "address": "addr1"}
+        }"#;
+        let msg: QuerySimulateSwap =
+            from_json(modern).expect("modern QuerySimulateSwap must decode");
+        assert_eq!(
+            msg.sender,
+            Some(CrossChainUser::new(
+                ChainUid::create("chaina".to_string()).unwrap(),
+                "addr1".to_string()
+            ))
+        );
+    }
+}
