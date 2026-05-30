@@ -132,10 +132,13 @@ SC-23
 Define concentrated-pool behavior for the override. Because the concentrated Euclid value is the protocol's *cut* of the LP fee (not an additive trader fee), applying it would not improve the wallet's quote — it would only shift the protocol's cut to LPs. So the concentrated VLP must **forward** the override field to downstream hops but **not apply** it to its own protocol cut. Leave a documented TODO marking where meaningful concentrated exemption (reducing the structural fee tier) would later be added.
 
 ### Acceptance criteria
-- [ ] A route of CP → concentrated → CP by a whitelisted wallet is exempt on the CP legs and charged normally on the concentrated leg.
-- [ ] The concentrated leg's protocol cut and LP allocation are unchanged whether or not the wallet has an override.
-- [ ] The override field is forwarded by the concentrated VLP to the next hop.
-- [ ] A documented TODO marks the deferred concentrated fee-tier exemption.
+- [~] A route of CP → concentrated → CP by a whitelisted wallet is exempt on the CP legs and charged normally on the concentrated leg. — **N/A in this repo:** no concentrated pool type exists (`PoolConfig` is only `Stable`/`ConstantProduct`; `SwapCalculationMethod` is only `Stable`/`Regular`). Cannot be exercised until a CLP curve is added.
+- [~] The concentrated leg's protocol cut and LP allocation are unchanged whether or not the wallet has an override. — **N/A in this repo** (same reason).
+- [x] The override field is forwarded by the concentrated VLP to the next hop. — Forwarding is **curve-independent**: `execute_swap` stamps `euclid_fee_override` onto the next-hop `VlpSwapMsg` regardless of pool type, so a future CLP leg will forward it automatically.
+- [x] A documented TODO marks the deferred concentrated fee-tier exemption.
+
+### Status
+**Done (scoped to repo reality).** Confirmed there is no concentrated/CLP pool type in this codebase — `PoolConfig` exposes only `Stable` and `ConstantProduct`, `SwapCalculationMethod` only `Stable` and `Regular`, and there are zero `concentrated`/`CLP` references. The PRD also treats CLP as future work (user story 22; CLP exemption listed as out-of-scope/deferred). So the concrete deliverable is: (1) the override is already forwarded uniformly hop-to-hop by `execute_swap` (curve-independent), so a future CLP leg inherits forwarding for free; (2) added a documented `TODO(SC-23)` at the single fee-application point (`pre_swap` in `packages/pool/src/pool_functions.rs`) describing the CLP rule — forward but do not apply the override to the protocol cut, since the CLP Euclid value is a cut of the LP fee, not an additive trader fee. The route-based criteria are marked N/A because no concentrated curve exists to route through; they become live when a CLP curve is introduced.
 
 ### Blocked by
 - Issue 4
