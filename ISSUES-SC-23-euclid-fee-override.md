@@ -84,10 +84,13 @@ SC-23
 Extend the override application to the stable-swap curve, reusing the message field and injection built in Issue 2. Only the stable pre-swap fee calculation needs the override parameter wired in.
 
 ### Acceptance criteria
-- [ ] A whitelisted wallet's single-hop stable swap charges the override Euclid fee; non-whitelisted is unchanged.
-- [ ] The LP fee on stable swaps is identical with and without an override.
-- [ ] A removed entry reverts to the pool's configured Euclid fee.
-- [ ] Override-aware stable fee math is covered by table-driven unit tests (exemption, reduced, none/default, max-fee boundary, LP-fee-unchanged).
+- [x] A whitelisted wallet's single-hop stable swap charges the override Euclid fee; non-whitelisted is unchanged.
+- [x] The LP fee on stable swaps is identical with and without an override.
+- [x] A removed entry reverts to the pool's configured Euclid fee.
+- [x] Override-aware stable fee math is covered by table-driven unit tests (exemption, reduced, none/default, max-fee boundary, LP-fee-unchanged).
+
+### Status
+**Done.** The stable VLP already passes `swap_msg.euclid_fee_override` into the shared `execute_swap`/`pre_swap` (wired in Issue 2), so the override drives the stable curve identically — fees are computed before the curve, so the math is curve-independent. Added 6 stable-curve unit tests in `euclid-pool` mirroring the CP table (full exemption, reduced, none/default, override==pool, max-fee boundary, plus exemption-increases-out). No production code change beyond Issue 2.
 
 ### Blocked by
 - Issue 2
