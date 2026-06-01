@@ -87,6 +87,7 @@ pub fn execute_concentrated_swap(
             min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         }),
         &[],
     )
@@ -126,6 +127,7 @@ fn test_swap_single_range(#[case] mode: FactorySetupMode, #[case] factory_chain_
             asset: token_a.token.clone(),
             asset_amount: voucher_amount,
             swaps: vec![],
+            euclid_fee_override: None,
         }))
         .unwrap();
 
@@ -233,6 +235,7 @@ fn test_swap_explicit_fee_tier_routing(
             asset: token_a.token.clone(),
             asset_amount: voucher_amount,
             swaps: vec![],
+            euclid_fee_override: None,
         }))
         .unwrap();
     let sim_3000: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp_3000
@@ -240,6 +243,7 @@ fn test_swap_explicit_fee_tier_routing(
             asset: token_a.token.clone(),
             asset_amount: voucher_amount,
             swaps: vec![],
+            euclid_fee_override: None,
         }))
         .unwrap();
 
@@ -278,6 +282,7 @@ fn test_larger_swap_has_worse_effective_price(
             asset: token_a.token.clone(),
             asset_amount: small_in_voucher,
             swaps: vec![],
+            euclid_fee_override: None,
         }))
         .unwrap();
     let large: euclid::msgs::vlp::base::GetSwapQueryResponse = vlp
@@ -285,6 +290,7 @@ fn test_larger_swap_has_worse_effective_price(
             asset: token_a.token.clone(),
             asset_amount: large_in_voucher,
             swaps: vec![],
+            euclid_fee_override: None,
         }))
         .unwrap();
 

@@ -224,6 +224,7 @@ fn simulate_mixed_route(
             asset_out,
             min_amount_out: Uint256::from(1u128),
             swaps,
+            sender: None,
         }))
         .unwrap();
     simulation.amount_out

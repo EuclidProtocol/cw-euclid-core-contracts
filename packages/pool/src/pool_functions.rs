@@ -638,15 +638,17 @@ pub fn pre_swap(
     // `Stable` curves, where the Euclid fee is an *additive* trader fee carved
     // out of `amount_in` — so reducing it directly improves the wallet's quote.
     //
-    // TODO(SC-23): concentrated (CLP) pools. When a concentrated curve is added
-    // here (a new `SwapCalculationMethod`/`PoolConfig` variant), it must
-    // *forward* `euclid_fee_override` to downstream hops (already handled by
-    // `execute_swap`, which is curve-independent) but must NOT apply it to its
-    // own fee. In a CLP the Euclid value is the protocol's *cut* of the LP
-    // swap fee, not an additive trader fee: zeroing it would not improve the
-    // wallet's quote, only shift the protocol's share to LPs. Meaningful CLP
-    // exemption requires reducing the structural fee tier and is deferred — do
-    // not branch on `euclid_fee_override` for a CLP leg without that work.
+    // NOTE(SC-23): concentrated (CLP) pools do NOT go through `pre_swap`; they
+    // have their own swap math under `contracts/hub/concentrated_vlp`. A CLP
+    // must NOT treat the Euclid value as an additive trader fee — there it is
+    // the protocol's *cut* of the LP swap fee, so zeroing it here would only
+    // shift the protocol's share to LPs, not improve the wallet's quote. The
+    // CLP applies the override by lowering its structural fee tier instead, in
+    // `concentrated_vlp::contract::resolve_effective_fee` (SC-23 Issue 8): the
+    // LP keeps its absolute pip share `lp_pips = tier_pips - tier_pips*d/10_000`
+    // and the protocol's slice scales as `tier_pips * X / 10_000`, so
+    // `effective_fee_pips = lp_pips + tier_pips*X/10_000`. Do not branch on
+    // `euclid_fee_override` for a CLP leg in this function.
     let euclid_fee_bps = euclid_fee_override.unwrap_or(fee.euclid_fee_bps);
 
     let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;

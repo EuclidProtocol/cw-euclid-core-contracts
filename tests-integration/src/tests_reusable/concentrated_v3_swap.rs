@@ -38,6 +38,7 @@ fn test_exact_single_range_quote_execution_parity(
             asset: token_a.token.clone(),
             asset_amount: voucher_amount,
             swaps: vec![],
+            euclid_fee_override: None,
         }))
         .unwrap();
 
