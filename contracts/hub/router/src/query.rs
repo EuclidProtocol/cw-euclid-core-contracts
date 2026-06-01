@@ -10,8 +10,7 @@ use euclid::{
             ChainTimeoutResponse, ClpPositionInfoResponse, DefaultReleaseFeeResponse,
             EscrowResponse, EuclidFeeOverrideResponse, FeeStateResponse, LockedChainsResponse,
             PoolKeyVlpResponse, QueryRelayerAddressesResponse, QuerySimulateSwap, ReleaseFee,
-            ReleaseFeesQueryResponse,
-            SimulateSwapResponse, StateResponse, VlpResponse,
+            ReleaseFeesQueryResponse, SimulateSwapResponse, StateResponse, VlpResponse,
         },
         virtual_balance::{GetTokenMetadataByDenomResponse, GetTokenStatusResponse},
         vlp::{
