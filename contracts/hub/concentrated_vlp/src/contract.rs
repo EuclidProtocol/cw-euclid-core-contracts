@@ -1432,9 +1432,9 @@ fn execute_clp_swap(
                     min_token_out: swap_msg.min_token_out,
                     next_swaps: forward_swaps.to_vec(),
                     test_fail: next_swap.test_fail,
-                    // Single-hop override is applied above; forwarding the
-                    // override to downstream hops is SC-23 Issue 8 Slice 2.
-                    euclid_fee_override: None,
+                    // Forward the override so it applies uniformly across every
+                    // hop (matches the cp/stable execute path).
+                    euclid_fee_override: swap_msg.euclid_fee_override,
                 }))?,
                 funds: vec![],
             };
@@ -1521,8 +1521,9 @@ fn query_clp_simulate_swap(
                         asset: response.asset_out,
                         asset_amount: response.amount_out,
                         swaps: forward_swaps.to_vec(),
-                        // SC-23 Issue 8 will thread the per-wallet override here.
-                        euclid_fee_override: None,
+                        // Forward the override so it applies on every simulated
+                        // hop (matches the cp/stable simulate path).
+                        euclid_fee_override,
                     },
                 ),
             )?;

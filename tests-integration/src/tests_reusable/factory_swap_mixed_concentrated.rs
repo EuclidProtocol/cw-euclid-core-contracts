@@ -8,6 +8,8 @@ use euclid::{
     cross_chain_user::CrossChainUser,
     msgs::{
         factory::msg::QueryMsgFns as FactoryQueryMsgFns,
+        router::execute::ExecuteMsgFns as RouterExecuteMsgFns,
+        router::execute::ManageRouterState,
         router::query::QueryMsgFns as RouterQueryMsgFns,
         router::query::{QueryMsg as RouterQueryMsg, QuerySimulateSwap, SimulateSwapResponse},
         virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns,
@@ -217,6 +219,17 @@ fn simulate_mixed_route(
     amount_in: Uint256,
     swaps: Vec<NextSwapPair>,
 ) -> Uint256 {
+    simulate_mixed_route_as(router, asset_in, asset_out, amount_in, swaps, None)
+}
+
+fn simulate_mixed_route_as(
+    router: &RouterContract<MockBase>,
+    asset_in: Token,
+    asset_out: Token,
+    amount_in: Uint256,
+    swaps: Vec<NextSwapPair>,
+    sender: Option<CrossChainUser>,
+) -> Uint256 {
     let simulation: SimulateSwapResponse = router
         .query(&RouterQueryMsg::SimulateSwap(QuerySimulateSwap {
             asset_in,
@@ -224,7 +237,7 @@ fn simulate_mixed_route(
             asset_out,
             min_amount_out: Uint256::from(1u128),
             swaps,
-            sender: None,
+            sender,
         }))
         .unwrap();
     simulation.amount_out
@@ -307,6 +320,90 @@ fn test_mixed_route_simulation_matches_execution(
     )
     .unwrap();
     assert_eq!(executed, simulated);
+}
+
+/// SC-23 Issue 8 Slice 2 — the wallet's Euclid-fee override must propagate
+/// *through* the CLP hop to the downstream legs, in both simulation and
+/// execution.
+///
+/// The route is stable(a->b) -> CLP(b->c) -> cp(c->d). CLP pools are created
+/// with a protocol cut of 0, so the override is a no-op on the CLP leg itself —
+/// but the cp leg sits *after* the CLP and carries a non-zero Euclid fee, so it
+/// only receives the discount if the CLP forwards the override onward. A broken
+/// forwarder would leave the cp leg at the full fee; the assertions below would
+/// then fail.
+#[rstest]
+#[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
+#[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
+fn test_override_propagates_through_clp_hop(
+    #[case] mode: FactorySetupMode,
+    #[case] factory_chain_id: &str,
+) {
+    let (_interchain, factory, router, token_a, token_b, token_c, token_d) =
+        setup_mixed_env(mode, factory_chain_id);
+    let middle_pool_key =
+        setup_mixed_route_pools(&factory, &router, &token_a, &token_b, &token_c, &token_d);
+
+    let wallet = get_sender(&factory);
+    let amount_in = Uint256::from(1_000u128);
+    let decimals_a = token_a.token_type.get_decimals().unwrap();
+    let voucher_amount_in =
+        euclid::normalize::normalize_token_to_voucher(amount_in, decimals_a).unwrap();
+    let route = mixed_route(
+        &token_a,
+        &token_b,
+        &token_c,
+        &token_d,
+        Some(middle_pool_key),
+    );
+
+    // Full exemption for this wallet (fee-admin gated; the router's deployer is
+    // the fee admin in this harness).
+    router
+        .manage_router_state(ManageRouterState::SetEuclidFeeOverride {
+            user: wallet.clone(),
+            euclid_fee_bps: Some(0),
+        })
+        .unwrap();
+
+    // Same route, quoted with the wallet's override vs. without any sender.
+    let sim_with = simulate_mixed_route_as(
+        &router,
+        token_a.token.clone(),
+        token_d.token.clone(),
+        voucher_amount_in,
+        route.clone(),
+        Some(wallet.clone()),
+    );
+    let sim_without = simulate_mixed_route_as(
+        &router,
+        token_a.token.clone(),
+        token_d.token.clone(),
+        voucher_amount_in,
+        route.clone(),
+        None,
+    );
+    assert!(
+        sim_with > sim_without,
+        "override must improve the multi-hop quote (incl. the post-CLP cp leg): \
+         with={sim_with}, without={sim_without}"
+    );
+
+    // Execution resolves the same wallet's override and forwards it identically;
+    // the executed output must match the override-applied quote exactly.
+    let executed = execute_swap_and_get_output(
+        &factory,
+        &router,
+        token_a.clone(),
+        token_d.token.clone(),
+        amount_in,
+        route,
+    )
+    .unwrap();
+    assert_eq!(
+        executed, sim_with,
+        "executed multi-hop output must match the override-applied simulation"
+    );
 }
 
 #[rstest]
