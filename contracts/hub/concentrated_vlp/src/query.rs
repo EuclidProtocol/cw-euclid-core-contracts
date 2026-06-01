@@ -34,6 +34,8 @@ pub fn query_simulate_swap(
         asset_in,
         amount_in,
         SwapCalculationMethod::Regular,
+        // SC-23 Issue 8 will thread the per-wallet override here.
+        None,
     )?;
 
     match next_swaps.split_first() {
@@ -44,6 +46,8 @@ pub fn query_simulate_swap(
                     asset: swap_response.asset_out,
                     asset_amount: swap_response.amount_out,
                     swaps: forward_swaps.to_vec(),
+                    // SC-23 Issue 8 will thread the per-wallet override here.
+                    euclid_fee_override: None,
                 }),
             )?;
             Ok(to_json_binary(&next_swap_response)?)

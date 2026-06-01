@@ -1346,6 +1346,8 @@ fn execute_clp_swap(
                     min_token_out: swap_msg.min_token_out,
                     next_swaps: forward_swaps.to_vec(),
                     test_fail: next_swap.test_fail,
+                    // SC-23 Issue 8 will thread the per-wallet override here.
+                    euclid_fee_override: None,
                 }))?,
                 funds: vec![],
             };
@@ -1424,6 +1426,8 @@ fn query_clp_simulate_swap(
                         asset: response.asset_out,
                         asset_amount: response.amount_out,
                         swaps: forward_swaps.to_vec(),
+                        // SC-23 Issue 8 will thread the per-wallet override here.
+                        euclid_fee_override: None,
                     },
                 ),
             )?;

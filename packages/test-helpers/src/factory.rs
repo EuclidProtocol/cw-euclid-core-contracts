@@ -449,6 +449,7 @@ pub fn execute_concentrated_swap_voucher(
             min_token_out: Uint256::from(1u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         }),
         &[],
     )?;
