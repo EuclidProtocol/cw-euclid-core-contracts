@@ -145,6 +145,64 @@ pub enum ExecuteMsg {
         sender: Addr,
     },
 
+    /// Admin entry to bootstrap the pool_factory link on a fresh chain.
+    /// One-shot: rejects if `POOL_FACTORY_INITIALISED` is already true.
+    SetPoolFactory {
+        pool_factory_address: String,
+    },
+
+    /// Proxy entry used by `pool_factory` to mint LP tokens after a
+    /// successful add-liquidity ack. Auth: only callable by the configured
+    /// pool factory address.
+    ProxyMintLpToken {
+        lp_token: Addr,
+        recipient: String,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to release tokens from escrow back
+    /// to a recipient — used by add-liquidity failure refunds and other
+    /// future pool flows. Auth: only callable by the configured pool factory
+    /// address.
+    ProxyReleaseEscrow {
+        token: Token,
+        denom: TokenType,
+        recipient: String,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to burn LP cw20 tokens held by main
+    /// factory after a successful remove-liquidity ack. Main factory holds the
+    /// LP tokens (they arrived via the `cw20::Send` hook) and remains the only
+    /// authority capable of burning them. Auth: only callable by the
+    /// configured pool factory address.
+    ProxyBurnLpToken {
+        lp_token: Addr,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to return LP cw20 tokens held by
+    /// main factory back to the original sender after a failed
+    /// remove-liquidity ack. Auth: only callable by the configured pool
+    /// factory address.
+    ProxyTransferLpToken {
+        lp_token: Addr,
+        recipient: String,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to mint a concentrated-liquidity
+    /// position NFT into the singleton position-token contract held by main
+    /// factory. Slice 4 adds the auth boundary up-front; the wire-up from the
+    /// pool_factory side lands in Slice 5 (CLP add_concentrated_liquidity).
+    /// Auth: only callable by the configured pool factory address.
+    ProxyMintPosition {
+        token_id: Uint128,
+        owner: Addr,
+        vlp_address: String,
+        liquidity: Uint128,
+    },
+
     ReceivePacket {
         source_port: String,
         destination_port: String,
@@ -262,6 +320,29 @@ pub enum QueryMsg {
 
     #[returns(GetUserRateLimitResponse)]
     GetUserRateLimit { user: Addr },
+
+    /// Returns whether `addr` holds the requested admin role. Used by
+    /// pool_factory for admin-gated actions.
+    #[returns(QueryAdminRoleResponse)]
+    QueryAdminRole {
+        addr: Addr,
+        role: crate::admin::AdminType,
+    },
+
+    /// Returns the configured pool_factory address (if any).
+    #[returns(QueryPoolFactoryAddressResponse)]
+    QueryPoolFactoryAddress {},
+}
+
+#[cw_serde]
+pub struct QueryAdminRoleResponse {
+    pub has_role: bool,
+}
+
+#[cw_serde]
+pub struct QueryPoolFactoryAddressResponse {
+    pub pool_factory_address: Option<Addr>,
+    pub initialised: bool,
 }
 
 #[cw_serde]

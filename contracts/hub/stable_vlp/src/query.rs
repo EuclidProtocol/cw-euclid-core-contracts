@@ -7,7 +7,8 @@ use euclid::msgs::vlp::stable::msg::{
 };
 use euclid::swap::NextSwapVlp;
 use euclid::token::Token;
-use euclid_pool::{calculate_amount_from_shares, simulate_swap, SwapCalculationMethod};
+use euclid_pool::common::calculate_amount_from_shares;
+use euclid_pool::stable::simulate_swap;
 
 use crate::state::{ADMIN, AMP_FACTOR, BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::msgs::vlp::base::{
@@ -27,7 +28,7 @@ pub fn query_simulate_swap(
         &BALANCES,
         asset_in,
         amount_in,
-        SwapCalculationMethod::Stable(AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR)),
+        AMP_FACTOR.load(deps.storage).unwrap_or(DEFAULT_AMP_FACTOR),
         // Sender-aware override (resolved by the Router) so the simulated Euclid
         // fee matches execution; `None` keeps the pool's configured Euclid fee.
         euclid_fee_override,

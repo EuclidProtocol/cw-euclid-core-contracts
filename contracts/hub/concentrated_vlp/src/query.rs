@@ -10,7 +10,8 @@ use euclid::msgs::vlp::concentrated::msg::{
 };
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
-use euclid_pool::{calculate_amount_from_shares, simulate_swap, SwapCalculationMethod};
+use euclid_pool::common::calculate_amount_from_shares;
+use euclid_pool::cp::simulate_swap;
 
 use crate::state::{BALANCES, CHAIN_LP_TOKENS, POOL_KEY, STATE};
 
@@ -33,7 +34,6 @@ pub fn query_simulate_swap(
         &BALANCES,
         asset_in,
         amount_in,
-        SwapCalculationMethod::Regular,
         // SC-23 Issue 8 will thread the per-wallet override here.
         None,
     )?;

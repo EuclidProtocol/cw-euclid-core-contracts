@@ -1,12 +1,17 @@
 use crate::{
     ibc,
-    state::{PENDING_DEPOSIT_TOKEN, POSITION_TOKEN_CONTRACT, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN},
+    query::get_chain_type,
+    state::{
+        PENDING_DEPOSIT_TOKEN, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+    },
 };
 use cosmwasm_std::{from_json, DepsMut, Env, Event, Reply, Response, SubMsgResult};
 use cw_utils::{parse_execute_response_data, parse_instantiate_response_data};
 use euclid::{
+    chain::ChainType,
     error::ContractError,
     events::{simple_event, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT},
+    msgs::pool_factory::PoolFactoryReply,
 };
 use euclid_ibc::{
     ack::make_ack_fail,
@@ -23,6 +28,14 @@ pub const RELEASE_ESCROW_REPLY_ID: u64 = 5;
 
 pub const CROSS_CHAIN_RECEIVE_REPLY_ID: u64 = 6;
 pub const POSITION_TOKEN_INSTANTIATE_REPLY_ID: u64 = 7;
+
+/// Reply id used by main factory to consume `pool_factory`'s typed
+/// `PoolFactoryReply::SendPacket` payload and run the existing
+/// `execute_send_packet` flow on its behalf. Pool factory does not call
+/// back into main factory to request an outbound packet; instead it
+/// returns the request as `Response::data` from the `On*` handler main
+/// factory dispatched as `SubMsg::reply_on_success`.
+pub const POOL_FACTORY_DELEGATE_REPLY_ID: u64 = 8;
 
 #[named]
 pub fn on_escrow_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
@@ -156,6 +169,109 @@ pub fn on_release_escrow_reply(_deps: DepsMut, msg: Reply) -> Result<Response, C
     }
 }
 
+/// Consumes a `PoolFactoryReply::SendPacket` payload set on the data of a
+/// successful `On*` handler invocation against pool_factory, and runs the
+/// same outbound dispatch path `execute_send_packet` runs for user-driven
+/// flows.
+///
+/// Authorisation is structural: CosmWasm guarantees this reply only fires
+/// for a submsg main factory itself dispatched, so there is no public
+/// surface an attacker can use to inject reply data. The handler still
+/// performs a defence-in-depth check on the decoded packet: any
+/// `RouterCrossChainExecuteMsg` variant that is not a pool variant is
+/// rejected, preventing a pool_factory bug from emitting an arbitrary
+/// cross-chain message (e.g. `Swap`, `TransferVoucher`, `RegisterDenom`).
+#[named]
+pub fn on_pool_factory_delegate_reply(
+    mut deps: DepsMut,
+    env: Env,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    let result = msg
+        .result
+        .into_result()
+        .map_err(|err| ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        })?;
+
+    // SubMsg::reply_on_success delivers the called contract's
+    // `Response::data` wrapped in a protobuf `MsgExecuteContractResponse`
+    // envelope. Unwrap it the same way `on_release_escrow_reply` does
+    // before decoding the inner JSON payload.
+    #[allow(deprecated)]
+    let envelope = result.data.ok_or_else(|| ContractError::Reply {
+        action: function_name!().to_string(),
+        err: "pool_factory delegate reply missing data".to_string(),
+    })?;
+
+    let inner = parse_execute_response_data(&envelope)
+        .map_err(|err| ContractError::Reply {
+            action: function_name!().to_string(),
+            err: format!("failed to parse execute response envelope: {err}"),
+        })?
+        .data
+        .ok_or_else(|| ContractError::Reply {
+            action: function_name!().to_string(),
+            err: "pool_factory delegate reply envelope carried no data".to_string(),
+        })?;
+
+    let reply_payload: PoolFactoryReply =
+        from_json(&inner).map_err(|err| ContractError::Reply {
+            action: function_name!().to_string(),
+            err: format!("failed to decode PoolFactoryReply: {err}"),
+        })?;
+
+    match reply_payload {
+        PoolFactoryReply::SendPacket {
+            msg: packet,
+            timeout,
+            ack_response,
+            sender,
+        } => {
+            let router_msg: RouterCrossChainExecuteMsg =
+                from_json(&packet).map_err(|err| ContractError::Reply {
+                    action: function_name!().to_string(),
+                    err: format!("failed to decode RouterCrossChainExecuteMsg: {err}"),
+                })?;
+            if !router_msg.is_pool_variant() {
+                return Err(ContractError::Reply {
+                    action: function_name!().to_string(),
+                    err: "pool_factory returned a non-pool RouterCrossChainExecuteMsg variant"
+                        .to_string(),
+                });
+            }
+            let tx_id = router_msg.get_tx_id();
+
+            let state = STATE.load(deps.storage)?;
+            let chain_type: ChainType = get_chain_type(deps.as_ref(), &env)?;
+
+            let submsg = match chain_type {
+                ChainType::Native {} | ChainType::Cosmos(_) => router_msg.to_msg(
+                    &mut deps,
+                    &env,
+                    state.router_contract.clone(),
+                    sender,
+                    state.chain_uid.clone(),
+                    chain_type,
+                    timeout,
+                    ack_response,
+                )?,
+                _ => {
+                    return Err(ContractError::new(
+                        "Pool factory delegate reply only supports cosmos/native chain types",
+                    ));
+                }
+            };
+
+            Ok(Response::new()
+                .add_attribute("method", "on_pool_factory_delegate_reply")
+                .add_attribute("tx_id", tx_id)
+                .add_submessage(submsg))
+        }
+    }
+}
+
 pub fn on_reply_native_ibc_wrapper_call(
     deps: &mut DepsMut,
     env: Env,
@@ -249,7 +365,10 @@ mod tests {
         state::{PENDING_DEPOSIT_TOKEN, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN},
         testing::helpers::init,
     };
-    use cosmwasm_std::{testing::mock_dependencies, Binary, Reply, SubMsgResponse, SubMsgResult};
+    use cosmwasm_std::{
+        testing::{mock_dependencies, mock_env},
+        Binary, Reply, SubMsgResponse, SubMsgResult,
+    };
     use euclid::{
         msgs::escrow::{Cw20InstantiateResponse, EscrowInstantiateResponse},
         token::{Pair, Token, TokenType, TokenWithDenomAndAmount},
@@ -620,5 +739,205 @@ mod tests {
 
         // Second event is EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT
         assert_eq!(res.events[1].ty, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT);
+    }
+
+    // -----------------------------------------------------------------------
+    // on_pool_factory_delegate_reply
+    // -----------------------------------------------------------------------
+
+    fn cross_chain_user(addr: &str) -> euclid::cross_chain_user::CrossChainUser {
+        euclid::cross_chain_user::CrossChainUser {
+            chain_uid: euclid::chain::ChainUid::create(
+                crate::testing::helpers::TEST_CHAIN_UID.to_string(),
+            )
+            .unwrap(),
+            address: addr.to_string(),
+        }
+    }
+
+    fn pool_creation_packet(sender_addr: &str) -> Binary {
+        let pair = euclid::token::PairWithDenomAndAmount {
+            token_1: TokenWithDenomAndAmount {
+                token: Token::create("aaa".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "uaaa".to_string(),
+                    decimals: None,
+                },
+                amount: cosmwasm_std::Uint256::from(100u128),
+            },
+            token_2: TokenWithDenomAndAmount {
+                token: Token::create("bbb".to_string()).unwrap(),
+                token_type: TokenType::Native {
+                    denom: "ubbb".to_string(),
+                    decimals: None,
+                },
+                amount: cosmwasm_std::Uint256::from(100u128),
+            },
+        };
+        cosmwasm_std::to_json_binary(&RouterCrossChainExecuteMsg::RequestPoolCreation {
+            sender: cross_chain_user(sender_addr),
+            tx_id: "tx_test".to_string(),
+            pair,
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            slippage_tolerance_bps: 50,
+        })
+        .unwrap()
+    }
+
+    fn swap_packet(sender_addr: &str) -> Binary {
+        let token = Token::create("aaa".to_string()).unwrap();
+        cosmwasm_std::to_json_binary(&RouterCrossChainExecuteMsg::Swap(
+            euclid_ibc::router_ibc::RouterCrossChainSwapExecuteMsg {
+                sender: cross_chain_user(sender_addr),
+                tx_id: "tx_swap".to_string(),
+                asset_in: euclid::token::TokenWithDenom {
+                    token: token.clone(),
+                    token_type: TokenType::Native {
+                        denom: "uaaa".to_string(),
+                        decimals: None,
+                    },
+                },
+                amount_in: cosmwasm_std::Uint256::from(1u128),
+                asset_out: token,
+                min_amount_out: cosmwasm_std::Uint256::from(1u128),
+                swaps: vec![],
+                recipients: vec![],
+                partner_fee_amount: cosmwasm_std::Uint256::zero(),
+                partner_fee_recipient: cross_chain_user(sender_addr),
+            },
+        ))
+        .unwrap()
+    }
+
+    /// Wraps an inner payload in the protobuf MsgExecuteContractResponse
+    /// envelope that a real SubMsg::reply_on_success would deliver. The
+    /// `encode_execute_response` helper at the top of this test module
+    /// produces the same encoding the CosmWasm VM emits for a successful
+    /// execute SubMsg.
+    fn reply_with_data(inner: Binary) -> Reply {
+        let envelope = Binary::from(encode_execute_response(inner.as_slice()));
+        Reply {
+            id: POOL_FACTORY_DELEGATE_REPLY_ID,
+            payload: Binary::default(),
+            #[allow(deprecated)]
+            gas_used: 0,
+            result: SubMsgResult::Ok(SubMsgResponse {
+                events: vec![],
+                #[allow(deprecated)]
+                data: Some(envelope),
+                msg_responses: vec![],
+            }),
+        }
+    }
+
+    #[test]
+    fn test_on_pool_factory_delegate_reply_happy_path_emits_submsg() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let payload = cosmwasm_std::to_json_binary(
+            &euclid::msgs::pool_factory::PoolFactoryReply::SendPacket {
+                msg: pool_creation_packet(user.as_str()),
+                timeout: None,
+                ack_response: None,
+                sender: user.clone(),
+            },
+        )
+        .unwrap();
+
+        let res =
+            on_pool_factory_delegate_reply(deps.as_mut(), mock_env(), reply_with_data(payload))
+                .unwrap();
+
+        // One submsg emitted (the to_msg() output for the outbound packet).
+        assert_eq!(res.messages.len(), 1);
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "on_pool_factory_delegate_reply"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "tx_id" && a.value == "tx_test"));
+    }
+
+    #[test]
+    fn test_on_pool_factory_delegate_reply_missing_data_errors() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let reply = Reply {
+            id: POOL_FACTORY_DELEGATE_REPLY_ID,
+            payload: Binary::default(),
+            #[allow(deprecated)]
+            gas_used: 0,
+            result: SubMsgResult::Ok(SubMsgResponse {
+                events: vec![],
+                #[allow(deprecated)]
+                data: None,
+                msg_responses: vec![],
+            }),
+        };
+
+        let err = on_pool_factory_delegate_reply(deps.as_mut(), mock_env(), reply).unwrap_err();
+        match err {
+            ContractError::Reply { action, err } => {
+                assert_eq!(action, "on_pool_factory_delegate_reply");
+                assert!(err.contains("missing data"), "unexpected err: {err}");
+            }
+            other => panic!("expected ContractError::Reply, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_on_pool_factory_delegate_reply_undecodable_data_errors() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        // Bytes that are not a valid PoolFactoryReply.
+        let garbage = Binary::from(b"not-json-and-not-pool-factory-reply".as_slice());
+
+        let err =
+            on_pool_factory_delegate_reply(deps.as_mut(), mock_env(), reply_with_data(garbage))
+                .unwrap_err();
+        match err {
+            ContractError::Reply { action, err } => {
+                assert_eq!(action, "on_pool_factory_delegate_reply");
+                assert!(
+                    err.contains("failed to decode PoolFactoryReply"),
+                    "unexpected err: {err}"
+                );
+            }
+            other => panic!("expected ContractError::Reply, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_on_pool_factory_delegate_reply_non_pool_variant_rejected() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let user = deps.api.addr_make("user");
+        let payload = cosmwasm_std::to_json_binary(
+            &euclid::msgs::pool_factory::PoolFactoryReply::SendPacket {
+                msg: swap_packet(user.as_str()),
+                timeout: None,
+                ack_response: None,
+                sender: user,
+            },
+        )
+        .unwrap();
+
+        let err =
+            on_pool_factory_delegate_reply(deps.as_mut(), mock_env(), reply_with_data(payload))
+                .unwrap_err();
+        match err {
+            ContractError::Reply { action, err } => {
+                assert_eq!(action, "on_pool_factory_delegate_reply");
+                assert!(err.contains("non-pool"), "unexpected err: {err}");
+            }
+            other => panic!("expected ContractError::Reply, got {other:?}"),
+        }
     }
 }

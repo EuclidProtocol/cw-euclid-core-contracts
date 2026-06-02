@@ -99,6 +99,28 @@ impl RouterCrossChainExecuteMsg {
         }
     }
 
+    /// Returns true if `self` is a pool-related variant currently owned by
+    /// `pool_factory`. Used in two places that MUST stay in lockstep:
+    ///   1. The inbound ack dispatcher on main factory, to decide whether to
+    ///      forward an ack to `pool_factory::OnPoolAck`.
+    ///   2. The outbound reply handler on main factory
+    ///      (`on_pool_factory_delegate_reply`), to reject any non-pool packet
+    ///      returned by `pool_factory` as defence in depth.
+    ///
+    /// Extended slice-by-slice as additional pool flows are delegated. Adding
+    /// a new variant here without also retrofitting both sites will cause
+    /// either an unrouted ack (false negative) or an unsendable packet
+    /// (false positive); reviewers should confirm both sites match.
+    pub fn is_pool_variant(&self) -> bool {
+        matches!(
+            self,
+            Self::RequestPoolCreation { .. }
+                | Self::RequestConcentratedPoolCreation(_)
+                | Self::AddLiquidity { .. }
+                | Self::RemoveLiquidity(_)
+        )
+    }
+
     /// Returns a reference to the sender CrossChainUser from any variant.
     pub fn get_sender(&self) -> &CrossChainUser {
         match self {

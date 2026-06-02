@@ -8,13 +8,13 @@ use euclid::{
     error::ContractError,
     fee::{DenomFees, TotalFees},
     msgs::vlp::{
-        base::{PoolConfig, State, NEXT_SWAP_REPLY_ID},
+        base::{State, NEXT_SWAP_REPLY_ID},
         cp::msg::{ExecuteMsg, InstantiateMsg, QueryMsg},
     },
 };
 use euclid_pool::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_admin, update_fee,
-    SwapCalculationMethod,
+    common::{register_pool, remove_liquidity, update_admin, update_fee},
+    cp::{add_liquidity, execute_swap},
 };
 
 use crate::{
@@ -73,11 +73,11 @@ pub fn instantiate(
                     info.clone(),
                     &STATE,
                     &CHAIN_LP_TOKENS,
-                    PoolConfig::ConstantProduct {},
                     register_pool_msg.sender,
                     register_pool_msg.pair,
                     register_pool_msg.tx_id,
-                ),
+                )
+                .map(|r| r.add_attribute("pool_type", "constant_product")),
                 _ => Err(ContractError::Unauthorized {}),
             })?;
 
@@ -104,11 +104,11 @@ pub fn execute(
             info,
             &STATE,
             &CHAIN_LP_TOKENS,
-            PoolConfig::ConstantProduct {},
             register_pool_msg.sender,
             register_pool_msg.pair,
             register_pool_msg.tx_id,
-        ),
+        )
+        .map(|r| r.add_attribute("pool_type", "constant_product")),
         ExecuteMsg::AddLiquidity(add_liquidity_msg) => add_liquidity(
             deps,
             env,
@@ -120,7 +120,6 @@ pub fn execute(
             add_liquidity_msg.sender,
             add_liquidity_msg.liquidity,
             add_liquidity_msg.slippage_tolerance_bps,
-            None,
             add_liquidity_msg.tx_id,
         ),
         ExecuteMsg::RemoveLiquidity(remove_liquidity_msg) => remove_liquidity(
@@ -146,7 +145,6 @@ pub fn execute(
             swap_msg.min_token_out,
             swap_msg.tx_id,
             swap_msg.next_swaps,
-            SwapCalculationMethod::Regular,
             swap_msg.test_fail,
             swap_msg.euclid_fee_override,
         ),

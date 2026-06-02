@@ -64,6 +64,13 @@ pub const VLP_TO_LP_TOKEN: Map<String, Addr> = Map::new("vlp_to_lp_token");
 // Common position token contract for all concentrated pools
 pub const POSITION_TOKEN_CONTRACT: Item<Addr> = Item::new("position_token_contract");
 
+// Address of the pool_factory companion contract on this chain. Written by
+// either the Sirius drain-and-cut migration or `SetPoolFactory` on a fresh
+// chain. While `POOL_FACTORY_INITIALISED == false`, main Factory keeps owning
+// the pool code paths; once flipped, pool ops delegate to this address.
+pub const POOL_FACTORY_ADDRESS: Item<Addr> = Item::new("pool_factory_address");
+pub const POOL_FACTORY_INITIALISED: Item<bool> = Item::new("pool_factory_initialised");
+
 #[cw_serde]
 pub struct PoolCreateRequest {
     pub tx_id: String,

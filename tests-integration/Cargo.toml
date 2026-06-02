@@ -17,6 +17,7 @@ stable_vlp = { path = "../contracts/hub/stable_vlp" }
 concentrated_vlp = { path = "../contracts/hub/concentrated_vlp" }
 escrow = { path = "../contracts/liquidity/escrow" }
 factory = { path = "../contracts/liquidity/factory" }
+pool_factory = { path = "../contracts/liquidity/pool_factory" }
 lp_token = { path = "../contracts/liquidity/lp_token" }
 position_token = { path = "../contracts/liquidity/position_token" }
 euclid-relayer = { path = "../contracts/common/euclid-relayer" }
