@@ -27,6 +27,7 @@ pub mod concentrated_collect;
 pub mod concentrated_create_pool;
 pub mod concentrated_failures;
 pub mod concentrated_fees;
+pub mod concentrated_override;
 pub mod concentrated_positions;
 pub mod concentrated_swap;
 pub mod concentrated_v3_fees;

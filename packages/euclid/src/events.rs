@@ -244,3 +244,24 @@ pub fn escrow_balance_change_event(
         .add_attribute("chain_uid", chain_uid.to_string())
         .add_attribute("token_type", token_type.get_key())
 }
+
+pub const EUCLID_FEE_OVERRIDE_CHANGE_EVENT: &str = "euclid-fee-override-change";
+/// Emitted when the fee admin sets or removes a per-wallet Euclid-fee override.
+///
+/// `action` is `"set"` when an override is upserted and `"remove"` when an
+/// entry is cleared. On set, `euclid_fee_bps` carries the new value; on remove
+/// the attribute is omitted.
+pub fn euclid_fee_override_change_event(
+    action: &str,
+    user: &CrossChainUser,
+    euclid_fee_bps: Option<u64>,
+) -> Event {
+    let event = Event::new(EUCLID_FEE_OVERRIDE_CHANGE_EVENT)
+        .add_attribute("action", action)
+        .add_attribute("chain_uid", user.chain_uid.to_string())
+        .add_attribute("address", user.address.clone());
+    match euclid_fee_bps {
+        Some(bps) => event.add_attribute("euclid_fee_bps", bps.to_string()),
+        None => event,
+    }
+}

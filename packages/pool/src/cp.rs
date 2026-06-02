@@ -263,6 +263,7 @@ pub fn pre_swap(
     asset_in: &Token,
     amount_in: Uint256,
     test_fail: Option<bool>,
+    euclid_fee_override: Option<u64>,
 ) -> Result<PreSwapResponse, ContractError> {
     ensure!(
         !test_fail.unwrap_or(false),
@@ -284,8 +285,28 @@ pub fn pre_swap(
     // Get Fee from the state
     let fee = state.clone().fee;
 
+    // The LP fee is always charged at the pool's configured rate. The Euclid
+    // fee uses the per-wallet override when present, otherwise the pool rate.
+    //
+    // This applies the override for the constant-product (`Regular`) and
+    // `Stable` curves, where the Euclid fee is an *additive* trader fee carved
+    // out of `amount_in` — so reducing it directly improves the wallet's quote.
+    //
+    // NOTE(SC-23): concentrated (CLP) pools do NOT go through `pre_swap`; they
+    // have their own swap math under `contracts/hub/concentrated_vlp`. A CLP
+    // must NOT treat the Euclid value as an additive trader fee — there it is
+    // the protocol's *cut* of the LP swap fee, so zeroing it here would only
+    // shift the protocol's share to LPs, not improve the wallet's quote. The
+    // CLP applies the override by lowering its structural fee tier instead, in
+    // `concentrated_vlp::contract::resolve_effective_fee` (SC-23 Issue 8): the
+    // LP keeps its absolute pip share `lp_pips = tier_pips - tier_pips*d/10_000`
+    // and the protocol's slice scales as `tier_pips * X / 10_000`, so
+    // `effective_fee_pips = lp_pips + tier_pips*X/10_000`. Do not branch on
+    // `euclid_fee_override` for a CLP leg in this function.
+    let euclid_fee_bps = euclid_fee_override.unwrap_or(fee.euclid_fee_bps);
+
     let lp_fee = amount_in.checked_mul_floor(Decimal::bps(fee.lp_fee_bps))?;
-    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(fee.euclid_fee_bps))?;
+    let euclid_fee = amount_in.checked_mul_floor(Decimal::bps(euclid_fee_bps))?;
 
     let swap_amount = amount_in.checked_sub(lp_fee.checked_add(euclid_fee)?)?;
 
@@ -316,6 +337,7 @@ pub fn execute_swap(
     tx_id: String,
     next_swaps: Vec<NextSwapVlp>,
     test_fail: Option<bool>,
+    euclid_fee_override: Option<u64>,
 ) -> Result<Response, ContractError> {
     let mut state = state_storage.load(deps.storage)?;
 
@@ -369,6 +391,7 @@ pub fn execute_swap(
         &asset_in,
         amount_in,
         test_fail,
+        euclid_fee_override,
     )?;
 
     // Add the lp fee to total fees
@@ -480,6 +503,8 @@ pub fn execute_swap(
                 min_token_out,
                 next_swaps: forward_swaps.to_vec(),
                 test_fail: next_swap.test_fail,
+                // Forward the override so it applies uniformly across every hop.
+                euclid_fee_override,
             });
             let next_swap_msg = WasmMsg::Execute {
                 contract_addr: next_swap.vlp_address.clone(),
@@ -570,6 +595,7 @@ pub fn simulate_swap(
     balances_storage: &Map<Token, Uint256>,
     asset_in: Token,
     amount_in: Uint256,
+    euclid_fee_override: Option<u64>,
 ) -> Result<GetSwapQueryResponse, ContractError> {
     let pre_swap_response = pre_swap(
         &deps,
@@ -578,6 +604,7 @@ pub fn simulate_swap(
         &asset_in,
         amount_in,
         None,
+        euclid_fee_override,
     )?;
 
     Ok(GetSwapQueryResponse {

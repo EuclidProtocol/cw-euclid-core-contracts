@@ -333,6 +333,7 @@ mod tests {
             &asset_in,
             amount_in,
             None,
+            None,
         )
         .unwrap();
 
@@ -494,6 +495,7 @@ mod tests {
             &asset_in,
             amount_in,
             Uint64::from(amp_factor),
+            None,
             None,
         )
         .unwrap();
@@ -1921,6 +1923,7 @@ mod invariant_tests {
             &token_1,
             Uint256::from(amount_in),
             None,
+            None,
         )
         .unwrap()
     }
@@ -2195,5 +2198,275 @@ mod invariant_tests {
                 "Reserve increase must NOT equal full amount_in when euclid_fee > 0"
             );
         }
+    }
+}
+
+// ========================================================================
+// EUCLID-FEE OVERRIDE (SC-23): the per-wallet override replaces the pool's
+// Euclid-fee rate in `pre_swap` while leaving the LP fee at the pool rate.
+// Exercised over the constant-product curve (Issue 2); the same `pre_swap`
+// path serves the stable curve (Issue 3).
+// ========================================================================
+
+mod euclid_fee_override_tests {
+    use super::*;
+    use euclid::fee::MAX_FEE_BPS;
+
+    /// Set up mock storage with the given reserves/fee config and run
+    /// `pre_swap` for the given curve with the supplied override.
+    fn pre_swap_with_override_method(
+        reserve_in: u128,
+        reserve_out: u128,
+        lp_fee_bps: u64,
+        euclid_fee_bps: u64,
+        amount_in: u128,
+        euclid_fee_override: Option<u64>,
+        // `None` selects the constant-product curve; `Some(amp)` the stable curve.
+        amp_factor: Option<Uint64>,
+    ) -> crate::common::PreSwapResponse {
+        use std::collections::HashMap;
+
+        let mut deps = mock_dependencies();
+        let state_storage: Item<State> = Item::new("state");
+        let balances_storage: Map<Token, Uint256> = Map::new("balances");
+
+        let token_1 = Token::create("token1".to_string()).unwrap();
+        let token_2 = Token::create("token2".to_string()).unwrap();
+        let pair = Pair::new(token_1.clone(), token_2.clone()).unwrap();
+
+        balances_storage
+            .save(
+                deps.as_mut().storage,
+                token_1.clone(),
+                &Uint256::from(reserve_in),
+            )
+            .unwrap();
+        balances_storage
+            .save(
+                deps.as_mut().storage,
+                token_2.clone(),
+                &Uint256::from(reserve_out),
+            )
+            .unwrap();
+
+        let fee = Fee::new(
+            lp_fee_bps,
+            euclid_fee_bps,
+            CrossChainUser::new(
+                ChainUid::create("1".to_string()).unwrap(),
+                "recipient".to_string(),
+            ),
+        );
+
+        let state = State {
+            pair,
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("vbc"),
+            fee,
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::default(),
+                },
+            },
+            last_updated: 0,
+            total_lp_tokens: Uint256::zero(),
+        };
+        state_storage.save(deps.as_mut().storage, &state).unwrap();
+
+        match amp_factor {
+            Some(amp) => crate::stable::pre_swap(
+                &deps.as_ref(),
+                &state_storage,
+                &balances_storage,
+                &token_1,
+                Uint256::from(amount_in),
+                amp,
+                None,
+                euclid_fee_override,
+            )
+            .unwrap(),
+            None => crate::cp::pre_swap(
+                &deps.as_ref(),
+                &state_storage,
+                &balances_storage,
+                &token_1,
+                Uint256::from(amount_in),
+                None,
+                euclid_fee_override,
+            )
+            .unwrap(),
+        }
+    }
+
+    /// Constant-product convenience wrapper.
+    fn pre_swap_with_override(
+        reserve_in: u128,
+        reserve_out: u128,
+        lp_fee_bps: u64,
+        euclid_fee_bps: u64,
+        amount_in: u128,
+        euclid_fee_override: Option<u64>,
+    ) -> crate::common::PreSwapResponse {
+        pre_swap_with_override_method(
+            reserve_in,
+            reserve_out,
+            lp_fee_bps,
+            euclid_fee_bps,
+            amount_in,
+            euclid_fee_override,
+            None,
+        )
+    }
+
+    /// Stable-curve convenience wrapper (amp factor fixed for determinism).
+    fn stable_pre_swap_with_override(
+        reserve_in: u128,
+        reserve_out: u128,
+        lp_fee_bps: u64,
+        euclid_fee_bps: u64,
+        amount_in: u128,
+        euclid_fee_override: Option<u64>,
+    ) -> crate::common::PreSwapResponse {
+        pre_swap_with_override_method(
+            reserve_in,
+            reserve_out,
+            lp_fee_bps,
+            euclid_fee_bps,
+            amount_in,
+            euclid_fee_override,
+            Some(Uint64::from(100u64)),
+        )
+    }
+
+    // Pool configured with lp_fee_bps=30, euclid_fee_bps=100 on amount_in=10_000.
+    // expected_euclid_fee = amount_in * effective_euclid_bps / 10_000.
+    // expected_lp_fee = amount_in * 30 / 10_000 = 30 in every case.
+    #[rstest]
+    #[case::full_exemption(Some(0), 0u128)]
+    #[case::reduced(Some(25), 25u128)]
+    #[case::none_uses_pool_default(None, 100u128)]
+    #[case::override_equals_pool(Some(100), 100u128)]
+    #[case::max_fee_boundary(Some(MAX_FEE_BPS), 1_000u128)]
+    fn override_replaces_euclid_fee_lp_fee_unchanged(
+        #[case] euclid_fee_override: Option<u64>,
+        #[case] expected_euclid_fee: u128,
+    ) {
+        let amount_in = 10_000u128;
+        let res = pre_swap_with_override(
+            1_000_000,
+            1_000_000,
+            30,
+            100,
+            amount_in,
+            euclid_fee_override,
+        );
+
+        assert_eq!(
+            res.euclid_fee,
+            Uint256::from(expected_euclid_fee),
+            "Euclid fee must follow the override (or pool default when None)"
+        );
+        // LP fee is always charged at the pool rate, independent of the override.
+        assert_eq!(
+            res.lp_fee,
+            Uint256::from(30u128),
+            "LP fee must stay at the pool rate regardless of the override"
+        );
+        // swap_amount = amount_in - lp_fee - euclid_fee.
+        assert_eq!(
+            res.swap_amount,
+            Uint256::from(amount_in - 30 - expected_euclid_fee),
+        );
+    }
+
+    #[test]
+    fn exemption_increases_swapped_amount_versus_full_fee() {
+        // A whitelisted wallet (override = 0) keeps more of its input working
+        // through the curve than a non-whitelisted wallet paying the full fee,
+        // so it receives strictly more out.
+        let exempt = pre_swap_with_override(1_000_000, 1_000_000, 30, 100, 10_000, Some(0));
+        let full = pre_swap_with_override(1_000_000, 1_000_000, 30, 100, 10_000, None);
+
+        assert!(exempt.euclid_fee.is_zero());
+        assert_eq!(full.euclid_fee, Uint256::from(100u128));
+        assert!(
+            exempt.receive_amount > full.receive_amount,
+            "Exempt wallet should receive more out than a full-fee wallet"
+        );
+        // LP fee identical with and without the override.
+        assert_eq!(exempt.lp_fee, full.lp_fee);
+    }
+
+    #[test]
+    fn reduced_override_sits_between_exemption_and_full_fee() {
+        let exempt = pre_swap_with_override(1_000_000, 1_000_000, 30, 100, 10_000, Some(0));
+        let reduced = pre_swap_with_override(1_000_000, 1_000_000, 30, 100, 10_000, Some(40));
+        let full = pre_swap_with_override(1_000_000, 1_000_000, 30, 100, 10_000, None);
+
+        assert_eq!(reduced.euclid_fee, Uint256::from(40u128));
+        assert!(reduced.euclid_fee > exempt.euclid_fee);
+        assert!(reduced.euclid_fee < full.euclid_fee);
+        assert_eq!(reduced.lp_fee, full.lp_fee);
+    }
+
+    // --------------------------------------------------------------------
+    // Stable curve (Issue 3): the override drives the same fee math; only
+    // the curve applied to `swap_amount` differs from the CP case above.
+    // --------------------------------------------------------------------
+
+    // Same fee config as the CP table; fees are curve-independent so the
+    // expected euclid/lp fees match the constant-product cases exactly.
+    #[rstest]
+    #[case::full_exemption(Some(0), 0u128)]
+    #[case::reduced(Some(25), 25u128)]
+    #[case::none_uses_pool_default(None, 100u128)]
+    #[case::override_equals_pool(Some(100), 100u128)]
+    #[case::max_fee_boundary(Some(MAX_FEE_BPS), 1_000u128)]
+    fn stable_override_replaces_euclid_fee_lp_fee_unchanged(
+        #[case] euclid_fee_override: Option<u64>,
+        #[case] expected_euclid_fee: u128,
+    ) {
+        let amount_in = 10_000u128;
+        let res = stable_pre_swap_with_override(
+            1_000_000,
+            1_000_000,
+            30,
+            100,
+            amount_in,
+            euclid_fee_override,
+        );
+
+        assert_eq!(
+            res.euclid_fee,
+            Uint256::from(expected_euclid_fee),
+            "Euclid fee must follow the override (or pool default when None)"
+        );
+        assert_eq!(
+            res.lp_fee,
+            Uint256::from(30u128),
+            "LP fee must stay at the pool rate regardless of the override"
+        );
+        assert_eq!(
+            res.swap_amount,
+            Uint256::from(amount_in - 30 - expected_euclid_fee),
+        );
+    }
+
+    #[test]
+    fn stable_exemption_increases_swapped_amount_versus_full_fee() {
+        let exempt = stable_pre_swap_with_override(1_000_000, 1_000_000, 30, 100, 10_000, Some(0));
+        let full = stable_pre_swap_with_override(1_000_000, 1_000_000, 30, 100, 10_000, None);
+
+        assert!(exempt.euclid_fee.is_zero());
+        assert_eq!(full.euclid_fee, Uint256::from(100u128));
+        assert!(
+            exempt.receive_amount > full.receive_amount,
+            "Exempt wallet should receive more out than a full-fee wallet on the stable curve"
+        );
+        // LP fee identical with and without the override.
+        assert_eq!(exempt.lp_fee, full.lp_fee);
     }
 }

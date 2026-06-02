@@ -104,7 +104,7 @@ pub fn swap_request(
 mod tests {
     use super::*;
     use crate::helpers::chains::{
-        get_escrow, get_lp_token, get_virtual_balance, setup_interchain, setup_router,
+        get_escrow, get_lp_token, get_virtual_balance, get_vlp, setup_interchain, setup_router,
     };
 
     use crate::tests_reusable::factory_add_liquidity::deposit_token;
@@ -442,6 +442,322 @@ mod tests {
                 factory_after, factory_before,
                 "Factory should not retain smart input tokens after swap execution"
             );
+        }
+    }
+
+    /// SC-23 Issue 4: run a 2-hop CP route (tokena -> tokenb -> tokenc) and return
+    /// the Euclid fee collected by each hop's VLP, indexed by hop. When
+    /// `override_bps` is `Some`, a per-wallet Euclid-fee override is set for the
+    /// swapping wallet before the swap, so the override must apply on *every* hop
+    /// (not just the first) thanks to the forwarding in `execute_swap`.
+    fn two_hop_euclid_fees_per_vlp(override_bps: Option<u64>) -> Vec<Uint256> {
+        use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
+        use cw_orch::prelude::CwOrchQuery;
+        use euclid::msgs::router::execute::{
+            ExecuteMsgFns as RouterExecuteMsgFns, ManageRouterState,
+        };
+        use euclid::msgs::vlp::cp::{QueryMsg as CpVlpQueryMsg, TotalFeesPerDenomResponse};
+
+        let factory_chain_id = FactorySetupMode::Native.chain_id();
+        let sender = "sender_for_all_chains";
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
+        let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
+
+        let decimals = 6u32;
+        let multiplier = Uint256::from(10u128).pow(decimals);
+        let tokens: Vec<TokenWithDenom> = ["tokena", "tokenb", "tokenc"]
+            .iter()
+            .map(|n| native_token(n, decimals))
+            .collect();
+
+        for token in &tokens {
+            register_denom(&factory, &router, token.clone()).unwrap();
+        }
+
+        // Create a CP pool with equal reserves for each consecutive pair.
+        let deposit = Uint256::from(100_000u128).checked_mul(multiplier).unwrap();
+        for window in tokens.windows(2) {
+            let (token_a, token_b) = (&window[0], &window[1]);
+            deposit_token(&factory, &router, token_a.clone(), deposit, vec![]).unwrap();
+            deposit_token(&factory, &router, token_b.clone(), deposit, vec![]).unwrap();
+            let pair = PairWithDenomAndAmount {
+                token_1: token_a.with_amount(deposit),
+                token_2: token_b.with_amount(deposit),
+            };
+            create_pool(&factory, &router, pair, 500, PoolConfig::ConstantProduct {}).unwrap();
+        }
+
+        // Optionally exempt (or reduce the fee for) the swapping wallet. The
+        // router's instantiator is the fee admin, which is the test sender.
+        let swap_user =
+            CrossChainUser::new(chain_uid.clone(), factory.environment().sender.to_string());
+        if let Some(bps) = override_bps {
+            router
+                .manage_router_state(ManageRouterState::SetEuclidFeeOverride {
+                    user: swap_user,
+                    euclid_fee_bps: Some(bps),
+                })
+                .unwrap();
+        }
+
+        // Build and execute the 2-hop route.
+        let swaps: Vec<NextSwapPair> = tokens
+            .windows(2)
+            .map(|w| NextSwapPair {
+                token_in: w[0].token.clone(),
+                token_out: w[1].token.clone(),
+                pool_key: None,
+                test_fail: None,
+            })
+            .collect();
+        let asset_in = tokens.first().unwrap().clone();
+        let asset_out = tokens.last().unwrap().clone();
+        let swap_amount = Uint256::from(1_000u128).checked_mul(multiplier).unwrap();
+
+        swap_request(
+            &factory,
+            &router,
+            asset_in,
+            asset_out.token.clone(),
+            swap_amount,
+            Uint256::from(1u128),
+            swaps.clone(),
+            vec![],
+            None,
+        )
+        .unwrap();
+
+        // Each hop's Euclid fee is recorded on that hop's VLP, keyed by the
+        // hop's input denom. Collect it for every hop.
+        swaps
+            .iter()
+            .map(|swap| {
+                let pair = Pair::new(swap.token_in.clone(), swap.token_out.clone()).unwrap();
+                let vlp_address = router.get_vlp(pair).unwrap().vlp;
+                let vlp = get_vlp(&router_chain, &Addr::unchecked(vlp_address));
+                let fees: TotalFeesPerDenomResponse = vlp
+                    .query(&CpVlpQueryMsg::TotalFeesPerDenom {
+                        denom: swap.token_in.to_string(),
+                    })
+                    .unwrap();
+                fees.euclid_fees
+            })
+            .collect()
+    }
+
+    /// SC-23 Issue 4 acceptance: the Euclid-fee override is forwarded across every
+    /// hop of a multi-hop CP route, not just the first.
+    #[test]
+    fn euclid_fee_override_applies_on_every_multi_hop_cp_leg() {
+        // Non-whitelisted wallet: full Euclid fee charged on every hop.
+        let baseline = two_hop_euclid_fees_per_vlp(None);
+        assert_eq!(baseline.len(), 2, "expected a 2-hop route");
+        for (hop, fee) in baseline.iter().enumerate() {
+            assert!(
+                !fee.is_zero(),
+                "non-whitelisted hop {hop} should charge a Euclid fee, got 0"
+            );
+        }
+
+        // Whitelisted wallet (full exemption): zero Euclid fee on EVERY hop.
+        let exempt = two_hop_euclid_fees_per_vlp(Some(0));
+        assert_eq!(exempt.len(), 2);
+        for (hop, fee) in exempt.iter().enumerate() {
+            assert!(
+                fee.is_zero(),
+                "exempt hop {hop} should charge no Euclid fee, got {fee}"
+            );
+        }
+    }
+
+    /// Outcome of `simulate_and_execute_cp_route` for one scenario, all amounts
+    /// in voucher (24-decimal) units so simulation and execution are directly
+    /// comparable bit-for-bit.
+    struct SimVsExec {
+        /// Router `SimulateSwap` output quoted with no sender (current behavior).
+        sim_no_sender: Uint256,
+        /// Router `SimulateSwap` output quoted with the swapping wallet as sender.
+        sim_with_sender: Uint256,
+        /// Output the swap actually delivered to the wallet's voucher balance.
+        executed: Uint256,
+    }
+
+    /// SC-23 Issue 6: simulate then execute an `num_hops`-hop route (every hop
+    /// using `pool_config`) for one wallet and report the quoted vs. executed
+    /// output (voucher units). When `override_bps` is `Some`, the override is set
+    /// for the wallet first.
+    ///
+    /// The Router does not normalize the `SimulateSwap` input, while execution
+    /// does — so the simulation is fed a voucher-normalized amount to match what
+    /// execution feeds the VLP. The executed output is read straight from the
+    /// wallet's voucher balance (already in voucher units), so a matching
+    /// simulation must equal it exactly.
+    fn simulate_and_execute_route(
+        num_hops: usize,
+        override_bps: Option<u64>,
+        pool_config: PoolConfig,
+    ) -> SimVsExec {
+        use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
+        use cw_orch::prelude::CwOrchQuery;
+        use euclid::msgs::router::execute::{
+            ExecuteMsgFns as RouterExecuteMsgFns, ManageRouterState,
+        };
+        use euclid::msgs::router::query::{QueryMsg as RouterQueryMsg, QuerySimulateSwap};
+        use euclid::msgs::router::SimulateSwapResponse;
+        use euclid::normalize::normalize_token_to_voucher;
+
+        let factory_chain_id = FactorySetupMode::Native.chain_id();
+        let sender = "sender_for_all_chains";
+        let interchain = setup_interchain(sender, factory_chain_id);
+        let router_chain = interchain.get_chain(ROUTER_CHAIN_ID).unwrap();
+        let router = setup_router(&router_chain, vec![factory_chain_id]).unwrap();
+        let factory = setup_factory(&interchain, factory_chain_id, &router).unwrap();
+        let chain_uid = ChainUid::create(factory_chain_id.to_string()).unwrap();
+
+        let decimals = 6u32;
+        let multiplier = Uint256::from(10u128).pow(decimals);
+        let tokens: Vec<TokenWithDenom> = (0..=num_hops)
+            .map(|i| native_token(&format!("token{}", (b'a' + i as u8) as char), decimals))
+            .collect();
+
+        for token in &tokens {
+            register_denom(&factory, &router, token.clone()).unwrap();
+        }
+
+        let deposit = Uint256::from(100_000u128).checked_mul(multiplier).unwrap();
+        for window in tokens.windows(2) {
+            let (token_a, token_b) = (&window[0], &window[1]);
+            deposit_token(&factory, &router, token_a.clone(), deposit, vec![]).unwrap();
+            deposit_token(&factory, &router, token_b.clone(), deposit, vec![]).unwrap();
+            let pair = PairWithDenomAndAmount {
+                token_1: token_a.with_amount(deposit),
+                token_2: token_b.with_amount(deposit),
+            };
+            create_pool(&factory, &router, pair, 500, pool_config.clone()).unwrap();
+        }
+
+        let swap_user =
+            CrossChainUser::new(chain_uid.clone(), factory.environment().sender.to_string());
+        if let Some(bps) = override_bps {
+            router
+                .manage_router_state(ManageRouterState::SetEuclidFeeOverride {
+                    user: swap_user.clone(),
+                    euclid_fee_bps: Some(bps),
+                })
+                .unwrap();
+        }
+
+        let swaps: Vec<NextSwapPair> = tokens
+            .windows(2)
+            .map(|w| NextSwapPair {
+                token_in: w[0].token.clone(),
+                token_out: w[1].token.clone(),
+                pool_key: None,
+                test_fail: None,
+            })
+            .collect();
+        let asset_in = tokens.first().unwrap().clone();
+        let asset_out = tokens.last().unwrap().clone();
+        let swap_amount = Uint256::from(1_000u128).checked_mul(multiplier).unwrap();
+        // Execution normalizes amount_in to voucher units; mirror that for the
+        // (non-normalizing) router simulate so both feed the VLP the same value.
+        let normalized_amount_in = normalize_token_to_voucher(swap_amount, decimals).unwrap();
+
+        let simulate = |sender: Option<CrossChainUser>| -> Uint256 {
+            let res: SimulateSwapResponse = router
+                .query(&RouterQueryMsg::SimulateSwap(QuerySimulateSwap {
+                    asset_in: asset_in.token.clone(),
+                    amount_in: normalized_amount_in,
+                    asset_out: asset_out.token.clone(),
+                    min_amount_out: Uint256::one(),
+                    swaps: swaps.clone(),
+                    sender,
+                }))
+                .unwrap();
+            res.amount_out
+        };
+
+        let sim_no_sender = simulate(None);
+        let sim_with_sender = simulate(Some(swap_user.clone()));
+
+        // Execute the route and read the delivered output straight from the
+        // wallet's voucher balance (voucher units, no de-normalization).
+        let virtual_balance = get_virtual_balance(
+            router.environment(),
+            &router.get_state().unwrap().virtual_balance_address,
+        );
+        let out_key = BalanceKey {
+            cross_chain_user: swap_user.clone(),
+            token_id: asset_out.token.to_string(),
+        };
+        let out_before = virtual_balance.get_balance(out_key.clone()).unwrap().amount;
+
+        swap_request(
+            &factory,
+            &router,
+            asset_in,
+            asset_out.token.clone(),
+            swap_amount,
+            Uint256::one(),
+            swaps.clone(),
+            vec![],
+            None,
+        )
+        .unwrap();
+
+        let out_after = virtual_balance.get_balance(out_key).unwrap().amount;
+        let executed = out_after.checked_sub(out_before).unwrap();
+
+        SimVsExec {
+            sim_no_sender,
+            sim_with_sender,
+            executed,
+        }
+    }
+
+    /// SC-23 Issue 6 acceptance: a sender-aware quote equals what execution
+    /// charges, for both single-hop and multi-hop CP routes, whitelisted and not.
+    #[test]
+    fn euclid_fee_override_simulation_matches_execution() {
+        let configs = [
+            ("cp", PoolConfig::ConstantProduct {}),
+            ("stable", PoolConfig::Stable { amp_factor: None }),
+        ];
+        // Single-hop for both curves; multi-hop for CP (curve-independent
+        // forwarding is already proven, and stable single-hop covers the curve).
+        for (label, pool_config) in configs {
+            let hop_counts: &[usize] = if label == "cp" { &[1, 2] } else { &[1] };
+            for &num_hops in hop_counts {
+                // Non-whitelisted: a sender-aware quote equals the senderless
+                // quote (no override resolved) and equals execution exactly.
+                let full = simulate_and_execute_route(num_hops, None, pool_config.clone());
+                assert_eq!(
+                    full.sim_with_sender, full.sim_no_sender,
+                    "{label} {num_hops}-hop: a non-whitelisted sender must quote the same as no sender"
+                );
+                assert_eq!(
+                    full.sim_with_sender, full.executed,
+                    "{label} {num_hops}-hop: non-whitelisted quote must equal executed output"
+                );
+
+                // Whitelisted (full exemption): the sender-aware quote reflects
+                // the exemption (strictly more output than the full-fee quote)
+                // and still equals execution exactly.
+                let exempt = simulate_and_execute_route(num_hops, Some(0), pool_config.clone());
+                assert!(
+                    exempt.sim_with_sender > exempt.sim_no_sender,
+                    "{label} {num_hops}-hop: exempt quote ({}) should exceed full-fee quote ({})",
+                    exempt.sim_with_sender,
+                    exempt.sim_no_sender
+                );
+                assert_eq!(
+                    exempt.sim_with_sender, exempt.executed,
+                    "{label} {num_hops}-hop: exempt quote must equal executed output bit-for-bit"
+                );
+            }
         }
     }
 }

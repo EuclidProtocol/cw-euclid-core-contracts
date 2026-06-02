@@ -28,7 +28,11 @@ pub fn query_simulate_swap(
 
     ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
 
-    let swap_response = simulate_swap(deps, &STATE, &BALANCES, asset_in, amount_in)?;
+    let swap_response = simulate_swap(
+        deps, &STATE, &BALANCES, asset_in, amount_in,
+        // SC-23 Issue 8 will thread the per-wallet override here.
+        None,
+    )?;
 
     match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {
@@ -38,6 +42,8 @@ pub fn query_simulate_swap(
                     asset: swap_response.asset_out,
                     asset_amount: swap_response.amount_out,
                     swaps: forward_swaps.to_vec(),
+                    // SC-23 Issue 8 will thread the per-wallet override here.
+                    euclid_fee_override: None,
                 }),
             )?;
             Ok(to_json_binary(&next_swap_response)?)

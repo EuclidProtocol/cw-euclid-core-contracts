@@ -258,9 +258,13 @@ pub fn execute(
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::State {} => query_state(deps),
-        QueryMsg::SimulateSwap(msg) => {
-            query_clp_simulate_swap(deps, msg.asset, msg.asset_amount, msg.swaps)
-        }
+        QueryMsg::SimulateSwap(msg) => query_clp_simulate_swap(
+            deps,
+            msg.asset,
+            msg.asset_amount,
+            msg.swaps,
+            msg.euclid_fee_override,
+        ),
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
@@ -983,12 +987,86 @@ fn find_next_initialized_tick(
     }
 }
 
+/// Resolves the effective per-call fee for a concentrated-pool swap from the
+/// pool's structural fee tier and an optional per-wallet Euclid-fee override.
+///
+/// In a CLP the trader pays the whole `tier_pips` fee; `default_protocol_cut_bps`
+/// (the pool's configured `euclid_fee_bps`) only *splits* that already-collected
+/// fee between the protocol and the LPs. So unlike the cp/stable curves — where
+/// the Euclid fee is an additive deduction from `amount_in` — reducing the cut
+/// alone never improves the trader's quote. To make a wallet override actually
+/// reduce what the trader pays, we lower the per-call fee tier itself while
+/// keeping the LP's absolute pip share of the tier untouched; only the
+/// protocol's slice is waived.
+///
+/// Let `d = default_protocol_cut_bps` and `X = euclid_fee_override` (both in bps,
+/// `X` clamped to `0..=d` so an override can only reduce, never raise, the
+/// protocol's take — the trader is never charged more than the structural tier):
+///
+/// ```text
+/// protocol_pips_default = tier_pips * d / 10_000            // protocol's default slice (pips)
+/// lp_pips               = tier_pips - protocol_pips_default // LP's exact complement
+/// protocol_pips_x       = tier_pips * X / 10_000            // protocol's slice under the override
+/// effective_fee_pips         = lp_pips + protocol_pips_x
+/// effective_protocol_cut_bps = protocol_pips_x * 10_000 / effective_fee_pips
+/// ```
+///
+/// Invariants (these are the spec — see SC-23 Issue 8):
+/// - `None` / `Some(d)` -> `(tier_pips, d)`: exact identity, a safe no-op for
+///   wallets without an override.
+/// - `Some(0)` -> `(lp_pips, 0)`: the protocol's slice is fully waived; the LP's
+///   per-unit accrual is unchanged.
+/// - `0 < X < d` -> partial trader discount; the LP's absolute pip share is
+///   unchanged, only the protocol's slice shrinks.
+///
+/// NOTE: the SC-23 plan sketched `effective_fee_pips = lp_pips + X * 100`, but
+/// that is dimensionally a flat pips value and only satisfies the
+/// `Some(d) -> identity` / `Some(d/2) -> midpoint` invariants when
+/// `tier_pips == 1_000_000`. The invariants are the spec, so the protocol's
+/// contribution scales with the tier (`tier_pips * X / 10_000`) instead.
+fn resolve_effective_fee(
+    tier_pips: u64,
+    default_protocol_cut_bps: u64,
+    euclid_fee_override: Option<u64>,
+) -> (u64, u64) {
+    let default_cut_bps = default_protocol_cut_bps.min(10_000);
+    let Some(override_bps) = euclid_fee_override else {
+        return (tier_pips, default_cut_bps);
+    };
+    // An override can only shrink the protocol's slice, never raise it: clamping
+    // to the default keeps `Some(d)` an exact no-op and the effective tier
+    // <= the structural tier, so the trader is never charged more than today.
+    let override_bps = override_bps.min(default_cut_bps);
+    if override_bps == default_cut_bps {
+        // Identical to the pool default — return it verbatim so both the fee
+        // tier and the cut are bit-for-bit unchanged (avoids double-rounding).
+        return (tier_pips, default_cut_bps);
+    }
+
+    let tier = u128::from(tier_pips);
+    let protocol_pips_default = tier * u128::from(default_cut_bps) / 10_000;
+    let lp_pips = tier.saturating_sub(protocol_pips_default);
+    let protocol_pips_x = tier * u128::from(override_bps) / 10_000;
+    let effective_fee_pips = lp_pips + protocol_pips_x;
+    let effective_protocol_cut_bps = if effective_fee_pips == 0 {
+        0
+    } else {
+        protocol_pips_x * 10_000 / effective_fee_pips
+    };
+
+    (
+        u64::try_from(effective_fee_pips).unwrap_or(tier_pips),
+        u64::try_from(effective_protocol_cut_bps).unwrap_or(default_cut_bps),
+    )
+}
+
 fn run_swap_simulation(
     deps: Deps,
     asset_in: Token,
     amount_in: Uint128,
     _test_fail: Option<bool>,
     sqrt_price_limit_x96: Option<Uint256>,
+    euclid_fee_override: Option<u64>,
 ) -> Result<SwapSimulation, ContractError> {
     #[cfg(test)]
     ensure!(
@@ -1006,14 +1084,22 @@ fn run_swap_simulation(
     let zero_for_one = asset_in == state.pair.token_1;
 
     let pool_key = POOL_KEY.load(deps.storage)?;
-    let fee_pips = match pool_key.pool_type {
+    let tier_pips = match pool_key.pool_type {
         PoolType::Concentrated { fee_tier_bps, .. } => fee_tier_bps,
         _ => return Err(ContractError::new("invalid pool type")),
     };
     ensure!(
-        fee_pips < FEE_DENOMINATOR_PIPS,
+        tier_pips < FEE_DENOMINATOR_PIPS,
         ContractError::new("invalid fee tier")
     );
+    // Resolve the per-call fee from the structural tier and the (optional)
+    // per-wallet Euclid-fee override. Without an override this is the pool
+    // default; an override shrinks the protocol's slice of the tier while
+    // leaving the LP's absolute pip share untouched. `effective_fee_pips`
+    // stays `<= tier_pips < FEE_DENOMINATOR_PIPS`, so the swap-step math's fee
+    // bound continues to hold.
+    let (fee_pips, protocol_cut_bps) =
+        resolve_effective_fee(tier_pips, state.fee.euclid_fee_bps, euclid_fee_override);
 
     let mut slot0 = SLOT0.load(deps.storage)?;
     let mut liquidity = ACTIVE_LIQUIDITY.load(deps.storage)?;
@@ -1059,7 +1145,6 @@ fn run_swap_simulation(
     let mut lp_fee_total = Uint256::zero();
     let mut protocol_fee_total = Uint256::zero();
     let mut crossed_ticks: Vec<CrossedTickUpdate> = Vec::new();
-    let protocol_cut_bps = state.fee.euclid_fee_bps.min(10_000);
     let mut last_crossed_tick: Option<i64> = None;
 
     for _ in 0..MAX_SWAP_STEPS {
@@ -1244,6 +1329,7 @@ fn execute_clp_swap(
         amount_in_u128,
         swap_msg.test_fail,
         None,
+        swap_msg.euclid_fee_override,
     )?;
     let mut response = Response::new();
 
@@ -1344,6 +1430,9 @@ fn execute_clp_swap(
                     min_token_out: swap_msg.min_token_out,
                     next_swaps: forward_swaps.to_vec(),
                     test_fail: next_swap.test_fail,
+                    // Forward the override so it applies uniformly across every
+                    // hop (matches the cp/stable execute path).
+                    euclid_fee_override: swap_msg.euclid_fee_override,
                 }))?,
                 funds: vec![],
             };
@@ -1402,10 +1491,18 @@ fn query_clp_simulate_swap(
     asset_in: Token,
     amount_in: Uint256,
     next_swaps: Vec<NextSwapVlp>,
+    euclid_fee_override: Option<u64>,
 ) -> Result<Binary, ContractError> {
     let amount_in_u128 =
         Uint128::try_from(amount_in).map_err(|_| ContractError::new("amount_in overflow"))?;
-    let sim = run_swap_simulation(deps, asset_in, amount_in_u128, None, None)?;
+    let sim = run_swap_simulation(
+        deps,
+        asset_in,
+        amount_in_u128,
+        None,
+        None,
+        euclid_fee_override,
+    )?;
     let response = GetSwapQueryResponse {
         amount_out: Uint256::from(sim.amount_out),
         asset_out: sim.asset_out,
@@ -1422,6 +1519,9 @@ fn query_clp_simulate_swap(
                         asset: response.asset_out,
                         asset_amount: response.amount_out,
                         swaps: forward_swaps.to_vec(),
+                        // Forward the override so it applies on every simulated
+                        // hop (matches the cp/stable simulate path).
+                        euclid_fee_override,
                     },
                 ),
             )?;
@@ -1935,6 +2035,7 @@ mod tests {
                 Uint128::new(1_000),
                 None,
                 Some(case.limit),
+                None,
             );
 
             assert_eq!(
@@ -1963,8 +2064,9 @@ mod tests {
         let asset_in = state.pair.token_1.clone();
 
         // Unlimited swap
-        let unlimited = run_swap_simulation(deps.as_ref(), asset_in.clone(), amount_in, None, None)
-            .expect("unlimited swap");
+        let unlimited =
+            run_swap_simulation(deps.as_ref(), asset_in.clone(), amount_in, None, None, None)
+                .expect("unlimited swap");
 
         // Limited swap — set limit near current price so it stops early
         // Use a price ~halfway between current and the lower tick
@@ -1976,9 +2078,15 @@ mod tests {
         );
         assert!(lower_sqrt > min_sqrt_ratio(), "limit must be above min");
 
-        let limited =
-            run_swap_simulation(deps.as_ref(), asset_in, amount_in, None, Some(lower_sqrt))
-                .expect("limited swap");
+        let limited = run_swap_simulation(
+            deps.as_ref(),
+            asset_in,
+            amount_in,
+            None,
+            Some(lower_sqrt),
+            None,
+        )
+        .expect("limited swap");
 
         // The limited swap should produce less or equal output
         assert!(
@@ -2009,6 +2117,7 @@ mod tests {
             deps.as_ref(),
             state.pair.token_1.clone(),
             Uint128::new(u128::MAX / 2),
+            None,
             None,
             None,
         );
@@ -2047,6 +2156,7 @@ mod tests {
             Uint128::new(1_000_000_000),
             None,
             Some(tight_limit),
+            None,
         );
 
         // Should succeed (partial fill allowed with price limit)
@@ -2472,5 +2582,471 @@ mod tests {
             "expected pool key mismatch error, got: {}",
             err
         );
+    }
+
+    // ------------------------------------------------------------------
+    // SC-23 Issue 8 Slice 1 — per-wallet Euclid-fee override on CLP
+    // ------------------------------------------------------------------
+
+    /// Set up two nested positions so a single swap crosses an initialized
+    /// tick (>= 2 swap steps). Outer range [-600, 600] (L1) and inner range
+    /// [-300, 300] (L2); active liquidity at tick 0 is L1 + L2. Tier 0.3%,
+    /// protocol cut 1000 bps — same fee config as `setup_pool`.
+    fn setup_pool_multi_tick(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
+        let token_a = Token::create("alpha".to_string()).expect("token");
+        let token_b = Token::create("beta".to_string()).expect("token");
+        let pair = Pair::new(token_a, token_b).expect("pair");
+
+        let state = State {
+            pair: pair.clone(),
+            router: Addr::unchecked("router"),
+            virtual_balance_contract: Addr::unchecked("vb"),
+            fee: Fee::new(
+                3000,
+                1000,
+                CrossChainUser {
+                    chain_uid: ChainUid::create("vsl".to_string()).expect("chain"),
+                    address: "fee_recipient".to_string(),
+                },
+            ),
+            total_fees_collected: TotalFees {
+                lp_fees: DenomFees {
+                    totals: HashMap::new(),
+                },
+                euclid_fees: DenomFees {
+                    totals: HashMap::new(),
+                },
+            },
+            last_updated: 0,
+            total_lp_tokens: Uint256::zero(),
+        };
+        STATE.save(deps.as_mut().storage, &state).expect("state");
+
+        let pool_key = PoolKey {
+            pair,
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 3000,
+                tick_spacing: 60,
+            },
+        };
+        POOL_KEY
+            .save(deps.as_mut().storage, &pool_key)
+            .expect("pool_key");
+
+        let sqrt_price = get_sqrt_ratio_at_tick(0).expect("sqrt at 0");
+        SLOT0
+            .save(
+                deps.as_mut().storage,
+                &Slot0 {
+                    sqrt_price_x96: sqrt_price,
+                    tick: 0,
+                    observation_index: 0,
+                    observation_cardinality: 1,
+                    observation_cardinality_next: 1,
+                },
+            )
+            .expect("slot0");
+
+        let l1 = 5_000_000_000u128;
+        let l2 = 5_000_000_000u128;
+        ACTIVE_LIQUIDITY
+            .save(deps.as_mut().storage, &Uint128::new(l1 + l2))
+            .expect("liq");
+        FEE_GROWTH_GLOBAL_0_X128
+            .save(deps.as_mut().storage, &Uint256::zero())
+            .expect("fg0");
+        FEE_GROWTH_GLOBAL_1_X128
+            .save(deps.as_mut().storage, &Uint256::zero())
+            .expect("fg1");
+        PROTOCOL_FEES_0
+            .save(deps.as_mut().storage, &Uint128::zero())
+            .expect("pf0");
+        PROTOCOL_FEES_1
+            .save(deps.as_mut().storage, &Uint128::zero())
+            .expect("pf1");
+
+        // Outer position [-600, 600] with liquidity L1.
+        for (tick, net) in [(-600i64, l1 as i128), (600i64, -(l1 as i128))] {
+            TICKS
+                .save(
+                    deps.as_mut().storage,
+                    tick,
+                    &TickInfo {
+                        initialized: true,
+                        liquidity_gross: Uint128::new(l1),
+                        liquidity_net: net,
+                        fee_growth_outside_0_x128: Uint256::zero(),
+                        fee_growth_outside_1_x128: Uint256::zero(),
+                    },
+                )
+                .expect("outer tick");
+        }
+        // Inner position [-300, 300] with liquidity L2.
+        for (tick, net) in [(-300i64, l2 as i128), (300i64, -(l2 as i128))] {
+            TICKS
+                .save(
+                    deps.as_mut().storage,
+                    tick,
+                    &TickInfo {
+                        initialized: true,
+                        liquidity_gross: Uint128::new(l2),
+                        liquidity_net: net,
+                        fee_growth_outside_0_x128: Uint256::zero(),
+                        fee_growth_outside_1_x128: Uint256::zero(),
+                    },
+                )
+                .expect("inner tick");
+        }
+    }
+
+    #[test]
+    fn resolve_effective_fee_truth_table() {
+        struct Case {
+            name: &'static str,
+            tier_pips: u64,
+            default_cut_bps: u64,
+            override_bps: Option<u64>,
+            expected: (u64, u64),
+        }
+
+        // tier 3000 pips (0.3%), default cut 1000 bps (10%):
+        //   protocol_pips_default = 3000 * 1000 / 10_000 = 300
+        //   lp_pips               = 3000 - 300 = 2700
+        let cases = vec![
+            Case {
+                name: "none -> identity",
+                tier_pips: 3000,
+                default_cut_bps: 1000,
+                override_bps: None,
+                expected: (3000, 1000),
+            },
+            Case {
+                name: "some(default) -> identity",
+                tier_pips: 3000,
+                default_cut_bps: 1000,
+                override_bps: Some(1000),
+                expected: (3000, 1000),
+            },
+            Case {
+                name: "some(0) -> (lp_pips, 0)",
+                tier_pips: 3000,
+                default_cut_bps: 1000,
+                override_bps: Some(0),
+                expected: (2700, 0),
+            },
+            Case {
+                // X = default/2 = 500: protocol_pips_x = 3000*500/10_000 = 150
+                //   effective_fee_pips = 2700 + 150 = 2850 (midpoint of 2700..3000)
+                //   effective_cut_bps  = 150 * 10_000 / 2850 = 526 (floored)
+                name: "some(default/2) -> midpoint",
+                tier_pips: 3000,
+                default_cut_bps: 1000,
+                override_bps: Some(500),
+                expected: (2850, 526),
+            },
+            Case {
+                name: "override above default clamps to identity",
+                tier_pips: 3000,
+                default_cut_bps: 1000,
+                override_bps: Some(5000),
+                expected: (3000, 1000),
+            },
+            Case {
+                name: "zero default cut: nothing to waive",
+                tier_pips: 3000,
+                default_cut_bps: 0,
+                override_bps: Some(0),
+                expected: (3000, 0),
+            },
+            Case {
+                // Different tier/cut to guard the scaling: tier 500, cut 3000 bps.
+                //   protocol_pips_default = 500*3000/10_000 = 150; lp_pips = 350
+                //   X=0 -> (350, 0)
+                name: "alt tier some(0)",
+                tier_pips: 500,
+                default_cut_bps: 3000,
+                override_bps: Some(0),
+                expected: (350, 0),
+            },
+            Case {
+                // tier 500, cut 3000, X = default/2 = 1500:
+                //   protocol_pips_x = 500*1500/10_000 = 75
+                //   eff_fee = 350 + 75 = 425 (midpoint of 350..500)
+                //   eff_cut = 75*10_000/425 = 1764 (floored)
+                name: "alt tier midpoint",
+                tier_pips: 500,
+                default_cut_bps: 3000,
+                override_bps: Some(1500),
+                expected: (425, 1764),
+            },
+        ];
+
+        for case in cases {
+            let got =
+                resolve_effective_fee(case.tier_pips, case.default_cut_bps, case.override_bps);
+            assert_eq!(got, case.expected, "case '{}'", case.name);
+        }
+    }
+
+    #[test]
+    fn override_reduces_trader_cost_and_waives_protocol_fee() {
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+        let state = STATE.load(deps.as_ref().storage).expect("state");
+        let asset_in = state.pair.token_1.clone(); // zero_for_one -> token0 fees
+        let amount_in = Uint128::new(1_000_000);
+
+        let none =
+            run_swap_simulation(deps.as_ref(), asset_in.clone(), amount_in, None, None, None)
+                .expect("no-override swap");
+        let zeroed = run_swap_simulation(
+            deps.as_ref(),
+            asset_in.clone(),
+            amount_in,
+            None,
+            None,
+            Some(0),
+        )
+        .expect("zeroed-override swap");
+        let half = run_swap_simulation(deps.as_ref(), asset_in, amount_in, None, None, Some(500))
+            .expect("half-override swap");
+
+        // Trader strictly better off: lower fee tier -> more output. The discount
+        // increases monotonically as the override shrinks.
+        assert!(
+            zeroed.amount_out > none.amount_out,
+            "zeroed override must improve the quote: {} !> {}",
+            zeroed.amount_out,
+            none.amount_out
+        );
+        assert!(
+            half.amount_out > none.amount_out && half.amount_out < zeroed.amount_out,
+            "half override must sit between: none={}, half={}, zeroed={}",
+            none.amount_out,
+            half.amount_out,
+            zeroed.amount_out
+        );
+
+        // Protocol slice: fully waived at Some(0), reduced (but non-zero) at the
+        // midpoint, full at None.
+        assert!(none.protocol_fee > Uint128::zero(), "none must collect fee");
+        assert_eq!(
+            zeroed.protocol_fee,
+            Uint128::zero(),
+            "Some(0) must waive the protocol fee entirely"
+        );
+        assert!(
+            half.protocol_fee > Uint128::zero() && half.protocol_fee < none.protocol_fee,
+            "half protocol fee must be a partial reduction: none={}, half={}",
+            none.protocol_fee,
+            half.protocol_fee
+        );
+
+        // LPs are not harmed: their absolute share of the tier is unchanged, so
+        // per-unit `fee_growth_global_0` matches across override and no-override
+        // (within sub-unit rounding dust). Liquidity is identical in all runs.
+        let lp_delta = none.lp_fee.u128().abs_diff(zeroed.lp_fee.u128());
+        assert!(
+            lp_delta <= 2,
+            "LP accrual must be unchanged within dust: none={}, zeroed={} (delta {})",
+            none.lp_fee,
+            zeroed.lp_fee,
+            lp_delta
+        );
+        let fg_delta = none
+            .fee_growth_global_0_x128
+            .abs_diff(zeroed.fee_growth_global_0_x128);
+        let one_unit_growth = Uint256::from(2u128).pow(128) / Uint256::from(state_liquidity(&deps));
+        assert!(
+            fg_delta <= one_unit_growth,
+            "fee_growth_global_0 per unit liquidity must be unchanged within dust: \
+             none={}, zeroed={}",
+            none.fee_growth_global_0_x128,
+            zeroed.fee_growth_global_0_x128
+        );
+    }
+
+    /// Helper: current active liquidity (for per-unit fee-growth tolerance).
+    fn state_liquidity(
+        deps: &cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) -> u128 {
+        ACTIVE_LIQUIDITY
+            .load(deps.as_ref().storage)
+            .expect("liq")
+            .u128()
+    }
+
+    #[test]
+    fn override_applies_uniformly_across_every_tick_step() {
+        let mut deps = mock_dependencies();
+        setup_pool_multi_tick(&mut deps);
+        let state = STATE.load(deps.as_ref().storage).expect("state");
+        let asset_in = state.pair.token_1.clone(); // zero_for_one
+        let amount_in = Uint128::new(5_000_000_000);
+        // Price limit between the inner (-300) and outer (-600) ticks: the swap
+        // crosses -300 (step 1) then stops at the limit (step 2) -> >= 2 steps.
+        let limit = get_sqrt_ratio_at_tick(-450).expect("sqrt at -450");
+
+        let none = run_swap_simulation(
+            deps.as_ref(),
+            asset_in.clone(),
+            amount_in,
+            None,
+            Some(limit),
+            None,
+        )
+        .expect("none swap");
+        let zeroed = run_swap_simulation(
+            deps.as_ref(),
+            asset_in.clone(),
+            amount_in,
+            None,
+            Some(limit),
+            Some(0),
+        )
+        .expect("zeroed swap");
+        let half = run_swap_simulation(
+            deps.as_ref(),
+            asset_in,
+            amount_in,
+            None,
+            Some(limit),
+            Some(500),
+        )
+        .expect("half swap");
+
+        // The swap genuinely spans multiple steps (crosses the inner tick -300).
+        assert!(
+            none.crossed_ticks.iter().any(|c| c.tick == -300),
+            "expected the swap to cross the inner tick -300 (multi-step)"
+        );
+
+        // If the override were applied only on the first step, the post-crossing
+        // step would still accrue protocol fee and this would be non-zero.
+        assert_eq!(
+            zeroed.protocol_fee,
+            Uint128::zero(),
+            "Some(0) must waive protocol fee on EVERY step, not just the first"
+        );
+        assert!(none.protocol_fee > Uint128::zero());
+        assert!(
+            half.protocol_fee > Uint128::zero() && half.protocol_fee < none.protocol_fee,
+            "midpoint override reduces protocol fee uniformly: none={}, half={}",
+            none.protocol_fee,
+            half.protocol_fee
+        );
+    }
+
+    #[test]
+    fn override_invariants_hold_across_the_sweep() {
+        let mut deps = mock_dependencies();
+        setup_pool(&mut deps);
+        let state = STATE.load(deps.as_ref().storage).expect("state");
+        let asset_in = state.pair.token_1.clone();
+        let amount_in = Uint128::new(1_000_000);
+
+        let baseline =
+            run_swap_simulation(deps.as_ref(), asset_in.clone(), amount_in, None, None, None)
+                .expect("baseline");
+
+        for override_bps in [0u64, 250, 500, 750, 1000] {
+            let sim = run_swap_simulation(
+                deps.as_ref(),
+                asset_in.clone(),
+                amount_in,
+                None,
+                None,
+                Some(override_bps),
+            )
+            .expect("override swap");
+
+            // Trader never worse off than the unrebated quote.
+            assert!(
+                sim.amount_out >= baseline.amount_out,
+                "override {} must not reduce the trader's output: {} < {}",
+                override_bps,
+                sim.amount_out,
+                baseline.amount_out
+            );
+            // Protocol slice never exceeds the unrebated slice.
+            assert!(
+                sim.protocol_fee <= baseline.protocol_fee,
+                "override {} must not raise the protocol fee: {} > {}",
+                override_bps,
+                sim.protocol_fee,
+                baseline.protocol_fee
+            );
+            // LP accrual is unchanged within sub-unit dust (never materially less).
+            assert!(
+                sim.lp_fee.u128() + 2 >= baseline.lp_fee.u128(),
+                "override {} must not harm LP accrual: {} < {}",
+                override_bps,
+                sim.lp_fee,
+                baseline.lp_fee
+            );
+        }
+    }
+
+    #[test]
+    fn clp_swap_envelope_decodes_across_versions() {
+        use cosmwasm_std::from_json;
+        use euclid::msgs::vlp::concentrated::msg::{ExecuteMsg, QueryMsg};
+
+        // Old Router -> new CLP: an ExecuteMsg::Swap envelope without the
+        // override field decodes to `None` (full pool fee).
+        let legacy_swap = br#"{
+            "swap": {
+                "sender": {"chain_uid": "chaina", "address": "addr1"},
+                "tx_id": "tx-1",
+                "asset_in": "usdc",
+                "amount_in": "1000",
+                "min_token_out": "1",
+                "next_swaps": []
+            }
+        }"#;
+        match from_json::<ExecuteMsg>(legacy_swap).expect("legacy CLP swap envelope must decode") {
+            ExecuteMsg::Swap(msg) => assert_eq!(msg.euclid_fee_override, None),
+            other => panic!("expected Swap, got {other:?}"),
+        }
+
+        // New Router -> new CLP: the override rides through the same envelope.
+        let modern_swap = br#"{
+            "swap": {
+                "sender": {"chain_uid": "chaina", "address": "addr1"},
+                "tx_id": "tx-1",
+                "asset_in": "usdc",
+                "amount_in": "1000",
+                "min_token_out": "1",
+                "next_swaps": [],
+                "euclid_fee_override": 0
+            }
+        }"#;
+        match from_json::<ExecuteMsg>(modern_swap).expect("modern CLP swap envelope must decode") {
+            ExecuteMsg::Swap(msg) => assert_eq!(msg.euclid_fee_override, Some(0)),
+            other => panic!("expected Swap, got {other:?}"),
+        }
+
+        // SimulateSwap envelope, legacy and modern.
+        let legacy_sim =
+            br#"{"simulate_swap": {"asset": "usdc", "asset_amount": "1000", "swaps": []}}"#;
+        match from_json::<QueryMsg>(legacy_sim).expect("legacy CLP simulate envelope must decode") {
+            QueryMsg::SimulateSwap(msg) => assert_eq!(msg.euclid_fee_override, None),
+            other => panic!("expected SimulateSwap, got {other:?}"),
+        }
+        let modern_sim = br#"{"simulate_swap": {"asset": "usdc", "asset_amount": "1000", "swaps": [], "euclid_fee_override": 25}}"#;
+        match from_json::<QueryMsg>(modern_sim).expect("modern CLP simulate envelope must decode") {
+            QueryMsg::SimulateSwap(msg) => assert_eq!(msg.euclid_fee_override, Some(25)),
+            other => panic!("expected SimulateSwap, got {other:?}"),
+        }
     }
 }

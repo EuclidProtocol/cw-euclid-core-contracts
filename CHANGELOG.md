@@ -102,6 +102,10 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [stable_vlp] Migration entry point that normalizes pool reserves by querying virtual_balance for token decimals
 - [stable_vlp] `MIN_AMP = 100` constant with validation in `compute_stable_swap`, `update_amp_factor`, and `instantiate`
 - [router] `GetAllEscrows` query (deprecated on arrival, exists only to support virtual_balance migration)
+- [router] `EUCLID_FEE_OVERRIDES: Map<(ChainUid, String), u64>` storing per-wallet Euclid-fee overrides keyed on the swapping `CrossChainUser` components
+- [router] `ManageRouterState::SetEuclidFeeOverride { user, euclid_fee_bps }` fee-admin-gated handler: `Some(bps)` upserts (bounded by `MAX_FEE_BPS`), `None` removes
+- [router] `GetEuclidFeeOverride { user } -> EuclidFeeOverrideResponse { euclid_fee_bps: Option<u64> }` query for backend/admin auditing
+- [router] `helpers::euclid_fee_override::get_euclid_fee_override` shared resolver — single resolution point reused by execute and simulate paths so quote and execution cannot drift
 - [orderbook_deposits] `NULLIFIERS` map tracking withdrawn amounts by hashed key
 - [factory] `AddSingleSidedLiquidity` execute entry point: user deposits a single token, the hub atomically swaps a backend-computed portion and adds liquidity on the target VLP in one IBC roundtrip
 - [factory] `AddSingleSidedLiquidity` supports `TokenType::Smart` (CW20) `asset_in` via the `IncreaseAllowance` + `TransferFrom` pattern (mirrors `add_liquidity_request`); `TokenType::Voucher` rejected as `UnreachableCode`
@@ -114,6 +118,10 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [euclid] `SingleSidedLiquidityRequest` pending-state struct (in `liquidity.rs`) carrying `partner_fee_amount` and `partner_fee_recipient` for the factory ack handler
 - [euclid] `GetPendingSingleSidedLiquidityResponse { pending_single_sided_liquidity }` for the new query
 - [euclid_ibc] `RouterCrossChainSingleSidedAddLiquidityMsg` IBC packet payload carrying `asset_in`, `amount_in`, `swap_amount`, target `pair`, `swaps` route, `min_lp_out`, and partner-fee fields
+- [euclid] `ManageRouterState::SetEuclidFeeOverride` execute variant and `QueryMsg::GetEuclidFeeOverride` query variant plus `EuclidFeeOverrideResponse` response type for the per-wallet Euclid-fee override (SC-23)
+- [euclid] `VlpSwapMsg.euclid_fee_override: Option<u64>` field (serde-defaulted) carrying the resolved per-wallet Euclid-fee override to the VLP (SC-23)
+- [euclid] `VlpSimulateSwapMsg.euclid_fee_override: Option<u64>` field (serde-defaulted) carrying the resolved per-wallet Euclid-fee override through the simulation path so quotes match execution (SC-23)
+- [euclid] `QuerySimulateSwap.sender: Option<CrossChainUser>` field (serde-defaulted) — optional swapping wallet so the router can resolve and apply its Euclid-fee override to the quote (SC-23)
 
 #### Packages
 
@@ -129,6 +137,7 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [euclid] `virtual_balance_change_event(action, amount, user, token_id)` emitting `euclid-virtual-balance-change` with attributes: action, amount, user, token_id
 - [euclid] `escrow_balance_change_event(action, amount, token_id, chain_uid, token_type)` emitting `euclid-escrow-balance-change` with attributes: action, amount, token_id, chain_uid, token_type
 - [euclid] `TxType::SingleSidedAddLiquidity` variant (display: `single_sided_add_liquidity`) emitted by the router on single-sided add-liquidity entry
+- [euclid] `euclid_fee_override_change_event(action, user, euclid_fee_bps)` emitting `euclid-fee-override-change` with attributes: action (`set`/`remove`), chain_uid, address, euclid_fee_bps (omitted on remove)
 - [virtual_balance] `normalized_amount` attribute added to `execute_mint` response
 
 #### Documentation
@@ -187,6 +196,12 @@ Only contract and package changes are tracked (not test or CI changes). Each rel
 - [router] IBC receive handlers pass `token_type` and `token_source_chain_uid` to `ExecuteMint`
 - [router] `_release_voucher` queries escrow from virtual_balance instead of local state
 - [router] IBC ack failure path delegates re-mint to virtual_balance (no local escrow restore)
+- [router] Swap chokepoint (`ibc_execute_swap`) resolves the swapping wallet's Euclid-fee override and stamps it onto the outgoing `VlpSwapMsg`; native and IBC swaps both inherit it identically (SC-23)
+- [euclid_pool] `pre_swap`/`execute_swap`/`simulate_swap` accept an `euclid_fee_override: Option<u64>`; when `Some(bps)` it replaces the pool's Euclid-fee rate (`Some(0)` = full exemption), LP fee always charged at the pool rate; `execute_swap` forwards the override to the next hop (SC-23)
+- [router] Swap simulation (`query_simulate_swap`) resolves the optional `QuerySimulateSwap.sender`'s Euclid-fee override and threads it through the simulation, so a quote matches what execution charges; the execute-path slippage pre-check now simulates with the same resolved override (SC-23)
+- [cp_vlp] / [stable_vlp] `query_simulate_swap` accepts and applies `euclid_fee_override`, forwarding it onto each next-hop `VlpSimulateSwapMsg` so the override applies on every simulated hop (SC-23)
+- [concentrated_vlp] CLP swap execution and `SimulateSwap` apply `euclid_fee_override` by lowering the structural fee tier for the swap (new `resolve_effective_fee` helper), so a reduced/zero override actually improves the trader's quote instead of only shifting the protocol's cut to LPs; the LP keeps its absolute pip share of the tier (`lp_pips = tier_pips - tier_pips*d/10_000`) and only the protocol's slice (`tier_pips*X/10_000`) is waived; an override at/above the pool default is an exact no-op. The override is forwarded to downstream legs in both execution and simulation, so it applies on every hop of a multi-hop route that passes through a CLP (SC-23 Issue 8)
+- [euclid_pool] Clarified the `pre_swap` deferred-CLP note: CLP overrides are applied in `concentrated_vlp::resolve_effective_fee`, not `pre_swap`, which stays cp/stable-only (SC-23 Issue 8)
 - [factory] Replaced `.unwrap()` with error propagation in LP minting and burning (4 sites)
 
 #### Events (changes affecting backend indexing)
