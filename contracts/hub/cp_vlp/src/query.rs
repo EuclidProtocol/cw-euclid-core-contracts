@@ -6,7 +6,8 @@ use euclid::msgs::vlp::base::{
 };
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
-use euclid_pool::{calculate_amount_from_shares, simulate_swap, SwapCalculationMethod};
+use euclid_pool::common::calculate_amount_from_shares;
+use euclid_pool::cp::simulate_swap;
 
 use crate::state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::msgs::vlp::cp::msg::{
@@ -31,14 +32,7 @@ pub fn query_simulate_swap(
     // asset should match either token
     ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
 
-    let swap_response = simulate_swap(
-        deps,
-        &STATE,
-        &BALANCES,
-        asset_in,
-        amount_in,
-        SwapCalculationMethod::Regular,
-    )?;
+    let swap_response = simulate_swap(deps, &STATE, &BALANCES, asset_in, amount_in)?;
 
     let response = match next_swaps.split_first() {
         Some((next_swap, forward_swaps)) => {

@@ -38,8 +38,9 @@ use crate::query::{
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
-    self, on_lp_instantiate_reply, on_position_token_instantiate_reply,
-    CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
+    self, on_lp_instantiate_reply, on_pool_factory_delegate_reply,
+    on_position_token_instantiate_reply, CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID,
+    POOL_FACTORY_DELEGATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
 };
 use crate::reply::{
     on_escrow_instantiate_reply, on_release_escrow_reply, ESCROW_INSTANTIATE_REPLY_ID,
@@ -416,6 +417,48 @@ pub fn execute(
             destination_port,
             ack,
         ),
+        ExecuteMsg::SetPoolFactory {
+            pool_factory_address,
+        } => crate::execute::proxy::execute_set_pool_factory(deps, env, info, pool_factory_address),
+        ExecuteMsg::ProxyMintLpToken {
+            lp_token,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_mint_lp_token(
+            deps, env, info, lp_token, recipient, amount,
+        ),
+        ExecuteMsg::ProxyReleaseEscrow {
+            token,
+            denom,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_release_escrow(
+            deps, env, info, token, denom, recipient, amount,
+        ),
+        ExecuteMsg::ProxyBurnLpToken { lp_token, amount } => {
+            crate::execute::proxy::execute_proxy_burn_lp_token(deps, env, info, lp_token, amount)
+        }
+        ExecuteMsg::ProxyTransferLpToken {
+            lp_token,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_transfer_lp_token(
+            deps, env, info, lp_token, recipient, amount,
+        ),
+        ExecuteMsg::ProxyMintPosition {
+            token_id,
+            owner,
+            vlp_address,
+            liquidity,
+        } => crate::execute::proxy::execute_proxy_mint_position(
+            deps,
+            env,
+            info,
+            token_id,
+            owner,
+            vlp_address,
+            liquidity,
+        ),
     }
 }
 
@@ -445,6 +488,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetPositionTokenContract {} => get_position_token_contract(deps),
         QueryMsg::GetRateLimitState {} => get_rate_limit_state(deps),
         QueryMsg::GetUserRateLimit { user } => get_user_rate_limit(deps, user),
+        QueryMsg::QueryAdminRole { addr, role } => crate::query::query_admin_role(deps, addr, role),
+        QueryMsg::QueryPoolFactoryAddress {} => crate::query::query_pool_factory_address(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -465,6 +510,7 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         POSITION_TOKEN_INSTANTIATE_REPLY_ID => {
             on_position_token_instantiate_reply(deps.branch(), msg)
         }
+        POOL_FACTORY_DELEGATE_REPLY_ID => on_pool_factory_delegate_reply(deps.branch(), env, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id

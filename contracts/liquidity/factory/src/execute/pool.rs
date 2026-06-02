@@ -34,6 +34,7 @@ use euclid_ibc::router_ibc::{
 };
 
 use crate::{
+    execute::proxy::pool_factory_is_initialised,
     query::get_chain_type,
     state::{
         ConcentratedAddLiquidityRequest, ConcentratedCollectFeesRequest,
@@ -43,7 +44,8 @@ use crate::{
         PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
         PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
         PENDING_POOL_REQUESTS, PENDING_REMOVE_LIQUIDITY, PENDING_SINGLE_SIDED_LIQUIDITY,
-        POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+        POOL_FACTORY_ADDRESS, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_LP_TOKEN,
     },
 };
 
@@ -178,6 +180,61 @@ pub fn execute_request_pool_creation(
         ContractError::new("Cannot create pool with same token")
     );
 
+    // Slice 1: once pool_factory has been wired and migration accepted,
+    // delegate the CP/Stable pool creation flow. Main Factory keeps fund
+    // custody (escrow deposits + validation above) and hands the typed
+    // request to pool_factory, which builds the outbound packet via its
+    // `outbound` module and returns it as `Response::data`. Main factory's
+    // `on_pool_factory_delegate_reply` consumes the payload and runs the
+    // outbound dispatch.
+    if pool_factory_is_initialised(deps)? {
+        // We might get errors in ack if marketing is not valid
+        if let Some(marketing) = &lp_token_marketing {
+            if let Some(logo) = &marketing.logo {
+                ensure!(
+                    matches!(logo, Logo::Url(_)),
+                    ContractError::new("Only URL logos are supported")
+                );
+            }
+            if let Some(marketing_address) = &marketing.marketing {
+                deps.api.addr_validate(marketing_address)?;
+            }
+        }
+        let pool_factory = POOL_FACTORY_ADDRESS.load(deps.storage)?;
+        let exec = euclid::msgs::pool_factory::ExecuteMsg::OnRequestPoolCreation {
+            tx_id: tx_id.clone(),
+            sender: info.sender.clone(),
+            pair_with_denom_and_amount: pair_with_denom_and_amount.clone(),
+            pool_config,
+            lp_token_name,
+            lp_token_symbol,
+            lp_token_decimal,
+            lp_token_marketing,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        };
+        let delegate_msg = cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+            contract_addr: pool_factory.into_string(),
+            msg: cosmwasm_std::to_json_binary(&exec)?,
+            funds: vec![],
+        });
+        return Ok(res
+            .add_event(tx_event(
+                &tx_id,
+                info.sender.as_str(),
+                euclid::events::TxType::PoolCreation,
+            ))
+            .add_attribute("action", "pool_creation")
+            .add_attribute("tx_id", tx_id)
+            .add_attribute("method", "request_pool_creation_delegated")
+            .add_attribute("token_1", pair.token_1.to_string())
+            .add_attribute("token_2", pair.token_2.to_string())
+            .add_submessage(SubMsg::reply_on_success(
+                delegate_msg,
+                crate::reply::POOL_FACTORY_DELEGATE_REPLY_ID,
+            )));
+    }
+
     ensure!(
         !PENDING_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
@@ -257,6 +314,116 @@ pub fn execute_request_pool_creation(
         .add_submessage(pool_create_msg))
 }
 
+/// Delegated CP/Stable add-liquidity path used once `pool_factory` is wired.
+///
+/// Main Factory still owns the escrow custody surface: it validates funds,
+/// pulls cw20 transfers, and deposits each non-voucher token to its escrow
+/// up-front via `create_escrow_msg`. The pool-state mutation (writing the
+/// pending entry, building the outbound packet, ack handling) is delegated
+/// to pool_factory's `OnAddLiquidity` handler.
+#[allow(clippy::too_many_arguments)]
+fn add_liquidity_request_delegated(
+    deps: &mut DepsMut,
+    env: Env,
+    info: MessageInfo,
+    pair_info: PairWithDenomAndAmount,
+    slippage_tolerance_bps: u64,
+    cross_chain_config: CrossChainConfig,
+    tx_id: String,
+) -> Result<Response, ContractError> {
+    let pair = pair_info.get_pair()?;
+    let state = STATE.load(deps.storage)?;
+    let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
+
+    // Validate funds + collect transfer/deposit messages. Deposits happen
+    // up-front so that on failure the refund path can pull from escrow via
+    // `ProxyReleaseEscrow` instead of touching factory holdings.
+    let mut msgs: Vec<SubMsg> = Vec::new();
+    let mut fund_manager = FundManager::new(&info.funds);
+    let tokens = pair_info.get_vec_token_info();
+    for token in tokens {
+        token.token_type.validate(&deps.as_ref())?;
+        ensure!(!token.amount.is_zero(), ContractError::ZeroAssetAmount {});
+
+        if token.token_type.is_voucher() {
+            continue;
+        }
+
+        let escrow_address = TOKEN_TO_ESCROW
+            .load(deps.storage, token.token.clone())
+            .or(Err(ContractError::EscrowDoesNotExist {}))?;
+        let token_allowed_query_msg = euclid::msgs::escrow::QueryMsg::TokenAllowed {
+            denom: token.token_type.clone(),
+        };
+        let token_allowed: AllowedTokenResponse = deps
+            .querier
+            .query_wasm_smart(escrow_address.clone(), &token_allowed_query_msg)?;
+        ensure!(
+            token_allowed.allowed,
+            ContractError::UnsupportedDenomination {}
+        );
+
+        match &token.token_type {
+            TokenType::Native { denom, .. } => {
+                ensure!(
+                    !info.funds.is_empty(),
+                    ContractError::InsufficientDeposit {}
+                );
+                fund_manager.use_fund(token.amount, denom)?;
+            }
+            TokenType::Smart { .. } => {
+                let transfer = token.token_type.create_transfer_msg(
+                    token.amount,
+                    env.contract.address.clone().to_string(),
+                    Some(sender.address.clone()),
+                    None,
+                )?;
+                msgs.push(SubMsg::new(transfer));
+            }
+            TokenType::Voucher { .. } => return Err(ContractError::UnreachableCode {}),
+        }
+
+        // Deposit funds to escrow up-front. This message executes after the
+        // optional cw20 TransferFrom above and before the delegate call —
+        // the whole tx reverts if any step fails.
+        let deposit = token
+            .token_type
+            .create_escrow_msg(token.amount, escrow_address)?;
+        msgs.push(SubMsg::new(deposit));
+    }
+
+    ensure!(
+        fund_manager.validate_funds_are_empty().is_ok(),
+        ContractError::new("Extra funds are not allowed")
+    );
+
+    let exec = euclid::msgs::pool_factory::ExecuteMsg::OnAddLiquidity {
+        tx_id: tx_id.clone(),
+        sender: info.sender.clone(),
+        pair_with_denom_and_amount: pair_info,
+        slippage_tolerance_bps,
+        cross_chain_config,
+    };
+    let delegate = crate::execute::proxy::pool_factory_execute_msg(deps, &exec)?;
+
+    Ok(Response::new()
+        .add_event(tx_event(
+            &tx_id,
+            info.sender.as_str(),
+            euclid::events::TxType::AddLiquidity,
+        ))
+        .add_attribute("action", "add_liquidity")
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("method", "add_liquidity_request_delegated")
+        .add_attribute("token_1", pair.token_1.to_string())
+        .add_attribute("token_2", pair.token_2.to_string())
+        .add_submessages(msgs)
+        .add_submessage(SubMsg::reply_on_success(
+            delegate,
+            crate::reply::POOL_FACTORY_DELEGATE_REPLY_ID,
+        )))
+}
+
 // Add liquidity to the pool
 pub fn add_liquidity_request(
     deps: &mut DepsMut,
@@ -277,6 +444,25 @@ pub fn add_liquidity_request(
         slippage_tolerance_bps >= 1 && slippage_tolerance_bps <= BPS_100_PERCENT,
         ContractError::InvalidSlippageTolerance {}
     );
+
+    // Slice 2: when pool_factory is wired and migration accepted, route
+    // add-liquidity end-to-end through pool_factory. Main Factory keeps
+    // fund custody up to the escrow deposit, then hands the typed request
+    // to pool_factory which returns the outbound packet as `Response::data`;
+    // `on_pool_factory_delegate_reply` runs the dispatch and the ack-side
+    // proxy calls (`ProxyMintLpToken` on success, `ProxyReleaseEscrow` on
+    // failure) follow.
+    if pool_factory_is_initialised(deps)? {
+        return add_liquidity_request_delegated(
+            deps,
+            env,
+            info,
+            pair_info,
+            slippage_tolerance_bps,
+            cross_chain_config,
+            tx_id,
+        );
+    }
 
     ensure!(
         !PENDING_ADD_LIQUIDITY.has(deps.storage, (info.sender.clone(), tx_id.clone())),
@@ -412,23 +598,52 @@ pub fn remove_liquidity_request(
 
     let tx_id = generate_tx(deps, &env, &sender)?;
 
+    let vlp = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
+    let lp_token = VLP_TO_LP_TOKEN.load(deps.storage, vlp)?;
+
+    // Caller (cw20 hook origin) must be the matching LP cw20 contract.
+    ensure!(lp_token == info.sender, ContractError::Unauthorized {});
+
+    // Check that the liquidity is greater than 0
+    ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
+
+    // Slice 3: when pool_factory is wired and migration accepted, route
+    // remove-liquidity end-to-end through pool_factory. Main Factory still
+    // holds the LP cw20 tokens (they arrived via the cw20::Send hook) and
+    // drives the burn/refund through `ProxyBurnLpToken` / `ProxyTransferLpToken`
+    // after the ack.
+    if pool_factory_is_initialised(deps)? {
+        let exec = euclid::msgs::pool_factory::ExecuteMsg::OnRemoveLiquidity {
+            tx_id: tx_id.clone(),
+            sender: sender_addr.clone(),
+            pair: pair.clone(),
+            lp_allocation,
+            lp_token: lp_token.clone(),
+            recipient: recipient.clone(),
+            cross_chain_config: cross_chain_config.clone(),
+        };
+        let delegate = crate::execute::proxy::pool_factory_execute_msg(deps, &exec)?;
+        return Ok(Response::new()
+            .add_event(tx_event(
+                &tx_id,
+                sender_addr.as_str(),
+                euclid::events::TxType::RemoveLiquidity,
+            ))
+            .add_attribute("action", "remove_liquidity")
+            .add_attribute("tx_id", tx_id)
+            .add_attribute("method", "remove_liquidity_request_delegated")
+            .add_attribute("token_1", pair.token_1.to_string())
+            .add_attribute("token_2", pair.token_2.to_string())
+            .add_submessage(SubMsg::reply_on_success(
+                delegate,
+                crate::reply::POOL_FACTORY_DELEGATE_REPLY_ID,
+            )));
+    }
+
     ensure!(
         !PENDING_REMOVE_LIQUIDITY.has(deps.storage, (sender_addr.clone(), tx_id.clone())),
         ContractError::TxAlreadyExist {}
     );
-
-    let vlp = PAIR_TO_VLP.load(deps.storage, pair.get_tupple())?;
-    let lp_token = VLP_TO_LP_TOKEN.load(deps.storage, vlp)?;
-
-    ensure!(lp_token == info.sender, ContractError::Unauthorized {});
-
-    ensure!(
-        PAIR_TO_VLP.has(deps.storage, pair.get_tupple()),
-        ContractError::PoolDoesNotExist {}
-    );
-
-    // Check that the liquidity is greater than 0
-    ensure!(!lp_allocation.is_zero(), ContractError::ZeroAssetAmount {});
 
     let liquidity_tx_info = RemoveLiquidityRequest {
         sender: sender_addr.to_string(),
@@ -525,6 +740,51 @@ pub fn execute_request_concentrated_pool_creation(
             tick_spacing,
         },
     };
+
+    // Slice 4: when pool_factory is wired, delegate the CLP pool-creation flow.
+    // Main factory keeps fund custody (validation/transfers above) and hands
+    // the typed request to pool_factory, which records the pending entry,
+    // builds the outbound packet via `outbound::request_concentrated_pool_creation`,
+    // and returns it as `Response::data` for main factory's
+    // `on_pool_factory_delegate_reply` to dispatch. The post-ack carry-overs
+    // (position-NFT mint and per-token escrow funding) continue to land via
+    // the Slice 4 bridge pattern documented in POOL_FACTORY_REFACTOR_ISSUES.md.
+    if crate::execute::proxy::pool_factory_is_initialised(deps)? {
+        ensure!(
+            fund_manager.validate_funds_are_empty().is_ok(),
+            ContractError::new("Extra funds are not allowed")
+        );
+        let pool_factory_addr = POOL_FACTORY_ADDRESS.load(deps.storage)?;
+        let exec = euclid::msgs::pool_factory::ExecuteMsg::OnRequestConcentratedPoolCreation {
+            tx_id: tx_id.clone(),
+            sender: info.sender.clone(),
+            pair_with_denom_and_amount: pair_with_denom_and_amount.clone(),
+            pool_key,
+            slippage_tolerance_bps,
+            initial_tick,
+            cross_chain_config,
+        };
+        let delegate_msg = cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+            contract_addr: pool_factory_addr.into_string(),
+            msg: cosmwasm_std::to_json_binary(&exec)?,
+            funds: vec![],
+        });
+        return Ok(res
+            .add_event(tx_event(
+                &tx_id,
+                info.sender.as_str(),
+                euclid::events::TxType::PoolCreation,
+            ))
+            .add_attribute("action", "concentrated_pool_creation")
+            .add_attribute("tx_id", tx_id)
+            .add_attribute("method", "request_concentrated_pool_creation_delegated")
+            .add_attribute("token_1", pair.token_1.to_string())
+            .add_attribute("token_2", pair.token_2.to_string())
+            .add_submessage(SubMsg::reply_on_success(
+                delegate_msg,
+                crate::reply::POOL_FACTORY_DELEGATE_REPLY_ID,
+            )));
+    }
 
     ensure!(
         !PENDING_CONCENTRATED_POOL_REQUESTS.has(deps.storage, (info.sender.clone(), tx_id.clone())),

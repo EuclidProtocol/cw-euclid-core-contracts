@@ -2,7 +2,7 @@ use cosmwasm_std::{Decimal256, StdError, StdResult, Uint256, Uint64};
 use euclid::error::ContractError;
 use euclid::utils::math::Decimal256Ext;
 
-use crate::SwapResult;
+use crate::common::SwapResult;
 /// N = 2
 pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
 pub const AMP_PRECISION: u64 = 100;
